@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "gridiron-edge"
+version = "0.1.0"
+description = "None for now."
+authors = ["Will Thurston <WilliamD.Thurston@gmail.com>"]
+packages = [{ include = "gridiron-edge", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
