@@ -1,3 +1,9 @@
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
 [tool.poetry]
 name = "gridiron-edge"
 version = "0.1.0"

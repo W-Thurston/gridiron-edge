@@ -1,0 +1,14 @@
+data-pipelines
+geopy
+itemadapter
+nfl-data-py
+numpy
+pandas
+pytz
+PyYAML
+requests
+Scrapy
+seaborn
+timezonefinder
+tqdm
+urllib3
