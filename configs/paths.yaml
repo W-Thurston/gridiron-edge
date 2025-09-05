@@ -1,0 +1,6 @@
+data_raw: data/raw
+data_standardized: data/standardized
+data_artifacts: data/artifacts
+
+# schedules source (Lee Sharpe / nfldata)
+nfl_schedules_csv: "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"

@@ -1,0 +1,8 @@
+moneyline:
+  mode: ${globals.model_mode_moneyline}
+
+spread:
+  placeholder: true
+
+total:
+  placeholder: true

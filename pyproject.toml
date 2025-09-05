@@ -1,21 +1,78 @@
+[tool.poetry]
+name = "gridiron-edge"
+version = "0.0.1"
+description = "NFL prediction foundation: clean scaffolding, leakage guardrails, and walk-forward backtests."
+authors = ["Will Thurston <WilliamD.Thurston@gmail.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{ include = "gridiron", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pandas = "^2.2.2"
+numpy = "^2.0.1"
+typer = {version="^0.12.3", extras=["all"]}
+hydra-core = "^1.3.2"
+python-dotenv = "^1.0.1"
+joblib = "^1.4.2"
+pandera = {version="^0.20.3", extras=["io"]}
+pyarrow = "^17.0.0"
+rich = "^13.7.1"
+fsspec = "^2024.6.1"
+requests = "^2.32.3"
+click = ">=8.1.3,<8.2.0"
+matplotlib = "^3.10.6"
+pytest = "^8.4.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-cov = "^5.0.0"
+hypothesis = "^6.112.1"
+mypy = "^1.11.2"
+ruff = "^0.6.2"
+black = "^24.8.0"
+isort = "^5.13.2"
+pre-commit = "^3.8.0"
+
+[tool.poetry.scripts]
+gridiron = "gridiron.api.cli:app"
+
 [tool.black]
-line-length = 88
+line-length = 100
+target-version = ["py312"]
 
 [tool.isort]
 profile = "black"
+line_length = 100
+combine_as_imports = true
+known_first_party = ["gridiron"]
 
-[tool.poetry]
-name = "gridiron-edge"
-version = "0.1.0"
-description = "None for now."
-authors = ["Will Thurston <WilliamD.Thurston@gmail.com>"]
-packages = [{ include = "gridiron-edge", from = "src" }]
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+fix = true
 
-[tool.poetry.dependencies]
-python = "^3.10"
+[tool.ruff.lint]
+select = ["E","F","W","N","UP","B","A","C4","PIE","RUF"]
+ignore = ["E501"]  # black handles wrapping
 
-[tool.poetry.dev-dependencies]
-pytest = "^7.0"
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+strict_equality = true
+exclude = ["data/", "tests/"]
+ignore_missing_imports = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=gridiron --cov-report=term-missing"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,0 +1,4 @@
+random_seed: 42
+prediction_snapshot: EARLY_WED_10ET  # options: EARLY_WED_10ET, T_MINUS_24H_ET
+markets_enabled: ["moneyline"]       # placeholders exist for spread/total
+model_mode_moneyline: coinflip       # coinflip | home-bias

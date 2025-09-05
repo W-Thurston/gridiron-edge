@@ -1,0 +1,8 @@
+enabled:
+  - home_field
+  - rest_days_home
+  - rest_days_away
+  - is_divisional
+  - travel_tz_diff_away
+params:
+  # room for tunables later

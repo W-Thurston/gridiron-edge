@@ -1,24 +1,39 @@
 repos:
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
   - repo: https://github.com/psf/black
-    rev: 24.3.0
+    rev: 24.8.0
     hooks:
       - id: black
 
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+  # Ruff: lint, fix, import sort, format (fast)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.2
     hooks:
-      - id: isort
+      - id: ruff
+        args: ["--fix"]
 
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.1.0
+  # mypy for static typing
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
     hooks:
-      - id: flake8
-      
+      - id: mypy
+        additional_dependencies: [types-requests]
+        files: ^src/
+
+    # Basic whitespace / end-of-file / YAML sanity
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v4.6.0
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
       - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
 
-  
+  # Commit message lint (Conventional Commits)
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.29.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
