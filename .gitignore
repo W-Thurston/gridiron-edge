@@ -24,7 +24,7 @@ data/standardized/*.parquet
 data/artifacts/
 
 # Editors
-.vscode/*
+.vscode/
 .idea/
 
 # Logs & scratch
