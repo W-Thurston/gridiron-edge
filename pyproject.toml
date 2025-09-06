@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gridiron-edge"
-version = "0.0.1"
+version = "0.1.0"
 description = "NFL prediction foundation: clean scaffolding, leakage guardrails, and walk-forward backtests."
 authors = ["Will Thurston <WilliamD.Thurston@gmail.com>"]
 license = "Apache-2.0"
