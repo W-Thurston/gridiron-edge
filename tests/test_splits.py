@@ -1,10 +1,20 @@
+from pathlib import Path
+
+from hydra import compose, initialize_config_dir
+
 from gridiron.api.pipelines import walk_forward
 from gridiron.data.schedules import load_schedules_standardized
 from gridiron.utils.time import SnapshotPolicy
 
 
 def test_no_future_leakage_in_training():
-    std = load_schedules_standardized([2021, 2022])
+    with initialize_config_dir(version_base=None, config_dir=str(Path("configs").resolve())):
+        paths = compose(config_name="paths")
+
+    std = load_schedules_standardized(
+        seasons=[2021, 2022],
+        csv_url=paths.nfl_schedules_csv,
+    )
     reg = std[std["game_type"] == "REG"].copy()
     train = reg[reg["season"] == 2021]
     predict = reg[reg["season"] == 2022]

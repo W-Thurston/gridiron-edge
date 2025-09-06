@@ -17,7 +17,7 @@ def test_backtest_smoke(tmp_path: Path):
         snapshot_policy=SnapshotPolicy("EARLY_WED_10ET"),
         mode="coinflip",
         artifacts_dir=tmp_path,
-        schedules_csv_url=paths.nflverse_schedules_csv,
+        schedules_csv_url=paths.nfl_schedules_csv,
     )
     out = run_backtest(cfg)
 
