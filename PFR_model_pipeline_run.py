@@ -18,20 +18,20 @@ def main():
     # with open(args.config_path) as file:
     #     config_dict = yaml.load(file, Loader=yaml.FullLoader)
 
-    ## Produce Elo based reccommendations ##
+    ## Produce Elo based recommendations ##
     if args.ELO_only:
-        print("> Producing ELO only Reccommendations -- START")
+        print("> Producing ELO only Recommendations -- START")
         ## Instantiate PFR Model Builder
         PFR_Model_Builder_object = pfr_model_builder()
         
         ## Produce Elo based predictions
         PFR_Model_Builder_object.predict_elo_only( year = args.ELO_only[0], week = int(args.ELO_only[1]))
-        print("> Producing ELO only Reccommendations -- END")
+        print("> Producing ELO only Recommendations -- END")
         print()
 
     ## Collect Data ##
     if args.eval_elo:
-        print("> Evaluating ELO only Reccommendations -- START")
+        print("> Evaluating ELO only Recommendations -- START")
         ## Instantiate PFR Model Builder
         PFR_Model_Builder_object = pfr_model_builder()
         
@@ -40,7 +40,7 @@ def main():
         PFR_Model_Builder_object.evaluate_elo_only(time_period='YEAR')
         print("> By Week:")
         PFR_Model_Builder_object.evaluate_elo_only(time_period='WEEK')
-        print("> Evaluating ELO only Reccommendations -- END")
+        print("> Evaluating ELO only Recommendations -- END")
         print()
 
     ## Collect Data ##
@@ -50,7 +50,7 @@ def main():
         Ranks_and_Betting_builder_object = pfr_model_builder()
         
         ## Build Excel Visualization for Current week elo changes
-        Ranks_and_Betting_builder_object.build_new_ranks(year = args.ranks_and_betting[0], week = int(args.ranks_and_betting[1]))
+        Ranks_and_betting_builder_object.build_new_ranks(year = args.ranks_and_betting[0], week = int(args.ranks_and_betting[1]))
         print("> Building Ranks and Betting Excel -- END")
         print()
 
