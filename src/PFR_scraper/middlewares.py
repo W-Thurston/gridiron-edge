@@ -1,16 +1,12 @@
+# src/PFR_scraper/middlewares.py
 # Define here the models for your spider middleware
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
-from scrapy import signals
-# from scrapy.downloadermiddlewares.retry import RetryMiddleware
-# from scrapy.utils.response import response_status_message
-
 # useful for handling different item types with a single interface
-from itemadapter import is_item, ItemAdapter
-
-# import time
+from itemadapter import ItemAdapter  # noqa: F401
+from scrapy import signals
 
 
 class NflPfrSpiderMiddleware:
@@ -37,8 +33,7 @@ class NflPfrSpiderMiddleware:
         # it has processed the response.
 
         # Must return an iterable of Request, or item objects.
-        for i in result:
-            yield i
+        yield from result
 
     def process_spider_exception(self, response, exception, spider):
         # Called when a spider or process_spider_input() method
@@ -50,14 +45,13 @@ class NflPfrSpiderMiddleware:
     def process_start_requests(self, start_requests, spider):
         # Called with the start requests of the spider, and works
         # similarly to the process_spider_output() method, except
-        # that it doesn’t have a response associated.
+        # that it doesn't have a response associated.
 
         # Must return only requests (not items).
-        for r in start_requests:
-            yield r
+        yield from start_requests
 
     def spider_opened(self, spider):
-        spider.logger.info('Spider opened: %s' % spider.name)
+        spider.logger.info("Spider opened: %s", spider.name)
 
 
 class NflPfrDownloaderMiddleware:
@@ -104,28 +98,4 @@ class NflPfrDownloaderMiddleware:
         pass
 
     def spider_opened(self, spider):
-        spider.logger.info('Spider opened: %s' % spider.name)
-
-# class TooManyRequestsRetryMiddleware(RetryMiddleware):
-    
-#         def __init__(self, crawler):
-#             super(TooManyRequestsRetryMiddleware, self).__init__(crawler.settings)
-#             self.crawler = crawler
-    
-#         @classmethod
-#         def from_crawler(cls, crawler):
-#             return cls(crawler)
-    
-#         def process_response(self, request, response, spider):
-#             if request.meta.get('dont_retry', False):
-#                 return response
-#             elif response.status == 429:
-#                 self.crawler.engine.pause()
-#                 time.sleep(60) # If the rate limit is renewed in a minute, put 60 seconds, and so on.
-#                 self.crawler.engine.unpause()
-#                 reason = response_status_message(response.status)
-#                 return self._retry(request, reason, spider) or response
-#             elif response.status in self.retry_http_codes:
-#                 reason = response_status_message(response.status)
-#                 return self._retry(request, reason, spider) or response
-#             return response 
+        spider.logger.info("Spider opened: %s", spider.name)

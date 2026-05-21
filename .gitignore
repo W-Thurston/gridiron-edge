@@ -4,8 +4,10 @@ TODO.txt
 
 #notebooks/exploratory/*.ipynb
 notebooks/modeling/*.ipynb
+notebooks/*
 configs/
 credentials/
 
 .ipynb_checkpoints/
 .vscode/*
+.aider*

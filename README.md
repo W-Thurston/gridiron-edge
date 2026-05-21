@@ -1,34 +1,55 @@
-# NFL_Predict
-The beginnings of a project to predict NFL Game Winners, Spreads, and potentially fantasy football output.
+# NFL_Predict / Gridiron Edge
 
+Predict NFL game outcomes using Pro Football Reference data and an Elo-based workflow.
 
-How to update data:  
-If its your first time, change arguments to fit your needs:      
-```python  
-python PFR_data_pipeline_run.py \
-        --collect_historical_PFR_data True '2023' \
-        --clean_historical_PFR_data 0 \
-        --collect_upcoming_data 0 \
-        --clean_upcoming_PFR_data 0  \
-        --build_model_input_features 0  \
-        --draftkings_odds 0 
+## Quick start (recommended)
 
-python PFR_model_pipeline_run.py \
-    --ELO_only '2023-2024' 3 \
-    --ranks_and_betting '2023-2024' 2
-```  
-        
-If you are updating data for the week, run this once data is updated on Pro Football Reference:     
-```python  
-python PFR_data_pipeline_run.py \
-            --collect_historical_PFR_data False '2023' \
-            --clean_historical_PFR_data 0 \
-            --build_model_input_features False  \
-            --draftkings_odds 0
+```powershell
+poetry install
+poetry run gridiron --help
+```
 
-python PFR_model_pipeline_run.py \
-    --ELO_only '2023-2024' 3 \
-    --ranks_and_betting '2023-2024' 2
-```  
+### Weekly data refresh
 
-        
+```powershell
+poetry run gridiron run-data-pipeline --year 2025 --no-fetch-odds
+```
+
+### Elo outputs (Excel)
+
+```powershell
+poetry run gridiron ratings elo fit
+poetry run gridiron ratings elo predict --year 2025-2026 --week 16
+poetry run gridiron output ranks --year 2025-2026 --week 15
+```
+
+Weather (requires `OWM_API_KEY`):
+
+```powershell
+$env:OWM_API_KEY="YOUR_KEY"
+poetry run gridiron ingest weather --season-year "2025-2026"
+```
+
+## Documentation
+
+- [HANDOFF.md](HANDOFF.md) — architecture, data files, troubleshooting
+- [PLAN.md](PLAN.md) — refactor checklist and validation commands
+
+## Deprecated root scripts
+
+`PFR_data_pipeline_run.py` and `PFR_model_pipeline_run.py` print a deprecation notice. Use `poetry run gridiron` instead. `PFR_model_pipeline_run.py` still maps its flags to the new CLI for a transition period.
+
+## Docker
+
+Generate dependencies from Poetry, then build:
+
+```powershell
+poetry export -f requirements.txt --without-hashes -o requirements.txt
+docker build -t nfl_predict .
+```
+
+## Tests
+
+```powershell
+poetry run pytest
+```
