@@ -5,9 +5,14 @@ from pathlib import Path
 from typing import Literal
 
 DatasetKey = Literal[
+    # ---- Raw ingest (nflverse) ----
+    "games_raw_nflverse",
+    "schedule_upcoming_raw_nflverse",
+    # ---- Raw ingest (legacy PFR — kept for backwards compat during transition) ----
     "games_raw",
-    "games",
     "schedule_upcoming_raw",
+    # ---- Canonical cleaned datasets ----
+    "games",
     "schedule_upcoming",
     "weather_enriched",
     "elo_state",
@@ -15,6 +20,7 @@ DatasetKey = Literal[
     "moneylines",
     "teams_long_short",
     "divisions",
+    # ---- Derived modeling artifacts ----
     "modeling_base",
     "modeling_full",
 ]
@@ -34,13 +40,22 @@ class DatasetSpec:
 
 
 DATASETS: dict[DatasetKey, DatasetSpec] = {
-    # ---- Raw ingest ----
+    # ---- Raw ingest (nflverse) ----
+    "games_raw_nflverse": DatasetSpec(
+        "games_raw_nflverse",
+        "data/raw/NFL_wk_by_wk_nflverse.parquet",
+    ),
+    "schedule_upcoming_raw_nflverse": DatasetSpec(
+        "schedule_upcoming_raw_nflverse",
+        "data/raw/NFL_upcoming_schedule_nflverse.parquet",
+    ),
+    # ---- Raw ingest (legacy PFR) ----
     "games_raw": DatasetSpec("games_raw", "data/raw/NFL_wk_by_wk.csv"),
     "schedule_upcoming_raw": DatasetSpec(
         "schedule_upcoming_raw",
         "data/raw/NFL_upcoming_schedule.csv",
     ),
-    # ---- Clean canonical datasets ----
+    # ---- Canonical cleaned datasets ----
     "games": DatasetSpec("games", "data/cleaned/NFL_wk_by_wk_cleaned.csv"),
     "schedule_upcoming": DatasetSpec(
         "schedule_upcoming",

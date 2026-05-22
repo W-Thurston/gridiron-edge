@@ -25,9 +25,6 @@ def predict_elo_for_week(
     elo_path = dataset_path(repo, "elo_state")
     schedule_path = dataset_path(repo, "schedule_upcoming")
 
-    print(
-        f"> Reading upcoming schedule & Elo from:\n\t{schedule_path}\n\t{elo_path}",
-    )
     df_elo = pd.read_csv(elo_path)
     df_schedule = pd.read_csv(schedule_path)
     df_schedule = df_schedule.loc[

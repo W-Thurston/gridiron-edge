@@ -75,16 +75,8 @@ def test_home_field_feature_sets_home_field_correctly() -> None:
         datasets=DummyDatasets(games),
     )
 
-    assert (
-        out.loc[(out.GAME_ID == "g1") & (out.TEAM_A == "A"), "HOME_FIELD"].iloc[0] == 1
-    )
-    assert (
-        out.loc[(out.GAME_ID == "g1") & (out.TEAM_A == "B"), "HOME_FIELD"].iloc[0] == 0
-    )
+    assert out.loc[(out.GAME_ID == "g1") & (out.TEAM_A == "A"), "HOME_FIELD"].iloc[0] == 1
+    assert out.loc[(out.GAME_ID == "g1") & (out.TEAM_A == "B"), "HOME_FIELD"].iloc[0] == 0
 
-    assert (
-        out.loc[(out.GAME_ID == "g2") & (out.TEAM_A == "C"), "HOME_FIELD"].iloc[0] == 0
-    )
-    assert (
-        out.loc[(out.GAME_ID == "g2") & (out.TEAM_A == "D"), "HOME_FIELD"].iloc[0] == 1
-    )
+    assert out.loc[(out.GAME_ID == "g2") & (out.TEAM_A == "C"), "HOME_FIELD"].iloc[0] == 0
+    assert out.loc[(out.GAME_ID == "g2") & (out.TEAM_A == "D"), "HOME_FIELD"].iloc[0] == 1

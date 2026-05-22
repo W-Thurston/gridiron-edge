@@ -2,9 +2,18 @@
 
 """Run Scrapy spiders without Twisted's ReactorNotRestartable error.
 
-- First crawl in a process: in-process (Scrapy logs stream immediately).
-- Later crawls in the same process: isolated subprocess (fork on Linux/WSL,
-  spawn on Windows).
+Strategy:
+- First crawl in a process: ``CrawlerProcess`` run directly on the calling
+  thread with ``install_signal_handlers=False`` to avoid the ValueError that
+  occurs when Twisted tries to register SIGINT/SIGTERM handlers from a
+  non-main thread or subprocess.
+- Later crawls in the same process: isolated subprocess (``fork`` on
+  Linux/WSL, ``spawn`` on Windows) to avoid ``ReactorNotRestartable``.
+
+Scrapy 2.13+ defaults to the asyncio reactor. ``CrawlerProcess`` owns the
+reactor lifecycle and stops it cleanly after all spiders finish, which avoids
+the silent hang that occurs when ``reactor.run()`` is called directly and
+``reactor.stop()`` is never reached due to an unhandled Deferred error.
 """
 
 from __future__ import annotations
@@ -15,13 +24,13 @@ import os
 import sys
 from typing import Any
 
-from scrapy.crawler import CrawlerRunner
+from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
-from twisted.internet import defer, reactor
+from scrapy.utils.reactor import install_reactor
 
 SpiderSpec = tuple[type, dict[str, Any]]
 
-# Set after the first reactor.run() in this interpreter; reactor cannot restart.
+# Set after the first in-process crawl; reactor cannot restart.
 _reactor_used_in_this_process: bool = False
 
 
@@ -53,31 +62,37 @@ def _spider_label(specs: Sequence[SpiderSpec]) -> str:
     return ", ".join(names)
 
 
-def _run_spiders_in_child(specs: list[SpiderSpec]) -> None:
-    """Run all spiders in the current process using Twisted's reactor.
+def _run_spiders_in_process(specs: list[SpiderSpec]) -> None:
+    """Run all spiders in the current process using CrawlerProcess.
 
-    Should only be called once per interpreter lifetime due to Twisted's
-    ``ReactorNotRestartable`` constraint.
+    ``CrawlerProcess`` manages the reactor lifecycle end-to-end: it installs
+    the asyncio reactor, starts it, and stops it cleanly once all crawlers
+    finish. This avoids the silent hang that occurs when ``reactor.run()`` is
+    called directly and ``reactor.stop()`` is never reached.
+
+    ``install_signal_handlers=False`` is required because ``signal.signal()``
+    only works from the main thread of the main interpreter. Twisted tries to
+    install SIGINT/SIGTERM handlers on reactor startup — passing False skips
+    this so the call is safe from any calling context.
+
+    Must only be called once per interpreter lifetime. Subsequent calls must
+    use ``_run_spiders_subprocess`` to avoid ``ReactorNotRestartable``.
 
     Args:
         specs: List of ``(spider_class, kwargs)`` pairs to crawl sequentially.
     """
-    runner = CrawlerRunner(_build_settings())
+    install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
-    @defer.inlineCallbacks  # type: ignore[misc]
-    def _crawl_all() -> Any:  # noqa: ANN401
-        for spider_cls, kwargs in specs:
-            yield runner.crawl(spider_cls, **kwargs)
-        reactor.stop()  # type: ignore[attr-defined]
-
-    _crawl_all()
-    reactor.run()  # type: ignore[attr-defined]
+    process = CrawlerProcess(_build_settings())
+    for spider_cls, kwargs in specs:
+        process.crawl(spider_cls, **kwargs)
+    process.start(install_signal_handlers=False)
 
 
 def _run_spiders_subprocess(specs: list[SpiderSpec]) -> None:
     """Run spiders in an isolated subprocess to avoid ReactorNotRestartable.
 
-    Spawns a child process that runs ``_run_spiders_in_child`` and waits
+    Spawns a child process that runs ``_run_spiders_in_process`` and waits
     for it to complete.
 
     Args:
@@ -88,7 +103,7 @@ def _run_spiders_subprocess(specs: list[SpiderSpec]) -> None:
     """
     ctx = mp.get_context("fork" if sys.platform != "win32" else "spawn")
     proc = ctx.Process(  # type: ignore[attr-defined]
-        target=_run_spiders_in_child,
+        target=_run_spiders_in_process,
         args=(specs,),
         daemon=False,
     )
@@ -102,8 +117,9 @@ def _run_spiders_subprocess(specs: list[SpiderSpec]) -> None:
 def run_spiders(specs: Sequence[SpiderSpec]) -> None:
     """Run one or more spiders, handling the reactor-safe lifecycle automatically.
 
-    On the first call within a process, runs spiders in-process for immediate
-    log streaming. On subsequent calls, spawns a subprocess to avoid Twisted's
+    On the first call within a process, runs spiders in-process via
+    ``CrawlerProcess`` with signal handler installation disabled. On
+    subsequent calls, spawns a subprocess to avoid Twisted's
     ``ReactorNotRestartable`` constraint.
 
     Args:
@@ -119,7 +135,7 @@ def run_spiders(specs: Sequence[SpiderSpec]) -> None:
     label = _spider_label(crawl_specs)
     if not _reactor_used_in_this_process:
         print(f"> Scrapy crawl starting in-process: {label}", flush=True)
-        _run_spiders_in_child(crawl_specs)
+        _run_spiders_in_process(crawl_specs)
         _reactor_used_in_this_process = True
         print(f"> Scrapy crawl finished: {label}", flush=True)
         return

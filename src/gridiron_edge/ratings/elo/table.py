@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from gridiron_edge.core.console import console
 from gridiron_edge.ratings.elo.core import update_elo
 
 
@@ -128,8 +129,8 @@ def build_elo_state_table_all_years(
     # Fill Elo week-to-week
     k: float = cfg.k
 
-    print("> Filling out ELO column")
-    for idx, curr_year in enumerate(tqdm(sorted_years)):
+    disable_tqdm = not console.verbose
+    for idx, curr_year in enumerate(tqdm(sorted_years, disable=disable_tqdm)):
         next_year: str | None = sorted_years[idx + 1] if idx < len(sorted_years) - 1 else None
 
         number_of_weeks_in_curr_year: int = len(

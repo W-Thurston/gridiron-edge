@@ -10,6 +10,9 @@ from gridiron_edge.datasets import loaders, writers
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.features.registry import run_features
+import gridiron_edge.features.team.elo
+import gridiron_edge.features.team.home_field
+import gridiron_edge.features.team.travel  # noqa: F401
 
 # Feature order matters:
 # - home_field should run before travel (travel uses HOME_FIELD)

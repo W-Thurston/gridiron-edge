@@ -14,7 +14,7 @@ def test_gridiron_help() -> None:
 def test_ingest_help() -> None:
     result = runner.invoke(app, ["ingest", "--help"])
     assert result.exit_code == 0
-    assert "pfr-historical" in result.stdout
+    assert "nflverse-games" in result.stdout
 
 
 def test_ratings_elo_help() -> None:

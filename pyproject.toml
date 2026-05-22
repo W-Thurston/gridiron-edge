@@ -19,6 +19,8 @@ dependencies = [
     "seaborn>=0.13.2,<0.14.0",
     "numba>=0.63.1,<0.64.0",
     "typer>=0.21.1,<0.22.0",
+    "nfl-data-py>=0.3.0",
+    "pyarrow>=19.0.0",
 ]
 
 [project.scripts]

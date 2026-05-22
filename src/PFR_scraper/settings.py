@@ -9,6 +9,8 @@
 
 BOT_NAME = "PFR_scraper"
 
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+
 SPIDER_MODULES = ["PFR_scraper.spiders"]
 NEWSPIDER_MODULE = "PFR_scraper.spiders"
 
@@ -39,10 +41,15 @@ TELNETCONSOLE_ENABLED = False
 
 LOG_LEVEL = "INFO"
 
-DEFAULT_REQUEST_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+DEFAULT_REQUEST_HEADERS: dict[str, str] = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://www.pro-football-reference.com/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 # Enable or disable spider middlewares
