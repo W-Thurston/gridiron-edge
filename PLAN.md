@@ -1,113 +1,146 @@
-# Migration Plan to New State
+# Gridiron Edge — Project Plan
 
-## 1. Analyze the Relevant Architecture
+See [HANDOFF.md](HANDOFF.md) for how to run the project today.
 
-### Goals:
-- Understand the current architecture and identify key components.
-- Identify dependencies between different modules and files.
-
-### Steps:
-1. Review the repository layout described in `HANDOFF.md`.
-2. Map out the relationships between different directories and files.
-3. Identify the main entry points (CLI, legacy scripts).
-4. Document the data flow from ingestion to output generation.
-
-## 2. Identify Affected Files and Dependencies
-
-### Goals:
-- Determine which files need changes or updates.
-- Understand dependencies between affected files.
-
-### Steps:
-1. Review `HANDOFF.md` for any specific mentions of files that need attention.
-2. Identify files that are part of the legacy pipeline (`PFR_data_pipeline_run.py`, `PFR_model_pipeline_run.py`) and their dependencies.
-3. Identify files in the new CLI (`src/gridiron_edge/cli.py`) and their dependencies.
-4. Document any shared utilities or configurations.
-
-## 3. Create a Step-by-Step Implementation Plan
-
-### Goals:
-- Develop a detailed plan for migrating to the new state.
-- Ensure minimal changes and preserve existing architecture.
-
-### Steps:
-1. **Update Configuration Management:**
-   - Replace `configs/config.yaml` with environment variables where possible.
-   - Update documentation in `HANDOFF.md`.
-
-2. **Refactor Legacy Scripts:**
-   - Deprecate legacy scripts (`PFR_data_pipeline_run.py`, `PFR_model_pipeline_run.py`) by marking them as deprecated.
-   - Update `README.md` to recommend using the new CLI.
-
-3. **Enhance Docker Configuration:**
-   - Generate a real `requirements.txt` from Poetry.
-   - Update the `Dockerfile` to use Poetry for dependency management.
-   - Update `HANDOFF.md` with instructions on building and running Docker containers.
-
-4. **Improve Data Directory Management:**
-   - Ensure that necessary directories (`data/raw`, `data/cleaned`, `data/output`) are created automatically if they do not exist.
-   - Update relevant scripts to handle missing directories gracefully.
-
-5. **Update Documentation:**
-   - Review and update all documentation files (`README.md`, `HANDOFF.md`) to reflect the new state.
-   - Ensure that all workflows, commands, and configurations are up-to-date.
-
-6. **Testing and Validation:**
-   - Develop a testing strategy for both legacy and new CLI components.
-   - Write tests alongside `src/gridiron_edge/...` as part of refactoring efforts.
-
-## 4. Identify Risks, Assumptions, and Edge Cases
-
-### Goals:
-- Identify potential issues that could arise during migration.
-- Document assumptions made during the planning process.
-
-### Steps:
-1. **Risks:**
-   - Breaking changes in legacy scripts due to deprecation.
-   - Incompatibilities between new CLI and existing data structures.
-   - Issues with Docker builds if `requirements.txt` is not correctly generated.
-
-2. **Assumptions:**
-   - All dependencies are correctly listed in Poetry.
-   - Environment variables will be set correctly for all required configurations.
-   - Existing data structures will remain compatible with the new pipeline.
-
-3. **Edge Cases:**
-   - Handling missing configuration files (`configs/config.yaml`).
-   - Managing data directory permissions and access issues.
-   - Ensuring compatibility between different Python versions (>=3.12,<4).
-
-## 5. Suggest Validation/Testing Strategy
-
-### Goals:
-- Ensure that the migration is successful and stable.
-- Validate all components of the new state.
-
-### Steps:
-1. **Unit Tests:**
-   - Write unit tests for each component in `src/gridiron_edge/...`.
-   - Use `pytest` to run tests and ensure coverage.
-
-2. **Integration Tests:**
-   - Develop integration tests that simulate end-to-end workflows.
-   - Test both the new CLI and legacy scripts (if still used) against known data sets.
-
-3. **Regression Testing:**
-   - Run existing test suites for legacy scripts to ensure no regressions.
-   - Compare outputs from legacy scripts with new CLI to verify consistency.
-
-4. **Continuous Integration (CI):**
-   - Set up CI pipelines to automatically run tests on code changes.
-   - Ensure that all tests pass before merging any changes.
-
-5. **User Acceptance Testing (UAT):**
-   - Conduct UAT sessions with stakeholders to validate the new state.
-   - Gather feedback and make necessary adjustments.
+**Status key:** `[x]` done · `[ ]` not started · `[~]` in progress
 
 ---
 
-## Conclusion
+## Architecture
 
-By following this plan, we can ensure a smooth transition to the new state while minimizing disruptions and preserving existing architecture. Each step is designed to be incremental, allowing for easy rollback if needed.
+| Layer | Module |
+|-------|--------|
+| Game + schedule ingest | `gridiron_edge.ingest.nflverse` (nflverse/nfl_data_py) |
+| Weather ingest | `gridiron_edge.ingest.pfr.collector_impl` (OpenWeatherMap) |
+| Odds ingest + ledger | `gridiron_edge.ingest.odds` (DraftKings → Parquet) |
+| Transform | `gridiron_edge.transform.clean` |
+| Modeling features | `gridiron_edge.features.pipeline` |
+| Elo ratings | `gridiron_edge.ratings.elo` |
+| Season simulation | `gridiron_edge.sim` |
+| Visualisation | `gridiron_edge.viz` |
+| CLI | `uv run gridiron` |
 
+---
+
+## Phase 1–9 — Core refactor ✅
+
+Original migration from `data_pipelines/` + `model_pipelines/` + `utils/` into `src/gridiron_edge/`. All complete.
+
+---
+
+## Phase 10 — Season simulation ✅
+
+- [x] `sim/season.py` — Monte Carlo regular season simulation
+- [x] `sim/playoffs.py` — NFL tiebreaker logic, conference seeding, playoff bracket
+- [x] `viz/charts.py` — playoff probability table (plottable)
+- [x] CLI: `gridiron sim run`
+
+---
+
+## Phase 11 — Stabilise ✅
+
+- [x] Integration tests (Elo fit, features pipeline, outputs)
+- [x] Fix TEAM_B home coord merge in `metrics/travel/travel.py`
+- [x] Collector paths via `datasets/registry.py` + `core/settings.py`
+
+---
+
+## Phase 12 — Tooling + code quality ✅
+
+- [x] Migrate Poetry → uv (hatchling build backend)
+- [x] Ruff: full lint + format suite (Google docstrings, all rule categories)
+- [x] Pyrefly: static type checking (Python 3.12)
+- [x] Google-style docstrings on all public classes and functions
+- [x] Type annotations across all non-PFR_scraper modules
+- [x] Fix all real bugs surfaced by linting/type-checking pass
+
+---
+
+## Phase 13 — nflverse migration ✅
+
+- [x] Replace PFR/Scrapy with nfl_data_py (bypasses Cloudflare)
+- [x] `ingest/nflverse/games.py`: fetch historical schedules as Parquet
+- [x] `ingest/nflverse/schedule.py`: fetch upcoming (unplayed) games
+- [x] `transform/clean/games_nflverse.py`: nflverse → canonical games schema
+- [x] `transform/clean/schedule_nflverse.py`: nflverse → canonical schedule schema
+- [x] Raw storage in Parquet; canonical output remains CSV
+- [x] CLI: `gridiron ingest nflverse-games [--season N] [--all-years]`
+- [x] CLI: `gridiron ingest nflverse-upcoming [--season N]`
+- [x] `run-data-pipeline --upcoming-season` flag for season-boundary use case
+- [x] All season args optional — defaults to current season via date inference
+
+---
+
+## Phase 14 — Console output system ✅
+
+- [x] `core/console.py`: timed step context manager, header/summary banners
+- [x] Compact mode (default): one line per step with elapsed time and ✓/✗/—
+- [x] Verbose mode (`-v`): step detail, row counts, file paths, debug logs
+- [x] `core/logging.py`: WARNING in compact, DEBUG in verbose
+- [x] tqdm progress bar hidden in compact mode
+- [x] Lazy CLI imports: `--help` renders in <1s
+
+---
+
+## Phase 15 — Excel retirement + viz refactor ✅
+
+- [x] `ingest/odds/store.py`: append-only long-format Parquet odds ledger
+- [x] `ingest/odds/draftkings.py`: writes to ledger + snapshot (not Excel)
+- [x] `viz/predictions.py`: weekly matchup PNG + static HTML (migrated from notebook)
+  - Logo paths by full long name
+  - Time separators built explicitly
+  - 24hr → 12hr time conversion
+  - DK underdog highlight optional
+- [x] `ratings/elo/predict.py`: writes versioned CSV (not Excel)
+- [x] `viz/excel.py`: replaced with `write_elo_rankings_csv()` → CSV
+- [x] `core/settings.py`: removed `ranks_excel` field
+- [x] `tests/integration/test_excel_output.py`: updated to test CSV output
+- [x] CLI: `gridiron output predictions --year --week [--format]`
+- [x] CLI: `gridiron output ranks` → CSV
+- [x] CLI: `gridiron ingest dk-odds --season --week`
+- [ ] HTML viz graphical fixes (deferred)
+
+---
+
+## Phase 16 — Phase E cleanup ✅
+
+- [x] Delete `src/PFR_scraper/` (entire Scrapy package)
+- [x] Delete `scrapy_runner.py`, `historical.py`, `upcoming.py`, `scrapy.cfg`
+- [x] `collector_impl.py`: remove spider imports + spider-calling methods
+- [x] `collector.py`: weather + DK odds facade only
+- [x] `transform/clean/games.py` + `schedule.py`: shims → nflverse cleaners
+- [x] `pyproject.toml`: remove scrapy; add requests, urllib3, pyarrow, matplotlib, pytz
+
+---
+
+## Validation checklist
+
+```bash
+uv sync
+uv run pytest
+uv run gridiron --help
+uv run gridiron run-data-pipeline --all-years --upcoming-season 2026 --build-elo --fit-elo-all-years
+uv run gridiron output predictions --year 2026-2027 --week 1
+uv run gridiron sim run
+uv run gridiron output ranks --year 2025-2026 --week 22
+```
+
+```bash
+# Code quality gates
+uv run ruff check src/ --fix
+uvx pyrefly check
+uv run pytest
+```
+
+---
+
+## Phase 17 — Next priorities
+
+- [ ] Validate `sim run` output end-to-end with current data
+- [ ] HTML viz graphical fixes
+- [ ] `models/game_prediction/` — train and predict ML game prediction models
+- [ ] `analytics/matchup_reports.py` — team matchup report generation
+- [ ] `analytics/team_insights.py` — season-level team analytics
+- [ ] Multi-sportsbook odds (FanDuel, BetMGM) — add new ingest modules
+- [ ] Betting tracker — bet log CLI + P&L tracking
+- [ ] Run full manual validation checklist on local data
