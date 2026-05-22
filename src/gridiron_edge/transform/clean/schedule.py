@@ -1,8 +1,17 @@
 # src/gridiron_edge/transform/clean/schedule.py
 
-from gridiron_edge.ingest.pfr.collector import clean_and_transform_upcoming_schedule
+"""Legacy shim — delegates to the nflverse schedule cleaner.
+
+``clean_upcoming_schedule()`` now cleans nflverse raw data rather than
+PFR scraped data. The function name is preserved for backwards compatibility.
+"""
+
+from gridiron_edge.transform.clean.schedule_nflverse import clean_nflverse_upcoming
 
 
 def clean_upcoming_schedule() -> None:
-    """Clean upcoming schedule raw scrape into cleaned dataset."""
-    clean_and_transform_upcoming_schedule()
+    """Clean nflverse raw upcoming schedule into the canonical schedule CSV.
+
+    Delegates to ``clean_nflverse_upcoming()``. Kept for backwards compatibility.
+    """
+    clean_nflverse_upcoming()

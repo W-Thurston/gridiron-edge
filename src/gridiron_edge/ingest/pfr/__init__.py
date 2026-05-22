@@ -1,3 +1,2 @@
 # src/gridiron_edge/ingest/pfr/__init__.py
-from .historical import fetch_historical as fetch_historical
-from .upcoming import fetch_upcoming as fetch_upcoming
+# Scrapy-based PFR ingestion retired — use gridiron_edge.ingest.nflverse instead.

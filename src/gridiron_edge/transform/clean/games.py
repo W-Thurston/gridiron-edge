@@ -1,8 +1,18 @@
 # src/gridiron_edge/transform/clean/games.py
 
-from gridiron_edge.ingest.pfr.collector import clean_and_transform_historical_games
+"""Legacy shim — delegates to the nflverse games cleaner.
+
+``clean_historical_games()`` now cleans nflverse raw data rather than
+PFR scraped data. The function name is preserved for backwards compatibility
+with any callers outside the CLI.
+"""
+
+from gridiron_edge.transform.clean.games_nflverse import clean_nflverse_games
 
 
 def clean_historical_games() -> None:
-    """Clean historical week-by-week raw scrape into cleaned dataset."""
-    clean_and_transform_historical_games()
+    """Clean nflverse raw games into the canonical games CSV.
+
+    Delegates to ``clean_nflverse_games()``. Kept for backwards compatibility.
+    """
+    clean_nflverse_games()
