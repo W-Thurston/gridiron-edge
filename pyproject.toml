@@ -148,6 +148,9 @@ force-sort-within-sections = true
     "PLR0912", # Too many branches — build_viz_table_df assembles many conditional data fields
     "PLR0915", # Too many statements — same rationale
 ]
+"src/gridiron_edge/viz/predictions.py" = [
+    "PLR0915", # Too many statements — render_predictions_image is a single cohesive render pass
+]
 "src/gridiron_edge/cli.py" = [
     "PLR0912", # run-data-pipeline has many conditional pipeline stages by design
     "PLR0915", # same rationale

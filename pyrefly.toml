@@ -1,3 +1,2 @@
 project-includes = ["src"]
 python-version = "3.12"
-ignore = ["src/PFR_scraper/**"]

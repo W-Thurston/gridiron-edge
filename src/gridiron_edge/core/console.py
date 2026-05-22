@@ -27,13 +27,13 @@ on initialisation and is updated by the CLI when ``--verbose`` is passed.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 import sys
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, LiteralString
 
 if TYPE_CHECKING:
     pass
@@ -46,16 +46,16 @@ def _supports_colour() -> bool:
     return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 
-_COLOUR = _supports_colour()
+_COLOUR: bool = _supports_colour()
 
-_RESET = "\033[0m" if _COLOUR else ""
-_BOLD = "\033[1m" if _COLOUR else ""
-_DIM = "\033[2m" if _COLOUR else ""
-_GREEN = "\033[32m" if _COLOUR else ""
-_YELLOW = "\033[33m" if _COLOUR else ""
-_RED = "\033[31m" if _COLOUR else ""
-_CYAN = "\033[36m" if _COLOUR else ""
-_WHITE = "\033[97m" if _COLOUR else ""
+_RESET: Literal["", "\033[0m"] = "\033[0m" if _COLOUR else ""
+_BOLD: Literal["", "\033[1m"] = "\033[1m" if _COLOUR else ""
+_DIM: Literal["", "\033[2m"] = "\033[2m" if _COLOUR else ""
+_GREEN: Literal["", "\033[32m"] = "\033[32m" if _COLOUR else ""
+_YELLOW: Literal["", "\033[33m"] = "\033[33m" if _COLOUR else ""
+_RED: Literal["", "\033[31m"] = "\033[31m" if _COLOUR else ""
+_CYAN: Literal["", "\033[36m"] = "\033[36m" if _COLOUR else ""
+_WHITE: Literal["", "\033[97m"] = "\033[97m" if _COLOUR else ""
 
 _TICK = "✓"
 _CROSS = "✗"
@@ -147,7 +147,7 @@ class Console:
             title: Main title (e.g. ``"run-data-pipeline"``).
             subtitle: Optional context line (e.g. ``"Season 2025 · weekly refresh"``).
         """
-        bar = _BAR * _WIDTH
+        bar: LiteralString = _BAR * _WIDTH
         print(f"\n{_BOLD}{_CYAN}{bar}{_RESET}")
         print(f"{_BOLD}{_WHITE}  GRIDIRON EDGE  ·  {title}{_RESET}")
         if subtitle:
@@ -158,12 +158,12 @@ class Console:
 
     def summary(self) -> None:
         """Print end-of-pipeline summary with total time and step outcomes."""
-        total = time.perf_counter() - self._pipeline_start
-        n_ok = sum(1 for s in self._steps if s.ok and not s.skipped)
-        n_skip = sum(1 for s in self._steps if s.skipped)
-        n_fail = sum(1 for s in self._steps if not s.ok)
+        total: float = time.perf_counter() - self._pipeline_start
+        n_ok: int = sum(1 for s in self._steps if s.ok and not s.skipped)
+        n_skip: int = sum(1 for s in self._steps if s.skipped)
+        n_fail: int = sum(1 for s in self._steps if not s.ok)
 
-        bar = _BAR * _WIDTH
+        bar: LiteralString = _BAR * _WIDTH
         print(f"{_BOLD}{_CYAN}{bar}{_RESET}")
 
         parts: list[str] = []
@@ -181,8 +181,8 @@ class Console:
 
     def _print_step_compact(self, result: StepResult) -> None:
         """Print a single-line step result in compact mode."""
-        label = result.name.ljust(40)
-        elapsed = f"{result.elapsed:5.1f}s"
+        label: str = result.name.ljust(40)
+        elapsed: str = f"{result.elapsed:5.1f}s"
 
         if result.skipped:
             print(f"  {_DIM}{_ARROW} {label}  {elapsed}  —{_RESET}")
@@ -193,8 +193,8 @@ class Console:
 
     def _print_step_verbose(self, result: StepResult) -> None:
         """Print a multi-line step result in verbose mode."""
-        label = result.name.ljust(40)
-        elapsed = f"{result.elapsed:5.1f}s"
+        label: str = result.name.ljust(40)
+        elapsed: str = f"{result.elapsed:5.1f}s"
 
         if result.skipped:
             print(f"  {_DIM}{_ARROW} {label}  {elapsed}  skipped{_RESET}")
@@ -217,7 +217,7 @@ console = Console()
 
 
 @contextmanager
-def step(name: str, *, skip: bool = False) -> Iterator[StepResult]:
+def step(name: str, *, skip: bool = False) -> Generator[StepResult]:
     """Context manager for a timed, named pipeline step.
 
     Prints a running indicator (in verbose mode), then the result line with
@@ -253,7 +253,7 @@ def step(name: str, *, skip: bool = False) -> Iterator[StepResult]:
     if console.verbose:
         print(f"  {_DIM}{_ARROW} {name}...{_RESET}", flush=True)
 
-    t0 = time.perf_counter()
+    t0: float = time.perf_counter()
     try:
         yield result
         result.ok = True

@@ -69,15 +69,17 @@ Notes:
 from __future__ import annotations
 
 import logging
+from logging import Logger
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 # nflverse playoff week labels → integer week numbers
 # REG weeks are already integers; only postseason game_types need mapping.
@@ -176,7 +178,7 @@ def _game_location(location: str | float) -> str:
     """
     if pd.isna(location):
         return "NULL_VALUE"
-    loc = str(location).strip()
+    loc: str = str(location).strip()
     if loc == "Neutral":
         return "N"
     return "NULL_VALUE"
@@ -192,7 +194,7 @@ def _map_short_to_long(short: str) -> str:
         Long team name (e.g. ``"Kansas City Chiefs"``), or the original
         short code if no mapping exists (logs a warning).
     """
-    long_name = NFLVERSE_SHORT_TO_LONG.get(short)
+    long_name: str | None = NFLVERSE_SHORT_TO_LONG.get(short)
     if long_name is None:
         logger.warning("No long-name mapping for nflverse short code: %s", short)
         return short
@@ -220,21 +222,21 @@ def clean_nflverse_games(
         Absolute path to the written canonical games CSV.
     """
     settings = get_settings()
-    resolved_repo = repo or settings.repo_root
+    resolved_repo: Path = repo or settings.repo_root
 
-    raw_path = dataset_path(resolved_repo, "games_raw_nflverse")
+    raw_path: Path = dataset_path(resolved_repo, "games_raw_nflverse")
     if not raw_path.exists():
-        msg = (
+        msg: str = (
             f"Raw nflverse games file not found: {raw_path}. "
             "Run `gridiron ingest nflverse-games` first."
         )
         raise FileNotFoundError(msg)
 
     logger.info("Reading raw nflverse games from %s", raw_path)
-    df = pd.read_parquet(raw_path)
+    df: DataFrame = pd.read_parquet(raw_path)
 
     # --- Filter to completed games only ---
-    df = df.loc[df["result"].notna()].copy()
+    df = df.loc[df["result"].notna(), :].copy()
 
     # --- Filter out preseason ---
     df = df.loc[df["game_type"] != "PRE"].copy()
@@ -360,6 +362,7 @@ def clean_nflverse_games(
     )
     # Negate for away-favored games so VEGAS_LINE is always negative spread
     # (matching the PFR convention where line is stored as a negative number)
+    # pyrefly: ignore [missing-attribute]
     df["VEGAS_LINE"] = df["VEGAS_LINE"].abs() * np.where(away_favored, -1, 1)
 
     # --- Assemble canonical schema ---
@@ -392,7 +395,7 @@ def clean_nflverse_games(
     )
 
     # Sort to match legacy ordering
-    out = out.sort_values(
+    out: DataFrame = out.sort_values(
         ["GAME_DATE", "GAMETIME", "GAME_ID"],
         ascending=True,
         ignore_index=True,

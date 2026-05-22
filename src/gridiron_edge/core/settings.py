@@ -22,7 +22,6 @@ class Settings:
         data_cleaned: Directory for cleaned canonical datasets.
         data_modeling: Directory for derived modeling artifacts.
         data_output: Directory for output reports and Excel files.
-        ranks_excel: Path to the Ranks and Betting Excel workbook.
     """
 
     repo_root: Path
@@ -31,7 +30,6 @@ class Settings:
     data_cleaned: Path
     data_modeling: Path
     data_output: Path
-    ranks_excel: Path
 
 
 def get_settings() -> Settings:
@@ -51,7 +49,6 @@ def get_settings() -> Settings:
         data_cleaned=root / "data" / "cleaned",
         data_modeling=root / "data" / "modeling",
         data_output=root / "data" / "output",
-        ranks_excel=root / "data" / "output" / "Ranks_and_Betting.xlsx",
     )
 
 

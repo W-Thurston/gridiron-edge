@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -45,7 +46,7 @@ class PFR_Data_Collector:  # noqa: N801
 
     def __init__(self, repo: Path | None = None) -> None:
         settings = ensure_data_dirs()
-        root = repo or settings.repo_root
+        root: Path = repo or settings.repo_root
         self.repo_root = root
         self.raw_historical_data_file = str(dataset_path(root, "games_raw"))
         self.cleaned_historical_data_file = str(dataset_path(root, "games"))
@@ -55,7 +56,6 @@ class PFR_Data_Collector:  # noqa: N801
         self.cleaned_upcoming_schedule_data_file = str(
             dataset_path(root, "schedule_upcoming"),
         )
-        self.ELO_visualization_file = str(settings.ranks_excel)
         self.long_to_short_team_name_file = str(dataset_path(root, "teams_long_short"))
         self.stadium_file = str(dataset_path(root, "stadiums"))
         self.weather_file = str(dataset_path(root, "weather_enriched"))
@@ -90,7 +90,7 @@ class PFR_Data_Collector:  # noqa: N801
         """
         print(f"> Reading in PFR Scrapy data from: {self.raw_upcoming_schedule_data_file}")
         ## Read raw Scrapy data pull into DataFrame
-        df = pd.read_csv(
+        df: DataFrame = pd.read_csv(
             self.raw_upcoming_schedule_data_file,
             names=[
                 "WEEK_NUM",
@@ -105,17 +105,18 @@ class PFR_Data_Collector:  # noqa: N801
         )
 
         ## In the data pull the header shows up multiple times
-        df = df[
+        df = df.loc[
             (
                 (df["WEEK_NUM"] != "Week")
                 & (df["WEEK_NUM"] != "NULL_VALUE")
                 & (~df["WEEK_NUM"].str.contains("Pre"))
-            )
+            ),
+            :,
         ]
 
         ## If we are within the season and updating the upcoming schedule
         if "1" not in df["WEEK_NUM"].values:
-            df_upcoming_schedule = pd.read_csv(self.cleaned_upcoming_schedule_data_file)
+            df_upcoming_schedule: DataFrame = pd.read_csv(self.cleaned_upcoming_schedule_data_file)
             df_upcoming_schedule.loc[
                 df_upcoming_schedule["WEEK_NUM"].isin(df["WEEK_NUM"].values)
             ] = df.copy()
@@ -136,7 +137,7 @@ class PFR_Data_Collector:  # noqa: N801
         """
         print(f"> Reading in PFR Scrapy data from: {self.raw_historical_data_file}")
         ## Read raw Scrapy data pull into DataFrame
-        df = pd.read_csv(
+        df: DataFrame = pd.read_csv(
             self.raw_historical_data_file,
             names=[
                 "WEEK_NUM",
@@ -164,7 +165,7 @@ class PFR_Data_Collector:  # noqa: N801
         )
 
         ## In the data pull the header shows up multiple times
-        df = df[((df["WEEK_NUM"] != "Week") & (df["WEEK_NUM"] != "NULL_VALUE"))]
+        df = df.loc[((df["WEEK_NUM"] != "Week") & (df["WEEK_NUM"] != "NULL_VALUE")), :]
 
         ## Drop duplicate values; duplicates determined across all columns
         df.drop_duplicates(
@@ -240,6 +241,7 @@ class PFR_Data_Collector:  # noqa: N801
                 )
 
         ## Overwrite Year column
+        # pyrefly: ignore [missing-attribute]
         df["YEAR"] = df["GAME_DATE"].apply(
             lambda x: (
                 f"{x.year}-{x.year + 1}"
@@ -249,15 +251,15 @@ class PFR_Data_Collector:  # noqa: N801
         )
 
         ## Create sorted year list like '1991-1992'
-        sorted_years = sorted(df["YEAR"].unique())
+        sorted_years: list[str] = sorted(df["YEAR"].unique())
         df["YEAR"] = pd.Categorical(df["YEAR"], sorted_years)
 
-        increase_in_number_of_weeks_in_season = sorted_years.index("2021-2022")
+        increase_in_number_of_weeks_in_season: int = sorted_years.index("2021-2022")
 
         ## Create lists of year numbers to denote different length seasons
-        seasons_with_21_weeks = sorted_years[:increase_in_number_of_weeks_in_season]
+        seasons_with_21_weeks: list[str] = sorted_years[:increase_in_number_of_weeks_in_season]
         seasons_with_21_weeks.remove("1993-1994")  ## This year had an extra bye week
-        seasons_with_22_weeks = sorted_years[increase_in_number_of_weeks_in_season:]
+        seasons_with_22_weeks: list[str] = sorted_years[increase_in_number_of_weeks_in_season:]
         seasons_with_22_weeks.append("1993-1994")  ## This year had an extra bye week
 
         ## Change playoff week names to numbers
@@ -446,10 +448,10 @@ class PFR_Data_Collector:  # noqa: N801
         temp_id = pd.DataFrame(temp_id, columns=["LONG_ID"])
 
         # Read in data that maps NFL's Long team name (ex: Arizona Cardinals) to NFL's short team name (ex: ARI)
-        df_short = pd.read_csv(self.long_to_short_team_name_file)
+        df_short: DataFrame = pd.read_csv(self.long_to_short_team_name_file)
 
         # Create dictionary to use for pandas series mapping
-        df_short_dict = {}
+        df_short_dict: dict = {}
         for row in df_short.itertuples():
             df_short_dict[row.NFL_LONG_NAME] = row.NFL_SHORT_NAME
 
@@ -458,6 +460,7 @@ class PFR_Data_Collector:  # noqa: N801
         df["GAME_ID"] = temp_id
 
         # Clean up after yourself
+        # pyrefly: ignore [bad-assignment]
         df_short, df_short_dict, temp_id = None, None, None
         del df_short, df_short_dict, temp_id
 
@@ -517,8 +520,8 @@ class PFR_Data_Collector:  # noqa: N801
         Returns:
             Time string in ``"%H:%M:%S"`` format.
         """
-        in_time = datetime.strptime(time_12hour, "%I:%M%p")
-        out_time = datetime.strftime(in_time, "%H:%M:%S")
+        in_time: datetime = datetime.strptime(time_12hour, "%I:%M%p")
+        out_time: str = datetime.strftime(in_time, "%H:%M:%S")
 
         return out_time
 
@@ -579,7 +582,7 @@ class PFR_Data_Collector:  # noqa: N801
                 f"{date} {self._convert_12hour_to_24hour(row.GAMETIME)}",
                 "%Y-%m-%d %H:%M:%S",
             ):
-                naive = datetime.strptime(
+                naive: datetime = datetime.strptime(
                     f"{date} {self._convert_12hour_to_24hour(row.GAMETIME)}",
                     "%Y-%m-%d %H:%M:%S",
                 )
@@ -597,12 +600,12 @@ class PFR_Data_Collector:  # noqa: N801
                     "%m/%d/%Y %H:%M:%S",
                 )
 
-            local_dt = local.localize(naive, is_dst=None)
-            utc_dt = local_dt.astimezone(pytz.utc)
+            local_dt: datetime = local.localize(naive, is_dst=None)
+            utc_dt: datetime = local_dt.astimezone(pytz.utc)
             time = int(utc_dt.timestamp())
 
             ## Build the API's URL
-            url = f"https://api.openweathermap.org/data/3.0/onecall/timemachine?lat={lat}&lon={lon}&dt={time}&appid={owm_api_key}"
+            url: str = f"https://api.openweathermap.org/data/3.0/onecall/timemachine?lat={lat}&lon={lon}&dt={time}&appid={owm_api_key}"
 
             ## Pull API's response as JSON
             owm_response = session.get(url).json()
@@ -640,12 +643,12 @@ class PFR_Data_Collector:  # noqa: N801
             owm_api_key: OpenWeatherMap API key.
         """
         ## Read in wk_by_wk data
-        df = pd.read_csv(self.cleaned_historical_data_file)
+        df: DataFrame = pd.read_csv(self.cleaned_historical_data_file)
         df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
         df.sort_values(["GAME_DATE", "GAMETIME", "GAME_ID"], ascending=True, inplace=True)
 
         ## Read in stadium data
-        df_stadium = pd.read_csv(self.stadium_file)
+        df_stadium: DataFrame = pd.read_csv(self.stadium_file)
 
         ## Merge Stadium Latitude and Longitude on to wk_by_wk data
         temp_df = df.loc[:, ["GAME_ID", "GAME_DATE", "GAMETIME", "YEAR", "STADIUM"]].copy()
@@ -673,6 +676,7 @@ class PFR_Data_Collector:  # noqa: N801
         ## Set up the Requests.Session for pulling data from openweathermap
         sess = requests.Session()
         retry = Retry(connect=3, backoff_factor=0.5)
+        # pyrefly: ignore [bad-argument-type]
         adapter = HTTPAdapter(max_retries=retry)
         sess.mount("http://", adapter)
         sess.mount("https://", adapter)
@@ -713,7 +717,7 @@ class PFR_Data_Collector:  # noqa: N801
         Returns:
             A tuple of ``(week_start_local, week_end_local, now_local)``.
         """
-        anchor_idx = {
+        anchor_idx: int = {
             "monday": 0,
             "tuesday": 1,
             "wednesday": 2,
@@ -723,18 +727,18 @@ class PFR_Data_Collector:  # noqa: N801
             "sunday": 6,
         }[anchor.lower()]
         tzinfo = ZoneInfo(tz)
-        now_local = (now or datetime.now(tzinfo)).astimezone(tzinfo)
+        now_local: datetime = (now or datetime.now(tzinfo)).astimezone(tzinfo)
         # most recent anchor at 00:00
-        delta_days = (now_local.weekday() - anchor_idx) % 7
-        week_start = (now_local - timedelta(days=delta_days)).replace(
+        delta_days: int = (now_local.weekday() - anchor_idx) % 7
+        week_start: datetime = (now_local - timedelta(days=delta_days)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-        week_end = week_start + timedelta(days=7)
+        week_end: datetime = week_start + timedelta(days=7)
         return week_start, week_end, now_local
 
     @staticmethod
     def _classify_market(name: str) -> str:
-        n = (name or "").lower()
+        n: str = (name or "").lower()
         if "money" in n:
             return "moneyline"
         if "spread" in n:
@@ -851,13 +855,13 @@ class PFR_Data_Collector:  # noqa: N801
             ``under_total_odds``.
         """
         # events → {event_id: names/times}
-        events = {}
+        events: dict = {}
         for e in payload.get("events", []):
-            home = next(
+            home: dict = next(
                 (p for p in e.get("participants", []) if p.get("venueRole") == "Home"),
                 {},
             )
-            away = next(
+            away: dict = next(
                 (p for p in e.get("participants", []) if p.get("venueRole") == "Away"),
                 {},
             )
@@ -869,12 +873,12 @@ class PFR_Data_Collector:  # noqa: N801
             }
 
         # markets grouped by event
-        markets_by_event = defaultdict(list)
+        markets_by_event: defaultdict = defaultdict(list)
         for m in payload.get("markets", []):
             markets_by_event[m.get("eventId")].append(m)
 
         # selections grouped by market id (with a numeric-suffix fallback)
-        selections_by_market = defaultdict(list)
+        selections_by_market: defaultdict = defaultdict(list)
         for s in payload.get("selections", []):
             link = s.get("marketId") or s.get("parentMarketId")
             if link:
@@ -884,9 +888,9 @@ class PFR_Data_Collector:  # noqa: N801
                 if m:
                     selections_by_market[m.group(1)].append(s)
 
-        rows = []
+        rows: list = []
         for ev_id, ev in events.items():
-            row = {
+            row: dict = {
                 "event_id": ev_id,
                 "start_time": ev["start"],
                 "home_team": ev["home"],
@@ -902,18 +906,18 @@ class PFR_Data_Collector:  # noqa: N801
                 "under_total_odds": None,
             }
             for m in markets_by_event.get(ev_id, []):
-                kind = self._classify_market(m.get("name"))
+                kind: str = self._classify_market(m.get("name"))
                 if kind not in {"moneyline", "spread", "total"}:
                     continue
-                sels = list(selections_by_market.get(m["id"], []))
+                sels: list = list(selections_by_market.get(m["id"], []))
                 if not sels and isinstance(m.get("id"), str) and "_" in m["id"]:
                     # numeric suffix fallback (e.g., '1_79743033' → '79743033')
                     sels = list(selections_by_market.get(m["id"].split("_")[-1], []))
 
                 for s in sels:
-                    lbl = self._label_lower(s)
-                    display_odds_american = self._norm_display_odds_american(s)
-                    points = self._norm_point(s)
+                    lbl: str = self._label_lower(s)
+                    display_odds_american: int | str | None = self._norm_display_odds_american(s)
+                    points: float | str | None = self._norm_point(s)
                     if kind == "moneyline":
                         if lbl == "home":
                             row["ml_home"] = (
@@ -960,7 +964,7 @@ class PFR_Data_Collector:  # noqa: N801
             ``spread_odds``, ``total_OU_value``, ``over_total_odds``, and
             ``under_total_odds``.
         """
-        rows = []
+        rows: list[dict[str, int | Any]] = []
         for _, r in df_events.iterrows():
             rows.append(
                 {
@@ -1023,10 +1027,10 @@ class PFR_Data_Collector:  # noqa: N801
             containing odds for moneyline, spread, and total markets.
         """
         if payload_override is None:
-            base = f"https://sportsbook-nash.draftkings.com/sites/{region}/api/sportscontent/controldata/league/leagueSubcategory/v1/markets"
-            events_q = f"$filter=leagueId eq '{league_id}' AND clientMetadata/Subcategories/any(s: s/Id eq '{subcategory_id}')"
-            markets_q = f"$filter=clientMetadata/subCategoryId eq '{subcategory_id}' AND tags/all(t: t ne 'SportcastBetBuilder')"
-            params = {
+            base: str = f"https://sportsbook-nash.draftkings.com/sites/{region}/api/sportscontent/controldata/league/leagueSubcategory/v1/markets"
+            events_q: str = f"$filter=leagueId eq '{league_id}' AND clientMetadata/Subcategories/any(s: s/Id eq '{subcategory_id}')"
+            markets_q: str = f"$filter=clientMetadata/subCategoryId eq '{subcategory_id}' AND tags/all(t: t ne 'SportcastBetBuilder')"
+            params: dict[str, str] = {
                 "eventsQuery": events_q,
                 "marketsQuery": markets_q,
                 "include": "Events",
@@ -1034,7 +1038,7 @@ class PFR_Data_Collector:  # noqa: N801
                 "format": "json",
             }
             sess = session or requests.Session()
-            headers = {
+            headers: dict[str, str] = {
                 "accept": "application/json",
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0",
                 "accept-language": "en-US,en;q=0.9",
@@ -1043,10 +1047,10 @@ class PFR_Data_Collector:  # noqa: N801
             resp.raise_for_status()
             payload = resp.json()
         else:
-            payload = payload_override
+            payload: dict = payload_override
 
-        df_events = self._extract_game_lines(payload)
-        df_teams = self._event_rows_to_team_rows(df_events)
+        df_events: DataFrame = self._extract_game_lines(payload)
+        df_teams: DataFrame = self._event_rows_to_team_rows(df_events)
         df_teams = df_teams.sort_values(
             ["start_time", "event_id", "location"],
             ignore_index=True,
@@ -1058,6 +1062,7 @@ class PFR_Data_Collector:  # noqa: N801
         )
 
         # Parse and localize start_time (DraftKings times are ISO, usually UTC/Z)
+        # pyrefly: ignore [missing-attribute]
         dt_local = pd.to_datetime(df_teams["start_time"], utc=True).dt.tz_convert(
             "America/New_York",
         )
@@ -1081,7 +1086,7 @@ class PFR_Data_Collector:  # noqa: N801
                 df_teams[c] = pd.to_datetime(df_teams[c]).dt.tz_convert(None)  # type: ignore[attr-defined]
 
         # identify all odds columns in your current schema
-        odds_cols = [
+        odds_cols: list[str] = [
             c
             for c in df_teams.columns
             if c
@@ -1101,6 +1106,7 @@ class PFR_Data_Collector:  # noqa: N801
             if df_teams[c].dtype in (float, int):
                 continue
             df_teams[c] = df_teams[c].str.replace("\u2212", "-")
+            # pyrefly: ignore [missing-attribute]
             df_teams[c] = pd.to_numeric(df_teams[c], errors="coerce").astype("float")
 
         return df_teams
@@ -1114,17 +1120,4 @@ class PFR_Data_Collector:  # noqa: N801
         Returns:
             Long-form DataFrame with one row per team per upcoming game.
         """
-        df: DataFrame = self.pull_dk_sportsbook_odds_refactored()
-
-        with pd.ExcelWriter(
-            self.ELO_visualization_file, mode="a", if_sheet_exists="overlay"
-        ) as writer:
-            df.to_excel(
-                excel_writer=writer,
-                sheet_name="Betting Outcomes",
-                index=False,
-                header=False,
-                startrow=2,
-                startcol=35,
-            )
-        return df
+        return self.pull_dk_sportsbook_odds_refactored()

@@ -19,9 +19,11 @@ Canonical schedule schema (NFL_upcoming_schedule_cleaned.csv):
 from __future__ import annotations
 
 import logging
+from logging import Logger
 from pathlib import Path
 
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
@@ -32,7 +34,7 @@ from gridiron_edge.transform.clean.games_nflverse import (
     _season_label,
 )
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 
 def clean_nflverse_upcoming(
@@ -53,21 +55,21 @@ def clean_nflverse_upcoming(
         Absolute path to the written canonical upcoming schedule CSV.
     """
     settings = get_settings()
-    resolved_repo = repo or settings.repo_root
+    resolved_repo: Path = repo or settings.repo_root
 
-    raw_path = dataset_path(resolved_repo, "schedule_upcoming_raw_nflverse")
+    raw_path: Path = dataset_path(resolved_repo, "schedule_upcoming_raw_nflverse")
     if not raw_path.exists():
-        msg = (
+        msg: str = (
             f"Raw nflverse upcoming schedule not found: {raw_path}. "
             "Run `gridiron ingest nflverse-upcoming` first."
         )
         raise FileNotFoundError(msg)
 
     logger.info("Reading raw nflverse upcoming schedule from %s", raw_path)
-    df = pd.read_parquet(raw_path)
+    df: DataFrame = pd.read_parquet(raw_path)
 
     # Confirm all rows are unplayed
-    df = df.loc[df["result"].isna()].copy()
+    df = df.loc[df["result"].isna(), :].copy()
 
     if df.empty:
         logger.info("No upcoming games found in %s — season may be complete.", raw_path)
@@ -122,7 +124,7 @@ def clean_nflverse_upcoming(
         }
     )
 
-    out = out.sort_values(
+    out: DataFrame = out.sort_values(
         ["WEEK_NUM", "GAME_DATE", "GAMETIME"],
         ascending=True,
         ignore_index=True,

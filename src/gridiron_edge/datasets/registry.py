@@ -23,6 +23,9 @@ DatasetKey = Literal[
     # ---- Derived modeling artifacts ----
     "modeling_base",
     "modeling_full",
+    # ---- Output Directories ----
+    "predictions_csv",
+    "elo_rankings_csv",
 ]
 
 
@@ -85,6 +88,14 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "modeling_full": DatasetSpec(
         "modeling_full",
         "data/modeling/modeling_file.csv",
+    ),
+    "predictions_csv": DatasetSpec(
+        "predictions_csv",
+        "data/output/predictions",  # directory, not a single file
+    ),
+    "elo_rankings_csv": DatasetSpec(
+        "elo_rankings_csv",
+        "data/output/rankings",  # directory
     ),
 }
 
