@@ -20,7 +20,6 @@ dependencies = [
     "numba>=0.63.1,<0.64.0",
     "typer>=0.21.1,<0.22.0",
     "nfl-data-py>=0.3.0",
-    "pyarrow>=19.0.0",
 ]
 
 [project.scripts]
@@ -149,6 +148,10 @@ force-sort-within-sections = true
     "PLR0912", # Too many branches — build_viz_table_df assembles many conditional data fields
     "PLR0915", # Too many statements — same rationale
 ]
+"src/gridiron_edge/cli.py" = [
+    "PLR0912", # run-data-pipeline has many conditional pipeline stages by design
+    "PLR0915", # same rationale
+]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -162,3 +165,4 @@ docstring-code-format = true
 [tool.pyrefly]
 project-includes = ["src"]
 python-version = "3.12"
+ignore = ["src/PFR_scraper/**"]

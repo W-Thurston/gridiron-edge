@@ -9,7 +9,7 @@ nflverse schema (key columns used):
     game_id         str     "2025_01_PHI_GB"  (YYYY_WW_AWAY_HOME, short codes)
     season          int     2025
     game_type       str     "REG" | "WC" | "DIV" | "CON" | "SB"
-    week            int     1–22
+    week            int     1-22
     gameday         str     "2025-09-04"
     weekday         str     "Thursday"
     gametime        str     "20:20"  (Eastern, 24h)
@@ -29,7 +29,7 @@ nflverse schema (key columns used):
 
 Canonical games schema (NFL_wk_by_wk_cleaned.csv):
     GAME_ID             str     "2025_01_PHI_GB"
-    WEEK_NUM            int     1–22
+    WEEK_NUM            int     1-22
     GAME_DAY_OF_WEEK    str     "Thursday"
     GAME_DATE           str     "2025-09-04"
     GAMETIME            str     "20:20:00"  (HH:MM:SS for backwards compat)
@@ -154,11 +154,11 @@ def _gametime_to_hhmmss(gametime: str | float) -> str:
     """
     if pd.isna(gametime) or not str(gametime).strip():
         return "NULL_VALUE"
-    parts = str(gametime).strip().split(":")
+    parts: list[str] = str(gametime).strip().split(":")
     if len(parts) == 2:
         return f"{parts[0]}:{parts[1]}:00"
     if len(parts) == 3:
-        return gametime
+        return str(gametime)
     return "NULL_VALUE"
 
 
@@ -276,7 +276,7 @@ def clean_nflverse_games(
         return out_path
 
     # --- Normalise week numbers ---
-    # REG games have integer weeks; postseason game_types map to 19–22.
+    # REG games have integer weeks; postseason game_types map to 19-22.
     def _resolve_week(row: pd.Series) -> int:
         gt = str(row["game_type"])
         if gt in _GAME_TYPE_TO_WEEK:
@@ -292,8 +292,15 @@ def clean_nflverse_games(
     home_wins = df["home_score"] > df["away_score"]
     tie = df["home_score"] == df["away_score"]
 
-    df["WINNER_SHORT"] = np.where(home_wins | tie, df["home_team"], df["away_team"])
-    df["LOSER_SHORT"] = np.where(home_wins | tie, df["away_team"], df["home_team"])
+    df["WINNER_SHORT"] = pd.Series(
+        np.where(home_wins | tie, df["home_team"], df["away_team"]),
+        index=df.index,
+    )
+
+    df["LOSER_SHORT"] = pd.Series(
+        np.where(home_wins | tie, df["away_team"], df["home_team"]),
+        index=df.index,
+    )
     df["PTS_WINNER"] = np.where(
         home_wins | tie,
         df["home_score"].astype(int),
@@ -321,8 +328,8 @@ def clean_nflverse_games(
     )
 
     # --- Map short codes to long names ---
-    df["WINNER"] = df["WINNER_SHORT"].map(_map_short_to_long)
-    df["LOSER"] = df["LOSER_SHORT"].map(_map_short_to_long)
+    df["WINNER"] = df["WINNER_SHORT"].astype(str).map(_map_short_to_long)
+    df["LOSER"] = df["LOSER_SHORT"].astype(str).map(_map_short_to_long)
 
     # --- YEAR label ---
     df["YEAR"] = df["season"].astype(int).map(_season_label)

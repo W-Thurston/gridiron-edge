@@ -11,12 +11,12 @@ def test_elo_win_probability_symmetric() -> None:
 
 
 def test_update_elo_win() -> None:
-    w, l = update_elo(1500.0, 1500.0, win_or_tie=1.0)
-    assert w > 1500.0
-    assert l < 1500.0
+    winner_elo, loser_elo = update_elo(1500.0, 1500.0, win_or_tie=1.0)
+    assert winner_elo > 1500.0
+    assert loser_elo < 1500.0
 
 
 def test_update_elo_tie() -> None:
-    w, l = update_elo(1500.0, 1500.0, win_or_tie=0.5)
-    assert w == pytest.approx(1500.0, abs=1e-6)
-    assert l == pytest.approx(1500.0, abs=1e-6)
+    winner_elo, loser_elo = update_elo(1500.0, 1500.0, win_or_tie=0.5)
+    assert winner_elo == pytest.approx(1500.0, abs=1e-6)
+    assert loser_elo == pytest.approx(1500.0, abs=1e-6)

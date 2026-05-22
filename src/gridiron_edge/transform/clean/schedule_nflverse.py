@@ -6,7 +6,7 @@ Maps unplayed nflverse games to the AWAY_TEAM/HOME_TEAM-oriented canonical
 upcoming schedule schema used by Elo predict and simulation.
 
 Canonical schedule schema (NFL_upcoming_schedule_cleaned.csv):
-    WEEK_NUM            int     1–22
+    WEEK_NUM            int     1-22
     GAME_DAY_OF_WEEK    str     "Sunday"
     GAME_DATE           str     "2025-10-05"
     AWAY_TEAM           str     "Kansas City Chiefs"   (long name)

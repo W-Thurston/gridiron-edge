@@ -200,10 +200,7 @@ class Console:
             print(f"  {_DIM}{_ARROW} {label}  {elapsed}  skipped{_RESET}")
             return
 
-        if result.ok:
-            icon = f"{_GREEN}{_TICK}{_RESET}"
-        else:
-            icon = f"{_RED}{_CROSS}{_RESET}"
+        icon: str = f"{_GREEN}{_TICK}{_RESET}" if result.ok else f"{_RED}{_CROSS}{_RESET}"
 
         print(f"  {icon} {_BOLD}{result.name}{_RESET}  {_DIM}{elapsed}{_RESET}")
 

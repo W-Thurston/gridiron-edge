@@ -81,7 +81,7 @@ def _get_owm_api_key(owm_api_key: str | None) -> str:
 @ingest_app.command("nflverse-games")
 def ingest_nflverse_games(
     *,
-    season: list[int] = typer.Option(
+    season: list[int] = typer.Option(  # noqa: B008
         [],
         help=(
             "Specific season year(s) to fetch (e.g. --season 2025). "
@@ -96,7 +96,7 @@ def ingest_nflverse_games(
     ),
     start_season: int = typer.Option(1999, help="First season when --all-years is set."),
 ) -> None:
-    """Fetch NFL game results from nflverse.
+    r"""Fetch NFL game results from nflverse.
 
     \b
     Examples:
@@ -111,7 +111,7 @@ def ingest_nflverse_games(
     from gridiron_edge.ingest.nflverse.games import _current_nfl_season
 
     if all_years:
-        label = f"Fetch nflverse games ({start_season}–present)"
+        label = f"Fetch nflverse games ({start_season}-present)"
     elif season:
         label = f"Fetch nflverse games (season(s): {', '.join(str(s) for s in season)})"
     else:
@@ -442,7 +442,7 @@ def run_data_pipeline(
         "--build-features/--no-build-features",
     ),
 ) -> None:
-    """Run a full end-to-end data pipeline with toggles for each stage.
+    r"""Run a full end-to-end data pipeline with toggles for each stage.
 
     \b
     Scenario 1 — weekly refresh (most common, no flags needed):
