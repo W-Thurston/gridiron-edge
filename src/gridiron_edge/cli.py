@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
+# pyrefly: ignore [missing-import]
 import typer
 
 # Only lightweight imports at module level.
@@ -19,7 +20,7 @@ _verbose_state: dict[str, bool] = {"verbose": False}
 
 
 def _cli_startup(
-    ctx: typer.Context,
+    _ctx: typer.Context,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -318,6 +319,55 @@ def builder_model_inputs(
 # ===========================================================================
 
 
+@output_app.command("predictions")
+def output_predictions(
+    *,
+    year: str = typer.Option(..., help="NFL season label like '2026-2027'."),
+    week: int = typer.Option(..., help="Week number to render."),
+    format: list[str] = typer.Option(  # noqa: B008  # type: ignore[assignment]
+        [],
+        help="Output format(s): png, html. Repeatable. Defaults to both.",
+    ),
+) -> None:
+    r"""Render weekly matchup predictions image and/or HTML.
+
+    \b
+    Examples:
+      gridiron output predictions --year 2026-2027 --week 1
+      gridiron output predictions --year 2026-2027 --week 1 --format png
+      gridiron output predictions --year 2026-2027 --week 1 --format html
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.viz.predictions import (
+        build_predictions_df,
+        render_predictions_html,
+        render_predictions_image,
+    )
+
+    formats = set(format) or {"png", "html"}
+    console.header("output predictions", subtitle=f"{year}  week {week}")
+
+    with step("Build predictions dataframe") as s:
+        df = build_predictions_df(year=year, week=week)
+        if df.empty:
+            s.set_detail("no data — check schedule and Elo state")
+        else:
+            s.set_detail(f"{len(df)} games")
+
+    if not df.empty:
+        if "png" in formats:
+            with step("Render PNG") as s:
+                path = render_predictions_image(df, year=year, week=week)
+                s.set_detail(str(path))
+
+        if "html" in formats:
+            with step("Render HTML") as s:
+                path = render_predictions_html(df, year=year, week=week)
+                s.set_detail(str(path))
+
+    console.summary()
+
+
 @output_app.command("ranks")
 def output_ranks(
     *,
@@ -440,6 +490,14 @@ def run_data_pipeline(
         True,
         "--build-features/--no-build-features",
     ),
+    upcoming_season: int | None = typer.Option(
+        None,
+        help=(
+            "Season to fetch upcoming schedule for. Defaults to --season or current "
+            "season. Use when fetching upcoming games from a different season than "
+            "completed games (e.g. --all-years --upcoming-season 2026)."
+        ),
+    ),
 ) -> None:
     r"""Run a full end-to-end data pipeline with toggles for each stage.
 
@@ -453,7 +511,7 @@ def run_data_pipeline(
 
     \b
     Scenario 3 — full history rebuild:
-      gridiron run-data-pipeline --all-years --build-elo --fit-elo-all-years
+      gridiron run-data-pipeline --all-years --upcoming-season 2026 --build-elo --fit-elo-all-years
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.ingest.nflverse import (
@@ -465,8 +523,11 @@ def run_data_pipeline(
     from gridiron_edge.transform.clean import clean_nflverse_games, clean_nflverse_upcoming
 
     resolved_season = season or _current_nfl_season()
+    upcoming_target = upcoming_season or resolved_season
 
-    if all_years:
+    if all_years and upcoming_season:
+        mode = f"full history  ·  upcoming season {upcoming_season}"
+    elif all_years:
         mode = "full history rebuild"
     elif season:
         mode = f"season {resolved_season}"
@@ -476,52 +537,60 @@ def run_data_pipeline(
     console.header("run-data-pipeline", subtitle=mode)
 
     with step("Fetch nflverse games", skip=not fetch_games_flag) as s:
-        if all_years:
-            path = fetch_nflverse_games()
-        elif season:
-            path = fetch_nflverse_games(seasons=[resolved_season])
-        else:
-            path = fetch_nflverse_games_refresh()
-        s.set_detail(path.name)
+        if fetch_games_flag:
+            if all_years:
+                path = fetch_nflverse_games()
+            elif season:
+                path = fetch_nflverse_games(seasons=[resolved_season])
+            else:
+                path = fetch_nflverse_games_refresh()
+            s.set_detail(path.name)
 
     with step("Clean games", skip=not clean_games_flag) as s:
-        path = clean_nflverse_games()
-        s.set_detail(path.name)
+        if clean_games_flag:
+            path = clean_nflverse_games()
+            s.set_detail(path.name)
 
     with step("Fetch upcoming schedule", skip=not fetch_upcoming_flag) as s:
-        path = fetch_nflverse_upcoming(season=resolved_season)
-        s.set_detail(path.name)
+        if fetch_upcoming_flag:
+            path = fetch_nflverse_upcoming(season=upcoming_target)
+            s.set_detail(path.name)
 
     with step("Clean upcoming schedule", skip=not clean_upcoming_flag) as s:
-        path = clean_nflverse_upcoming()
-        s.set_detail(path.name)
+        if clean_upcoming_flag:
+            path = clean_nflverse_upcoming()
+            s.set_detail(path.name)
 
     with step("Fetch weather", skip=not fetch_weather_flag) as s:
-        from gridiron_edge.ingest.weather import fetch_weather
+        if fetch_weather_flag:
+            from gridiron_edge.ingest.weather import fetch_weather
 
-        if not season_year:
-            raise typer.BadParameter(
-                "When --fetch-weather is set, provide --season-year (e.g. '2025-2026').",
-            )
-        key = _get_owm_api_key(owm_api_key)
-        fetch_weather(season_year=season_year, owm_api_key=key)
-        s.set_detail(season_year)
+            if not season_year:
+                raise typer.BadParameter(
+                    "When --fetch-weather is set, provide --season-year (e.g. '2025-2026').",
+                )
+            key = _get_owm_api_key(owm_api_key)
+            fetch_weather(season_year=season_year, owm_api_key=key)
+            s.set_detail(season_year)
 
     with step("Fetch DraftKings odds", skip=not fetch_dk_odds_flag):
-        from gridiron_edge.ingest.odds import fetch_dk_odds
+        if fetch_dk_odds_flag:
+            from gridiron_edge.ingest.odds import fetch_dk_odds
 
-        fetch_dk_odds()
+            fetch_dk_odds()
 
     with step("Fit Elo", skip=not build_elo_flag) as s:
-        from gridiron_edge.ratings.elo import fit_elo
+        if build_elo_flag:
+            from gridiron_edge.ratings.elo import fit_elo
 
-        fit_elo(all_years=fit_elo_all_years)
-        s.set_detail("full rebuild" if fit_elo_all_years else "incremental")
+            fit_elo(all_years=fit_elo_all_years)
+            s.set_detail("full rebuild" if fit_elo_all_years else "incremental")
 
     with step("Build model inputs", skip=not build_features_flag):
-        from gridiron_edge.features.pipeline import build_model_inputs
+        if build_features_flag:
+            from gridiron_edge.features.pipeline import build_model_inputs
 
-        build_model_inputs(all_years=all_years)
+            build_model_inputs(all_years=all_years)
 
     console.summary()
 

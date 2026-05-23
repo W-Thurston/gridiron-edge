@@ -40,13 +40,12 @@ def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
     flipped["RESULT"] = 0
     flipped.columns = ["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM", "RESULT"]
 
-    out = (
+    return (
         pd.concat([df, flipped], ignore_index=True)
         .sort_values(["YEAR", "WEEK_NUM", "TEAM_A"], kind="stable")
         .drop_duplicates()
         .reset_index(drop=True)
     )
-    return out
 
 
 def _load_csv_if_exists(path: Path) -> pd.DataFrame | None:
