@@ -228,12 +228,13 @@ def load_prediction_log(
     if not path.exists():
         return pd.DataFrame(columns=_ARCHIVE_COLUMNS)
 
-    filters: list[tuple] = []
-    if season is not None:
-        filters.append(("season", "==", season))
-    if week is not None:
-        filters.append(("week", "==", week))
-    if model_version is not None:
-        filters.append(("model_version", "==", model_version))
+    df = pd.read_parquet(path)
 
-    return pd.read_parquet(path, filters=filters or None)
+    if season is not None:
+        df = df.loc[df["season"] == season]
+    if week is not None:
+        df = df.loc[df["week"] == week]
+    if model_version is not None:
+        df = df.loc[df["model_version"] == model_version]
+
+    return df.reset_index(drop=True)
