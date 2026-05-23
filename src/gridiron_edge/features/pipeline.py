@@ -9,7 +9,8 @@ from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders, writers
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.registry import dataset_path
-from gridiron_edge.features.registry import run_features
+from gridiron_edge.features.manifest import write_manifest
+from gridiron_edge.features.registry import FeatureRegistry, run_features
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.home_field
 import gridiron_edge.features.team.travel  # noqa: F401
@@ -18,6 +19,13 @@ import gridiron_edge.features.team.travel  # noqa: F401
 # - home_field should run before travel (travel uses HOME_FIELD)
 # - elo can run anytime
 FEATURES: Final[list[str]] = ["home_field", "team_elo", "travel"]
+
+
+def _feature_columns(feature_names: list[str]) -> list[str]:
+    cols: list[str] = []
+    for name in feature_names:
+        cols.extend(FeatureRegistry.get(name)().spec.produces)
+    return cols
 
 
 def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
@@ -87,6 +95,12 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
 
         writers.write_csv(repo, "modeling_base", base_out)
         writers.write_csv(repo, "modeling_full", full_out)
+        write_manifest(
+            full_out,
+            feature_names=list(FEATURES),
+            feature_columns=_feature_columns(list(FEATURES)),
+            modeling_dir=dataset_path(repo, "modeling_full").parent,
+        )
         return
 
     # Incremental build: only process unseen GAME_ID rows
@@ -106,7 +120,15 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     base_new: pd.DataFrame = base_all.loc[new_mask].copy()
 
     if base_new.empty:
-        # No new games → nothing to do
+        # No new games → write manifest if missing, then return
+        _manifest_path = dataset_path(repo, "modeling_full").parent / "modeling_file_manifest.json"
+        if not _manifest_path.exists():
+            write_manifest(
+                full_existing,
+                feature_names=list(FEATURES),
+                feature_columns=_feature_columns(list(FEATURES)),
+                modeling_dir=dataset_path(repo, "modeling_full").parent,
+            )
         return
 
     # Compute features only for the new rows
@@ -130,3 +152,9 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
 
     writers.write_csv(repo, "modeling_base", base_out)
     writers.write_csv(repo, "modeling_full", full_out)
+    write_manifest(
+        full_out,
+        feature_names=list(FEATURES),
+        feature_columns=_feature_columns(list(FEATURES)),
+        modeling_dir=dataset_path(repo, "modeling_full").parent,
+    )

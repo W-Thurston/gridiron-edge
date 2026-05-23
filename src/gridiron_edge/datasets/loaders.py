@@ -109,3 +109,57 @@ def load_divisions(repo_root: Path) -> pd.DataFrame:
         DataFrame mapping each team to its conference and division.
     """
     return load_csv(repo_root, "divisions")
+
+
+def load_modeling_file(
+    repo_root: Path,
+    *,
+    expected_columns: list[str] | None = None,
+    required_schema_version: int | None = None,
+    context: str = "",
+) -> pd.DataFrame:
+    """Load the full feature matrix with optional manifest validation.
+
+    This is the canonical way to load ``modeling_file.csv`` for training
+    or prediction. Validates the feature set schema if requested, surfacing
+    clear errors when the feature pipeline has changed since the last build.
+
+    Args:
+        repo_root: Absolute path to the repository root.
+        expected_columns: If provided, asserts these columns are present
+            in the loaded DataFrame. Pass the columns your model requires.
+        required_schema_version: If provided, asserts the manifest schema
+            version matches. Pass the version your model was trained on.
+        context: Optional label for error messages (e.g. model name).
+
+    Returns:
+        Full feature matrix DataFrame.
+
+    Raises:
+        FileNotFoundError: If the modeling file or manifest does not exist.
+        ValueError: If column or schema version validation fails.
+    """
+    from gridiron_edge.datasets.registry import dataset_path
+    from gridiron_edge.features.manifest import (
+        read_manifest,
+        validate_columns,
+        validate_schema_version,
+    )
+
+    df = load_csv(repo_root, "modeling_full")
+
+    if expected_columns is not None or required_schema_version is not None:
+        modeling_dir = dataset_path(repo_root, "modeling_full").parent
+        manifest = read_manifest(modeling_dir)
+
+        if required_schema_version is not None:
+            validate_schema_version(
+                manifest,
+                required_version=required_schema_version,
+                context=context,
+            )
+
+        if expected_columns is not None:
+            validate_columns(df, expected_columns=expected_columns, context=context)
+
+    return df
