@@ -259,8 +259,23 @@ def build_team_index_from_results(
     df_wk_by_wk: pd.DataFrame,
     long_to_short: dict[str, str],
     season_year: str,
+    df_schedule: pd.DataFrame | None = None,
 ) -> TeamIndex:
-    """Build TeamIndex from actual game results for the season."""
+    """Build TeamIndex from actual game results for the season.
+
+    When no completed games exist for ``season_year`` (e.g. at the start of
+    a season), falls back to ``df_schedule`` to derive the team list.
+
+    Args:
+        df_wk_by_wk: Historical games DataFrame.
+        long_to_short: Long name → short code mapping.
+        season_year: Season label (e.g. ``"2026-2027"``).
+        df_schedule: Upcoming schedule DataFrame. Used as fallback when no
+            completed games exist for ``season_year``.
+
+    Returns:
+        A ``TeamIndex`` covering all 32 NFL teams.
+    """
     if not {"YEAR", "GAME_ID"}.issubset(df_wk_by_wk.columns):
         raise ValueError("wk_by_wk must include YEAR and GAME_ID columns")
 
@@ -271,6 +286,15 @@ def build_team_index_from_results(
         a_s, h_s = _parse_game_id(gid)
         shorts.add(a_s)
         shorts.add(h_s)
+
+    # Fallback: if no completed games yet, derive teams from the schedule
+    if len(shorts) < N_TEAMS and df_schedule is not None:
+        for col in ("AWAY_TEAM", "HOME_TEAM"):
+            if col in df_schedule.columns:
+                for long_name in df_schedule[col].dropna().unique():
+                    short = long_to_short.get(str(long_name))
+                    if short:
+                        shorts.add(short)
 
     short_names = sorted(shorts)
     if len(short_names) != N_TEAMS:
@@ -950,6 +974,7 @@ def run_full_simulation(
     *,
     paths: SimPaths | None = None,
     config: SimulationConfig | None = None,
+    render: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the full season + playoff simulation.
 
@@ -989,7 +1014,9 @@ def run_full_simulation(
 
     with _log_phase("Build team index + schedule arrays"):
         long_to_short = load_long_to_short_mapping(paths.mapping_file)
-        team_index = build_team_index_from_results(df_wk_by_wk, long_to_short, season_year)
+        team_index = build_team_index_from_results(
+            df_wk_by_wk, long_to_short, season_year, df_schedule=df_schedule
+        )
         logger.info("Teams detected: %d", len(team_index.short_names))
 
         df_schedule = add_game_id_to_schedule(df_schedule, long_to_short)
@@ -1014,7 +1041,7 @@ def run_full_simulation(
             pts_total_actual,
             pts_conf_actual,
             pts_div_actual,
-            _,
+            gp_played_actual,
             gp_vs_actual,
             pts_vs_actual,
             wins_vs_actual,
@@ -1130,6 +1157,33 @@ def run_full_simulation(
         df_season_grid.to_csv(grid_path, index=False)
         logger.info("Wrote: %s", proj_path)
         logger.info("Wrote: %s", grid_path)
+
+    if render:
+        with _log_phase("Render playoff probability table"):
+            from gridiron_edge.viz.charts import build_viz_table_df, render_playoff_table
+
+            df_viz = build_viz_table_df(
+                team_index=team_index,
+                pts_total_by_sim=pts_total_by_sim,
+                pts_total_actual=pts_total_actual,
+                gp_played_actual=gp_played_actual,
+                gp_total=gp_total,
+                make_playoffs_counts=make_playoffs_counts,
+                bye_counts=bye_counts,
+                po_win_counts=po_win_counts,
+                div_id=div_id,
+                df_elo=df_elo,
+                final_actual_week=final_actual_week,
+                season_year=season_year,
+                logo_dir=paths.logo_dir,
+            )
+            out_dir = paths.output_images_dir / f"Elo_Rankings/{season_year[:4]}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_img_path = (
+                out_dir / f"{season_year[:4]}_playoff_table_wk{final_actual_week:02d}.png"
+            )
+            render_playoff_table(df=df_viz, output_path=out_img_path)
+            logger.info("Playoff table written: %s", out_img_path)
 
     logger.info("Total runtime: %.2fs", time.perf_counter() - t0_total)
 
