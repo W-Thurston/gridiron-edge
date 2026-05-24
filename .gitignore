@@ -1,11 +1,34 @@
+# Data (generated at runtime)
 data/
-TODO.txt
-*.pyc 
 
-#notebooks/exploratory/*.ipynb
-notebooks/modeling/*.ipynb
+# Credentials and local config
 configs/
 credentials/
 
+# Python
+*.pyc
+*.pyo
+__pycache__/
+*.egg-info/
+.eggs/
+
+# uv
+.venv/
+uv.lock        # commit this if you want reproducible installs across machines
+               # remove this line if you want to pin dependencies in CI
+
+# Pyrefly cache
+.pyrefly_cache/
+
+# Notebooks
+notebooks/modeling/*.ipynb
+notebooks/*
 .ipynb_checkpoints/
+
+# Scratch / local notes
+TODO.txt
+
+# Editor
 .vscode/*
+.aider*
+*.swp

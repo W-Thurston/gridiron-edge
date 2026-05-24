@@ -1,34 +1,48 @@
-# NFL_Predict
-The beginnings of a project to predict NFL Game Winners, Spreads, and potentially fantasy football output.
+# NFL_Predict / Gridiron Edge
 
+Predict NFL game outcomes using Pro Football Reference data and an Elo-based workflow.
 
-How to update data:  
-If its your first time, change arguments to fit your needs:      
-```python  
-python PFR_data_pipeline_run.py \
-        --collect_historical_PFR_data True '2023' \
-        --clean_historical_PFR_data 0 \
-        --collect_upcoming_data 0 \
-        --clean_upcoming_PFR_data 0  \
-        --build_model_input_features 0  \
-        --draftkings_odds 0 
+## Quick start
 
-python PFR_model_pipeline_run.py \
-    --ELO_only '2023-2024' 3 \
-    --ranks_and_betting '2023-2024' 2
-```  
-        
-If you are updating data for the week, run this once data is updated on Pro Football Reference:     
-```python  
-python PFR_data_pipeline_run.py \
-            --collect_historical_PFR_data False '2023' \
-            --clean_historical_PFR_data 0 \
-            --build_model_input_features False  \
-            --draftkings_odds 0
+```bash
+uv sync
+uv run gridiron --help
+```
 
-python PFR_model_pipeline_run.py \
-    --ELO_only '2023-2024' 3 \
-    --ranks_and_betting '2023-2024' 2
-```  
+### Weekly data refresh
 
-        
+```bash
+uv run gridiron run-data-pipeline --year 2025 --no-fetch-odds
+```
+
+### Elo outputs (Excel)
+
+```bash
+uv run gridiron ratings elo fit
+uv run gridiron ratings elo predict --year 2025-2026 --week 16
+uv run gridiron output ranks --year 2025-2026 --week 15
+```
+
+Weather (requires `OWM_API_KEY`):
+
+```bash
+export OWM_API_KEY="YOUR_KEY"
+uv run gridiron ingest weather --season-year "2025-2026"
+```
+
+## Documentation
+
+- [HANDOFF.md](HANDOFF.md) — architecture, data files, troubleshooting
+- [PLAN.md](PLAN.md) — refactor checklist and validation commands
+
+## Docker
+
+```bash
+docker build -t nfl_predict .
+```
+
+## Tests
+
+```bash
+uv run pytest
+```
