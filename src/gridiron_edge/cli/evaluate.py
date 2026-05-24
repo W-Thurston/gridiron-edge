@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+# pyrefly: ignore [missing-import]
 import typer
 
 evaluate_app = typer.Typer(
@@ -53,9 +54,7 @@ def evaluate_summary(
             df_summary = summarise(df_eval, group_by=group_by)
             s.set_detail(f"{len(df_summary)} row(s)")
 
-        import typer as _typer
-
-        _typer.echo(df_summary.to_string(index=False))
+        typer.echo(df_summary.to_string(index=False))
 
     console.summary()
 
@@ -98,9 +97,7 @@ def evaluate_calibration(
             df_cal = calibration_table(df_eval, n_buckets=buckets)
             s.set_detail(f"{len(df_cal)} buckets")
 
-        import typer as _typer
-
-        _typer.echo(df_cal.to_string(index=False))
+        typer.echo(df_cal.to_string(index=False))
 
     console.summary()
 
@@ -180,8 +177,6 @@ def evaluate_tune(
       gridiron evaluate tune --top 20
       gridiron evaluate tune --apply
     """
-    import typer as _typer
-
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.tune import (
         DIVISOR_VALUES,
@@ -228,12 +223,12 @@ def evaluate_tune(
     with step(f"Top {top} results") as s:
         s.set_detail(f"{len(results)} total combinations scored")
 
-    _typer.echo(results.head(top).to_string(index=False, float_format=lambda x: f"{x:.5f}"))
+    typer.echo(results.head(top).to_string(index=False, float_format=lambda x: f"{x:.5f}"))
 
     if apply:
         if v3:
             params = best_params_v3(results)
-            _typer.echo(
+            typer.echo(
                 f"Applying best elo_v3 params: "
                 f"k_early={params['k_early']:.0f}  k_mid={params['k_mid']:.0f}  "
                 f"k_week18={params['k_week18']:.0f}  k_post={params['k_post']:.0f}  "
@@ -249,7 +244,7 @@ def evaluate_tune(
             k_val = params["k"]
             div_val = params["divisor"]
             reg_val = params["regress_frac"]
-            _typer.echo(
+            typer.echo(
                 f"Applying best elo_v2 params: "
                 f"k={k_val:.0f}  divisor={div_val:.0f}  regress={reg_val:.2f}"
             )

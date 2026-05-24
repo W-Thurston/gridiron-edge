@@ -106,3 +106,32 @@ class PredictorRegistry:
             Sorted list of model version names.
         """
         return sorted(cls._predictors.keys())
+
+    @classmethod
+    def is_trainable(cls, name: str) -> bool:
+        """Return whether a registered predictor implements ``Trainable``.
+
+        Args:
+            name: The model version string.
+
+        Returns:
+            ``True`` if the predictor class implements the ``Trainable``
+            protocol (has ``train`` and ``is_trained`` methods).
+        """
+        from gridiron_edge.models.base import Trainable
+
+        predictor_cls = cls.get(name)
+        return isinstance(predictor_cls(), Trainable)
+
+    @classmethod
+    def trainable_names(cls) -> list[str]:
+        """Return sorted list of model version strings that are trainable.
+
+        Returns:
+            Sorted list of model version names implementing ``Trainable``.
+        """
+        from gridiron_edge.models.base import Trainable
+
+        return sorted(
+            name for name, pcls in cls._predictors.items() if isinstance(pcls(), Trainable)
+        )

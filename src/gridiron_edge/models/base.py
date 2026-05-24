@@ -2,33 +2,40 @@
 
 """Base types for the prediction model layer.
 
-Defines the ``Predictor`` protocol that all prediction models must satisfy.
-Any class with a ``spec`` attribute and a ``predict_historical`` method
-matching this signature is a valid ``Predictor`` without explicit
-inheritance — structural subtyping via Protocol.
+Defines two protocols:
 
-This mirrors the ``Feature`` protocol in ``gridiron_edge.features.base``
-and enables the evaluation framework to treat all models uniformly:
+``Predictor``
+    All prediction models must satisfy this. Implements
+    ``predict_historical`` and ``predict_upcoming``. Elo models implement
+    only this -- they have no training step.
 
-  - ``gridiron evaluate backfill --model-version elo_v1``
-  - ``gridiron evaluate backfill --model-version logistic_v1``
-  - ``gridiron evaluate backfill --model-version neural_v1``
+``Trainable``
+    Optional extension for models with an explicit training step (logistic
+    regression, neural networks, XGBoost). Adds ``train()`` and
+    ``is_trained()``. The CLI checks ``isinstance(predictor, Trainable)``
+    to decide whether ``gridiron models train`` applies.
+
+Both use structural subtyping via Protocol -- no explicit inheritance needed.
+A class is a valid ``Predictor`` or ``Trainable`` if it has the right
+methods, regardless of what it inherits from.
 
 Adding a new model requires only:
-  1. Implementing this protocol
-  2. Registering it with ``PredictorRegistry``
+  1. Implementing the appropriate protocol(s)
+  2. Registering with ``PredictorRegistry``
   3. Zero changes to evaluation, archiving, or CLI infrastructure
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     import pandas as pd
+
+    from gridiron_edge.models.artifact import ModelMetadata
 
 
 @dataclass(frozen=True)
@@ -41,28 +48,27 @@ class PredictorSpec:
             e.g. ``"elo_v1"``, ``"logistic_v1"``, ``"neural_v1"``.
         description: Human-readable description shown in CLI help and
             evaluation output.
+        trainable: Whether this predictor has an explicit training step.
+            ``False`` for Elo models (no artifact needed), ``True`` for
+            ML models. Used by the ``gridiron models list`` command.
     """
 
     name: str
     description: str
+    trainable: bool = False
 
 
+@runtime_checkable
 class Predictor(Protocol):
     """Protocol defining the interface all prediction models must satisfy.
 
-    Any class with a ``spec`` attribute and a ``predict_historical`` method
-    matching this signature is a valid ``Predictor`` without explicit
-    inheritance.
-
-    The key design constraint: ``predict_historical`` must be able to
-    generate predictions for *every* historical game from scratch — not
-    just the current week. This is required for the evaluation backfill
-    to work correctly across all models.
+    Any class with a ``spec`` attribute and ``predict_historical`` /
+    ``predict_upcoming`` methods matching these signatures is a valid
+    ``Predictor`` without explicit inheritance.
 
     For models with a training step (logistic regression, neural networks),
     ``predict_historical`` should load a pre-trained artifact. The training
-    step itself lives in ``models/{model_type}/train.py`` and is invoked
-    separately via ``gridiron models train``.
+    step itself is invoked separately via ``gridiron models train``.
 
     Attributes:
         spec: A ``PredictorSpec`` describing the predictor's identity.
@@ -80,20 +86,11 @@ class Predictor(Protocol):
 
         Args:
             games: Canonical games DataFrame (``NFL_wk_by_wk_cleaned.csv``).
-                Contains completed games only — rows with null WIN_OR_TIE
-                have been filtered out by the caller.
-            repo: Repository root path for loading auxiliary data (Elo state,
-                trained model artifacts, etc.).
+                Contains completed games only.
+            repo: Repository root path.
 
         Returns:
-            DataFrame in prediction archive schema with columns:
-                predicted_at, model_version, season, week, game_id,
-                game_date, away_team, home_team, away_elo, home_elo,
-                away_win_prob, home_win_prob.
-
-            One row per game. Games where the model cannot produce a
-            prediction (missing features, insufficient history) should be
-            silently excluded rather than returning NaN probabilities.
+            DataFrame in prediction archive schema. One row per game.
         """
         ...
 
@@ -110,13 +107,56 @@ class Predictor(Protocol):
             repo: Repository root path.
 
         Returns:
-            DataFrame compatible with ``build_predictions_df()`` output:
-                GAME_ID, GAME_DATE, AWAY_TEAM, HOME_TEAM,
-                AWAY_TEAM_ELO, HOME_TEAM_ELO,
-                AWAY_WIN_PROB, HOME_WIN_PROB,
-                AWAY_TEAM_WIN_PROB, HOME_TEAM_WIN_PROB.
+            DataFrame compatible with ``build_predictions_df()`` output.
+        """
+        ...
 
-            The AWAY_TEAM_ELO / HOME_TEAM_ELO columns may be NaN for
-            non-Elo models — they are used for display only.
+
+@runtime_checkable
+class Trainable(Protocol):
+    """Optional protocol for models with an explicit training step.
+
+    Implemented by ML models (logistic regression, XGBoost, neural networks).
+    Not implemented by Elo models -- they compute predictions analytically.
+
+    The CLI checks ``isinstance(predictor, Trainable)`` to determine
+    whether ``gridiron models train`` applies to a given model version.
+    """
+
+    spec: PredictorSpec
+
+    def train(
+        self,
+        df: pd.DataFrame,
+        *,
+        repo: Path | None = None,
+    ) -> ModelMetadata:
+        """Train the model and save the artifact to the store.
+
+        Implementations should:
+          1. Validate feature matrix via ``load_modeling_file``
+          2. Split into training and holdout sets
+          3. Fit the model on training data
+          4. Score on holdout set (Brier score)
+          5. Save artifact via ``ArtifactStore.save``
+          6. Return populated ``ModelMetadata``
+
+        Args:
+            df: Full feature matrix from ``load_modeling_file()``.
+            repo: Repository root path.
+
+        Returns:
+            ``ModelMetadata`` describing the trained artifact.
+        """
+        ...
+
+    def is_trained(self, *, repo: Path | None = None) -> bool:
+        """Return whether a trained artifact exists for this model version.
+
+        Args:
+            repo: Repository root path.
+
+        Returns:
+            ``True`` if a trained artifact exists and can be loaded.
         """
         ...

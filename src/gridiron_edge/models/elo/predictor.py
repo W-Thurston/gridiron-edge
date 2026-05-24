@@ -123,6 +123,8 @@ def _run_simulation(
     Returns:
         Tuple of (away_probs, game_seasons, game_ids).
     """
+    from gridiron_edge.core.paths import repo_root
+    from gridiron_edge.datasets import loaders
     from gridiron_edge.evaluation.tune import (
         _EXPANSION_START,
         _prepare_games,
@@ -208,6 +210,8 @@ class EloV1Predictor:
         """Generate elo_v1 predictions for upcoming games."""
         from gridiron_edge.core.settings import get_settings
         from gridiron_edge.datasets import loaders
+        from gridiron_edge.datasets.registry import dataset_path
+        from gridiron_edge.ratings.elo.core import elo_win_probability
 
         resolved_repo = repo or get_settings().repo_root
         elo = loaders.load_elo_state(resolved_repo)
@@ -272,6 +276,83 @@ class EloV2Predictor:
         """Generate elo_v2 predictions for upcoming games."""
         # elo_v2 uses a different Elo state table built with tuned params.
         # Until that table is built, falls back to the production Elo state.
+        from gridiron_edge.core.settings import get_settings
+        from gridiron_edge.datasets import loaders
+
+        resolved_repo = repo or get_settings().repo_root
+        elo = loaders.load_elo_state(resolved_repo)
+        return _merge_elo_predictions(schedule, elo, self.spec.name)
+
+
+# ---------------------------------------------------------------------------
+# elo_v3 — tuned zone-based K
+# ---------------------------------------------------------------------------
+
+
+@PredictorRegistry.register
+class EloV3Predictor:
+    """Elo predictor with tuned zone-based K parameters.
+
+    Best parameters from the elo_v3 grid search (63,504 combinations):
+    k_early=40, k_mid=40, k_week18=50, k_post=60,
+    divisor=360, regress=0.40.
+
+    The zone-based K reflects structural differences in game informativeness:
+    - Weeks 1-4: K=40 (same as mid-season, ratings converging)
+    - Weeks 5-17: K=40 (most informative games)
+    - Week 18: K=50 (slightly higher -- line movement noise warrants faster update)
+    - Weeks 19-22: K=60 (playoff games are high-signal elimination games)
+    """
+
+    spec = PredictorSpec(
+        name="elo_v3",
+        description=(
+            "Elo ratings -- tuned zone-based K "
+            "(early=40, mid=40, wk18=50, post=60, div=360, regress=0.40)"
+        ),
+    )
+
+    K_EARLY: Final[float] = 40.0
+    K_MID: Final[float] = 40.0
+    K_WEEK18: Final[float] = 50.0
+    K_POST: Final[float] = 60.0
+    DIVISOR: Final[float] = 360.0
+    REGRESS_FRAC: Final[float] = 0.40
+
+    def predict_historical(
+        self,
+        games: pd.DataFrame,
+        *,
+        repo: Path | None = None,
+    ) -> pd.DataFrame:
+        """Generate elo_v3 predictions for all historical games."""
+        away_probs, game_seasons, game_ids = _run_simulation(
+            games,
+            k_early=self.K_EARLY,
+            k_mid=self.K_MID,
+            k_week18=self.K_WEEK18,
+            k_post=self.K_POST,
+            divisor=self.DIVISOR,
+            regress_frac=self.REGRESS_FRAC,
+        )
+        if not away_probs:
+            logger.warning("EloV3Predictor: no predictions generated.")
+            return pd.DataFrame()
+
+        from gridiron_edge.evaluation.tune import _prepare_games
+
+        games_prepared, _, _ = _prepare_games(games)
+        return _build_archive_rows(
+            away_probs, game_seasons, game_ids, games_prepared, self.spec.name
+        )
+
+    def predict_upcoming(
+        self,
+        schedule: pd.DataFrame,
+        *,
+        repo: Path | None = None,
+    ) -> pd.DataFrame:
+        """Generate elo_v3 predictions for upcoming games."""
         from gridiron_edge.core.settings import get_settings
         from gridiron_edge.datasets import loaders
 

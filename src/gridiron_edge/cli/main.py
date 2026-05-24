@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
+# pyrefly: ignore [missing-import]
 import typer
 
 from gridiron_edge.cli.evaluate import evaluate_app
 from gridiron_edge.cli.features import features_app
 from gridiron_edge.cli.ingest import ingest_app
+from gridiron_edge.cli.models import models_app
 from gridiron_edge.cli.output import output_app
 from gridiron_edge.cli.ratings import ratings_app
 from gridiron_edge.cli.sim import sim_app
@@ -61,6 +63,7 @@ app.add_typer(ratings_app, name="ratings")
 app.add_typer(output_app, name="output")
 app.add_typer(sim_app, name="sim")
 app.add_typer(evaluate_app, name="evaluate")
+app.add_typer(models_app, name="models")
 
 
 # ===========================================================================
