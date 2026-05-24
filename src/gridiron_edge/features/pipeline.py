@@ -12,13 +12,14 @@ from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.features.manifest import write_manifest
 from gridiron_edge.features.registry import FeatureRegistry, run_features
 import gridiron_edge.features.team.elo
+import gridiron_edge.features.team.epa
 import gridiron_edge.features.team.home_field
 import gridiron_edge.features.team.travel  # noqa: F401
 
 # Feature order matters:
 # - home_field should run before travel (travel uses HOME_FIELD)
 # - elo can run anytime
-FEATURES: Final[list[str]] = ["home_field", "team_elo", "travel"]
+FEATURES: Final[list[str]] = ["home_field", "team_elo", "travel", "epa"]
 
 
 def _feature_columns(feature_names: list[str]) -> list[str]:
@@ -117,11 +118,13 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
 
     existing_game_ids: set = set(base_existing["GAME_ID"].unique().tolist())
     new_mask: pd.Series[bool] = ~base_all["GAME_ID"].isin(existing_game_ids)
-    base_new: pd.DataFrame = base_all.loc[new_mask].copy()
+    base_new: pd.DataFrame = base_all.loc[new_mask, :].copy()
 
     if base_new.empty:
         # No new games → write manifest if missing, then return
-        _manifest_path = dataset_path(repo, "modeling_full").parent / "modeling_file_manifest.json"
+        _manifest_path: Path = (
+            dataset_path(repo, "modeling_full").parent / "modeling_file_manifest.json"
+        )
         if not _manifest_path.exists():
             write_manifest(
                 full_existing,

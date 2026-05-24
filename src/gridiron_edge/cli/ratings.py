@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+# pyrefly: ignore [missing-import]
 import typer
 
 ratings_app = typer.Typer(help="Ratings systems (Elo, etc.)", no_args_is_help=True)
@@ -52,16 +53,41 @@ def elo_predict(
 
 @elo_app.command("evaluate")
 def elo_evaluate() -> None:
-    """Print Elo prediction accuracy by year and by week."""
+    r"""Print Elo prediction accuracy by year and by week.
+
+    Deprecated: use 'gridiron evaluate summary' for full metrics including
+    Brier score, log loss, calibration, and multi-model comparison.
+
+    \b
+    Equivalent to:
+      gridiron evaluate summary --model-version elo_v1 --group-by season
+      gridiron evaluate summary --model-version elo_v1 --group-by week
+    """
+    typer.echo("Note: superseded by 'gridiron evaluate summary'.\n")
+
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.elo import evaluate_elo
+    from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
 
-    console.header("ratings elo evaluate")
+    console.header("ratings elo evaluate", subtitle="elo_v1")
 
-    with step("Evaluate by year"):
-        evaluate_elo(time_period="YEAR")
+    with step("Join predictions to outcomes") as s:
+        df_eval = build_evaluation_df(model_version="elo_v1")
+        if df_eval.empty:
+            s.set_detail("no data — run 'gridiron evaluate backfill' first")
+        else:
+            s.set_detail(f"{len(df_eval)} games")
 
-    with step("Evaluate by week"):
-        evaluate_elo(time_period="WEEK")
+    if not df_eval.empty:
+        with step("Accuracy by season") as s:
+            df_year = summarise(df_eval, group_by="season")
+            s.set_detail(f"{len(df_year)} seasons")
+        typer.echo(df_year.to_string(index=False))
+
+        typer.echo("")
+
+        with step("Accuracy by week") as s:
+            df_week = summarise(df_eval, group_by="week")
+            s.set_detail(f"{len(df_week)} weeks")
+        typer.echo(df_week.to_string(index=False))
 
     console.summary()

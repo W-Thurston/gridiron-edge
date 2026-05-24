@@ -46,3 +46,12 @@ class DatasetAccessor:
             DataFrame with stadium metadata including coordinates and altitude.
         """
         return loaders.load_stadiums(self.repo)
+
+    def epa_by_game(self) -> pd.DataFrame:
+        """Load the pre-aggregated game-level EPA statistics.
+
+        Returns:
+            DataFrame with one row per (team, game) containing rolling
+            EPA metrics. Empty DataFrame if no EPA data has been ingested.
+        """
+        return loaders.load_epa_by_game(self.repo)

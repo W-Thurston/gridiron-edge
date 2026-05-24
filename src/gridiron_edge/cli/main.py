@@ -9,6 +9,7 @@ a command is actually invoked.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 # pyrefly: ignore [missing-import]
@@ -126,6 +127,11 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
         "--fit-elo-all-years/--no-fit-elo-all-years",
         help="When --build-elo, rebuild full Elo history.",
     ),
+    build_epa: bool = typer.Option(
+        False,
+        "--build-epa/--no-build-epa",
+        help="Fetch PBP data and aggregate EPA features.",
+    ),
     build_features_flag: bool = typer.Option(
         True,
         "--build-features/--no-build-features",
@@ -160,13 +166,15 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
         fetch_nflverse_upcoming,
     )
     from gridiron_edge.ingest.nflverse.games import _current_nfl_season
+
+    # pyrefly: ignore [missing-module-attribute]
     from gridiron_edge.transform.clean import clean_nflverse_games, clean_nflverse_upcoming
 
-    resolved_season = season or _current_nfl_season()
-    upcoming_target = upcoming_season or resolved_season
+    resolved_season: int = season or _current_nfl_season()
+    upcoming_target: int = upcoming_season or resolved_season
 
     if all_years and upcoming_season:
-        mode = f"full history  ·  upcoming season {upcoming_season}"
+        mode: str = f"full history  ·  upcoming season {upcoming_season}"
     elif all_years:
         mode = "full history rebuild"
     elif season:
@@ -179,7 +187,7 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
     with step("Fetch nflverse games", skip=not fetch_games_flag) as s:
         if fetch_games_flag:
             if all_years:
-                path = fetch_nflverse_games()
+                path: Path = fetch_nflverse_games()
             elif season:
                 path = fetch_nflverse_games(seasons=[resolved_season])
             else:
@@ -211,7 +219,7 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
                 )
             from gridiron_edge.cli._shared import get_owm_api_key
 
-            key = get_owm_api_key(owm_api_key)
+            key: str = get_owm_api_key(owm_api_key)
             fetch_weather(season_year=season_year, owm_api_key=key)
             s.set_detail(season_year)
 
@@ -223,6 +231,7 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
 
     with step("Fit Elo", skip=not build_elo_flag) as s:
         if build_elo_flag:
+            # pyrefly: ignore [missing-module-attribute]
             from gridiron_edge.ratings.elo import fit_elo
 
             fit_elo(all_years=fit_elo_all_years)

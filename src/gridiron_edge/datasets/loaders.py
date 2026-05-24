@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from pandas import DataFrame
 
 from .registry import DatasetKey, dataset_path
 
@@ -111,6 +112,22 @@ def load_divisions(repo_root: Path) -> pd.DataFrame:
     return load_csv(repo_root, "divisions")
 
 
+def load_epa_by_game(repo_root: Path) -> pd.DataFrame:
+    """Load the pre-aggregated game-level EPA statistics.
+
+    Args:
+        repo_root: Absolute path to the repository root.
+
+    Returns:
+        DataFrame with one row per (team, game) containing EPA metrics.
+        Empty DataFrame if the file does not exist yet.
+    """
+    path: Path = repo_root / "data" / "cleaned" / "epa_by_game.parquet"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
 def load_modeling_file(
     repo_root: Path,
     *,
@@ -120,16 +137,11 @@ def load_modeling_file(
 ) -> pd.DataFrame:
     """Load the full feature matrix with optional manifest validation.
 
-    This is the canonical way to load ``modeling_file.csv`` for training
-    or prediction. Validates the feature set schema if requested, surfacing
-    clear errors when the feature pipeline has changed since the last build.
-
     Args:
         repo_root: Absolute path to the repository root.
-        expected_columns: If provided, asserts these columns are present
-            in the loaded DataFrame. Pass the columns your model requires.
+        expected_columns: If provided, asserts these columns are present.
         required_schema_version: If provided, asserts the manifest schema
-            version matches. Pass the version your model was trained on.
+            version matches.
         context: Optional label for error messages (e.g. model name).
 
     Returns:
@@ -146,11 +158,11 @@ def load_modeling_file(
         validate_schema_version,
     )
 
-    df = load_csv(repo_root, "modeling_full")
+    df: DataFrame = load_csv(repo_root, "modeling_full")
 
     if expected_columns is not None or required_schema_version is not None:
-        modeling_dir = dataset_path(repo_root, "modeling_full").parent
-        manifest = read_manifest(modeling_dir)
+        modeling_dir: Path = dataset_path(repo_root, "modeling_full").parent
+        manifest: dict[str, Any] = read_manifest(modeling_dir)
 
         if required_schema_version is not None:
             validate_schema_version(

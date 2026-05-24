@@ -273,6 +273,21 @@ All Phase 18 prerequisites are complete — artifact store, Trainable protocol, 
 
 Items with long-term value but no near-term dependency:
 
+### Simulation improvements
+- **Monte Carlo per-stage playoffs** — simulate each playoff round independently (wild card, divisional, conference, Super Bowl) rather than all at once; allows injecting known results as the postseason progresses
+- **Skip full-season sim after week 18** — once the regular season is complete, the sim should use actual standings rather than re-simulating 18 weeks of results
+- **Dynamic schedule updates** — handle NFL game relocations mid-season without manual file edits
+
+### Model features
+- **QB intelligence** — QB Elo rating, QBR, passer rating as team-level features; high signal for game prediction
+- **Advanced EPA metrics** — once base EPA is in (Phase 19), extend to:
+  - Defense-adjusted Value over Average (DVOA)
+  - Completion Percentage over Expected (CPOE)
+  - Rushing Yards Over Expected (RYOE)
+  - Weighted EPA (see github.com/greerreNFL)
+- **Stadium attendance capacity** — venue size as a feature for crowd noise / home field strength
+
+### Infrastructure
 - **Drive/possession simulation** — expand Monte Carlo toward play-level outcome distributions
 - **Injury + roster intelligence** — injury-adjusted team strength, player availability impacts
 - **Weather effects** — integrate OWM data into prediction features (ingest exists, feature does not)

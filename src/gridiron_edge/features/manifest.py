@@ -48,7 +48,7 @@ logger: Logger = logging.getLogger(__name__)
 # Bump this whenever the feature set or feature output columns change.
 # Models trained on a previous version will detect the mismatch and
 # surface a clear error rather than silently producing wrong predictions.
-CURRENT_SCHEMA_VERSION: int = 1
+CURRENT_SCHEMA_VERSION: int = 2
 
 _MANIFEST_FILENAME: str = "modeling_file_manifest.json"
 
@@ -93,7 +93,7 @@ def write_manifest(
         "row_count": len(df),
     }
 
-    path = _manifest_path(modeling_dir)
+    path: Path = _manifest_path(modeling_dir)
     path.write_text(json.dumps(manifest, indent=2))
     logger.debug("Feature manifest written to %s", path)
     return path
@@ -112,7 +112,7 @@ def read_manifest(modeling_dir: Path) -> dict[str, Any]:
     Raises:
         FileNotFoundError: If no manifest exists in the directory.
     """
-    path = _manifest_path(modeling_dir)
+    path: Path = _manifest_path(modeling_dir)
     if not path.exists():
         raise FileNotFoundError(
             f"No feature manifest found at {path}. "
@@ -141,12 +141,12 @@ def validate_columns(
     Raises:
         ValueError: If any expected columns are missing from ``df``.
     """
-    actual = set(df.columns)
-    expected = set(expected_columns)
+    actual: set[str] = set(df.columns)
+    expected: set[str] = set(expected_columns)
 
-    missing = expected - actual
+    missing: set[str] = expected - actual
     if missing:
-        prefix = f"[{context}] " if context else ""
+        prefix: str = f"[{context}] " if context else ""
         raise ValueError(
             f"{prefix}Feature matrix is missing expected columns: "
             f"{sorted(missing)}. "
@@ -174,7 +174,7 @@ def validate_schema_version(
     """
     actual_version: int = manifest.get("schema_version", 0)
     if actual_version != required_version:
-        prefix = f"[{context}] " if context else ""
+        prefix: str = f"[{context}] " if context else ""
         raise ValueError(
             f"{prefix}Feature schema version mismatch: "
             f"expected {required_version}, found {actual_version}. "

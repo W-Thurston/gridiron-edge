@@ -123,8 +123,6 @@ def _run_simulation(
     Returns:
         Tuple of (away_probs, game_seasons, game_ids).
     """
-    from gridiron_edge.core.paths import repo_root
-    from gridiron_edge.datasets import loaders
     from gridiron_edge.evaluation.tune import (
         _EXPANSION_START,
         _prepare_games,
@@ -210,8 +208,6 @@ class EloV1Predictor:
         """Generate elo_v1 predictions for upcoming games."""
         from gridiron_edge.core.settings import get_settings
         from gridiron_edge.datasets import loaders
-        from gridiron_edge.datasets.registry import dataset_path
-        from gridiron_edge.ratings.elo.core import elo_win_probability
 
         resolved_repo = repo or get_settings().repo_root
         elo = loaders.load_elo_state(resolved_repo)
