@@ -3,8 +3,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Literal
+
+from pandas import DataFrame
+
 # pyrefly: ignore [missing-import]
 import typer
+
+from gridiron_edge.models.artifact import ModelMetadata
+from gridiron_edge.models.base import Predictor
 
 models_app = typer.Typer(
     help="Train and manage prediction model artifacts.",
@@ -40,15 +48,16 @@ def models_train(
     from gridiron_edge.datasets import loaders
     from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.base import Trainable
-    import gridiron_edge.models.elo.predictor  # noqa: F401
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
     from gridiron_edge.models.registry import PredictorRegistry
 
-    repo = get_settings().repo_root
+    repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
     console.header("models train", subtitle=model_version)
 
     with step("Resolve model") as s:
-        predictor = PredictorRegistry.get(model_version)()
+        predictor: Predictor = PredictorRegistry.get(model_version)()
         if not isinstance(predictor, Trainable):
             raise typer.BadParameter(
                 f"'{model_version}' does not implement Trainable. "
@@ -70,11 +79,11 @@ def models_train(
         shutil.rmtree(store.artifact_dir(model_version))
 
     with step("Load feature matrix") as s:
-        df = loaders.load_modeling_file(repo)
+        df: DataFrame = loaders.load_modeling_file(repo)
         s.set_detail(f"{len(df):,} rows")
 
     with step(f"Train {model_version}") as s:
-        metadata = predictor.train(df, repo=repo)
+        metadata: ModelMetadata = predictor.train(df, repo=repo)
         s.set_detail(f"holdout Brier: {metadata.holdout_brier:.5f}")
 
     typer.echo(
@@ -95,22 +104,23 @@ def models_list() -> None:
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.base import Trainable
-    import gridiron_edge.models.elo.predictor  # noqa: F401
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
     from gridiron_edge.models.registry import PredictorRegistry
 
-    repo = get_settings().repo_root
+    repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
 
-    rows = []
+    rows: list[dict[str, str]] = []
     for name in PredictorRegistry.names():
-        predictor = PredictorRegistry.get(name)()
-        is_trainable = isinstance(predictor, Trainable)
-        model_type = "trainable" if is_trainable else "analytic"
+        predictor: Predictor = PredictorRegistry.get(name)()
+        is_trainable: bool = isinstance(predictor, Trainable)
+        model_type: Literal["analytic", "trainable"] = "trainable" if is_trainable else "analytic"
 
         if is_trainable and store.is_trained(name):
-            meta = store.read_metadata(name)
-            trained_at = meta.trained_at
-            brier = f"{meta.holdout_brier:.5f}"
+            meta: ModelMetadata = store.read_metadata(name)
+            trained_at: str = meta.trained_at
+            brier: str = f"{meta.holdout_brier:.5f}"
         else:
             trained_at = "(not trained)" if is_trainable else "(no artifact)"
             brier = "-"
@@ -142,9 +152,10 @@ def models_info(
     """
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
-    import gridiron_edge.models.elo.predictor  # noqa: F401
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
 
-    repo = get_settings().repo_root
+    repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
 
     if not store.is_trained(model_version):
@@ -154,7 +165,7 @@ def models_info(
         )
         raise typer.Exit(code=1)
 
-    meta = store.read_metadata(model_version)
+    meta: ModelMetadata = store.read_metadata(model_version)
     typer.echo(f"Model:           {meta.model_version}")
     typer.echo(f"Description:     {meta.notes or '(none)'}")
     typer.echo(f"Trained at:      {meta.trained_at}")
