@@ -26,6 +26,7 @@ dependencies = [
     "urllib3>=2.3.0",
     "joblib>=1.3.0",
     "scikit-learn>=1.4.0",
+    "xgboost>=2.0.0",
 ]
 
 [project.scripts]
@@ -156,6 +157,10 @@ force-sort-within-sections = true
 ]
 "src/gridiron_edge/viz/predictions.py" = [
     "PLR0915", # Too many statements — render_predictions_image is a single cohesive render pass
+]
+"src/gridiron_edge/models/game_prediction/tree.py" = [
+    "PLR0912", # Too many branches — _train_random_forest / _train_xgboost have legitimately complex tuning logic
+    "PLR0915", # Too many statements — same rationale
 ]
 "src/gridiron_edge/cli.py" = [
     "PLR0912", # run-data-pipeline has many conditional pipeline stages by design
