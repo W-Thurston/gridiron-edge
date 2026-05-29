@@ -11,15 +11,36 @@ from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.features.manifest import write_manifest
 from gridiron_edge.features.registry import FeatureRegistry, run_features
+import gridiron_edge.features.team.divisional
+
+# Side-effect imports: each module registers its feature class with
+# FeatureRegistry via the @FeatureRegistry.register(...) decorator.
+# The imports must be preserved even though no name is referenced directly.
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.epa
 import gridiron_edge.features.team.home_field
-import gridiron_edge.features.team.travel  # noqa: F401
+import gridiron_edge.features.team.rest
+import gridiron_edge.features.team.travel
+import gridiron_edge.features.team.venue_hfa
+import gridiron_edge.features.team.weather  # noqa: F401
 
 # Feature order matters:
-# - home_field should run before travel (travel uses HOME_FIELD)
-# - elo can run anytime
-FEATURES: Final[list[str]] = ["home_field", "team_elo", "travel", "epa"]
+# - home_field must run before travel (travel reads HOME_FIELD)
+# - travel must run before venue_hfa (venue_hfa reads IS_NEUTRAL_SITE)
+# - rest runs after home_field (reads GAME_DATE from games)
+# - weather runs after home_field (reads ROOF; overrides dome weather values)
+# - divisional and venue_hfa can run anytime after home_field/travel
+# - elo and epa can run anytime
+FEATURES: Final[list[str]] = [
+    "home_field",
+    "team_elo",
+    "travel",
+    "epa",
+    "rest",
+    "weather",
+    "divisional",
+    "venue_hfa",
+]
 
 
 def _feature_columns(feature_names: list[str]) -> list[str]:
@@ -30,18 +51,18 @@ def _feature_columns(feature_names: list[str]) -> list[str]:
 
 
 def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
-    """Replicates legacy prep_data_modeling_file() behavior:.
+    """Build the symmetric two-row-per-game base modeling table.
 
     Produces two rows per game:
       - TEAM_A=winner, TEAM_B=loser, RESULT=1
       - TEAM_A=loser,  TEAM_B=winner, RESULT=0
 
+    This design ensures every model learns win probability symmetrically
+    across both team perspectives.
     """
     df: pd.DataFrame = games.copy()
 
-    # Keep only the columns needed (matches your legacy intent)
     df = df.loc[:, ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM"]].copy()
-
     df["RESULT"] = 1
     df.columns = ["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM", "RESULT"]
 
@@ -57,35 +78,36 @@ def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _load_csv_if_exists(path: Path) -> pd.DataFrame | None:
+def _load_parquet_if_exists(path: Path) -> pd.DataFrame | None:
+    """Load a Parquet file if it exists; return None otherwise."""
     if path.exists():
-        return pd.read_csv(path)
+        return pd.read_parquet(path)
     return None
 
 
 def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
-    """Build modeling inputs (base + full).
+    """Build modeling inputs (base + full) as Parquet files.
+
+    Schema version 3 (Phase 20e): adds rest and weather features;
+    converts modeling files from CSV to Parquet for faster load times
+    and correct dtype preservation.
 
     all_years=True:
-      - rebuild base and full from scratch
-
+      - full rebuild from scratch
     all_years=False:
-      - append only new GAME_ID rows to base/full using incremental logic
+      - append only new GAME_ID rows (incremental build)
     """
     repo = repo or repo_root()
     datasets = DatasetAccessor(repo)
 
-    # Load canonical inputs
     games: pd.DataFrame = loaders.load_games(repo)
 
-    # Paths for outputs
     base_path: Path = dataset_path(repo, "modeling_base")
     full_path: Path = dataset_path(repo, "modeling_full")
 
-    # Build base
     base_all: pd.DataFrame = build_base_modeling_table(games)
 
-    if all_years or (not base_path.exists()) or (not full_path.exists()):
+    if all_years or not base_path.exists() or not full_path.exists():
         # Full rebuild
         base_out: pd.DataFrame = base_all
         full_out: pd.DataFrame = run_features(
@@ -93,27 +115,24 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
             feature_names=FEATURES,
             datasets=datasets,
         )
-
-        writers.write_csv(repo, "modeling_base", base_out)
-        writers.write_csv(repo, "modeling_full", full_out)
+        writers.write_parquet(repo, "modeling_base", base_out)
+        writers.write_parquet(repo, "modeling_full", full_out)
         write_manifest(
             full_out,
             feature_names=list(FEATURES),
             feature_columns=_feature_columns(list(FEATURES)),
-            modeling_dir=dataset_path(repo, "modeling_full").parent,
+            modeling_dir=full_path.parent,
         )
         return
 
     # Incremental build: only process unseen GAME_ID rows
-    base_existing: pd.DataFrame | None = _load_csv_if_exists(base_path)
-    full_existing: pd.DataFrame | None = _load_csv_if_exists(full_path)
+    base_existing: pd.DataFrame | None = _load_parquet_if_exists(base_path)
+    full_existing: pd.DataFrame | None = _load_parquet_if_exists(full_path)
     if base_existing is None or full_existing is None:
-        # Safety fallback: rebuild if either is missing/unreadable
         base_out = base_all
         full_out = run_features(df=base_out, feature_names=FEATURES, datasets=datasets)
-
-        writers.write_csv(repo, "modeling_base", base_out)
-        writers.write_csv(repo, "modeling_full", full_out)
+        writers.write_parquet(repo, "modeling_base", base_out)
+        writers.write_parquet(repo, "modeling_full", full_out)
         return
 
     existing_game_ids: set = set(base_existing["GAME_ID"].unique().tolist())
@@ -121,27 +140,22 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     base_new: pd.DataFrame = base_all.loc[new_mask, :].copy()
 
     if base_new.empty:
-        # No new games → write manifest if missing, then return
-        _manifest_path: Path = (
-            dataset_path(repo, "modeling_full").parent / "modeling_file_manifest.json"
-        )
+        _manifest_path: Path = full_path.parent / "modeling_file_manifest.json"
         if not _manifest_path.exists():
             write_manifest(
                 full_existing,
                 feature_names=list(FEATURES),
                 feature_columns=_feature_columns(list(FEATURES)),
-                modeling_dir=dataset_path(repo, "modeling_full").parent,
+                modeling_dir=full_path.parent,
             )
         return
 
-    # Compute features only for the new rows
     full_new: pd.DataFrame = run_features(
         df=base_new,
         feature_names=FEATURES,
         datasets=datasets,
     )
 
-    # Append + de-dupe (stable ordering)
     base_out = (
         pd.concat([base_existing, base_new], ignore_index=True)
         .drop_duplicates(subset=["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM"])
@@ -153,11 +167,11 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
         .reset_index(drop=True)
     )
 
-    writers.write_csv(repo, "modeling_base", base_out)
-    writers.write_csv(repo, "modeling_full", full_out)
+    writers.write_parquet(repo, "modeling_base", base_out)
+    writers.write_parquet(repo, "modeling_full", full_out)
     write_manifest(
         full_out,
         feature_names=list(FEATURES),
         feature_columns=_feature_columns(list(FEATURES)),
-        modeling_dir=dataset_path(repo, "modeling_full").parent,
+        modeling_dir=full_path.parent,
     )

@@ -51,6 +51,7 @@ Canonical games schema (NFL_wk_by_wk_cleaned.csv):
     OVER_UNDER          float   47.5
     FAVORITED           str     "Green Bay Packers"  (long name of favored team)
     WIN_OR_TIE          float   1.0 | 0.0 | 0.5
+    DIV_GAME            int     1 if both teams are in the same division, else 0
     GAME_ID             str     (same as above, alias confirmation)
 
 Notes:
@@ -272,6 +273,7 @@ def clean_nflverse_games(
                 "OVER_UNDER",
                 "FAVORITED",
                 "WIN_OR_TIE",
+                "DIV_GAME",
             ]
         )
         empty.to_csv(out_path, index=False)
@@ -391,6 +393,7 @@ def clean_nflverse_games(
             "OVER_UNDER": pd.to_numeric(df["total_line"], errors="coerce"),
             "FAVORITED": df["FAVORITED"],
             "WIN_OR_TIE": df["WIN_OR_TIE"],
+            "DIV_GAME": pd.to_numeric(df["div_game"], errors="coerce").fillna(0).astype(int),
         }
     )
 

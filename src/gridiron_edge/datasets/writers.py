@@ -36,3 +36,29 @@ def write_csv(
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=index, **to_csv_kwargs)
     return path
+
+
+def write_parquet(
+    repo_root: Path,
+    key: DatasetKey,
+    df: pd.DataFrame,
+    *,
+    index: bool = False,
+) -> Path:
+    """Write a DataFrame to the registered path for a dataset key as Parquet.
+
+    Creates any missing parent directories before writing.
+
+    Args:
+        repo_root: Absolute path to the repository root.
+        key: A ``DatasetKey`` identifying the destination dataset.
+        df: The DataFrame to write.
+        index: Whether to include the DataFrame index. Defaults to False.
+
+    Returns:
+        The absolute path of the file that was written.
+    """
+    path: Path = dataset_path(repo_root, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path, index=index)
+    return path

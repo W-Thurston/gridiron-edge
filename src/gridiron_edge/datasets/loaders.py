@@ -28,6 +28,23 @@ def load_csv(repo_root: Path, key: DatasetKey, **read_csv_kwargs: Any) -> pd.Dat
     return pd.read_csv(path, **read_csv_kwargs)
 
 
+def load_parquet(repo_root: Path, key: DatasetKey) -> pd.DataFrame:
+    """Load a registered dataset from disk as a Parquet DataFrame.
+
+    Args:
+        repo_root: Absolute path to the repository root.
+        key: A ``DatasetKey`` identifying which dataset to load.
+
+    Returns:
+        The dataset as a DataFrame.
+
+    Raises:
+        FileNotFoundError: If the resolved Parquet path does not exist.
+    """
+    path: Path = dataset_path(repo_root, key)
+    return pd.read_parquet(path)
+
+
 def load_games(repo_root: Path) -> pd.DataFrame:
     """Load the cleaned historical NFL games dataset.
 
@@ -158,7 +175,7 @@ def load_modeling_file(
         validate_schema_version,
     )
 
-    df: DataFrame = load_csv(repo_root, "modeling_full")
+    df: DataFrame = load_parquet(repo_root, "modeling_full")
 
     if expected_columns is not None or required_schema_version is not None:
         modeling_dir: Path = dataset_path(repo_root, "modeling_full").parent

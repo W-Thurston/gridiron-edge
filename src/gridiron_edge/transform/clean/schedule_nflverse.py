@@ -37,6 +37,88 @@ from gridiron_edge.transform.clean.games_nflverse import (
 logger: Logger = logging.getLogger(__name__)
 
 
+def _check_stadium_coverage(
+    raw_df: DataFrame,
+    stadiums_df: DataFrame,
+    season_label: str,
+) -> None:
+    """Warn about any stadium in the upcoming schedule not in the reference CSV.
+
+    Compares the ``stadium`` column from the raw nflverse schedule against the
+    ``STADIUM`` column of the stadium reference dataset.  Any stadium name
+    present in the schedule but absent from the reference will result in a
+    missing-coordinates failure during weather ingest.
+
+    Emits one WARNING log per missing stadium including the teams that play
+    there and the game count, so you have enough context to add the entry to
+    ``NFL_stadium_reference.csv`` before running the weather pipeline.
+
+    Args:
+        raw_df: Raw nflverse upcoming schedule DataFrame (pre-clean).
+        stadiums_df: Stadium reference DataFrame loaded from the registry.
+        season_label: Human-readable season label for log messages
+            (e.g. ``"2025-2026"``).
+    """
+    # Upcoming games may not have a stadium assigned yet (neutral site TBD, etc.)
+    schedule_stadiums: set[str] = set(
+        raw_df["stadium"].dropna().astype(str).str.strip().tolist()
+    ) - {"", "NULL_VALUE"}
+
+    if not schedule_stadiums:
+        logger.debug("No stadium names found in upcoming schedule — skipping coverage check.")
+        return
+
+    reference_stadiums: set[str] = set(
+        stadiums_df["STADIUM"].dropna().astype(str).str.strip().tolist()
+    ) - {"", "NULL_VALUE"}
+
+    missing: set[str] = schedule_stadiums - reference_stadiums
+
+    if not missing:
+        logger.info(
+            "Stadium coverage check passed — all %d upcoming stadiums are in the reference.",
+            len(schedule_stadiums),
+        )
+        return
+
+    # Build a per-stadium summary: which teams play there and how many games
+    games_at: dict[str, list[str]] = {}
+    for _, row in raw_df.iterrows():
+        stadium = str(row.get("stadium", "")).strip()
+        if stadium not in missing:
+            continue
+        away = str(row.get("away_team", "")).strip()
+        home = str(row.get("home_team", "")).strip()
+        matchup = f"{away} @ {home}"
+        games_at.setdefault(stadium, []).append(matchup)
+
+    logger.warning(
+        "Stadium coverage check FAILED for season %s — "
+        "%d stadium(s) in the upcoming schedule have no entry in NFL_stadium_reference.csv. "
+        "Weather ingest will skip these games until coordinates are added.",
+        season_label,
+        len(missing),
+    )
+    for stadium in sorted(missing):
+        matchups = games_at.get(stadium, [])
+        n_games = len(matchups)
+        # Show up to 3 example matchups to keep the log readable
+        sample = ", ".join(matchups[:3])
+        if n_games > 3:
+            sample += f", ... (+{n_games - 3} more)"
+        logger.warning(
+            "  Missing stadium: '%s' | %d game(s) | e.g. %s",
+            stadium,
+            n_games,
+            sample,
+        )
+    logger.warning(
+        "  → Add the missing stadium(s) to NFL_stadium_reference.csv with "
+        "STADIUM, HOME_TEAM, YEAR, LATITUDE, LONGITUDE, ALTITUDE columns "
+        "before running `gridiron ingest weather-backfill`.",
+    )
+
+
 def clean_nflverse_upcoming(
     *,
     repo: Path | None = None,
@@ -46,6 +128,10 @@ def clean_nflverse_upcoming(
     Reads ``data/raw/NFL_upcoming_schedule_nflverse.csv``, maps to the
     canonical AWAY_TEAM/HOME_TEAM schema, and writes to
     ``data/cleaned/NFL_upcoming_schedule_cleaned.csv``.
+
+    Also performs a stadium coverage check: any stadium in the upcoming
+    schedule that is absent from the stadium reference CSV is logged as a
+    WARNING so it can be added before weather ingest runs.
 
     Args:
         repo: Absolute path to the repository root. Defaults to the value
@@ -94,6 +180,24 @@ def clean_nflverse_upcoming(
 
     logger.info("Processing %d upcoming games", len(df))
 
+    # ── Stadium coverage check ────────────────────────────────────────────
+    # Run before the transform so we're working with raw nflverse stadium
+    # names, which is exactly what gets written to the games CSV and used
+    # as the join key in weather ingest.
+    stadiums_path: Path = dataset_path(resolved_repo, "stadiums")
+    if stadiums_path.exists():
+        stadiums_df: DataFrame = pd.read_csv(stadiums_path)
+        # Derive season label from the first row's season value for logging
+        season_int: int = int(df["season"].iloc[0]) if "season" in df.columns else 0
+        season_lbl: str = _season_label(season_int) if season_int else "unknown"
+        _check_stadium_coverage(df, stadiums_df, season_lbl)
+    else:
+        logger.warning(
+            "Stadium reference file not found at %s — skipping coverage check.",
+            stadiums_path,
+        )
+
+    # ── Transform ─────────────────────────────────────────────────────────
     def _resolve_week(row: pd.Series) -> int:
         gt = str(row["game_type"])
         if gt in _GAME_TYPE_TO_WEEK:

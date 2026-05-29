@@ -83,11 +83,11 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     # ---- Derived modeling artifacts ----
     "modeling_base": DatasetSpec(
         "modeling_base",
-        "data/modeling/base_modeling_file.csv",
+        "data/modeling/base_modeling_file.parquet",
     ),
     "modeling_full": DatasetSpec(
         "modeling_full",
-        "data/modeling/modeling_file.csv",
+        "data/modeling/modeling_file.parquet",
     ),
     "predictions_csv": DatasetSpec(
         "predictions_csv",

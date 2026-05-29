@@ -43,9 +43,11 @@ from tqdm import tqdm
 from gridiron_edge.models.base import PredictorSpec
 from gridiron_edge.models.game_prediction._shared import (
     _COMBINED_FEATURES,
+    _EXPANDED_FEATURES,
     _SCHEMA_VERSION,
     _is_trained,
     _make_combined_features,
+    _make_expanded_features,
     _prepare_data,
 )
 from gridiron_edge.models.registry import PredictorRegistry
@@ -918,5 +920,120 @@ class XGBoostV1Predictor:
             schedule,
             model_version="xgboost_v1",
             feature_fn=_make_combined_features,
+            repo=repo,
+        )
+
+
+# ---------------------------------------------------------------------------
+# random_forest_v2
+# ---------------------------------------------------------------------------
+
+
+@PredictorRegistry.register
+class RandomForestV2Predictor:
+    """Random Forest on expanded Phase 20e feature set (51 features).
+
+    Extends random_forest_v1 with all Phase 20e Category A features:
+    rest/schedule stress, weather effects, travel, divisional game flag,
+    and franchise-level home field advantage coefficient.
+
+    Same architecture and hyperparameter search as v1; expanded feature
+    set allows the model to capture fatigue, scheduling, and environmental
+    effects that the v1 combined feature set cannot represent.
+    """
+
+    spec = PredictorSpec(
+        name="random_forest_v2",
+        description="Random Forest — expanded Phase 20e features (51), isotonic calibration",
+        trainable=True,
+    )
+
+    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+        """Train Random Forest v2 on the expanded Phase 20e feature set."""
+        return _train_random_forest(
+            df,
+            model_version="random_forest_v2",
+            feature_fn=_make_expanded_features,
+            feature_names=_EXPANDED_FEATURES,
+            repo=repo,
+        )
+
+    def is_trained(self, *, repo: Path | None = None) -> bool:
+        """Return whether a trained artifact exists for random_forest_v2."""
+        return _is_trained("random_forest_v2", repo)
+
+    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
+        """Generate random_forest_v2 predictions for all historical games."""
+        return _predict_historical_tree(
+            games,
+            model_version="random_forest_v2",
+            feature_fn=_make_expanded_features,
+            repo=repo,
+        )
+
+    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
+        """Generate random_forest_v2 predictions for upcoming games."""
+        return _predict_upcoming_tree(
+            schedule,
+            model_version="random_forest_v2",
+            feature_fn=_make_expanded_features,
+            repo=repo,
+        )
+
+
+# ---------------------------------------------------------------------------
+# xgboost_v2
+# ---------------------------------------------------------------------------
+
+
+@PredictorRegistry.register
+class XGBoostV2Predictor:
+    """XGBoost on expanded Phase 20e feature set (51 features).
+
+    Extends xgboost_v1 with all Phase 20e Category A features:
+    rest/schedule stress, weather effects, travel, divisional game flag,
+    and franchise-level home field advantage coefficient.
+
+    Same architecture and hyperparameter search as v1.  XGBoost's
+    tree-splitting mechanism is well-suited to the mix of binary flags
+    (IS_DIV_GAME, IS_DOME, SHORT_WEEK, POST_BYE) and continuous values
+    (DAYS_REST, WIND_SPEED_MPH, TEMP_F, KM_TRAVELED) in the new features.
+    """
+
+    spec = PredictorSpec(
+        name="xgboost_v2",
+        description="XGBoost gradient boosting — expanded Phase 20e features (51)",
+        trainable=True,
+    )
+
+    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+        """Train XGBoost v2 on the expanded Phase 20e feature set."""
+        return _train_xgboost(
+            df,
+            model_version="xgboost_v2",
+            feature_fn=_make_expanded_features,
+            feature_names=_EXPANDED_FEATURES,
+            repo=repo,
+        )
+
+    def is_trained(self, *, repo: Path | None = None) -> bool:
+        """Return whether a trained artifact exists for xgboost_v2."""
+        return _is_trained("xgboost_v2", repo)
+
+    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
+        """Generate xgboost_v2 predictions for all historical games."""
+        return _predict_historical_tree(
+            games,
+            model_version="xgboost_v2",
+            feature_fn=_make_expanded_features,
+            repo=repo,
+        )
+
+    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
+        """Generate xgboost_v2 predictions for upcoming games."""
+        return _predict_upcoming_tree(
+            schedule,
+            model_version="xgboost_v2",
+            feature_fn=_make_expanded_features,
             repo=repo,
         )

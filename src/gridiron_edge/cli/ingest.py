@@ -110,6 +110,88 @@ def ingest_weather(
     console.summary()
 
 
+@ingest_app.command("weather-backfill")
+def ingest_weather_backfill(
+    *,
+    season_year: str | None = typer.Option(
+        None,
+        help=(
+            "Backfill a specific season only (e.g. '2024-2025'). "
+            "If omitted alongside --all-years, all seasons are processed."
+        ),
+    ),
+    all_years: bool = typer.Option(
+        False,
+        "--all-years/--no-all-years",
+        help="Backfill all historical seasons.",
+    ),
+    owm_api_key: str | None = typer.Option(
+        None,
+        help="OpenWeather API key. If omitted, uses env var OWM_API_KEY.",
+    ),
+    max_calls: int | None = typer.Option(
+        None,
+        help=(
+            "Maximum API calls to make in this run. "
+            "Use to stay within the OWM daily limit (1,000 on the base "
+            "subscription). Stops cleanly after N calls; run again tomorrow "
+            "to continue. Defaults to no limit."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run/--no-dry-run",
+        help=(
+            "Show what would be fetched without making any API calls. "
+            "Prints a season-by-season breakdown of pending games."
+        ),
+    ),
+) -> None:
+    r"""Backfill historical weather for all games not yet in the archive.
+
+    Fetches weather at kickoff time from the OWM One Call API 3.0
+    timemachine endpoint for every completed game not already present
+    in weather_enriched.csv.  Already-fetched games are skipped
+    automatically — only genuinely missing data is requested.
+
+    Progress is flushed to disk every 50 games so the run can be
+    interrupted and resumed without losing work.  Failed games are
+    written to data/cleaned/weather_backfill_failed.csv for inspection.
+
+    Requires an OWM One Call API 3.0 subscription (paid tier).
+
+    \b
+    Examples:
+      gridiron ingest weather-backfill --all-years --dry-run
+      gridiron ingest weather-backfill --all-years --max-calls 900
+      gridiron ingest weather-backfill --season-year 2024-2025
+      gridiron ingest weather-backfill --season-year 2024-2025 --dry-run
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.ingest.weather.backfill import backfill_weather
+
+    key: str = get_owm_api_key(owm_api_key)
+
+    target: str = season_year if (season_year and not all_years) else "all seasons"
+    cap_label: str = f"  max={max_calls}" if max_calls is not None else ""
+    subtitle: str = f"{target}{cap_label}{' [DRY RUN]' if dry_run else ''}"
+    console.header("ingest weather-backfill", subtitle=subtitle)
+
+    with step("Fetch historical weather") as s:
+        n_fetched, n_failed = backfill_weather(
+            season_year=season_year if not all_years else None,
+            owm_api_key=key,
+            dry_run=dry_run,
+            max_calls=max_calls,
+        )
+        if dry_run:
+            s.set_detail("dry run — no data written")
+        else:
+            s.set_detail(f"{n_fetched:,} fetched  ·  {n_failed:,} failed")
+
+    console.summary()
+
+
 @ingest_app.command("dk-odds")
 def ingest_dk_odds() -> None:
     """Pull DraftKings odds for the current NFL week."""

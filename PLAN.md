@@ -571,6 +571,7 @@ Items with long-term value but no near-term dependency:
   - Weighted EPA (see github.com/greerreNFL)
   Scoped in Phase 20e Category C alongside QB intelligence.
 - **Stadium attendance capacity** — venue size as a feature for crowd noise / home field strength. Scoped in Phase 20e Category A as a simple lookup table addition.
+- **Stadium-level HFA coefficient** — the current `venue_hfa` feature operates at the franchise level (historical home win rate per franchise). A more sophisticated version would compute separate coefficients per physical stadium building, blending toward the franchise coefficient for new stadiums with insufficient data. Requires reliable stadium open/close date data (name changes ≠ new stadium) to correctly partition a franchise's home game history by building. Implement after stadium continuity dates can be sourced.
 
 ### Infrastructure
 - **Drive/possession simulation** — expand Monte Carlo toward play-level outcome distributions

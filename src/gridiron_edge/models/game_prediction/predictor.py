@@ -1,55 +1,50 @@
 # src/gridiron_edge/models/game_prediction/predictor.py
 
-"""Compatibility shim — superseded by the game_prediction package split.
+"""Game prediction model registry entry point.
 
-The monolithic predictor.py has been split into:
-    _shared.py  — feature engineering infrastructure
-    logistic.py — logistic regression variants (v1-v4)
-    tree.py     — Random Forest and XGBoost variants
+This module is the single import that callers use to ensure all game
+prediction models are registered with PredictorRegistry.  It contains
+no model definitions itself — those live in the split module files:
 
-This file exists so that any existing code importing
-``gridiron_edge.models.game_prediction.predictor`` continues to work.
-All public names are re-exported from their new homes.
+    logistic.py  — logistic_v1, logistic_v2, logistic_v3, logistic_v4
+    tree.py      — random_forest_v1, random_forest_v2,
+                   xgboost_v1, xgboost_v2
 
-New model code should import directly from the relevant sub-module.
+Importing this module is sufficient to register every model:
+
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+
+Re-exports are provided for backward compatibility with any code that
+imports private helpers or model classes directly from this module
+(e.g. tests that do ``from predictor import _rebuild_features_with_window``).
+
+History: this module previously contained all model class definitions
+directly.  It was refactored into split files (logistic.py, tree.py)
+during Phase 20d/20e.  The shim pattern preserves backward compatibility
+for all callers that import predictor.py as a side-effect registration
+trigger or by named attribute.
 """
 
-from gridiron_edge.models.game_prediction._shared import (  # noqa: F401
-    _COMBINED_FEATURES,
-    _DIFF_FEATURES,
-    _EPA_SUFFIXES,
-    _RAW_FEATURES,
-    _SCHEMA_VERSION,
-    HOLDOUT_SEASONS,
-    _is_trained,
-    _make_combined_features,
-    _make_diff_features,
-    _make_raw_features,
-    _prepare_data,
-)
+# Side-effect imports — registers all game prediction models with
+# PredictorRegistry via their @PredictorRegistry.register decorators.
 
-# pyrefly: ignore [missing-import]
+# the registration happens as a side effect of the import itself.
+import gridiron_edge.models.game_prediction.logistic
+
+# Re-exports for backward compatibility — callers that do
+# ``from gridiron_edge.models.game_prediction.predictor import X``
+# continue to work without modification.
 from gridiron_edge.models.game_prediction.logistic import (  # noqa: F401
     LogisticV1Predictor,
     LogisticV2Predictor,
     LogisticV3Predictor,
     LogisticV4Predictor,
-    _predict_historical_logistic,
-    _predict_upcoming_logistic,
-    _train_elasticnet,
-    _train_logistic,
 )
-
-# pyrefly: ignore [missing-import]
+import gridiron_edge.models.game_prediction.tree  # noqa: F401
 from gridiron_edge.models.game_prediction.tree import (  # noqa: F401
-    _EPA_COL_MAP,
-    _EPA_RAW_COLS,
-    _EPA_WINDOW_OPTIONS,
     RandomForestV1Predictor,
+    RandomForestV2Predictor,
     XGBoostV1Predictor,
-    _predict_historical_tree,
-    _predict_upcoming_tree,
+    XGBoostV2Predictor,
     _rebuild_features_with_window,
-    _train_random_forest,
-    _train_xgboost,
 )

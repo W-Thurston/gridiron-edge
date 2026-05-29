@@ -55,3 +55,16 @@ class DatasetAccessor:
             EPA metrics. Empty DataFrame if no EPA data has been ingested.
         """
         return loaders.load_epa_by_game(self.repo)
+
+    def weather_enriched(self) -> pd.DataFrame:
+        """Load the weather-enriched game dataset.
+
+        Returns:
+            DataFrame with weather columns (TEMP, WIND_SPEED, WEATHER_MAIN,
+            etc.) keyed on GAME_ID. Empty DataFrame if not yet ingested.
+
+        Raises:
+            FileNotFoundError: If weather_enriched dataset does not exist.
+                Callers should handle this gracefully (weather is optional).
+        """
+        return loaders.load_csv(self.repo, "weather_enriched")

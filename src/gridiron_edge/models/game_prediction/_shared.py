@@ -13,10 +13,14 @@ Public API
 ----------
 HOLDOUT_SEASONS       frozenset[str] — seasons reserved for evaluation
 _SCHEMA_VERSION       int            — modeling file schema version this module expects
+                                       (imported from features.manifest; single source of truth)
 _EPA_SUFFIXES         list[str]      — ordered EPA metric suffixes
 _RAW_FEATURES         list[str]      — 22 raw feature column names
 _DIFF_FEATURES        list[str]      — 10 differential feature column names
 _COMBINED_FEATURES    list[str]      — 32 combined feature column names
+_GAME_FEATURES        list[str]      — 7 game-level Phase 20e feature names
+_TEAM_FEATURES_V2     list[str]      — 12 per-team Phase 20e feature names
+_EXPANDED_FEATURES    list[str]      — 51 combined + Phase 20e feature names
 
 _make_diff_features     DataFrame → DataFrame (10 cols)
 _make_raw_features      DataFrame → DataFrame (22 cols)
@@ -35,6 +39,8 @@ from typing import TYPE_CHECKING, Final
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION as _CURRENT
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -46,8 +52,12 @@ logger: Logger = logging.getLogger(__name__)
 
 HOLDOUT_SEASONS: Final[frozenset[str]] = frozenset(["2023-2024", "2024-2025", "2025-2026"])
 
-# Schema version this module was designed for
-_SCHEMA_VERSION: Final[int] = 2
+# Schema version this module was designed for.
+# Sourced from manifest.py so there is a single source of truth —
+# bump CURRENT_SCHEMA_VERSION there and all models pick it up automatically.
+
+
+_SCHEMA_VERSION: Final[int] = _CURRENT
 
 # ---------------------------------------------------------------------------
 # Feature column definitions
@@ -78,6 +88,37 @@ _DIFF_FEATURES: Final[list[str]] = ["HOME_FIELD", "ELO_DIFF"] + [f"{s}_DIFF" for
 _COMBINED_FEATURES: Final[list[str]] = _DIFF_FEATURES + [
     c for c in _RAW_FEATURES if c != "HOME_FIELD"
 ]
+
+# Phase 20e new feature columns — added to schema v3
+# Game-level features (same value for both team perspectives in a row)
+_GAME_FEATURES: Final[list[str]] = [
+    "IS_DIV_GAME",
+    "IS_DOME",
+    "WIND_SPEED_MPH",
+    "TEMP_F",
+    "PRECIP_FLAG",
+    "IS_NEUTRAL_SITE",
+    "ALTITUDE",
+]
+
+# Per-team features (asymmetric — TEAM_A and TEAM_B values differ)
+_TEAM_FEATURES_V2: Final[list[str]] = [
+    "TEAM_A_DAYS_REST",
+    "TEAM_B_DAYS_REST",
+    "TEAM_A_SHORT_WEEK",
+    "TEAM_B_SHORT_WEEK",
+    "TEAM_A_POST_BYE",
+    "TEAM_B_POST_BYE",
+    "TEAM_A_KM_TRAVELED",
+    "TEAM_B_KM_TRAVELED",
+    "TEAM_A_TZ_SHIFT",
+    "TEAM_B_TZ_SHIFT",
+    "TEAM_A_FRANCHISE_HFA",
+    "TEAM_B_FRANCHISE_HFA",
+]
+
+# Expanded feature set (32 combined + 19 Phase 20e = 51 total)
+_EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES_V2
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +167,30 @@ def _make_combined_features(df: pd.DataFrame) -> pd.DataFrame:
     diff: DataFrame = _make_diff_features(df)
     raw_no_home: DataFrame = df.loc[:, [c for c in _RAW_FEATURES if c != "HOME_FIELD"]].copy()
     return pd.concat([diff, raw_no_home], axis=1)
+
+
+def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine all Phase 20e features with the v1 combined set.
+
+    Extends _make_combined_features with the 19 Phase 20e columns:
+    game-level features (IS_DIV_GAME, weather, venue) and per-team
+    features (rest, travel, franchise HFA).  Game-level features are
+    identical for both team perspectives in a row — the model learns
+    their influence on the win probability directly.
+
+    Missing columns (e.g. WIND_SPEED_MPH for dome games not yet backfilled)
+    produce NaN rows which _prepare_data excludes from training.
+
+    Args:
+        df: Modeling DataFrame with all schema v3 feature columns.
+
+    Returns:
+        DataFrame with 51 expanded features.
+    """
+    base: DataFrame = _make_combined_features(df)
+    phase_20e_cols = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
+    phase_20e: DataFrame = df.loc[:, phase_20e_cols].copy()
+    return pd.concat([base, phase_20e], axis=1)
 
 
 # ---------------------------------------------------------------------------
