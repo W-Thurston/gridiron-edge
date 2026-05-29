@@ -3,46 +3,51 @@
 """Shared infrastructure for all game-prediction model variants.
 
 This module owns the feature constants, feature engineering functions,
-and the train/holdout split helper used by every model family
-(logistic, tree-based, and future variants).
+the named FeatureSet registry, and the train/holdout split helper used
+by every model family (logistic, tree-based, and future variants).
 
 Nothing in this module imports from sibling model modules — it is a
 pure dependency leaf so any model file can import from it safely.
 
 Public API
 ----------
-HOLDOUT_SEASONS       frozenset[str] — seasons reserved for evaluation
-_SCHEMA_VERSION       int            — modeling file schema version this module expects
-                                       (imported from features.manifest; single source of truth)
-_EPA_SUFFIXES         list[str]      — ordered EPA metric suffixes
-_RAW_FEATURES         list[str]      — 22 raw feature column names
-_DIFF_FEATURES        list[str]      — 10 differential feature column names
-_COMBINED_FEATURES    list[str]      — 32 combined feature column names
-_GAME_FEATURES        list[str]      — 7 game-level Phase 20e feature names
-_TEAM_FEATURES_V2     list[str]      — 12 per-team Phase 20e feature names
-_EXPANDED_FEATURES    list[str]      — 51 combined + Phase 20e feature names
+HOLDOUT_SEASONS         frozenset[str] — seasons reserved for evaluation
+_SCHEMA_VERSION         int            — modeling file schema version this module expects
+                                         (imported from features.manifest; single source of truth)
+_EPA_SUFFIXES           list[str]      — ordered EPA metric suffixes
+_RAW_FEATURES           list[str]      — 22 raw feature column names
+_DIFF_FEATURES          list[str]      — 10 differential feature column names
+_COMBINED_FEATURES      list[str]      — 32 combined feature column names
+_GAME_FEATURES          list[str]      — 7 game-level Phase 20e feature names
+_TEAM_FEATURES_V2       list[str]      — 12 per-team Phase 20e feature names
+_EXPANDED_FEATURES      list[str]      — 51 combined + Phase 20e feature names
 
-_make_diff_features     DataFrame → DataFrame (10 cols)
-_make_raw_features      DataFrame → DataFrame (22 cols)
-_make_combined_features DataFrame → DataFrame (32 cols)
-_prepare_data           DataFrame → train/holdout split tuple
-_is_trained             str, Path | None → bool
+FeatureSet              dataclass      — named bundle of (feature_fn, feature_names)
+FEATURE_SETS            dict[str, FeatureSet] — registry of named feature sets
+
+_make_diff_features       DataFrame → DataFrame (10 cols)
+_make_raw_features        DataFrame → DataFrame (22 cols)
+_make_combined_features   DataFrame → DataFrame (32 cols)
+_make_expanded_features   DataFrame → DataFrame (51 cols, Phase 20e)
+_prepare_data             DataFrame → train/holdout split tuple
+_is_trained               str, Path | None → bool
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import pandas as pd
 from pandas import DataFrame, Series
 
+# Sourced from manifest.py — single source of truth for schema version.
+# Bump CURRENT_SCHEMA_VERSION there and all models pick it up automatically.
 from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION as _CURRENT
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -53,10 +58,6 @@ logger: Logger = logging.getLogger(__name__)
 HOLDOUT_SEASONS: Final[frozenset[str]] = frozenset(["2023-2024", "2024-2025", "2025-2026"])
 
 # Schema version this module was designed for.
-# Sourced from manifest.py so there is a single source of truth —
-# bump CURRENT_SCHEMA_VERSION there and all models pick it up automatically.
-
-
 _SCHEMA_VERSION: Final[int] = _CURRENT
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,38 @@ _EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TE
 
 
 # ---------------------------------------------------------------------------
+# Named feature sets
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FeatureSet:
+    """A named bundle of feature function + column list.
+
+    Used by the model variant factories in ``logistic.py`` and ``tree.py``
+    to declare which features a model variant uses.  Gives each combination
+    a stable name so metadata records ``feature_set='combined_32'`` rather
+    than a raw function pointer, and factory call sites are self-documenting.
+
+    Attributes:
+        name: Short identifier used in artifact metadata (e.g. ``"combined_32"``).
+            Also recorded in ``ModelMetadata.parameters["feature_set"]``.
+        feature_fn: Callable that takes a modeling DataFrame and returns
+            a feature DataFrame with exactly ``feature_names`` columns.
+        feature_names: Ordered list of column names produced by ``feature_fn``.
+    """
+
+    name: str
+    feature_fn: Callable
+    feature_names: list[str]
+
+
+# Populated after function definitions below; referenced here for documentation.
+# Callers import FEATURE_SETS["combined"] rather than the raw constants.
+FEATURE_SETS: dict[str, FeatureSet]
+
+
+# ---------------------------------------------------------------------------
 # Feature engineering
 # ---------------------------------------------------------------------------
 
@@ -176,10 +209,10 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     game-level features (IS_DIV_GAME, weather, venue) and per-team
     features (rest, travel, franchise HFA).  Game-level features are
     identical for both team perspectives in a row — the model learns
-    their influence on the win probability directly.
+    their influence on win probability directly.
 
     Missing columns (e.g. WIND_SPEED_MPH for dome games not yet backfilled)
-    produce NaN rows which _prepare_data excludes from training.
+    produce NaN rows which _prepare_data excludes from training automatically.
 
     Args:
         df: Modeling DataFrame with all schema v3 feature columns.
@@ -191,6 +224,31 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     phase_20e_cols = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
     phase_20e: DataFrame = df.loc[:, phase_20e_cols].copy()
     return pd.concat([base, phase_20e], axis=1)
+
+
+# Populate FEATURE_SETS now that functions are defined.
+FEATURE_SETS = {
+    "diff": FeatureSet(
+        name="diff_10",
+        feature_fn=_make_diff_features,
+        feature_names=_DIFF_FEATURES,
+    ),
+    "raw": FeatureSet(
+        name="raw_22",
+        feature_fn=_make_raw_features,
+        feature_names=list(_RAW_FEATURES),
+    ),
+    "combined": FeatureSet(
+        name="combined_32",
+        feature_fn=_make_combined_features,
+        feature_names=_COMBINED_FEATURES,
+    ),
+    "expanded": FeatureSet(
+        name="expanded_51",
+        feature_fn=_make_expanded_features,
+        feature_names=_EXPANDED_FEATURES,
+    ),
+}
 
 
 # ---------------------------------------------------------------------------

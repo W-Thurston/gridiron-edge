@@ -37,21 +37,17 @@ import datetime as dt
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from pandas import DataFrame, Series
 
 from gridiron_edge.models.base import PredictorSpec
 from gridiron_edge.models.game_prediction._shared import (
-    _COMBINED_FEATURES,
-    _DIFF_FEATURES,
-    _RAW_FEATURES,
     _SCHEMA_VERSION,
+    FEATURE_SETS,
+    FeatureSet,
     _is_trained,
-    _make_combined_features,
-    _make_diff_features,
-    _make_raw_features,
     _prepare_data,
 )
 from gridiron_edge.models.registry import PredictorRegistry
@@ -419,217 +415,127 @@ def _predict_upcoming_logistic(
 
 
 # ---------------------------------------------------------------------------
-# logistic_v1 — differential features (10)
+# Model variant factory
 # ---------------------------------------------------------------------------
 
 
-@PredictorRegistry.register
-class LogisticV1Predictor:
-    """Logistic regression on TEAM_A - TEAM_B differential features.
+def _make_logistic_variant(
+    name: str,
+    description: str,
+    *,
+    feature_set: FeatureSet,
+    elasticnet: bool = False,
+    l1_ratios: list[float] | None = None,
+) -> type:
+    """Produce and register a logistic predictor class for a given variant.
 
-    10 features: HOME_FIELD, ELO_DIFF, 8 EPA differentials.
-    Interpretable: positive coefficient always means "helps TEAM_A win".
+    Eliminates the ~35-line boilerplate class body required per variant.
+    The produced class is functionally identical to a hand-written class:
+    it has a ``spec``, implements ``train``, ``is_trained``,
+    ``predict_historical``, and ``predict_upcoming``, and is registered
+    with ``PredictorRegistry`` immediately.
+
+    Adding a new logistic variant requires one call::
+
+        LogisticV5Predictor = _make_logistic_variant(
+            "logistic_v5",
+            "Logistic regression — expanded features with elastic net",
+            feature_set=FEATURE_SETS["expanded"],
+            elasticnet=True,
+        )
+
+    Args:
+        name: Model version string (e.g. ``"logistic_v3"``).
+            Must be unique in the registry.
+        description: Human-readable description shown in ``gridiron models list``.
+        feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS``.
+        elasticnet: If True, use ``_train_elasticnet``; otherwise ``_train_logistic``.
+        l1_ratios: L1/L2 mix ratios passed to ``_train_elasticnet``. Ignored when
+            ``elasticnet=False``. Defaults to ``[0.0, 0.1, 0.5, 0.9, 1.0]``.
+
+    Returns:
+        The produced and registered class object.
     """
+    _feature_fn = feature_set.feature_fn
+    _feature_names = feature_set.feature_names
+    _l1_ratios: list[float] = l1_ratios if l1_ratios is not None else [0.0, 0.1, 0.5, 0.9, 1.0]
 
-    spec = PredictorSpec(
-        name="logistic_v1",
-        description="Logistic regression — differential features (10)",
-        trainable=True,
-    )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train on differential features."""
+    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+        if elasticnet:
+            return _train_elasticnet(
+                df,
+                model_version=name,
+                feature_fn=_feature_fn,
+                feature_names=_feature_names,
+                l1_ratios=_l1_ratios,
+                repo=repo,
+            )
         return _train_logistic(
             df,
-            model_version="logistic_v1",
-            feature_fn=_make_diff_features,
-            feature_names=_DIFF_FEATURES,
+            model_version=name,
+            feature_fn=_feature_fn,
+            feature_names=_feature_names,
             repo=repo,
         )
 
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for logistic_v1."""
-        return _is_trained("logistic_v1", repo)
+    def is_trained(self: object, *, repo: Path | None = None) -> bool:
+        return _is_trained(name, repo)
 
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v1 predictions for all historical games."""
+    def predict_historical(
+        self: object, games: pd.DataFrame, *, repo: Path | None = None
+    ) -> pd.DataFrame:
         return _predict_historical_logistic(
-            games,
-            model_version="logistic_v1",
-            feature_fn=_make_diff_features,
-            repo=repo,
+            games, model_version=name, feature_fn=_feature_fn, repo=repo
         )
 
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v1 predictions for upcoming games."""
+    def predict_upcoming(
+        self: object, schedule: pd.DataFrame, *, repo: Path | None = None
+    ) -> pd.DataFrame:
         return _predict_upcoming_logistic(
-            schedule,
-            model_version="logistic_v1",
-            feature_fn=_make_diff_features,
-            repo=repo,
+            schedule, model_version=name, feature_fn=_feature_fn, repo=repo
         )
 
-
-# ---------------------------------------------------------------------------
-# logistic_v2 — raw features for both teams (22)
-# ---------------------------------------------------------------------------
-
-
-@PredictorRegistry.register
-class LogisticV2Predictor:
-    """Logistic regression on raw features for both teams.
-
-    22 features: HOME_FIELD, TEAM_A_ELO, TEAM_B_ELO, 8 EPA cols per team.
-    The model learns team relationships directly without differential engineering.
-    """
-
-    spec = PredictorSpec(
-        name="logistic_v2",
-        description="Logistic regression — raw features both teams (22)",
-        trainable=True,
+    cls = type(
+        f"Logistic{name.title().replace('_', '')}Predictor",
+        (),
+        {
+            "spec": PredictorSpec(name=name, description=description, trainable=True),
+            "train": train,
+            "is_trained": is_trained,
+            "predict_historical": predict_historical,
+            "predict_upcoming": predict_upcoming,
+            "__doc__": description,
+        },
     )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train on raw features."""
-        return _train_logistic(
-            df,
-            model_version="logistic_v2",
-            feature_fn=_make_raw_features,
-            feature_names=_RAW_FEATURES,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for logistic_v2."""
-        return _is_trained("logistic_v2", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v2 predictions for all historical games."""
-        return _predict_historical_logistic(
-            games,
-            model_version="logistic_v2",
-            feature_fn=_make_raw_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v2 predictions for upcoming games."""
-        return _predict_upcoming_logistic(
-            schedule,
-            model_version="logistic_v2",
-            feature_fn=_make_raw_features,
-            repo=repo,
-        )
+    PredictorRegistry.register(cls)
+    return cls
 
 
 # ---------------------------------------------------------------------------
-# logistic_v3 — combined differential + raw (32)
+# Registered variants
 # ---------------------------------------------------------------------------
 
+LogisticV1Predictor = _make_logistic_variant(
+    "logistic_v1",
+    "Logistic regression — differential features (10)",
+    feature_set=FEATURE_SETS["diff"],
+)
 
-@PredictorRegistry.register
-class LogisticV3Predictor:
-    """Logistic regression on differential and raw features combined.
+LogisticV2Predictor = _make_logistic_variant(
+    "logistic_v2",
+    "Logistic regression — raw features both teams (22)",
+    feature_set=FEATURE_SETS["raw"],
+)
 
-    32 features: 10 differentials + 21 raw (HOME_FIELD deduplicated).
-    Maximally expressive for a linear model — captures both matchup
-    differential and absolute team quality independently.
-    Current best: Brier 0.22057, AUC 0.68289.
-    """
+LogisticV3Predictor = _make_logistic_variant(
+    "logistic_v3",
+    "Logistic regression — combined differential + raw (32)",
+    feature_set=FEATURE_SETS["combined"],
+)
 
-    spec = PredictorSpec(
-        name="logistic_v3",
-        description="Logistic regression — differential + raw combined (32)",
-        trainable=True,
-    )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train on combined features."""
-        return _train_logistic(
-            df,
-            model_version="logistic_v3",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for logistic_v3."""
-        return _is_trained("logistic_v3", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v3 predictions for all historical games."""
-        return _predict_historical_logistic(
-            games,
-            model_version="logistic_v3",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v3 predictions for upcoming games."""
-        return _predict_upcoming_logistic(
-            schedule,
-            model_version="logistic_v3",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
-
-
-# ---------------------------------------------------------------------------
-# logistic_v4 — elastic net regularisation on combined features (32)
-# ---------------------------------------------------------------------------
-
-
-@PredictorRegistry.register
-class LogisticV4Predictor:
-    """Logistic regression with elastic net regularisation.
-
-    Same 32-feature combined set as logistic_v3 but uses elastic net
-    (L1 + L2) regularisation via the SAGA solver. Tunes both:
-        C:         regularisation strength (10 values, log-spaced)
-        l1_ratio:  mix between L1 (feature selection) and L2 (shrinkage)
-
-    L1 component drives irrelevant feature coefficients exactly to zero.
-    """
-
-    spec = PredictorSpec(
-        name="logistic_v4",
-        description="Logistic regression — elastic net, combined features (32)",
-        trainable=True,
-    )
-
-    L1_RATIOS: Final[list[float]] = [0.1, 0.3, 0.5, 0.7, 0.9]
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train elastic net logistic regression on combined features."""
-        return _train_elasticnet(
-            df,
-            model_version="logistic_v4",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            l1_ratios=self.L1_RATIOS,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for logistic_v4."""
-        return _is_trained("logistic_v4", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v4 predictions for all historical games."""
-        return _predict_historical_logistic(
-            games,
-            model_version="logistic_v4",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate logistic_v4 predictions for upcoming games."""
-        return _predict_upcoming_logistic(
-            schedule,
-            model_version="logistic_v4",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
+LogisticV4Predictor = _make_logistic_variant(
+    "logistic_v4",
+    "Logistic regression — combined features (32), elastic net regularisation",
+    feature_set=FEATURE_SETS["combined"],
+    elasticnet=True,
+)

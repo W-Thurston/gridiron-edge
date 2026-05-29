@@ -26,9 +26,10 @@ trigger or by named attribute.
 """
 
 # Side-effect imports — registers all game prediction models with
-# PredictorRegistry via their @PredictorRegistry.register decorators.
+# PredictorRegistry.  logistic.py and tree.py use variant factories
+# that call PredictorRegistry.register() directly at module load time.
 
-# the registration happens as a side effect of the import itself.
+# registration happens as a side effect of the import itself.
 import gridiron_edge.models.game_prediction.logistic
 
 # Re-exports for backward compatibility — callers that do

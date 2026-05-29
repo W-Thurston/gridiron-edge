@@ -256,6 +256,32 @@ class TestPredictorRegistration:
 
         assert XGBoostV1Predictor.spec.name == "xgboost_v1"
 
+    def test_random_forest_v2_registered(self) -> None:
+        """random_forest_v2 should be in the PredictorRegistry."""
+        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+        from gridiron_edge.models.registry import PredictorRegistry
+
+        assert "random_forest_v2" in PredictorRegistry.names()
+
+    def test_xgboost_v2_registered(self) -> None:
+        """xgboost_v2 should be in the PredictorRegistry."""
+        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+        from gridiron_edge.models.registry import PredictorRegistry
+
+        assert "xgboost_v2" in PredictorRegistry.names()
+
+    def test_random_forest_v2_spec(self) -> None:
+        """random_forest_v2 spec should have the correct name."""
+        from gridiron_edge.models.game_prediction.predictor import RandomForestV2Predictor
+
+        assert RandomForestV2Predictor.spec.name == "random_forest_v2"
+
+    def test_xgboost_v2_spec(self) -> None:
+        """xgboost_v2 spec should have the correct name."""
+        from gridiron_edge.models.game_prediction.predictor import XGBoostV2Predictor
+
+        assert XGBoostV2Predictor.spec.name == "xgboost_v2"
+
 
 # ---------------------------------------------------------------------------
 # Training smoke tests (tiny n_iter / n_estimators for speed)

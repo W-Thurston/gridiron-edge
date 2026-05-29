@@ -33,7 +33,7 @@ import datetime as dt
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
 import numpy as np
 import pandas as pd
@@ -42,12 +42,10 @@ from tqdm import tqdm
 
 from gridiron_edge.models.base import PredictorSpec
 from gridiron_edge.models.game_prediction._shared import (
-    _COMBINED_FEATURES,
-    _EXPANDED_FEATURES,
     _SCHEMA_VERSION,
+    FEATURE_SETS,
+    FeatureSet,
     _is_trained,
-    _make_combined_features,
-    _make_expanded_features,
     _prepare_data,
 )
 from gridiron_edge.models.registry import PredictorRegistry
@@ -319,6 +317,45 @@ def _predict_upcoming_tree(
 
 
 # ---------------------------------------------------------------------------
+# Window cache — eliminates redundant disk reads during hyperparameter search
+# ---------------------------------------------------------------------------
+
+
+def _get_cached_window_data(
+    cache: dict[
+        int, tuple[pd.DataFrame, pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]
+    ],
+    window: int,
+    df: pd.DataFrame,
+    feature_fn: Callable,
+    repo: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
+    """Return cached (df_w, x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
+
+    On first access for a given window, rebuilds EPA features and runs
+    _prepare_data; subsequent accesses return the cached result.  Since
+    _EPA_WINDOW_OPTIONS has at most 6 values, the cache is bounded and
+    eliminates the dominant cost in the hyperparameter loop: repeated
+    parquet loads for the same window.
+
+    Args:
+        cache: Mutable dict keyed by window size; populated in place.
+        window: Rolling EPA window size to retrieve.
+        df: Full raw modeling DataFrame (window=4 baseline).
+        feature_fn: Feature engineering function passed to _prepare_data.
+        repo: Repository root for _rebuild_features_with_window.
+
+    Returns:
+        Tuple of (df_w, x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
+    """
+    if window not in cache:
+        df_w = _rebuild_features_with_window(df, window=window, repo=repo)
+        x_tr, y_tr, x_ho, y_ho, tr_s, ho_s = _prepare_data(df_w, feature_fn)
+        cache[window] = (df_w, x_tr, y_tr, x_ho, y_ho, tr_s, ho_s)
+    return cache[window]
+
+
+# ---------------------------------------------------------------------------
 # Random Forest training
 # ---------------------------------------------------------------------------
 
@@ -334,8 +371,16 @@ def _train_random_forest(
     """Train a Random Forest classifier with randomised hyperparameter search.
 
     Searches over n_estimators, max_depth, min_samples_leaf, max_features,
-    and epa_window.  CalibratedClassifierCV (isotonic) is applied post-fit
-    to correct the systematic overconfidence in RF predict_proba.
+    and epa_window.  CalibratedClassifierCV(isotonic) is applied
+    unconditionally to correct systematic RF overconfidence.
+
+    Optimisations vs the Phase 20d implementation:
+    - Window cache: each unique EPA window is rebuilt and split at most once
+      across all iterations, eliminating repeated parquet reads.
+    - StratifiedKFold is instantiated once before the loop.
+    - Feature importances averaged with np.array().mean(axis=0) (vectorised).
+    - ``feature_set`` metadata derived from ``feature_names`` length rather
+      than hardcoded to ``"combined_32"``.
 
     Progress is reported via a tqdm bar showing iteration count, current
     best CV Brier, and ETA.
@@ -343,13 +388,13 @@ def _train_random_forest(
     Args:
         df: Full modeling DataFrame from load_modeling_file.
         model_version: Model version string for artifact naming.
-        feature_fn: Feature engineering function (combined features).
+        feature_fn: Feature engineering function.
         feature_names: Feature column names produced by feature_fn.
         repo: Repository root.
 
     Returns:
-        ModelMetadata with holdout Brier, best parameters, and top-10
-        feature importances by mean decrease in impurity.
+        ModelMetadata with holdout Brier, best parameters, and feature
+        importances (top 10, averaged across calibration folds).
     """
     from datetime import UTC, datetime
 
@@ -388,13 +433,13 @@ def _train_random_forest(
     cv_folds: int = 5
     rng = np.random.default_rng(42)
 
-    # Pre-initialise *_best with the standard window=4 split so static
-    # analysis can verify they are always bound before use.  These are
-    # overwritten on the first iteration (initial best_cv_brier = inf
-    # guarantees the branch fires).
-    _df_init = _rebuild_features_with_window(df, window=4, repo=resolved_repo)
-    x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-        _prepare_data(_df_init, feature_fn)
+    # Window cache: keyed by window size → (df_w, x_train, y_train, x_hold, y_hold, ...)
+    # Bounded by len(_EPA_WINDOW_OPTIONS); eliminates repeated parquet reads.
+    window_cache: dict[int, tuple] = {}
+
+    # Pre-populate window=4 (fast path; also initialises *_best for static analysis)
+    _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
+        _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
     )
 
     best_cv_brier: float = float("inf")
@@ -402,6 +447,10 @@ def _train_random_forest(
     best_pipeline = None
 
     param_keys = list(param_grid.keys())
+
+    # Instantiate once — same random_state means identical fold assignments
+    # every iteration, which is correct (we want comparable CV scores).
+    skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
 
     bar = tqdm(
         range(n_iter),
@@ -416,12 +465,11 @@ def _train_random_forest(
         }
         window: int = sampled.pop("epa_window")
 
-        df_w = _rebuild_features_with_window(df, window=window, repo=resolved_repo)
-        x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = _prepare_data(
-            df_w, feature_fn
+        # Cache hit if this window was seen before — no disk read
+        _, x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = (
+            _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
         )
 
-        skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
         fold_briers: list[float] = []
         for train_idx, val_idx in skf.split(x_train, y_train):
             x_tr = x_train.iloc[train_idx]
@@ -449,9 +497,9 @@ def _train_random_forest(
         if cv_brier < best_cv_brier:
             best_cv_brier = cv_brier
             best_params = {**sampled, "epa_window": window}
-            df_best = _rebuild_features_with_window(df, window=window, repo=resolved_repo)
-            x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-                _prepare_data(df_best, feature_fn)
+            # x_train_best / x_hold_best come from the cache — no extra rebuild
+            _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
+                window_cache[window]
             )
             rf_best = RandomForestClassifier(random_state=42, n_jobs=-1, **sampled)
             cal_best = CalibratedClassifierCV(rf_best, method="isotonic", cv=3)
@@ -487,18 +535,15 @@ def _train_random_forest(
         best_params,
     )
 
-    # Extract feature importances by averaging across the CV folds stored
-    # in calibrated_classifiers_.  CalibratedClassifierCV(cv=3) trains 3
-    # internal fold clones; clf.estimator is the *unfitted* original and
-    # must not be used.  Averaging across folds gives a more stable
-    # importance estimate than any single fold.
+    # Feature importances: average across calibration folds using vectorised
+    # np.array().mean(axis=0) rather than a Python loop per feature.
+    # CalibratedClassifierCV(cv=3) trains 3 internal fold clones;
+    # clf.estimator is the *unfitted* original — use calibrated_classifiers_.
     cal_clf = best_pipeline.named_steps["clf"]
-    fold_importances: list[list[float]] = [
-        cc.estimator.feature_importances_.tolist() for cc in cal_clf.calibrated_classifiers_
-    ]
-    importances: list[float] = [
-        float(np.mean([fold[i] for fold in fold_importances])) for i in range(len(feature_names))
-    ]
+    fold_importances = np.array(
+        [cc.estimator.feature_importances_ for cc in cal_clf.calibrated_classifiers_]
+    )
+    importances: list[float] = fold_importances.mean(axis=0).tolist()
     importance_pairs = sorted(
         zip(feature_names, importances, strict=True),
         key=lambda x: x[1],
@@ -524,7 +569,7 @@ def _train_random_forest(
             "n_train": len(x_train_best),
             "n_holdout": len(x_hold_best),
             "n_features": len(feature_names),
-            "feature_set": "combined_32",
+            "feature_set": f"combined_{len(feature_names)}",
             "top10_feature_importances": top10_importances,
         },
         feature_columns=feature_names,
@@ -553,13 +598,19 @@ def _train_xgboost(
     colsample_bytree, min_child_weight, gamma, and epa_window.
     Isotonic calibration applied if holdout ECE exceeds 0.025.
 
+    Optimisations vs the Phase 20d implementation:
+    - Window cache: each unique EPA window is rebuilt and split at most once.
+    - StratifiedKFold instantiated once before the loop.
+    - Feature importances use vectorised np.array().mean(axis=0).
+    - ``feature_set`` metadata derived from feature_names length.
+
     Progress is reported via a tqdm bar showing iteration count, current
     best CV Brier, and ETA.
 
     Args:
         df: Full modeling DataFrame from load_modeling_file.
         model_version: Model version string for artifact naming.
-        feature_fn: Feature engineering function (combined features).
+        feature_fn: Feature engineering function.
         feature_names: Feature column names produced by feature_fn.
         repo: Repository root.
 
@@ -604,9 +655,10 @@ def _train_xgboost(
     cv_folds: int = 5
     rng = np.random.default_rng(42)
 
-    _df_init = _rebuild_features_with_window(df, window=4, repo=resolved_repo)
-    x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-        _prepare_data(_df_init, feature_fn)
+    window_cache: dict[int, tuple] = {}
+
+    _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
+        _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
     )
 
     best_cv_brier: float = float("inf")
@@ -614,6 +666,7 @@ def _train_xgboost(
     best_pipeline = None
 
     param_keys = list(param_grid.keys())
+    skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
 
     bar = tqdm(
         range(n_iter),
@@ -628,12 +681,10 @@ def _train_xgboost(
         }
         window: int = sampled.pop("epa_window")
 
-        df_w = _rebuild_features_with_window(df, window=window, repo=resolved_repo)
-        x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = _prepare_data(
-            df_w, feature_fn
+        _, x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = (
+            _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
         )
 
-        skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
         fold_briers: list[float] = []
         for train_idx, val_idx in skf.split(x_train, y_train):
             x_tr = x_train.iloc[train_idx]
@@ -667,9 +718,8 @@ def _train_xgboost(
         if cv_brier < best_cv_brier:
             best_cv_brier = cv_brier
             best_params = {**sampled, "epa_window": window}
-            df_best = _rebuild_features_with_window(df, window=window, repo=resolved_repo)
-            x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-                _prepare_data(df_best, feature_fn)
+            _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
+                window_cache[window]
             )
             xgb_best = XGBClassifier(
                 objective="binary:logistic",
@@ -753,29 +803,22 @@ def _train_xgboost(
         best_params,
     )
 
-    # Extract gain-based feature importances.
+    # Feature importances: vectorised average across calibration folds.
     # Two cases depending on whether isotonic calibration was applied:
     #   - Not calibrated: pipeline["clf"] is XGBClassifier directly.
-    #   - Calibrated: pipeline["clf"] is CalibratedClassifierCV wrapping
-    #     XGBClassifier.  clf.estimator is the unfitted original — must use
-    #     calibrated_classifiers_[i].estimator for the fitted instances.
-    #     Average across folds for a stable importance estimate.
+    #   - Calibrated: pipeline["clf"] is CalibratedClassifierCV; use
+    #     calibrated_classifiers_[i].estimator for fitted instances.
     xgb_step = best_pipeline.named_steps["clf"]
     if hasattr(xgb_step, "calibrated_classifiers_"):
-        fold_importances_xgb: list[list[float]] = [
-            cc.estimator.feature_importances_.tolist() for cc in xgb_step.calibrated_classifiers_
-        ]
-        feat_imp_arr = [
-            float(np.mean([fold[i] for fold in fold_importances_xgb]))
-            for i in range(len(feature_names))
-        ]
-        feat_imp = feat_imp_arr
+        fold_importances_xgb = np.array(
+            [cc.estimator.feature_importances_ for cc in xgb_step.calibrated_classifiers_]
+        )
+        importances_list: list[float] = fold_importances_xgb.mean(axis=0).tolist()
     else:
-        feat_imp = xgb_step.feature_importances_.tolist()
+        importances_list = xgb_step.feature_importances_.tolist()
 
-    feat_imp_list: list[float] = feat_imp if isinstance(feat_imp, list) else feat_imp.tolist()
     importance_pairs = sorted(
-        zip(feature_names, feat_imp_list, strict=True),
+        zip(feature_names, importances_list, strict=True),
         key=lambda x: x[1],
         reverse=True,
     )
@@ -800,7 +843,7 @@ def _train_xgboost(
             "n_train": len(x_train_best),
             "n_holdout": len(x_hold_best),
             "n_features": len(feature_names),
-            "feature_set": "combined_32",
+            "feature_set": f"combined_{len(feature_names)}",
             "top10_feature_importances": top10_importances,
         },
         feature_columns=feature_names,
@@ -811,229 +854,122 @@ def _train_xgboost(
 
 
 # ---------------------------------------------------------------------------
-# random_forest_v1
+# Model variant factory
 # ---------------------------------------------------------------------------
 
 
-@PredictorRegistry.register
-class RandomForestV1Predictor:
-    """Random Forest classifier on combined features (32) with isotonic calibration.
+def _make_tree_variant(
+    name: str,
+    description: str,
+    *,
+    feature_set: FeatureSet,
+    model_type: Literal["rf", "xgb"],
+) -> type:
+    """Produce and register a tree-based predictor class for a given variant.
 
-    Addresses the logistic ceiling (Brier 0.22057) by capturing non-linear
-    EPA x Elo interaction effects through tree splitting.  Isotonic
-    calibration corrects systematic RF overconfidence, targeting ECE
-    comparable to logistic_v3's 0.015.
+    Eliminates the ~35-line boilerplate class body required per variant.
+    The produced class is functionally identical to a hand-written class:
+    it has a ``spec``, implements ``train``, ``is_trained``,
+    ``predict_historical``, and ``predict_upcoming``, and is registered
+    with ``PredictorRegistry`` immediately.
 
-    Tuned: n_estimators, max_depth, min_samples_leaf, max_features,
-    epa_window (resolves rolling-window-as-hyperparameter backlog item).
+    Adding a new variant (e.g. ``random_forest_v3``) requires one call::
+
+        RandomForestV3Predictor = _make_tree_variant(
+            "random_forest_v3",
+            "Random Forest — some new feature set",
+            feature_set=FEATURE_SETS["expanded"],
+            model_type="rf",
+        )
+
+    Args:
+        name: Model version string (e.g. ``"random_forest_v2"``).
+            Must be unique in the registry.
+        description: Human-readable description shown in ``gridiron models list``.
+        feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS`` describing
+            which features this variant uses.
+        model_type: ``"rf"`` for Random Forest, ``"xgb"`` for XGBoost.
+
+    Returns:
+        The produced and registered class object.  Assign to a module-level
+        name so it is importable and re-exportable from ``predictor.py``.
     """
+    _train_fn = _train_random_forest if model_type == "rf" else _train_xgboost
+    _feature_fn = feature_set.feature_fn
+    _feature_names = feature_set.feature_names
 
-    spec = PredictorSpec(
-        name="random_forest_v1",
-        description="Random Forest — combined features (32), isotonic calibration",
-        trainable=True,
-    )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train Random Forest with randomised hyperparameter search."""
-        return _train_random_forest(
+    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+        return _train_fn(
             df,
-            model_version="random_forest_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
+            model_version=name,
+            feature_fn=_feature_fn,
+            feature_names=_feature_names,
             repo=repo,
         )
 
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for random_forest_v1."""
-        return _is_trained("random_forest_v1", repo)
+    def is_trained(self: object, *, repo: Path | None = None) -> bool:
+        return _is_trained(name, repo)
 
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate random_forest_v1 predictions for all historical games."""
+    def predict_historical(
+        self: object, games: pd.DataFrame, *, repo: Path | None = None
+    ) -> pd.DataFrame:
         return _predict_historical_tree(
-            games,
-            model_version="random_forest_v1",
-            feature_fn=_make_combined_features,
-            repo=repo,
+            games, model_version=name, feature_fn=_feature_fn, repo=repo
         )
 
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate random_forest_v1 predictions for upcoming games."""
+    def predict_upcoming(
+        self: object, schedule: pd.DataFrame, *, repo: Path | None = None
+    ) -> pd.DataFrame:
         return _predict_upcoming_tree(
-            schedule,
-            model_version="random_forest_v1",
-            feature_fn=_make_combined_features,
-            repo=repo,
+            schedule, model_version=name, feature_fn=_feature_fn, repo=repo
         )
 
-
-# ---------------------------------------------------------------------------
-# xgboost_v1
-# ---------------------------------------------------------------------------
-
-
-@PredictorRegistry.register
-class XGBoostV1Predictor:
-    """XGBoost gradient boosted trees on combined features (32).
-
-    Captures non-linear EPA x Elo interactions via sequential boosting.
-    Uses binary:logistic objective which produces well-calibrated
-    probabilities natively.  Isotonic calibration applied automatically
-    if holdout ECE exceeds 0.025.
-
-    Tuned: n_estimators, max_depth, learning_rate, subsample,
-    colsample_bytree, min_child_weight, gamma, epa_window.
-    """
-
-    spec = PredictorSpec(
-        name="xgboost_v1",
-        description="XGBoost gradient boosting — combined features (32)",
-        trainable=True,
+    family = "RandomForest" if model_type == "rf" else "XGBoost"
+    cls_name = f"{family}{name.title().replace('_', '')}Predictor"
+    cls = type(
+        cls_name,
+        (),
+        {
+            "spec": PredictorSpec(name=name, description=description, trainable=True),
+            "train": train,
+            "is_trained": is_trained,
+            "predict_historical": predict_historical,
+            "predict_upcoming": predict_upcoming,
+            "__doc__": description,
+        },
     )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train XGBoost with randomised hyperparameter search."""
-        return _train_xgboost(
-            df,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for xgboost_v1."""
-        return _is_trained("xgboost_v1", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate xgboost_v1 predictions for all historical games."""
-        return _predict_historical_tree(
-            games,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate xgboost_v1 predictions for upcoming games."""
-        return _predict_upcoming_tree(
-            schedule,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            repo=repo,
-        )
+    PredictorRegistry.register(cls)
+    return cls
 
 
 # ---------------------------------------------------------------------------
-# random_forest_v2
+# Registered variants
 # ---------------------------------------------------------------------------
 
+RandomForestV1Predictor = _make_tree_variant(
+    "random_forest_v1",
+    "Random Forest — combined features (32), isotonic calibration",
+    feature_set=FEATURE_SETS["combined"],
+    model_type="rf",
+)
 
-@PredictorRegistry.register
-class RandomForestV2Predictor:
-    """Random Forest on expanded Phase 20e feature set (51 features).
+XGBoostV1Predictor = _make_tree_variant(
+    "xgboost_v1",
+    "XGBoost gradient boosting — combined features (32)",
+    feature_set=FEATURE_SETS["combined"],
+    model_type="xgb",
+)
 
-    Extends random_forest_v1 with all Phase 20e Category A features:
-    rest/schedule stress, weather effects, travel, divisional game flag,
-    and franchise-level home field advantage coefficient.
+RandomForestV2Predictor = _make_tree_variant(
+    "random_forest_v2",
+    "Random Forest — expanded Phase 20e features (51), isotonic calibration",
+    feature_set=FEATURE_SETS["expanded"],
+    model_type="rf",
+)
 
-    Same architecture and hyperparameter search as v1; expanded feature
-    set allows the model to capture fatigue, scheduling, and environmental
-    effects that the v1 combined feature set cannot represent.
-    """
-
-    spec = PredictorSpec(
-        name="random_forest_v2",
-        description="Random Forest — expanded Phase 20e features (51), isotonic calibration",
-        trainable=True,
-    )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train Random Forest v2 on the expanded Phase 20e feature set."""
-        return _train_random_forest(
-            df,
-            model_version="random_forest_v2",
-            feature_fn=_make_expanded_features,
-            feature_names=_EXPANDED_FEATURES,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for random_forest_v2."""
-        return _is_trained("random_forest_v2", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate random_forest_v2 predictions for all historical games."""
-        return _predict_historical_tree(
-            games,
-            model_version="random_forest_v2",
-            feature_fn=_make_expanded_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate random_forest_v2 predictions for upcoming games."""
-        return _predict_upcoming_tree(
-            schedule,
-            model_version="random_forest_v2",
-            feature_fn=_make_expanded_features,
-            repo=repo,
-        )
-
-
-# ---------------------------------------------------------------------------
-# xgboost_v2
-# ---------------------------------------------------------------------------
-
-
-@PredictorRegistry.register
-class XGBoostV2Predictor:
-    """XGBoost on expanded Phase 20e feature set (51 features).
-
-    Extends xgboost_v1 with all Phase 20e Category A features:
-    rest/schedule stress, weather effects, travel, divisional game flag,
-    and franchise-level home field advantage coefficient.
-
-    Same architecture and hyperparameter search as v1.  XGBoost's
-    tree-splitting mechanism is well-suited to the mix of binary flags
-    (IS_DIV_GAME, IS_DOME, SHORT_WEEK, POST_BYE) and continuous values
-    (DAYS_REST, WIND_SPEED_MPH, TEMP_F, KM_TRAVELED) in the new features.
-    """
-
-    spec = PredictorSpec(
-        name="xgboost_v2",
-        description="XGBoost gradient boosting — expanded Phase 20e features (51)",
-        trainable=True,
-    )
-
-    def train(self, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
-        """Train XGBoost v2 on the expanded Phase 20e feature set."""
-        return _train_xgboost(
-            df,
-            model_version="xgboost_v2",
-            feature_fn=_make_expanded_features,
-            feature_names=_EXPANDED_FEATURES,
-            repo=repo,
-        )
-
-    def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for xgboost_v2."""
-        return _is_trained("xgboost_v2", repo)
-
-    def predict_historical(self, games: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate xgboost_v2 predictions for all historical games."""
-        return _predict_historical_tree(
-            games,
-            model_version="xgboost_v2",
-            feature_fn=_make_expanded_features,
-            repo=repo,
-        )
-
-    def predict_upcoming(self, schedule: pd.DataFrame, *, repo: Path | None = None) -> pd.DataFrame:
-        """Generate xgboost_v2 predictions for upcoming games."""
-        return _predict_upcoming_tree(
-            schedule,
-            model_version="xgboost_v2",
-            feature_fn=_make_expanded_features,
-            repo=repo,
-        )
+XGBoostV2Predictor = _make_tree_variant(
+    "xgboost_v2",
+    "XGBoost gradient boosting — expanded Phase 20e features (51)",
+    feature_set=FEATURE_SETS["expanded"],
+    model_type="xgb",
+)
