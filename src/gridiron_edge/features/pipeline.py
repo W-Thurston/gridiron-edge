@@ -8,29 +8,32 @@ import pandas as pd
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders, writers
 from gridiron_edge.datasets.accessor import DatasetAccessor
+from gridiron_edge.datasets.loaders import load_parquet_if_exists
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.features.manifest import write_manifest
-from gridiron_edge.features.registry import FeatureRegistry, run_features
-import gridiron_edge.features.team.divisional
+from gridiron_edge.features.registry import FeatureRegistry, run_features, validate_ordering
 
 # Side-effect imports: each module registers its feature class with
 # FeatureRegistry via the @FeatureRegistry.register(...) decorator.
 # The imports must be preserved even though no name is referenced directly.
+import gridiron_edge.features.team.divisional
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.epa
 import gridiron_edge.features.team.home_field
+import gridiron_edge.features.team.primetime
+import gridiron_edge.features.team.record
 import gridiron_edge.features.team.rest
+import gridiron_edge.features.team.schedule_strength
 import gridiron_edge.features.team.travel
 import gridiron_edge.features.team.venue_hfa
 import gridiron_edge.features.team.weather  # noqa: F401
 
-# Feature order matters:
-# - home_field must run before travel (travel reads HOME_FIELD)
-# - travel must run before venue_hfa (venue_hfa reads IS_NEUTRAL_SITE)
-# - rest runs after home_field (reads GAME_DATE from games)
-# - weather runs after home_field (reads ROOF; overrides dome weather values)
-# - divisional and venue_hfa can run anytime after home_field/travel
-# - elo and epa can run anytime
+# Feature order matters — dependencies between features:
+# - home_field before travel (travel reads HOME_FIELD)
+# - travel before venue_hfa (venue_hfa reads IS_NEUTRAL_SITE)
+# - team_elo before schedule_strength (SOS/SOV join on elo_state)
+# - record and schedule_strength can run any time after home_field
+# - primetime has no dependencies
 FEATURES: Final[list[str]] = [
     "home_field",
     "team_elo",
@@ -40,7 +43,15 @@ FEATURES: Final[list[str]] = [
     "weather",
     "divisional",
     "venue_hfa",
+    "record",
+    "schedule_strength",
+    "primetime",
 ]
+
+# Validate that the ordering above satisfies all depends_on constraints.
+# This runs at import time — a mis-ordering raises ValueError immediately
+# rather than silently producing wrong features during training.
+validate_ordering(FEATURES)
 
 
 def _feature_columns(feature_names: list[str]) -> list[str]:
@@ -76,13 +87,6 @@ def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
         .drop_duplicates()
         .reset_index(drop=True)
     )
-
-
-def _load_parquet_if_exists(path: Path) -> pd.DataFrame | None:
-    """Load a Parquet file if it exists; return None otherwise."""
-    if path.exists():
-        return pd.read_parquet(path)
-    return None
 
 
 def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
@@ -126,8 +130,8 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
         return
 
     # Incremental build: only process unseen GAME_ID rows
-    base_existing: pd.DataFrame | None = _load_parquet_if_exists(base_path)
-    full_existing: pd.DataFrame | None = _load_parquet_if_exists(full_path)
+    base_existing: pd.DataFrame | None = load_parquet_if_exists(base_path)
+    full_existing: pd.DataFrame | None = load_parquet_if_exists(full_path)
     if base_existing is None or full_existing is None:
         base_out = base_all
         full_out = run_features(df=base_out, feature_names=FEATURES, datasets=datasets)

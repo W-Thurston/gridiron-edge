@@ -11,6 +11,16 @@ from pandas import DataFrame, Series
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.evaluation.select import (
+    collect_model_metrics as _collect_model_metrics,
+)
+from gridiron_edge.evaluation.select import (
+    compute_report_data as _compute_report_data,
+)
+from gridiron_edge.evaluation.select import (
+    rank_models as _rank_models,
+)
+
 evaluate_app = typer.Typer(
     help="Evaluate model predictions against outcomes.", no_args_is_help=True
 )
@@ -357,58 +367,6 @@ def evaluate_diagnostics(
     console.summary()
 
 
-def _collect_model_metrics(
-    model_names: list[str],
-    *,
-    repo: Path,
-) -> list[dict]:
-    """Compute evaluation metrics for all models with archived predictions.
-
-    Args:
-        model_names: List of registered model version strings.
-        repo: Repository root.
-
-    Returns:
-        List of metric dicts, one per model that has archived predictions.
-        Models with no archived data are silently skipped.
-    """
-    from gridiron_edge.evaluation.metrics import (
-        accuracy,
-        brier_score,
-        build_evaluation_df,
-        expected_calibration_error,
-        log_loss,
-        roc_auc,
-    )
-
-    _brier = brier_score
-    _ece = expected_calibration_error
-    _auc = roc_auc
-    _acc = accuracy
-    _ll = log_loss
-    _build = build_evaluation_df
-
-    rows: list[dict[str, float | int | str]] = []
-    for mv in model_names:
-        df_eval: DataFrame = _build(model_version=mv, repo=repo)
-        if df_eval.empty:
-            continue
-        p: Series = df_eval["away_win_prob"]
-        y: Series = df_eval["away_team_won"]
-        rows.append(
-            {
-                "model_version": mv,
-                "n_games": len(df_eval),
-                "brier": round(_brier(p, y), 5),
-                "ece": round(_ece(p, y), 5),
-                "auc": round(_auc(p, y), 5),
-                "accuracy": round(_acc(p, y), 5),
-                "log_loss": round(_ll(p, y), 5),
-            }
-        )
-    return rows
-
-
 @evaluate_app.command("select-model")
 def evaluate_select_model(
     *,
@@ -534,46 +492,6 @@ def evaluate_select_model(
     )
 
     console.summary()
-
-
-def _rank_models(
-    rows: list[dict],
-    *,
-    criteria_list: list[str],
-    lower_is_better: set[str],
-) -> DataFrame:
-    """Rank a list of model metric dicts and return a sorted DataFrame.
-
-    Shared by both ``select-model`` and ``report`` so the recommendation
-    logic is never duplicated.
-
-    Args:
-        rows: List of dicts from ``_collect_model_metrics``.
-        criteria_list: Ordered list of metric names to rank on.
-        lower_is_better: Set of criteria where lower values are better.
-
-    Returns:
-        Ranked DataFrame sorted by composite_rank ascending, then primary
-        criterion. Includes a ``composite_rank`` column and one
-        ``rank_{criterion}`` column per criterion.
-    """
-    import pandas as pd
-
-    df = pd.DataFrame(rows)
-    for criterion in criteria_list:
-        rank_col: str = f"rank_{criterion}"
-        ascending: bool = criterion in lower_is_better
-        df[rank_col] = df[criterion].rank(ascending=ascending, method="min").astype(int)
-
-    # pyrefly: ignore [bad-argument-type]
-    rank_cols: list[str] = [f"rank_{c}" for c in criteria_list]
-    # pyrefly: ignore [bad-argument-type]
-    df["composite_rank"] = df[rank_cols].sum(axis=1)
-    df: DataFrame = df.sort_values(
-        ["composite_rank", criteria_list[0]],
-        ascending=[True, criteria_list[0] in lower_is_better],
-    ).reset_index(drop=True)
-    return df
 
 
 def _print_ranking_section(
@@ -709,61 +627,6 @@ def _print_misses_section(
     typer.echo("")
 
 
-def _compute_report_data(
-    *,
-    target_mv: str,
-    season: str | None,
-    top_misses: int,
-    repo: Path,
-) -> tuple[DataFrame, DataFrame, DataFrame, DataFrame]:
-    """Load predictions and compute all four report DataFrames.
-
-    Separated from ``evaluate_report`` to keep the CLI command within
-    statement-count limits (PLR0915).
-
-    Args:
-        target_mv: Model version to analyse.
-        season: Optional season filter.
-        top_misses: Number of worst predictions to surface.
-        repo: Repository root.
-
-    Returns:
-        Tuple of (df_eval, df_tiers, df_seasons, df_misses).
-
-    Raises:
-        typer.Exit: If no completed games are found for the model.
-    """
-    from gridiron_edge.core.console import step
-    from gridiron_edge.evaluation.metrics import (
-        biggest_misses,
-        brier_by_confidence_tier,
-        brier_by_season,
-        build_evaluation_df,
-    )
-
-    with step(f"Load predictions — {target_mv}") as s:
-        df_eval: DataFrame = build_evaluation_df(model_version=target_mv, season=season, repo=repo)
-        if df_eval.empty:
-            s.set_detail("no evaluated games")
-            typer.echo(f"No completed games found for '{target_mv}'.")
-            raise typer.Exit(1)
-        s.set_detail(f"{len(df_eval):,} games")
-
-    with step("Confidence-stratified Brier") as s:
-        df_tiers: DataFrame = brier_by_confidence_tier(df_eval)
-        s.set_detail(f"{len(df_tiers)} tiers")
-
-    with step("Season-over-season Brier") as s:
-        df_seasons: DataFrame = brier_by_season(df_eval)
-        s.set_detail(f"{len(df_seasons)} seasons")
-
-    with step(f"Top {top_misses} misses") as s:
-        df_misses: DataFrame = biggest_misses(df_eval, n=top_misses)
-        s.set_detail(f"{len(df_misses)} games surfaced")
-
-    return df_eval, df_tiers, df_seasons, df_misses
-
-
 @evaluate_app.command("report")
 def evaluate_report(
     *,
@@ -868,9 +731,13 @@ def evaluate_report(
         raise typer.Exit(1)
 
     # ── Compute depth metrics ────────────────────────────────────────────────
-    _df_eval, df_tiers, df_seasons, df_misses = _compute_report_data(
-        target_mv=target_mv, season=season, top_misses=top_misses, repo=repo
-    )
+    try:
+        _df_eval, df_tiers, df_seasons, df_misses = _compute_report_data(
+            target_mv=target_mv, season=season, top_misses=top_misses, repo=repo
+        )
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
     console.summary()
 
     # ── Print report ────────────────────────────────────────────────────────

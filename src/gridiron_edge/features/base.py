@@ -12,16 +12,19 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class FeatureSpec:
-    """Metadata describing a feature's identity and outputs.
+    """Metadata describing a feature's identity, outputs, and dependencies.
 
     Attributes:
         name: Unique string key used to register and look up this feature.
         produces: Ordered list of column names this feature adds to the
             modeling DataFrame.
+        depends_on: Feature names that must run before this one. The pipeline
+            validates this ordering at startup. Defaults to empty (no deps).
     """
 
     name: str
     produces: Sequence[str]
+    depends_on: Sequence[str] = ()
 
 
 class Feature(Protocol):

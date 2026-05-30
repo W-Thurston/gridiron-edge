@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+# pyrefly: ignore [missing-import]
 import typer
 
 output_app = typer.Typer(help="Write reports and outputs.", no_args_is_help=True)
@@ -73,9 +74,9 @@ def output_ranks(
     year: str = typer.Option(..., help="NFL season label like '2025-2026'."),
     week: int = typer.Option(..., help="Week number for rank comparison."),
 ) -> None:
-    """Write Elo ranking changes to Excel."""
+    """Write Elo ranking changes to CSV."""
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.viz.excel import write_elo_rankings_csv
+    from gridiron_edge.viz.rankings import write_elo_rankings_csv
 
     console.header("output ranks", subtitle=f"{year}  week {week}")
 

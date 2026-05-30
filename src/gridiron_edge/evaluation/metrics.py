@@ -44,14 +44,14 @@ from numpy import dtype, float64, ndarray, signedinteger
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
+from gridiron_edge.evaluation.archive import load_prediction_log
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-_ARCHIVE_PATH_RELATIVE: Final[str] = "data/output/predictions/predictions_log.parquet"
 
 # Default confidence tiers for brier_by_confidence_tier.
 # Each tuple is a half-open interval [lo, hi).  The last bucket closes at 1.0.
@@ -237,10 +237,6 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
 # ---------------------------------------------------------------------------
 
 
-def _archive_path(repo: Path) -> Path:
-    return repo / _ARCHIVE_PATH_RELATIVE
-
-
 def build_evaluation_df(
     *,
     model_version: str | None = None,
@@ -265,21 +261,12 @@ def build_evaluation_df(
         away_win_prob, away_team_won, model_version.  Empty if no data.
     """
     resolved_repo: Path = repo or get_settings().repo_root
-    archive: Path = _archive_path(resolved_repo)
 
-    if not archive.exists():
-        return DataFrame()
-
-    log: DataFrame = pd.read_parquet(archive)
-
-    if log.empty:
-        return DataFrame()
-
-    if model_version is not None:
-        log = log.loc[log["model_version"] == model_version, :].copy()
-
-    if season is not None:
-        log = log.loc[log["season"] == season, :].copy()
+    log: DataFrame = load_prediction_log(
+        model_version=model_version,
+        season=season,
+        repo=resolved_repo,
+    )
 
     if log.empty:
         return DataFrame()
@@ -289,8 +276,8 @@ def build_evaluation_df(
 
     # Build a lookup: game_id → away_team_won (1 = away won, 0 = home won)
     # The canonical games table uses WINNER/LOSER/GAME_LOCATION convention.
-    # GAME_LOCATION == "@" means the winner was the away team.
-    away_won_mask: Series = games["GAME_LOCATION"] == "@"
+    # GAME_LOCATION == _AWAY_WIN_LOCATION means the winner was the away team.
+    away_won_mask: Series = games["GAME_LOCATION"] == _AWAY_WIN_LOCATION
     outcome_map: dict[str, int] = {}
     for _, row in games.iterrows():
         gid = row["GAME_ID"]
@@ -314,34 +301,6 @@ def build_evaluation_df(
     ]
     available: list[str] = [c for c in cols if c in log.columns]
     return log.loc[:, available].reset_index(drop=True)
-
-
-def load_prediction_log(
-    *,
-    model_version: str | None = None,
-    repo: Path | None = None,
-) -> DataFrame:
-    """Load the raw prediction archive without joining to outcomes.
-
-    Args:
-        model_version: Filter to a specific model version.
-        repo: Repository root.
-
-    Returns:
-        Raw prediction log DataFrame, or empty DataFrame if archive missing.
-    """
-    resolved_repo: Path = repo or get_settings().repo_root
-    archive: Path = _archive_path(resolved_repo)
-
-    if not archive.exists():
-        return DataFrame()
-
-    log: DataFrame = pd.read_parquet(archive)
-
-    if model_version is not None:
-        log = log.loc[log["model_version"] == model_version, :].copy()
-
-    return log.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------

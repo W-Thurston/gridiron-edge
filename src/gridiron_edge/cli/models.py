@@ -4,15 +4,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
 import typer
 
-from gridiron_edge.models.artifact import ModelMetadata
-from gridiron_edge.models.base import Predictor
+if TYPE_CHECKING:
+    from gridiron_edge.models.artifact import ModelMetadata
+    from gridiron_edge.models.base import Predictor
 
 models_app = typer.Typer(
     help="Train and manage prediction model artifacts.",

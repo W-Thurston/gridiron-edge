@@ -52,8 +52,11 @@ if TYPE_CHECKING:
 # short enough to capture current-season form.
 DEFAULT_ROLLING_WINDOW: Final[int] = 4
 
-# EPA columns from epa_by_game.parquet that we roll over
-_EPA_COLS: Final[list[str]] = [
+# EPA columns from epa_by_game.parquet that we roll over.
+# This is the single source of truth for EPA metric names — both the model
+# layer (_shared.py) and tree tuning (tree.py) derive their column lists
+# from this constant rather than maintaining independent copies.
+EPA_COLS: Final[list[str]] = [
     "off_epa_per_play",
     "off_pass_epa",
     "off_rush_epa",
@@ -64,9 +67,12 @@ _EPA_COLS: Final[list[str]] = [
     "def_success_rate",
 ]
 
+# Private alias kept for internal use within this module
+_EPA_COLS = EPA_COLS
+
 # Canonical column names produced for TEAM_A and TEAM_B
-_TEAM_A_COLS: Final[list[str]] = [f"TEAM_A_{c.upper()}" for c in _EPA_COLS]
-_TEAM_B_COLS: Final[list[str]] = [f"TEAM_B_{c.upper()}" for c in _EPA_COLS]
+_TEAM_A_COLS: Final[list[str]] = [f"TEAM_A_{c.upper()}" for c in EPA_COLS]
+_TEAM_B_COLS: Final[list[str]] = [f"TEAM_B_{c.upper()}" for c in EPA_COLS]
 
 
 def _build_rolling_epa(
@@ -98,18 +104,23 @@ def _build_rolling_epa(
     # Sort chronologically within each team
     df = df.sort_values(["team", "season", "week"]).reset_index(drop=True)
 
-    # Compute rolling means grouped by team
-    # shift(1) ensures we use prior games only (no current game leakage)
+    # Compute rolling means grouped by team.
+    # shift(1) ensures we use prior games only (no current game leakage).
     rolled_parts: list[DataFrame] = []
     for _team, group in df.groupby("team", sort=False):
         sorted_group: DataFrame = group.sort_values(["season", "week"]).copy()
-        for col in _EPA_COLS:
-            if col in sorted_group.columns:
-                sorted_group[f"rolling_{col}"] = (
-                    sorted_group[col].shift(1).rolling(window=window, min_periods=1).mean()
-                )
-            else:
-                sorted_group[f"rolling_{col}"] = float("nan")
+        available_cols = [c for c in _EPA_COLS if c in sorted_group.columns]
+        missing_cols = [c for c in _EPA_COLS if c not in sorted_group.columns]
+
+        if available_cols:
+            rolled_vals = (
+                sorted_group[available_cols].shift(1).rolling(window=window, min_periods=1).mean()
+            )
+            sorted_group[[f"rolling_{c}" for c in available_cols]] = rolled_vals
+
+        for col in missing_cols:
+            sorted_group[f"rolling_{col}"] = float("nan")
+
         rolled_parts.append(sorted_group)
 
     rolled: DataFrame = pd.concat(rolled_parts, ignore_index=True)
@@ -117,6 +128,36 @@ def _build_rolling_epa(
     # Keep only the keys and rolled columns
     rolling_cols: list[str] = [f"rolling_{c}" for c in _EPA_COLS]
     return rolled.loc[:, ["game_id", "season", "week", "team", *rolling_cols]].copy()
+
+
+def _join_team_epa(
+    df: DataFrame,
+    rolled: DataFrame,
+    *,
+    prefix: str,
+) -> DataFrame:
+    """Join pre-game rolling EPA columns for one team perspective onto the modeling DataFrame.
+
+    Args:
+        df: Modeling DataFrame containing ``season``, ``WEEK_NUM``, and
+            the team column identified by ``prefix`` (``"TEAM_A"`` or ``"TEAM_B"``).
+        rolled: Rolling EPA DataFrame from ``_build_rolling_epa`` with
+            columns ``season``, ``week``, ``team``, and ``rolling_*`` columns.
+        prefix: Column prefix — either ``"TEAM_A"`` or ``"TEAM_B"``.
+
+    Returns:
+        Input DataFrame with ``{prefix}_{EPA_COL}`` columns appended.
+    """
+    renamed: DataFrame = rolled.rename(
+        columns={f"rolling_{c}": f"{prefix}_{c.upper()}" for c in _EPA_COLS}
+    )
+    epa_cols: list[str] = [f"{prefix}_{c.upper()}" for c in _EPA_COLS]
+    return df.merge(
+        renamed[["season", "week", "team", *epa_cols]],
+        how="left",
+        left_on=["season", "WEEK_NUM", prefix],
+        right_on=["season", "week", "team"],
+    ).drop(columns=["week", "team"], errors="ignore")
 
 
 @FeatureRegistry.register("epa")
@@ -165,10 +206,9 @@ class TeamEpaFeature:
         epa_raw: DataFrame = datasets.epa_by_game()
 
         if epa_raw.empty:
-            # No EPA data available — add NaN columns and return
-            for col in _TEAM_A_COLS + _TEAM_B_COLS:
-                df[col] = float("nan")
-            return df
+            # No EPA data available — add NaN columns and return.
+            # Use assign() to avoid mutating the caller's DataFrame.
+            return df.assign(**{col: float("nan") for col in _TEAM_A_COLS + _TEAM_B_COLS})
 
         rolled: DataFrame = _build_rolling_epa(epa_raw, window=self.window)
 
@@ -181,26 +221,8 @@ class TeamEpaFeature:
 
         df_with_season: DataFrame = df.merge(year_to_int, on="YEAR", how="left")
 
-        # Join TEAM_A
-        team_a_epa: DataFrame = rolled.rename(
-            columns={f"rolling_{c}": f"TEAM_A_{c.upper()}" for c in _EPA_COLS}
-        )
-        out: DataFrame = df_with_season.merge(
-            team_a_epa[["season", "week", "team"] + [f"TEAM_A_{c.upper()}" for c in _EPA_COLS]],
-            how="left",
-            left_on=["season", "WEEK_NUM", "TEAM_A"],
-            right_on=["season", "week", "team"],
-        ).drop(columns=["week", "team"], errors="ignore")
-
-        # Join TEAM_B
-        team_b_epa: DataFrame = rolled.rename(
-            columns={f"rolling_{c}": f"TEAM_B_{c.upper()}" for c in _EPA_COLS}
-        )
-        out = out.merge(
-            team_b_epa[["season", "week", "team"] + [f"TEAM_B_{c.upper()}" for c in _EPA_COLS]],
-            how="left",
-            left_on=["season", "WEEK_NUM", "TEAM_B"],
-            right_on=["season", "week", "team"],
-        ).drop(columns=["week", "team", "season"], errors="ignore")
+        out: DataFrame = _join_team_epa(df_with_season, rolled, prefix="TEAM_A")
+        out = _join_team_epa(out, rolled, prefix="TEAM_B")
+        out = out.drop(columns=["season"], errors="ignore")
 
         return out.reset_index(drop=True)

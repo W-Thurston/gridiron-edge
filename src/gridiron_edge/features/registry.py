@@ -34,6 +34,12 @@ class FeatureRegistry:
         """
 
         def deco(feature_cls: type[Feature]) -> type[Feature]:
+            if name in cls._features:
+                raise ValueError(
+                    f"Feature '{name}' is already registered by "
+                    f"{cls._features[name].__name__}. "
+                    "Each feature name must be unique."
+                )
             cls._features[name] = feature_cls
             return feature_cls
 
@@ -52,7 +58,12 @@ class FeatureRegistry:
         Raises:
             KeyError: If ``name`` has not been registered.
         """
-        return cls._features[name]
+        try:
+            return cls._features[name]
+        except KeyError:
+            raise KeyError(
+                f"Feature '{name}' is not registered. Available features: {sorted(cls._features)}"
+            ) from None
 
 
 def run_features(
@@ -75,3 +86,32 @@ def run_features(
     for name in feature_names:
         out = FeatureRegistry.get(name)().compute(df=out, datasets=datasets)
     return out
+
+
+def validate_ordering(feature_names: Sequence[str]) -> None:
+    """Validate that feature ordering satisfies all ``depends_on`` constraints.
+
+    Raises ``ValueError`` at startup if any feature appears before a feature
+    it depends on. This catches ordering bugs at import time rather than
+    silently producing wrong features at training time.
+
+    Args:
+        feature_names: Ordered list of feature keys as they appear in the
+            pipeline (e.g. ``FEATURES`` in ``pipeline.py``).
+
+    Raises:
+        ValueError: If any feature's ``depends_on`` constraint is violated,
+            with a message naming the offending pair.
+    """
+    seen: set[str] = set()
+    for name in feature_names:
+        feature_cls = FeatureRegistry.get(name)
+        spec = feature_cls().spec
+        for dep in spec.depends_on:
+            if dep not in seen:
+                raise ValueError(
+                    f"Feature '{name}' depends on '{dep}', but '{dep}' has not "
+                    f"run yet in the pipeline order {list(feature_names)}. "
+                    f"Move '{dep}' before '{name}'."
+                )
+        seen.add(name)

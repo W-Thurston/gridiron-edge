@@ -60,7 +60,10 @@ _FIGSIZE_SINGLE: Final[tuple[int, int]] = (8, 6)
 _FIGSIZE_WIDE: Final[tuple[int, int]] = (12, 6)
 _FIGSIZE_GRID: Final[tuple[int, int]] = (14, 10)
 
-# Consistent colour palette for model versions
+# Consistent colour palette for model versions.
+# Each registered model version has a distinct colour so multi-model
+# comparison plots remain readable. Add new entries here when registering
+# a new model variant.
 _MODEL_COLORS: Final[dict[str, str]] = {
     "elo_v1": "#2563eb",  # blue
     "elo_v2": "#7c3aed",  # purple
@@ -68,7 +71,11 @@ _MODEL_COLORS: Final[dict[str, str]] = {
     "logistic_v1": "#d97706",  # amber
     "logistic_v2": "#059669",  # emerald
     "logistic_v3": "#dc2626",  # red
-    "xgboost_v1": "#0891b2",  # cyan (reserved)
+    "logistic_v4": "#7c2d12",  # brown-red
+    "random_forest_v1": "#0891b2",  # cyan
+    "random_forest_v2": "#0e7490",  # dark cyan
+    "xgboost_v1": "#15803d",  # green
+    "xgboost_v2": "#166534",  # dark green
 }
 _DEFAULT_COLOR: Final[str] = "#6b7280"  # gray fallback
 
@@ -202,7 +209,7 @@ def plot_confidence_distribution(
         :,
     ]
     # pyrefly: ignore [unsupported-operation]
-    incorrect = no_ties[~no_ties.index.isin(correct.index)]
+    incorrect: DataFrame = no_ties.loc[~no_ties.index.isin(correct.index), :]
 
     fig, ax = plt.subplots(figsize=_FIGSIZE_SINGLE)
 
@@ -763,7 +770,7 @@ def plot_metric_comparison(
         ax.set_title(metric, fontsize=11)
         ax.set_xticklabels(vals.index, rotation=30, ha="right", fontsize=8)
         ax.grid(True, alpha=0.3, axis="y")
-        lower_better = metric != "ROC-AUC"
+        lower_better: bool = metric != "ROC-AUC"
         ax.set_ylabel("Lower is better" if lower_better else "Higher is better", fontsize=9)
 
     plt.tight_layout()

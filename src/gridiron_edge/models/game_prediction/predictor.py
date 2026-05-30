@@ -15,8 +15,7 @@ Importing this module is sufficient to register every model:
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
 
 Re-exports are provided for backward compatibility with any code that
-imports private helpers or model classes directly from this module
-(e.g. tests that do ``from predictor import _rebuild_features_with_window``).
+imports model classes directly from this module.
 
 History: this module previously contained all model class definitions
 directly.  It was refactored into split files (logistic.py, tree.py)
@@ -47,5 +46,4 @@ from gridiron_edge.models.game_prediction.tree import (  # noqa: F401
     RandomForestV2Predictor,
     XGBoostV1Predictor,
     XGBoostV2Predictor,
-    _rebuild_features_with_window,
 )

@@ -1,4 +1,4 @@
-# src/gridiron_edge/viz/excel.py
+# src/gridiron_edge/viz/rankings.py
 """Elo rankings CSV output.
 
 The Excel workbook has been retired. Rankings are now written as
