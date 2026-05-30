@@ -24,6 +24,7 @@ from typing import Final
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.evaluation.archive import load_prediction_log, write_archive_rows
@@ -33,9 +34,6 @@ logger: Logger = logging.getLogger(__name__)
 
 # Week range considered valid for archiving (regular season + postseason).
 _VALID_WEEK_RANGE: Final[range] = range(1, 23)
-
-# GAME_LOCATION value indicating the winner was the away team.
-_AWAY_WIN_LOCATION: Final[str] = "@"
 
 
 def _reconstruct_away_home(games: pd.DataFrame) -> pd.DataFrame:

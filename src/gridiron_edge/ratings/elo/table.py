@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from gridiron_edge.core.console import console
+from gridiron_edge.core.constants import EXPANSION_TEAMS as EXPANSION_START_YEAR
 
 
 @dataclass(frozen=True)
@@ -32,20 +33,16 @@ class EloTableConfig:
             their inaugural season.
         offseason_regress_frac: Fraction of the gap between a team's
             end-of-season Elo and the league mean to revert each offseason.
+        divisor: Win-probability divisor. Use ``DEFAULT_ELO_DIVISOR`` (480)
+            for elo_v1; use the tuned value for elo_v2/v3 so the state table
+            reflects the same formula used during prediction.
     """
 
     k: float = 20.0
     initial_elo: float = 1500.0
     expansion_elo: float = 1300.0
     offseason_regress_frac: float = 1 / 3.0
-
-
-EXPANSION_START_YEAR: dict[str, str] = {
-    "Carolina Panthers": "1995-1996",
-    "Jacksonville Jaguars": "1995-1996",
-    "Baltimore Ravens": "1996-1997",
-    "Houston Texans": "2002-2003",
-}
+    divisor: float = 480.0
 
 
 def _build_years(df: pd.DataFrame) -> list[str]:
@@ -87,8 +84,8 @@ def build_elo_state_table_all_years(
         DataFrame with columns NFL_TEAM, NFL_YEAR, NFL_WEEK, ELO,
         sorted by NFL_YEAR, NFL_WEEK, NFL_TEAM.
     """
+    from gridiron_edge.core.constants import EXPANSION_TEAMS as _EXPANSION_START
     from gridiron_edge.evaluation.tune import (
-        _EXPANSION_START,
         _prepare_games,
         _simulate_and_score,
     )
@@ -189,6 +186,7 @@ def _build_elo_dict(
     initial = cfg.initial_elo
     expansion = cfg.expansion_elo
     k = cfg.k
+    divisor = cfg.divisor
     frac = cfg.offseason_regress_frac
 
     first_year = sorted_years[0]
@@ -225,7 +223,9 @@ def _build_elo_dict(
                 w_elo = elo.get((winner, curr_year, wk), initial)
                 l_elo = elo.get((loser, curr_year, wk), initial)
 
-                winner_new, loser_new = update_elo(w_elo, l_elo, win_or_tie=win_or_tie, k=k)
+                winner_new, loser_new = update_elo(
+                    w_elo, l_elo, win_or_tie=win_or_tie, k=k, divisor=divisor
+                )
 
                 is_last = wk == max_week
                 if is_last and next_year is not None:
@@ -289,7 +289,3 @@ def update_elo_state_incremental(
         Updated Elo state table with the same schema.
     """
     return build_elo_state_table_all_years(games, cfg=cfg)
-
-
-# Alias for backwards compatibility with fit.py import
-update_elo_state_table_incremental = update_elo_state_incremental

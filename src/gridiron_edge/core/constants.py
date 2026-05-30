@@ -1,0 +1,47 @@
+# src/gridiron_edge/core/constants.py
+
+"""Shared schema constants used across the feature, transform, and model layers.
+
+Centralising sentinel values here means a single edit when any convention
+is retired (e.g. replacing ``"NULL_VALUE"`` with ``"H"`` for home games).
+"""
+
+# ---------------------------------------------------------------------------
+# Game location sentinels
+# ---------------------------------------------------------------------------
+
+# GAME_LOCATION sentinel for a standard home game.
+# Three possible values in the canonical games schema:
+#   "H"  → home game (winner played at home)
+#   "@"  → away game (winner was the visitor)
+#   "N"  → neutral site
+HOME_GAME_LOCATION: str = "H"
+
+# GAME_LOCATION value indicating the winner was the away team.
+# Used by predictors, backfill, and the Elo tuner to identify home/away.
+AWAY_WIN_LOCATION: str = "@"
+
+# ---------------------------------------------------------------------------
+# Holdout seasons
+# ---------------------------------------------------------------------------
+
+# Seasons reserved for model evaluation — excluded from training.
+# UPDATE: add the new season label here at the start of each season so that
+# new games are held out of training and reserved for live evaluation.
+# Both the model layer (_shared.py) and the Elo tuner (tune.py) import this.
+HOLDOUT_SEASONS: frozenset[str] = frozenset(["2023-2024", "2024-2025", "2025-2026"])
+
+# ---------------------------------------------------------------------------
+# Expansion franchise start seasons
+# ---------------------------------------------------------------------------
+
+# Maps franchise long name → first season label (YYYY-YYYY+1).
+# Used by the Elo engine to assign expansion_elo instead of initial_elo
+# in a team's first season. Single source of truth for both tune.py and
+# ratings/elo/table.py.
+EXPANSION_TEAMS: dict[str, str] = {
+    "Carolina Panthers": "1995-1996",
+    "Jacksonville Jaguars": "1995-1996",
+    "Baltimore Ravens": "1996-1997",
+    "Houston Texans": "2002-2003",
+}

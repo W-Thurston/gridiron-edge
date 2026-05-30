@@ -25,17 +25,11 @@ from typing import Final
 
 import pandas as pd
 
+from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.models.base import PredictorSpec
 from gridiron_edge.models.registry import PredictorRegistry
 
 logger: Logger = logging.getLogger(__name__)
-
-# Sentinel timestamp used for backfilled predictions to distinguish them
-# from live predictions (which use the actual run timestamp).
-_BACKFILL_TS: Final[datetime.datetime] = datetime.datetime(1970, 1, 1)
-
-# GAME_LOCATION value indicating the winner was the away team.
-_AWAY_WIN_LOCATION: Final[str] = "@"
 
 
 def _build_archive_rows(
@@ -80,7 +74,8 @@ def _build_archive_rows(
 
     return pd.DataFrame(
         {
-            "predicted_at": _BACKFILL_TS,
+            "predicted_at": datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None),
+            "is_backfilled": True,
             "model_version": model_version,
             "season": game_seasons,
             "week": [int(weeks.get(gid, 0)) for gid in game_ids],

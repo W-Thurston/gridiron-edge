@@ -34,7 +34,7 @@ Canonical games schema (NFL_wk_by_wk_cleaned.csv):
     GAME_DATE           str     "2025-09-04"
     GAMETIME            str     "20:20:00"  (HH:MM:SS for backwards compat)
     WINNER              str     "Philadelphia Eagles"  (long name)
-    GAME_LOCATION       str     "NULL_VALUE" (home) | "@" (away) | "N" (neutral)
+    GAME_LOCATION       str     "H" (home) | "@" (away) | "N" (neutral)
     LOSER               str     "Green Bay Packers"    (long name)
     BOXSCORE_LINK       str     ""  (deprecated — set to empty string)
     PTS_WINNER          int     20
@@ -60,8 +60,7 @@ Notes:
       module (Elo, features, sim). Set to 0 to preserve schema compatibility.
     - GAMETIME is stored as HH:MM:SS to match the legacy PFR format.
     - YEAR uses the "YYYY-YYYY+1" season label format (e.g. "2025-2026").
-    - GAME_LOCATION uses the PFR convention: "NULL_VALUE" = home game,
-      "@" = away game, "N" = neutral site.
+    - GAME_LOCATION uses: "H" = home game, "@" = away game, "N" = neutral site.
     - nflverse uses short team codes. This module maps them to long names
       using the teams_long_short reference dataset so all downstream code
       (Elo table, features) continues to work unchanged.
@@ -79,90 +78,14 @@ from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
+from gridiron_edge.transform.clean._nflverse_common import (
+    GAME_TYPE_TO_WEEK,
+    gametime_to_hhmmss,
+    map_short_to_long,
+    season_label,
+)
 
 logger: Logger = logging.getLogger(__name__)
-
-# nflverse playoff week labels → integer week numbers
-# REG weeks are already integers; only postseason game_types need mapping.
-_GAME_TYPE_TO_WEEK: dict[str, int] = {
-    "WC": 19,  # Wild Card
-    "DIV": 20,  # Divisional
-    "CON": 21,  # Conference Championship
-    "SB": 22,  # Super Bowl
-}
-
-# nflverse short codes → long team names
-# This mapping is maintained here as the canonical short→long reference.
-# The long names match the existing elo_state and modeling CSVs.
-NFLVERSE_SHORT_TO_LONG: dict[str, str] = {
-    "ARI": "Arizona Cardinals",
-    "ATL": "Atlanta Falcons",
-    "BAL": "Baltimore Ravens",
-    "BUF": "Buffalo Bills",
-    "CAR": "Carolina Panthers",
-    "CHI": "Chicago Bears",
-    "CIN": "Cincinnati Bengals",
-    "CLE": "Cleveland Browns",
-    "DAL": "Dallas Cowboys",
-    "DEN": "Denver Broncos",
-    "DET": "Detroit Lions",
-    "GB": "Green Bay Packers",
-    "HOU": "Houston Texans",
-    "IND": "Indianapolis Colts",
-    "JAX": "Jacksonville Jaguars",
-    "KC": "Kansas City Chiefs",
-    "LA": "Los Angeles Rams",
-    "LAC": "Los Angeles Chargers",
-    "LV": "Las Vegas Raiders",
-    "MIA": "Miami Dolphins",
-    "MIN": "Minnesota Vikings",
-    "NE": "New England Patriots",
-    "NO": "New Orleans Saints",
-    "NYG": "New York Giants",
-    "NYJ": "New York Jets",
-    "PHI": "Philadelphia Eagles",
-    "PIT": "Pittsburgh Steelers",
-    "SEA": "Seattle Seahawks",
-    "SF": "San Francisco 49ers",
-    "TB": "Tampa Bay Buccaneers",
-    "TEN": "Tennessee Titans",
-    "WAS": "Washington Commanders",
-    # Historical relocations — map to current franchise name
-    "OAK": "Las Vegas Raiders",
-    "SD": "Los Angeles Chargers",
-    "STL": "Los Angeles Rams",
-}
-
-
-def _season_label(season: int) -> str:
-    """Convert integer season year to YYYY-YYYY+1 label.
-
-    Args:
-        season: The season start year (e.g. ``2025``).
-
-    Returns:
-        Season label string (e.g. ``"2025-2026"``).
-    """
-    return f"{season}-{season + 1}"
-
-
-def _gametime_to_hhmmss(gametime: str | float) -> str:
-    """Normalise gametime to HH:MM:SS format.
-
-    Args:
-        gametime: Time string from nflverse (e.g. ``"20:20"``), or NaN.
-
-    Returns:
-        Time string in ``"HH:MM:SS"`` format, or ``"NULL_VALUE"`` if missing.
-    """
-    if pd.isna(gametime) or not str(gametime).strip():
-        return "NULL_VALUE"
-    parts: list[str] = str(gametime).strip().split(":")
-    if len(parts) == 2:
-        return f"{parts[0]}:{parts[1]}:00"
-    if len(parts) == 3:
-        return str(gametime)
-    return "NULL_VALUE"
 
 
 def _game_location(location: str | float) -> str:
@@ -172,34 +95,17 @@ def _game_location(location: str | float) -> str:
         location: nflverse location string (``"Home"`` or ``"Neutral"``).
 
     Returns:
-        ``"NULL_VALUE"`` for a standard home game, ``"N"`` for neutral site.
-        Away games are represented by the winner/loser orientation in PFR
-        (GAME_LOCATION = ``"@"`` when the winner is the away team) and are
-        handled separately in the winner derivation logic.
+        ``"H"`` for a standard home game, ``"N"`` for neutral site.
+        Away games are represented by the winner/loser orientation in the
+        canonical schema (GAME_LOCATION = ``"@"`` when the winner is the
+        away team) and are handled separately in the winner derivation logic.
     """
     if pd.isna(location):
-        return "NULL_VALUE"
+        return "H"
     loc: str = str(location).strip()
     if loc == "Neutral":
         return "N"
-    return "NULL_VALUE"
-
-
-def _map_short_to_long(short: str) -> str:
-    """Map a nflverse short team code to the canonical long team name.
-
-    Args:
-        short: nflverse short team code (e.g. ``"KC"``).
-
-    Returns:
-        Long team name (e.g. ``"Kansas City Chiefs"``), or the original
-        short code if no mapping exists (logs a warning).
-    """
-    long_name: str | None = NFLVERSE_SHORT_TO_LONG.get(short)
-    if long_name is None:
-        logger.warning("No long-name mapping for nflverse short code: %s", short)
-        return short
-    return long_name
+    return "H"
 
 
 def clean_nflverse_games(
@@ -283,8 +189,8 @@ def clean_nflverse_games(
     # REG games have integer weeks; postseason game_types map to 19-22.
     def _resolve_week(row: pd.Series) -> int:
         gt = str(row["game_type"])
-        if gt in _GAME_TYPE_TO_WEEK:
-            return _GAME_TYPE_TO_WEEK[gt]
+        if gt in GAME_TYPE_TO_WEEK:
+            return GAME_TYPE_TO_WEEK[gt]
         return int(row["week"])
 
     df["WEEK_NUM"] = df.apply(_resolve_week, axis=1)
@@ -320,26 +226,25 @@ def clean_nflverse_games(
     df["WIN_OR_TIE"] = np.where(tie, 0.5, 1.0)
 
     # --- GAME_LOCATION from home/away winner perspective ---
-    # PFR convention: "@" when the WINNER was the away team, else "NULL_VALUE"
-    # Neutral sites override to "N"
+    # "H" = home game, "@" = away game (winner was visitor), "N" = neutral site
     neutral_mask = df["location"].fillna("").str.strip() == "Neutral"
     away_won_mask = df["away_score"] > df["home_score"]
 
     df["GAME_LOCATION"] = np.where(
         neutral_mask,
         "N",
-        np.where(away_won_mask, "@", "NULL_VALUE"),
+        np.where(away_won_mask, "@", "H"),
     )
 
     # --- Map short codes to long names ---
-    df["WINNER"] = df["WINNER_SHORT"].astype(str).map(_map_short_to_long)
-    df["LOSER"] = df["LOSER_SHORT"].astype(str).map(_map_short_to_long)
+    df["WINNER"] = df["WINNER_SHORT"].astype(str).map(map_short_to_long)
+    df["LOSER"] = df["LOSER_SHORT"].astype(str).map(map_short_to_long)
 
     # --- YEAR label ---
-    df["YEAR"] = df["season"].astype(int).map(_season_label)
+    df["YEAR"] = df["season"].astype(int).map(season_label)
 
     # --- GAMETIME ---
-    df["GAMETIME"] = df["gametime"].apply(_gametime_to_hhmmss)
+    df["GAMETIME"] = df["gametime"].apply(gametime_to_hhmmss)
 
     # --- GAME_ID: use nflverse alt_game_id if available, else game_id ---
     # nflverse game_id format: "2025_01_PHI_GB" — already matches our convention
@@ -355,10 +260,10 @@ def clean_nflverse_games(
 
     df["FAVORITED"] = np.where(
         home_favored,
-        df["home_team"].map(_map_short_to_long),
+        df["home_team"].map(map_short_to_long),
         np.where(
             away_favored,
-            df["away_team"].map(_map_short_to_long),
+            df["away_team"].map(map_short_to_long),
             np.nan,  # Pick (line = 0)
         ),
     )
@@ -372,8 +277,8 @@ def clean_nflverse_games(
         {
             "GAME_ID": df["GAME_ID"],
             "WEEK_NUM": df["WEEK_NUM"].astype(int),
-            "GAME_DAY_OF_WEEK": df["weekday"].fillna("NULL_VALUE"),
-            "GAME_DATE": df["gameday"].fillna("NULL_VALUE"),
+            "GAME_DAY_OF_WEEK": df["weekday"].fillna(""),
+            "GAME_DATE": df["gameday"].fillna(""),
             "GAMETIME": df["GAMETIME"],
             "WINNER": df["WINNER"],
             "GAME_LOCATION": df["GAME_LOCATION"],
@@ -386,9 +291,9 @@ def clean_nflverse_games(
             "YARDS_LOSER": 0,
             "TURNOVERS_LOSER": 0,
             "YEAR": df["YEAR"],
-            "STADIUM": df["stadium"].fillna("NULL_VALUE"),
-            "ROOF": df["roof"].fillna("NULL_VALUE"),
-            "SURFACE": df["surface"].fillna("NULL_VALUE"),
+            "STADIUM": df["stadium"].fillna(""),
+            "ROOF": df["roof"].fillna(""),
+            "SURFACE": df["surface"].fillna(""),
             "VEGAS_LINE": df["VEGAS_LINE"],
             "OVER_UNDER": pd.to_numeric(df["total_line"], errors="coerce"),
             "FAVORITED": df["FAVORITED"],

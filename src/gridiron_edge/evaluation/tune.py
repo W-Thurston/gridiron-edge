@@ -32,8 +32,12 @@ from typing import Final
 import pandas as pd
 from tqdm import tqdm
 
+from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
+from gridiron_edge.core.constants import EXPANSION_TEAMS as _EXPANSION_START
+from gridiron_edge.core.constants import HOLDOUT_SEASONS
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders
+from gridiron_edge.ratings.elo.core import elo_win_probability as _elo_win_probability
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -41,9 +45,8 @@ logger: Logger = logging.getLogger(__name__)
 # Holdout split
 # ---------------------------------------------------------------------------
 
-# Last 3 seasons held out for evaluation. Everything before is train.
-# 3 seasons ~ 855 games - enough for a stable Brier score estimate.
-HOLDOUT_SEASONS: Final[frozenset[str]] = frozenset(["2023-2024", "2024-2025", "2025-2026"])
+# Imported from core.constants — single source of truth shared with _shared.py.
+# Update HOLDOUT_SEASONS in core/constants.py at the start of each new season.
 
 # ---------------------------------------------------------------------------
 # elo_v2 grid (flat K)
@@ -83,15 +86,10 @@ _WEEKS_POST: Final[frozenset[int]] = frozenset(range(19, 23))
 # Engine constants
 # ---------------------------------------------------------------------------
 
-_EXPANSION_START: Final[dict[str, str]] = {
-    "Carolina Panthers": "1995-1996",
-    "Jacksonville Jaguars": "1995-1996",
-    "Baltimore Ravens": "1996-1997",
-    "Houston Texans": "2002-2003",
-}
+# _EXPANSION_START is imported from core.constants as EXPANSION_TEAMS.
+# See core/constants.py for the canonical expansion franchise start seasons.
 
 _VALID_WEEKS: Final[frozenset[int]] = frozenset(range(1, 23))
-_AWAY_WIN_LOCATION: Final[str] = "@"
 _INITIAL_ELO: Final[float] = 1500.0
 _EXPANSION_ELO: Final[float] = 1300.0
 
@@ -136,11 +134,6 @@ class TuneResultV3:
 # ---------------------------------------------------------------------------
 # Fast Elo engine
 # ---------------------------------------------------------------------------
-
-
-def _win_prob(elo_a: float, elo_b: float, divisor: float) -> float:
-    """Win probability for team A vs team B given the divisor."""
-    return 1.0 / (1.0 + 10.0 ** ((elo_b - elo_a) / divisor))
 
 
 def _k_for_week(
@@ -247,7 +240,7 @@ def _simulate_and_score(  # noqa: PLR0912, PLR0915
                 home_elo = l_elo if away_team == winner else w_elo
 
                 if wk in _VALID_WEEKS:
-                    away_prob = _win_prob(away_elo, home_elo, divisor)
+                    away_prob, _ = _elo_win_probability(away_elo, home_elo, divisor=divisor)
                     if win_or_tie == 0.5:
                         outcome = 0.5
                     elif away_team == winner:
@@ -260,7 +253,7 @@ def _simulate_and_score(  # noqa: PLR0912, PLR0915
                     game_seasons.append(curr_year)
                     game_ids.append(str(row.get("GAME_ID", "")))
 
-                p_win = _win_prob(w_elo, l_elo, divisor)
+                p_win, _ = _elo_win_probability(w_elo, l_elo, divisor=divisor)
                 score_w = win_or_tie
                 delta = k * (score_w - p_win)
                 new_w = w_elo + delta

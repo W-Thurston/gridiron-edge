@@ -31,7 +31,7 @@ For each franchise (long team name), we compute:
     home_win_rate = home_wins / home_games_played
 
 where a "home win" is any completed game where the team was the home side
-and won (GAME_LOCATION == "NULL_VALUE" and WINNER == team).  Neutral-site
+and won (GAME_LOCATION == "H" and WINNER == team).  Neutral-site
 games (GAME_LOCATION == "N") are excluded — they carry no home crowd signal.
 
 The coefficient is then:
@@ -83,6 +83,7 @@ from typing import TYPE_CHECKING, Final
 
 import pandas as pd
 
+from gridiron_edge.core.constants import HOME_GAME_LOCATION
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
 
@@ -94,9 +95,6 @@ logger: Logger = logging.getLogger(__name__)
 # Minimum home games required to use a franchise's own win rate.
 # Below this threshold we fall back to 0.0 (league average differential).
 _MIN_HOME_GAMES: Final[int] = 20
-
-# GAME_LOCATION value that indicates a standard home game (PFR convention)
-_HOME_LOCATION: Final[str] = "NULL_VALUE"
 
 # GAME_LOCATION value for neutral-site games
 _NEUTRAL_LOCATION: Final[str] = "N"
@@ -115,6 +113,7 @@ class VenueHFAFeature:
     spec = FeatureSpec(
         name="venue_hfa",
         produces=["TEAM_A_FRANCHISE_HFA", "TEAM_B_FRANCHISE_HFA"],
+        depends_on=("travel",),
     )
 
     def compute(self, *, df: pd.DataFrame, datasets: DatasetAccessor) -> pd.DataFrame:
@@ -180,7 +179,7 @@ class VenueHFAFeature:
             return {}
 
         # Standard home games only (exclude neutral site and away games)
-        home_games: pd.DataFrame = games.loc[games["GAME_LOCATION"] == _HOME_LOCATION, :].copy()
+        home_games: pd.DataFrame = games.loc[games["GAME_LOCATION"] == HOME_GAME_LOCATION, :].copy()
 
         if home_games.empty:
             return {}

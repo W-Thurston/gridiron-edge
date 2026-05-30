@@ -27,11 +27,11 @@ from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
-from gridiron_edge.transform.clean.games_nflverse import (
-    _GAME_TYPE_TO_WEEK,
-    _gametime_to_hhmmss,
-    _map_short_to_long,
-    _season_label,
+from gridiron_edge.transform.clean._nflverse_common import (
+    GAME_TYPE_TO_WEEK,
+    gametime_to_hhmmss,
+    map_short_to_long,
+    season_label,
 )
 
 logger: Logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def _check_stadium_coverage(
     # Upcoming games may not have a stadium assigned yet (neutral site TBD, etc.)
     schedule_stadiums: set[str] = set(
         raw_df["stadium"].dropna().astype(str).str.strip().tolist()
-    ) - {"", "NULL_VALUE"}
+    ) - {""}
 
     if not schedule_stadiums:
         logger.debug("No stadium names found in upcoming schedule — skipping coverage check.")
@@ -70,7 +70,7 @@ def _check_stadium_coverage(
 
     reference_stadiums: set[str] = set(
         stadiums_df["STADIUM"].dropna().astype(str).str.strip().tolist()
-    ) - {"", "NULL_VALUE"}
+    ) - {""}
 
     missing: set[str] = schedule_stadiums - reference_stadiums
 
@@ -189,7 +189,7 @@ def clean_nflverse_upcoming(
         stadiums_df: DataFrame = pd.read_csv(stadiums_path)
         # Derive season label from the first row's season value for logging
         season_int: int = int(df["season"].iloc[0]) if "season" in df.columns else 0
-        season_lbl: str = _season_label(season_int) if season_int else "unknown"
+        season_lbl: str = season_label(season_int) if season_int else "unknown"
         _check_stadium_coverage(df, stadiums_df, season_lbl)
     else:
         logger.warning(
@@ -200,26 +200,26 @@ def clean_nflverse_upcoming(
     # ── Transform ─────────────────────────────────────────────────────────
     def _resolve_week(row: pd.Series) -> int:
         gt = str(row["game_type"])
-        if gt in _GAME_TYPE_TO_WEEK:
-            return _GAME_TYPE_TO_WEEK[gt]
+        if gt in GAME_TYPE_TO_WEEK:
+            return GAME_TYPE_TO_WEEK[gt]
         return int(row["week"])
 
     df["WEEK_NUM"] = df.apply(_resolve_week, axis=1)
 
     # --- Map short codes to long names ---
-    df["AWAY_TEAM"] = df["away_team"].map(_map_short_to_long)
-    df["HOME_TEAM"] = df["home_team"].map(_map_short_to_long)
+    df["AWAY_TEAM"] = df["away_team"].map(map_short_to_long)
+    df["HOME_TEAM"] = df["home_team"].map(map_short_to_long)
 
     # --- Other fields ---
-    df["YEAR"] = df["season"].astype(int).map(_season_label)
-    df["GAMETIME"] = df["gametime"].apply(_gametime_to_hhmmss)
+    df["YEAR"] = df["season"].astype(int).map(season_label)
+    df["GAMETIME"] = df["gametime"].apply(gametime_to_hhmmss)
     df["GAME_ID"] = df["game_id"].astype(str)
 
     out = pd.DataFrame(
         {
             "WEEK_NUM": df["WEEK_NUM"].astype(int),
-            "GAME_DAY_OF_WEEK": df["weekday"].fillna("NULL_VALUE"),
-            "GAME_DATE": df["gameday"].fillna("NULL_VALUE"),
+            "GAME_DAY_OF_WEEK": df["weekday"].fillna(""),
+            "GAME_DATE": df["gameday"].fillna(""),
             "AWAY_TEAM": df["AWAY_TEAM"],
             "HOME_TEAM": df["HOME_TEAM"],
             "GAMETIME": df["GAMETIME"],
