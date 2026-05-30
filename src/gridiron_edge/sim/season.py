@@ -1,10 +1,6 @@
 # src/gridiron_edge/sim/season.py
-"""NFL Season Monte Carlo Simulation.
 
-Performs Monte Carlo simulations of NFL regular season and playoff outcomes.
-Uses Elo ratings to project game outcomes, applies official NFL tiebreaking
-procedures, and generates probability distributions for playoff scenarios and
-championship outcomes.
+"""NFL Season Monte Carlo Simulation — data loading, output formatting, and orchestration.
 
 Simulation flow:
     1. Load historical results, schedules, and Elo ratings
@@ -16,216 +12,70 @@ Simulation flow:
 
 Usage:
     poetry run gridiron sim run --season-year 2025-2026 --week 12
+
+Public API is re-exported via sim/__init__.py. Import constants and data
+containers from sim._types; import kernels from sim._engine.
 """
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass
 import logging
 from pathlib import Path
-import time
 from typing import TYPE_CHECKING, Final
 
-from numba import njit
 import numpy as np
 import pandas as pd
 
-from gridiron_edge.core.settings import get_settings
+from gridiron_edge.sim import playoffs as _playoffs_mod
+from gridiron_edge.sim._engine import (
+    apply_actuals_to_matrices,
+    precompute_game_counts,
+    simulate_remaining_regular_season,
+)
+from gridiron_edge.sim._types import (
+    AWAY_WIN,
+    CONF_CODES,
+    DIV_CODE_TO_LABEL,
+    DIV_CODES,
+    HOME_WIN,
+    N_PLAYOFF_ROUNDS,
+    N_TEAMS,
+    N_WEEKS_REG,
+    ROUND_CONF,
+    ROUND_DIV,
+    ROUND_SB,
+    ROUND_WC,
+    TIE,
+    UNPLAYED,
+    ScheduleArrays,
+    SimPaths,
+    SimulationConfig,
+    SimulationResults,
+    TeamIndex,
+    _log_phase,
+    format_record,
+)
 from gridiron_edge.sim.playoffs import simulate_playoffs
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from logging import Logger
 
 logger: Logger = logging.getLogger(__name__)
 
-# ============================================================================
-# CONSTANTS
-# ============================================================================
-
-N_TEAMS: Final[int] = 32
-N_WEEKS_REG: Final[int] = 18
-N_PLAYOFF_ROUNDS: Final[int] = 4
-
-# Game outcome encodings
-UNPLAYED: Final[np.int8] = np.int8(-1)
-AWAY_WIN: Final[np.int8] = np.int8(0)
-HOME_WIN: Final[np.int8] = np.int8(1)
-TIE: Final[np.int8] = np.int8(2)
-
-# Playoff round indices
-ROUND_WC: Final[int] = 0
-ROUND_DIV: Final[int] = 1
-ROUND_CONF: Final[int] = 2
-ROUND_SB: Final[int] = 3
-
-DIV_CODES: Final[dict[str, int]] = {
-    "AFC East": 0,
-    "AFC North": 1,
-    "AFC South": 2,
-    "AFC West": 3,
-    "NFC East": 4,
-    "NFC North": 5,
-    "NFC South": 6,
-    "NFC West": 7,
-}
-
-CONF_CODES: Final[dict[str, int]] = {"AFC": 0, "NFC": 1}
-
-DIV_CODE_TO_LABEL: Final[dict[int, str]] = {v: k for k, v in DIV_CODES.items()}
-
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-
-@dataclass(frozen=True)
-class SimulationConfig:
-    """Configuration parameters for Monte Carlo simulation."""
-
-    n_sims: int = 10_000
-    k_factor: float = 20.0
-    p_tie: float = 0.01
-    base_seed: int = 1337
-
-
-@dataclass(frozen=True)
-class SimPaths:
-    """Resolved file paths for simulation inputs and outputs.
-
-    Integrates with gridiron_edge.core.settings and datasets.registry
-    rather than accepting raw Path arguments.
-    """
-
-    data_cleaned: Path
-    data_output: Path
-    logo_dir: Path
-
-    @classmethod
-    def from_settings(cls) -> SimPaths:
-        """Build SimPaths from the package settings (repo_root-relative)."""
-        s = get_settings()
-        return cls(
-            data_cleaned=s.data_cleaned,
-            data_output=s.data_output,
-            logo_dir=s.repo_root / "data" / "images" / "Team Logos",
-        )
-
-    # Derived file paths
-    @property
-    def schedule_file(self) -> Path:
-        """Absolute path to the cleaned upcoming schedule CSV."""
-        return self.data_cleaned / "NFL_upcoming_schedule_cleaned.csv"
-
-    @property
-    def wk_by_wk_file(self) -> Path:
-        """Absolute path to the cleaned week-by-week historical games CSV."""
-        return self.data_cleaned / "NFL_wk_by_wk_cleaned.csv"
-
-    @property
-    def mapping_file(self) -> Path:
-        """Absolute path to the long-to-short team name mapping CSV."""
-        return self.data_cleaned / "NFL_long_to_short_name.csv"
-
-    @property
-    def elo_file(self) -> Path:
-        """Absolute path to the Elo ratings state table CSV."""
-        return self.data_cleaned / "NFL_Team_Elo.csv"
-
-    @property
-    def conf_div_file(self) -> Path:
-        """Absolute path to the conference and division assignment CSV."""
-        return self.data_cleaned / "NFL_conference_division.csv"
-
-    @property
-    def output_temp_dir(self) -> Path:
-        """Absolute path to the temporary simulation output directory."""
-        return self.data_output / "temp"
-
-    @property
-    def output_images_dir(self) -> Path:
-        """Absolute path to the output images directory."""
-        return self.data_output.parent / "images"
-
-    def validate(self) -> None:
-        """Raise FileNotFoundError if any required input file is missing."""
-        required = [
-            self.schedule_file,
-            self.wk_by_wk_file,
-            self.mapping_file,
-            self.elo_file,
-            self.conf_div_file,
-        ]
-        missing = [f for f in required if not f.exists()]
-        if missing:
-            msg = f"Missing required files: {', '.join(str(f) for f in missing)}"
-            raise FileNotFoundError(msg)
-        if not self.logo_dir.exists():
-            logger.warning("Logo directory not found: %s", self.logo_dir)
-
-
-# ============================================================================
-# DATA CONTAINERS
-# ============================================================================
-
-
-@dataclass(frozen=True)
-class TeamIndex:
-    """Mapping between team names and integer indices."""
-
-    short_names: list[str]
-    short_to_id: dict[str, int]
-    long_to_short: dict[str, str]
-
-
-@dataclass(frozen=True)
-class ScheduleArrays:
-    """Numpy arrays representing the season schedule."""
-
-    week: np.ndarray
-    home: np.ndarray
-    away: np.ndarray
-    result: np.ndarray
-    week_offsets: np.ndarray
-
-
-@dataclass(frozen=True)
-class SimulationResults:
-    """Aggregated results from regular season + playoff simulations."""
-
-    pts_total_by_sim: np.ndarray
-    po_win_counts: np.ndarray
-    make_playoffs_counts: np.ndarray
-    bye_counts: np.ndarray
-    reg_win_counts: np.ndarray
-
-
-# ============================================================================
-# UTILITY FUNCTIONS
-# ============================================================================
-
-
-@contextmanager
-def _log_phase(name: str) -> Iterator[None]:
-    """Log a phase banner + elapsed time."""
-    logger.info("—" * 72)
-    logger.info("%s...", name)
-    t0 = time.perf_counter()
-    try:
-        yield
-    finally:
-        dt = time.perf_counter() - t0
-        logger.info("%s complete (%.2fs).", name, dt)
-
-
-def format_record(pts: int, gp: int) -> str:
-    """Convert points and games played to W-L(-T) record string."""
-    ties = pts % 2
-    wins = (pts - ties) // 2
-    losses = gp - wins - ties
-    return f"{wins}-{losses}" if ties == 0 else f"{wins}-{losses}-{ties}"
+# ---------------------------------------------------------------------------
+# Sync assertions — verify playoffs.py constants match _types.py at import time.
+# playoffs.py duplicates these because numba @njit cannot import from siblings.
+# ---------------------------------------------------------------------------
+assert _playoffs_mod.N_TEAMS == N_TEAMS, (
+    f"sim/playoffs.py N_TEAMS ({_playoffs_mod.N_TEAMS}) out of sync with _types.py ({N_TEAMS})"
+)
+assert _playoffs_mod.N_PLAYOFF_ROUNDS == N_PLAYOFF_ROUNDS, (
+    f"sim/playoffs.py N_PLAYOFF_ROUNDS ({_playoffs_mod.N_PLAYOFF_ROUNDS}) out of sync"
+)
+assert _playoffs_mod.ROUND_WC == ROUND_WC
+assert _playoffs_mod.ROUND_DIV == ROUND_DIV
+assert _playoffs_mod.ROUND_CONF == ROUND_CONF
+assert _playoffs_mod.ROUND_SB == ROUND_SB
 
 
 # ============================================================================
@@ -287,7 +137,6 @@ def build_team_index_from_results(
         shorts.add(a_s)
         shorts.add(h_s)
 
-    # Fallback: if no completed games yet, derive teams from the schedule
     if len(shorts) < N_TEAMS and df_schedule is not None:
         for col in ("AWAY_TEAM", "HOME_TEAM"):
             if col in df_schedule.columns:
@@ -588,315 +437,6 @@ def extract_fixed_playoff_winners(
 
 
 # ============================================================================
-# SCHEDULE ANALYSIS
-# ============================================================================
-
-
-def precompute_game_counts(
-    schedule: ScheduleArrays,
-    conf_id: np.ndarray,
-    div_id: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Precompute total, conference, and division game counts for each team.
-
-    Returns:
-        (gp_total, gp_conf, gp_div, opp_mask)
-    """
-    gp_total = np.zeros(N_TEAMS, dtype=np.int16)
-    gp_conf = np.zeros(N_TEAMS, dtype=np.int16)
-    gp_div = np.zeros(N_TEAMS, dtype=np.int16)
-    opp_mask = np.zeros(N_TEAMS, dtype=np.uint32)
-
-    for i in range(schedule.home.shape[0]):
-        h = int(schedule.home[i])
-        a = int(schedule.away[i])
-
-        gp_total[h] += 1
-        gp_total[a] += 1
-
-        opp_mask[h] |= np.uint32(1) << np.uint32(a)
-        opp_mask[a] |= np.uint32(1) << np.uint32(h)
-
-        if conf_id[h] == conf_id[a]:
-            gp_conf[h] += 1
-            gp_conf[a] += 1
-
-        if div_id[h] == div_id[a]:
-            gp_div[h] += 1
-            gp_div[a] += 1
-
-    return gp_total, gp_conf, gp_div, opp_mask
-
-
-# ============================================================================
-# ELO MODEL (NUMBA OPTIMIZED)
-# Note: These are intentionally separate from ratings.elo.core — numba @njit
-# functions cannot call regular Python functions at JIT compile time.
-# ============================================================================
-
-
-@njit(cache=True)
-def _elo_win_prob(elo_a: float, elo_b: float) -> float:
-    """Win probability for team A vs team B (480-divisor Elo)."""
-    return 1.0 / (1.0 + 10.0 ** ((elo_b - elo_a) / 480.0))
-
-
-@njit(cache=True)
-def _elo_update(elo_a: float, elo_b: float, score_a: float, k: float) -> tuple[float, float]:
-    """Update Elo ratings after a game."""
-    p_a = _elo_win_prob(elo_a, elo_b)
-    delta = k * (score_a - p_a)
-    return elo_a + delta, elo_b - delta
-
-
-# ============================================================================
-# RECORD ACCUMULATION (NUMBA OPTIMIZED)
-# ============================================================================
-
-
-@njit(cache=True)
-def apply_actuals_to_matrices(
-    schedule_home: np.ndarray,
-    schedule_away: np.ndarray,
-    week_offsets: np.ndarray,
-    result: np.ndarray,
-    final_actual_week: int,
-    conf_id: np.ndarray,
-    div_id: np.ndarray,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """Accumulate actual game results into record matrices.
-
-    Returns:
-        (pts_total, pts_conf, pts_div, gp_played,
-         gp_vs, pts_vs, wins_vs, reg_win_counts)
-    """
-    pts_total = np.zeros(N_TEAMS, dtype=np.int16)
-    pts_conf = np.zeros(N_TEAMS, dtype=np.int16)
-    pts_div = np.zeros(N_TEAMS, dtype=np.int16)
-    gp_played = np.zeros(N_TEAMS, dtype=np.int16)
-
-    gp_vs = np.zeros((N_TEAMS, N_TEAMS), dtype=np.uint8)
-    pts_vs = np.zeros((N_TEAMS, N_TEAMS), dtype=np.int8)
-    wins_vs = np.zeros((N_TEAMS, N_TEAMS), dtype=np.uint8)
-
-    reg_win_counts = np.zeros((N_TEAMS, N_WEEKS_REG + 1), dtype=np.int32)
-
-    for w in range(1, final_actual_week + 1):
-        start = week_offsets[w]
-        end = week_offsets[w + 1]
-
-        for gi in range(start, end):
-            code = result[gi]
-            if code == np.int8(-1):  # UNPLAYED
-                continue
-
-            h = int(schedule_home[gi])
-            a = int(schedule_away[gi])
-
-            gp_played[h] += 1
-            gp_played[a] += 1
-
-            gp_vs[h, a] = np.uint8(gp_vs[h, a] + 1)
-            gp_vs[a, h] = np.uint8(gp_vs[a, h] + 1)
-
-            same_conf = conf_id[h] == conf_id[a]
-            same_div = div_id[h] == div_id[a]
-
-            if code == np.int8(1):  # HOME_WIN
-                pts_total[h] += 2
-                if same_conf:
-                    pts_conf[h] += 2
-                if same_div:
-                    pts_div[h] += 2
-                pts_vs[h, a] = np.int8(pts_vs[h, a] + 2)
-                wins_vs[h, a] = np.uint8(wins_vs[h, a] + 1)
-                reg_win_counts[h, w] += 1
-
-            elif code == np.int8(0):  # AWAY_WIN
-                pts_total[a] += 2
-                if same_conf:
-                    pts_conf[a] += 2
-                if same_div:
-                    pts_div[a] += 2
-                pts_vs[a, h] = np.int8(pts_vs[a, h] + 2)
-                wins_vs[a, h] = np.uint8(wins_vs[a, h] + 1)
-                reg_win_counts[a, w] += 1
-
-            else:  # TIE
-                pts_total[h] += 1
-                pts_total[a] += 1
-                if same_conf:
-                    pts_conf[h] += 1
-                    pts_conf[a] += 1
-                if same_div:
-                    pts_div[h] += 1
-                    pts_div[a] += 1
-                pts_vs[h, a] = np.int8(pts_vs[h, a] + 1)
-                pts_vs[a, h] = np.int8(pts_vs[a, h] + 1)
-
-    return (
-        pts_total,
-        pts_conf,
-        pts_div,
-        gp_played,
-        gp_vs,
-        pts_vs,
-        wins_vs,
-        reg_win_counts,
-    )
-
-
-# ============================================================================
-# REGULAR SEASON SIMULATION (NUMBA OPTIMIZED)
-# ============================================================================
-
-
-@njit(cache=True)
-def simulate_remaining_regular_season(
-    n_sims: int,
-    schedule_home: np.ndarray,
-    schedule_away: np.ndarray,
-    week_offsets: np.ndarray,
-    final_actual_week: int,
-    conf_id: np.ndarray,
-    div_id: np.ndarray,
-    elo_entering_next_week: np.ndarray,
-    pts_total_actual: np.ndarray,
-    pts_conf_actual: np.ndarray,
-    pts_div_actual: np.ndarray,
-    gp_vs_actual: np.ndarray,
-    pts_vs_actual: np.ndarray,
-    wins_vs_actual: np.ndarray,
-    reg_win_counts_actual: np.ndarray,
-    k_factor: float,
-    p_tie: float,
-    base_seed: int,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """Simulate remaining regular season games across n_sims Monte Carlo runs.
-
-    Returns:
-        (pts_total_by_sim, pts_conf_by_sim, pts_div_by_sim,
-         gp_vs_by_sim, pts_vs_by_sim, wins_vs_by_sim,
-         end_elo_by_sim, reg_win_counts)
-    """
-    pts_total_by_sim = np.zeros((n_sims, N_TEAMS), dtype=np.int16)
-    pts_conf_by_sim = np.zeros((n_sims, N_TEAMS), dtype=np.int16)
-    pts_div_by_sim = np.zeros((n_sims, N_TEAMS), dtype=np.int16)
-
-    gp_vs_by_sim = np.zeros((n_sims, N_TEAMS, N_TEAMS), dtype=np.uint8)
-    pts_vs_by_sim = np.zeros((n_sims, N_TEAMS, N_TEAMS), dtype=np.int8)
-    wins_vs_by_sim = np.zeros((n_sims, N_TEAMS, N_TEAMS), dtype=np.uint8)
-
-    end_elo_by_sim = np.zeros((n_sims, N_TEAMS), dtype=np.float32)
-    reg_win_counts = reg_win_counts_actual.copy()
-
-    for s in range(n_sims):
-        np.random.seed(base_seed + s)
-
-        elo = elo_entering_next_week.copy()
-        pts_total = pts_total_actual.copy()
-        pts_conf = pts_conf_actual.copy()
-        pts_div = pts_div_actual.copy()
-        gp_vs = gp_vs_actual.copy()
-        pts_vs = pts_vs_actual.copy()
-        wins_vs = wins_vs_actual.copy()
-
-        for w in range(final_actual_week + 1, N_WEEKS_REG + 1):
-            start = week_offsets[w]
-            end = week_offsets[w + 1]
-
-            for gi in range(start, end):
-                h = int(schedule_home[gi])
-                a = int(schedule_away[gi])
-
-                gp_vs[h, a] = np.uint8(gp_vs[h, a] + 1)
-                gp_vs[a, h] = np.uint8(gp_vs[a, h] + 1)
-
-                same_conf = conf_id[h] == conf_id[a]
-                same_div = div_id[h] == div_id[a]
-
-                eh = float(elo[h])
-                ea = float(elo[a])
-                p_home = _elo_win_prob(eh, ea)
-
-                u = np.random.random()
-                if u < p_tie:
-                    pts_total[h] += 1
-                    pts_total[a] += 1
-                    if same_conf:
-                        pts_conf[h] += 1
-                        pts_conf[a] += 1
-                    if same_div:
-                        pts_div[h] += 1
-                        pts_div[a] += 1
-                    pts_vs[h, a] = np.int8(pts_vs[h, a] + 1)
-                    pts_vs[a, h] = np.int8(pts_vs[a, h] + 1)
-                    new_h, new_a = _elo_update(eh, ea, 0.5, k_factor)
-                else:
-                    u2 = (u - p_tie) / (1.0 - p_tie)
-                    if u2 < p_home:
-                        pts_total[h] += 2
-                        if same_conf:
-                            pts_conf[h] += 2
-                        if same_div:
-                            pts_div[h] += 2
-                        pts_vs[h, a] = np.int8(pts_vs[h, a] + 2)
-                        wins_vs[h, a] = np.uint8(wins_vs[h, a] + 1)
-                        reg_win_counts[h, w] += 1
-                        new_h, new_a = _elo_update(eh, ea, 1.0, k_factor)
-                    else:
-                        pts_total[a] += 2
-                        if same_conf:
-                            pts_conf[a] += 2
-                        if same_div:
-                            pts_div[a] += 2
-                        pts_vs[a, h] = np.int8(pts_vs[a, h] + 2)
-                        wins_vs[a, h] = np.uint8(wins_vs[a, h] + 1)
-                        reg_win_counts[a, w] += 1
-                        new_h, new_a = _elo_update(eh, ea, 0.0, k_factor)
-
-                elo[h] = np.float32(new_h)
-                elo[a] = np.float32(new_a)
-
-        pts_total_by_sim[s] = pts_total
-        pts_conf_by_sim[s] = pts_conf
-        pts_div_by_sim[s] = pts_div
-        gp_vs_by_sim[s] = gp_vs
-        pts_vs_by_sim[s] = pts_vs
-        wins_vs_by_sim[s] = wins_vs
-        end_elo_by_sim[s] = elo
-
-    return (
-        pts_total_by_sim,
-        pts_conf_by_sim,
-        pts_div_by_sim,
-        gp_vs_by_sim,
-        pts_vs_by_sim,
-        wins_vs_by_sim,
-        end_elo_by_sim,
-        reg_win_counts,
-    )
-
-
-# ============================================================================
 # OUTPUT DATAFRAMES
 # ============================================================================
 
@@ -981,17 +521,16 @@ def run_full_simulation(
     Args:
         paths: SimPaths (defaults to SimPaths.from_settings()).
         config: SimulationConfig (defaults to SimulationConfig()).
+        render: If ``True``, renders the playoff probability table PNG via
+            ``gridiron_edge.viz.charts.render_playoff_table`` after simulation.
 
     Returns:
         (df_projections, df_season_grid)
         df_projections: Per-team playoff probability summary.
         df_season_grid: Weekly win counts + playoff round rates.
-
-    Note:
-        Visualization (the plottable table image) is handled separately in
-        gridiron_edge.viz.charts.render_playoff_table(). Call build_viz_table_df()
-        from there after this function returns.
     """
+    import time
+
     paths = paths or SimPaths.from_settings()
     config = config or SimulationConfig()
 
@@ -1005,6 +544,12 @@ def run_full_simulation(
         df_schedule = pd.read_csv(paths.schedule_file)
         df_wk_by_wk = pd.read_csv(paths.wk_by_wk_file)
         df_elo = pd.read_csv(paths.elo_file)
+
+        if df_schedule.empty:
+            raise FileNotFoundError(
+                "Upcoming schedule is empty — run 'gridiron ingest upcoming' first "
+                "to fetch the schedule before simulating."
+            )
 
         season_year = str(df_schedule["YEAR"].iloc[0])
         logger.info("Season year: %s", season_year)
@@ -1094,6 +639,7 @@ def run_full_simulation(
             float(config.k_factor),
             float(config.p_tie),
             int(config.base_seed),
+            float(config.divisor),
         )
 
     with _log_phase("Extract fixed playoff outcomes"):
@@ -1162,16 +708,20 @@ def run_full_simulation(
         with _log_phase("Render playoff probability table"):
             from gridiron_edge.viz.charts import build_viz_table_df, render_playoff_table
 
-            df_viz = build_viz_table_df(
-                team_index=team_index,
+            sim_results = SimulationResults(
                 pts_total_by_sim=pts_total_by_sim,
+                po_win_counts=po_win_counts,
+                make_playoffs_counts=make_playoffs_counts,
+                bye_counts=bye_counts,
+                reg_win_counts=reg_win_counts,
                 pts_total_actual=pts_total_actual,
                 gp_played_actual=gp_played_actual,
                 gp_total=gp_total,
-                make_playoffs_counts=make_playoffs_counts,
-                bye_counts=bye_counts,
-                po_win_counts=po_win_counts,
                 div_id=div_id,
+            )
+            df_viz = build_viz_table_df(
+                sim_results,
+                team_index=team_index,
                 df_elo=df_elo,
                 final_actual_week=final_actual_week,
                 season_year=season_year,

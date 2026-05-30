@@ -9,7 +9,7 @@ from gridiron_edge.datasets import loaders, writers
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.ratings.elo.table import (
     build_elo_state_table_all_years,
-    update_elo_state_table_incremental,
+    update_elo_state_incremental,
 )
 
 
@@ -36,7 +36,7 @@ def fit_elo(
         elo_df: pd.DataFrame = build_elo_state_table_all_years(games)
     else:
         elo_existing: pd.DataFrame = loaders.load_elo_state(resolved_repo)
-        elo_df = update_elo_state_table_incremental(
+        elo_df = update_elo_state_incremental(
             games=games,
             elo_state_existing=elo_existing,
         )
