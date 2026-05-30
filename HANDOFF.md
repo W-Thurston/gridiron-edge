@@ -1,22 +1,31 @@
-# Project Handoff: `NFL_Predict` / Gridiron Edge
+# Gridiron Edge — Handoff
 
-How to run the project, how it is laid out, and what commonly breaks.
-
-See [PLAN.md](PLAN.md) for current priorities and roadmap.
-See [CHANGELOG.md](CHANGELOG.md) for completed phase history and decisions.
+How everything works right now. Assumes you know what the project does — see [README.md](README.md) for the one-paragraph version and [PLAN.md](PLAN.md) for what's coming next.
 
 ---
 
-## What this project does
+## Architecture
 
-- **Goal:** NFL game prediction support — win probabilities, Elo rankings,
-  weekly matchup visualisations, season simulation, and odds tracking.
-- **Data source:** [nflverse](https://github.com/nflverse/nflverse-data) via
-  `nfl_data_py` (replaced PFR/Scrapy at Phase 13).
-- **Production model:** `random_forest_v2` (Brier 0.21078, AUC 0.71820,
-  auto-selected). 51 features: Elo, EPA rolling window, rest, weather,
-  travel, divisional flag, franchise HFA.
-- **Entry point:** `uv run gridiron` → `src/gridiron_edge/cli.py`
+| Layer | Module |
+|-------|--------|
+| Game + schedule ingest | `gridiron_edge.ingest.nflverse` (nflverse/nfl_data_py) |
+| PBP ingest | `gridiron_edge.ingest.nflverse.pbp` |
+| Weather ingest | `gridiron_edge.ingest.weather.openweather` (OpenWeatherMap) |
+| Odds ingest + ledger | `gridiron_edge.ingest.odds` (DraftKings → Parquet) |
+| Transform | `gridiron_edge.transform.clean` |
+| Shared constants | `gridiron_edge.core.constants` — single source for `HOME_GAME_LOCATION`, `AWAY_WIN_LOCATION`, `HOLDOUT_SEASONS`, `EXPANSION_TEAMS` |
+| Feature column definitions | `gridiron_edge.models.game_prediction._columns` — pure-data leaf, no pandas |
+| Feature engineering functions | `gridiron_edge.models.game_prediction._features` — `FEATURE_SETS`, `_prepare_data`, `_is_trained` |
+| EPA window hyperparameter infra | `gridiron_edge.models.game_prediction._epa_window` — `WindowData`, `_rebuild_features_with_window` |
+| Feature pipeline + dep validation | `gridiron_edge.features.pipeline` (schema v3) + `features.registry.validate_ordering()` |
+| Elo ratings | `gridiron_edge.ratings.elo` — `core.elo_win_probability(divisor=)`, `EloTableConfig(divisor=)` |
+| Simulation types + config | `gridiron_edge.sim._types` — `SimulationConfig(divisor=)`, `SimPaths`, `TeamIndex`, `SimulationResults` |
+| Simulation engine (numba) | `gridiron_edge.sim._engine` — Elo kernels, record accumulation, Monte Carlo |
+| Simulation orchestration | `gridiron_edge.sim.season` — data loading, output builders, `run_full_simulation` |
+| Visualisation | `gridiron_edge.viz` |
+| Evaluation | `gridiron_edge.evaluation` — `archive`, `metrics`, `select`, `backfill`, `tune` |
+| Models | `gridiron_edge.models` — Predictor + Trainable protocols, ArtifactStore |
+| CLI | `gridiron_edge.cli` — `main.py` stage-list pipeline, sub-apps per domain |
 
 ---
 
@@ -24,36 +33,33 @@ See [CHANGELOG.md](CHANGELOG.md) for completed phase history and decisions.
 
 | Path | Role |
 |------|------|
-| `src/gridiron_edge/` | Main package |
-| `src/gridiron_edge/ingest/nflverse/` | nflverse game + schedule ingestion |
-| `src/gridiron_edge/ingest/pfr/collector_impl.py` | Weather (OWM) + DraftKings odds |
-| `src/gridiron_edge/ingest/odds/` | Odds ledger (Parquet, long format) |
-| `src/gridiron_edge/transform/clean/` | nflverse → canonical schema mappers |
-| `src/gridiron_edge/features/` | Feature registry + pipeline (schema v3) |
+| `src/gridiron_edge/core/` | Settings, logging, console, shared constants |
+| `src/gridiron_edge/ingest/` | All data ingestion (nflverse, weather, odds) |
+| `src/gridiron_edge/transform/` | Raw → canonical schema mappers |
+| `src/gridiron_edge/features/` | Feature registry, pipeline, dependency validation |
 | `src/gridiron_edge/ratings/elo/` | Elo table, fit, predict, evaluate |
-| `src/gridiron_edge/models/game_prediction/` | ML models (logistic, RF, XGBoost) |
-| `src/gridiron_edge/evaluation/` | Metrics, backfill, diagnostics, model selection |
+| `src/gridiron_edge/models/` | Predictor protocol, artifact store, model registry, game prediction variants |
+| `src/gridiron_edge/evaluation/` | Metrics, backfill, archive, tuning, model selection |
 | `src/gridiron_edge/sim/` | Monte Carlo season + playoff simulation |
 | `src/gridiron_edge/viz/` | Predictions image/HTML, playoff table, rankings CSV |
-| `src/gridiron_edge/core/` | Settings, logging, console output |
-| `data/` | Generated at runtime (not committed) |
+| `src/gridiron_edge/cli/` | Typer app + sub-commands |
+| `data/` | Generated at runtime — not committed |
 
 **Data layout:**
 
 ```
 data/
-  raw/            nflverse Parquet files (games, upcoming schedule, PBP)
-  cleaned/        Canonical CSVs (games, schedule, Elo state, stadiums, weather)
-  modeling/       Feature matrix (base_modeling_file.parquet + modeling_file.parquet)
-  models/         Trained model artifacts (one directory per version)
+  raw/          nflverse Parquet files (games, upcoming schedule, PBP)
+  cleaned/      Canonical CSVs (games, schedule, Elo state, stadiums)
+  modeling/     Feature matrix (base + full, Parquet)
   output/
-    predictions/{year}/   week_NN_predictions.png + .html + .csv
-    predictions/predictions_log.parquet   Full prediction archive
-    rankings/             elo_rankings_{year}_wkNN.csv
-    sim/                  playoff probability tables
+    predictions/{year}/          week_NN_predictions.png + .html + .csv
+    predictions/predictions_log.parquet   prediction archive (all models)
+    rankings/                    elo_rankings_{year}_wkNN.csv
+    sim/                         playoff probability tables
   odds/
-    dk_odds_log.parquet       Full historical ledger (all pulls)
-    dk_odds_current.parquet   Latest pull snapshot (for viz)
+    dk_odds_log.parquet          Full historical ledger (all pulls)
+    dk_odds_current.parquet      Latest pull snapshot (for viz)
 ```
 
 ---
@@ -65,16 +71,51 @@ uv sync
 uv run gridiron --help
 ```
 
-**Python:** `>=3.12,<4`.
+Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
 
 ---
 
 ## Configuration
 
-| Secret / setting | How |
-|------------------|-----|
-| OpenWeather API | Env var `OWM_API_KEY` for `gridiron ingest weather` |
-| Data paths | `datasets/registry.py` + `core/settings.py` |
+| Setting | How |
+|---------|-----|
+| OpenWeather API key | `--owm-api-key` flag or env var `OWM_API_KEY` |
+| Elo divisor | `--divisor` on `gridiron sim run` (default 480; use tuned value after `evaluate tune elo`) |
+| Data paths | `core/settings.py` + `datasets/registry.py` |
+| Shared constants | `core/constants.py` |
+
+---
+
+## Key design decisions
+
+### `GAME_LOCATION` schema
+
+Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). The old PFR-era `"NULL_VALUE"` sentinel was retired. Missing data fields (GAMETIME, STADIUM, ROOF, SURFACE) use `""`.
+
+### Elo divisor is parameterised end-to-end
+
+`core.py` → `EloTableConfig` → `SimulationConfig` → `--divisor` CLI flag. The tuner (`evaluate tune elo`) finds the optimal divisor; set it consistently across table building and simulation. Default is 480 (classic NFL Elo). elo_v2 optimum is 350.
+
+### Feature dependency validation
+
+`FeatureSpec.depends_on` declares ordering constraints. `validate_ordering()` is called at pipeline import time — a mis-ordering raises `ValueError` immediately rather than silently producing wrong columns at training time.
+
+### Prediction archive `is_backfilled`
+
+`predictions_log.parquet` has a boolean `is_backfilled` column. Historical backfill predictions set it to `True`; live pre-game predictions set it to `False`. Filter on this rather than `predicted_at` for live-vs-backfill analysis.
+
+### Weather ingest is idempotent
+
+`fetch_weather` reads existing `weather_enriched.csv`, computes the set difference of `GAME_ID`s, and only calls the OWM API for games not already enriched. Safe to re-run.
+
+### sim/season.py decomposition
+
+`sim/` is split into three files with a clean dependency hierarchy:
+- `_types.py` — pure data, no I/O (constants, dataclasses)
+- `_engine.py` — numba kernels (imports from `_types` only)
+- `season.py` — orchestration (imports from both)
+
+Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` — if the formula changes, update both.
 
 ---
 
@@ -86,12 +127,12 @@ uv run gridiron --help
 uv run gridiron run-data-pipeline \
   --all-years \
   --upcoming-season 2026 \
-  --build-elo \
-  --fit-elo-all-years
+  --fit-elo-all-years \
+  --season-year 2025-2026 \
+  --skip fetch-odds
 ```
 
-Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo,
-builds feature matrix. ~115s.
+~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix. Skip `fetch-odds` until the unicode minus bug is fixed (see Sharp Edges).
 
 ### Weekly refresh (during season)
 
@@ -99,137 +140,74 @@ builds feature matrix. ~115s.
 uv run gridiron run-data-pipeline
 ```
 
-Auto-detects current season. Re-fetches games + upcoming schedule, refreshes
-Elo incrementally, rebuilds features.
+Runs all stages. Re-fetches current season games + upcoming schedule, incremental Elo fit, rebuilds features.
+
+### Stage control
+
+`--only` and `--skip` are mutually exclusive. Valid stage names:
+
+`fetch-games` · `clean-games` · `fetch-upcoming` · `clean-upcoming` · `fetch-weather` · `fetch-odds` · `build-epa` · `build-elo` · `build-features`
+
+```bash
+# Features only
+uv run gridiron run-data-pipeline --only build-features
+
+# Skip odds and weather
+uv run gridiron run-data-pipeline --skip fetch-odds --skip fetch-weather
+```
 
 ### Step-by-step
 
 ```bash
 uv run gridiron ingest nflverse-games [--all-years]
-uv run gridiron ingest nflverse-upcoming
+uv run gridiron ingest nflverse-upcoming --season 2026
 uv run gridiron transform clean-games
 uv run gridiron transform clean-upcoming
 uv run gridiron ratings elo fit [--all-years]
 uv run gridiron features model-inputs [--all-years]
 ```
 
-### Output
+### Outputs
 
 ```bash
-uv run gridiron output predictions --year 2026-2027 --week 1   # PNG + HTML
-uv run gridiron output ranks --year 2026-2027 --week 1         # Elo rankings CSV
-uv run gridiron sim run [--n-sims 10000]                       # Season simulation
+uv run gridiron output predictions --year 2026-2027 --week 1
+uv run gridiron output ranks --year 2026-2027 --week 1
+uv run gridiron sim run [--n-sims 10000] [--divisor 350]
 ```
 
-### Odds
+### Model training and evaluation
 
 ```bash
-uv run gridiron ingest dk-odds --season 2026-2027 --week 1
+uv run gridiron models train logistic_v1 [--overwrite]
+uv run gridiron models train random_forest_v1 [--overwrite]
+uv run gridiron evaluate backfill --model-version elo_v2
+uv run gridiron evaluate select-model
+uv run gridiron evaluate report
 ```
 
-### Weather
+### Archive migration (one-time, pre-thermonuclear-review archives only)
 
 ```bash
-export OWM_API_KEY="YOUR_KEY"
-uv run gridiron ingest weather --season-year "2026-2027"
+python -c "from gridiron_edge.evaluation.archive import migrate_archive; migrate_archive()"
 ```
+
+Adds `is_backfilled` column to existing prediction archives. Idempotent.
 
 ---
 
-## Model workflows
+## File contract
 
-### Training a model
-
-```bash
-uv run gridiron models train random_forest_v2
-uv run gridiron models train xgboost_v2
-uv run gridiron models list    # confirm artifact exists
-```
-
-### Evaluation
-
-```bash
-uv run gridiron evaluate backfill --model-version random_forest_v2
-uv run gridiron evaluate select-model       # composite ranking, all models
-uv run gridiron evaluate report             # full characterisation of best model
-uv run gridiron evaluate diagnostics --model-version random_forest_v2 --compare
-```
-
-### Adding a new model variant
-
-New variants require one call in `tree.py` or `logistic.py`:
-
-```python
-# tree.py
-RandomForestV3Predictor = _make_tree_variant(
-    "random_forest_v3",
-    "RF — description of what's new",
-    feature_set=FEATURE_SETS["expanded"],
-    model_type="rf",
-)
-```
-
-Then add the name to `predictor.py` re-exports and run the quality gates.
-No new class body, no new training function, no new `_make_*_features`.
-
-### Adding a new feature
-
-1. Create `src/gridiron_edge/features/team/your_feature.py` implementing
-   `FeatureSpec` + `compute()` decorated with `@FeatureRegistry.register("name")`
-2. Add `import gridiron_edge.features.team.your_feature  # noqa: F401` to
-   `features/pipeline.py`
-3. Add `"name"` to the `FEATURES` list in `pipeline.py` (order matters — see
-   comments in that file)
-4. If new columns are added to the games CSV, bump `CURRENT_SCHEMA_VERSION`
-   in `features/manifest.py`
-5. Rebuild: `uv run gridiron features model-inputs --all-years`
-
----
-
-## Model architecture
-
-**Feature pipeline (schema v3, 51 features for v2 models):**
-
-| Group | Features |
-|-------|---------|
-| Home field | `HOME_FIELD` (binary) |
-| Elo | `ELO_DIFF`, `TEAM_A_ELO`, `TEAM_B_ELO` |
-| EPA (rolling, 8 metrics × 2 teams) | `TEAM_A/B_OFF_EPA_PER_PLAY`, `OFF_PASS_EPA`, `OFF_RUSH_EPA`, `OFF_SUCCESS_RATE`, `DEF_*` |
-| Rest | `TEAM_A/B_DAYS_REST`, `SHORT_WEEK`, `POST_BYE` |
-| Weather | `IS_DOME`, `WIND_SPEED_MPH`, `TEMP_F`, `PRECIP_FLAG` |
-| Travel | `TEAM_A/B_KM_TRAVELED`, `TZ_SHIFT`, `ALTITUDE`, `IS_NEUTRAL_SITE` |
-| Venue | `IS_DIV_GAME`, `TEAM_A/B_FRANCHISE_HFA` |
-
-**Named feature sets** (`_shared.FEATURE_SETS`):
-
-| Key | Features | Used by |
-|-----|---------|---------|
-| `"diff"` | 10 differential | logistic_v1 |
-| `"raw"` | 22 raw | logistic_v2 |
-| `"combined"` | 32 combined | logistic_v3/v4, rf_v1, xgb_v1 |
-| `"expanded"` | 51 expanded | rf_v2, xgb_v2 |
-
-**Holdout strategy:** Last 3 seasons (`2023-2024`, `2024-2025`, `2025-2026`)
-withheld from all training. Never touch these for any tuning decision.
-
----
-
-## File contract (key artifacts)
-
-| File | Purpose |
-|------|---------|
-| `data/raw/NFL_wk_by_wk_nflverse.parquet` | Raw nflverse games |
-| `data/cleaned/NFL_wk_by_wk_cleaned.csv` | Canonical historical games |
-| `data/cleaned/NFL_wk_by_wk_w_weather.csv` | Games + weather (reconciled IDs) |
-| `data/raw/NFL_upcoming_schedule_nflverse.parquet` | Raw upcoming schedule |
+| File | Contents |
+|------|----------|
+| `data/cleaned/NFL_wk_by_wk_cleaned.csv` | Canonical historical games — `GAME_LOCATION` = `"H"/"@"/"N"` |
 | `data/cleaned/NFL_upcoming_schedule_cleaned.csv` | Canonical upcoming schedule |
 | `data/cleaned/NFL_Team_Elo.csv` | Elo ratings state table |
-| `data/cleaned/NFL_stadium_reference.csv` | Stadium / geo reference |
-| `data/modeling/base_modeling_file.parquet` | Base modeling rows |
-| `data/modeling/modeling_file.parquet` | Full feature matrix (schema v3) |
-| `data/output/predictions/predictions_log.parquet` | Full prediction archive |
-| `data/odds/dk_odds_log.parquet` | Full DK odds history |
-| `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot |
+| `data/modeling/base_modeling_file.parquet` | Base modeling rows (pre-features) |
+| `data/modeling/modeling_file.parquet` | Full feature matrix |
+| `data/cleaned/NFL_stadium_reference.csv` | Stadium geo reference — add new venues here for weather coverage |
+| `data/output/predictions/predictions_log.parquet` | Prediction archive — `is_backfilled` flags historical vs live |
+| `data/odds/dk_odds_log.parquet` | Full DK odds history (long format) |
+| `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot for viz |
 
 ---
 
@@ -237,80 +215,73 @@ withheld from all training. Never touch these for any tuning decision.
 
 | What | Where |
 |------|-------|
-| CLI entry | `src/gridiron_edge/cli.py` |
-| nflverse ingest | `src/gridiron_edge/ingest/nflverse/` |
-| Weather + DK collector | `src/gridiron_edge/ingest/pfr/collector_impl.py` |
-| Odds ledger | `src/gridiron_edge/ingest/odds/store.py` |
-| Feature constants + sets | `src/gridiron_edge/models/game_prediction/_shared.py` |
-| Feature pipeline + FEATURES list | `src/gridiron_edge/features/pipeline.py` |
-| Model factory (tree) | `src/gridiron_edge/models/game_prediction/tree.py` |
-| Model factory (logistic) | `src/gridiron_edge/models/game_prediction/logistic.py` |
-| Model registry entry point | `src/gridiron_edge/models/game_prediction/predictor.py` |
-| Elo | `src/gridiron_edge/ratings/elo/` |
-| Simulation | `src/gridiron_edge/sim/` |
-| Evaluation metrics | `src/gridiron_edge/evaluation/metrics.py` |
-| Predictions viz | `src/gridiron_edge/viz/predictions.py` |
-| Console output | `src/gridiron_edge/core/console.py` |
+| CLI entry + `run-data-pipeline` | `cli/main.py` |
+| Shared constants | `core/constants.py` |
+| Feature pipeline + ordering | `features/pipeline.py` |
+| Feature dependency validation | `features/registry.py` — `validate_ordering()` |
+| Feature column definitions | `models/game_prediction/_columns.py` |
+| Feature engineering functions | `models/game_prediction/_features.py` |
+| EPA window hyperparameter infra | `models/game_prediction/_epa_window.py` |
+| Elo core formula (parameterised) | `ratings/elo/core.py` |
+| Simulation types + config | `sim/_types.py` |
+| Simulation engine (numba) | `sim/_engine.py` |
+| Simulation orchestration | `sim/season.py` |
+| Prediction archive schema | `evaluation/archive.py` |
+| Model selection + reporting | `evaluation/select.py` |
+| Weather ingest (idempotent) | `ingest/weather/openweather.py` |
+| DK odds ingest | `ingest/odds/draftkings.py` |
+
+All paths relative to `src/gridiron_edge/`.
 
 ---
 
 ## Code quality gates
 
 ```bash
-uv run ruff check src/ --fix   # lint + auto-fix
+uv run ruff check src/ --fix   # lint + autofix
 uv run ruff format src/        # format
-uvx pyrefly check              # static type check
+uvx pyrefly check              # type check
 uv run pytest                  # tests
 ```
 
-All four must pass before committing. Config in `pyproject.toml` (Ruff) and
-`pyrefly.toml` (Pyrefly). Use `uv run gridiron -v <command>` for verbose
-output. `GRIDIRON_VERBOSE=1` also works.
+All four must pass before committing. Use `uv run gridiron -v <command>` for verbose output.
 
 ---
 
 ## Known sharp edges
 
-**nflverse data cadence** — updates nightly. Cleanest weekly snapshot is
-Thursday (after Mon–Wed stat corrections). Historical coverage: 1999–present.
+### DK odds unicode minus (`fetch-odds`)
 
-**Weather file game IDs** — `NFL_wk_by_wk_w_weather.csv` uses NFLverse
-historical IDs (e.g. `1999_01_BAL_STL`). Was reconciled from retrofitted IDs
-via `scripts/reconcile_weather_ids.py` (one-time, now deleted). 24 corrupt
-Super Bowl artifact IDs were purged. The weather backfill covers 1999–present;
-773 games remain without weather data (pre-OWM history).
+Some DraftKings API responses contain a unicode minus sign (`−`, U+2212) rather than a hyphen-minus in odds values (e.g. `−205`). This causes `ValueError: invalid literal for int()`. Fix pending in `_norm_display_odds_american` in `ingest/odds/draftkings.py` — move the `str.replace("\u2212", "-")` call before the `int()` cast. Until fixed, use `--skip fetch-odds`.
 
-**Stadium reference** — `gridiron ingest nflverse-upcoming` warns when an
-upcoming schedule contains a stadium absent from `NFL_stadium_reference.csv`.
-Add the missing stadium with coordinates before running weather ingest.
-Stadium name ≠ new building — name changes don't require a new row.
+### Missing stadium coordinates (2026-2027)
 
-**DK odds `--week` default** — always pass `--week` explicitly. Defaults to
-week=1 if omitted, which mis-tags mid-season pulls in the ledger.
+12 new/renamed stadia for the 2026-2027 season are not yet in `NFL_stadium_reference.csv`. Weather ingest skips affected games. Add rows with columns `STADIUM`, `HOME_TEAM`, `YEAR`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`:
 
-**Elo and upcoming week** — run `ratings elo fit` before `output predictions`.
-If Elo state doesn't have entries for the requested week, predictions will be
-empty.
+Bernabeu · Caesars Superdome · Estadio Banorte · EverBank Stadium · FC Bayern Munich Stadium · Highmark Stadium · Huntington Bank Field · Maracana Stadium · Melbourne Cricket Ground · Northwest Stadium · Stade de France · Tottenham Hotspur Stadium
 
-**`collector_impl.py` scope** — handles only weather (OWM) and DraftKings
-odds. All game + schedule ingestion goes through `ingest/nflverse/`. Do not
-add Scrapy or PFR dependencies.
+### Off-season `current_nfl_season()`
 
-**Feature pipeline order** — `FEATURES` list in `pipeline.py` is ordered.
-`travel` must run before `venue_hfa` (HFA reads `IS_NEUTRAL_SITE`). See
-comments in `pipeline.py`.
+Returns `year - 1` when `month < 6`. In May 2026 it returns 2025, treating you as if in the 2025-2026 season. Pass `--season 2026` or `--upcoming-season 2026` explicitly when fetching 2026-2027 data.
 
-**Side-effect imports in `pipeline.py`** — every feature module import must
-have `# noqa: F401`. Without it ruff strips the import and the feature never
-registers, producing a silent `KeyError` at runtime.
+### Sim requires a populated upcoming schedule
+
+`gridiron sim run` raises `FileNotFoundError` with an actionable message when the upcoming schedule CSV is empty. Run `gridiron ingest nflverse-upcoming --season 2026` then `gridiron transform clean-upcoming` first.
+
+### Elo state table must precede predictions
+
+`output predictions` merges Elo onto the upcoming schedule by week. If the Elo table doesn't have entries for the requested week yet, predictions will be empty. Run `ratings elo fit` first.
+
+### nflverse data cadence
+
+nflverse updates nightly after each game day. The cleanest weekly snapshot is Thursday (after the NFL incorporates Mon–Wed stat corrections). Historical coverage goes back to 1999.
 
 ---
 
-## Operational checklist (weekly)
+## Operational checklist (weekly, during season)
 
-1. `uv run gridiron run-data-pipeline` — refresh games + upcoming + features
-2. `uv run gridiron ingest dk-odds --season YYYY-YYYY+1 --week N` — pull odds
-3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N` — viz
-4. `uv run gridiron sim run` — playoff probabilities
-5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N` — rankings CSV
-6. `uv run gridiron evaluate report` — confirm model still auto-selects correctly
+1. `uv run gridiron run-data-pipeline` — refresh data + features
+2. `uv run gridiron ingest dk-odds` — pull current week odds *(once DK unicode bug fixed)*
+3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N`
+4. `uv run gridiron sim run`
+5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`

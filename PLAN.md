@@ -1,7 +1,6 @@
 # Gridiron Edge — Plan
 
-See [HANDOFF.md](HANDOFF.md) to run the project today.
-See [CHANGELOG.md](CHANGELOG.md) for completed phase history and decisions.
+What is being built next and why. See [HANDOFF.md](HANDOFF.md) for how everything works today and [CHANGELOG.md](CHANGELOG.md) for what has been completed.
 
 **Status key:** `[x]` done · `[ ]` not started · `[~]` in progress
 
@@ -9,90 +8,99 @@ See [CHANGELOG.md](CHANGELOG.md) for completed phase history and decisions.
 
 ## Vision
 
-Gridiron Edge is a long-term **football intelligence and betting research platform**.
+Gridiron Edge is a long-term **football intelligence and betting research platform** — not just a prediction model.
 
-| Layer | Status |
-|-------|--------|
-| Data Platform | ✅ Operational |
-| Football State Representation | ✅ Phase 19 |
-| Prediction Engine | ✅ Phase 20 — `random_forest_v2` production model |
-| Model Evaluation + Reporting | ✅ Phase 20b/20c |
-| Tree-based Models | ✅ Phase 20d |
-| Feature Engineering | 🔜 Phase 20e (in progress) |
-| Model Variant Infrastructure | ✅ Phase 20f |
-| Market Intelligence | 🔜 Phase 21 |
-| Decision Engine | 🔜 Future |
-| Explainability & Insights | 🔜 Future |
+| Layer | Description | Status |
+|-------|-------------|--------|
+| Data Platform | Ingest and store football reality | ✅ |
+| Football State Representation | Represent what teams actually are | ✅ Phase 19 |
+| Prediction Engine | What is likely to happen | ✅ Phase 20a–d |
+| Model Evaluation | Which model should I use and why | ✅ Phase 20b |
+| Model Reporting | Full characterisation of chosen model | ✅ Phase 20c |
+| Tree-based Models | Non-linear signal capture (RF + XGBoost) | ✅ Phase 20d |
+| Feature Engineering | Interactions, transforms, domain features | 🔜 Phase 20e |
+| Model Variant Infrastructure | Programmatic model registration | 🔜 Phase 20f |
+| Market Intelligence | What does Vegas think | 🔜 Phase 21 |
+| Decision Engine | What should actually be bet | 🔜 Future |
+| Explainability & Insights | Why does the model think this | 🔜 Future |
 
-**Core philosophy:** Betting edge is discovered through measurement, infrastructure,
-and systematic disagreement with the market — not through chasing more complex models.
-Understand existing models deeply before building more.
-
----
-
-## Architecture
-
-| Layer | Module |
-|-------|--------|
-| Game + schedule ingest | `gridiron_edge.ingest.nflverse` |
-| PBP ingest | `gridiron_edge.ingest.nflverse.pbp` |
-| Weather ingest | `gridiron_edge.ingest.pfr.collector_impl` (OpenWeatherMap) |
-| Odds ingest + ledger | `gridiron_edge.ingest.odds` (DraftKings → Parquet) |
-| Transform | `gridiron_edge.transform.clean` |
-| Modeling features | `gridiron_edge.features.pipeline` (schema v3) |
-| Elo ratings | `gridiron_edge.ratings.elo` |
-| Season simulation | `gridiron_edge.sim` |
-| Visualisation | `gridiron_edge.viz` |
-| Evaluation | `gridiron_edge.evaluation` |
-| Models | `gridiron_edge.models` (Predictor + Trainable protocols, ArtifactStore) |
-| CLI | `uv run gridiron` (split across `cli/` sub-modules) |
+**Core philosophy:** Betting edge is discovered through measurement, infrastructure, and systematic disagreement with the market — not through chasing more complex models. Understand existing models deeply before building more complex ones.
 
 ---
 
-## Current model rankings (holdout 2023–2026)
+## Architectural debt
 
-| model | Brier | ECE | AUC | auto-selected |
-|---|---|---|---|---|
-| random_forest_v2 | **0.21078** | 0.02108 | **0.71820** | ← production |
-| random_forest_v1 | 0.21503 | 0.02836 | 0.70527 | |
-| xgboost_v2 | 0.21865 | 0.02059 | 0.69200 | |
-| xgboost_v1 | 0.21857 | 0.02093 | 0.69278 | |
-| logistic_v3 | 0.22102 | **0.01606** | 0.68241 | |
+Items that must be resolved before or during the phases they block.
+
+| Item | Blocking | Fix |
+|------|----------|-----|
+| DK odds unicode minus bug | Phase 21 | Move `str.replace("\u2212", "-")` before `int()` cast in `_norm_display_odds_american` in `ingest/odds/draftkings.py` |
+| Odds `game_id` resolver | Phase 21 | Map DK internal event IDs to canonical `YYYY_WW_AWAY_HOME` using team names + dates |
+| Missing stadium coordinates | Ongoing | 12 new/renamed 2026-2027 stadia not in `NFL_stadium_reference.csv`; weather ingest skips affected games |
+| Test coverage: `backfill.py` + `tune.py` | Ongoing | `archive.py`, `metrics.py`, `manifest.py` covered; backfill and tune still need tests |
+| `off-season current_nfl_season()` | Ongoing | Returns `year - 1` when `month < 6`; must pass `--season` flags explicitly during off-season |
 
 ---
 
-## Phase 20e — Feature engineering 🔜 (in progress)
+## Phase 20e — Feature engineering (in progress) 🔜
 
-**Next batch (quick wins from existing data):**
+**Goal:** Add the domain features that most improve model discrimination beyond Elo + EPA.
 
-- [ ] **Season stage** — early (wk 1–4), mid, late (wk 14–18), playoffs; from `WEEK_NUM`
-- [ ] **Strength of schedule to date** — avg Elo of opponents faced this season
-- [ ] **Strength of victory** — avg Elo of opponents beaten this season
-- [ ] **Win/loss record** — wins and games played to date
-- [ ] **Primetime flag** — MNF/SNF/TNF; from `GAMETIME` + `GAME_DAY_OF_WEEK`
-- [ ] **Turnover differential (rolling)** — `TURNOVERS_WINNER/LOSER` already in games CSV
+**Category A — Venue and game context** (high signal, low implementation cost):
+- [ ] Dome/outdoor flag (`IS_DOME`) — already in schema v3, confirm wired end-to-end
+- [ ] Neutral site flag (`IS_NEUTRAL_SITE`) — already in schema v3
+- [ ] Altitude (`ALTITUDE`) — stadium reference has it; confirm feature uses it
+- [ ] Weather effects — integrate OWM data into prediction features (ingest exists; feature does not)
+- [ ] Stadium attendance capacity — venue size as a proxy for home crowd noise
 
-**Completed:**
-- [x] Rest/schedule stress — `DAYS_REST`, `SHORT_WEEK`, `POST_BYE`
-- [x] Weather — `IS_DOME`, `WIND_SPEED_MPH`, `TEMP_F`, `PRECIP_FLAG`
-- [x] Travel — `KM_TRAVELED`, `TZ_SHIFT`, `ALTITUDE`, `IS_NEUTRAL_SITE`
-- [x] Divisional flag — `IS_DIV_GAME`
-- [x] Franchise HFA coefficient — `TEAM_A/B_FRANCHISE_HFA`
+**Category B — Schedule stress** (medium signal, medium cost):
+- [ ] Days rest (`DAYS_REST`) — already in schema v3, confirm wired end-to-end
+- [ ] Short week flag (`SHORT_WEEK`) — already in schema v3
+- [ ] Post-bye flag (`POST_BYE`) — already in schema v3
+- [ ] Travel distance + timezone shift — metrics/travel already computes; confirm wired into features
 
-**After quick wins — feature brainstorm session (three tiers):**
+**Category C — Team intelligence** (high signal, highest cost):
+- [ ] QB Elo / QBR / passer rating as team-level features — requires QB-level PBP aggregation and starter tracking
+- [ ] DVOA, CPOE, RYOE — advanced EPA derivatives, requires additional PBP work
+- [ ] Win streak / loss streak / record (`WIN_STREAK`, `LOSS_STREAK`, `WIN_PCT`) — already in schema v3
 
-1. **From data we already have** — all items above plus any others surfaced by
-   evaluation analysis (season drift, early-season instability, etc.)
-2. **Calculated from existing sources** — DVOA-style adjusted metrics, QB Elo,
-   EPA extensions (CPOE, RYOE, weighted EPA)
-3. **Requiring new data sources** — Next Gen Stats, line movement/CLV, injury
-   reports, Vegas consensus
+**Acceptance criteria:**
 
-**Acceptance criteria (per batch):**
 ```bash
 uv run gridiron features model-inputs --all-years
 uv run gridiron models train random_forest_v2
+uv run gridiron models train xgboost_v2
 uv run gridiron evaluate backfill --model-version random_forest_v2
+uv run gridiron evaluate backfill --model-version xgboost_v2
+uv run gridiron evaluate select-model
+uv run gridiron evaluate report
+uv run ruff check src/ --fix && uvx pyrefly check && uv run pytest
+```
+
+---
+
+## Phase 20f — Model variant infrastructure 🔜
+
+**Goal:** Eliminate per-variant class boilerplate in `tree.py` and `logistic.py`. Currently adding a model variant requires a new class body, re-export, `_make_*` function, and registration test. With frequent feature iteration this is unsustainable.
+
+**Approach — programmatic factory (Option C):** `_register_rf_variant()` and `_register_xgb_variant()` factory functions produce and register a fully-typed class at module load time given just `name`, `description`, `feature_fn`, `feature_names`. One call per variant replaces ~35 lines of boilerplate.
+
+**Why not Hydra + MLflow (Option A)?** Config-driven registration is the correct long-term direction but earns its keep only when tracking real bets and needing full experiment lineage. That is Phase 22+. Option C is the pragmatic bridge: same external interface, dramatically lower authoring cost, no new dependencies.
+
+**Scope:**
+- [ ] `_make_tree_variant(name, description, feature_fn, feature_names, model_type)` — produces + registers RF or XGBoost class
+- [ ] `_make_logistic_variant(name, description, feature_fn, feature_names, elasticnet)` — produces + registers logistic class
+- [ ] Replace all 8 hand-written class bodies (logistic v1-v4, RF v1-v2, XGB v1-v2) with factory calls
+- [ ] `predictor.py` shim updated to import from factories
+- [ ] `test_tree_models.py` updated to use registry lookups
+
+**What does not change:** model version strings, `PredictorRegistry` interface, `ArtifactStore`, CLI commands, evaluation infrastructure.
+
+**Acceptance criteria:**
+
+```bash
+uv run gridiron models list
+uv run gridiron models train random_forest_v2
 uv run gridiron evaluate report
 uv run ruff check src/ --fix && uvx pyrefly check && uv run pytest
 ```
@@ -101,15 +109,16 @@ uv run ruff check src/ --fix && uvx pyrefly check && uv run pytest
 
 ## Phase 21 — Market intelligence layer 🔜
 
-**Goal:** Systematically compare model predictions against the market.
-**Prerequisite:** Odds `game_id` resolver (see architectural debt).
+**Prerequisite:** DK unicode minus bug fixed + odds `game_id` resolver built.
+
+**Goal:** Systematically compare model predictions against the market line.
 
 - [ ] Odds `game_id` resolver — map DK internal event IDs to canonical `YYYY_WW_AWAY_HOME`
-- [ ] Historical odds database — spread, moneyline, totals, opening + closing lines
+- [ ] Historical odds database — spread, moneyline, totals; opening + closing lines
 - [ ] Multi-sportsbook ingest — FanDuel, BetMGM alongside DraftKings
 - [ ] Implied probability extraction with de-vig (power/Shin method)
-- [ ] Edge calculation: `model_prob − implied_prob` per game
-- [ ] Market disagreement analysis: where does model consistently differ from consensus?
+- [ ] Edge calculation: `model_prob - implied_prob` per game
+- [ ] Market disagreement analysis: where does the model consistently differ from consensus?
 - [ ] CLI: `gridiron market edge --year --week`
 
 ---
@@ -120,40 +129,26 @@ uv run ruff check src/ --fix && uvx pyrefly check && uv run pytest
 
 - [ ] Bet log CLI — record bets with stake, odds, market, sportsbook
 - [ ] P&L tracking — ROI by model, season, market type, confidence tier
-- [ ] Matchup reports — per-game breakdown
-- [ ] Team insights — season-level trends
+- [ ] `analytics/matchup_reports.py` — per-game matchup breakdown report
+- [ ] `analytics/team_insights.py` — season-level team analytics and trends
 - [ ] CLI: `gridiron bets log` + `gridiron bets summary`
 
 ---
 
-## Architectural debt
+## Backlog / Future
 
-| Item | Blocking at | Notes |
-|------|------------|-------|
-| Odds `game_id` resolver | Phase 21 | DK uses internal event IDs; join will fail silently without this |
-| Test coverage for `backfill.py` + `tune.py` | Ongoing | `archive.py`, `metrics.py`, `manifest.py` covered; these two still need tests |
-| `datasets/registry.py` self-registration | Long-term | Flat dict; low urgency until >20 datasets |
+Items with long-term value but no near-term dependency:
 
----
+**Simulation:**
+- Per-stage playoff Monte Carlo — simulate each round independently; inject known results as postseason progresses
+- Skip full-season sim after week 18 — use actual standings once regular season is complete
+- Dynamic schedule updates — handle mid-season game relocations without manual file edits
 
-## Backlog
-
-### Model features
-- **Season-stage + quick-win features** — see Phase 20e above
-- **QB intelligence** — QB Elo, QBR, passer rating; requires QB-level PBP aggregation and starter tracking
-- **Advanced EPA metrics** — DVOA, CPOE, RYOE, weighted EPA
-- **Stadium-level HFA coefficient** — separate coefficient per physical building; requires stadium open/close dates (name changes ≠ new stadium). Current franchise-level implementation in `venue_hfa.py` is the correct prior until dates are sourced.
-
-### Infrastructure
-- **Automated stadium reference updates** — `gridiron ingest nflverse-upcoming` currently warns when a stadium in the upcoming schedule is absent from `NFL_stadium_reference.csv`. Automate by geocoding new stadiums and appending to the reference rather than requiring manual curation.
-- **Config-driven model registration (Hydra + MLflow)** — replaces the programmatic factory (Phase 20f) with full experiment tracking. Correct long-term direction; prerequisite is Phase 22 betting tracker operational (experiment lineage has no P&L value before then).
-- **Ensemble systems** — stack Elo + EPA + ML with uncertainty estimates
-- **Drive/possession simulation** — play-level Monte Carlo
-- **Injury + roster intelligence** — injury-adjusted team strength
-- **Live game intelligence** — real-time win probability (major architecture change)
-- **Public dashboards / automated reports** — shareable weekly output
-
-### Simulation improvements
-- **Monte Carlo per-stage playoffs** — simulate each round independently so known results can be injected
-- **Skip full-season sim after week 18** — use actual standings once regular season is complete
-- **Dynamic schedule updates** — handle mid-season game relocations without manual file edits
+**Infrastructure:**
+- Config-driven model registration (Hydra + MLflow / Option A) — replace Option C once real bets are tracked and experiment lineage has P&L value. Prerequisite: Phase 22 operational.
+- `datasets/registry.py` self-registration — replace flat dict with auto-discovery when dataset count grows past ~20
+- Drive/possession simulation — expand Monte Carlo toward play-level outcome distributions
+- Injury + roster intelligence — injury-adjusted team strength, player availability impacts
+- Ensemble systems — stack Elo + EPA model + ML model with uncertainty estimates
+- Public dashboards / automated reports
+- Live game intelligence — real-time win probability updates (major architecture change)
