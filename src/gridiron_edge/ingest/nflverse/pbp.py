@@ -46,8 +46,7 @@ from typing import Final
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.core.settings import get_settings
-from gridiron_edge.ingest.nflverse.games import _current_nfl_season
+from gridiron_edge.core.settings import current_nfl_season, get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -149,7 +148,7 @@ def fetch_pbp(
     import nfl_data_py as nfl  # type: ignore[import-untyped]
 
     resolved_repo: Path = repo or get_settings().repo_root
-    current: int = _current_nfl_season()
+    current: int = current_nfl_season()
 
     if seasons is None:
         seasons = list(range(start_season, current + 1))
@@ -196,7 +195,7 @@ def fetch_pbp_refresh(*, repo: Path | None = None) -> list[Path]:
         List containing the current season's Parquet path, or empty
         list if fetch failed.
     """
-    current: int = _current_nfl_season()
+    current: int = current_nfl_season()
     return fetch_pbp(seasons=[current], repo=repo, force=True)
 
 

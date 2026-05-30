@@ -28,25 +28,32 @@ iteration count, current best CV Brier, and ETA.
 from __future__ import annotations
 
 from collections.abc import Callable
-import contextlib
 import datetime as dt
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import Series
 from tqdm import tqdm
 
 from gridiron_edge.models.base import PredictorSpec
-from gridiron_edge.models.game_prediction._shared import (
+from gridiron_edge.models.game_prediction._columns import (
     _SCHEMA_VERSION,
+)
+
+# EPA metric names — single source of truth lives in the feature module.
+from gridiron_edge.models.game_prediction._epa_window import (
+    _EPA_WINDOW_OPTIONS,
+    WindowData,
+    _get_cached_window_data,
+)
+from gridiron_edge.models.game_prediction._features import (
     FEATURE_SETS,
     FeatureSet,
     _is_trained,
-    _prepare_data,
 )
 from gridiron_edge.models.registry import PredictorRegistry
 
@@ -54,129 +61,6 @@ if TYPE_CHECKING:
     from gridiron_edge.models.artifact import ModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# EPA window infrastructure
-# ---------------------------------------------------------------------------
-
-# EPA column suffixes as they appear in epa_by_game.parquet (lowercase)
-_EPA_RAW_COLS: Final[list[str]] = [
-    "off_epa_per_play",
-    "off_pass_epa",
-    "off_rush_epa",
-    "off_success_rate",
-    "def_epa_per_play",
-    "def_pass_epa",
-    "def_rush_epa",
-    "def_success_rate",
-]
-
-# Mapping from epa_by_game column name → modeling file column suffix
-_EPA_COL_MAP: Final[dict[str, str]] = {
-    "off_epa_per_play": "OFF_EPA_PER_PLAY",
-    "off_pass_epa": "OFF_PASS_EPA",
-    "off_rush_epa": "OFF_RUSH_EPA",
-    "off_success_rate": "OFF_SUCCESS_RATE",
-    "def_epa_per_play": "DEF_EPA_PER_PLAY",
-    "def_pass_epa": "DEF_PASS_EPA",
-    "def_rush_epa": "DEF_RUSH_EPA",
-    "def_success_rate": "DEF_SUCCESS_RATE",
-}
-
-# EPA window values searched as a hyperparameter
-_EPA_WINDOW_OPTIONS: Final[list[int]] = [1, 2, 3, 4, 6, 8]
-
-
-def _rebuild_features_with_window(
-    df: pd.DataFrame,
-    *,
-    window: int,
-    repo: Path,
-) -> pd.DataFrame:
-    """Recompute rolling EPA features with a configurable window size.
-
-    The standard modeling file uses a fixed 4-game rolling window.  This
-    function loads the raw game-level EPA data and recomputes rolling
-    averages with a different window, then splices the result back into
-    the modeling DataFrame.  Called during hyperparameter search when
-    epa_window is a tunable parameter.
-
-    Fast path: if window == 4, returns df unchanged (no disk read needed).
-
-    Args:
-        df: Full modeling DataFrame from load_modeling_file.
-        window: Rolling window size (number of prior games to average).
-        repo: Repository root (for loading epa_by_game.parquet).
-
-    Returns:
-        Modeling DataFrame with TEAM_A_* and TEAM_B_* EPA columns
-        recomputed using the requested window.  NaN rows from incomplete
-        windows are retained; callers apply the NaN mask after feature
-        engineering.
-    """
-    from gridiron_edge.datasets.loaders import load_epa_by_game
-
-    if window == 4:
-        return df
-
-    epa_raw: pd.DataFrame = load_epa_by_game(repo)
-    if epa_raw.empty:
-        logger.warning("epa_by_game.parquet not found — returning df unchanged")
-        return df
-
-    epa_sorted: pd.DataFrame = epa_raw.sort_values(["season", "week", "team"]).copy()
-
-    # Compute rolling mean per team with shift(1) to prevent lookahead
-    rolled_parts: list[pd.DataFrame] = []
-    for _team, grp in epa_sorted.groupby("team", sort=False):
-        grp_sorted = grp.sort_values(["season", "week"]).copy()
-        for col in _EPA_RAW_COLS:
-            grp_sorted[f"{col}_roll"] = (
-                grp_sorted[col].shift(1).rolling(window=window, min_periods=1).mean()
-            )
-        rolled_parts.append(grp_sorted)
-
-    rolled: pd.DataFrame = pd.concat(rolled_parts, ignore_index=True)
-
-    roll_cols: list[str] = [f"{c}_roll" for c in _EPA_RAW_COLS]
-    lookup: pd.DataFrame = rolled[["season", "week", "team", *roll_cols]].copy()
-
-    # Build season int → YEAR string mapping from the modeling file itself
-    # (epa_by_game uses int seasons like 2024; modeling file uses "2024-2025")
-    year_to_season: dict[str, int] = {}
-    for year_str in df["YEAR"].unique():
-        with contextlib.suppress(ValueError, IndexError):
-            year_to_season[year_str] = int(str(year_str).split("-")[0])
-
-    lookup["YEAR"] = lookup["season"].map({v: k for k, v in year_to_season.items()})
-    lookup = lookup.dropna(subset=["YEAR"])
-
-    # Drop existing EPA columns before merging updated ones
-    team_a_epa_cols = [f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
-    team_b_epa_cols = [f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
-    df = df.copy().drop(columns=team_a_epa_cols + team_b_epa_cols, errors="ignore")
-
-    # Merge TEAM_A EPA
-    team_a_merge = lookup.rename(
-        columns={
-            "team": "TEAM_A",
-            "week": "WEEK_NUM",
-            **{f"{c}_roll": f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
-        }
-    )[["TEAM_A", "YEAR", "WEEK_NUM", *[f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
-    df = df.merge(team_a_merge, on=["TEAM_A", "YEAR", "WEEK_NUM"], how="left")
-
-    # Merge TEAM_B EPA
-    team_b_merge = lookup.rename(
-        columns={
-            "team": "TEAM_B",
-            "week": "WEEK_NUM",
-            **{f"{c}_roll": f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
-        }
-    )[["TEAM_B", "YEAR", "WEEK_NUM", *[f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
-    df = df.merge(team_b_merge, on=["TEAM_B", "YEAR", "WEEK_NUM"], how="left")
-
-    return df
 
 
 # ---------------------------------------------------------------------------
@@ -191,14 +75,10 @@ def _predict_historical_tree(
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
-    """Shared historical prediction logic for tree model variants.
-
-    Reads epa_window from stored metadata and rebuilds EPA features
-    accordingly, ensuring predictions always use the same window as
-    training.
+    """Shared historical prediction logic for all tree-based variants.
 
     Args:
-        games: Games DataFrame (unused — modeling file loaded from disk).
+        games: Games DataFrame (unused — full modeling file loaded from disk).
         model_version: Registered model version string.
         feature_fn: Feature engineering function.
         repo: Repository root.
@@ -218,13 +98,7 @@ def _predict_historical_tree(
         return pd.DataFrame()
 
     pipeline = store.load(model_version)
-    metadata = store.read_metadata(model_version)
-    epa_window: int = int(metadata.parameters.get("epa_window", 4))
-
-    df: DataFrame = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
-
-    if epa_window != 4:
-        df = _rebuild_features_with_window(df, window=epa_window, repo=resolved_repo)
+    df = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
 
     features = feature_fn(df)
     valid = features.notna().all(axis=1)
@@ -241,10 +115,11 @@ def _predict_historical_tree(
     away_rows = df_valid.loc[df_valid["HOME_FIELD"] == 0].copy()
     away_rows = away_rows.drop_duplicates(subset=["GAME_ID"])
 
-    ts = dt.datetime(1970, 1, 1)
+    ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
     return pd.DataFrame(
         {
             "predicted_at": ts,
+            "is_backfilled": True,
             "model_version": model_version,
             "season": away_rows["YEAR"],
             "week": away_rows["WEEK_NUM"].astype(int),
@@ -267,7 +142,7 @@ def _predict_upcoming_tree(
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
-    """Shared upcoming prediction logic for tree model variants.
+    """Shared upcoming prediction logic for all tree-based variants.
 
     Args:
         schedule: Upcoming games schedule DataFrame.
@@ -294,7 +169,7 @@ def _predict_upcoming_tree(
     pipeline = store.load(model_version)
     datasets = DatasetAccessor(repo=resolved_repo)
 
-    upcoming_df: DataFrame = run_features(df=schedule, feature_names=FEATURES, datasets=datasets)
+    upcoming_df = run_features(df=schedule, feature_names=FEATURES, datasets=datasets)
     features = feature_fn(upcoming_df)
     valid = features.notna().all(axis=1)
     upcoming_valid = upcoming_df.loc[valid].copy()
@@ -314,45 +189,6 @@ def _predict_upcoming_tree(
     result["AWAY_TEAM_ELO"] = upcoming_valid.get("TEAM_A_ELO", float("nan"))
     result["HOME_TEAM_ELO"] = upcoming_valid.get("TEAM_B_ELO", float("nan"))
     return result.reset_index(drop=True)
-
-
-# ---------------------------------------------------------------------------
-# Window cache — eliminates redundant disk reads during hyperparameter search
-# ---------------------------------------------------------------------------
-
-
-def _get_cached_window_data(
-    cache: dict[
-        int, tuple[pd.DataFrame, pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]
-    ],
-    window: int,
-    df: pd.DataFrame,
-    feature_fn: Callable,
-    repo: Path,
-) -> tuple[pd.DataFrame, pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
-    """Return cached (df_w, x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
-
-    On first access for a given window, rebuilds EPA features and runs
-    _prepare_data; subsequent accesses return the cached result.  Since
-    _EPA_WINDOW_OPTIONS has at most 6 values, the cache is bounded and
-    eliminates the dominant cost in the hyperparameter loop: repeated
-    parquet loads for the same window.
-
-    Args:
-        cache: Mutable dict keyed by window size; populated in place.
-        window: Rolling EPA window size to retrieve.
-        df: Full raw modeling DataFrame (window=4 baseline).
-        feature_fn: Feature engineering function passed to _prepare_data.
-        repo: Repository root for _rebuild_features_with_window.
-
-    Returns:
-        Tuple of (df_w, x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
-    """
-    if window not in cache:
-        df_w = _rebuild_features_with_window(df, window=window, repo=repo)
-        x_tr, y_tr, x_ho, y_ho, tr_s, ho_s = _prepare_data(df_w, feature_fn)
-        cache[window] = (df_w, x_tr, y_tr, x_ho, y_ho, tr_s, ho_s)
-    return cache[window]
 
 
 # ---------------------------------------------------------------------------
@@ -435,12 +271,13 @@ def _train_random_forest(
 
     # Window cache: keyed by window size → (df_w, x_train, y_train, x_hold, y_hold, ...)
     # Bounded by len(_EPA_WINDOW_OPTIONS); eliminates repeated parquet reads.
-    window_cache: dict[int, tuple] = {}
+    window_cache: dict[int, WindowData] = {}
 
     # Pre-populate window=4 (fast path; also initialises *_best for static analysis)
-    _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-        _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
-    )
+    _wd0 = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
+    x_train_best, y_train_best = _wd0.x_train, _wd0.y_train
+    x_hold_best, y_hold_best = _wd0.x_holdout, _wd0.y_holdout
+    train_seasons, hold_seasons = _wd0.train_seasons, _wd0.holdout_seasons
 
     best_cv_brier: float = float("inf")
     best_params: dict = {}
@@ -466,9 +303,9 @@ def _train_random_forest(
         window: int = sampled.pop("epa_window")
 
         # Cache hit if this window was seen before — no disk read
-        _, x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = (
-            _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
-        )
+        _wd = _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
+        x_train, y_train = _wd.x_train, _wd.y_train
+        train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
         fold_briers: list[float] = []
         for train_idx, val_idx in skf.split(x_train, y_train):
@@ -498,9 +335,10 @@ def _train_random_forest(
             best_cv_brier = cv_brier
             best_params = {**sampled, "epa_window": window}
             # x_train_best / x_hold_best come from the cache — no extra rebuild
-            _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-                window_cache[window]
-            )
+            _wd = window_cache[window]
+            x_train_best, y_train_best = _wd.x_train, _wd.y_train
+            x_hold_best, y_hold_best = _wd.x_holdout, _wd.y_holdout
+            train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
             rf_best = RandomForestClassifier(random_state=42, n_jobs=-1, **sampled)
             cal_best = CalibratedClassifierCV(rf_best, method="isotonic", cv=3)
             best_pipeline = Pipeline([("scaler", StandardScaler()), ("clf", cal_best)])
@@ -655,11 +493,12 @@ def _train_xgboost(
     cv_folds: int = 5
     rng = np.random.default_rng(42)
 
-    window_cache: dict[int, tuple] = {}
+    window_cache: dict[int, WindowData] = {}
 
-    _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-        _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
-    )
+    _wd0 = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
+    x_train_best, y_train_best = _wd0.x_train, _wd0.y_train
+    x_hold_best, y_hold_best = _wd0.x_holdout, _wd0.y_holdout
+    train_seasons, hold_seasons = _wd0.train_seasons, _wd0.holdout_seasons
 
     best_cv_brier: float = float("inf")
     best_params: dict = {}
@@ -681,9 +520,9 @@ def _train_xgboost(
         }
         window: int = sampled.pop("epa_window")
 
-        _, x_train, y_train, _x_hold, _y_hold, train_seasons, hold_seasons = (
-            _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
-        )
+        _wd = _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
+        x_train, y_train = _wd.x_train, _wd.y_train
+        train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
         fold_briers: list[float] = []
         for train_idx, val_idx in skf.split(x_train, y_train):
@@ -718,9 +557,10 @@ def _train_xgboost(
         if cv_brier < best_cv_brier:
             best_cv_brier = cv_brier
             best_params = {**sampled, "epa_window": window}
-            _, x_train_best, y_train_best, x_hold_best, y_hold_best, train_seasons, hold_seasons = (
-                window_cache[window]
-            )
+            _wd = window_cache[window]
+            x_train_best, y_train_best = _wd.x_train, _wd.y_train
+            x_hold_best, y_hold_best = _wd.x_holdout, _wd.y_holdout
+            train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
             xgb_best = XGBClassifier(
                 objective="binary:logistic",
                 eval_metric="logloss",

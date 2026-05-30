@@ -45,6 +45,7 @@ from pandas.api.typing import DataFrameGroupBy
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.ingest.nflverse.pbp import load_pbp
+from gridiron_edge.transform.clean._nflverse_common import map_short_to_long
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -174,10 +175,7 @@ def aggregate_epa(
 
     # Map nflverse short team codes to canonical long names so the
     # EPA features can join against the modeling file on team name.
-    # pyrefly: ignore [missing-import]
-    from gridiron_edge.transform.clean.games_nflverse import _map_short_to_long
-
-    result["team"] = result["team"].map(_map_short_to_long)
+    result["team"] = result["team"].map(map_short_to_long)
 
     result = result.sort_values(["season", "week", "team"]).reset_index(drop=True)
 

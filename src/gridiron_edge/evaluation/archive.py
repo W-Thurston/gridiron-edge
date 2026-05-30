@@ -10,7 +10,13 @@ Storage layout:
     data/output/predictions/predictions_log.parquet
 
 Schema:
-    predicted_at    datetime64[ns]  UTC timestamp of the prediction run
+    predicted_at    datetime64[ns]  UTC timestamp of the prediction run.
+                                    Live predictions use the actual run time.
+                                    Backfilled predictions use the time of the
+                                    backfill run; ``is_backfilled`` is the
+                                    canonical flag for distinguishing them.
+    is_backfilled   bool            True for historical backfill predictions,
+                                    False for live pre-game predictions.
     model_version   str             e.g. "elo_v1"
     season          str             "2026-2027"
     week            int             NFL week number
@@ -41,6 +47,7 @@ logger: Logger = logging.getLogger(__name__)
 # Ordered columns enforced on every write.
 _ARCHIVE_COLUMNS: list[str] = [
     "predicted_at",
+    "is_backfilled",
     "model_version",
     "season",
     "week",
@@ -53,6 +60,10 @@ _ARCHIVE_COLUMNS: list[str] = [
     "away_win_prob",
     "home_win_prob",
 ]
+
+# Epoch sentinel used in pre-migration archives to flag backfilled rows.
+# Kept for the migration helper only — new rows use is_backfilled directly.
+_LEGACY_BACKFILL_TS: datetime.datetime = datetime.datetime(1970, 1, 1)
 
 # Deduplication key — one prediction per game per model version per run.
 # A later run with the same model_version for the same game overwrites
@@ -82,6 +93,7 @@ def build_archive_rows(
     season: str,
     week: int,
     predicted_at: datetime.datetime | None = None,
+    is_backfilled: bool = False,
 ) -> pd.DataFrame:
     """Convert a predictions DataFrame into archive-schema rows.
 
@@ -95,6 +107,8 @@ def build_archive_rows(
         season: NFL season label (e.g. ``"2026-2027"``).
         week: NFL week number.
         predicted_at: UTC timestamp of the prediction run. Defaults to now.
+        is_backfilled: ``True`` for historical backfill predictions,
+            ``False`` for live pre-game predictions.
 
     Returns:
         DataFrame conforming to ``_ARCHIVE_COLUMNS``.
@@ -104,6 +118,7 @@ def build_archive_rows(
     rows = pd.DataFrame(
         {
             "predicted_at": ts,
+            "is_backfilled": is_backfilled,
             "model_version": model_version,
             "season": season,
             "week": week,
@@ -132,6 +147,10 @@ def write_archive_rows(
     week) and bulk backfill operations. Deduplicates on
     ``(game_id, model_version)`` — the most recently written row wins.
 
+    Backward-compatible: if the existing archive lacks ``is_backfilled``
+    (pre-migration), infers it from the legacy epoch-sentinel ``predicted_at``
+    value rather than failing.
+
     Args:
         new_rows: DataFrame already conforming to ``_ARCHIVE_COLUMNS``.
         repo: Repository root. Defaults to ``get_settings().repo_root``.
@@ -143,6 +162,9 @@ def write_archive_rows(
 
     if path.exists():
         existing: DataFrame = pd.read_parquet(path)
+        # Backward compat: add is_backfilled if archive predates this migration
+        if "is_backfilled" not in existing.columns:
+            existing["is_backfilled"] = existing["predicted_at"] == _LEGACY_BACKFILL_TS
         mask = existing.set_index(_DEDUP_KEY).index.isin(new_rows.set_index(_DEDUP_KEY).index)
         existing = existing.loc[~mask].copy()
         combined: DataFrame = pd.concat([existing, new_rows], ignore_index=True)
@@ -170,6 +192,7 @@ def append_to_prediction_log(
     season: str,
     week: int,
     predicted_at: datetime.datetime | None = None,
+    is_backfilled: bool = False,
     repo: Path | None = None,
 ) -> Path:
     """Append predictions to the archive log.
@@ -186,6 +209,8 @@ def append_to_prediction_log(
         season: NFL season label (e.g. ``"2026-2027"``).
         week: NFL week number.
         predicted_at: UTC timestamp. Defaults to now.
+        is_backfilled: ``True`` for historical backfill predictions,
+            ``False`` for live pre-game predictions.
         repo: Repository root. Defaults to ``get_settings().repo_root``.
 
     Returns:
@@ -201,6 +226,7 @@ def append_to_prediction_log(
         season=season,
         week=week,
         predicted_at=predicted_at,
+        is_backfilled=is_backfilled,
     )
     return write_archive_rows(new_rows, repo=repo)
 
@@ -230,6 +256,10 @@ def load_prediction_log(
 
     df = pd.read_parquet(path)
 
+    # Backward compat: add is_backfilled if archive predates this migration
+    if "is_backfilled" not in df.columns:
+        df["is_backfilled"] = df["predicted_at"] == _LEGACY_BACKFILL_TS
+
     if season is not None:
         df = df.loc[df["season"] == season]
     if week is not None:
@@ -238,3 +268,40 @@ def load_prediction_log(
         df = df.loc[df["model_version"] == model_version]
 
     return df.reset_index(drop=True)
+
+
+def migrate_archive(*, repo: Path | None = None) -> int:
+    """Migrate a pre-schema-v2 archive to include the ``is_backfilled`` column.
+
+    Reads the existing archive, infers ``is_backfilled`` from the legacy
+    epoch-sentinel ``predicted_at`` value, and writes the result back.
+    Safe to run multiple times (idempotent).
+
+    Args:
+        repo: Repository root. Defaults to ``get_settings().repo_root``.
+
+    Returns:
+        Number of rows migrated, or 0 if no migration was needed.
+    """
+    path: Path = _archive_path(repo)
+    if not path.exists():
+        logger.info("migrate_archive: no archive found — nothing to migrate.")
+        return 0
+
+    df = pd.read_parquet(path)
+
+    if "is_backfilled" in df.columns:
+        logger.info("migrate_archive: archive already has is_backfilled — no migration needed.")
+        return 0
+
+    df["is_backfilled"] = df["predicted_at"] == _LEGACY_BACKFILL_TS
+    n = int(df["is_backfilled"].sum())
+
+    df.to_parquet(path, index=False)
+    logger.info(
+        "migrate_archive: %d rows migrated, %d marked is_backfilled=True → %s",
+        len(df),
+        n,
+        path,
+    )
+    return len(df)

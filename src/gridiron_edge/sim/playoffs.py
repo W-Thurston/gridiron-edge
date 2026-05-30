@@ -7,21 +7,24 @@ Called by season.py's run_full_simulation().
 
 from __future__ import annotations
 
+from typing import Final
+
 from numba import njit
 import numpy as np
 
 # ---------------------------------------------------------------------------
 # Constants (duplicated from season.py to keep this module self-contained
 # for numba — numba cannot import from sibling modules at JIT time)
+# season.py asserts these stay in sync at import time.
 # ---------------------------------------------------------------------------
 
-N_TEAMS: int = 32
-N_PLAYOFF_ROUNDS: int = 4
+N_TEAMS: Final[int] = 32
+N_PLAYOFF_ROUNDS: Final[int] = 4
 
-ROUND_WC: int = 0
-ROUND_DIV: int = 1
-ROUND_CONF: int = 2
-ROUND_SB: int = 3
+ROUND_WC: Final[int] = 0
+ROUND_DIV: Final[int] = 1
+ROUND_CONF: Final[int] = 2
+ROUND_SB: Final[int] = 3
 
 
 # ============================================================================
@@ -32,8 +35,8 @@ ROUND_SB: int = 3
 @njit(cache=True)
 def _cmp_ratio(num_a: int, den_a: int, num_b: int, den_b: int) -> int:
     """Compare two ratios without division (avoids floating point issues)."""
-    left = num_a * den_b
-    right = num_b * den_a
+    left: int = num_a * den_b
+    right: int = num_b * den_a
     if left > right:
         return 1
     if left < right:
@@ -164,7 +167,7 @@ def compare_division_two_clubs(
     opp_mask: np.ndarray,
 ) -> int:
     """Apply NFL division tiebreaker rules for two teams."""
-    c = _overall_cmp(a, b, pts_total, gp_total)
+    c: int = _overall_cmp(a, b, pts_total, gp_total)
     if c != 0:
         return a if c == 1 else b
 
@@ -209,7 +212,7 @@ def compare_wildcard_two_clubs(
     opp_mask: np.ndarray,
 ) -> int:
     """Apply NFL wildcard tiebreaker rules for two teams."""
-    c = _overall_cmp(a, b, pts_total, gp_total)
+    c: int = _overall_cmp(a, b, pts_total, gp_total)
     if c != 0:
         return a if c == 1 else b
 
@@ -293,7 +296,7 @@ def _best_ratio_mask(nums: np.ndarray, dens: np.ndarray) -> np.ndarray:
     n = nums.shape[0]
     best_mask = np.zeros(n, dtype=np.uint8)
 
-    best_i = -1
+    best_i: int = -1
     for i in range(n):
         if dens[i] > 0:
             best_i = i
@@ -642,7 +645,7 @@ def resolve_wildcard_three_plus(
 
     step = 2
     while True:
-        n = current.shape[0]
+        n: int = current.shape[0]
         if n == 1:
             return int(current[0])
         if n == 2:
@@ -660,11 +663,11 @@ def resolve_wildcard_three_plus(
             )
 
         if step == 2:
-            sweep = _wildcard_sweep_status(current, gp_vs, wins_vs)
+            sweep: int = _wildcard_sweep_status(current, gp_vs, wins_vs)
             if sweep >= 0:
                 return sweep
             if sweep == -2:
-                loser = -1
+                loser: int = -1
                 for i in range(n):
                     t = int(current[i])
                     winless = True
@@ -749,7 +752,7 @@ def resolve_wildcard_three_plus(
                         sov += float(w) * (float(pts_total[opp]) / float(2 * gp_total[opp]))
                 vals[i] = sov
 
-            best = np.max(vals)
+            best: float = np.max(vals)
             mask = (vals == best).astype(np.uint8)
             new_current = _filter_by_mask_int16(current, mask)
             if new_current.shape[0] < current.shape[0]:
@@ -806,7 +809,7 @@ def pick_division_winner(
     for i in range(1, 4):
         t = int(teams4[i])
         if _overall_cmp(t, best, pts_total, gp_total) == 1:
-            best = t
+            best: int = t
 
     tmp = np.empty(4, dtype=np.int16)
     k = 0
@@ -905,7 +908,7 @@ def seed_conference(
         for j in range(i + 1, 4):
             a = int(seeds14[i])
             b = int(seeds14[j])
-            winner = compare_seeding_two_clubs(
+            winner: int = compare_seeding_two_clubs(
                 a,
                 b,
                 div_id,
@@ -974,7 +977,7 @@ def seed_conference(
                 opp_mask,
             )
         else:
-            chosen = resolve_wildcard_three_plus(
+            chosen: int = resolve_wildcard_three_plus(
                 tmp[:k],
                 div_id,
                 pts_total,
@@ -1119,8 +1122,8 @@ def simulate_playoffs(
         # Inner helpers receive elo_arr as a parameter so each simulation uses
         # the correct per-iteration ratings regardless of rebinding.
         def _fixed_winner(rnd: int, a: int, b: int) -> int:
-            lo = min(a, b)
-            hi = max(a, b)
+            lo: int = min(a, b)
+            hi: int = max(a, b)
             return int(fixed[rnd, lo, hi])
 
         def _wc_round(
@@ -1128,17 +1131,17 @@ def simulate_playoffs(
             elo_arr: np.ndarray,
         ) -> tuple[int, int, int]:
             t1, t2 = int(seeds[1]), int(seeds[6])
-            w1 = _fixed_winner(ROUND_WC, t1, t2)
+            w1: int = _fixed_winner(ROUND_WC, t1, t2)
             if w1 < 0:
                 w1 = _simulate_one_game(t1, t2, elo_arr)
 
             t1, t2 = int(seeds[2]), int(seeds[5])
-            w2 = _fixed_winner(ROUND_WC, t1, t2)
+            w2: int = _fixed_winner(ROUND_WC, t1, t2)
             if w2 < 0:
                 w2 = _simulate_one_game(t1, t2, elo_arr)
 
             t1, t2 = int(seeds[3]), int(seeds[4])
-            w3 = _fixed_winner(ROUND_WC, t1, t2)
+            w3: int = _fixed_winner(ROUND_WC, t1, t2)
             if w3 < 0:
                 w3 = _simulate_one_game(t1, t2, elo_arr)
 
@@ -1147,8 +1150,8 @@ def simulate_playoffs(
             po[w3, ROUND_WC] += 1
             return w1, w2, w3
 
-        afc_wc = _wc_round(seeds_afc, elo)
-        nfc_wc = _wc_round(seeds_nfc, elo)
+        afc_wc: tuple[int, int, int] = _wc_round(seeds_afc, elo)
+        nfc_wc: tuple[int, int, int] = _wc_round(seeds_nfc, elo)
 
         def _div_round(
             seeds: np.ndarray,
@@ -1158,7 +1161,7 @@ def simulate_playoffs(
             s1 = int(seeds[0])
             w = np.array([wc_winners[0], wc_winners[1], wc_winners[2]], dtype=np.int16)
 
-            idx_low = -1
+            idx_low: int = -1
             for i in range(1, 7):
                 t = int(seeds[i])
                 if t == int(w[0]) or t == int(w[1]) or t == int(w[2]):
@@ -1173,12 +1176,12 @@ def simulate_playoffs(
                     ri += 1
 
             t1, t2 = s1, low_team
-            d1 = _fixed_winner(ROUND_DIV, t1, t2)
+            d1: int = _fixed_winner(ROUND_DIV, t1, t2)
             if d1 < 0:
                 d1 = _simulate_one_game(t1, t2, elo_arr)
 
             t1, t2 = int(r[0]), int(r[1])
-            d2 = _fixed_winner(ROUND_DIV, t1, t2)
+            d2: int = _fixed_winner(ROUND_DIV, t1, t2)
             if d2 < 0:
                 d2 = _simulate_one_game(t1, t2, elo_arr)
 
@@ -1186,24 +1189,24 @@ def simulate_playoffs(
             po[d2, ROUND_DIV] += 1
             return d1, d2
 
-        afc_div = _div_round(seeds_afc, afc_wc, elo)
-        nfc_div = _div_round(seeds_nfc, nfc_wc, elo)
+        afc_div: tuple[int, int] = _div_round(seeds_afc, afc_wc, elo)
+        nfc_div: tuple[int, int] = _div_round(seeds_nfc, nfc_wc, elo)
 
-        t1, t2 = int(afc_div[0]), int(afc_div[1])
-        afc_champ = _fixed_winner(ROUND_CONF, t1, t2)
+        t1, t2 = afc_div[0], afc_div[1]
+        afc_champ: int = _fixed_winner(ROUND_CONF, t1, t2)
         if afc_champ < 0:
             afc_champ = _simulate_one_game(t1, t2, elo)
 
-        t1, t2 = int(nfc_div[0]), int(nfc_div[1])
-        nfc_champ = _fixed_winner(ROUND_CONF, t1, t2)
+        t1, t2 = nfc_div[0], nfc_div[1]
+        nfc_champ: int = _fixed_winner(ROUND_CONF, t1, t2)
         if nfc_champ < 0:
             nfc_champ = _simulate_one_game(t1, t2, elo)
 
         po[afc_champ, ROUND_CONF] += 1
         po[nfc_champ, ROUND_CONF] += 1
 
-        t1, t2 = int(afc_champ), int(nfc_champ)
-        sb_winner = _fixed_winner(ROUND_SB, t1, t2)
+        t1, t2 = afc_champ, nfc_champ
+        sb_winner: int = _fixed_winner(ROUND_SB, t1, t2)
         if sb_winner < 0:
             sb_winner = _simulate_one_game(t1, t2, elo)
         po[sb_winner, ROUND_SB] += 1

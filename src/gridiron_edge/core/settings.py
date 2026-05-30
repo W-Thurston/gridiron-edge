@@ -1,6 +1,7 @@
 # src/gridiron_edge/core/settings.py
 
 from dataclasses import dataclass
+import datetime
 import os
 from pathlib import Path
 
@@ -66,3 +67,19 @@ def ensure_data_dirs(settings: Settings | None = None) -> Settings:
     for path in (s.data_raw, s.data_cleaned, s.data_modeling, s.data_output):
         path.mkdir(parents=True, exist_ok=True)
     return s
+
+
+def current_nfl_season() -> int:
+    """Infer the current NFL season year from today's date.
+
+    The NFL season starts in September. If today is before June 1 we are
+    still in the prior season year (e.g. February 2026 is season 2025).
+    From June onwards the new season year applies.
+
+    Returns:
+        Integer season year (e.g. ``2025`` for the 2025-2026 season).
+    """
+    today = datetime.date.today()
+    if today.month < 6:
+        return today.year - 1
+    return today.year

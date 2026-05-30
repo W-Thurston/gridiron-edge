@@ -48,7 +48,7 @@ logger: Logger = logging.getLogger(__name__)
 # Bump this whenever the feature set or feature output columns change.
 # Models trained on a previous version will detect the mismatch and
 # surface a clear error rather than silently producing wrong predictions.
-CURRENT_SCHEMA_VERSION: int = 3
+CURRENT_SCHEMA_VERSION: int = 4
 
 _MANIFEST_FILENAME: str = "modeling_file_manifest.json"
 

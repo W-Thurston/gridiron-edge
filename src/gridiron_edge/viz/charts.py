@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 from matplotlib.colors import LinearSegmentedColormap
@@ -24,7 +23,7 @@ from plottable.cmap import normed_cmap
 from plottable.formatters import decimal_to_percent
 from plottable.plots import image
 
-from gridiron_edge.sim.season import (
+from gridiron_edge.sim._types import (
     DIV_CODE_TO_LABEL,
     N_TEAMS,
     N_WEEKS_REG,
@@ -32,25 +31,17 @@ from gridiron_edge.sim.season import (
     ROUND_DIV,
     ROUND_SB,
     ROUND_WC,
+    SimulationResults,
     TeamIndex,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
 
 def build_viz_table_df(
+    results: SimulationResults,
+    *,
     team_index: TeamIndex,
-    pts_total_by_sim: np.ndarray,
-    pts_total_actual: np.ndarray,
-    gp_played_actual: np.ndarray,
-    gp_total: np.ndarray,
-    make_playoffs_counts: np.ndarray,
-    bye_counts: np.ndarray,
-    po_win_counts: np.ndarray,
-    div_id: np.ndarray,
     df_elo: pd.DataFrame,
     final_actual_week: int,
     season_year: str,
@@ -62,15 +53,8 @@ def build_viz_table_df(
     with plottable. Indexed by logo path (for image cells), sorted by Elo.
 
     Args:
+        results: Aggregated simulation results from ``run_full_simulation``.
         team_index: Team mappings.
-        pts_total_by_sim: Total points across simulations (n_sims, 32).
-        pts_total_actual: Actual total points through the last completed week (32,).
-        gp_played_actual: Actual games played through the last completed week (32,).
-        gp_total: Total scheduled games for each team (32,).
-        make_playoffs_counts: Playoff appearances (32,).
-        bye_counts: First-round byes (32,).
-        po_win_counts: Playoff round wins (32, 4).
-        div_id: Division id per team (32,).
         df_elo: Elo history dataframe.
         final_actual_week: Last completed week.
         season_year: Season label as used in datasets (e.g. "2025-2026").
@@ -79,6 +63,15 @@ def build_viz_table_df(
     Returns:
         DataFrame indexed by logo path, sorted descending by Elo.
     """
+    pts_total_by_sim = results.pts_total_by_sim
+    pts_total_actual = results.pts_total_actual
+    gp_played_actual = results.gp_played_actual
+    gp_total = results.gp_total
+    make_playoffs_counts = results.make_playoffs_counts
+    bye_counts = results.bye_counts
+    po_win_counts = results.po_win_counts
+    div_id = results.div_id
+
     n_sims = int(pts_total_by_sim.shape[0])
 
     # --- Playoff probabilities ---

@@ -11,13 +11,13 @@ from geopy.distance import distance as geopy_distance
 from timezonefinder import TimezoneFinder
 
 LatLon = tuple[float, float]
-Tude = str | float
+CoordinateValue = str | float
 
 
 _DMS_PATTERN: Pattern[str] = re.compile(r"[°\'″]")
 
 
-def to_decimal_degrees(value: Tude) -> float:
+def to_decimal_degrees(value: CoordinateValue) -> float:
     """Convert a latitude/longitude value into signed decimal degrees.
 
     Supports:
@@ -61,8 +61,8 @@ def to_decimal_degrees(value: Tude) -> float:
 
 
 def measure_distance(
-    home_lat_lon: Sequence[Tude],
-    game_lat_lon: Sequence[Tude],
+    home_lat_lon: Sequence[CoordinateValue],
+    game_lat_lon: Sequence[CoordinateValue],
     *,
     metric: str = "km",
 ) -> float:
@@ -98,8 +98,8 @@ def measure_distance(
 
 
 def _utc_offset_hours(
-    latitude: Tude,
-    longitude: Tude,
+    latitude: CoordinateValue,
+    longitude: CoordinateValue,
     *,
     tz_finder: TimezoneFinder,
     when: datetime | None,
@@ -140,10 +140,10 @@ def _utc_offset_hours(
 
 
 def calculate_timezone_difference(
-    lat_x: Tude,
-    long_x: Tude,
-    lat_y: Tude,
-    long_y: Tude,
+    lat_x: CoordinateValue,
+    long_x: CoordinateValue,
+    lat_y: CoordinateValue,
+    long_y: CoordinateValue,
     *,
     tz_find: TimezoneFinder,
     when: datetime | None,

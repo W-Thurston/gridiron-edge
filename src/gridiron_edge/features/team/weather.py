@@ -183,7 +183,7 @@ class WeatherFeature:
                 lambda x: 1
                 if str(x) in _PRECIP_WEATHER_MAINS
                 else 0
-                if pd.notna(x) and str(x) != "NULL_VALUE"
+                if pd.notna(x) and str(x) != ""
                 else float("nan")
             )
         else:

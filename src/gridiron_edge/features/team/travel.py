@@ -112,6 +112,7 @@ class TravelFeature:
             "TEAM_B_TZ_SHIFT",
             "IS_NEUTRAL_SITE",
         ],
+        depends_on=("home_field",),
     )
 
     def compute(self, *, df: pd.DataFrame, datasets: DatasetAccessor) -> pd.DataFrame:

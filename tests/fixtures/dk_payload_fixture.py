@@ -230,22 +230,24 @@ if __name__ == "__main__":
 
     sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
+    from gridiron_edge.ingest.odds.draftkings import (
+        _event_rows_to_team_rows,
+        _extract_game_lines,
+    )
     from gridiron_edge.ingest.odds.store import (
         append_to_odds_ledger,
         load_current_odds,
         wide_to_long,
         write_current_odds_snapshot,
     )
-    from gridiron_edge.ingest.pfr.collector_impl import PFR_Data_Collector
 
     print("=" * 60)
     print("DK Odds Pipeline Test — 2026 Week 1 (fixture)")
     print("=" * 60)
 
     print("\n[1/4] Parsing fixture through collector...")
-    collector = PFR_Data_Collector()
-    df_wide = collector._extract_game_lines(DK_PAYLOAD_FIXTURE)
-    df_wide = collector._event_rows_to_team_rows(df_wide)
+    df_wide = _extract_game_lines(DK_PAYLOAD_FIXTURE)
+    df_wide = _event_rows_to_team_rows(df_wide)
     print(f"      {len(df_wide)} rows ({len(df_wide) // 2} games)")
     print(
         df_wide[["team", "opponent", "location", "moneyline", "spread_value"]].to_string(

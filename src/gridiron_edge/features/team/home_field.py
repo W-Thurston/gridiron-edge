@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from gridiron_edge.core.constants import HOME_GAME_LOCATION
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
 
@@ -19,7 +20,7 @@ class HomeFieldFeature:
 
     Produces ``HOME_FIELD`` as a binary integer: ``1`` if the team is playing
     at home, ``0`` if away or neutral. Derived from the ``GAME_LOCATION``
-    column in the games dataset (``NULL_VALUE`` indicates a standard home game).
+    column in the games dataset (``"H"`` indicates a standard home game).
     """
 
     spec = FeatureSpec(name="home_field", produces=["HOME_FIELD"])
@@ -45,7 +46,7 @@ class HomeFieldFeature:
             :,
             ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM", "GAME_LOCATION"],
         ].copy()
-        g["HOME_FIELD"] = (g["GAME_LOCATION"] == "NULL_VALUE").astype(int)
+        g["HOME_FIELD"] = (g["GAME_LOCATION"] == HOME_GAME_LOCATION).astype(int)
 
         g1 = g.rename(columns={"WINNER": "TEAM_A", "LOSER": "TEAM_B"})[
             ["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM", "HOME_FIELD"]

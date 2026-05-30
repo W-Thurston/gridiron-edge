@@ -9,7 +9,6 @@ a command is actually invoked.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 # pyrefly: ignore [missing-import]
@@ -71,70 +70,145 @@ app.add_typer(models_app, name="models")
 # FULL PIPELINE
 # ===========================================================================
 
+# Canonical stage order for run-data-pipeline.
+# Each string is a valid argument to --skip and --only.
+ALL_STAGES: list[str] = [
+    "fetch-games",
+    "clean-games",
+    "fetch-upcoming",
+    "clean-upcoming",
+    "fetch-weather",
+    "fetch-odds",
+    "build-epa",
+    "build-elo",
+    "build-features",
+]
+
+_STAGES_STR: str = ", ".join(ALL_STAGES)
+_SKIP_HELP: str = f"Stage(s) to skip. Repeatable. Valid stages: {_STAGES_STR}."
+_ONLY_HELP: str = (
+    f"Run only these stage(s) and skip all others. Repeatable. Valid stages: {_STAGES_STR}."
+)
+
+
+def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
+    *,
+    active: set[str],
+    all_years: bool,
+    resolved_season: int,
+    upcoming_target: int,
+    season: int | None,
+    season_year: str | None,
+    owm_api_key: str | None,
+    fit_elo_all_years: bool,
+) -> None:
+    """Execute each pipeline stage in order for the stages in ``active``.
+
+    Separated from the CLI command function to keep branch and statement
+    counts within ruff limits (PLR0912, PLR0915).
+    """
+    from pathlib import Path
+
+    from gridiron_edge.core.console import step
+
+    def runs(stage: str) -> bool:
+        return stage in active
+
+    with step("Fetch nflverse games", skip=not runs("fetch-games")) as s:
+        if runs("fetch-games"):
+            from gridiron_edge.ingest.nflverse import (
+                fetch_nflverse_games,
+                fetch_nflverse_games_refresh,
+            )
+
+            if all_years:
+                path: Path = fetch_nflverse_games()
+            elif season:
+                path = fetch_nflverse_games(seasons=[resolved_season])
+            else:
+                path = fetch_nflverse_games_refresh()
+            s.set_detail(path.name)
+
+    with step("Clean games", skip=not runs("clean-games")) as s:
+        if runs("clean-games"):
+            # pyrefly: ignore [missing-module-attribute]
+            from gridiron_edge.transform.clean import clean_nflverse_games
+
+            path = clean_nflverse_games()
+            s.set_detail(path.name)
+
+    with step("Fetch upcoming schedule", skip=not runs("fetch-upcoming")) as s:
+        if runs("fetch-upcoming"):
+            from gridiron_edge.ingest.nflverse import fetch_nflverse_upcoming
+
+            path = fetch_nflverse_upcoming(season=upcoming_target)
+            s.set_detail(path.name)
+
+    with step("Clean upcoming schedule", skip=not runs("clean-upcoming")) as s:
+        if runs("clean-upcoming"):
+            # pyrefly: ignore [missing-module-attribute]
+            from gridiron_edge.transform.clean import clean_nflverse_upcoming
+
+            path = clean_nflverse_upcoming()
+            s.set_detail(path.name)
+
+    with step("Fetch weather", skip=not runs("fetch-weather")) as s:
+        if runs("fetch-weather"):
+            from gridiron_edge.cli._shared import get_owm_api_key
+            from gridiron_edge.ingest.weather import fetch_weather
+
+            if not season_year:
+                raise ValueError(
+                    "fetch-weather requires --season-year (e.g. '2025-2026').",
+                )
+            key: str = get_owm_api_key(owm_api_key)
+            fetch_weather(season_year=season_year, owm_api_key=key)
+            s.set_detail(season_year)
+
+    with step("Fetch DraftKings odds", skip=not runs("fetch-odds")):
+        if runs("fetch-odds"):
+            from gridiron_edge.ingest.odds import fetch_dk_odds
+
+            fetch_dk_odds()
+
+    with step("Build EPA features", skip=not runs("build-epa")) as s:
+        if runs("build-epa"):
+            from gridiron_edge.ingest.nflverse.pbp import fetch_pbp, fetch_pbp_refresh
+            from gridiron_edge.transform.clean.epa import aggregate_epa
+
+            if all_years:
+                fetch_pbp()
+            else:
+                fetch_pbp_refresh()
+            aggregate_epa()
+            s.set_detail("done")
+
+    with step("Fit Elo", skip=not runs("build-elo")) as s:
+        if runs("build-elo"):
+            # pyrefly: ignore [missing-module-attribute]
+            from gridiron_edge.ratings.elo import fit_elo
+
+            fit_elo(all_years=fit_elo_all_years)
+            s.set_detail("full rebuild" if fit_elo_all_years else "incremental")
+
+    with step("Build model inputs", skip=not runs("build-features")):
+        if runs("build-features"):
+            from gridiron_edge.features.pipeline import build_model_inputs
+
+            build_model_inputs(all_years=all_years)
+
 
 @app.command("run-data-pipeline")
-def run_data_pipeline(  # noqa: PLR0912, PLR0915
+def run_data_pipeline(
     *,
     season: int | None = typer.Option(
         None,
-        help=(
-            "Season year (e.g. 2025). Defaults to the current season. Omit when using --all-years."
-        ),
+        help="Season year (e.g. 2025). Defaults to current season.",
     ),
     all_years: bool = typer.Option(
         False,
         "--all-years/--no-all-years",
         help="Fetch/build full history instead of current season only.",
-    ),
-    fetch_games_flag: bool = typer.Option(
-        True,
-        "--fetch-games/--no-fetch-games",
-    ),
-    clean_games_flag: bool = typer.Option(
-        True,
-        "--clean-games/--no-clean-games",
-    ),
-    fetch_upcoming_flag: bool = typer.Option(
-        True,
-        "--fetch-upcoming/--no-fetch-upcoming",
-    ),
-    clean_upcoming_flag: bool = typer.Option(
-        True,
-        "--clean-upcoming/--no-clean-upcoming",
-    ),
-    fetch_weather_flag: bool = typer.Option(
-        False,
-        "--fetch-weather/--no-fetch-weather",
-    ),
-    season_year: str | None = typer.Option(
-        None,
-        help="Required if --fetch-weather (e.g. '2025-2026').",
-    ),
-    owm_api_key: str | None = typer.Option(
-        None,
-        help="OpenWeather API key or env var OWM_API_KEY.",
-    ),
-    fetch_dk_odds_flag: bool = typer.Option(
-        False,
-        "--fetch-odds/--no-fetch-odds",
-    ),
-    build_elo_flag: bool = typer.Option(
-        False,
-        "--build-elo/--no-build-elo",
-    ),
-    fit_elo_all_years: bool = typer.Option(
-        False,
-        "--fit-elo-all-years/--no-fit-elo-all-years",
-        help="When --build-elo, rebuild full Elo history.",
-    ),
-    build_epa: bool = typer.Option(
-        False,
-        "--build-epa/--no-build-epa",
-        help="Fetch PBP data and aggregate EPA features.",
-    ),
-    build_features_flag: bool = typer.Option(
-        True,
-        "--build-features/--no-build-features",
     ),
     upcoming_season: int | None = typer.Option(
         None,
@@ -144,8 +218,23 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
             "completed games (e.g. --all-years --upcoming-season 2026)."
         ),
     ),
+    fit_elo_all_years: bool = typer.Option(
+        False,
+        "--fit-elo-all-years/--no-fit-elo-all-years",
+        help="When build-elo runs, rebuild full Elo history rather than incrementally.",
+    ),
+    season_year: str | None = typer.Option(
+        None,
+        help="Required when fetch-weather is active (e.g. '2025-2026').",
+    ),
+    owm_api_key: str | None = typer.Option(
+        None,
+        help="OpenWeather API key or env var OWM_API_KEY.",
+    ),
+    skip: list[str] = typer.Option([], "--skip", help=_SKIP_HELP),  # noqa: B008
+    only: list[str] = typer.Option([], "--only", help=_ONLY_HELP),  # noqa: B008
 ) -> None:
-    r"""Run a full end-to-end data pipeline with toggles for each stage.
+    r"""Run a full end-to-end data pipeline with per-stage control.
 
     \b
     Scenario 1 — weekly refresh (most common, no flags needed):
@@ -157,91 +246,54 @@ def run_data_pipeline(  # noqa: PLR0912, PLR0915
 
     \b
     Scenario 3 — full history rebuild:
-      gridiron run-data-pipeline --all-years --upcoming-season 2026 --build-elo --fit-elo-all-years
+      gridiron run-data-pipeline --all-years --upcoming-season 2026 \
+        --only build-elo --fit-elo-all-years
+
+    \b
+    Scenario 4 — skip weather and odds:
+      gridiron run-data-pipeline --skip fetch-weather --skip fetch-odds
+
+    \b
+    Scenario 5 — features only:
+      gridiron run-data-pipeline --only build-features
     """
-    from gridiron_edge.core.console import console, step
-    from gridiron_edge.ingest.nflverse import (
-        fetch_nflverse_games,
-        fetch_nflverse_games_refresh,
-        fetch_nflverse_upcoming,
-    )
-    from gridiron_edge.ingest.nflverse.games import _current_nfl_season
+    from gridiron_edge.core.console import console
+    from gridiron_edge.core.settings import current_nfl_season
 
-    # pyrefly: ignore [missing-module-attribute]
-    from gridiron_edge.transform.clean import clean_nflverse_games, clean_nflverse_upcoming
+    # Validate stage names
+    unknown = set(skip + only) - set(ALL_STAGES)
+    if unknown:
+        raise typer.BadParameter(
+            f"Unknown stage(s): {', '.join(sorted(unknown))}. Valid stages: {_STAGES_STR}."
+        )
+    if skip and only:
+        raise typer.BadParameter("--skip and --only are mutually exclusive.")
 
-    resolved_season: int = season or _current_nfl_season()
+    active: set[str] = set(only) if only else set(ALL_STAGES) - set(skip)
+    resolved_season: int = season or current_nfl_season()
     upcoming_target: int = upcoming_season or resolved_season
 
     if all_years and upcoming_season:
-        mode: str = f"full history  ·  upcoming season {upcoming_season}"
+        mode: str = f"full history  \u00b7  upcoming season {upcoming_season}"
     elif all_years:
         mode = "full history rebuild"
     elif season:
         mode = f"season {resolved_season}"
     else:
-        mode = f"weekly refresh  ·  season {resolved_season}"
+        mode = f"weekly refresh  \u00b7  season {resolved_season}"
 
     console.header("run-data-pipeline", subtitle=mode)
 
-    with step("Fetch nflverse games", skip=not fetch_games_flag) as s:
-        if fetch_games_flag:
-            if all_years:
-                path: Path = fetch_nflverse_games()
-            elif season:
-                path = fetch_nflverse_games(seasons=[resolved_season])
-            else:
-                path = fetch_nflverse_games_refresh()
-            s.set_detail(path.name)
-
-    with step("Clean games", skip=not clean_games_flag) as s:
-        if clean_games_flag:
-            path = clean_nflverse_games()
-            s.set_detail(path.name)
-
-    with step("Fetch upcoming schedule", skip=not fetch_upcoming_flag) as s:
-        if fetch_upcoming_flag:
-            path = fetch_nflverse_upcoming(season=upcoming_target)
-            s.set_detail(path.name)
-
-    with step("Clean upcoming schedule", skip=not clean_upcoming_flag) as s:
-        if clean_upcoming_flag:
-            path = clean_nflverse_upcoming()
-            s.set_detail(path.name)
-
-    with step("Fetch weather", skip=not fetch_weather_flag) as s:
-        if fetch_weather_flag:
-            from gridiron_edge.ingest.weather import fetch_weather
-
-            if not season_year:
-                raise typer.BadParameter(
-                    "When --fetch-weather is set, provide --season-year (e.g. '2025-2026').",
-                )
-            from gridiron_edge.cli._shared import get_owm_api_key
-
-            key: str = get_owm_api_key(owm_api_key)
-            fetch_weather(season_year=season_year, owm_api_key=key)
-            s.set_detail(season_year)
-
-    with step("Fetch DraftKings odds", skip=not fetch_dk_odds_flag):
-        if fetch_dk_odds_flag:
-            from gridiron_edge.ingest.odds import fetch_dk_odds
-
-            fetch_dk_odds()
-
-    with step("Fit Elo", skip=not build_elo_flag) as s:
-        if build_elo_flag:
-            # pyrefly: ignore [missing-module-attribute]
-            from gridiron_edge.ratings.elo import fit_elo
-
-            fit_elo(all_years=fit_elo_all_years)
-            s.set_detail("full rebuild" if fit_elo_all_years else "incremental")
-
-    with step("Build model inputs", skip=not build_features_flag):
-        if build_features_flag:
-            from gridiron_edge.features.pipeline import build_model_inputs
-
-            build_model_inputs(all_years=all_years)
+    _run_pipeline_stages(
+        active=active,
+        all_years=all_years,
+        resolved_season=resolved_season,
+        upcoming_target=upcoming_target,
+        season=season,
+        season_year=season_year,
+        owm_api_key=owm_api_key,
+        fit_elo_all_years=fit_elo_all_years,
+    )
 
     console.summary()
 

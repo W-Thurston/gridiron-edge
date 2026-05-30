@@ -123,7 +123,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window=4 is the fast path — should return identical DataFrame."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 
@@ -134,7 +134,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window != 4 should produce different EPA column values."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 
@@ -148,7 +148,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """All 16 EPA columns (8 per team) must be present in the output."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 
@@ -171,7 +171,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Row count should be identical to the input."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 
@@ -182,7 +182,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Week-1 rows should have NaN EPA (no prior games to average)."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 
@@ -198,7 +198,7 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, tmp_path: Path
     ) -> None:
         """If epa_by_game.parquet is missing, return the original DataFrame."""
-        from gridiron_edge.models.game_prediction.predictor import (
+        from gridiron_edge.models.game_prediction.tree import (
             _rebuild_features_with_window,
         )
 

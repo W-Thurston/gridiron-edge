@@ -16,36 +16,19 @@ Available from 1999 onwards.
 
 from __future__ import annotations
 
-import datetime
 import logging
 from pathlib import Path
 
 import nfl_data_py as nfl
 import pandas as pd
 
-from gridiron_edge.core.settings import get_settings
+from gridiron_edge.core.settings import current_nfl_season, get_settings
 from gridiron_edge.datasets.registry import dataset_path
 
 logger = logging.getLogger(__name__)
 
 # Earliest season nflverse reliably covers.
 NFLVERSE_MIN_SEASON: int = 1999
-
-
-def _current_nfl_season() -> int:
-    """Infer the current NFL season year from today's date.
-
-    The NFL season starts in September. If today is before June 1 we are
-    still in the prior season year (e.g. February 2026 is season 2025).
-    From June onwards the new season year applies.
-
-    Returns:
-        Integer season year (e.g. ``2025`` for the 2025-2026 season).
-    """
-    today = datetime.date.today()
-    if today.month < 6:
-        return today.year - 1
-    return today.year
 
 
 def fetch_nflverse_games(
@@ -82,7 +65,7 @@ def fetch_nflverse_games(
     if seasons is not None:
         season_list = sorted(seasons)
     else:
-        resolved_end = end_season or _current_nfl_season()
+        resolved_end = end_season or current_nfl_season()
         season_list = list(range(start_season, resolved_end + 1))
 
     season_list = [s for s in season_list if s >= NFLVERSE_MIN_SEASON]
@@ -132,7 +115,7 @@ def fetch_nflverse_games_refresh(
     settings = get_settings()
     resolved_repo = repo or settings.repo_root
 
-    target = season or _current_nfl_season()
+    target = season or current_nfl_season()
 
     logger.info("Refreshing nflverse season %d", target)
 

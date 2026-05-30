@@ -33,7 +33,7 @@ All variants:
 from __future__ import annotations
 
 from collections.abc import Callable
-import datetime as dt
+import datetime
 import logging
 from logging import Logger
 from pathlib import Path
@@ -43,10 +43,12 @@ import pandas as pd
 from pandas import DataFrame, Series
 
 from gridiron_edge.models.base import PredictorSpec
-from gridiron_edge.models.game_prediction._shared import (
+from gridiron_edge.models.game_prediction._columns import (
     _SCHEMA_VERSION,
-    FEATURE_SETS,
     FeatureSet,
+)
+from gridiron_edge.models.game_prediction._features import (
+    FEATURE_SETS,
     _is_trained,
     _prepare_data,
 )
@@ -339,10 +341,11 @@ def _predict_historical_logistic(
     away_rows = df_valid.loc[df_valid["HOME_FIELD"] == 0].copy()
     away_rows = away_rows.drop_duplicates(subset=["GAME_ID"])
 
-    ts = dt.datetime(1970, 1, 1)
+    ts = datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
     return pd.DataFrame(
         {
             "predicted_at": ts,
+            "is_backfilled": True,
             "model_version": model_version,
             "season": away_rows["YEAR"],
             "week": away_rows["WEEK_NUM"].astype(int),

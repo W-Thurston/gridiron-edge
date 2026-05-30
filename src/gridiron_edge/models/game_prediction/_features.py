@@ -1,0 +1,210 @@
+# src/gridiron_edge/models/game_prediction/_features.py
+
+"""Feature engineering functions, feature set registry, and training helpers.
+
+Imports column definitions from ``_columns.py`` and defines the functions
+that operate on DataFrames. ``FEATURE_SETS`` lives here because it must
+reference the functions defined in this module.
+
+Public API
+----------
+FEATURE_SETS        dict[str, FeatureSet]   — registry of named feature sets
+_make_diff_features     DataFrame → DataFrame (10 cols)
+_make_raw_features      DataFrame → DataFrame (19 cols)
+_make_combined_features DataFrame → DataFrame (28 cols)
+_make_expanded_features DataFrame → DataFrame (63 cols, Phase 20e)
+_prepare_data           DataFrame → train/holdout split tuple
+_is_trained             str, Path | None → bool
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+import logging
+from logging import Logger
+from pathlib import Path
+
+import pandas as pd
+from pandas import DataFrame, Series
+
+from gridiron_edge.core.constants import HOLDOUT_SEASONS
+from gridiron_edge.models.game_prediction._columns import (
+    _COMBINED_FEATURES,
+    _DIFF_FEATURES,
+    _EPA_SUFFIXES,
+    _EXPANDED_FEATURES,
+    _GAME_FEATURES,
+    _RAW_FEATURES,
+    _TEAM_FEATURES_V2,
+    FeatureSet,
+)
+
+logger: Logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Feature engineering
+# ---------------------------------------------------------------------------
+
+
+def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Engineer TEAM_A - TEAM_B differential features.
+
+    Args:
+        df: Modeling DataFrame with raw feature columns.
+
+    Returns:
+        DataFrame with 10 differential features.
+    """
+    out = pd.DataFrame(index=df.index)
+    out["HOME_FIELD"] = df["HOME_FIELD"]
+    out["ELO_DIFF"] = df["TEAM_A_ELO"] - df["TEAM_B_ELO"]
+    for suffix in _EPA_SUFFIXES:
+        out[f"{suffix}_DIFF"] = df[f"TEAM_A_{suffix}"] - df[f"TEAM_B_{suffix}"]
+    return out
+
+
+def _make_raw_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Select raw features for both teams.
+
+    Args:
+        df: Modeling DataFrame with raw feature columns.
+
+    Returns:
+        DataFrame with 19 raw features.
+    """
+    return df.loc[:, _RAW_FEATURES].copy()
+
+
+def _make_combined_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine differential and raw features.
+
+    Args:
+        df: Modeling DataFrame with raw feature columns.
+
+    Returns:
+        DataFrame with 28 combined features.
+    """
+    diff: DataFrame = _make_diff_features(df)
+    raw_no_home: DataFrame = df.loc[:, [c for c in _RAW_FEATURES if c != "HOME_FIELD"]].copy()
+    return pd.concat([diff, raw_no_home], axis=1)
+
+
+def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine all Phase 20e features with the v1 combined set.
+
+    Extends _make_combined_features with the 35 Phase 20e columns:
+    game-level features (IS_DIV_GAME, weather, venue) and per-team
+    features (rest, travel, franchise HFA). Game-level features are
+    identical for both team perspectives in a row — the model learns
+    their influence on win probability directly.
+
+    Missing columns (e.g. WIND_SPEED_MPH for dome games not yet backfilled)
+    produce NaN rows which _prepare_data excludes from training automatically.
+
+    Args:
+        df: Modeling DataFrame with all schema v3 feature columns.
+
+    Returns:
+        DataFrame with 63 expanded features.
+    """
+    base: DataFrame = _make_combined_features(df)
+    phase_20e_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
+    phase_20e: DataFrame = df.loc[:, phase_20e_cols].copy()
+    return pd.concat([base, phase_20e], axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Feature set registry
+# ---------------------------------------------------------------------------
+
+# Populated here because FEATURE_SETS must reference the functions above.
+# Callers import FEATURE_SETS["combined"] rather than the raw constants.
+FEATURE_SETS: dict[str, FeatureSet] = {
+    "diff": FeatureSet(
+        name="diff_10",
+        feature_fn=_make_diff_features,
+        feature_names=_DIFF_FEATURES,
+    ),
+    "raw": FeatureSet(
+        name="raw_22",
+        feature_fn=_make_raw_features,
+        feature_names=list(_RAW_FEATURES),
+    ),
+    "combined": FeatureSet(
+        name="combined_32",
+        feature_fn=_make_combined_features,
+        feature_names=_COMBINED_FEATURES,
+    ),
+    "expanded": FeatureSet(
+        name="expanded_63",
+        feature_fn=_make_expanded_features,
+        feature_names=_EXPANDED_FEATURES,
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Shared training helpers
+# ---------------------------------------------------------------------------
+
+
+def _prepare_data(
+    df: pd.DataFrame,
+    feature_fn: Callable,
+) -> tuple[pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
+    """Prepare train/holdout split for a given feature engineering function.
+
+    Excludes:
+    - Ties (RESULT == 0.5)
+    - Rows with any NaN feature value (covers pre-2006 and week-1 rows)
+
+    Args:
+        df: Full modeling DataFrame.
+        feature_fn: Function that takes df and returns feature DataFrame.
+
+    Returns:
+        Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
+    """
+    df = df.loc[df["RESULT"] != 0.5, :].copy()
+
+    features = feature_fn(df)
+    valid = features.notna().all(axis=1)
+    df = df.loc[valid].copy()
+    features = features.loc[valid].copy()
+
+    y = df["RESULT"].astype(int)
+    train_mask = ~df["YEAR"].isin(HOLDOUT_SEASONS)
+    hold_mask = df["YEAR"].isin(HOLDOUT_SEASONS)
+
+    logger.info(
+        "Train: %d rows | Holdout: %d rows",
+        train_mask.sum(),
+        hold_mask.sum(),
+    )
+
+    return (
+        features.loc[train_mask],
+        y.loc[train_mask],
+        features.loc[hold_mask],
+        y.loc[hold_mask],
+        sorted(df.loc[train_mask, "YEAR"].unique().tolist()),
+        sorted(df.loc[hold_mask, "YEAR"].unique().tolist()),
+    )
+
+
+def _is_trained(model_version: str, repo: Path | None) -> bool:
+    """Check if a trained artifact exists for the given model version.
+
+    Args:
+        model_version: Registered model version string.
+        repo: Repository root. Defaults to settings repo root.
+
+    Returns:
+        True if an artifact exists, False otherwise.
+    """
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    resolved_repo: Path = repo or get_settings().repo_root
+    return ArtifactStore(resolved_repo).is_trained(model_version)

@@ -5,7 +5,7 @@ import pandas as pd
 
 def test_write_elo_rankings_csv(tmp_path: Path) -> None:
     """write_elo_rankings_csv produces a versioned CSV with expected columns."""
-    from gridiron_edge.viz.excel import write_elo_rankings_csv
+    from gridiron_edge.viz.rankings import write_elo_rankings_csv
 
     # Build a minimal elo_state fixture
     elo_data = pd.DataFrame(
@@ -33,7 +33,7 @@ def test_write_elo_rankings_csv(tmp_path: Path) -> None:
 
 def test_write_elo_rankings_csv_filename(tmp_path: Path) -> None:
     """Output filename includes year and week."""
-    from gridiron_edge.viz.excel import write_elo_rankings_csv
+    from gridiron_edge.viz.rankings import write_elo_rankings_csv
 
     elo_data = pd.DataFrame(
         {
