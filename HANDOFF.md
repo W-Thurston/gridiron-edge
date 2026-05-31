@@ -237,54 +237,66 @@ All paths relative to `src/gridiron_edge/`.
 
 ## Code quality gates
 
+
 ```bash
-uv run ruff check . --fix             # lint + autofix
-uv run ruff format .                  # format
-uvx pyrefly check                     # type check
-uv run pytest -m "unit and not slow"  # unit tests (fast loop)
+# Normal dev loop (runs on every commit via pre-commit hook)
+uv run ruff check . --fix && uvx pyrefly check && uv run pytest -m "unit and not slow"
+
 ```
 
-Pre-commit hooks enforce all four automatically. Pre-push adds integration + e2e tests.
-Use `uv run gridiron -v <command>` for verbose output.
+Pre-commit hooks enforce ruff + pyrefly + unit tests on every commit.
+Pre-push hooks add integration + e2e tests.
+Use uv run gridiron -v <command> for verbose output.
 
 ---
 
 ### Testing architecture
 
-Three-tier test pyramid with pytest markers:
+Three-tier test pyramid with auto-applied pytest markers:
 
-| Tier        | Directory            | Marker                     | Runs When                      | Speed         |
-| ----------- | -------------------- | -------------------------- | ------------------------------ | ------------- |
-| Unit        | `tests/unit/`        | `@pytest.mark.unit`        | Every commit (pre-commit hook) | \~1s each     |
-| Integration | `tests/integration/` | `@pytest.mark.integration` | Every push (pre-push hook)     | \~5-15s each  |
-| E2E         | `tests/e2e/`         | `@pytest.mark.e2e`         | Every push (pre-push hook)     | \~30-60s each |
+| Tier        | Directory            | Runs When                      | Speed         |
+| ----------- | -------------------- | ------------------------------ | ------------- |
+| Unit        | `tests/unit/`        | Every commit (pre-commit hook) | \~1s each     |
+| Integration | `tests/integration/` | Every push (pre-push hook)     | \~5-15s each  |
+| E2E         | `tests/e2e/`         | Every push (pre-push hook)     | \~30-60s each |
 
-Additional markers: `@pytest.mark.slow` (full model training, \~15min each), `@pytest.mark.network` (real API calls). Both excluded by default.
+Additional markers: `@pytest.mark.slow` (excluded by default), `@pytest.mark.network` (real API calls).
 
-**Markers are auto-applied by directory** — no `@pytest.mark.unit` decorators needed. The root `conftest.py` uses `pytest_collection_modifyitems` to tag tests based on which subdirectory they live in.
-
-**Test directory mirrors source directory** — `src/gridiron_edge/features/team/epa.py` → `tests/unit/features/test_epa.py`.
+**Markers are auto-applied by directory** — no `@pytest.mark.unit` decorators needed. Root `conftest.py` tags tests via `pytest_collection_modifyitems`.
 
 **Shared fixtures:**
 
-* `tests/fixtures/dataframes.py` — centralized DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, `make_elo_state()`, etc.)
-* `tests/fixtures/repos.py` — composable `MiniRepoBuilder` for integration tests (builder pattern)
+* `tests/fixtures/dataframes.py` — 9 DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, etc.)
+* `tests/fixtures/repos.py` — composable `MiniRepoBuilder` for integration/e2e tests
 * `tests/fixtures/dk_payload_fixture.py` — DraftKings API response fixture
 
 **Running tests:**
 
 ```bash
-uv run pytest -m "unit and not slow"         # fast dev loop (~25s)
-uv run pytest -m "integration or e2e"        # heavier cross-module tests
-uv run pytest -m "not network and not slow"  # everything except network + slow
+uv run pytest -m "unit and not slow"           # fast dev loop (~35s)
+uv run pytest -m "integration or e2e"          # cross-module + pipeline tests
 uv run pytest --cov --cov-report=term-missing  # with coverage report
 ```
 
-**Pre-commit hooks (`.pre-commit-config.yaml`):**
+**Deferred test areas** (to be added with their respective workstreams):
 
-* `pre-commit` stage: ruff lint + format, pyrefly type check, unit tests
-* `pre-push` stage: integration + e2e tests
-* Safety valve: `|| test $? -eq 5` allows commits when no tests match a marker yet
+* Numba sim kernels (`test_engine.py`, `test_playoffs.py`) — defer to sim workstream
+* DK API mocking (`test_draftkings.py` full) — defer to odds workstream
+
+---
+
+### Coverage baseline (as of W0 completion)
+
+412 tests | 40.04% line coverage | threshold: `fail_under = 40`
+
+| Tier | Coverage | Modules |
+|------|----------|---------|
+| **Core business logic** | 80-100% | features/*, datasets/*, core/*, evaluation/metrics, ratings/elo/core |
+| **Integration-heavy** | 40-80% | pipeline, archive, backfill, diagnostics, odds/store, artifact |
+| **Deferred** | 0-30% | sim/*, viz/*, CLI, model training, draftkings, elo predictor, ETL |
+
+**Strategy:** Ratchet `fail_under` up as workstreams add tests for their modules.
+Each workstream is expected to bring its modules to 80%+ coverage.
 
 ---
 

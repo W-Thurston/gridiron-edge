@@ -38,8 +38,8 @@ Gridiron Edge is a CLI-driven NFL analytics and modeling platform with a strong 
 | Evaluation                    | ✅ Excellent           | Brier, log loss, AUC, ECE, calibration, decomposition, confidence tiers, drift                              |
 | Prediction archive            | ✅ Solid               | Append-only, dedup, backfill-aware                                                                          |
 | Monte Carlo simulation        | ✅ Advanced            | Season + playoffs, numba-optimized                                                                          |
-| Code quality                  | ✅ Excellent           | Lint, types, three-tier test pyramid (unit/integration/e2e), pre-commit + pre-push hooks, coverage tracking |
-| Testing infrastructure        | ✅ Building            | Auto-markers by directory, shared fixtures, composable MiniRepoBuilder, 97 tests passing                    |
+| Code quality                  | ✅ Excellent           | Ruff lint+format, pyrefly types, three-tier test pyramid, pre-commit + pre-push hooks, coverage tracking    |
+| Testing infrastructure        | ✅ Complete            | 412 tests, 40% coverage, auto-markers, shared fixtures, MiniRepoBuilder, 0 deselected                       |
 
 ### What's Missing
 

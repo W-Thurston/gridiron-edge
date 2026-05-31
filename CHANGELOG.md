@@ -3,6 +3,42 @@
 What has been built and when. Newest first.
 
 ---
+## W0 Complete: Test Framework Build-Out — 2026-05-31
+
+### Summary
+Professional three-tier testing infrastructure (unit → integration → e2e)
+with automated quality gates, shared fixtures, and 412 tests at 40% coverage.
+
+### Phases completed
+- **Phase 0** — Foundation: directory restructure, auto-markers, shared fixtures,
+  pre-commit/pre-push hooks, coverage config
+- **Phase 1** — Core & Datasets: 60 tests covering constants, paths, settings,
+  registry, loaders, writers, accessor
+- **Phase 2** — Missing Features: 63 tests covering all 11 feature modules,
+  feature registry, FeatureSpec protocol
+- **Phase 3** — Models & Evaluation: 35 tests covering Predictor/Trainable
+  protocols, model registry, artifact store, backfill, select, tune, diagnostics
+- **Phase 4** — Ingest, Transform, Sim: 65 tests covering odds store, nflverse
+  helpers, sim types/constants, geo/haversine, DK fixture validation
+- **Phase 5** — Integration & E2E: 28 tests covering dataset roundtrips,
+  artifact roundtrips, CLI workflows, full prediction pipeline via MiniRepoBuilder
+- **Deferred resolution** — Added test_tune.py (16 tests), test_diagnostics.py
+  (8 tests), removed slow training tests that exercised sklearn/xgboost internals
+
+### Coverage baseline
+- 412 tests, 0 failed, 0 deselected
+- 40.04% line coverage (threshold: 40%, ratchet up over time)
+- Core business logic (features, datasets, evaluation) at 80-100%
+- Sim, viz, CLI, and model training code deferred to respective workstreams
+
+### Deferred test areas (to be added with respective workstreams)
+- Numba sim kernels: `test_engine.py`, `test_playoffs.py` (sim workstream)
+- DK API mocking: full `test_draftkings.py` (odds workstream)
+- Elo predictor: `test_elo_predictor.py` (elo workstream)
+- Transform ETL: `test_epa_transform.py` (data pipeline workstream)
+- Cosmetic: migrate inline imports → top-level; migrate local helpers → shared fixtures
+
+
 ### Test Framework Build-Out — 2026-05-31
 
 Established professional three-tier testing infrastructure.

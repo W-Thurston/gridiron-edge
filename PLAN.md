@@ -29,61 +29,29 @@ These are the items to work on now. Ordered by value-density (most gain first).
 
 ---
 
-#### W0: Test Framework Build-Out
+#### W0: Test Framework Build-Out ✅ DONE
 
-_Establish professional testing infrastructure before building new features. Every new feature, module, or workstream deliverable should include corresponding tests._
+_Professional testing infrastructure established. Every new feature, module, or
+workstream deliverable should include corresponding tests._
 
-**ROADMAP ref:** Cross-cutting / Code Quality
+**Result:** 412 tests | 40% coverage | 0 failed | 0 deselected
 
-##### Phase 0 — Foundation ✅ DONE
-- [x] Restructure `tests/` into `unit/`, `integration/`, `e2e/` subdirectories
-- [x] Add root `conftest.py` with auto-markers by directory
-- [x] Build `tests/fixtures/dataframes.py` — 9 centralized DataFrame factories
-- [x] Build `tests/fixtures/repos.py` — composable `MiniRepoBuilder`
-- [x] Update `tests/integration/conftest.py` to use `MiniRepoBuilder`
-- [x] Add `.pre-commit-config.yaml` with pre-commit (unit) and pre-push (integration/e2e) hooks
-- [x] Add pytest markers to `pyproject.toml` (unit, integration, e2e, slow, network)
-- [x] Add coverage config to `pyproject.toml` (`fail_under = 40`, ratchet up)
-- [x] Fix all drifted tests (home_field, weather, tree_models, features_pipeline)
-- [x] Mark slow model training tests with `@pytest.mark.slow`
+##### All phases complete
+- [x] Phase 0 — Foundation (directory restructure, hooks, fixtures, markers)
+- [x] Phase 1 — Core & Datasets (60 tests)
+- [x] Phase 2 — Missing Feature Tests (63 tests)
+- [x] Phase 3 — Models & Evaluation (35 tests)
+- [x] Phase 4 — Ingest, Transform, Sim (65 tests)
+- [x] Phase 5 — Integration & E2E (28 tests)
+- [x] Deferred items resolved (tune, diagnostics, slow test removal)
 
-##### Phase 1 — Core & Datasets
-- [ ] `unit/core/test_constants.py` — constants exist, expected values
-- [ ] `unit/core/test_paths.py` — path construction, repo detection
-- [ ] `unit/core/test_settings.py` — config loading, defaults
-- [ ] `unit/datasets/test_registry.py` — `dataset_path()`, all keys resolve
-- [ ] `unit/datasets/test_loaders.py` — CSV/Parquet load, missing file handling
-- [ ] `unit/datasets/test_writers.py` — write + read roundtrip
-- [ ] `unit/datasets/test_accessor.py` — delegation methods
-
-##### Phase 2 — Missing Feature Tests
-- [ ] `unit/features/test_divisional.py`
-- [ ] `unit/features/test_epa.py`
-- [ ] `unit/features/test_primetime.py`
-- [ ] `unit/features/test_record.py`
-- [ ] `unit/features/test_schedule_strength.py`
-- [ ] `unit/features/test_venue_hfa.py`
-- [ ] `unit/features/test_base.py` (FeatureSpec)
-- [ ] `unit/features/test_registry.py` (validate_ordering)
-
-##### Phase 3 — Models & Evaluation
-- [ ] `unit/models/test_base.py` — Predictor/Trainable protocols
-- [ ] `unit/models/test_registry.py` — variant registration
-- [ ] `unit/models/test_artifact.py` — ArtifactStore save/load
-- [ ] Rewrite `test_tree_models.py` training tests with mocked tiny estimators (replace @pytest.mark.slow)
-- [ ] `unit/evaluation/test_backfill.py`, `test_select.py`, `test_tune.py`
-
-##### Phase 4 — Ingest, Transform, Sim (mock-heavy)
-- [ ] `unit/ingest/test_draftkings.py` — use dk_payload_fixture
-- [ ] `unit/ingest/test_odds_store.py` — Parquet roundtrip
-- [ ] `unit/transform/test_games_nflverse.py` — schema mapping
-- [ ] `unit/sim/test_types.py`, `test_engine.py`, `test_playoffs.py`
-
-##### Phase 5 — Integration & E2E
-- [ ] `integration/test_dataset_roundtrip.py` — write → read → schema preserved
-- [ ] `integration/test_model_train_predict.py` — train → save → load → predict → archive
-- [ ] `e2e/test_cli_workflows.py` — full run-data-pipeline via CLI
-- [ ] `e2e/test_prediction_pipeline.py` — ingest → model → evaluate (no CLI)
+##### Deferred to later workstreams (not blocked, lower priority)
+- [ ] `test_engine.py` / `test_playoffs.py` — numba sim kernels (sim workstream)
+- [ ] Full `test_draftkings.py` — API mocking (odds workstream)
+- [ ] `test_elo_predictor.py` — Elo predictor class (elo workstream)
+- [ ] `test_epa_transform.py` — EPA ETL pipeline (data pipeline workstream)
+- [ ] Migrate inline imports → top-level in existing test files (cosmetic)
+- [ ] Migrate local `_make_*()` helpers → shared fixtures (cosmetic)
 
 ---
 
