@@ -26,6 +26,7 @@ How everything works right now. Assumes you know what the project does — see [
 | Evaluation | `gridiron_edge.evaluation` — `archive`, `metrics`, `select`, `backfill`, `tune` |
 | Models | `gridiron_edge.models` — Predictor + Trainable protocols, ArtifactStore |
 | CLI | `gridiron_edge.cli` — `main.py` stage-list pipeline, sub-apps per domain |
+| Market math | `gridiron_edge.market` — `odds_math`, `kelly` (pure functions, no data deps) |
 
 ---
 
@@ -37,6 +38,7 @@ How everything works right now. Assumes you know what the project does — see [
 | `src/gridiron_edge/ingest/` | All data ingestion (nflverse, weather, odds) |
 | `src/gridiron_edge/transform/` | Raw → canonical schema mappers |
 | `src/gridiron_edge/features/` | Feature registry, pipeline, dependency validation |
+| `src/gridiron_edge/market/` | Odds conversion, no-vig debiasing, Kelly staking (pure math, no I/O) |
 | `src/gridiron_edge/ratings/elo/` | Elo table, fit, predict, evaluate |
 | `src/gridiron_edge/models/` | Predictor protocol, artifact store, model registry, game prediction variants |
 | `src/gridiron_edge/evaluation/` | Metrics, backfill, archive, tuning, model selection |
@@ -107,6 +109,15 @@ Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). 
 ### Weather ingest is idempotent
 
 `fetch_weather` reads existing `weather_enriched.csv`, computes the set difference of `GAME_ID`s, and only calls the OWM API for games not already enriched. Safe to re-run.
+
+#### Market package is a pure-math leaf
+
+`gridiron_edge.market` has no pandas, no I/O, and no data dependencies — every
+function operates on scalar values.  `kelly.py` imports only from `odds_math.py`
+within the package.  Power devig uses bisection (no scipy dependency).
+Even-money convention: `-100` normalises to `+100` via the decimal roundtrip
+(`decimal_to_american(2.0) == 100`).  `consensus.py` is deferred until
+multi-book data is available (W7).
 
 ### sim/season.py decomposition
 
@@ -220,6 +231,7 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Feature dependency validation | `features/registry.py` — `validate_ordering()` |
 | Feature column definitions | `models/game_prediction/_columns.py` |
 | Feature engineering functions | `models/game_prediction/_features.py` |
+| Market math (odds, Kelly) | `market/odds_math.py`, `market/kelly.py` |
 | EPA window hyperparameter infra | `models/game_prediction/_epa_window.py` |
 | Elo core formula (parameterised) | `ratings/elo/core.py` |
 | Simulation types + config | `sim/_types.py` |

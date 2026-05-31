@@ -83,6 +83,28 @@ workstream deliverable should include corresponding tests._
 
 ---
 
+#### W3: Market Intelligence Foundation ✅ DONE
+
+_Build the market math package. Pure functions, no data dependencies._
+
+**ROADMAP ref:** W3
+
+**Result:** 64 new tests │ All passing │ Pushed to GitHub
+
+##### Completed
+- [x] Created `src/gridiron_edge/market/` package (`__init__.py`, `odds_math.py`, `kelly.py`)
+- [x] `market/odds_math.py` — `american_to_decimal`, `american_to_implied_prob`,
+      `decimal_to_american`, `hold_pct`, `no_vig` (power + additive methods)
+- [x] `market/kelly.py` — `kelly_fraction` (full Kelly), `kelly_stake` (fractional
+      Kelly, default quarter-Kelly)
+- [x] Power devig via bisection — no scipy dependency
+- [x] Unit tests: `test_odds_math.py` (42 tests), `test_kelly.py` (22 tests)
+
+##### Deferred to later workstreams
+- [ ] `market/consensus.py` — consensus line + best available (deferred to W7, pending multi-book data)
+
+---
+
 ### Phase 20e: Feature Engineering (Continuous)
 
 *Runs in parallel with everything else. Each feature follows the existing `FeatureSpec` + `Feature` protocol.*
@@ -201,46 +223,6 @@ workstream deliverable should include corresponding tests._
 
 ---
 
-### W3: Market Intelligence Foundation
-
-*Build the market math package. Pure functions, no data dependencies.*
-
-**ROADMAP ref:** W3
-
-- [ ] **Create `src/gridiron_edge/market/` package**
-     - `__init__.py`
-     - Initial modules: `odds_math.py`, `kelly.py`
-
-- [ ] **`market/odds_math.py`**
-     - `american_to_decimal(odds: int) -> float`
-     - `american_to_implied_prob(odds: int) -> float`
-     - `decimal_to_american(dec: float) -> int`
-     - `no_vig(odds_a: int, odds_b: int) -> tuple[float, float]`
-       - Implement both multiplicative (power) method and additive method
-       - Default to power method
-     - `hold_pct(odds_a: int, odds_b: int) -> float`
-     - Edge cases to handle: even odds (+100/-100), heavy favorites (> -500), positive both sides
-
-- [ ] **`market/kelly.py`**
-     - `kelly_fraction(model_prob: float, american_odds: int) -> float`
-     - `kelly_stake(model_prob: float, american_odds: int, bankroll: float, fraction: float = 0.25) -> float`
-     - Guard: return 0 if edge is negative (no bet)
-     - Guard: cap at `fraction * full_kelly` (default quarter-Kelly)
-
-- [ ] **Unit tests for all math functions**
-     - Test known values (e.g., -110 -> implied 52.38%)
-     - Test roundtrip: american -> decimal -> american
-     - Test edge cases: +100, -100, -10000, +10000
-     - Test Kelly with no edge (should return 0)
-     - Test Kelly with large edge (should be capped)
-
-- [ ] **`market/consensus.py`** (after W7 odds source decision)
-     - `consensus_line(snapshots: list[LineSnapshot]) -> float`
-     - `best_available(snapshots: list[LineSnapshot], side: str) -> tuple[str, float, int]`
-     - Defer until multi-book data is available
-
----
-
 ## Parallel / Lower Priority
 
 ### Phase 20f: Model Variant Infrastructure
@@ -273,12 +255,12 @@ workstream deliverable should include corresponding tests._
 *These items are defined in ROADMAP.md but not yet broken into tasks. They'll be expanded here when their dependencies are met.*
 
 | Workstream | Blocked By | Notes |
-|------------|-----------|-------|
+|---|---|---|
 | W4: Player Data & First Props | None (W1 ✅) | W1 complete — can start immediately |
 | W4.5: Scenario Engine | W2 + W4 | Can start Phase A (impact quantification) alongside W4 |
-| W5: Edge Engine | W2 + W3 (W1 ✅) | The convergence point -- this is where it all comes together |
-| W6: Portfolio & Bet Tracking | W3 + W5 (W1 ✅) | Build after edge reports are working |
-| W7: Multi-Book Odds | W3 + odds source decision (W1 ✅) | Deferred pending data source evaluation |
+| W5: Edge Engine | W2 (W1 ✅, W3 ✅) | The convergence point — this is where it all comes together |
+| W6: Portfolio & Bet Tracking | W5 (W1 ✅, W3 ✅) | Build after edge reports are working |
+| W7: Multi-Book Odds | Odds source decision (W1 ✅, W3 ✅) | Deferred pending data source evaluation |
 | W8: API Serving Layer | W2 + W5 | Backend must be producing useful data first |
 | W9: Frontend | W8 | Prototype exists, wiring requires API |
 | W10: Real-Time / Live | W5 + W7 + W8 | Most complex, least urgent |
@@ -291,3 +273,4 @@ workstream deliverable should include corresponding tests._
 |------|---------|
 | 2026-05-30 | Rewrote PLAN.md to align with ROADMAP.md workstream structure. Added feature engineering priority matrix tasks. Added W1-W3 concrete tasks. |
 | 2026-05-31 | Marked W0 and W1 as DONE. Updated backlog dependency table to reflect W1 completion. |
+| 2026-05-31 | Marked W3 as DONE. Updated backlog dependency table to reflect W3 completion. Reordered Phase 20e before W2 (quick-win features first improves model before spread calibration). |
