@@ -4,6 +4,34 @@ What has been built and when. Newest first.
 
 ---
 
+## W3: Market Intelligence Foundation — 2026-05-31
+
+### New package: `market/`
+- Pure-math leaf package at `src/gridiron_edge/market/` — no data dependencies,
+  no pandas, no I/O
+
+### `market/odds_math.py`
+- `american_to_decimal()`: American → decimal odds conversion
+- `american_to_implied_prob()`: American → raw implied probability (includes vig)
+- `decimal_to_american()`: decimal → American; even-money normalises to +100
+- `hold_pct()`: bookmaker overround for two-way markets
+- `no_vig()`: fair probabilities via power method (default) or additive rescaling
+- `_power_devig()`: bisection solver for `raw_a^k + raw_b^k = 1` — no scipy
+
+### `market/kelly.py`
+- `kelly_fraction()`: full-Kelly optimal fraction; returns 0 when edge ≤ 0
+- `kelly_stake()`: dollar amount using fractional Kelly (default quarter-Kelly)
+- Input validation: probability must be in (0, 1), bankroll ≥ 0, fraction in [0, 1]
+
+### Tests added (64)
+- `test_odds_math.py` (42) — conversions, roundtrips, extreme odds (±10000),
+  hold percentage, no-vig additive vs power, sums-to-one, fair-probs-not-above-raw
+- `test_kelly.py` (22) — positive/negative/zero edge, fractional staking,
+  zero bankroll, guard rails on probability/bankroll/fraction
+
+### Deferred
+- `market/consensus.py` — deferred until multi-book data available (W7)
+
 ## W1: Quick Wins & Unblocking — 2026-05-31
 
 ### DK Unicode Minus Fix
