@@ -50,16 +50,20 @@ def _make_games(roof: str = "outdoors", game_id: str = "2024_01_KC_LV") -> pd.Da
     )
 
 
-def _make_modeling_row(game_id: str = "2024_01_KC_LV") -> dict:
-    return {
-        "GAME_ID": game_id,
-        "TEAM_A": "Kansas City Chiefs",
-        "TEAM_B": "Las Vegas Raiders",
-        "YEAR": "2024-2025",
-        "WEEK_NUM": 1,
-        "RESULT": 1,
-        "HOME_FIELD": 1,
-    }
+def _make_modeling_row(game_id: str = "2024_01_KC_LV") -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "GAME_ID": game_id,
+                "TEAM_A": "Kansas City Chiefs",
+                "TEAM_B": "Las Vegas Raiders",
+                "YEAR": "2024-2025",
+                "WEEK_NUM": 1,
+                "RESULT": 1,
+                "HOME_FIELD": 1,
+            }
+        ]
+    )
 
 
 def _make_weather_row(
@@ -92,7 +96,7 @@ class TestIsDome:
         from gridiron_edge.features.team.weather import WeatherFeature
 
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("outdoors")),
         )
         assert result.iloc[0]["IS_DOME"] == 0
@@ -101,7 +105,7 @@ class TestIsDome:
         from gridiron_edge.features.team.weather import WeatherFeature
 
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("open")),
         )
         assert result.iloc[0]["IS_DOME"] == 0
@@ -110,7 +114,7 @@ class TestIsDome:
         from gridiron_edge.features.team.weather import WeatherFeature
 
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("dome")),
         )
         assert result.iloc[0]["IS_DOME"] == 1
@@ -120,7 +124,7 @@ class TestIsDome:
         from gridiron_edge.features.team.weather import WeatherFeature
 
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("retractable")),
         )
         assert result.iloc[0]["IS_DOME"] == 1
@@ -130,7 +134,7 @@ class TestIsDome:
         from gridiron_edge.features.team.weather import WeatherFeature
 
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("DOME")),
         )
         assert result.iloc[0]["IS_DOME"] == 1
@@ -151,7 +155,7 @@ class TestUnitConversions:
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=273.15, wind_mps=0.0)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["TEMP_F"] == pytest.approx(32.0, abs=0.1)
@@ -163,7 +167,7 @@ class TestUnitConversions:
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=373.15, wind_mps=0.0)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["TEMP_F"] == pytest.approx(212.0, abs=0.1)
@@ -175,7 +179,7 @@ class TestUnitConversions:
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=295.0, wind_mps=10.0)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(22.37, abs=0.05)
@@ -186,7 +190,7 @@ class TestUnitConversions:
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=295.0, wind_mps=0.0)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(0.0)
@@ -207,7 +211,7 @@ class TestPrecipFlag:
         games = _make_games("outdoors")
         weather = _make_weather_row(weather_main=weather_main)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["PRECIP_FLAG"] == 1
@@ -219,22 +223,27 @@ class TestPrecipFlag:
         games = _make_games("outdoors")
         weather = _make_weather_row(weather_main=weather_main)
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["PRECIP_FLAG"] == 0
 
     def test_null_value_string_gives_nan(self) -> None:
-        """OWM 'NULL_VALUE' sentinel should produce NaN PRECIP_FLAG."""
+        """'NULL_VALUE' is not a precipitation type → 0, not NaN."""
         from gridiron_edge.features.team.weather import WeatherFeature
 
-        games = _make_games("outdoors")
-        weather = _make_weather_row(weather_main="NULL_VALUE")
-        result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
-            datasets=_make_accessor(games, weather=weather),
+        # Build a game with WEATHER_MAIN = "NULL_VALUE" and outdoor roof
+        games = _make_games(roof="outdoors", game_id="g_null")
+        modeling = _make_modeling_row(game_id="g_null")
+        weather = _make_weather_row(
+            game_id="g_null",
+            temp_k=300.0,
+            wind_mps=5.0,
+            weather_main="NULL_VALUE",
         )
-        assert pd.isna(result.iloc[0]["PRECIP_FLAG"])
+        acc = _make_accessor(games, weather)
+        out = WeatherFeature().compute(df=modeling, datasets=acc)
+        assert out["PRECIP_FLAG"].iloc[0] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +260,7 @@ class TestDomeOverrides:
         games = _make_games("dome")
         weather = _make_weather_row(wind_mps=20.0, weather_main="Rain")
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(0.0)
@@ -263,7 +272,7 @@ class TestDomeOverrides:
         games = _make_games("dome")
         weather = _make_weather_row(temp_k=250.0)  # very cold outside
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["TEMP_F"] == pytest.approx(_DOME_TEMP_F)
@@ -274,7 +283,7 @@ class TestDomeOverrides:
         games = _make_games("dome")
         weather = _make_weather_row(weather_main="Snow")
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["PRECIP_FLAG"] == 0
@@ -285,7 +294,7 @@ class TestDomeOverrides:
 
         games = _make_games("dome")
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games),  # no weather data
         )
         assert result.iloc[0]["IS_DOME"] == 1
@@ -308,7 +317,7 @@ class TestMissingData:
 
         games = _make_games("outdoors")
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games),  # FileNotFoundError
         )
         assert pd.isna(result.iloc[0]["WIND_SPEED_MPH"])
@@ -321,7 +330,7 @@ class TestMissingData:
 
         games = _make_games("outdoors")
         result = WeatherFeature().compute(
-            df=pd.DataFrame([_make_modeling_row()]),
+            df=_make_modeling_row(),
             datasets=_make_accessor(games),
         )
         assert not pd.isna(result.iloc[0]["IS_DOME"])

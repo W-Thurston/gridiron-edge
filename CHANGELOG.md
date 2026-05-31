@@ -3,6 +3,42 @@
 What has been built and when. Newest first.
 
 ---
+### Test Framework Build-Out — 2026-05-31
+
+Established professional three-tier testing infrastructure.
+
+**Test directory restructure**
+- Restructured `tests/` into `unit/`, `integration/`, `e2e/` subdirectories
+- Tests auto-tagged by directory via `pytest_collection_modifyitems` in root conftest — no manual `@pytest.mark` decorators needed
+- Existing tests moved to `tests/unit/` with zero import changes required
+
+**Shared fixtures**
+- `tests/fixtures/dataframes.py` — 9 centralized DataFrame factories: `make_games`, `make_modeling_rows`, `make_stadiums`, `make_elo_state`, `make_epa_by_game`, `make_weather_enriched`, `make_eval_df`, `make_predictions`, `make_accessor`
+- `tests/fixtures/repos.py` — composable `MiniRepoBuilder` class (builder pattern: `.with_games().with_stadiums().with_elo_state().build()`)
+- Replaces duplicated `_make_games()`, `_make_eval_df()`, `mini_repo` patterns across 8+ test files
+
+**Pre-commit / pre-push hooks:**
+- Added `.pre-commit-config.yaml` with two stages:
+  - `pre-commit`: ruff lint + format, pyrefly type check, unit tests
+  - `pre-push`: integration + e2e tests
+- Installed via `pre-commit install` + `pre-commit install --hook-type pre-push`
+- Safety valve: `|| test $? -eq 5` allows commits during incremental marker migration
+
+**Pytest configuration:**
+- Added markers to `pyproject.toml`: `unit`, `integration`, `e2e`, `slow`, `network`
+- `--strict-markers` enforced — no typos in marker names
+- Coverage config added: `fail_under = 60`, `show_missing = true`
+
+**Fixed drifted tests**
+- `test_home_field_feature`: `GAME_LOCATION` `"NULL_VALUE"` → `"H"` (aligned with constants consolidation)
+- `test_weather`: `_make_modeling_row` returns DataFrame not dict; `test_null_value_string_gives_nan` assertion updated
+- `test_tree_models`: imports updated for `_epa_window` module extraction (`_rebuild_features_with_window`, `_EPA_WINDOW_OPTIONS`)
+- `test_features_pipeline`: `pd.read_csv` → `pd.read_parquet` for `modeling_base`/`modeling_full`
+- Model training tests (`TestRandomForestV1Training`, `TestXGBoostV1Training`) marked `@pytest.mark.slow` (~15min each)
+
+**Tooling**
+- `mirror_repo_to_sharepoint.py` — mirrors repo to SharePoint-synced folder for Copilot indexing. Copies `.py` files as `.py.txt` with SOURCE headers; preserves `.md`/`.json`/`.yaml` as-is. Supports `--clean`, `--dry-run`, `--extra-ext`.
+
 
 ## Thermonuclear Code Quality Review — 2026-05-30
 

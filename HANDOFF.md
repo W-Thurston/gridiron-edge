@@ -238,13 +238,53 @@ All paths relative to `src/gridiron_edge/`.
 ## Code quality gates
 
 ```bash
-uv run ruff check src/ --fix   # lint + autofix
-uv run ruff format src/        # format
-uvx pyrefly check              # type check
-uv run pytest                  # tests
+uv run ruff check . --fix             # lint + autofix
+uv run ruff format .                  # format
+uvx pyrefly check                     # type check
+uv run pytest -m "unit and not slow"  # unit tests (fast loop)
 ```
 
-All four must pass before committing. Use `uv run gridiron -v <command>` for verbose output.
+Pre-commit hooks enforce all four automatically. Pre-push adds integration + e2e tests.
+Use `uv run gridiron -v <command>` for verbose output.
+
+---
+
+### Testing architecture
+
+Three-tier test pyramid with pytest markers:
+
+| Tier        | Directory            | Marker                     | Runs When                      | Speed         |
+| ----------- | -------------------- | -------------------------- | ------------------------------ | ------------- |
+| Unit        | `tests/unit/`        | `@pytest.mark.unit`        | Every commit (pre-commit hook) | \~1s each     |
+| Integration | `tests/integration/` | `@pytest.mark.integration` | Every push (pre-push hook)     | \~5-15s each  |
+| E2E         | `tests/e2e/`         | `@pytest.mark.e2e`         | Every push (pre-push hook)     | \~30-60s each |
+
+Additional markers: `@pytest.mark.slow` (full model training, \~15min each), `@pytest.mark.network` (real API calls). Both excluded by default.
+
+**Markers are auto-applied by directory** — no `@pytest.mark.unit` decorators needed. The root `conftest.py` uses `pytest_collection_modifyitems` to tag tests based on which subdirectory they live in.
+
+**Test directory mirrors source directory** — `src/gridiron_edge/features/team/epa.py` → `tests/unit/features/test_epa.py`.
+
+**Shared fixtures:**
+
+* `tests/fixtures/dataframes.py` — centralized DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, `make_elo_state()`, etc.)
+* `tests/fixtures/repos.py` — composable `MiniRepoBuilder` for integration tests (builder pattern)
+* `tests/fixtures/dk_payload_fixture.py` — DraftKings API response fixture
+
+**Running tests:**
+
+```bash
+uv run pytest -m "unit and not slow"         # fast dev loop (~25s)
+uv run pytest -m "integration or e2e"        # heavier cross-module tests
+uv run pytest -m "not network and not slow"  # everything except network + slow
+uv run pytest --cov --cov-report=term-missing  # with coverage report
+```
+
+**Pre-commit hooks (`.pre-commit-config.yaml`):**
+
+* `pre-commit` stage: ruff lint + format, pyrefly type check, unit tests
+* `pre-push` stage: integration + e2e tests
+* Safety valve: `|| test $? -eq 5` allows commits when no tests match a marker yet
 
 ---
 

@@ -52,6 +52,7 @@ dev = [
     "ipykernel>=6.30.1,<7.0.0",
     "ruff>=0.9.0",
     "pyrefly>=0.1.0",
+    "pre-commit>=4.6.0",
 ]
 
 # ===========================================================================
@@ -60,9 +61,35 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Treat "no tests collected" as success (exit code 0 instead of 5)
+addopts = "--strict-markers -v"
+markers = [
+    "unit: Fast isolated tests, no I/O or network",
+    "integration: Cross-module tests, may use tmp_path filesystem",
+    "e2e: End-to-end CLI or pipeline tests",
+    "slow: Tests that take >5 seconds",
+    "network: Tests requiring network access (nflverse, OpenWeather, DraftKings)",
+]
+
+
+
+[tool.coverage.run]
+source = ["src/gridiron_edge"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+fail_under = 40
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 
 # ===========================================================================
 # RUFF

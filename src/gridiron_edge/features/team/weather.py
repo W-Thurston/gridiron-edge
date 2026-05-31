@@ -180,11 +180,13 @@ class WeatherFeature:
 
         if "WEATHER_MAIN" in w.columns:
             w["PRECIP_FLAG"] = w["WEATHER_MAIN"].apply(
-                lambda x: 1
-                if str(x) in _PRECIP_WEATHER_MAINS
-                else 0
-                if pd.notna(x) and str(x) != ""
-                else float("nan")
+                lambda x: (
+                    1
+                    if str(x) in _PRECIP_WEATHER_MAINS
+                    else 0
+                    if pd.notna(x) and str(x) != ""
+                    else float("nan")
+                )
             )
         else:
             w["PRECIP_FLAG"] = float("nan")

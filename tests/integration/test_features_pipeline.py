@@ -11,8 +11,8 @@ def test_build_model_inputs_full_rebuild(mini_repo: Path) -> None:
     fit_elo(all_years=True, repo=mini_repo)
     build_model_inputs(all_years=True, repo=mini_repo)
 
-    base = pd.read_csv(dataset_path(mini_repo, "modeling_base"))
-    full = pd.read_csv(dataset_path(mini_repo, "modeling_full"))
+    base = pd.read_parquet(dataset_path(mini_repo, "modeling_base"))
+    full = pd.read_parquet(dataset_path(mini_repo, "modeling_full"))
 
     assert len(base) == 4  # two rows per game
     assert len(full) == 4

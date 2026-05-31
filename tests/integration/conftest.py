@@ -1,65 +1,38 @@
+# tests/integration/conftest.py
+"""Integration test fixtures.
+
+Uses MiniRepoBuilder for composable, explicit test data setup.
+"""
+
+from __future__ import annotations
+
 from pathlib import Path
 
-import pandas as pd
 import pytest
-
-from gridiron_edge.datasets.registry import DATASETS
-from gridiron_edge.datasets.writers import write_csv
+from tests.fixtures.repos import MiniRepoBuilder
 
 
 @pytest.fixture
 def mini_repo(tmp_path: Path) -> Path:
     """Minimal repo tree with games + stadiums for pipeline integration tests."""
-    for spec in DATASETS.values():
-        (tmp_path / spec.relpath).parent.mkdir(parents=True, exist_ok=True)
+    return MiniRepoBuilder(tmp_path).with_games().with_stadiums().build()
 
-    games = pd.DataFrame(
-        [
-            {
-                "GAME_ID": "2025_01_A_B",
-                "YEAR": "2025-2026",
-                "WEEK_NUM": 1,
-                "WINNER": "Team A",
-                "LOSER": "Team B",
-                "WIN_OR_TIE": 1,
-                "GAME_DATE": "2025-09-07",
-                "GAME_LOCATION": "NULL_VALUE",
-                "STADIUM": "Stadium A",
-            },
-            {
-                "GAME_ID": "2025_02_B_A",
-                "YEAR": "2025-2026",
-                "WEEK_NUM": 2,
-                "WINNER": "Team B",
-                "LOSER": "Team A",
-                "WIN_OR_TIE": 1,
-                "GAME_DATE": "2025-09-14",
-                "GAME_LOCATION": "NULL_VALUE",
-                "STADIUM": "Stadium B",
-            },
-        ],
-    )
-    write_csv(tmp_path, "games", games)
 
-    stadiums = pd.DataFrame(
-        [
-            {
-                "HOME_TEAM": "Team A",
-                "YEAR": "2025-2026",
-                "STADIUM": "Stadium A",
-                "LATITUDE": 40.0,
-                "LONGITUDE": -75.0,
-                "ALTITUDE": 10,
-            },
-            {
-                "HOME_TEAM": "Team B",
-                "YEAR": "2025-2026",
-                "STADIUM": "Stadium B",
-                "LATITUDE": 34.0,
-                "LONGITUDE": -118.0,
-                "ALTITUDE": 50,
-            },
-        ],
+@pytest.fixture
+def mini_repo_with_elo(tmp_path: Path) -> Path:
+    """Minimal repo with games, stadiums, and pre-computed Elo state."""
+    return MiniRepoBuilder(tmp_path).with_games().with_stadiums().with_elo_state().build()
+
+
+@pytest.fixture
+def mini_repo_full(tmp_path: Path) -> Path:
+    """Repo with all datasets populated — for pipeline-wide tests."""
+    return (
+        MiniRepoBuilder(tmp_path)
+        .with_games()
+        .with_stadiums()
+        .with_elo_state()
+        .with_epa_by_game()
+        .with_weather()
+        .build()
     )
-    write_csv(tmp_path, "stadiums", stadiums)
-    return tmp_path

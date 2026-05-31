@@ -1,0 +1,55 @@
+# .pre-commit-config.yaml
+
+default_stages: [pre-commit]
+
+repos:
+  # ── File hygiene ──────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+
+  # ── Ruff (linting + formatting) ──────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.12
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ── Local hooks ──────────────────────────────────────────────
+  - repo: local
+    hooks:
+      # Pyrefly type checking (runs on commit)
+      - id: pyrefly-check
+        name: pyrefly type check
+        entry: uvx pyrefly check
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+      # Unit tests only (runs on commit — fast)
+      - id: pytest-unit
+        name: pytest unit tests
+        entry: bash -c 'uv run pytest -m "unit and not slow" --no-header -q || test $? -eq 5'
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+      # Integration + E2E tests (runs on push only — slower)
+      - id: pytest-integration
+        name: pytest integration + e2e tests
+        entry: bash -c 'uv run pytest -m "(integration or e2e) and not slow" --no-header -q || test $? -eq 5'
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

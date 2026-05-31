@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,6 @@ from gridiron_edge.sim._engine import (
 from gridiron_edge.sim._types import (
     AWAY_WIN,
     CONF_CODES,
-    DIV_CODE_TO_LABEL,
     DIV_CODES,
     HOME_WIN,
     N_PLAYOFF_ROUNDS,
@@ -53,7 +52,6 @@ from gridiron_edge.sim._types import (
     SimulationResults,
     TeamIndex,
     _log_phase,
-    format_record,
 )
 from gridiron_edge.sim.playoffs import simulate_playoffs
 

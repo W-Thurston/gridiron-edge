@@ -16,14 +16,14 @@ class DummyDatasets:
 def test_home_field_feature_sets_home_field_correctly() -> None:
     games = pd.DataFrame(
         [
-            # Home game: GAME_LOCATION == "NULL_VALUE"
+            # Home game: GAME_LOCATION == "H"
             {
                 "GAME_ID": "g1",
                 "YEAR": "2025-2026",
                 "WEEK_NUM": 1,
                 "WINNER": "A",
                 "LOSER": "B",
-                "GAME_LOCATION": "NULL_VALUE",
+                "GAME_LOCATION": "H",
             },
             # Away game: GAME_LOCATION == "@"
             {

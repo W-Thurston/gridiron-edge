@@ -127,9 +127,11 @@ class RestFeature:
         # Compute days since previous game per team (shift within team group)
         team_games["_PREV_DATE"] = team_games.groupby("TEAM")["_DATE"].shift(1)
         team_games["_DAYS_REST"] = team_games.apply(
-            lambda r: (r["_DATE"] - r["_PREV_DATE"]).days
-            if pd.notna(r["_PREV_DATE"]) and pd.notna(r["_DATE"])
-            else float("nan"),
+            lambda r: (
+                (r["_DATE"] - r["_PREV_DATE"]).days
+                if pd.notna(r["_PREV_DATE"]) and pd.notna(r["_DATE"])
+                else float("nan")
+            ),
             axis=1,
         )
 
