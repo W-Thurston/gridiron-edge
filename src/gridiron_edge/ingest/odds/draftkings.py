@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
+from logging import Logger
 from pathlib import Path
 import re
 from typing import Any
@@ -19,7 +20,12 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pandas import DataFrame
+
+# pyrefly: ignore [untyped-import]
 import requests
+
+# pyrefly: ignore [untyped-import]
+from requests import Response, Session
 
 from gridiron_edge.core.settings import current_nfl_season
 from gridiron_edge.ingest.odds.store import (
@@ -28,7 +34,7 @@ from gridiron_edge.ingest.odds.store import (
     write_current_odds_snapshot,
 )
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -110,11 +116,13 @@ def _norm_display_odds_american(sel: dict) -> int | str | None:
     for k in ("oddsAmerican", "price", "americanOdds", "american"):
         v = sel.get("displayOdds", {}).get(k)
         if v is not None:
-            return (
-                int(v)
-                if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip("-").isdigit())
-                else v
-            )
+            if isinstance(v, int | float):
+                return int(v)
+            if isinstance(v, str):
+                v: str = v.replace("\u2212", "-")  # Unicode minus → ASCII hyphen
+                if v.strip("-").isdigit():
+                    return int(v)
+            return v
     return None
 
 
@@ -376,17 +384,17 @@ def fetch_dk_odds_wide(
             "entity": "events",
             "format": "json",
         }
-        sess = session or requests.Session()
+        sess: Session = session or requests.Session()
         headers: dict[str, str] = {
             "accept": "application/json",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0",  # noqa: E501
             "accept-language": "en-US,en;q=0.9",
         }
-        resp = sess.get(base, params=params, headers=headers, timeout=20)
+        resp: Response = sess.get(base, params=params, headers=headers, timeout=20)
         resp.raise_for_status()
         payload = resp.json()
     else:
-        payload = payload_override
+        payload: dict = payload_override
 
     df_events: DataFrame = _extract_game_lines(payload)
     df_teams: DataFrame = _event_rows_to_team_rows(df_events)
