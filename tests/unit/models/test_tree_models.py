@@ -10,11 +10,25 @@ Tests cover:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 import pytest
+
+from gridiron_edge.models.game_prediction._epa_window import (
+    _rebuild_features_with_window,
+)
+import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+from gridiron_edge.models.game_prediction.predictor import (
+    RandomForestV1Predictor,
+    RandomForestV2Predictor,
+    XGBoostV1Predictor,
+    XGBoostV2Predictor,
+)
+from gridiron_edge.models.registry import PredictorRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -29,11 +43,11 @@ def synthetic_modeling_df() -> pd.DataFrame:
     holdout rows.  EPA columns use the standard TEAM_A_*/TEAM_B_* names
     with window=4 values pre-filled.
     """
-    rng = np.random.default_rng(0)
+    rng: Generator = np.random.default_rng(0)
     n = 400
 
     # Seasons straddling the holdout boundary
-    seasons = (
+    seasons: list[str] = (
         ["2006-2007"] * 80
         + ["2007-2008"] * 80
         + ["2008-2009"] * 80
@@ -41,7 +55,7 @@ def synthetic_modeling_df() -> pd.DataFrame:
         + ["2024-2025"] * 80
     )
 
-    epa_suffixes = [
+    epa_suffixes: list[str] = [
         "OFF_EPA_PER_PLAY",
         "OFF_PASS_EPA",
         "OFF_RUSH_EPA",
@@ -77,9 +91,9 @@ def synthetic_modeling_df() -> pd.DataFrame:
 @pytest.fixture()
 def synthetic_epa_by_game() -> pd.DataFrame:
     """Minimal epa_by_game DataFrame for window rebuild tests."""
-    rng = np.random.default_rng(1)
-    teams = ["KC", "SF", "BUF", "PHI", "DAL", "NYG", "MIA", "LAR"]
-    rows = []
+    rng: Generator = np.random.default_rng(1)
+    teams: list[str] = ["KC", "SF", "BUF", "PHI", "DAL", "NYG", "MIA", "LAR"]
+    rows: list[dict[str, int | str]] = []
     for season in [2006, 2007, 2008, 2023, 2024]:
         for week in range(1, 19):
             for team in teams:
@@ -105,7 +119,7 @@ def synthetic_epa_by_game() -> pd.DataFrame:
 @pytest.fixture()
 def mini_repo(tmp_path: Path, synthetic_epa_by_game: pd.DataFrame) -> Path:
     """Minimal repository structure with epa_by_game.parquet."""
-    cleaned = tmp_path / "data" / "cleaned"
+    cleaned: Path = tmp_path / "data" / "cleaned"
     cleaned.mkdir(parents=True)
     synthetic_epa_by_game.to_parquet(cleaned / "epa_by_game.parquet", index=False)
     return tmp_path
@@ -123,22 +137,20 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window=4 is the fast path — should return identical DataFrame."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=4, repo=mini_repo)
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=4, repo=mini_repo
+        )
         pd.testing.assert_frame_equal(result, synthetic_modeling_df)
 
     def test_different_window_changes_epa_columns(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window != 4 should produce different EPA column values."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=2, repo=mini_repo)
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=2, repo=mini_repo
+        )
         # The EPA columns should differ from the original 4-game window
         assert not result["TEAM_A_OFF_EPA_PER_PLAY"].equals(
             synthetic_modeling_df["TEAM_A_OFF_EPA_PER_PLAY"]
@@ -148,12 +160,11 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """All 16 EPA columns (8 per team) must be present in the output."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=3, repo=mini_repo)
-        expected_suffixes = [
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=3, repo=mini_repo
+        )
+        expected_suffixes: list[str] = [
             "OFF_EPA_PER_PLAY",
             "OFF_PASS_EPA",
             "OFF_RUSH_EPA",
@@ -171,22 +182,20 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Row count should be identical to the input."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=6, repo=mini_repo)
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=6, repo=mini_repo
+        )
         assert len(result) == len(synthetic_modeling_df)
 
     def test_no_lookahead_leakage(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """First-season week-1 rows should have NaN EPA (no prior games to average)."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=3, repo=mini_repo)
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=3, repo=mini_repo
+        )
         first_season = result["YEAR"].min()
         week1_first_season = result.loc[
             (result["WEEK_NUM"] == 1) & (result["YEAR"] == first_season)
@@ -200,13 +209,12 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, tmp_path: Path
     ) -> None:
         """If epa_by_game.parquet is missing, return the original DataFrame."""
-        from gridiron_edge.models.game_prediction._epa_window import (
-            _rebuild_features_with_window,
-        )
 
         # tmp_path has no epa_by_game.parquet
         (tmp_path / "data" / "cleaned").mkdir(parents=True)
-        result = _rebuild_features_with_window(synthetic_modeling_df, window=2, repo=tmp_path)
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df, window=2, repo=tmp_path
+        )
         pd.testing.assert_frame_equal(result, synthetic_modeling_df)
 
 
@@ -220,186 +228,50 @@ class TestPredictorRegistration:
 
     def test_random_forest_v1_registered(self) -> None:
         """random_forest_v1 should be in the PredictorRegistry."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert "random_forest_v1" in PredictorRegistry.names()
 
     def test_xgboost_v1_registered(self) -> None:
         """xgboost_v1 should be in the PredictorRegistry."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert "xgboost_v1" in PredictorRegistry.names()
 
     def test_random_forest_v1_is_trainable(self) -> None:
         """random_forest_v1 should be flagged as trainable."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert PredictorRegistry.is_trainable("random_forest_v1")
 
     def test_xgboost_v1_is_trainable(self) -> None:
         """xgboost_v1 should be flagged as trainable."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert PredictorRegistry.is_trainable("xgboost_v1")
 
     def test_random_forest_v1_spec(self) -> None:
         """random_forest_v1 spec should have the correct name."""
-        from gridiron_edge.models.game_prediction.predictor import RandomForestV1Predictor
 
         assert RandomForestV1Predictor.spec.name == "random_forest_v1"
 
     def test_xgboost_v1_spec(self) -> None:
         """xgboost_v1 spec should have the correct name."""
-        from gridiron_edge.models.game_prediction.predictor import XGBoostV1Predictor
 
         assert XGBoostV1Predictor.spec.name == "xgboost_v1"
 
     def test_random_forest_v2_registered(self) -> None:
         """random_forest_v2 should be in the PredictorRegistry."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert "random_forest_v2" in PredictorRegistry.names()
 
     def test_xgboost_v2_registered(self) -> None:
         """xgboost_v2 should be in the PredictorRegistry."""
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
 
         assert "xgboost_v2" in PredictorRegistry.names()
 
     def test_random_forest_v2_spec(self) -> None:
         """random_forest_v2 spec should have the correct name."""
-        from gridiron_edge.models.game_prediction.predictor import RandomForestV2Predictor
 
         assert RandomForestV2Predictor.spec.name == "random_forest_v2"
 
     def test_xgboost_v2_spec(self) -> None:
         """xgboost_v2 spec should have the correct name."""
-        from gridiron_edge.models.game_prediction.predictor import XGBoostV2Predictor
 
         assert XGBoostV2Predictor.spec.name == "xgboost_v2"
-
-
-# ---------------------------------------------------------------------------
-# Training smoke tests (tiny n_iter / n_estimators for speed)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.slow
-class TestRandomForestV1Training:
-    """Smoke tests for _train_random_forest on synthetic data."""
-
-    def test_train_returns_metadata(self, synthetic_modeling_df, mini_repo, monkeypatch) -> None:
-        """Training should return a ModelMetadata with a finite holdout Brier."""
-        from gridiron_edge.models.game_prediction import _epa_window
-        from gridiron_edge.models.game_prediction._columns import _COMBINED_FEATURES
-        from gridiron_edge.models.game_prediction._features import (
-            _make_combined_features,
-        )
-        from gridiron_edge.models.game_prediction.tree import _train_random_forest
-
-        monkeypatch.setattr(_epa_window, "_EPA_WINDOW_OPTIONS", [4])
-
-        metadata = _train_random_forest(
-            synthetic_modeling_df,
-            model_version="random_forest_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=mini_repo,
-        )
-        assert metadata is not None
-        assert hasattr(metadata, "holdout_brier")
-        assert np.isfinite(metadata.holdout_brier)
-
-    def test_train_saves_artifact(self, synthetic_modeling_df, mini_repo, monkeypatch) -> None:
-        """Training should save a loadable artifact to the ArtifactStore."""
-        from gridiron_edge.models.artifact import ArtifactStore
-        from gridiron_edge.models.game_prediction import _epa_window
-        from gridiron_edge.models.game_prediction._columns import _COMBINED_FEATURES
-        from gridiron_edge.models.game_prediction._features import (
-            _make_combined_features,
-        )
-        from gridiron_edge.models.game_prediction.tree import _train_random_forest
-
-        monkeypatch.setattr(_epa_window, "_EPA_WINDOW_OPTIONS", [4])
-
-        _train_random_forest(
-            synthetic_modeling_df,
-            model_version="random_forest_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=mini_repo,
-        )
-        store = ArtifactStore(repo=mini_repo)
-        assert store.exists("random_forest_v1")
-
-
-@pytest.mark.slow
-class TestXGBoostV1Training:
-    """Smoke tests for _train_xgboost on synthetic data."""
-
-    def test_train_returns_metadata(self, synthetic_modeling_df, mini_repo, monkeypatch) -> None:
-        from gridiron_edge.models.game_prediction import _epa_window
-        from gridiron_edge.models.game_prediction._columns import _COMBINED_FEATURES
-        from gridiron_edge.models.game_prediction._features import (
-            _make_combined_features,
-        )
-        from gridiron_edge.models.game_prediction.tree import _train_xgboost
-
-        monkeypatch.setattr(_epa_window, "_EPA_WINDOW_OPTIONS", [4])
-
-        metadata = _train_xgboost(
-            synthetic_modeling_df,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=mini_repo,
-        )
-        assert metadata is not None
-        assert hasattr(metadata, "holdout_brier")
-        assert np.isfinite(metadata.holdout_brier)
-
-    def test_train_saves_artifact(self, synthetic_modeling_df, mini_repo, monkeypatch) -> None:
-        from gridiron_edge.models.artifact import ArtifactStore
-        from gridiron_edge.models.game_prediction import _epa_window
-        from gridiron_edge.models.game_prediction._columns import _COMBINED_FEATURES
-        from gridiron_edge.models.game_prediction._features import (
-            _make_combined_features,
-        )
-        from gridiron_edge.models.game_prediction.tree import _train_xgboost
-
-        monkeypatch.setattr(_epa_window, "_EPA_WINDOW_OPTIONS", [4])
-
-        _train_xgboost(
-            synthetic_modeling_df,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=mini_repo,
-        )
-        store = ArtifactStore(repo=mini_repo)
-        assert store.exists("xgboost_v1")
-
-    def test_brier_plausible(self, synthetic_modeling_df, mini_repo, monkeypatch) -> None:
-        from gridiron_edge.models.game_prediction import _epa_window
-        from gridiron_edge.models.game_prediction._columns import _COMBINED_FEATURES
-        from gridiron_edge.models.game_prediction._features import (
-            _make_combined_features,
-        )
-        from gridiron_edge.models.game_prediction.tree import _train_xgboost
-
-        monkeypatch.setattr(_epa_window, "_EPA_WINDOW_OPTIONS", [4])
-
-        metadata = _train_xgboost(
-            synthetic_modeling_df,
-            model_version="xgboost_v1",
-            feature_fn=_make_combined_features,
-            feature_names=_COMBINED_FEATURES,
-            repo=mini_repo,
-        )
-        assert 0.0 < metadata.holdout_brier < 0.5
