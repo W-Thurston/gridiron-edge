@@ -128,11 +128,10 @@ uv run gridiron run-data-pipeline \
   --all-years \
   --upcoming-season 2026 \
   --fit-elo-all-years \
-  --season-year 2025-2026 \
-  --skip fetch-odds
+  --season-year 2025-2026
 ```
 
-~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix. Skip `fetch-odds` until the unicode minus bug is fixed (see Sharp Edges).
+ ~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix.
 
 ### Weekly refresh (during season)
 
@@ -230,6 +229,7 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Model selection + reporting | `evaluation/select.py` |
 | Weather ingest (idempotent) | `ingest/weather/openweather.py` |
 | DK odds ingest | `ingest/odds/draftkings.py` |
+| DK game_id resolution | ingest/odds/_game_id.py |
 
 All paths relative to `src/gridiron_edge/`.
 
@@ -302,10 +302,6 @@ Each workstream is expected to bring its modules to 80%+ coverage.
 
 ## Known sharp edges
 
-### DK odds unicode minus (`fetch-odds`)
-
-Some DraftKings API responses contain a unicode minus sign (`−`, U+2212) rather than a hyphen-minus in odds values (e.g. `−205`). This causes `ValueError: invalid literal for int()`. Fix pending in `_norm_display_odds_american` in `ingest/odds/draftkings.py` — move the `str.replace("\u2212", "-")` call before the `int()` cast. Until fixed, use `--skip fetch-odds`.
-
 ### Missing stadium coordinates (2026-2027)
 
 12 new/renamed stadia for the 2026-2027 season are not yet in `NFL_stadium_reference.csv`. Weather ingest skips affected games. Add rows with columns `STADIUM`, `HOME_TEAM`, `YEAR`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`:
@@ -333,7 +329,7 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 ## Operational checklist (weekly, during season)
 
 1. `uv run gridiron run-data-pipeline` — refresh data + features
-2. `uv run gridiron ingest dk-odds` — pull current week odds *(once DK unicode bug fixed)*
+2. `uv run gridiron ingest dk-odds` — pull current week odds
 3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N`
 4. `uv run gridiron sim run`
 5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`

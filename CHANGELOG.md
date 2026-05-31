@@ -3,6 +3,38 @@
 What has been built and when. Newest first.
 
 ---
+
+## W1: Quick Wins & Unblocking — 2026-05-31
+
+### DK Unicode Minus Fix
+- `ingest/odds/draftkings.py` → `_norm_display_odds_american()`: handle Unicode
+  minus (U+2212) before `isdigit()` check and `int()` conversion. DraftKings API
+  returns `"−150"` with U+2212 instead of ASCII hyphen; this caused `ValueError`
+  on all negative odds parsing.
+
+### DK `game_id` Resolver
+- New module: `ingest/odds/_game_id.py`
+- `team_long_to_short()`: reverse lookup from `NFLVERSE_SHORT_TO_LONG`, with
+  historical relocation codes (`OAK`, `SD`, `STL`) deprioritized so current
+  codes (`LV`, `LAC`, `LA`) always win
+- `build_game_id()`: constructs canonical `YYYY_WW_AWAY_HOME` format
+- `resolve_dk_game_ids()`: vectorized column addition supporting both
+  intermediate (`home_team`/`away_team`) and wide (`team`/`opponent`/`location`)
+  DataFrame formats
+
+### End-to-End Odds Join Validation
+- Integration test confirms predictions ↔ odds join on `game_id` at 100% match
+  rate on synthetic data, with left-join surfacing unmatched games as nulls
+
+### Tests added (25)
+- `test_draftkings_parse.py` (9) — Unicode minus, positive, int/float passthrough,
+  fallback keys, non-numeric string, missing keys
+- `test_game_id.py` (13) — team lookup, all 32 teams resolve, build_game_id format,
+  week padding, unknown teams → None, both DataFrame formats, column preservation
+- `test_odds_join.py` (3) — canonical format validation, inner join match rate,
+  left join null surfacing
+
+
 ## W0 Complete: Test Framework Build-Out — 2026-05-31
 
 ### Summary

@@ -55,32 +55,31 @@ workstream deliverable should include corresponding tests._
 
 ---
 
-### W1: Quick Wins & Unblocking
+### W1: Quick Wins & Unblocking ✅ DONE
 
-*Unblock before build. These are trivial fixes that gate major downstream work.*
+*Unblock before build. Trivial fixes that gate major downstream work.*
 
 **ROADMAP ref:** W1
 
-- [ ] **Fix DK unicode minus bug**
-     - File: `ingest/odds/draftkings.py` -> `_norm_display_odds_american()`
-     - Issue: Unicode minus (U+2212) not handled, breaks odds parsing
+- [x] **Fix DK unicode minus bug**
+     - File: `ingest/odds/draftkings.py` → `_norm_display_odds_american()`
+     - Issue: Unicode minus (U+2212) not handled, broke odds parsing
      - Fix: Replace unicode minus with ASCII hyphen before int conversion
-     - Effort: < 30 minutes
      - Unlocks: All downstream odds usage
 
-- [ ] **Build DK `game_id` resolver**
-     - Map DraftKings event identifiers to canonical `YYYY_WW_AWAY_HOME` format
-     - Approach options:
-       a. Parse team names from DK event title + match to schedule by date/teams
-       b. Build a lookup table from DK event metadata
-     - Test: Join dk_odds_log to games table, verify match rate > 95%
-     - Effort: 1-2 sessions
+- [x] **Build DK `game_id` resolver**
+     - New module: `ingest/odds/_game_id.py`
+     - Maps DraftKings event identifiers to canonical `YYYY_WW_AWAY_HOME` format
+     - Reverse lookup from `NFLVERSE_SHORT_TO_LONG` with relocation handling
+     - Supports both intermediate and wide DataFrame formats
      - Unlocks: Edge calculations, CLV, all market intelligence
 
-- [ ] **Validate end-to-end odds join**
-     - After above fixes, run: load predictions_log + dk_odds_log, join on game_id
-     - Confirm: predictions and odds align for the same games
-     - This proves the data spine is connected
+- [x] **Validate end-to-end odds join**
+     - Integration test: predictions_log + dk_odds join on game_id
+     - Confirmed: 100% match rate on synthetic data, nulls surface for missing odds
+     - Proves: Data spine is connected
+
+**Result:** 25 new tests | All passing | Pushed to GitHub
 
 ---
 
@@ -275,11 +274,11 @@ workstream deliverable should include corresponding tests._
 
 | Workstream | Blocked By | Notes |
 |------------|-----------|-------|
-| W4: Player Data & First Props | W1 (for odds context) | Can start player data ingestion independently |
+| W4: Player Data & First Props | None (W1 ✅) | W1 complete — can start immediately |
 | W4.5: Scenario Engine | W2 + W4 | Can start Phase A (impact quantification) alongside W4 |
-| W5: Edge Engine | W1 + W2 + W3 | The convergence point -- this is where it all comes together |
-| W6: Portfolio & Bet Tracking | W1 + W3 + W5 | Build after edge reports are working |
-| W7: Multi-Book Odds | W1 + W3 + odds source decision | Deferred pending data source evaluation |
+| W5: Edge Engine | W2 + W3 (W1 ✅) | The convergence point -- this is where it all comes together |
+| W6: Portfolio & Bet Tracking | W3 + W5 (W1 ✅) | Build after edge reports are working |
+| W7: Multi-Book Odds | W3 + odds source decision (W1 ✅) | Deferred pending data source evaluation |
 | W8: API Serving Layer | W2 + W5 | Backend must be producing useful data first |
 | W9: Frontend | W8 | Prototype exists, wiring requires API |
 | W10: Real-Time / Live | W5 + W7 + W8 | Most complex, least urgent |
@@ -291,3 +290,4 @@ workstream deliverable should include corresponding tests._
 | Date | Change |
 |------|---------|
 | 2026-05-30 | Rewrote PLAN.md to align with ROADMAP.md workstream structure. Added feature engineering priority matrix tasks. Added W1-W3 concrete tasks. |
+| 2026-05-31 | Marked W0 and W1 as DONE. Updated backlog dependency table to reflect W1 completion. |
