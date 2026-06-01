@@ -18,16 +18,28 @@ Output schema (``epa_by_game.parquet``)::
     off_rush_epa        float   Offensive rushing EPA/play
     off_success_rate    float   Fraction of offensive plays with EPA > 0
     off_plays           int     Total offensive plays (pass + rush)
+    off_explosive_rate  float   Fraction of offensive plays gaining 20+ yds
+                                (pass) or 10+ yds (rush)
+    off_pass_success_rate   float   Pass plays with EPA > 0 as fraction
+    off_rush_success_rate   float   Rush plays with EPA > 0 as fraction
+    off_third_down_pct      float   3rd-down conversion rate
+    off_redzone_td_pct      float   TD rate on red zone plays (yardline <= 20)
+    off_turnover_rate       float   Interceptions + fumbles lost per play
+    off_sack_rate           float   Sacks per dropback
     def_epa_per_play    float   Defensive EPA/play allowed
     def_pass_epa        float   Defensive passing EPA/play allowed
     def_rush_epa        float   Defensive rushing EPA/play allowed
     def_success_rate    float   Fraction of opponent plays with EPA > 0
     def_plays           int     Total defensive plays faced
-    off_explosive_rate  float   Fraction of offensive plays gaining 20+ yds
-                                (pass) or 10+ yds (rush)
     def_explosive_rate  float   Fraction of opponent plays gaining 20+ yds
                                 (pass) or 10+ yds (rush) -- big-play
                                 vulnerability
+    def_pass_success_rate   float   Opponent pass success rate allowed
+    def_rush_success_rate   float   Opponent rush success rate allowed
+    def_third_down_pct      float   Opponent 3rd-down conversion rate allowed
+    def_redzone_td_pct      float   Opponent red zone TD rate allowed
+    def_turnover_rate       float   Opponent turnovers forced per play
+    def_sack_rate           float   Sacks generated per opponent dropback
 
 Note on EPA reliability: nflfastR EPA model is reliable from 2006 onward.
 Seasons before 2006 will have NaN EPA values and are handled gracefully.
@@ -82,24 +94,16 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
     team_col: Literal["defteam", "posteam"] = "posteam" if is_offense else "defteam"
     prefix: Literal["def", "off"] = "off" if is_offense else "def"
 
+    group_keys: list[str] = ["game_id", "season", "week", team_col]
+
     pass_mask: Series[bool] = df["pass"] == 1
     rush_mask: Series[bool] = df["rush"] == 1
 
-    grouped: DataFrameGroupBy = df.groupby(["game_id", "season", "week", team_col])
+    grouped: DataFrameGroupBy = df.groupby(group_keys)
 
     total_epa: Series = grouped["epa"].mean().rename(f"{prefix}_epa_per_play")
-    pass_epa: Series = (
-        df[pass_mask]
-        .groupby(["game_id", "season", "week", team_col])["epa"]
-        .mean()
-        .rename(f"{prefix}_pass_epa")
-    )
-    rush_epa: Series = (
-        df[rush_mask]
-        .groupby(["game_id", "season", "week", team_col])["epa"]
-        .mean()
-        .rename(f"{prefix}_rush_epa")
-    )
+    pass_epa: Series = df[pass_mask].groupby(group_keys)["epa"].mean().rename(f"{prefix}_pass_epa")
+    rush_epa: Series = df[rush_mask].groupby(group_keys)["epa"].mean().rename(f"{prefix}_rush_epa")
     success_rate: Series = grouped["success"].mean().rename(f"{prefix}_success_rate")
     n_plays: Series[int] = grouped["epa"].count().rename(f"{prefix}_plays")
 
@@ -111,13 +115,69 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
     )
     explosive_rate: Series = (
         df.assign(_explosive=explosive.astype(int))
-        .groupby(["game_id", "season", "week", team_col])["_explosive"]
+        .groupby(group_keys)["_explosive"]
         .mean()
         .rename(f"{prefix}_explosive_rate")
     )
 
+    # -- Pass/rush success rate split --
+    pass_success_rate: Series = (
+        df[pass_mask].groupby(group_keys)["success"].mean().rename(f"{prefix}_pass_success_rate")
+    )
+    rush_success_rate: Series = (
+        df[rush_mask].groupby(group_keys)["success"].mean().rename(f"{prefix}_rush_success_rate")
+    )
+
+    # -- 3rd-down conversion rate --
+    third_down_plays: DataFrame = df.loc[df["down"] == 3, :]
+    third_down_converted: Series[bool] = (third_down_plays["first_down"] == 1) | (
+        third_down_plays["touchdown"] == 1
+    )
+    third_down_pct: Series = (
+        third_down_plays.assign(_converted=third_down_converted.astype(int))
+        .groupby(group_keys)["_converted"]
+        .mean()
+        .rename(f"{prefix}_third_down_pct")
+    )
+
+    # -- Red zone TD rate (per red zone play, yardline_100 <= 20) --
+    redzone_plays: DataFrame = df.loc[df["yardline_100"] <= 20, :]
+    redzone_td_pct: Series = (
+        redzone_plays.groupby(group_keys)["touchdown"].mean().rename(f"{prefix}_redzone_td_pct")
+    )
+
+    # -- Turnover rate (interceptions + fumbles lost per play) --
+    turnover: Series[bool] = (df["interception"] == 1) | (df["fumble_lost"] == 1)
+    turnover_rate: Series = (
+        df.assign(_turnover=turnover.astype(int))
+        .groupby(group_keys)["_turnover"]
+        .mean()
+        .rename(f"{prefix}_turnover_rate")
+    )
+
+    # -- Sack rate (sacks per dropback) --
+    sack_rate: Series = (
+        df[pass_mask].groupby(group_keys)["sack"].mean().rename(f"{prefix}_sack_rate")
+    )
+
     result: DataFrame = (
-        pd.concat([total_epa, pass_epa, rush_epa, success_rate, explosive_rate, n_plays], axis=1)
+        pd.concat(
+            [
+                total_epa,
+                pass_epa,
+                rush_epa,
+                success_rate,
+                pass_success_rate,
+                rush_success_rate,
+                explosive_rate,
+                third_down_pct,
+                redzone_td_pct,
+                turnover_rate,
+                sack_rate,
+                n_plays,
+            ],
+            axis=1,
+        )
         .reset_index()
         .rename(columns={team_col: "team"})
     )
@@ -158,6 +218,13 @@ def aggregate_epa(
         "epa",
         "success",
         "yards_gained",
+        "down",
+        "first_down",
+        "touchdown",
+        "interception",
+        "fumble_lost",
+        "yardline_100",
+        "sack",
     ]
 
     pbp: DataFrame = load_pbp(seasons=seasons, repo=resolved_repo, columns=columns_needed)

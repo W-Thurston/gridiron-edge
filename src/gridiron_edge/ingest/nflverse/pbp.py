@@ -75,6 +75,7 @@ _KEEP_COLUMNS: Final[list[str]] = [
     "touchdown",
     "interception",
     "fumble_lost",
+    "sack",
     "penalty",
     "home_team",
     "away_team",

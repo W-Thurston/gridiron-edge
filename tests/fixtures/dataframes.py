@@ -236,11 +236,27 @@ def make_epa_by_game(
                         "off_rush_epa": rng.uniform(-0.2, 0.2),
                         "off_success_rate": rng.uniform(0.3, 0.6),
                         "off_explosive_rate": rng.uniform(0.03, 0.15),
+                        # After off_success_rate:
+                        "off_pass_success_rate": rng.uniform(0.30, 0.60),
+                        "off_rush_success_rate": rng.uniform(0.30, 0.50),
+                        # After off_explosive_rate:
+                        "off_third_down_pct": rng.uniform(0.25, 0.50),
+                        "off_redzone_td_pct": rng.uniform(0.40, 0.70),
+                        "off_turnover_rate": rng.uniform(0.01, 0.06),
+                        "off_sack_rate": rng.uniform(0.04, 0.10),
                         "def_explosive_rate": rng.uniform(0.03, 0.15),
                         "def_epa_per_play": rng.uniform(-0.3, 0.2),
                         "def_pass_epa": rng.uniform(-0.4, 0.3),
                         "def_rush_epa": rng.uniform(-0.2, 0.2),
                         "def_success_rate": rng.uniform(0.3, 0.6),
+                        # After def_success_rate:
+                        "def_pass_success_rate": rng.uniform(0.30, 0.60),
+                        "def_rush_success_rate": rng.uniform(0.30, 0.50),
+                        # After def_explosive_rate:
+                        "def_third_down_pct": rng.uniform(0.25, 0.50),
+                        "def_redzone_td_pct": rng.uniform(0.40, 0.70),
+                        "def_turnover_rate": rng.uniform(0.01, 0.06),
+                        "def_sack_rate": rng.uniform(0.04, 0.10),
                     }
                 )
     return pd.DataFrame(rows)

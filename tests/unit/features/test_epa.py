@@ -22,8 +22,8 @@ class TestEpaConstants:
     def test_default_rolling_window_is_4(self) -> None:
         assert DEFAULT_ROLLING_WINDOW == 4
 
-    def test_epa_cols_has_10_metrics(self) -> None:
-        assert len(EPA_COLS) == 10
+    def test_epa_cols_has_22_metrics(self) -> None:
+        assert len(EPA_COLS) == 22
 
     def test_epa_cols_contains_expected_metrics(self) -> None:
         expected: set[str] = {
@@ -31,12 +31,24 @@ class TestEpaConstants:
             "off_pass_epa",
             "off_rush_epa",
             "off_success_rate",
+            "off_pass_success_rate",
+            "off_rush_success_rate",
             "off_explosive_rate",
+            "off_third_down_pct",
+            "off_redzone_td_pct",
+            "off_turnover_rate",
+            "off_sack_rate",
             "def_epa_per_play",
             "def_pass_epa",
             "def_rush_epa",
             "def_success_rate",
+            "def_pass_success_rate",
+            "def_rush_success_rate",
             "def_explosive_rate",
+            "def_third_down_pct",
+            "def_redzone_td_pct",
+            "def_turnover_rate",
+            "def_sack_rate",
         }
         assert set(EPA_COLS) == expected
 
@@ -45,17 +57,17 @@ class TestTeamEpaFeatureSpec:
     def test_spec_name(self) -> None:
         assert TeamEpaFeature().spec.name == "epa"
 
-    def test_produces_20_columns(self) -> None:
-        """10 EPA metrics x 2 teams = 20 columns."""
+    def test_produces_44_columns(self) -> None:
+        """22 EPA metrics x 2 teams = 44 columns."""
 
-        assert len(TeamEpaFeature().spec.produces) == 20
+        assert len(TeamEpaFeature().spec.produces) == 44
 
     def test_produces_team_a_and_team_b_prefixes(self) -> None:
         produces: Sequence[str] = TeamEpaFeature().spec.produces
         team_a: list[str] = [c for c in produces if c.startswith("TEAM_A_")]
         team_b: list[str] = [c for c in produces if c.startswith("TEAM_B_")]
-        assert len(team_a) == 10
-        assert len(team_b) == 10
+        assert len(team_a) == 22
+        assert len(team_b) == 22
 
     def test_registered_under_epa(self) -> None:
         assert FeatureRegistry.get("epa") is TeamEpaFeature

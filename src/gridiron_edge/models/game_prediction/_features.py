@@ -9,10 +9,10 @@ reference the functions defined in this module.
 Public API
 ----------
 FEATURE_SETS        dict[str, FeatureSet]   — registry of named feature sets
-_make_diff_features         DataFrame -> DataFrame (12 cols)
-_make_raw_features          DataFrame -> DataFrame (23 cols)
-_make_combined_features     DataFrame -> DataFrame (34 cols)
-_make_expanded_features     DataFrame -> DataFrame (71 cols, Phase 20e)
+_make_diff_features         DataFrame -> DataFrame (24 cols)
+_make_raw_features          DataFrame -> DataFrame (47 cols)
+_make_combined_features     DataFrame -> DataFrame (70 cols)
+_make_expanded_features     DataFrame -> DataFrame (107 cols, Phase 20e)
 _prepare_data               DataFrame -> train/holdout split tuple
 _is_trained                 str, Path | None -> bool
 """
@@ -124,22 +124,22 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 # Callers import FEATURE_SETS["combined"] rather than the raw constants.
 FEATURE_SETS: dict[str, FeatureSet] = {
     "diff": FeatureSet(
-        name="diff_12",
+        name="diff_24",
         feature_fn=_make_diff_features,
         feature_names=_DIFF_FEATURES,
     ),
     "raw": FeatureSet(
-        name="raw_226",
+        name="raw_47",
         feature_fn=_make_raw_features,
         feature_names=list(_RAW_FEATURES),
     ),
     "combined": FeatureSet(
-        name="combined_38",
+        name="combined_70",
         feature_fn=_make_combined_features,
         feature_names=_COMBINED_FEATURES,
     ),
     "expanded": FeatureSet(
-        name="expanded_71",
+        name="expanded_107",
         feature_fn=_make_expanded_features,
         feature_names=_EXPANDED_FEATURES,
     ),

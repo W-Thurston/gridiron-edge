@@ -63,12 +63,24 @@ EPA_COLS: Final[list[str]] = [
     "off_pass_epa",
     "off_rush_epa",
     "off_success_rate",
+    "off_pass_success_rate",
+    "off_rush_success_rate",
     "off_explosive_rate",
+    "off_third_down_pct",
+    "off_redzone_td_pct",
+    "off_turnover_rate",
+    "off_sack_rate",
     "def_epa_per_play",
     "def_pass_epa",
     "def_rush_epa",
     "def_success_rate",
+    "def_pass_success_rate",
+    "def_rush_success_rate",
     "def_explosive_rate",
+    "def_third_down_pct",
+    "def_redzone_td_pct",
+    "def_turnover_rate",
+    "def_sack_rate",
 ]
 
 # Private alias kept for internal use within this module
@@ -113,8 +125,8 @@ def _build_rolling_epa(
     rolled_parts: list[DataFrame] = []
     for _team, group in df.groupby("team", sort=False):
         sorted_group: DataFrame = group.sort_values(["season", "week"]).copy()
-        available_cols = [c for c in _EPA_COLS if c in sorted_group.columns]
-        missing_cols = [c for c in _EPA_COLS if c not in sorted_group.columns]
+        available_cols: list[str] = [c for c in _EPA_COLS if c in sorted_group.columns]
+        missing_cols: list[str] = [c for c in _EPA_COLS if c not in sorted_group.columns]
 
         if available_cols:
             rolled_vals = (

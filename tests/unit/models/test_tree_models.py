@@ -60,12 +60,24 @@ def synthetic_modeling_df() -> pd.DataFrame:
         "OFF_PASS_EPA",
         "OFF_RUSH_EPA",
         "OFF_SUCCESS_RATE",
+        "OFF_PASS_SUCCESS_RATE",
+        "OFF_RUSH_SUCCESS_RATE",
         "OFF_EXPLOSIVE_RATE",
+        "OFF_THIRD_DOWN_PCT",
+        "OFF_REDZONE_TD_PCT",
+        "OFF_TURNOVER_RATE",
+        "OFF_SACK_RATE",
         "DEF_EPA_PER_PLAY",
         "DEF_PASS_EPA",
         "DEF_RUSH_EPA",
         "DEF_SUCCESS_RATE",
+        "DEF_PASS_SUCCESS_RATE",
+        "DEF_RUSH_SUCCESS_RATE",
         "DEF_EXPLOSIVE_RATE",
+        "DEF_THIRD_DOWN_PCT",
+        "DEF_REDZONE_TD_PCT",
+        "DEF_TURNOVER_RATE",
+        "DEF_SACK_RATE",
     ]
 
     df = pd.DataFrame(
@@ -109,12 +121,24 @@ def synthetic_epa_by_game() -> pd.DataFrame:
                         "off_pass_epa": rng.uniform(-0.3, 0.4),
                         "off_rush_epa": rng.uniform(-0.2, 0.2),
                         "off_success_rate": rng.uniform(0.3, 0.6),
+                        "off_pass_success_rate": rng.uniform(0.30, 0.60),
+                        "off_rush_success_rate": rng.uniform(0.30, 0.50),
                         "off_explosive_rate": rng.uniform(0.03, 0.12),
+                        "off_third_down_pct": rng.uniform(0.25, 0.50),
+                        "off_redzone_td_pct": rng.uniform(0.40, 0.70),
+                        "off_turnover_rate": rng.uniform(0.01, 0.06),
+                        "off_sack_rate": rng.uniform(0.04, 0.10),
                         "def_epa_per_play": rng.uniform(-0.3, 0.2),
                         "def_pass_epa": rng.uniform(-0.4, 0.3),
                         "def_rush_epa": rng.uniform(-0.2, 0.2),
                         "def_success_rate": rng.uniform(0.3, 0.6),
+                        "def_pass_success_rate": rng.uniform(0.30, 0.60),
+                        "def_rush_success_rate": rng.uniform(0.30, 0.50),
                         "def_explosive_rate": rng.uniform(0.03, 0.12),
+                        "def_third_down_pct": rng.uniform(0.25, 0.50),
+                        "def_redzone_td_pct": rng.uniform(0.40, 0.70),
+                        "def_turnover_rate": rng.uniform(0.01, 0.06),
+                        "def_sack_rate": rng.uniform(0.04, 0.10),
                     }
                 )
     return pd.DataFrame(rows)
@@ -163,7 +187,7 @@ class TestRebuildFeaturesWithWindow:
     def test_output_has_all_expected_epa_columns(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
-        """All 20 EPA columns (10 per team) must be present in the output."""
+        """All 44 EPA columns (22 per team) must be present in the output."""
 
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=3, repo=mini_repo
