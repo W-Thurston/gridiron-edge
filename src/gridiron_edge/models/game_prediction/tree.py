@@ -813,3 +813,18 @@ XGBoostV2Predictor = _make_tree_variant(
     feature_set=FEATURE_SETS["expanded"],
     model_type="xgb",
 )
+
+
+RandomForestV3Predictor = _make_tree_variant(
+    "random_forest_v3",
+    "Random Forest — expanded Phase 20e features (107), PBP efficiency batch",
+    feature_set=FEATURE_SETS["expanded"],
+    model_type="rf",
+)
+
+XGBoostV3Predictor = _make_tree_variant(
+    "xgboost_v3",
+    "XGBoost gradient boosting — expanded Phase 20e features (107), PBP efficiency batch",
+    feature_set=FEATURE_SETS["expanded"],
+    model_type="xgb",
+)

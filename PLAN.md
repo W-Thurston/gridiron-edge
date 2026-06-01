@@ -105,66 +105,30 @@ _Build the market math package. Pure functions, no data dependencies._
 
 ---
 
-### Phase 20e: Feature Engineering (Continuous)
+### Phase 20e: Feature Engineering (Continuous) — Priorities 1–7, 14–15 ✅ DONE
 
 *Runs in parallel with everything else. Each feature follows the existing `FeatureSpec` + `Feature` protocol.*
 
 **ROADMAP ref:** Ongoing / intersects W2, W4
 **FEATURES.md ref:** Priority Matrix (top 15), Domains 1-6
 
-#### Quick wins (existing data, minimal wiring)
+**Result:** EPA_COLS 8 → 22 │ _EXPANDED_FEATURES 63 → 107 │ All passing │ Pushed to GitHub
 
-- [ ] **Rest differential** (Domain 5)
-     - `rest_diff = home_days_rest - away_days_rest`
-     - Already have each team's rest -- just subtract
-     - File: `features/team/rest.py` (extend existing)
+##### Completed
+- [x] **Batch 1:** Rest differential + explosive play rate (+8 model columns)
+- [x] **Batch 2:** Weather & venue wiring — verified already complete in code
+- [x] **Batch 3:** PBP efficiency features — pass/rush success rate splits,
+      3rd-down conversion %, red zone TD %, turnover rate, sack rate (+36 model columns)
+- [x] Added `sack` to `_KEEP_COLUMNS` in PBP ingest; re-ingested all seasons
+- [x] Design pattern established: add metric to `_agg_side()` + add to `EPA_COLS` → auto-propagates
 
-- [ ] **Explosive play rate** (Domain 1)
-     - % of plays gaining 20+ yds (pass) or 10+ yds (rush)
-     - Source: PBP data (already ingested)
-     - File: new `features/team/explosiveness.py`
-
-#### Weather & venue wiring (highest priority -- data exists, features don't)
-
-- [ ] **Wire weather into prediction features** (Domain 6, Priority #1)
-     - OpenWeatherMap ingest exists and is idempotent
-     - Need: feature module that reads weather data and produces model-ready columns
-     - Columns: `temperature_f`, `wind_mph`, `precipitation_flag`
-     - File: extend `features/team/weather.py` or verify it's fully wired
-
-- [ ] **Wire dome/neutral/altitude into features** (Domain 5, Priority #2)
-     - Already in schema (v3+) but not confirmed as prediction features
-     - `is_dome`, `is_neutral_site`, `altitude_ft`
-     - Indoor override: zero out weather features when dome=True
-     - File: extend `features/team/venue_hfa.py`
-
-#### Efficiency features from PBP (low cost, game model enrichment)
-
-- [ ] **Success rate (pass/rush split)** (Domain 1, Priority #3)
-     - % of plays with positive EPA, split by pass and rush
-     - Rolling window (match EPA window convention)
-     - File: new `features/team/success_rate.py`
-
-- [ ] **3rd down conversion % (off + def)** (Domains 1+2, Priority #4)
-     - Off: conversions / 3rd down attempts
-     - Def: opponent conversions / opponent 3rd down attempts
-     - Rolling window
-     - File: new `features/team/third_down.py`
-
-- [ ] **Red zone TD % (off + def)** (Domains 1+2, Priority #5)
-     - Off: TDs / red zone trips
-     - Def: opponent TDs / opponent red zone trips
-     - File: new `features/team/red_zone.py`
-
-- [ ] **Turnover differential / game** (Domain 3, Priority #6)
-     - (Forced fumbles + INTs) - (Fumbles lost + INTs thrown) per game
-     - Rolling window
-     - File: new `features/team/turnovers.py`
-
-- [ ] **Sack rate (off + def)** (Domains 1+2, Priority #7)
-     - Off: sacks allowed / dropbacks
-     - Def: sacks / opponent dropbacks
-     - File: new `features/team/sacks.py`
+##### Deferred to later (Priorities 8–13, require new data sources or complex engineering)
+- [ ] Passing efficiency (CPOE, air yards) — needs additional PBP column wiring
+- [ ] Pace / play count — needs drive-level data
+- [ ] Score differential / garbage time filtering — needs game-state context
+- [ ] Penalty rate — low signal, low priority
+- [ ] Special teams EPA — separate play type aggregation
+- [ ] Coaching stability — needs external data source
 
 #### For each new feature:
 
@@ -242,8 +206,8 @@ _Build the market math package. Pure functions, no data dependencies._
 
 *Items from the existing codebase that should be cleaned up when convenient.*
 
-- [ ] Verify weather feature is fully wired end-to-end (ingest -> transform -> feature -> model)
-- [ ] Confirm dome/neutral/altitude fields flow through the full pipeline
+- [x] ~~Verify weather feature is fully wired end-to-end~~ ✅ Confirmed during Phase 20e
+- [x] ~~Confirm dome/neutral/altitude fields flow through the full pipeline~~ ✅ Confirmed during Phase 20e
 - [ ] Review dataset registry for any stale or unused keys
 - [ ] Ensure all tests pass after feature additions (run full test suite)
 - [ ] Update HANDOFF.md after each significant change
@@ -274,3 +238,4 @@ _Build the market math package. Pure functions, no data dependencies._
 | 2026-05-30 | Rewrote PLAN.md to align with ROADMAP.md workstream structure. Added feature engineering priority matrix tasks. Added W1-W3 concrete tasks. |
 | 2026-05-31 | Marked W0 and W1 as DONE. Updated backlog dependency table to reflect W1 completion. |
 | 2026-05-31 | Marked W3 as DONE. Updated backlog dependency table to reflect W3 completion. Reordered Phase 20e before W2 (quick-win features first improves model before spread calibration). |
+| 2026-06-01 | Phase 20e Priorities 1–7 + 14–15 marked DONE. Feature count 63 → 107. EPA_COLS 8 → 22. Three batches: rest diff + explosive (Batch 1), weather/venue verified (Batch 2), PBP efficiency (Batch 3). Added sack to PBP ingest. Next focus: W2. |

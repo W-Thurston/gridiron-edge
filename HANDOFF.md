@@ -90,6 +90,24 @@ Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
 
 ## Key design decisions
 
+#### EPA aggregation is the single PBP funnel
+
+All PBP-derived game-level features flow through **one transform**:
+
+- `transform/clean/epa.py` → `_agg_side()`
+- Output: `epa_by_game.parquet`
+
+The feature layer (`features/team/epa.py`) reads this dataset and applies rolling windows.
+
+**Adding a new PBP feature requires only:**
+1. Add computation to `_agg_side()`
+2. Add column name to `EPA_COLS`
+
+Everything else auto-propagates through:
+`_columns.py → feature sets → model inputs`
+
+This pattern was fully validated during Phase 20e (22 EPA metrics, 107 total features).
+
 ### `GAME_LOCATION` schema
 
 Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). The old PFR-era `"NULL_VALUE"` sentinel was retired. Missing data fields (GAMETIME, STADIUM, ROOF, SURFACE) use `""`.
@@ -105,6 +123,16 @@ Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). 
 ### Prediction archive `is_backfilled`
 
 `predictions_log.parquet` has a boolean `is_backfilled` column. Historical backfill predictions set it to `True`; live pre-game predictions set it to `False`. Filter on this rather than `predicted_at` for live-vs-backfill analysis.
+
+#### PBP ingest column expansion
+
+`sack` was added to `_KEEP_COLUMNS` during Phase 20e (Batch 3).
+
+When `_KEEP_COLUMNS` changes:
+- Existing PBP parquet files must be deleted
+- Re-ingest required via: `gridiron ingest pbp --all-years`
+
+This ensures new columns are physically present in stored parquet files.
 
 ### Weather ingest is idempotent
 

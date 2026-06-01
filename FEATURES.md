@@ -33,13 +33,13 @@
 | EPA/play (overall) | Expected points added per play, rolling window | Game, Props | 🔴 High | Low | ✅ Done |
 | EPA/play (pass) | Passing EPA per dropback | Game, Props | 🔴 High | Low | ✅ Done |
 | EPA/play (rush) | Rushing EPA per carry | Game, Props | 🔴 High | Low | ✅ Done |
-| Success rate (overall) | % of plays gaining positive EPA | Game | 🟡 Med | Low | ❌ |
-| Success rate (pass/rush split) | Passing vs rushing success rate | Game, Props | 🟡 Med | Low | ❌ |
-| Explosive play rate | % of plays gaining 20+ yds (pass) or 10+ yds (rush) | Game | 🟡 Med | Low | ❌ |
+| Success rate (overall) | % of plays gaining positive EPA | Game | 🟡 Med | Low | ✅ Done |
+| Success rate (pass/rush split) | Passing vs rushing success rate | Game, Props | 🟡 Med | Low | ✅ Done |
+| Explosive play rate | % of plays gaining 20+ yds (pass) or 10+ yds (rush) | Game | 🟡 Med | Low | ✅ Done |
 | Scoring rate | Points per drive | Game | 🟡 Med | Low | ❌ |
-| Red zone TD % | TD rate when inside opponent 20 | Game | 🟡 Med | Low | ❌ |
+| Red zone TD % | TD rate when inside opponent 20 | Game | 🟡 Med | Low | ✅ Done |
 | Red zone attempts/game | Volume of red zone trips | Game, Props | 🟡 Med | Low | ❌ |
-| 3rd down conversion % | Overall and by distance bucket | Game | 🟡 Med | Low | ❌ |
+| 3rd down conversion % | Overall and by distance bucket | Game | 🟡 Med | Low | ✅ Done |
 | Plays per game / pace | Tempo proxy — affects volume stats | Game, Props | 🟡 Med | Low | ❌ |
 | Time of possession | Average TOP | Game | 🟢 Low | Low | ❌ |
 | Pass rate (neutral script) | Pass-heavy when game is close? | Props | 🟡 Med | Med | ❌ |
@@ -60,15 +60,15 @@
 | Def EPA/play (overall) | Defensive expected points allowed per play | Game, Props | 🔴 High | Low | ✅ Done |
 | Def EPA/play (pass) | Against the pass | Game, Props | 🔴 High | Low | ✅ Done |
 | Def EPA/play (rush) | Against the run | Game, Props | 🔴 High | Low | ✅ Done |
-| Def success rate | % of opponent plays held to negative EPA | Game | 🟡 Med | Low | ❌ |
+| Def success rate | % of opponent plays held to negative EPA | Game | 🟡 Med | Low | ✅ Done |
 | Pressure rate | QB pressures / dropbacks (requires charting data) | Game, Props | 🔴 High | High | ❌ |
-| Sack rate | Sacks / dropbacks | Game, Props | 🟡 Med | Low | ❌ |
+| Sack rate | Sacks / dropbacks | Game, Props | 🟡 Med | Low | ✅ Done |
 | Rush yards allowed / game | Volume stat, useful for prop matchups | Props | 🟡 Med | Low | ❌ |
 | Pass yards allowed / game | Volume stat | Props | 🟡 Med | Low | ❌ |
-| Opponent 3rd down conversion % | Defensive 3rd down stops | Game | 🟡 Med | Low | ❌ |
-| Opponent red zone TD % | Bending but not breaking? | Game | 🟡 Med | Low | ❌ |
-| Explosive plays allowed rate | Big play vulnerability | Game | 🟡 Med | Low | ❌ |
-| Turnover creation rate | Forced fumbles + INTs per game | Game | 🟡 Med | Low | ❌ |
+| Opponent 3rd down conversion % | Defensive 3rd down stops | Game | 🟡 Med | Low | ✅ Done |
+| Opponent red zone TD % | Bending but not breaking? | Game | 🟡 Med | Low | ✅ Done |
+| Explosive plays allowed rate | Big play vulnerability | Game | 🟡 Med | Low | ✅ Done |
+| Turnover creation rate | Forced fumbles + INTs per game | Game | 🟡 Med | Low | ✅ Done |
 | Opponent completion % | Raw passing defense | Props | 🟢 Low | Low | ❌ |
 | Def DVOA (if sourced) | Football Outsiders adjusted metric | Game | 🔴 High | High | ❌ |
 | Points allowed / game | Simple but noisy | Game | 🟢 Low | Low | ❌ |
@@ -82,7 +82,7 @@
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| Turnover differential / game | Net turnovers — high variance but some signal | Game | 🟡 Med | Low | ❌ |
+| Turnover differential / game | Net turnovers — high variance but some signal | Game | 🟡 Med | Low | ✅ Done |
 | INT rate (off) | Interceptions thrown per attempt | Game | 🟡 Med | Low | ❌ |
 | Fumble rate (off) | Fumbles per touch | Game | 🟢 Low | Low | ❌ |
 | INT rate (def) | Interceptions forced per opponent attempt | Game | 🟡 Med | Low | ❌ |
@@ -129,12 +129,12 @@
 | Timezone shift | Crossing time zones | Game | 🟡 Med | Low | ✅ Done |
 | Divisional game flag | Division rivalries play differently | Game | 🟡 Med | Low | ✅ Done |
 | Primetime flag | Thursday/Sunday/Monday night | Game | 🟢 Low | Low | ✅ Done |
-| Dome/outdoor flag | Stadium type | Game, Props | 🟡 Med | Low | ⚠️ In schema |
-| Neutral site flag | London, Mexico, etc. | Game | 🟡 Med | Low | ⚠️ In schema |
-| Altitude | High-altitude venue (Denver) | Game | 🟢 Low | Low | ⚠️ In schema |
+| Dome/outdoor flag | Stadium type | Game, Props | 🟡 Med | Low | ✅ Done |
+| Neutral site flag | London, Mexico, etc. | Game | 🟡 Med | Low | ✅ Done |
+| Altitude | High-altitude venue (Denver) | Game | 🟢 Low | Low | ✅ Done |
 | Season week number | Early vs late season dynamics | Game | 🟢 Low | Low | ❌ |
 | Playoff/elimination context | Must-win games may play differently | Game | 🟢 Low | Med | ❌ |
-| Rest differential | Team A days rest minus Team B days rest | Game | 🟡 Med | Low | ❌ |
+| Rest differential | Team A days rest minus Team B days rest | Game | 🟡 Med | Low | ✅ Done |
 | Opponent rest | The other team's rest situation | Game | 🟡 Med | Low | ❌ |
 | Back-to-back road games | Fatigue / travel compounding | Game | 🟢 Low | Low | ❌ |
 
@@ -146,10 +146,10 @@
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| Temperature (F) | Cold weather affects passing, grip | Game, Props | 🟡 Med | Low | ✅ Done (ingest) |
-| Wind speed (mph) | Affects kicking, deep passing | Game, Props | 🟡 Med | Low | ✅ Done (ingest) |
-| Precipitation flag | Rain/snow binary | Game, Props | 🟡 Med | Low | ✅ Done (ingest) |
-| Weather → feature wiring | OWM data exists but isn't wired into prediction features yet | Game, Props | 🟡 Med | Low | ⚠️ Ingest exists, feature doesn't |
+| Temperature (F) | Cold weather affects passing, grip | Game, Props | 🟡 Med | Low | ✅ Done |
+| Wind speed (mph) | Affects kicking, deep passing | Game, Props | 🟡 Med | Low | ✅ Done |
+| Precipitation flag | Rain/snow binary | Game, Props | 🟡 Med | Low | ✅ Done |
+| Weather → feature wiring | OWM data exists but isn't wired into prediction features yet | Game, Props | 🟡 Med | Low | ✅ Done |
 | Wind speed bins | Calm (0–10), moderate (10–20), high (20+) | Game, Props | 🟡 Med | Low | ❌ |
 | Cold weather flag | Below 32°F threshold | Props | 🟡 Med | Low | ❌ |
 | Indoor override | If dome, weather features zeroed out | Game, Props | 🟡 Med | Low | ❌ |
@@ -306,21 +306,21 @@ Ranked by signal × cost ratio. These feed directly into PLAN.md as actionable t
 
 | Priority | Feature | Domain | Model | Why |
 |----------|---------|--------|-------|-----|
-| 1 | Wire weather into prediction features | Weather | Game | Ingest exists, feature doesn't — pure wiring |
-| 2 | Wire dome/neutral/altitude into features | Schedule | Game | Already in schema, just needs end-to-end |
-| 3 | Success rate (pass/rush) | Offense | Game | Low cost, adds dimension beyond EPA |
-| 4 | 3rd down conversion % (off + def) | Off/Def | Game | Easy from PBP, strong signal |
-| 5 | Red zone TD % (off + def) | Off/Def | Game | Easy from PBP, affects scoring |
-| 6 | Turnover differential / game | Turnovers | Game | Simple, some signal |
-| 7 | Sack rate (off + def) | Off/Def | Game, Props | Easy from PBP, affects QB props |
+| 1 | Wire weather into prediction features | Weather | Game | Ingest exists, feature doesn't — pure wiring (DONE) |
+| 2 | Wire dome/neutral/altitude into features | Schedule | Game | Already in schema, just needs end-to-end (DONE) |
+| 3 | Success rate (pass/rush) | Offense | Game | Low cost, adds dimension beyond EPA (DONE) |
+| 4 | 3rd down conversion % (off + def) | Off/Def | Game | Easy from PBP, strong signal (DONE) |
+| 5 | Red zone TD % (off + def) | Off/Def | Game | Easy from PBP, affects scoring (DONE) |
+| 6 | Turnover differential / game | Turnovers | Game | Simple, some signal (DONE) |
+| 7 | Sack rate (off + def) | Off/Def | Game, Props | Easy from PBP, affects QB props (DONE) |
 | 8 | Implied team total | Market | Props | Pure math once you have spread + total |
 | 9 | Rolling stat mean (L6) per player | Player | Props | Foundation for all prop models |
 | 10 | Rolling stat std dev per player | Player | Props | Feeds uncertainty bands |
 | 11 | Snap % (rolling) per player | Player | Props | Usage = volume = projections |
 | 12 | Matchup: opponent rank vs position | Player | Props | The #1 prop-specific feature |
 | 13 | QB rush yards/game (rolling) | QB | Props | Direct input for first prop model |
-| 14 | Rest differential | Schedule | Game | Already have each team's rest — just subtract |
-| 15 | Explosive play rate | Offense | Game | Captures big-play ability beyond EPA mean |
+| 14 | Rest differential | Schedule | Game | Already have each team's rest — just subtract (DONE) |
+| 15 | Explosive play rate | Offense | Game | Captures big-play ability beyond EPA mean (DONE) |
 
 Items 1–7 are **Phase 20e feature engineering** (game-level, can start immediately).
 Items 8–13 are **W4 player data** (start once player game logs are ingested).
@@ -334,9 +334,9 @@ Items 14–15 are **quick wins** from existing data.
 |--------|-------|
 | Total features cataloged | ~120 |
 | Domains | 11 |
-| Currently Done | ~16 |
+| Currently Done | ~30 |
 | Partial / In Schema | ~6 |
-| Missing | ~98 |
+| Missing | ~87 |
 | High-signal features | ~35 |
 | Low-cost features | ~50 |
 
@@ -347,3 +347,4 @@ Items 14–15 are **quick wins** from existing data.
 | Date | Change |
 |------|--------|
 | 2026-05-30 | Initial version — comprehensive brainstorm from prototype review + gap analysis. |
+| 2026-06-01 | Marked Phase 20e priorities 1–7, 14–15 as DONE. Added 14 features across EPA, efficiency, and situational domains. |

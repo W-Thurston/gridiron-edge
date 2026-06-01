@@ -172,7 +172,7 @@ def load_modeling_file(
         validate_schema_version,
     )
 
-    df: DataFrame = load_csv(repo_root, "modeling_full")
+    df: DataFrame = pd.read_parquet(dataset_path(repo_root, "modeling_full"))
 
     if expected_columns is not None or required_schema_version is not None:
         modeling_dir: Path = dataset_path(repo_root, "modeling_full").parent

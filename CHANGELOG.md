@@ -4,6 +4,24 @@ What has been built and when. Newest first.
 
 ---
 
+## 2026-06-01 — Phase 20e Feature Engineering Complete
+
+Completed Priorities 1-7 + 14-15 across three batches:
+- Batch 1: Rest differential + explosive play rate (+8 columns)
+- Batch 3: PBP efficiency (success splits, 3rd down, red zone,
+  turnovers, sack rate) (+36 columns)
+- Batch 2/15: Weather & venue wiring verified already complete
+
+Feature count: _EXPANDED_FEATURES 16 -> 107. EPA_COLS 8 -> 22.
+Model features now cover EPA, efficiency splits, explosiveness,
+situational football, turnovers, pass rush, rest, weather, venue.
+
+Remaining Phase 20e backlog: Priorities 8-13 (CPOE, pace, score
+differential, penalties, special teams, coaching). These require
+additional PBP columns or external data sources.
+
+Next active workstream: W2 (Richer Game Model Outputs).
+
 ## W3: Market Intelligence Foundation — 2026-05-31
 
 ### New package: `market/`
