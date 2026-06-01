@@ -9,12 +9,12 @@ reference the functions defined in this module.
 Public API
 ----------
 FEATURE_SETS        dict[str, FeatureSet]   — registry of named feature sets
-_make_diff_features     DataFrame → DataFrame (10 cols)
-_make_raw_features      DataFrame → DataFrame (19 cols)
-_make_combined_features DataFrame → DataFrame (28 cols)
-_make_expanded_features DataFrame → DataFrame (63 cols, Phase 20e)
-_prepare_data           DataFrame → train/holdout split tuple
-_is_trained             str, Path | None → bool
+_make_diff_features         DataFrame -> DataFrame (12 cols)
+_make_raw_features          DataFrame -> DataFrame (23 cols)
+_make_combined_features     DataFrame -> DataFrame (34 cols)
+_make_expanded_features     DataFrame -> DataFrame (71 cols, Phase 20e)
+_prepare_data               DataFrame -> train/holdout split tuple
+_is_trained                 str, Path | None -> bool
 """
 
 from __future__ import annotations
@@ -28,6 +28,8 @@ import pandas as pd
 from pandas import DataFrame, Series
 
 from gridiron_edge.core.constants import HOLDOUT_SEASONS
+from gridiron_edge.core.settings import get_settings
+from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction._columns import (
     _COMBINED_FEATURES,
     _DIFF_FEATURES,
@@ -122,22 +124,22 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 # Callers import FEATURE_SETS["combined"] rather than the raw constants.
 FEATURE_SETS: dict[str, FeatureSet] = {
     "diff": FeatureSet(
-        name="diff_10",
+        name="diff_12",
         feature_fn=_make_diff_features,
         feature_names=_DIFF_FEATURES,
     ),
     "raw": FeatureSet(
-        name="raw_22",
+        name="raw_226",
         feature_fn=_make_raw_features,
         feature_names=list(_RAW_FEATURES),
     ),
     "combined": FeatureSet(
-        name="combined_32",
+        name="combined_38",
         feature_fn=_make_combined_features,
         feature_names=_COMBINED_FEATURES,
     ),
     "expanded": FeatureSet(
-        name="expanded_63",
+        name="expanded_71",
         feature_fn=_make_expanded_features,
         feature_names=_EXPANDED_FEATURES,
     ),
@@ -203,8 +205,5 @@ def _is_trained(model_version: str, repo: Path | None) -> bool:
     Returns:
         True if an artifact exists, False otherwise.
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.models.artifact import ArtifactStore
-
     resolved_repo: Path = repo or get_settings().repo_root
     return ArtifactStore(resolved_repo).is_trained(model_version)

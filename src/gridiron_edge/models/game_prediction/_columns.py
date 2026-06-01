@@ -9,13 +9,13 @@ imports from here without pulling in sklearn or training infrastructure.
 Public API
 ----------
 _SCHEMA_VERSION     int          — modeling file schema version (from manifest)
-_EPA_SUFFIXES       list[str]    — ordered EPA metric suffixes (derived from epa.py)
-_RAW_FEATURES       list[str]    — 19 raw feature column names
-_DIFF_FEATURES      list[str]    — 10 differential feature column names
-_COMBINED_FEATURES  list[str]    — 28 combined feature column names
-_GAME_FEATURES      list[str]    — 9 game-level Phase 20e feature names
-_TEAM_FEATURES_V2   list[str]    — 26 per-team Phase 20e feature names
-_EXPANDED_FEATURES  list[str]    — 63 combined + Phase 20e feature names
+_EPA_SUFFIXES       list[str]    — (10) ordered EPA metric suffixes (derived from epa.py)
+_RAW_FEATURES       list[str]    — (23) raw feature column names
+_DIFF_FEATURES      list[str]    — (12) differential feature column names
+_COMBINED_FEATURES  list[str]    — (34) combined feature column names
+_GAME_FEATURES      list[str]    — (9) game-level Phase 20e feature names
+_TEAM_FEATURES_V2   list[str]    — (28) per-team Phase 20e feature names
+_EXPANDED_FEATURES  list[str]    — (63) combined + Phase 20e feature names
 FeatureSet          dataclass    — named bundle of (feature_fn, feature_names)
 """
 
@@ -82,6 +82,8 @@ _TEAM_FEATURES_V2: Final[list[str]] = [
     "TEAM_B_SHORT_WEEK",
     "TEAM_A_POST_BYE",
     "TEAM_B_POST_BYE",
+    "TEAM_A_REST_DIFF",
+    "TEAM_B_REST_DIFF",
     "TEAM_A_KM_TRAVELED",
     "TEAM_B_KM_TRAVELED",
     "TEAM_A_TZ_SHIFT",
@@ -104,7 +106,7 @@ _TEAM_FEATURES_V2: Final[list[str]] = [
     "TEAM_B_SOV",
 ]
 
-# Expanded feature set (28 combined + 35 Phase 20e = 63 total)
+# Expanded feature set (34 combined + 37 Phase 20e = 71 total)
 _EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES_V2
 
 

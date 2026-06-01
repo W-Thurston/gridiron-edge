@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -59,7 +60,7 @@ def make_games(
         DataFrame matching the canonical games schema.
     """
     if overrides is not None:
-        rows = [{**_GAME_DEFAULTS, **o} for o in overrides]
+        rows: list[dict[str, Any]] = [{**_GAME_DEFAULTS, **o} for o in overrides]
     else:
         rows = [{**_GAME_DEFAULTS, "GAME_ID": f"2024_0{i + 1}_KC_LV"} for i in range(n)]
     return pd.DataFrame(rows)
@@ -95,7 +96,7 @@ def make_modeling_rows(
         DataFrame matching the modeling schema.
     """
     if overrides is not None:
-        rows = [{**_MODELING_DEFAULTS, **o} for o in overrides]
+        rows: list[dict[str, Any]] = [{**_MODELING_DEFAULTS, **o} for o in overrides]
     else:
         rows = [
             {
@@ -146,7 +147,7 @@ def make_stadiums(
     Returns:
         DataFrame matching the stadium reference schema.
     """
-    rows = overrides if overrides is not None else _STADIUM_DEFAULTS
+    rows: list[dict[str, Any]] = overrides if overrides is not None else _STADIUM_DEFAULTS
     return pd.DataFrame(rows)
 
 
@@ -176,10 +177,10 @@ def make_elo_state(
         DataFrame with columns NFL_TEAM, NFL_YEAR, NFL_WEEK, ELO.
     """
     teams = teams or ["Team A", "Team B"]
-    rng = np.random.default_rng(seed)
+    rng: Generator = np.random.default_rng(seed)
     rows: list[dict[str, Any]] = []
     for team in teams:
-        elo = base_elo
+        elo: float = base_elo
         for week in range(1, weeks + 1):
             elo += rng.uniform(-20, 20)
             rows.append(
@@ -218,7 +219,7 @@ def make_epa_by_game(
     """
     teams = teams or ["KC", "SF", "BUF", "PHI", "DAL", "NYG", "MIA", "LAR"]
     seasons = seasons or [2006, 2007, 2008, 2023, 2024]
-    rng = np.random.default_rng(seed)
+    rng: Generator = np.random.default_rng(seed)
 
     rows: list[dict[str, Any]] = []
     for season in seasons:
@@ -234,6 +235,8 @@ def make_epa_by_game(
                         "off_pass_epa": rng.uniform(-0.3, 0.4),
                         "off_rush_epa": rng.uniform(-0.2, 0.2),
                         "off_success_rate": rng.uniform(0.3, 0.6),
+                        "off_explosive_rate": rng.uniform(0.03, 0.15),
+                        "def_explosive_rate": rng.uniform(0.03, 0.15),
                         "def_epa_per_play": rng.uniform(-0.3, 0.2),
                         "def_pass_epa": rng.uniform(-0.4, 0.3),
                         "def_rush_epa": rng.uniform(-0.2, 0.2),
@@ -294,7 +297,7 @@ def make_eval_df(
     Returns:
         DataFrame matching the evaluation metrics schema.
     """
-    rng = np.random.default_rng(seed)
+    rng: Generator = np.random.default_rng(seed)
     defaults: list[dict[str, Any]] = [
         {
             "game_id": f"2024_01_AWAY_HOME_{i}",
@@ -310,7 +313,7 @@ def make_eval_df(
     ]
 
     if overrides is not None:
-        rows = defaults[: len(overrides)]
+        rows: list[dict[str, Any]] = defaults[: len(overrides)]
         for i, override in enumerate(overrides):
             if i < len(rows):
                 rows[i].update(override)

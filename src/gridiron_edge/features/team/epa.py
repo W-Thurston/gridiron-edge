@@ -25,6 +25,8 @@ Features produced (per team, for both TEAM_A and TEAM_B):
     {PREFIX}_DEF_PASS_EPA        Defensive passing EPA/play allowed
     {PREFIX}_DEF_RUSH_EPA        Defensive rushing EPA/play allowed
     {PREFIX}_DEF_SUCCESS_RATE    Fraction of opponent plays with EPA > 0
+    {PREFIX}_OFF_EXPLOSIVE_RATE   Fraction of offensive plays that are explosive
+    {PREFIX}_DEF_EXPLOSIVE_RATE   Fraction of opponent explosive plays allowed
 
 Where PREFIX is ``TEAM_A`` or ``TEAM_B``.
 
@@ -61,14 +63,16 @@ EPA_COLS: Final[list[str]] = [
     "off_pass_epa",
     "off_rush_epa",
     "off_success_rate",
+    "off_explosive_rate",
     "def_epa_per_play",
     "def_pass_epa",
     "def_rush_epa",
     "def_success_rate",
+    "def_explosive_rate",
 ]
 
 # Private alias kept for internal use within this module
-_EPA_COLS = EPA_COLS
+_EPA_COLS: list[str] = EPA_COLS
 
 # Canonical column names produced for TEAM_A and TEAM_B
 _TEAM_A_COLS: Final[list[str]] = [f"TEAM_A_{c.upper()}" for c in EPA_COLS]

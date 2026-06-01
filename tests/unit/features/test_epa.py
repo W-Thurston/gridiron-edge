@@ -22,8 +22,8 @@ class TestEpaConstants:
     def test_default_rolling_window_is_4(self) -> None:
         assert DEFAULT_ROLLING_WINDOW == 4
 
-    def test_epa_cols_has_8_metrics(self) -> None:
-        assert len(EPA_COLS) == 8
+    def test_epa_cols_has_10_metrics(self) -> None:
+        assert len(EPA_COLS) == 10
 
     def test_epa_cols_contains_expected_metrics(self) -> None:
         expected: set[str] = {
@@ -31,10 +31,12 @@ class TestEpaConstants:
             "off_pass_epa",
             "off_rush_epa",
             "off_success_rate",
+            "off_explosive_rate",
             "def_epa_per_play",
             "def_pass_epa",
             "def_rush_epa",
             "def_success_rate",
+            "def_explosive_rate",
         }
         assert set(EPA_COLS) == expected
 
@@ -43,17 +45,17 @@ class TestTeamEpaFeatureSpec:
     def test_spec_name(self) -> None:
         assert TeamEpaFeature().spec.name == "epa"
 
-    def test_produces_16_columns(self) -> None:
-        """8 EPA metrics x 2 teams = 16 columns."""
+    def test_produces_20_columns(self) -> None:
+        """10 EPA metrics x 2 teams = 20 columns."""
 
-        assert len(TeamEpaFeature().spec.produces) == 16
+        assert len(TeamEpaFeature().spec.produces) == 20
 
     def test_produces_team_a_and_team_b_prefixes(self) -> None:
         produces: Sequence[str] = TeamEpaFeature().spec.produces
         team_a: list[str] = [c for c in produces if c.startswith("TEAM_A_")]
         team_b: list[str] = [c for c in produces if c.startswith("TEAM_B_")]
-        assert len(team_a) == 8
-        assert len(team_b) == 8
+        assert len(team_a) == 10
+        assert len(team_b) == 10
 
     def test_registered_under_epa(self) -> None:
         assert FeatureRegistry.get("epa") is TeamEpaFeature

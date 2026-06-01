@@ -30,6 +30,14 @@ Produces (symmetric — computed for TEAM_A perspective in each row):
 
     TEAM_B_POST_BYE     int     Same for TEAM_B.
 
+    TEAM_A_REST_DIFF    int     TEAM_A_DAYS_REST - TEAM_B_DAYS_REST.
+                                Positive means TEAM_A is more rested.
+                                Captures the relative rest advantage
+                                in a single feature rather than requiring
+                                the model to learn the subtraction.
+    TEAM_B_REST_DIFF    int     Same subtraction from TEAM_B perspective.
+                                Always equals -TEAM_A_REST_DIFF.
+
 Design notes:
     - Week 1 produces NaN for DAYS_REST (no prior game in the dataset).
       NaN rows are excluded by _prepare_data in all model training paths,
@@ -51,6 +59,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
@@ -84,6 +93,8 @@ class RestFeature:
             "TEAM_B_SHORT_WEEK",
             "TEAM_A_POST_BYE",
             "TEAM_B_POST_BYE",
+            "TEAM_A_REST_DIFF",
+            "TEAM_B_REST_DIFF",
         ],
     )
 
@@ -101,15 +112,16 @@ class RestFeature:
             Rows where GAME_DATE is missing or unparseable receive NaN
             rest columns (excluded from model training by _prepare_data).
         """
-        games = datasets.games()
+        games: DataFrame = datasets.games()
 
         # Build a long-format team-game table: one row per (team, game)
         # using both WINNER and LOSER so every team appears once per game.
         # We join GAME_DATE from the games table.
-        needed = ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM", "GAME_DATE"]
+        needed: list[str] = ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM", "GAME_DATE"]
         g = games.loc[:, needed].copy()
 
         # Parse date — store as date (not datetime) for day-diff arithmetic
+        # pyrefly: ignore [missing-attribute]
         g["_DATE"] = pd.to_datetime(g["GAME_DATE"], format="%Y-%m-%d", errors="coerce").dt.date
 
         # Winner perspective
@@ -174,5 +186,9 @@ class RestFeature:
             how="left",
             on=["GAME_ID", "TEAM_B"],
         )
+
+        # -- Rest differential (continuous, no binning) --
+        df["TEAM_A_REST_DIFF"] = df["TEAM_A_DAYS_REST"] - df["TEAM_B_DAYS_REST"]
+        df["TEAM_B_REST_DIFF"] = df["TEAM_B_DAYS_REST"] - df["TEAM_A_DAYS_REST"]
 
         return df

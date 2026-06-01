@@ -11,7 +11,17 @@ from gridiron_edge.features.base import Feature
 from gridiron_edge.features.registry import FeatureRegistry, run_features, validate_ordering
 
 # Ensure feature modules are imported (they register on import)
-import gridiron_edge.features.team  # noqa: F401
+import gridiron_edge.features.team.divisional
+import gridiron_edge.features.team.elo
+import gridiron_edge.features.team.epa
+import gridiron_edge.features.team.home_field
+import gridiron_edge.features.team.primetime
+import gridiron_edge.features.team.record
+import gridiron_edge.features.team.rest
+import gridiron_edge.features.team.schedule_strength
+import gridiron_edge.features.team.travel
+import gridiron_edge.features.team.venue_hfa
+import gridiron_edge.features.team.weather  # noqa: F401
 
 
 class TestFeatureRegistryGet:

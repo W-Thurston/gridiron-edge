@@ -23,6 +23,11 @@ Output schema (``epa_by_game.parquet``)::
     def_rush_epa        float   Defensive rushing EPA/play allowed
     def_success_rate    float   Fraction of opponent plays with EPA > 0
     def_plays           int     Total defensive plays faced
+    off_explosive_rate  float   Fraction of offensive plays gaining 20+ yds
+                                (pass) or 10+ yds (rush)
+    def_explosive_rate  float   Fraction of opponent plays gaining 20+ yds
+                                (pass) or 10+ yds (rush) -- big-play
+                                vulnerability
 
 Note on EPA reliability: nflfastR EPA model is reliable from 2006 onward.
 Seasons before 2006 will have NaN EPA values and are handled gracefully.
@@ -65,7 +70,8 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
     Args:
         df: PBP DataFrame filtered to scrimmage plays with valid EPA.
             Must contain ``game_id``, ``season``, ``week``, ``posteam``,
-            ``defteam``, ``pass``, ``rush``, ``epa``, ``success`` columns.
+            ``defteam``, ``pass``, ``rush``, ``epa``, ``success``,
+            ``yards_gained`` columns.
         is_offense: If ``True``, group by ``posteam`` (offensive team).
             If ``False``, group by ``defteam`` (defensive team).
 
@@ -97,8 +103,21 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
     success_rate: Series = grouped["success"].mean().rename(f"{prefix}_success_rate")
     n_plays: Series[int] = grouped["epa"].count().rename(f"{prefix}_plays")
 
+    # Explosive play rate: pass gaining 20+ yds OR rush gaining 10+ yds.
+    # Thresholds are standard NFL analytics definitions, not arbitrary bins.
+    # The output is a continuous rate in [0, 1] -- no categorisation applied.
+    explosive: Series[bool] = (pass_mask & (df["yards_gained"] >= 20)) | (
+        rush_mask & (df["yards_gained"] >= 10)
+    )
+    explosive_rate: Series = (
+        df.assign(_explosive=explosive.astype(int))
+        .groupby(["game_id", "season", "week", team_col])["_explosive"]
+        .mean()
+        .rename(f"{prefix}_explosive_rate")
+    )
+
     result: DataFrame = (
-        pd.concat([total_epa, pass_epa, rush_epa, success_rate, n_plays], axis=1)
+        pd.concat([total_epa, pass_epa, rush_epa, success_rate, explosive_rate, n_plays], axis=1)
         .reset_index()
         .rename(columns={team_col: "team"})
     )
@@ -138,6 +157,7 @@ def aggregate_epa(
         "rush",
         "epa",
         "success",
+        "yards_gained",
     ]
 
     pbp: DataFrame = load_pbp(seasons=seasons, repo=resolved_repo, columns=columns_needed)

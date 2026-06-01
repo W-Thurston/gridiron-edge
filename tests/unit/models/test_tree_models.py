@@ -60,10 +60,12 @@ def synthetic_modeling_df() -> pd.DataFrame:
         "OFF_PASS_EPA",
         "OFF_RUSH_EPA",
         "OFF_SUCCESS_RATE",
+        "OFF_EXPLOSIVE_RATE",
         "DEF_EPA_PER_PLAY",
         "DEF_PASS_EPA",
         "DEF_RUSH_EPA",
         "DEF_SUCCESS_RATE",
+        "DEF_EXPLOSIVE_RATE",
     ]
 
     df = pd.DataFrame(
@@ -107,10 +109,12 @@ def synthetic_epa_by_game() -> pd.DataFrame:
                         "off_pass_epa": rng.uniform(-0.3, 0.4),
                         "off_rush_epa": rng.uniform(-0.2, 0.2),
                         "off_success_rate": rng.uniform(0.3, 0.6),
+                        "off_explosive_rate": rng.uniform(0.03, 0.12),
                         "def_epa_per_play": rng.uniform(-0.3, 0.2),
                         "def_pass_epa": rng.uniform(-0.4, 0.3),
                         "def_rush_epa": rng.uniform(-0.2, 0.2),
                         "def_success_rate": rng.uniform(0.3, 0.6),
+                        "def_explosive_rate": rng.uniform(0.03, 0.12),
                     }
                 )
     return pd.DataFrame(rows)
@@ -159,7 +163,7 @@ class TestRebuildFeaturesWithWindow:
     def test_output_has_all_expected_epa_columns(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
-        """All 16 EPA columns (8 per team) must be present in the output."""
+        """All 20 EPA columns (10 per team) must be present in the output."""
 
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=3, repo=mini_repo
