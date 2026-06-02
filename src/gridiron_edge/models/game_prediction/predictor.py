@@ -18,8 +18,8 @@ Re-exports are provided for backward compatibility with any code that
 imports model classes directly from this module.
 
 History: this module previously contained all model class definitions
-directly.  It was refactored into split files (logistic.py, tree.py)
-during Phase 20d/20e.  The shim pattern preserves backward compatibility
+directly.  It was refactored into split files (logistic.py, tree.py).
+The shim pattern preserves backward compatibility
 for all callers that import predictor.py as a side-effect registration
 trigger or by named attribute.
 """

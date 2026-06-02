@@ -1,5 +1,5 @@
 # tests/unit/models/test_post_process.py
-"""Unit tests for post_process.py -- W2 Phase A + Phase A.5."""
+"""Unit tests for post_process.py — spread, recalibration, bands, and enrichment."""
 
 from __future__ import annotations
 
@@ -381,7 +381,7 @@ class TestEnrichPredictions:
 
 
 # ===========================================================================
-# Phase A.5 Tests — Isotonic Recalibration
+# Isotonic Recalibration Tests
 # ===========================================================================
 
 
@@ -825,12 +825,12 @@ class TestClassifyConfidenceTier:
 
 
 # ---------------------------------------------------------------------------
-# TestEnrichPhaseB
+# TestEnrichBands
 # ---------------------------------------------------------------------------
 
 
-class TestEnrichPhaseB:
-    """Tests for Phase B columns in enrich_predictions()."""
+class TestEnrichBands:
+    """Tests for uncertainty band columns in enrich_predictions()."""
 
     def _make_df(self) -> pd.DataFrame:
         return pd.DataFrame(
@@ -841,7 +841,7 @@ class TestEnrichPhaseB:
             }
         )
 
-    def test_adds_phase_b_columns(self) -> None:
+    def test_adds_band_columns(self) -> None:
         enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         for col in ["margin_std", "win_prob_lo", "win_prob_hi", "confidence_tier"]:
             assert col in enriched.columns, f"Missing column: {col}"
@@ -864,6 +864,6 @@ class TestEnrichPhaseB:
         for tier in enriched["confidence_tier"]:
             assert tier in valid_tiers
 
-    def test_phase_a_preserved(self) -> None:
+    def test_spread_columns_preserved(self) -> None:
         enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         assert "model_spread" in enriched.columns

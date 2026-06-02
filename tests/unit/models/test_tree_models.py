@@ -1,5 +1,5 @@
 # tests/models/test_tree_models.py
-"""Unit tests for Phase 20d tree-based models: Random Forest and XGBoost.
+"""Unit tests for tree-based models: Random Forest and XGBoost.
 
 Tests cover:
 - _rebuild_features_with_window: correctness of rolling EPA recomputation

@@ -1,15 +1,14 @@
 # tests/features/test_travel.py
 
-"""Unit tests for features/team/travel.py (Phase 20e extensions).
+"""Unit tests for features/team/travel.py.
 
-Tests cover the three additions made in Phase 20e:
+Tests cover the three additions:
 - TEAM_B_KM_TRAVELED  (symmetric counterpart to existing TEAM_A_KM_TRAVELED)
 - TEAM_A_TZ_SHIFT / TEAM_B_TZ_SHIFT  (integer-rounded timezone offsets)
 - IS_NEUTRAL_SITE  (neutral site flag from GAME_LOCATION == "N")
 
 The existing TEAM_A_KM_TRAVELED and TEAM_A_TZ_TRAVELED columns are
-covered by the pre-existing test_travel_feature.py; this file focuses
-exclusively on Phase 20e additions to avoid duplication.
+covered by the pre-existing test_travel_feature.py;
 """
 
 from __future__ import annotations
@@ -267,8 +266,8 @@ class TestTeamBTravel:
 class TestTravelFeatureSpec:
     """Tests for FeatureSpec and registry registration."""
 
-    def test_spec_includes_phase_20e_columns(self) -> None:
-        """TravelFeature.spec.produces must include all Phase 20e additions."""
+    def test_spec_includes_extended_columns(self) -> None:
+        """TravelFeature.spec.produces must include all extended additions."""
         from gridiron_edge.features.team.travel import TravelFeature
 
         produces = set(TravelFeature().spec.produces)
@@ -278,7 +277,7 @@ class TestTravelFeatureSpec:
         assert "IS_NEUTRAL_SITE" in produces
 
     def test_spec_preserves_existing_columns(self) -> None:
-        """All pre-Phase-20e columns must still be in the spec."""
+        """All original columns must still be in the spec."""
         from gridiron_edge.features.team.travel import TravelFeature
 
         produces = set(TravelFeature().spec.produces)

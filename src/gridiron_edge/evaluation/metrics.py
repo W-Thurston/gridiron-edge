@@ -26,7 +26,6 @@ roc_auc                      ROC-AUC.
 expected_calibration_error   ECE (single-number calibration summary).
 brier_decomposition          Murphy (1973) decomposition: reliability, resolution, uncertainty.
 
-New in Phase 20c
 ----------------
 brier_by_confidence_tier     Brier + calibration gap per predicted-prob bucket.
 brier_by_season              Per-season Brier with delta vs mean; drift detection.
@@ -386,7 +385,7 @@ def calibration_table(df: DataFrame, *, n_buckets: int = 10) -> DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Phase 20c — Report-quality metric functions
+# Report-quality metric functions
 # ---------------------------------------------------------------------------
 
 

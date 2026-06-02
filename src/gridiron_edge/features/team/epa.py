@@ -4,7 +4,7 @@
 
 Computes pre-game rolling EPA statistics for TEAM_A and TEAM_B using
 the previous N games as the rolling window. The window size is a
-tunable parameter — see ``evaluate tune --epa`` (Phase 19) for the
+tunable parameter — see ``evaluate tune --epa`` for the
 grid search that identifies the optimal window.
 
 Rolling window design:
@@ -49,7 +49,7 @@ from gridiron_edge.features.registry import FeatureRegistry
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
 
-# Default rolling window — will be tuned in Phase 19 evaluation.
+# Default rolling window — will be tuned in evaluation.
 # 4 games is a reasonable NFL default: enough to reduce noise,
 # short enough to capture current-season form.
 DEFAULT_ROLLING_WINDOW: Final[int] = 4

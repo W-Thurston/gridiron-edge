@@ -15,7 +15,7 @@ timezone features:
         TEAM_A_TZ_TRAVELED  float   Signed timezone-hour difference for TEAM_A
         ALTITUDE            float   Game site altitude (metres)
 
-    New in Phase 20e:
+    Extended features:
         TEAM_B_KM_TRAVELED  float   Great-circle distance from TEAM_B home to game site.
                                     Symmetric counterpart to TEAM_A_KM_TRAVELED.
                                     In the two-row design, each row already has the

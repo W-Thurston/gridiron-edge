@@ -13,9 +13,9 @@ _EPA_SUFFIXES       list[str]    — (22) ordered EPA metric suffixes (derived f
 _RAW_FEATURES       list[str]    — (47) raw feature column names
 _DIFF_FEATURES      list[str]    — (24) differential feature column names
 _COMBINED_FEATURES  list[str]    — (70) combined feature column names
-_GAME_FEATURES      list[str]    — (9) game-level Phase 20e feature names
-_TEAM_FEATURES_V2   list[str]    — (28) per-team Phase 20e feature names
-_EXPANDED_FEATURES  list[str]    — (107) combined + Phase 20e feature names
+_GAME_FEATURES      list[str]    — (9) game-level feature names
+_TEAM_FEATURES_V2   list[str]    — (28) per-team feature names
+_EXPANDED_FEATURES  list[str]    — (107) combined + feature names
 FeatureSet          dataclass    — named bundle of (feature_fn, feature_names)
 """
 
@@ -60,7 +60,7 @@ _COMBINED_FEATURES: Final[list[str]] = _DIFF_FEATURES + [
     c for c in _RAW_FEATURES if c != "HOME_FIELD"
 ]
 
-# Phase 20e new feature columns — added to schema v3
+# new feature columns — added to schema v3
 # Game-level features (same value for both team perspectives in a row)
 _GAME_FEATURES: Final[list[str]] = [
     "IS_DIV_GAME",
@@ -106,7 +106,7 @@ _TEAM_FEATURES_V2: Final[list[str]] = [
     "TEAM_B_SOV",
 ]
 
-# Expanded feature set (34 combined + 37 Phase 20e = 71 total)
+# Expanded feature set (34 combined + 37 = 71 total)
 _EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES_V2
 
 

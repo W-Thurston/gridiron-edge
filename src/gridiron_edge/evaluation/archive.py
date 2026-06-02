@@ -277,7 +277,7 @@ def load_prediction_log(
     if "is_backfilled" not in df.columns:
         df["is_backfilled"] = df["predicted_at"] == _LEGACY_BACKFILL_TS
 
-    # Backward compat: add enrichment columns if archive predates W2
+    # Backward compat: add enrichment columns if archive predates them.
     for col in _ARCHIVE_COLUMNS:
         if col not in df.columns:
             df[col] = float("nan") if col != "confidence_tier" else ""

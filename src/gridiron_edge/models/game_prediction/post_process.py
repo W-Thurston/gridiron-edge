@@ -1,5 +1,5 @@
 # src/gridiron_edge/models/game_prediction/post_process.py
-"""Post-processing enrichment for game prediction outputs (W2).
+"""Post-processing enrichment for game prediction outputs.
 
 Derives additional outputs from base model win probabilities without
 modifying model internals.  Every predictor that outputs ``home_win_prob``
@@ -14,32 +14,30 @@ is::
     model_spread = -sigma * Phi_inv(home_win_prob)
 
 where *sigma* is the standard deviation of the margin-of-victory
-distribution (approx 13.86 league-wide) and *Phi_inv* is the inverse normal
-CDF.  Sigma is calibrated per model version for maximum accuracy.
+distribution (approx 13.86 league-wide) and *Phi_inv* is the inverse
+normal CDF.  Sigma is calibrated per model version for maximum accuracy.
 
-Phase A deliverables (spread + sigma calibration):
+Spread + sigma calibration:
     win_prob_to_spread   home_win_prob -> NFL point spread
     spread_to_win_prob   NFL point spread -> home_win_prob (inverse)
     calibrate_spread_sigma  Fit sigma from historical predictions + outcomes
     get_sigma            Look up per-model calibrated sigma
-    enrich_predictions   Orchestrator: adds post-processed columns to a
-                         predictions DataFrame
+    enrich_predictions   Orchestrator: adds post-processed columns
 
-Phase A.5 deliverables (isotonic recalibration):
+Isotonic recalibration:
     fit_recalibration    Fit isotonic mapping with temporal split
     apply_recalibration  Apply fitted calibrator to probabilities
     save_calibrator      Persist calibrator to data/models/{version}_cal/
     load_calibrator      Load calibrator (None if absent)
 
-Phase B deliverables (uncertainty bands + confidence tiers):
+Uncertainty bands + confidence tiers:
     compute_margin_std   Residual std from predicted vs actual margins
     get_margin_std       Look up per-model margin std
     win_prob_bands       Derive (win_prob_lo, win_prob_hi) credible interval
     classify_confidence_tier  Band width -> High / Moderate / Low
 
-Phase C deliverables (total model + projected scores):
+Projected scores:
     projected_scores     Derive home/away scores from spread + total
-
 """
 
 from __future__ import annotations
@@ -109,9 +107,9 @@ _MODEL_SIGMAS: dict[str, float] = {
     "xgboost_v2": 14.3169,
     "xgboost_v3": 13.951,
 }
-# TODO(W2-D): Wire sigma calibration into the training harness so this
+
+# TODO: Wire sigma calibration into the training harness so this
 # dict is populated automatically when a new model version is trained.
-# See Phase D in PLAN.md.
 
 
 # Default z-score for credible intervals.  1.645 corresponds to a 90% CI.
@@ -139,7 +137,7 @@ _MODEL_MARGIN_STDS: dict[str, float] = {
     "xgboost_v2": 13.41,
     "xgboost_v3": 13.44,
 }
-# TODO(W2-D): Wire margin_std computation into the training harness.
+# TODO: Wire margin_std computation into the training harness.
 
 # Confidence tier band-width thresholds.  A game's band width
 # (win_prob_hi - win_prob_lo) is classified into tiers:
@@ -316,13 +314,16 @@ def get_sigma(model_version: str | None = None) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Isotonic Recalibration (Phase A.5)
+# Isotonic Recalibration
 # ---------------------------------------------------------------------------
 # The existing tree model training uses StratifiedKFold(shuffle=True) and
 # CalibratedClassifierCV(cv=3), which do not respect temporal ordering.
-# This second-pass recalibration uses strict temporal splits to fix the
-# residual underconfidence without retraining the model.  See PLAN.md
-# "Discovery: Temporal Leakage in Tree Model Training" for details.
+# This second-pass recalibration uses strict temporal splits.  See PLAN.md
+# for details on the temporal leakage discovery.
+#
+# Evaluation showed rf_v3 is already well-calibrated on recent data
+# (holdout ECE 0.036), so the calibrator was NOT saved.  The
+# infrastructure is retained for future model versions.
 
 
 def fit_recalibration(
@@ -496,8 +497,9 @@ def load_calibrator(
 
 
 # ---------------------------------------------------------------------------
-# Uncertainty Bands & Confidence Tiers (Phase B)
+# Uncertainty Bands & Confidence Tiers
 # ---------------------------------------------------------------------------
+
 # Uses the per-model residual standard deviation (margin_std) to build
 # credible intervals around the point-estimate win probability.  The
 # spread +/- z * margin_std interval is converted back to probability space
@@ -607,7 +609,7 @@ def classify_confidence_tier(band_width: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Projected Scores (Phase C)
+# Projected Scores
 # ---------------------------------------------------------------------------
 
 
@@ -654,17 +656,14 @@ def enrich_predictions(
     ``home_win_prob`` and ``away_win_prob`` are replaced in-place with
     calibrated values before deriving the spread.
 
-    Phase A columns:
+    Spread columns:
         model_spread       float -- NFL point spread (neg = home favored)
 
-    Phase B columns:
+    Uncertainty columns:
         margin_std         float -- residual std for this model version
         win_prob_lo        float -- lower bound of 90% credible interval
         win_prob_hi        float -- upper bound of 90% credible interval
         confidence_tier    str   -- "High" / "Moderate" / "Low"
-
-    Future phases will add model_total, projected scores, uncertainty
-    bands, confidence_tier, and margin_std.
 
     Args:
         df: Predictions DataFrame.  Must contain a home win probability
@@ -696,7 +695,7 @@ def enrich_predictions(
     else:
         raise KeyError("DataFrame must contain 'home_win_prob' or 'HOME_WIN_PROB'")
 
-    # --- Phase A.5: Isotonic recalibration ---
+    # --- Isotonic recalibration ---
     if recalibrate and model_version is not None:
         calibrator = load_calibrator(model_version, repo=repo)
         if calibrator is not None:
@@ -708,12 +707,12 @@ def enrich_predictions(
                 model_version,
             )
 
-    # --- Phase A: Spread derivation ---
+    # --- Spread derivation ---
     sigma: float = get_sigma(model_version)
 
     out["model_spread"] = out[prob_col].apply(lambda p: win_prob_to_spread(p, sigma=sigma))
 
-    # --- Phase B: Uncertainty bands + confidence tier ---
+    # --- Uncertainty bands + confidence tier ---
     ms: float = get_margin_std(model_version)
     out["margin_std"] = ms
 
@@ -727,7 +726,7 @@ def enrich_predictions(
         classify_confidence_tier
     )
 
-    # --- Phase C: Projected scores (requires model_total column) ---
+    # --- Projected scores (requires model_total column) ---
     if "model_total" in out.columns:
         scores = out.apply(
             lambda row: projected_scores(row["model_spread"], row["model_total"]),

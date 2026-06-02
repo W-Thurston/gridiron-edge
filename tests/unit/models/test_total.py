@@ -1,5 +1,5 @@
 # tests/unit/models/test_total.py
-"""Unit tests for total.py — W2 Phase C total points model."""
+"""Unit tests for total.py — total points model and projected scores."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ class TestProjectedScores:
 
 
 class TestEnrichWithTotal:
-    """Tests for enrich_predictions() Phase C columns."""
+    """Tests for enrich_predictions() projected score columns."""
 
     def _make_df_with_total(self) -> pd.DataFrame:
         return pd.DataFrame(
@@ -139,7 +139,7 @@ class TestEnrichWithTotal:
         assert "projected_home_score" not in enriched.columns
         assert "projected_away_score" not in enriched.columns
 
-    def test_phase_ab_columns_still_present(self) -> None:
+    def test_prior_enrichment_columns_still_present(self) -> None:
         from gridiron_edge.models.game_prediction.post_process import (
             enrich_predictions,
         )

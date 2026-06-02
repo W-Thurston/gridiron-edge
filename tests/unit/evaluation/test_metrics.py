@@ -1,5 +1,5 @@
 # tests/evaluation/test_metrics.py
-"""Unit tests for evaluation/metrics.py — Phase 20c additions.
+"""Unit tests for evaluation/metrics.py.
 
 Tests for brier_by_confidence_tier, brier_by_season, and biggest_misses
 use synthetic DataFrames so no real data or archive files are needed.

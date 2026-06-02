@@ -1,6 +1,6 @@
 # src/gridiron_edge/models/game_prediction/tree.py
 
-"""Tree-based game prediction models (Phase 20d).
+"""Tree-based game prediction models.
 
 Two variants built on the same 32-feature combined set as logistic_v3,
 designed to capture non-linear EPA x Elo interaction effects:
@@ -18,8 +18,7 @@ designed to capture non-linear EPA x Elo interaction effects:
         probabilities natively; isotonic calibration applied if ECE > 0.025.
         Expected Brier: 0.215-0.220.
 
-Both models tune the EPA rolling window as a hyperparameter (resolves the
-rolling-window-as-hyperparameter backlog item from Phase 19).
+Both models tune the EPA rolling window as a hyperparameter.
 
 Training progress is reported via tqdm: one bar per model showing
 iteration count, current best CV Brier, and ETA.
@@ -186,7 +185,7 @@ def _train_random_forest(
     and epa_window.  CalibratedClassifierCV(isotonic) is applied
     unconditionally to correct systematic RF overconfidence.
 
-    Optimisations vs the Phase 20d implementation:
+    Optimisations vs the initial implementation:
     - Window cache: each unique EPA window is rebuilt and split at most once
       across all iterations, eliminating repeated parquet reads.
     - StratifiedKFold is instantiated once before the loop.
@@ -412,7 +411,7 @@ def _train_xgboost(
     colsample_bytree, min_child_weight, gamma, and epa_window.
     Isotonic calibration applied if holdout ECE exceeds 0.025.
 
-    Optimisations vs the Phase 20d implementation:
+    Optimisations vs the initial implementation:
     - Window cache: each unique EPA window is rebuilt and split at most once.
     - StratifiedKFold instantiated once before the loop.
     - Feature importances use vectorised np.array().mean(axis=0).
@@ -778,14 +777,14 @@ XGBoostV1Predictor = _make_tree_variant(
 
 RandomForestV2Predictor = _make_tree_variant(
     "random_forest_v2",
-    "Random Forest — expanded Phase 20e features (51), isotonic calibration",
+    "Random Forest — expanded features (51), isotonic calibration",
     feature_set=FEATURE_SETS["expanded"],
     model_type="rf",
 )
 
 XGBoostV2Predictor = _make_tree_variant(
     "xgboost_v2",
-    "XGBoost gradient boosting — expanded Phase 20e features (51)",
+    "XGBoost gradient boosting — expanded features (51)",
     feature_set=FEATURE_SETS["expanded"],
     model_type="xgb",
 )
@@ -793,14 +792,14 @@ XGBoostV2Predictor = _make_tree_variant(
 
 RandomForestV3Predictor = _make_tree_variant(
     "random_forest_v3",
-    "Random Forest — expanded Phase 20e features (107), PBP efficiency batch",
+    "Random Forest — expanded features (107), PBP efficiency batch",
     feature_set=FEATURE_SETS["expanded"],
     model_type="rf",
 )
 
 XGBoostV3Predictor = _make_tree_variant(
     "xgboost_v3",
-    "XGBoost gradient boosting — expanded Phase 20e features (107), PBP efficiency batch",
+    "XGBoost gradient boosting — expanded features (107), PBP efficiency batch",
     feature_set=FEATURE_SETS["expanded"],
     model_type="xgb",
 )

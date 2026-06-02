@@ -12,7 +12,7 @@ FEATURE_SETS        dict[str, FeatureSet]   — registry of named feature sets
 _make_diff_features         DataFrame -> DataFrame (24 cols)
 _make_raw_features          DataFrame -> DataFrame (47 cols)
 _make_combined_features     DataFrame -> DataFrame (70 cols)
-_make_expanded_features     DataFrame -> DataFrame (107 cols, Phase 20e)
+_make_expanded_features     DataFrame -> DataFrame (107 cols)
 _prepare_data               DataFrame -> train/holdout split tuple
 _is_trained                 str, Path | None -> bool
 """
@@ -93,9 +93,9 @@ def _make_combined_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine all Phase 20e features with the v1 combined set.
+    """Combine all features with the v1 combined set.
 
-    Extends _make_combined_features with the 35 Phase 20e columns:
+    Extends _make_combined_features with the 35 columns:
     game-level features (IS_DIV_GAME, weather, venue) and per-team
     features (rest, travel, franchise HFA). Game-level features are
     identical for both team perspectives in a row — the model learns
@@ -111,9 +111,9 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with 63 expanded features.
     """
     base: DataFrame = _make_combined_features(df)
-    phase_20e_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
-    phase_20e: DataFrame = df.loc[:, phase_20e_cols].copy()
-    return pd.concat([base, phase_20e], axis=1)
+    extended_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
+    extended: DataFrame = df.loc[:, extended_cols].copy()
+    return pd.concat([base, extended], axis=1)
 
 
 # ---------------------------------------------------------------------------

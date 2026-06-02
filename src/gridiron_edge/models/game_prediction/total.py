@@ -1,5 +1,5 @@
 # src/gridiron_edge/models/game_prediction/total.py
-"""Total points regression model (W2 Phase C).
+"""Total points regression model.
 
 Trains Random Forest and XGBoost regressors to predict the combined
 score of an NFL game.  Uses the same expanded feature set as the

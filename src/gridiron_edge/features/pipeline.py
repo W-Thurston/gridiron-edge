@@ -92,7 +92,7 @@ def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
 def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     """Build modeling inputs (base + full) as Parquet files.
 
-    Schema version 3 (Phase 20e): adds rest and weather features;
+    Schema version 3: adds rest and weather features;
     converts modeling files from CSV to Parquet for faster load times
     and correct dtype preservation.
 
