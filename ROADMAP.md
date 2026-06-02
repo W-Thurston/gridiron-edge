@@ -41,6 +41,7 @@ Gridiron Edge is a CLI-driven NFL analytics and modeling platform with a strong 
 | Code quality                  | ✅ Excellent           | Ruff lint+format, pyrefly types, three-tier test pyramid, pre-commit + pre-push hooks, coverage tracking    |
 | Testing infrastructure        | ✅ Complete            | 412 tests, 40% coverage, auto-markers, shared fixtures, MiniRepoBuilder, 0 deselected                       |
 | W1: Quick Wins & Unblocking   | ✅ Done                | Unicode minus fix, game_id resolver, odds join validated                                                    |
+| W2: Richer Game Model Outputs | ✅ Done | Spread, total, projected scores, uncertainty bands, confidence tiers. Pipeline refactored for composability. |
 
 ### What's Missing
 
@@ -48,8 +49,6 @@ Gridiron Edge is a CLI-driven NFL analytics and modeling platform with a strong 
 | -------------------------------- | ------------- | -------------------------------------------------- |
 | Multi-book odds ingestion        | ❌ Not started | Can't compare books, can't shop lines              |
 | Edge/EV engine (model vs market) | ❌ Not started | Can't translate predictions into betting value     |
-| Spread/total/score projections   | ❌ Not started | Models output win prob only, not spreads or totals |
-| Uncertainty bands on predictions | ❌ Not started | Point estimates only, no credible intervals        |
 | Player-level data & features     | ❌ Not started | No player entities, game logs, or player features  |
 | Player prop models               | ❌ Not started | No prop projections                                |
 | Portfolio / bet tracking         | ❌ Not started | No bet ledger, bankroll, CLV, P/L                  |
@@ -62,8 +61,7 @@ Gridiron Edge is a CLI-driven NFL analytics and modeling platform with a strong 
 
 | Blocker                                               | Impact                                                 | Effort                 |
 | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------- |
-| DK unicode minus bug in `_norm_display_odds_american` | Blocks all DK odds downstream use                      | Trivial (one-line fix) |
-| DK `game_id` resolver                                 | Blocks joining odds to games for edge/CLV calculations | Small-medium           |
+
 
 
 ***

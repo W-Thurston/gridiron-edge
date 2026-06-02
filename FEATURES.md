@@ -322,9 +322,8 @@ Ranked by signal × cost ratio. These feed directly into PLAN.md as actionable t
 | 14 | Rest differential | Schedule | Game | Already have each team's rest — just subtract (DONE) |
 | 15 | Explosive play rate | Offense | Game | Captures big-play ability beyond EPA mean (DONE) |
 
-Items 1–7 are **Phase 20e feature engineering** (game-level, can start immediately).
+Items 1–7 and 14–15 are complete (feature engineering done, 107 features).
 Items 8–13 are **W4 player data** (start once player game logs are ingested).
-Items 14–15 are **quick wins** from existing data.
 
 ---
 

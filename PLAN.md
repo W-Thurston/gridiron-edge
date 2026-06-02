@@ -40,20 +40,14 @@ _Extend existing models to produce spread, total, scores, and uncertainty bands.
 | **Total model** | Separate regression model (C2) | Total points is genuinely different information from win probability. Same feature set + training harness, different target variable (combined score). |
 | **Recalibration** | Evaluated, rejected by decision gate | rf_v3 well-calibrated on recent holdout data (ECE 0.036). Isotonic overfit the training partition (ECE → 0.000, Brier worsened on holdout). Infrastructure (4 functions, 14 tests) retained for future model versions. Root cause fix (TimeSeriesSplit) deferred to Phase 20f. |
 
-##### Phase Ordering
+###### Phase Ordering — ALL COMPLETE ✅
 
-```
-Phase A  ──→  Phase A.5  ──→  Phase B  ──→  Phase D  ──→  Phase E
-(spread +       (isotonic       (residuals,     (archive,      (validation,
- sigma cal)      recal rf_v3)    bands, tier)    pipeline)      docs)
-                                    ↑
-               Phase C  ────────────┘
-              (total model — can start alongside A.5/B)
-```
-
-Phase C (total model) is independent of A.5 and B since it targets a separate regression
-variable. It can run in parallel once Phase A establishes the post_process module structure.
-It must land before Phase D wires everything into the archive.
+Phase A (spread + sigma cal) ✅
+Phase A.5 (isotonic recal — rejected) ✅
+Phase B (residuals, bands, tier) ✅
+Phase C (total model + projected scores) ✅
+Phase D (pipeline, archive, enrichment) ✅
+Phase E (validation, docs, cleanup) ✅
 
 ---
 
@@ -173,104 +167,56 @@ harness has temporal leakage in two places:
 
 ---
 
-##### Phase B: Historical Residuals, Margin STD, Uncertainty Bands + Confidence Tier
+###### Phase B: Uncertainty Bands + Confidence Tiers ✅ DONE
 
-_Option C (historical residual-based intervals) — simplest, most defensible for V1._
+**Result:** 4 new functions, 22 new tests (55 total in test_post_process.py).
 
-- [ ] **Residual analysis utility in `post_process.py`:**
-  - `compute_residuals(model_version)` — join archived predictions to actual outcomes, compute `predicted_margin - actual_margin`
-  - `margin_std(model_version)` — standard deviation of residual distribution
-  - Consider per-confidence-tier margin_std (tighter residuals for high-confidence games)
-- [ ] **Uncertainty bands:**
-  - `win_prob_lo, win_prob_hi` from `(model_spread ± z * margin_std)` converted back to probability space via probit
-  - 90% credible interval: z = 1.645
-  - Wider bands naturally emerge for lower-confidence predictions
-- [ ] **Confidence tier from band width:**
-  - Tier derived from `win_prob_hi - win_prob_lo`
-  - Narrow band = High, wide band = Low
-  - Empirically determine tier boundaries from the distribution of band widths
-- [ ] **Integration into `enrich_predictions()`:**
-  - Add `margin_std`, `win_prob_lo`, `win_prob_hi`, `confidence_tier`
-- [ ] **Tests:**
-  - Bands symmetric around point estimate
-  - `win_prob_lo < win_prob < win_prob_hi` always holds
-  - Band width increases as probability approaches 0.5
-  - Known residual distributions produce expected intervals
+- compute_margin_std, get_margin_std: per-model residual std (13 models calibrated)
+- win_prob_bands: 90% CI via spread ± z*margin_std → probit
+- classify_confidence_tier: band width → High/Moderate/Low
+- enrich_predictions adds: margin_std, win_prob_lo, win_prob_hi, confidence_tier
+- Tier thresholds: High (<0.65), Moderate (0.65–0.82), Low (≥0.82)
 
 ---
 
-##### Phase C: Total Points Regression Model + Projected Scores
+###### Phase C: Total Points Model + Projected Scores ✅ DONE
 
-_Separate model — total points is genuinely different information from win probability._
+**Result:** New file total.py, 11 new tests (test_total.py).
 
-- [ ] **Total points regression model:**
-  - New file: `models/game_prediction/total.py`
-  - Target variable: `actual_total = home_score + away_score` (from games table)
-  - Random Forest Regressor + XGBoost Regressor using expanded_107 feature set
-  - Follows existing `_train_random_forest` / `_train_xgboost` pattern with MSE/MAE instead of Brier
-  - Variant naming: `total_rf_v1`, `total_xgb_v1`
-  - Register in `PredictorRegistry`
-- [ ] **Projected scores derivation in `post_process.py`:**
-  - `projected_home_score = (model_total + model_spread) / 2`
-  - `projected_away_score = (model_total - model_spread) / 2`
-- [ ] **Evaluation metrics for total model:**
-  - MAE, RMSE against actual totals
-  - Calibration: predicted vs. actual totals by bucket
-  - Add to evaluation reporting
-- [ ] **Tests:**
-  - `home + away = total` and `home - away = spread` identities
-  - Total model training smoke test (small dataset)
-  - Evaluation metric correctness
+- RandomForestRegressor targeting actual_total = PTS_WINNER + PTS_LOSER
+- Same 107-feature expanded set, TimeSeriesSplit CV (not KFold)
+- total_rf_v1: holdout MAE=10.27, RMSE=13.17 (n=1,467)
+- projected_scores(): home = (total - spread) / 2
+- enrich_predictions: adds projected_home_score, projected_away_score when model_total present
 
 ---
 
-##### Phase D: Archive Schema Extension + Pipeline Integration
+###### Phase D: Pipeline + Archive + Enrichment ✅ DONE
 
-_Wire everything together. Ensure backward compatibility._
+**Result:** New file pipeline.py, 11 new tests (test_pipeline.py + test_archive_schema.py).
 
-- [ ] **Extend `_ARCHIVE_COLUMNS` in `archive.py`:**
-  - New columns: `model_spread`, `model_total`, `projected_home_score`, `projected_away_score`, `win_prob_lo`, `win_prob_hi`, `confidence_tier`, `margin_std`
-- [ ] **Schema versioning:**
-  - Bump `CURRENT_SCHEMA_VERSION` in `features/manifest.py`
-  - Migration logic: fill NaN for old predictions lacking new columns (same pattern as `is_backfilled` migration)
-- [ ] **Update prediction pipeline:**
-  - `_predict_historical_tree()` and `_predict_upcoming_tree()` call `enrich_predictions()` before returning
-  - Similarly update logistic and elo prediction paths
-  - Enrichment is model-agnostic — any predictor outputting `home_win_prob` gets full enrichment
-- [ ] **Wire sigma calibration into training harness:**
-  - After training completes, run `calibrate_spread_sigma()` on backfilled predictions
-  - Store sigma in model artifact metadata (not hardcoded dict)
-  - `get_sigma()` loads from artifact store, falls back to `_MODEL_SIGMAS` for models trained before this change
-- [ ] **Wire recalibration fitting into training harness:**
-  - After training + backfill, fit and save isotonic calibrator
-  - Use temporal split (same pattern as Phase A.5)
-  - Store calibrator alongside model artifact
-- [ ] **Update `build_archive_rows()` in `archive.py`:**
-  - Map new enrichment columns into archive rows
-  - Handle absent enrichment columns gracefully (backward compat with older model versions)
-- [ ] **CLI integration:**
-  - `gridiron output predictions` displays spread, total, scores, tier in output table
-  - `gridiron evaluate backfill` populates new columns for historical data
-- [ ] **Tests:**
-  - Archive round-trip with new columns
-  - Backward compat: old archive loads without error, new columns are NaN
-  - Full pipeline integration test: train → predict → enrich → archive → load
+- predict_games(): composable pipeline (load → predict → enrich)
+- build_game_predictions(): maps raw model output to game-level rows
+- _predict_historical_tree/logistic delegate to predict_games
+- elo _build_archive_rows gets enrichment
+- Archive: +8 columns, backward compat via NaN fill
+- Verified: 5,705 games backfilled with all 21 columns
+
+**Deferred to Phase 20f / Architectural Debt:**
+- Wire sigma/margin_std into training harness (currently hardcoded dicts)
+- ModelMetadata.holdout_brier repurposed for MAE in total model
+- CLI output formatting for new columns (presentation, not plumbing)
 
 ---
 
-##### Phase E: Validation + Documentation
+###### Phase E: Validation + Documentation + Cleanup ✅ DONE
 
-- [ ] **Validation report:**
-  - Model spread vs. closing spread: MAE, correlation, bias
-  - Model total vs. closing total: MAE, correlation
-  - Uncertainty band coverage: % of actual outcomes within the 90% CI
-  - Confidence tier accuracy: do High-confidence games win at higher rates?
-- [ ] **Documentation updates:**
-  - HANDOFF.md: new post_process module, updated archive schema, total model
-  - FEATURES.md: document new output columns
-  - PLAN.md: mark W2 phases complete
-  - CHANGELOG.md: W2 completion entry
-
+- Validation report completed (spread MAE 3.16, total MAE 3.11, tier accuracy confirmed)
+- Discovered VEGAS_LINE sign convention mismatch (documented in HANDOFF.md)
+- Phase reference cleanup: all Phase A/B/C/D/E/20c/20d/20e/W2 references
+  scrubbed from source and test files, replaced with descriptive terminology
+- Per-team projected score accuracy: home MAE 6.95, away MAE 6.74
+- Documentation updated: CHANGELOG.md, HANDOFF.md, PLAN.md
 ---
 
 ##### For reference: Estimated scope
@@ -315,6 +261,10 @@ _Items from the existing codebase that should be cleaned up when convenient._
 - [ ] Review dataset registry for any stale or unused keys
 - [ ] Ensure all tests pass after feature additions (run full test suite)
 - [ ] Update HANDOFF.md after each significant change
+- [ ] Wire sigma calibration and margin_std into training harness (currently hardcoded dicts in post_process.py)
+- [ ] ModelMetadata.holdout_brier repurposed for MAE in total model — consider generic primary_metric field
+- [ ] CLI `output predictions` does not yet display enrichment columns (spread, total, tier)
+- [ ] _predict_upcoming_tree/logistic still have inline logic (not yet delegating to pipeline) — unify when upcoming prediction path is exercised
 
 ---
 

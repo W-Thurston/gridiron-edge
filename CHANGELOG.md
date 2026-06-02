@@ -3,6 +3,67 @@
 What has been built and when. Newest first.
 
 ---
+### 2026-06-02 — W2: Richer Game Model Outputs — Complete
+
+Extended game prediction models to produce spread, total, projected scores,
+uncertainty bands, and confidence tiers — not just win probability.
+
+#### Post-processing enrichment (`post_process.py`)
+- **Spread derivation:** probit link with per-model sigma calibration (13 variants)
+  - Best: random_forest_v3 (sigma=13.97, spread MAE vs Vegas=3.16, r=0.80)
+- **Isotonic recalibration:** infrastructure built, decision gate rejected for rf_v3
+  (holdout ECE 0.036 already excellent; recalibration worsened it to 0.083)
+- **Uncertainty bands:** 90% credible intervals via spread ± z*margin_std → probit
+  - Per-model margin_std registry (best: rf_v3 at 12.85, worst: elo_v1 at 13.89)
+- **Confidence tiers:** band width → High (<0.65) / Moderate (0.65–0.82) / Low (≥0.82)
+  - Validated: High 96.8%, Moderate 86.8%, Low 64.0% favored-team win rate
+- **Projected scores:** home = (total - spread) / 2, away = (total + spread) / 2
+  - Home MAE: 6.95, Away MAE: 6.74, near-zero bias
+
+#### Total points model (`total.py`)
+- Random Forest regressor targeting actual_total = PTS_WINNER + PTS_LOSER
+- Uses same 107-feature expanded set as win models
+- TimeSeriesSplit CV (not KFold) to avoid temporal leakage
+- total_rf_v1 trained: holdout MAE=10.27, RMSE=13.17 (n=1,467)
+- Competitive with Vegas closing totals (model MAE 3.11 vs closing O/U, r=0.64)
+
+#### Prediction pipeline (`pipeline.py`)
+- Composable orchestrator: load → predict (win) → predict (total) → build rows → enrich
+- `predict_games()` replaces monolithic `_predict_historical_tree()` internals
+- `build_game_predictions()` maps raw model output to game-level rows
+- All model families (elo, logistic, tree) now produce enriched predictions
+
+#### Archive schema extension (`archive.py`)
+- 8 new columns: model_spread, model_total, projected_home_score,
+  projected_away_score, margin_std, win_prob_lo, win_prob_hi, confidence_tier
+- Backward compatible: old archives load with NaN fill for missing columns
+
+#### Validation report (rf_v3 vs Vegas)
+| Metric | Value |
+|--------|-------|
+| Spread MAE vs closing line | 3.16 |
+| Spread correlation | 0.80 |
+| Total MAE vs closing O/U | 3.11 |
+| Total correlation | 0.64 |
+| Home score MAE | 6.95 |
+| Away score MAE | 6.74 |
+| High confidence fav win% | 96.8% |
+| Moderate confidence fav win% | 86.8% |
+| Low confidence fav win% | 64.0% |
+
+**Note:** VEGAS_LINE uses opposite sign convention from model_spread
+(positive = home favored vs negative = home favored). Documented in HANDOFF.md.
+
+#### Phase reference cleanup
+Scrubbed all Phase A/B/C/D/E/20c/20d/20e and W2 references from source and
+test files. Replaced with descriptive terminology. PLAN.md and CHANGELOG.md
+retain historical phase references since they are historical records.
+
+#### Tests added: 44 new (total ~456)
+- test_post_process.py: 33 → 55 (bands, tiers, enrichment)
+- test_total.py: 11 (projected scores, enrichment with total)
+- test_pipeline.py: 7 (build_game_predictions)
+- test_archive_schema.py: 4 (schema extension, backward compat)
 
 ## 2026-06-01 — Phase 20e Feature Engineering Complete
 

@@ -27,6 +27,9 @@ How everything works right now. Assumes you know what the project does — see [
 | Models | `gridiron_edge.models` — Predictor + Trainable protocols, ArtifactStore |
 | CLI | `gridiron_edge.cli` — `main.py` stage-list pipeline, sub-apps per domain |
 | Market math | `gridiron_edge.market` — `odds_math`, `kelly` (pure functions, no data deps) |
+| Post-processing enrichment | `gridiron_edge.models.game_prediction.post_process` — spread, bands, tier, scores |
+| Prediction pipeline | `gridiron_edge.models.game_prediction.pipeline` — composable predict → enrich orchestrator |
+| Total points model | `gridiron_edge.models.game_prediction.total` — RF regressor, shares feature set with win models |
 
 ---
 
@@ -46,6 +49,7 @@ How everything works right now. Assumes you know what the project does — see [
 | `src/gridiron_edge/viz/` | Predictions image/HTML, playoff table, rankings CSV |
 | `src/gridiron_edge/cli/` | Typer app + sub-commands |
 | `data/` | Generated at runtime — not committed |
+| `data/models/{version}/` | Trained model artifacts (joblib + metadata JSON) |
 
 **Data layout:**
 
@@ -155,6 +159,41 @@ multi-book data is available (W7).
 - `season.py` — orchestration (imports from both)
 
 Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` — if the formula changes, update both.
+
+#### Post-processing enrichment is a separate step, not inside models
+
+All derived outputs (spread, bands, tier, projected scores) are computed in
+`post_process.py` after the model produces `home_win_prob`.  This keeps models
+clean and composable — any model that outputs a win probability gets the full
+enrichment for free via `enrich_predictions()`.
+
+#### Prediction pipeline is composable
+
+`pipeline.py` orchestrates: load features → win model → total model →
+build game rows → enrich.  Adding a new model type means adding one inference
+call, not rewriting the pipeline.  `_predict_historical_tree()` and
+`_predict_historical_logistic()` delegate to `predict_games()`.
+
+#### Total model is a supporting model, not a standalone predictor
+
+The total model (`total.py`) trains a `RandomForestRegressor` on the same
+107-feature set but targets `actual_total` instead of `RESULT`.  It is NOT
+registered in `PredictorRegistry` — it feeds into `enrich_predictions()` via
+the pipeline rather than operating as an independent predictor.
+
+#### VEGAS_LINE sign convention
+
+nflverse `VEGAS_LINE` uses **positive = home favored** (PFR convention).
+Our `model_spread` uses **negative = home favored** (probit convention).
+They are exact negations.  Always negate `VEGAS_LINE` before comparing
+to `model_spread`.
+
+#### Archive schema is soft-versioned
+
+The prediction archive (`predictions_log.parquet`) uses NaN fill for columns
+missing from older archives.  No schema version column — `load_prediction_log()`
+adds missing columns on load.  String columns (e.g. `confidence_tier`) get
+empty string instead of NaN.
 
 ---
 
@@ -269,7 +308,11 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Model selection + reporting | `evaluation/select.py` |
 | Weather ingest (idempotent) | `ingest/weather/openweather.py` |
 | DK odds ingest | `ingest/odds/draftkings.py` |
-| DK game_id resolution | ingest/odds/_game_id.py |
+| DK game_id resolution | `ingest/odds/_game_id.py` |
+| Post-processing (spread, bands, tier) | `models/game_prediction/post_process.py` |
+| Prediction pipeline orchestrator | `models/game_prediction/pipeline.py` |
+| Total points model | `models/game_prediction/total.py` |
+| Prediction archive schema | `evaluation/archive.py` — `_ARCHIVE_COLUMNS` |
 
 All paths relative to `src/gridiron_edge/`.
 
@@ -373,3 +416,4 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N`
 4. `uv run gridiron sim run`
 5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`
+6. `uv run gridiron evaluate backfill --model-version random_forest_v3`
