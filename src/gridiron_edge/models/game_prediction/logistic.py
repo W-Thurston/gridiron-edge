@@ -33,7 +33,6 @@ All variants:
 from __future__ import annotations
 
 from collections.abc import Callable
-import datetime
 import logging
 from logging import Logger
 from pathlib import Path
@@ -44,7 +43,6 @@ from pandas import DataFrame, Series
 
 from gridiron_edge.models.base import PredictorSpec
 from gridiron_edge.models.game_prediction._columns import (
-    _SCHEMA_VERSION,
     FeatureSet,
 )
 from gridiron_edge.models.game_prediction._features import (
@@ -52,6 +50,10 @@ from gridiron_edge.models.game_prediction._features import (
     _is_trained,
     _prepare_data,
 )
+
+# pyrefly: ignore [missing-import]
+from gridiron_edge.models.game_prediction.pipeline import predict_games
+from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.registry import PredictorRegistry
 
 if TYPE_CHECKING:
@@ -301,64 +303,13 @@ def _predict_historical_logistic(
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
-    """Shared historical prediction logic for all logistic variants.
-
-    Args:
-        games: Games DataFrame (unused — full modeling file loaded from disk).
-        model_version: Registered model version string.
-        feature_fn: Feature engineering function.
-        repo: Repository root.
-
-    Returns:
-        Prediction DataFrame in the standard archive format.
-    """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.datasets.loaders import load_modeling_file
-    from gridiron_edge.models.artifact import ArtifactStore
-
-    resolved_repo: Path = repo or get_settings().repo_root
-    store = ArtifactStore(resolved_repo)
-
-    if not store.is_trained(model_version):
-        logger.warning("%s: no artifact found.", model_version)
-        return pd.DataFrame()
-
-    pipeline = store.load(model_version)
-    df: DataFrame = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
-
-    features = feature_fn(df)
-    valid = features.notna().all(axis=1)
-    df_valid = df.loc[valid].copy()
-    x_feat = features.loc[valid]
-
-    if x_feat.empty:
-        return pd.DataFrame()
-
-    probs = pipeline.predict_proba(x_feat)[:, 1]
-    df_valid = df_valid.copy()
-    df_valid["_prob"] = probs
-
-    away_rows = df_valid.loc[df_valid["HOME_FIELD"] == 0].copy()
-    away_rows = away_rows.drop_duplicates(subset=["GAME_ID"])
-
-    ts = datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
-    return pd.DataFrame(
-        {
-            "predicted_at": ts,
-            "is_backfilled": True,
-            "model_version": model_version,
-            "season": away_rows["YEAR"],
-            "week": away_rows["WEEK_NUM"].astype(int),
-            "game_id": away_rows["GAME_ID"],
-            "game_date": "",
-            "away_team": away_rows["TEAM_A"],
-            "home_team": away_rows["TEAM_B"],
-            "away_elo": float("nan"),
-            "home_elo": float("nan"),
-            "away_win_prob": away_rows["_prob"],
-            "home_win_prob": 1.0 - away_rows["_prob"],
-        }
-    ).reset_index(drop=True)
+    """Shared historical prediction logic for all logistic variants."""
+    return predict_games(
+        model_version=model_version,
+        feature_fn=feature_fn,
+        repo=repo,
+        is_backfilled=True,
+    )
 
 
 def _predict_upcoming_logistic(
@@ -414,6 +365,14 @@ def _predict_upcoming_logistic(
     )
     result["AWAY_TEAM_ELO"] = upcoming_valid.get("TEAM_A_ELO", float("nan"))
     result["HOME_TEAM_ELO"] = upcoming_valid.get("TEAM_B_ELO", float("nan"))
+
+    result = enrich_predictions(
+        result,
+        model_version=model_version,
+        recalibrate=True,
+        repo=resolved_repo,
+    )
+
     return result.reset_index(drop=True)
 
 

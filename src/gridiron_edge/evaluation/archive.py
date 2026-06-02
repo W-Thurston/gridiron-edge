@@ -45,6 +45,7 @@ from gridiron_edge.core.settings import get_settings
 logger: Logger = logging.getLogger(__name__)
 
 # Ordered columns enforced on every write.
+
 _ARCHIVE_COLUMNS: list[str] = [
     "predicted_at",
     "is_backfilled",
@@ -59,7 +60,16 @@ _ARCHIVE_COLUMNS: list[str] = [
     "home_elo",
     "away_win_prob",
     "home_win_prob",
+    "model_spread",
+    "model_total",
+    "projected_home_score",
+    "projected_away_score",
+    "margin_std",
+    "win_prob_lo",
+    "win_prob_hi",
+    "confidence_tier",
 ]
+
 
 # Epoch sentinel used in pre-migration archives to flag backfilled rows.
 # Kept for the migration helper only — new rows use is_backfilled directly.
@@ -132,6 +142,13 @@ def build_archive_rows(
             "home_win_prob": df_predictions["HOME_WIN_PROB"],
         }
     )
+
+    # Enrichment columns — filled by enrich_predictions() at prediction
+    # time.  Default to NaN / empty for backward compatibility with
+    # callers that don't enrich before archiving.
+    for col in _ARCHIVE_COLUMNS:
+        if col not in rows.columns:
+            rows[col] = float("nan") if col != "confidence_tier" else ""
 
     return rows[_ARCHIVE_COLUMNS].reset_index(drop=True)
 
@@ -259,6 +276,11 @@ def load_prediction_log(
     # Backward compat: add is_backfilled if archive predates this migration
     if "is_backfilled" not in df.columns:
         df["is_backfilled"] = df["predicted_at"] == _LEGACY_BACKFILL_TS
+
+    # Backward compat: add enrichment columns if archive predates W2
+    for col in _ARCHIVE_COLUMNS:
+        if col not in df.columns:
+            df[col] = float("nan") if col != "confidence_tier" else ""
 
     if season is not None:
         df = df.loc[df["season"] == season]

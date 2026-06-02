@@ -27,6 +27,7 @@ import pandas as pd
 
 from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.models.base import PredictorSpec
+from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.registry import PredictorRegistry
 
 logger: Logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def _build_archive_rows(
 
     weeks = games.set_index("GAME_ID")["WEEK_NUM"].to_dict()
 
-    return pd.DataFrame(
+    result = pd.DataFrame(
         {
             "predicted_at": datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None),
             "is_backfilled": True,
@@ -83,12 +84,20 @@ def _build_archive_rows(
             "game_date": game_dates,
             "away_team": away_teams,
             "home_team": home_teams,
-            "away_elo": float("nan"),  # tuner engine does not snapshot per-game Elo
+            "away_elo": float("nan"),
             "home_elo": float("nan"),
             "away_win_prob": away_probs,
             "home_win_prob": [1.0 - p for p in away_probs],
         }
     )
+
+    result = enrich_predictions(
+        result,
+        model_version=model_version,
+        recalibrate=False,
+    )
+
+    return result
 
 
 def _run_simulation(

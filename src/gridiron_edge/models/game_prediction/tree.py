@@ -28,7 +28,6 @@ iteration count, current best CV Brier, and ETA.
 from __future__ import annotations
 
 from collections.abc import Callable
-import datetime as dt
 import logging
 from logging import Logger
 from pathlib import Path
@@ -40,9 +39,6 @@ from pandas import Series
 from tqdm import tqdm
 
 from gridiron_edge.models.base import PredictorSpec
-from gridiron_edge.models.game_prediction._columns import (
-    _SCHEMA_VERSION,
-)
 
 # EPA metric names — single source of truth lives in the feature module.
 from gridiron_edge.models.game_prediction._epa_window import (
@@ -84,55 +80,16 @@ def _predict_historical_tree(
         repo: Repository root.
 
     Returns:
-        Prediction DataFrame in the standard archive format.
+        Enriched prediction DataFrame in the standard archive format.
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.datasets.loaders import load_modeling_file
-    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.game_prediction.pipeline import predict_games
 
-    resolved_repo: Path = repo or get_settings().repo_root
-    store = ArtifactStore(resolved_repo)
-
-    if not store.is_trained(model_version):
-        logger.warning("%s: no artifact found.", model_version)
-        return pd.DataFrame()
-
-    pipeline = store.load(model_version)
-    df = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
-
-    features = feature_fn(df)
-    valid = features.notna().all(axis=1)
-    df_valid = df.loc[valid].copy()
-    x_feat = features.loc[valid]
-
-    if x_feat.empty:
-        return pd.DataFrame()
-
-    probs = pipeline.predict_proba(x_feat)[:, 1]
-    df_valid = df_valid.copy()
-    df_valid["_prob"] = probs
-
-    away_rows = df_valid.loc[df_valid["HOME_FIELD"] == 0].copy()
-    away_rows = away_rows.drop_duplicates(subset=["GAME_ID"])
-
-    ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
-    return pd.DataFrame(
-        {
-            "predicted_at": ts,
-            "is_backfilled": True,
-            "model_version": model_version,
-            "season": away_rows["YEAR"],
-            "week": away_rows["WEEK_NUM"].astype(int),
-            "game_id": away_rows["GAME_ID"],
-            "game_date": "",
-            "away_team": away_rows["TEAM_A"],
-            "home_team": away_rows["TEAM_B"],
-            "away_elo": float("nan"),
-            "home_elo": float("nan"),
-            "away_win_prob": away_rows["_prob"],
-            "home_win_prob": 1.0 - away_rows["_prob"],
-        }
-    ).reset_index(drop=True)
+    return predict_games(
+        model_version=model_version,
+        feature_fn=feature_fn,
+        repo=repo,
+        is_backfilled=True,
+    )
 
 
 def _predict_upcoming_tree(
@@ -151,13 +108,15 @@ def _predict_upcoming_tree(
         repo: Repository root.
 
     Returns:
-        Prediction DataFrame with AWAY_WIN_PROB / HOME_WIN_PROB columns.
+        Enriched prediction DataFrame with win probabilities, spread,
+        bands, tier, and projected scores.
     """
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.datasets.accessor import DatasetAccessor
     from gridiron_edge.features.pipeline import FEATURES
     from gridiron_edge.features.registry import run_features
     from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -188,6 +147,23 @@ def _predict_upcoming_tree(
     )
     result["AWAY_TEAM_ELO"] = upcoming_valid.get("TEAM_A_ELO", float("nan"))
     result["HOME_TEAM_ELO"] = upcoming_valid.get("TEAM_B_ELO", float("nan"))
+
+    # Total model predictions (optional).
+    try:
+        from gridiron_edge.models.game_prediction.total import predict_total
+
+        totals = predict_total(upcoming_valid, repo=resolved_repo)
+        result["model_total"] = totals.loc[upcoming_valid.loc[valid].index].values
+    except (FileNotFoundError, Exception):
+        logger.debug("_predict_upcoming_tree: total model not available")
+
+    result = enrich_predictions(
+        result,
+        model_version=model_version,
+        recalibrate=True,
+        repo=resolved_repo,
+    )
+
     return result.reset_index(drop=True)
 
 
