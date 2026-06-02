@@ -31,9 +31,15 @@ Phase A.5 deliverables (isotonic recalibration):
     save_calibrator      Persist calibrator to data/models/{version}_cal/
     load_calibrator      Load calibrator (None if absent)
 
+Phase B deliverables (uncertainty bands + confidence tiers):
+    compute_margin_std   Residual std from predicted vs actual margins
+    get_margin_std       Look up per-model margin std
+    win_prob_bands       Derive (win_prob_lo, win_prob_hi) credible interval
+    classify_confidence_tier  Band width -> High / Moderate / Low
+
 Future phases will extend ``enrich_predictions`` with:
-    Phase B -- margin_std, win_prob_lo, win_prob_hi, confidence_tier
     Phase C -- model_total, projected_home_score, projected_away_score
+
 """
 
 from __future__ import annotations
@@ -98,6 +104,43 @@ _MODEL_SIGMAS: dict[str, float] = {
 # TODO(W2-D): Wire sigma calibration into the training harness so this
 # dict is populated automatically when a new model version is trained.
 # See Phase D in PLAN.md.
+
+
+# Default z-score for credible intervals.  1.645 corresponds to a 90% CI.
+_DEFAULT_Z: Final[float] = 1.645
+
+# Default margin standard deviation (league-wide fallback).  This is the
+# standard deviation of (predicted_margin - actual_margin) residuals.
+_DEFAULT_MARGIN_STD: Final[float] = 13.45
+
+# Per-model margin std -- derived from sqrt(MSE) at optimal sigma during
+# sigma calibration (2026-06-01).  Represents how much the model's spread
+# predictions typically deviate from actual game margins.
+_MODEL_MARGIN_STDS: dict[str, float] = {
+    "elo_v1": 13.89,
+    "elo_v2": 13.83,
+    "elo_v3": 13.84,
+    "logistic_v1": 13.53,
+    "logistic_v2": 13.53,
+    "logistic_v3": 13.53,
+    "logistic_v4": 13.53,
+    "random_forest_v1": 13.38,
+    "random_forest_v2": 13.26,
+    "random_forest_v3": 12.85,
+    "xgboost_v1": 13.45,
+    "xgboost_v2": 13.41,
+    "xgboost_v3": 13.44,
+}
+# TODO(W2-D): Wire margin_std computation into the training harness.
+
+# Confidence tier band-width thresholds.  A game's band width
+# (win_prob_hi - win_prob_lo) is classified into tiers:
+#   band_width < HIGH   -> "High"   (narrow band = strong conviction)
+#   band_width < MOD    -> "Moderate"
+#   band_width >= MOD   -> "Low"    (wide band = near toss-up)
+_TIER_HIGH_THRESHOLD: Final[float] = 0.65
+_TIER_MODERATE_THRESHOLD: Final[float] = 0.82
+
 
 # Calibrator artifact filename.
 _CALIBRATOR_FILENAME: Final[str] = "calibrator.joblib"
@@ -445,6 +488,117 @@ def load_calibrator(
 
 
 # ---------------------------------------------------------------------------
+# Uncertainty Bands & Confidence Tiers (Phase B)
+# ---------------------------------------------------------------------------
+# Uses the per-model residual standard deviation (margin_std) to build
+# credible intervals around the point-estimate win probability.  The
+# spread +/- z * margin_std interval is converted back to probability space
+# via the probit link, producing (win_prob_lo, win_prob_hi).  Band width
+# determines the confidence tier.
+
+
+def compute_margin_std(
+    home_win_probs: Series,
+    actual_margins: Series,
+    sigma: float,
+) -> float:
+    """Compute the standard deviation of spread prediction residuals.
+
+    The residual for each game is::
+
+        predicted_margin - actual_margin
+
+    where ``predicted_margin = sigma * Phi_inv(home_win_prob)``.
+
+    Args:
+        home_win_probs: Model's predicted home-team win probabilities.
+        actual_margins: Actual game margins (home - away).
+        sigma: The model's calibrated sigma.
+
+    Returns:
+        Standard deviation of residuals (float, ddof=1).
+
+    Raises:
+        ValueError: If inputs are empty or have mismatched lengths.
+    """
+    if len(home_win_probs) == 0:
+        raise ValueError("home_win_probs must not be empty")
+    if len(home_win_probs) != len(actual_margins):
+        raise ValueError(
+            f"Length mismatch: home_win_probs ({len(home_win_probs)}) "
+            f"vs actual_margins ({len(actual_margins)})"
+        )
+
+    clamped: np.ndarray = np.clip(
+        np.asarray(home_win_probs, dtype=float),
+        _PROB_FLOOR,
+        _PROB_CEIL,
+    )
+    predicted: np.ndarray = sigma * norm.ppf(clamped)
+    actual: np.ndarray = np.asarray(actual_margins, dtype=float)
+    residuals: np.ndarray = predicted - actual
+
+    return float(np.std(residuals, ddof=1))
+
+
+def get_margin_std(model_version: str | None = None) -> float:
+    """Look up the residual margin std for a model version.
+
+    Falls back to ``_DEFAULT_MARGIN_STD`` if not registered or ``None``.
+    """
+    if model_version is None:
+        return _DEFAULT_MARGIN_STD
+    return _MODEL_MARGIN_STDS.get(model_version, _DEFAULT_MARGIN_STD)
+
+
+def win_prob_bands(
+    home_win_prob: float,
+    *,
+    margin_std: float,
+    sigma: float,
+    z: float = _DEFAULT_Z,
+) -> tuple[float, float]:
+    """Derive a credible interval around a home-team win probability.
+
+    Converts the point-estimate spread to a spread interval using
+    ``spread +/- z * margin_std``, then converts each bound back to
+    probability space via the probit link.
+
+    Args:
+        home_win_prob: Point-estimate probability.
+        margin_std: Residual standard deviation for this model.
+        sigma: Calibrated sigma for this model.
+        z: Z-score for the interval.  Default 1.645 (90% CI).
+
+    Returns:
+        Tuple of (win_prob_lo, win_prob_hi).  ``win_prob_lo`` is always
+        the lower probability (worse for home team).
+    """
+    spread: float = win_prob_to_spread(home_win_prob, sigma=sigma)
+    lo_spread: float = spread + z * margin_std  # worse for home
+    hi_spread: float = spread - z * margin_std  # better for home
+    prob_lo: float = spread_to_win_prob(lo_spread, sigma=sigma)
+    prob_hi: float = spread_to_win_prob(hi_spread, sigma=sigma)
+    return (prob_lo, prob_hi)
+
+
+def classify_confidence_tier(band_width: float) -> str:
+    """Classify a band width into a confidence tier.
+
+    Args:
+        band_width: ``win_prob_hi - win_prob_lo``.
+
+    Returns:
+        ``"High"``, ``"Moderate"``, or ``"Low"``.
+    """
+    if band_width < _TIER_HIGH_THRESHOLD:
+        return "High"
+    if band_width < _TIER_MODERATE_THRESHOLD:
+        return "Moderate"
+    return "Low"
+
+
+# ---------------------------------------------------------------------------
 # Prediction Enrichment Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -467,8 +621,14 @@ def enrich_predictions(
     ``home_win_prob`` and ``away_win_prob`` are replaced in-place with
     calibrated values before deriving the spread.
 
-    Phase A adds:
-        model_spread   float -- NFL point spread (negative = home favored)
+    Phase A columns:
+        model_spread       float -- NFL point spread (neg = home favored)
+
+    Phase B columns:
+        margin_std         float -- residual std for this model version
+        win_prob_lo        float -- lower bound of 90% credible interval
+        win_prob_hi        float -- upper bound of 90% credible interval
+        confidence_tier    str   -- "High" / "Moderate" / "Low"
 
     Future phases will add model_total, projected scores, uncertainty
     bands, confidence_tier, and margin_std.
@@ -516,15 +676,30 @@ def enrich_predictions(
             )
 
     # --- Phase A: Spread derivation ---
-    sigma = get_sigma(model_version)
+    sigma: float = get_sigma(model_version)
 
     out["model_spread"] = out[prob_col].apply(lambda p: win_prob_to_spread(p, sigma=sigma))
 
+    # --- Phase B: Uncertainty bands + confidence tier ---
+    ms: float = get_margin_std(model_version)
+    out["margin_std"] = ms
+
+    def _bands(p: float) -> tuple[float, float]:
+        return win_prob_bands(p, margin_std=ms, sigma=sigma)
+
+    bands = out[prob_col].apply(_bands)
+    out["win_prob_lo"] = bands.apply(lambda t: t[0])
+    out["win_prob_hi"] = bands.apply(lambda t: t[1])
+    out["confidence_tier"] = (out["win_prob_hi"] - out["win_prob_lo"]).apply(
+        classify_confidence_tier
+    )
+
     logger.debug(
-        "enrich_predictions: added model_spread (sigma=%.4f, model=%s, n=%d)",
-        sigma,
-        model_version or "default",
+        "enrich_predictions: enriched %d rows (sigma=%.4f, margin_std=%.2f, model=%s)",
         len(out),
+        sigma,
+        ms,
+        model_version or "default",
     )
 
     return out

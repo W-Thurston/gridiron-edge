@@ -14,19 +14,26 @@ from sklearn.isotonic import IsotonicRegression
 
 from gridiron_edge.models.game_prediction.post_process import (
     _CALIBRATOR_FILENAME,
+    _DEFAULT_MARGIN_STD,
+    _MODEL_MARGIN_STDS,
     _MODEL_SIGMAS,
     _NFL_DEFAULT_SIGMA,
     _PROB_CEIL,
     _PROB_FLOOR,
+    _TIER_HIGH_THRESHOLD,
     apply_recalibration,
     calibrate_spread_sigma,
+    classify_confidence_tier,
+    compute_margin_std,
     enrich_predictions,
     fit_recalibration,
+    get_margin_std,
     get_sigma,
     load_calibrator,
     register_sigma,
     save_calibrator,
     spread_to_win_prob,
+    win_prob_bands,
     win_prob_to_spread,
 )
 
@@ -637,3 +644,222 @@ class TestEnrichWithRecalibration:
             expected_away,
             check_names=False,
         )
+
+
+# ===========================================================================
+# Uncertainty Bands & Confidence Tiers
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# TestComputeMarginStd
+# ---------------------------------------------------------------------------
+
+
+class TestComputeMarginStd:
+    """Tests for compute_margin_std()."""
+
+    def test_recovers_known_std(self) -> None:
+        """Residual std matches the noise std used to generate data."""
+        rng = np.random.default_rng(42)
+        n = 500
+        sigma = 14.0
+        noise_std = 10.0
+
+        probs = pd.Series(rng.uniform(0.25, 0.75, size=n))
+        predicted = sigma * norm.ppf(np.clip(probs.values, 0.001, 0.999))
+        noise = rng.normal(0, noise_std, size=n)
+        actual_margins = pd.Series(predicted + noise)
+
+        result = compute_margin_std(probs, actual_margins, sigma)
+        assert result == pytest.approx(noise_std, abs=2.0)
+
+    def test_zero_residuals(self) -> None:
+        """Perfect predictions produce near-zero std."""
+        rng = np.random.default_rng(99)
+        sigma = 14.0
+        probs = pd.Series(rng.uniform(0.25, 0.75, size=200))
+        actual_margins = pd.Series(
+            sigma * norm.ppf(np.clip(probs.values, 0.001, 0.999)),
+        )
+
+        result = compute_margin_std(probs, actual_margins, sigma)
+        assert result == pytest.approx(0.0, abs=0.01)
+
+    def test_empty_raises(self) -> None:
+        """Empty input raises ValueError."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            compute_margin_std(
+                pd.Series(dtype=float),
+                pd.Series(dtype=float),
+                14.0,
+            )
+
+    def test_length_mismatch_raises(self) -> None:
+        """Mismatched lengths raise ValueError."""
+        with pytest.raises(ValueError, match="Length mismatch"):
+            compute_margin_std(
+                pd.Series([0.5, 0.6]),
+                pd.Series([3.0]),
+                14.0,
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestGetMarginStd
+# ---------------------------------------------------------------------------
+
+
+class TestGetMarginStd:
+    """Tests for get_margin_std()."""
+
+    def setup_method(self) -> None:
+        self._saved = dict(_MODEL_MARGIN_STDS)
+        _MODEL_MARGIN_STDS.clear()
+
+    def teardown_method(self) -> None:
+        _MODEL_MARGIN_STDS.clear()
+        _MODEL_MARGIN_STDS.update(self._saved)
+
+    def test_default_fallback_none(self) -> None:
+        assert get_margin_std(None) == _DEFAULT_MARGIN_STD
+
+    def test_default_fallback_unknown(self) -> None:
+        assert get_margin_std("nonexistent_v99") == _DEFAULT_MARGIN_STD
+
+    def test_registered_value(self) -> None:
+        _MODEL_MARGIN_STDS["test_model"] = 12.0
+        assert get_margin_std("test_model") == 12.0
+
+
+# ---------------------------------------------------------------------------
+# TestWinProbBands
+# ---------------------------------------------------------------------------
+
+
+class TestWinProbBands:
+    """Tests for win_prob_bands()."""
+
+    _SIGMA = 13.97
+    _MS = 12.85
+
+    def test_pickem_symmetric(self) -> None:
+        """Bands for 50% are symmetric around 0.5."""
+        lo, hi = win_prob_bands(0.50, margin_std=self._MS, sigma=self._SIGMA)
+        assert lo == pytest.approx(1.0 - hi, abs=1e-6)
+
+    def test_ordering(self) -> None:
+        """lo < p < hi for a non-extreme probability."""
+        lo, hi = win_prob_bands(0.65, margin_std=self._MS, sigma=self._SIGMA)
+        assert lo < 0.65 < hi
+
+    def test_favorite_narrower_than_pickem(self) -> None:
+        """90% favorite has narrower band than 50% pick'em."""
+        _, hi_50 = win_prob_bands(0.50, margin_std=self._MS, sigma=self._SIGMA)
+        lo_50, _ = win_prob_bands(0.50, margin_std=self._MS, sigma=self._SIGMA)
+        lo_90, hi_90 = win_prob_bands(0.90, margin_std=self._MS, sigma=self._SIGMA)
+        assert (hi_90 - lo_90) < (hi_50 - lo_50)
+
+    def test_symmetry(self) -> None:
+        """Bands for p and (1-p) are mirrors."""
+        lo_70, hi_70 = win_prob_bands(0.70, margin_std=self._MS, sigma=self._SIGMA)
+        lo_30, hi_30 = win_prob_bands(0.30, margin_std=self._MS, sigma=self._SIGMA)
+        assert lo_70 == pytest.approx(1.0 - hi_30, abs=1e-4)
+        assert hi_70 == pytest.approx(1.0 - lo_30, abs=1e-4)
+
+    def test_wider_z_gives_wider_bands(self) -> None:
+        """Larger z produces wider bands."""
+        lo_90, hi_90 = win_prob_bands(
+            0.65,
+            margin_std=self._MS,
+            sigma=self._SIGMA,
+            z=1.645,
+        )
+        lo_95, hi_95 = win_prob_bands(
+            0.65,
+            margin_std=self._MS,
+            sigma=self._SIGMA,
+            z=1.96,
+        )
+        assert (hi_95 - lo_95) > (hi_90 - lo_90)
+
+    def test_wider_margin_std_gives_wider_bands(self) -> None:
+        """Larger margin_std produces wider bands."""
+        lo_sm, hi_sm = win_prob_bands(
+            0.65,
+            margin_std=10.0,
+            sigma=self._SIGMA,
+        )
+        lo_lg, hi_lg = win_prob_bands(
+            0.65,
+            margin_std=15.0,
+            sigma=self._SIGMA,
+        )
+        assert (hi_lg - lo_lg) > (hi_sm - lo_sm)
+
+
+# ---------------------------------------------------------------------------
+# TestClassifyConfidenceTier
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyConfidenceTier:
+    """Tests for classify_confidence_tier()."""
+
+    def test_high(self) -> None:
+        assert classify_confidence_tier(0.50) == "High"
+
+    def test_moderate(self) -> None:
+        assert classify_confidence_tier(0.70) == "Moderate"
+
+    def test_low(self) -> None:
+        assert classify_confidence_tier(0.85) == "Low"
+
+    def test_boundary_moderate(self) -> None:
+        """Exactly at _TIER_HIGH_THRESHOLD → Moderate (>= threshold)."""
+        assert classify_confidence_tier(_TIER_HIGH_THRESHOLD) == "Moderate"
+
+
+# ---------------------------------------------------------------------------
+# TestEnrichPhaseB
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichPhaseB:
+    """Tests for Phase B columns in enrich_predictions()."""
+
+    def _make_df(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "game_id": ["G1", "G2", "G3", "G4", "G5"],
+                "home_win_prob": [0.90, 0.65, 0.50, 0.35, 0.10],
+                "away_win_prob": [0.10, 0.35, 0.50, 0.65, 0.90],
+            }
+        )
+
+    def test_adds_phase_b_columns(self) -> None:
+        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        for col in ["margin_std", "win_prob_lo", "win_prob_hi", "confidence_tier"]:
+            assert col in enriched.columns, f"Missing column: {col}"
+
+    def test_margin_std_constant(self) -> None:
+        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        assert enriched["margin_std"].nunique() == 1
+
+    def test_band_ordering(self) -> None:
+        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        for _, row in enriched.iterrows():
+            assert row["win_prob_lo"] < row["home_win_prob"] < row["win_prob_hi"], (
+                f"Band ordering violated: {row['win_prob_lo']:.4f} < "
+                f"{row['home_win_prob']:.4f} < {row['win_prob_hi']:.4f}"
+            )
+
+    def test_tier_values(self) -> None:
+        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        valid_tiers = {"High", "Moderate", "Low"}
+        for tier in enriched["confidence_tier"]:
+            assert tier in valid_tiers
+
+    def test_phase_a_preserved(self) -> None:
+        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        assert "model_spread" in enriched.columns
