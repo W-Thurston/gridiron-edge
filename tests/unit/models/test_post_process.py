@@ -3,11 +3,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 import math
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from numpy import dtype, float64, ndarray
 import pandas as pd
+from pandas import DataFrame, Series
 import pytest
 from scipy.stats import norm
 from sklearn.isotonic import IsotonicRegression
@@ -51,14 +55,14 @@ class TestWinProbToSpread:
 
     def test_home_favorite(self) -> None:
         """75% home win prob -> negative spread (home favored)."""
-        spread = win_prob_to_spread(0.75)
+        spread: float = win_prob_to_spread(0.75)
         expected = -_NFL_DEFAULT_SIGMA * norm.ppf(0.75)
         assert spread == pytest.approx(expected, abs=0.01)
         assert spread < 0  # home favored = negative spread
 
     def test_away_favorite(self) -> None:
         """25% home win prob -> positive spread (away favored)."""
-        spread = win_prob_to_spread(0.25)
+        spread: float = win_prob_to_spread(0.25)
         expected = -_NFL_DEFAULT_SIGMA * norm.ppf(0.25)
         assert spread == pytest.approx(expected, abs=0.01)
         assert spread > 0  # away favored = positive spread
@@ -66,8 +70,8 @@ class TestWinProbToSpread:
     def test_symmetry(self) -> None:
         """spread(p) = -spread(1-p) for all valid probabilities."""
         for p in [0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]:
-            spread_p = win_prob_to_spread(p)
-            spread_complement = win_prob_to_spread(1.0 - p)
+            spread_p: float = win_prob_to_spread(p)
+            spread_complement: float = win_prob_to_spread(1.0 - p)
             assert spread_p == pytest.approx(-spread_complement, abs=1e-6), (
                 f"Symmetry failed for p={p}: "
                 f"spread({p})={spread_p}, spread({1 - p})={spread_complement}"
@@ -75,12 +79,12 @@ class TestWinProbToSpread:
 
     def test_strong_favorite(self) -> None:
         """90% home win prob -> large negative spread."""
-        spread = win_prob_to_spread(0.90)
+        spread: float = win_prob_to_spread(0.90)
         assert spread < -15  # approximately -17.8 with default sigma
 
     def test_near_zero_clamp(self) -> None:
         """Probability of 0.0 is clamped -- no -inf."""
-        spread = win_prob_to_spread(0.0)
+        spread: float = win_prob_to_spread(0.0)
         assert math.isfinite(spread)
         # Should equal the spread at the floor
         assert spread == pytest.approx(
@@ -90,7 +94,7 @@ class TestWinProbToSpread:
 
     def test_near_one_clamp(self) -> None:
         """Probability of 1.0 is clamped -- no +inf."""
-        spread = win_prob_to_spread(1.0)
+        spread: float = win_prob_to_spread(1.0)
         assert math.isfinite(spread)
         assert spread == pytest.approx(
             win_prob_to_spread(_PROB_CEIL),
@@ -102,8 +106,8 @@ class TestWinProbToSpread:
         sigma_a = 13.0
         sigma_b = 16.0
         p = 0.70
-        spread_a = win_prob_to_spread(p, sigma=sigma_a)
-        spread_b = win_prob_to_spread(p, sigma=sigma_b)
+        spread_a: float = win_prob_to_spread(p, sigma=sigma_a)
+        spread_b: float = win_prob_to_spread(p, sigma=sigma_b)
         # Both should be negative (home favored), but b is larger magnitude
         assert spread_a < 0
         assert spread_b < 0
@@ -129,19 +133,19 @@ class TestSpreadToWinProb:
 
     def test_home_favored(self) -> None:
         """Negative spread -> home win prob > 50%."""
-        prob = spread_to_win_prob(-7.0)
+        prob: float = spread_to_win_prob(-7.0)
         assert prob > 0.50
 
     def test_away_favored(self) -> None:
         """Positive spread -> home win prob < 50%."""
-        prob = spread_to_win_prob(7.0)
+        prob: float = spread_to_win_prob(7.0)
         assert prob < 0.50
 
     def test_round_trip(self) -> None:
         """win_prob_to_spread -> spread_to_win_prob recovers original."""
         for p in [0.30, 0.40, 0.50, 0.55, 0.60, 0.70, 0.80, 0.90]:
-            spread = win_prob_to_spread(p)
-            recovered = spread_to_win_prob(spread)
+            spread: float = win_prob_to_spread(p)
+            recovered: float = spread_to_win_prob(spread)
             assert recovered == pytest.approx(p, abs=1e-6), (
                 f"Round-trip failed for p={p}: spread={spread}, recovered={recovered}"
             )
@@ -149,8 +153,8 @@ class TestSpreadToWinProb:
     def test_round_trip_from_spread(self) -> None:
         """spread_to_win_prob -> win_prob_to_spread recovers original."""
         for s in [-14.0, -7.0, -3.0, 0.0, 3.0, 7.0, 14.0]:
-            prob = spread_to_win_prob(s)
-            recovered = win_prob_to_spread(prob)
+            prob: float = spread_to_win_prob(s)
+            recovered: float = win_prob_to_spread(prob)
             assert recovered == pytest.approx(s, abs=0.01), (
                 f"Round-trip failed for spread={s}: prob={prob}, recovered={recovered}"
             )
@@ -214,20 +218,20 @@ class TestCalibrateSigma:
     def test_recovers_known_sigma(self) -> None:
         """Synthetic data generated with known sigma is recovered."""
         true_sigma = 15.0
-        rng = np.random.default_rng(42)
+        rng: Generator = np.random.default_rng(42)
         n = 500
 
         # Generate random home win probabilities (away from extremes)
-        home_probs = pd.Series(rng.uniform(0.20, 0.80, size=n))
+        home_probs: Series = pd.Series(rng.uniform(0.20, 0.80, size=n))
 
         # True predicted margin = true_sigma * ppf(home_win_prob)
         predicted_margins = true_sigma * norm.ppf(home_probs.values)
 
         # Add noise (actual margins ~ predicted + noise)
         noise = rng.normal(0, 3.0, size=n)
-        actual_margins = pd.Series(predicted_margins + noise)
+        actual_margins: Series = pd.Series(predicted_margins + noise)
 
-        recovered = calibrate_spread_sigma(home_probs, actual_margins)
+        recovered: float = calibrate_spread_sigma(home_probs, actual_margins)
 
         # Should recover close to the true sigma (noise adds some error)
         assert recovered == pytest.approx(true_sigma, abs=1.0)
@@ -235,24 +239,24 @@ class TestCalibrateSigma:
     def test_recovers_exact_sigma_no_noise(self) -> None:
         """With zero noise, calibration recovers sigma exactly."""
         true_sigma = 12.5
-        rng = np.random.default_rng(99)
+        rng: Generator = np.random.default_rng(99)
         n = 200
 
-        home_probs = pd.Series(rng.uniform(0.25, 0.75, size=n))
-        actual_margins = pd.Series(
+        home_probs: Series = pd.Series(rng.uniform(0.25, 0.75, size=n))
+        actual_margins: Series = pd.Series(
             true_sigma * norm.ppf(home_probs.values),
         )
 
-        recovered = calibrate_spread_sigma(home_probs, actual_margins)
+        recovered: float = calibrate_spread_sigma(home_probs, actual_margins)
         assert recovered == pytest.approx(true_sigma, abs=0.01)
 
     def test_bounds(self) -> None:
         """Result stays within the valid NFL sigma range."""
         # Extreme margins that might push sigma out of range
-        home_probs = pd.Series([0.50, 0.50, 0.50, 0.50])
-        actual_margins = pd.Series([100.0, -100.0, 50.0, -50.0])
+        home_probs: Series = pd.Series([0.50, 0.50, 0.50, 0.50])
+        actual_margins: Series = pd.Series([100.0, -100.0, 50.0, -50.0])
 
-        sigma = calibrate_spread_sigma(home_probs, actual_margins)
+        sigma: float = calibrate_spread_sigma(home_probs, actual_margins)
         assert 8.0 <= sigma <= 22.0
 
     def test_empty_input_raises(self) -> None:
@@ -299,55 +303,55 @@ class TestEnrichPredictions:
 
     def test_adds_model_spread_column(self) -> None:
         """Enrichment adds a model_spread column."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
         assert "model_spread" in enriched.columns
 
     def test_does_not_mutate_input(self) -> None:
         """Input DataFrame is not modified."""
-        df = self._make_predictions_df()
-        original_columns = list(df.columns)
-        original_values = df.copy()
+        df: DataFrame = self._make_predictions_df()
+        original_columns: list[str] = list(df.columns)
+        original_values: DataFrame = df.copy()
         enrich_predictions(df, recalibrate=False)
         assert list(df.columns) == original_columns
         pd.testing.assert_frame_equal(df, original_values)
 
     def test_spread_values_correct(self) -> None:
         """Spread values match win_prob_to_spread applied to each row."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
         for _, row in enriched.iterrows():
-            expected = win_prob_to_spread(row["home_win_prob"])
+            expected: float = win_prob_to_spread(row["home_win_prob"])
             assert row["model_spread"] == pytest.approx(expected, abs=1e-6)
 
     def test_pickem_spread_zero(self) -> None:
         """A 50/50 game produces a spread of 0."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
-        pickem_row = enriched.loc[enriched["home_win_prob"] == 0.50]
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
+        pickem_row: DataFrame = enriched.loc[enriched["home_win_prob"] == 0.50, :]
         assert pickem_row["model_spread"].iloc[0] == pytest.approx(0.0, abs=1e-6)
 
     def test_home_favorite_negative_spread(self) -> None:
         """Home favorite (65%) produces negative spread."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
-        fav_row = enriched.loc[enriched["home_win_prob"] == 0.65]
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
+        fav_row: DataFrame = enriched.loc[enriched["home_win_prob"] == 0.65, :]
         assert fav_row["model_spread"].iloc[0] < 0
 
     def test_away_favorite_positive_spread(self) -> None:
         """Away favorite (home 35%) produces positive spread."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
-        dog_row = enriched.loc[enriched["home_win_prob"] == 0.35]
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
+        dog_row: DataFrame = enriched.loc[enriched["home_win_prob"] == 0.35, :]
         assert dog_row["model_spread"].iloc[0] > 0
 
     def test_uses_model_sigma(self) -> None:
         """When a model sigma is registered, enrichment uses it."""
         register_sigma("rf_v3", 15.0)
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, model_version="rf_v3", recalibrate=False)
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, model_version="rf_v3", recalibrate=False)
         for _, row in enriched.iterrows():
-            expected = win_prob_to_spread(row["home_win_prob"], sigma=15.0)
+            expected: float = win_prob_to_spread(row["home_win_prob"], sigma=15.0)
             assert row["model_spread"] == pytest.approx(expected, abs=1e-6)
 
     def test_uppercase_column(self) -> None:
@@ -358,7 +362,7 @@ class TestEnrichPredictions:
                 "HOME_WIN_PROB": [0.70],
             }
         )
-        enriched = enrich_predictions(df, recalibrate=False)
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
         assert "model_spread" in enriched.columns
         assert enriched["model_spread"].iloc[0] < 0  # home favored
 
@@ -370,8 +374,8 @@ class TestEnrichPredictions:
 
     def test_preserves_existing_columns(self) -> None:
         """All original columns are preserved in enriched output."""
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(df, recalibrate=False)
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(df, recalibrate=False)
         for col in df.columns:
             assert col in enriched.columns
 
@@ -383,8 +387,8 @@ class TestEnrichPredictions:
 
 def _make_calibrator() -> IsotonicRegression:
     """Fit a simple isotonic calibrator on synthetic underconfident data."""
-    probs = np.array([0.20, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.80])
-    outcomes = np.array([0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1])
+    probs: ndarray = np.array([0.20, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.80])
+    outcomes: ndarray = np.array([0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1])
     calibrator = IsotonicRegression(
         y_min=_PROB_FLOOR,
         y_max=_PROB_CEIL,
@@ -404,9 +408,9 @@ class TestFitRecalibration:
 
     def _make_seasons_data(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         """Create synthetic underconfident model data across 5 seasons."""
-        rng = np.random.default_rng(42)
+        rng: Generator = np.random.default_rng(42)
         n_per_season = 100
-        season_labels = [
+        season_labels: list[str] = [
             "2019-2020",
             "2020-2021",
             "2021-2022",
@@ -437,9 +441,9 @@ class TestFitRecalibration:
         probs, outcomes, seasons = self._make_seasons_data()
         calibrator, _ = fit_recalibration(probs, outcomes, seasons, holdout_seasons=1)
 
-        test_inputs = np.linspace(0.30, 0.70, 20)
+        test_inputs: ndarray[tuple[Any, ...], dtype[float64]] = np.linspace(0.30, 0.70, 20)
         calibrated = calibrator.predict(test_inputs)
-        diffs = np.diff(calibrated)
+        diffs: ndarray = np.diff(calibrated)
         assert np.all(diffs >= -1e-10), "Calibrator output is not monotonically non-decreasing"
 
     def test_respects_temporal_split(self) -> None:
@@ -454,9 +458,9 @@ class TestFitRecalibration:
 
     def test_insufficient_seasons_raises(self) -> None:
         """Too few unique seasons for the requested split raises ValueError."""
-        probs = pd.Series([0.5, 0.6])
-        outcomes = pd.Series([0, 1])
-        seasons = pd.Series(["2023-2024", "2024-2025"])
+        probs: Series[float] = pd.Series([0.5, 0.6])
+        outcomes: Series[int] = pd.Series([0, 1])
+        seasons: Series[str] = pd.Series(["2023-2024", "2024-2025"])
 
         with pytest.raises(ValueError, match="Need at least 3"):
             fit_recalibration(probs, outcomes, seasons, holdout_seasons=2)
@@ -466,7 +470,7 @@ class TestFitRecalibration:
         probs, outcomes, seasons = self._make_seasons_data()
         _, diag = fit_recalibration(probs, outcomes, seasons, holdout_seasons=1)
 
-        expected_keys = {
+        expected_keys: set[str] = {
             "n_train",
             "n_holdout",
             "train_seasons",
@@ -490,26 +494,26 @@ class TestApplyRecalibration:
     def test_output_range(self) -> None:
         """Output stays within (_PROB_FLOOR, _PROB_CEIL)."""
         calibrator = _make_calibrator()
-        probs = np.array([0.0, 0.001, 0.5, 0.999, 1.0])
-        result = apply_recalibration(probs, calibrator)
+        probs: ndarray = np.array([0.0, 0.001, 0.5, 0.999, 1.0])
+        result: ndarray = apply_recalibration(probs, calibrator)
         assert np.all(result >= _PROB_FLOOR)
         assert np.all(result <= _PROB_CEIL)
 
     def test_preserves_ordering(self) -> None:
         """Monotonically increasing input -> non-decreasing output."""
         calibrator = _make_calibrator()
-        probs = np.linspace(0.10, 0.90, 50)
-        result = apply_recalibration(probs, calibrator)
-        diffs = np.diff(result)
+        probs: ndarray[tuple[Any, ...], dtype[float64]] = np.linspace(0.10, 0.90, 50)
+        result: ndarray = apply_recalibration(probs, calibrator)
+        diffs: ndarray = np.diff(result)
         assert np.all(diffs >= -1e-10)
 
     def test_accepts_series_and_array(self) -> None:
         """Works with both pd.Series and np.ndarray, same results."""
         calibrator = _make_calibrator()
-        arr = np.array([0.3, 0.5, 0.7])
-        series = pd.Series(arr)
-        result_arr = apply_recalibration(arr, calibrator)
-        result_series = apply_recalibration(series, calibrator)
+        arr: ndarray = np.array([0.3, 0.5, 0.7])
+        series: Series = pd.Series(arr)
+        result_arr: ndarray = apply_recalibration(arr, calibrator)
+        result_series: ndarray = apply_recalibration(series, calibrator)
         np.testing.assert_array_almost_equal(result_arr, result_series)
 
 
@@ -524,7 +528,7 @@ class TestSaveLoadCalibrator:
     def test_round_trip(self, tmp_path: Path) -> None:
         """Save then load returns a calibrator with identical predictions."""
         calibrator = _make_calibrator()
-        test_probs = np.array([0.3, 0.5, 0.7])
+        test_probs: ndarray = np.array([0.3, 0.5, 0.7])
         expected = calibrator.predict(test_probs)
 
         save_calibrator(calibrator, "rf_v3", repo=tmp_path)
@@ -544,7 +548,7 @@ class TestSaveLoadCalibrator:
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Save creates the _cal directory if it doesn't exist."""
         calibrator = _make_calibrator()
-        cal_dir = tmp_path / "data" / "models" / "rf_v3_cal"
+        cal_dir: Path = tmp_path / "data" / "models" / "rf_v3_cal"
         assert not cal_dir.exists()
 
         save_calibrator(calibrator, "rf_v3", repo=tmp_path)
@@ -575,10 +579,10 @@ class TestEnrichWithRecalibration:
         calibrator = _make_calibrator()
         save_calibrator(calibrator, "rf_v3", repo=tmp_path)
 
-        df = self._make_predictions_df()
-        original_probs = df["home_win_prob"].copy()
+        df: DataFrame = self._make_predictions_df()
+        original_probs: Series = df["home_win_prob"].copy()
 
-        enriched = enrich_predictions(
+        enriched: DataFrame = enrich_predictions(
             df,
             model_version="rf_v3",
             recalibrate=True,
@@ -590,10 +594,10 @@ class TestEnrichWithRecalibration:
 
     def test_skips_when_no_calibrator(self, tmp_path: Path) -> None:
         """Without a saved calibrator, probabilities are unchanged."""
-        df = self._make_predictions_df()
-        original_probs = df["home_win_prob"].copy()
+        df: DataFrame = self._make_predictions_df()
+        original_probs: Series = df["home_win_prob"].copy()
 
-        enriched = enrich_predictions(
+        enriched: DataFrame = enrich_predictions(
             df,
             model_version="rf_v3",
             recalibrate=True,
@@ -610,10 +614,10 @@ class TestEnrichWithRecalibration:
         calibrator = _make_calibrator()
         save_calibrator(calibrator, "rf_v3", repo=tmp_path)
 
-        df = self._make_predictions_df()
-        original_probs = df["home_win_prob"].copy()
+        df: DataFrame = self._make_predictions_df()
+        original_probs: Series = df["home_win_prob"].copy()
 
-        enriched = enrich_predictions(
+        enriched: DataFrame = enrich_predictions(
             df,
             model_version="rf_v3",
             recalibrate=False,
@@ -630,15 +634,15 @@ class TestEnrichWithRecalibration:
         calibrator = _make_calibrator()
         save_calibrator(calibrator, "rf_v3", repo=tmp_path)
 
-        df = self._make_predictions_df()
-        enriched = enrich_predictions(
+        df: DataFrame = self._make_predictions_df()
+        enriched: DataFrame = enrich_predictions(
             df,
             model_version="rf_v3",
             recalibrate=True,
             repo=tmp_path,
         )
 
-        expected_away = 1.0 - enriched["home_win_prob"]
+        expected_away: Series = 1.0 - enriched["home_win_prob"]
         pd.testing.assert_series_equal(
             enriched["away_win_prob"],
             expected_away,
@@ -661,29 +665,29 @@ class TestComputeMarginStd:
 
     def test_recovers_known_std(self) -> None:
         """Residual std matches the noise std used to generate data."""
-        rng = np.random.default_rng(42)
+        rng: Generator = np.random.default_rng(42)
         n = 500
         sigma = 14.0
         noise_std = 10.0
 
-        probs = pd.Series(rng.uniform(0.25, 0.75, size=n))
+        probs: Series = pd.Series(rng.uniform(0.25, 0.75, size=n))
         predicted = sigma * norm.ppf(np.clip(probs.values, 0.001, 0.999))
         noise = rng.normal(0, noise_std, size=n)
-        actual_margins = pd.Series(predicted + noise)
+        actual_margins: Series = pd.Series(predicted + noise)
 
-        result = compute_margin_std(probs, actual_margins, sigma)
+        result: float = compute_margin_std(probs, actual_margins, sigma)
         assert result == pytest.approx(noise_std, abs=2.0)
 
     def test_zero_residuals(self) -> None:
         """Perfect predictions produce near-zero std."""
-        rng = np.random.default_rng(99)
+        rng: Generator = np.random.default_rng(99)
         sigma = 14.0
-        probs = pd.Series(rng.uniform(0.25, 0.75, size=200))
-        actual_margins = pd.Series(
+        probs: Series = pd.Series(rng.uniform(0.25, 0.75, size=200))
+        actual_margins: Series = pd.Series(
             sigma * norm.ppf(np.clip(probs.values, 0.001, 0.999)),
         )
 
-        result = compute_margin_std(probs, actual_margins, sigma)
+        result: float = compute_margin_std(probs, actual_margins, sigma)
         assert result == pytest.approx(0.0, abs=0.01)
 
     def test_empty_raises(self) -> None:
@@ -838,16 +842,16 @@ class TestEnrichPhaseB:
         )
 
     def test_adds_phase_b_columns(self) -> None:
-        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         for col in ["margin_std", "win_prob_lo", "win_prob_hi", "confidence_tier"]:
             assert col in enriched.columns, f"Missing column: {col}"
 
     def test_margin_std_constant(self) -> None:
-        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         assert enriched["margin_std"].nunique() == 1
 
     def test_band_ordering(self) -> None:
-        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         for _, row in enriched.iterrows():
             assert row["win_prob_lo"] < row["home_win_prob"] < row["win_prob_hi"], (
                 f"Band ordering violated: {row['win_prob_lo']:.4f} < "
@@ -855,11 +859,11 @@ class TestEnrichPhaseB:
             )
 
     def test_tier_values(self) -> None:
-        enriched = enrich_predictions(self._make_df(), recalibrate=False)
-        valid_tiers = {"High", "Moderate", "Low"}
+        enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
+        valid_tiers: set[str] = {"High", "Moderate", "Low"}
         for tier in enriched["confidence_tier"]:
             assert tier in valid_tiers
 
     def test_phase_a_preserved(self) -> None:
-        enriched = enrich_predictions(self._make_df(), recalibrate=False)
+        enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         assert "model_spread" in enriched.columns

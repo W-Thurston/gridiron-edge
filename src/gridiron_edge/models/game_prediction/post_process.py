@@ -37,8 +37,8 @@ Phase B deliverables (uncertainty bands + confidence tiers):
     win_prob_bands       Derive (win_prob_lo, win_prob_hi) credible interval
     classify_confidence_tier  Band width -> High / Moderate / Low
 
-Future phases will extend ``enrich_predictions`` with:
-    Phase C -- model_total, projected_home_score, projected_away_score
+Phase C deliverables (total model + projected scores):
+    projected_scores     Derive home/away scores from spread + total
 
 """
 
@@ -49,12 +49,20 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Final
 
+# pyrefly: ignore [missing-import]
 import joblib
 import numpy as np
+from numpy import dtype, float64, ndarray
 import pandas as pd
-from pandas import Series
+from pandas import DataFrame, Series
+
+# pyrefly: ignore [missing-import]
 from scipy.optimize import minimize_scalar
+
+# pyrefly: ignore [missing-import]
 from scipy.stats import norm
+
+# pyrefly: ignore [missing-import]
 from sklearn.isotonic import IsotonicRegression
 
 logger: Logger = logging.getLogger(__name__)
@@ -258,7 +266,7 @@ def calibrate_spread_sigma(
     actual: np.ndarray = np.asarray(actual_margins, dtype=float)
 
     def _mse(sigma: float) -> float:
-        predicted_margin = sigma * ppf_values
+        predicted_margin: ndarray[tuple[Any, ...], dtype[float64]] = sigma * ppf_values
         return float(np.mean((predicted_margin - actual) ** 2))
 
     result = minimize_scalar(
@@ -363,16 +371,16 @@ def fit_recalibration(
             f"but only found {len(unique_seasons)}: {unique_seasons}"
         )
 
-    train_seasons = unique_seasons[:-holdout_seasons]
-    holdout_season_list = unique_seasons[-holdout_seasons:]
+    train_seasons: list[str] = unique_seasons[:-holdout_seasons]
+    holdout_season_list: list[str] = unique_seasons[-holdout_seasons:]
 
-    train_mask = seasons.isin(train_seasons)
-    holdout_mask = seasons.isin(holdout_season_list)
+    train_mask: Series[bool] = seasons.isin(train_seasons)
+    holdout_mask: Series[bool] = seasons.isin(holdout_season_list)
 
-    p_train = np.asarray(predicted_probs[train_mask], dtype=float)
-    y_train = np.asarray(actual_outcomes[train_mask], dtype=float)
-    p_holdout = np.asarray(predicted_probs[holdout_mask], dtype=float)
-    y_holdout = np.asarray(actual_outcomes[holdout_mask], dtype=float)
+    p_train: ndarray = np.asarray(predicted_probs[train_mask], dtype=float)
+    y_train: ndarray = np.asarray(actual_outcomes[train_mask], dtype=float)
+    p_holdout: ndarray = np.asarray(predicted_probs[holdout_mask], dtype=float)
+    y_holdout: ndarray = np.asarray(actual_outcomes[holdout_mask], dtype=float)
 
     # Fit isotonic regression on training partition only.
     calibrator = IsotonicRegression(
@@ -599,6 +607,31 @@ def classify_confidence_tier(band_width: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Projected Scores (Phase C)
+# ---------------------------------------------------------------------------
+
+
+def projected_scores(
+    model_spread: float,
+    model_total: float,
+) -> tuple[float, float]:
+    """Derive projected home and away scores from spread and total.
+
+    Args:
+        model_spread: Point spread (negative = home favored).
+        model_total: Predicted combined score.
+
+    Returns:
+        Tuple of (projected_home_score, projected_away_score).
+        Note: ``model_spread`` is negative when home is favored, so
+        ``-model_spread`` is the home team's expected margin.
+    """
+    projected_home: float = (model_total - model_spread) / 2.0
+    projected_away: float = (model_total + model_spread) / 2.0
+    return (projected_home, projected_away)
+
+
+# ---------------------------------------------------------------------------
 # Prediction Enrichment Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -651,7 +684,7 @@ def enrich_predictions(
     Raises:
         KeyError: If no home win probability column is found.
     """
-    out = df.copy()
+    out: DataFrame = df.copy()
 
     # Resolve the home win probability column name (support both cases).
     if "home_win_prob" in out.columns:
@@ -687,12 +720,21 @@ def enrich_predictions(
     def _bands(p: float) -> tuple[float, float]:
         return win_prob_bands(p, margin_std=ms, sigma=sigma)
 
-    bands = out[prob_col].apply(_bands)
+    bands: Series = out[prob_col].apply(_bands)
     out["win_prob_lo"] = bands.apply(lambda t: t[0])
     out["win_prob_hi"] = bands.apply(lambda t: t[1])
     out["confidence_tier"] = (out["win_prob_hi"] - out["win_prob_lo"]).apply(
         classify_confidence_tier
     )
+
+    # --- Phase C: Projected scores (requires model_total column) ---
+    if "model_total" in out.columns:
+        scores = out.apply(
+            lambda row: projected_scores(row["model_spread"], row["model_total"]),
+            axis=1,
+        )
+        out["projected_home_score"] = scores.apply(lambda t: t[0])
+        out["projected_away_score"] = scores.apply(lambda t: t[1])
 
     logger.debug(
         "enrich_predictions: enriched %d rows (sigma=%.4f, margin_std=%.2f, model=%s)",
