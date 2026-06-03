@@ -3,6 +3,97 @@
 What has been built and when. Newest first.
 
 ---
+### 2026-06-03 — W6: Portfolio & Bet Tracking — Complete
+
+The feedback loop — track bets, measure performance, prove (or disprove)
+the system works.  The M2 milestone.  Builds on W5 (edge context for
+bets), W3 (market math for PnL), and W1 (odds ledger for CLV on
+settlement).
+
+#### Bet ledger (`betting/ledger.py`)
+- Append-only Parquet ledger following the `archive.py` pattern
+- 20-column schema: bet context (game, market, side, odds, stake, book),
+  model context (version, prob, EV, strength, tier), settlement
+  (status, settled_at, pnl, closing_line, closing_odds, clv)
+- `compute_pnl()`: pure function — won = stake × (decimal_odds − 1),
+  lost = −stake, push/open = 0
+- `log_bet()`: generate UUID, append row with status "open", return bet_id
+- `settle_bet()`: validate open, compute PnL, optionally compute CLV
+  from odds ledger (ML = probability-based, spread/total = point-based)
+- `load_bets()`: load with filters (status, season, week, market_type, book)
+- Fixed pandas FutureWarning: `dropna(axis=1, how="all")` + `reindex` for concat
+- Fixed pandas FutureWarning: `pd.to_datetime()` cast before `settled_at` assignment
+- 24 unit tests (`tests/unit/betting/test_ledger.py`)
+
+#### Bankroll management (`betting/bankroll.py`)
+- Decoupled from ledger — CLI orchestrates both
+- Transaction types: deposit, withdraw, bet_placed, bet_settled
+- Sign convention: deposits/settlements = positive, withdrawals/bets = negative
+- `deposit()` / `withdraw()`: record cash movements (positive amounts only)
+- `record_bet_placed(stake)`: record stake leaving bankroll
+- `record_bet_settled(stake, pnl)`: record gross return (stake + pnl)
+  — won: stake + profit, lost: 0, push: stake
+- `current_balance()`: sum of all signed transactions
+- `balance_history()`: running balance DataFrame with cumulative sum
+- `load_transactions()`: load with optional txn_type filter
+- Same `dropna` + `reindex` concat pattern as ledger
+- 23 unit tests (`tests/unit/betting/test_bankroll.py`)
+
+#### Performance analytics (`betting/performance.py`)
+- Pure DataFrame-in, results-out — no I/O
+- `record()`: W-L-P counts, win_pct (pushes excluded from denominator),
+  optional `split_by` for grouping
+- `roi()`: total_staked, total_pnl, roi_pct, optional `split_by`
+- `clv_summary()`: mean/median CLV, % positive, n_bets
+- `ev_analysis()`: mean_ev_at_bet, mean_actual_roi, ev_vs_actual_gap
+- `streak_analysis()`: current streak (±), longest W/L streaks,
+  pushes break streaks
+- `summary()`: combined dashboard dict calling all of the above
+- Kelly adherence deferred (requires `recommended_stake` in ledger schema)
+- 22 unit tests (`tests/unit/betting/test_performance.py`)
+
+#### CLI (`cli/betting.py`)
+- 8 commands registered as `gridiron bet` in `cli/main.py`
+- `gridiron bet log`: record bet → `log_bet()` + `record_bet_placed()`
+- `gridiron bet settle <id> <result>`: settle → `settle_bet()` +
+  `record_bet_settled()`, optional CLV via `--with-clv/--no-clv`
+- `gridiron bet list`: show bets with optional status/market filters
+- `gridiron bet summary`: performance dashboard with optional `--split-by`
+- `gridiron bet balance`: current balance + recent transaction history
+- `gridiron bet export`: CSV export to `data/output/bets/`
+- `gridiron bet deposit <amount>`: add funds
+- `gridiron bet withdraw <amount>`: remove funds
+- Graceful error handling throughout (not found, already settled, invalid amount)
+- 17 integration tests (`tests/integration/test_betting_cli.py`)
+
+#### Manual validation
+- Full round-trip verified: deposit → log → list → settle → summary →
+  balance → export → withdraw
+- Math verified: deposit $1000, bet $100 at −150, won → PnL +$66.67,
+  balance $1066.67. Second bet $50 spread, lost → balance $1016.67.
+  Withdraw $200 → balance $816.67. All correct.
+
+#### Files changed
+| Action | File |
+|---|---|
+| Added | `src/gridiron_edge/betting/__init__.py` |
+| Added | `src/gridiron_edge/betting/ledger.py` |
+| Added | `src/gridiron_edge/betting/bankroll.py` |
+| Added | `src/gridiron_edge/betting/performance.py` |
+| Added | `src/gridiron_edge/cli/betting.py` |
+| Modified | `src/gridiron_edge/cli/main.py` (import + register `betting_app`) |
+| Added | `tests/unit/betting/__init__.py` |
+| Added | `tests/unit/betting/test_ledger.py` |
+| Added | `tests/unit/betting/test_bankroll.py` |
+| Added | `tests/unit/betting/test_performance.py` |
+| Added | `tests/integration/test_betting_cli.py` |
+
+#### Summary
+- **4 new source files**, 1 modified
+- **4 new test files**, **86 new tests** (24 + 23 + 22 + 17)
+- `betting/` package: 3 modules (ledger, bankroll, performance)
+- All quality gates green: ruff, pyrefly, pytest
+
 ### 2026-06-02 — W5: Edge Engine — Complete
 
 The convergence point — model predictions meet market prices to surface

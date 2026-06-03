@@ -34,6 +34,10 @@ How everything works right now. Assumes you know what the project does — see [
 | Edge recommendations | `gridiron_edge.market.recommendations` — joins predictions ↔ odds, builds 18-column edge report, ranks by EV |
 | Closing Line Value | `gridiron_edge.market.clv` — probability-based and point-based CLV, opening/closing odds extraction, CLV report |
 | Edge CLI | `gridiron_edge.cli.edges` — gridiron edges report (weekly), gridiron edges clv (historical CLV) |
+| Bet ledger | `gridiron_edge.betting.ledger` — append-only Parquet bet log with PnL and CLV on settlement |
+| Bankroll management | `gridiron_edge.betting.bankroll` — transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
+| Performance analytics | `gridiron_edge.betting.performance` — pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
+| Betting CLI | `gridiron_edge.cli.betting` — 8 commands: log, settle, list, summary, balance, export, deposit, with |
 
 ---
 
@@ -46,6 +50,7 @@ How everything works right now. Assumes you know what the project does — see [
 | `src/gridiron_edge/transform/` | Raw → canonical schema mappers |
 | `src/gridiron_edge/features/` | Feature registry, pipeline, dependency validation |
 | `src/gridiron_edge/market/` | Odds math, Kelly staking, edge detection, edge reports, CLV analysis |
+| `src/gridiron_edge/betting/` | Bet ledger, bankroll transaction log, performance analytics |
 | `src/gridiron_edge/ratings/elo/` | Elo table, fit, predict, evaluate |
 | `src/gridiron_edge/models/` | Predictor protocol, artifact store, model registry, game prediction variants |
 | `src/gridiron_edge/evaluation/` | Metrics, backfill, archive, tuning, model selection |
@@ -98,7 +103,7 @@ Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
 
 ## Key design decisions
 
-#### EPA aggregation is the single PBP funnel
+### EPA aggregation is the single PBP funnel
 
 All PBP-derived game-level features flow through **one transform**:
 
@@ -132,7 +137,7 @@ Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). 
 
 `predictions_log.parquet` has a boolean `is_backfilled` column. Historical backfill predictions set it to `True`; live pre-game predictions set it to `False`. Filter on this rather than `predicted_at` for live-vs-backfill analysis.
 
-#### PBP ingest column expansion
+### PBP ingest column expansion
 
 `sack` was added to `_KEEP_COLUMNS` during Phase 20e (Batch 3).
 
@@ -146,7 +151,7 @@ This ensures new columns are physically present in stored parquet files.
 
 `fetch_weather` reads existing `weather_enriched.csv`, computes the set difference of `GAME_ID`s, and only calls the OWM API for games not already enriched. Safe to re-run.
 
-#### Market package is a pure-math leaf
+### Market package is a pure-math leaf
 
 The market package is layered: `odds_math.py` and `kelly.py` are pure-math
 leaves (no pandas, no I/O). `edge.py` adds scipy.stats.norm for probit
@@ -165,40 +170,56 @@ the library. CLV reuses `pivot_odds_to_wide` from recommendations via
 
 Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` — if the formula changes, update both.
 
-#### Post-processing enrichment is a separate step, not inside models
+### Post-processing enrichment is a separate step, not inside models
 
 All derived outputs (spread, bands, tier, projected scores) are computed in
 `post_process.py` after the model produces `home_win_prob`.  This keeps models
 clean and composable — any model that outputs a win probability gets the full
 enrichment for free via `enrich_predictions()`.
 
-#### Prediction pipeline is composable
+### Prediction pipeline is composable
 
 `pipeline.py` orchestrates: load features → win model → total model →
 build game rows → enrich.  Adding a new model type means adding one inference
 call, not rewriting the pipeline.  `_predict_historical_tree()` and
 `_predict_historical_logistic()` delegate to `predict_games()`.
 
-#### Total model is a supporting model, not a standalone predictor
+### Total model is a supporting model, not a standalone predictor
 
 The total model (`total.py`) trains a `RandomForestRegressor` on the same
 107-feature set but targets `actual_total` instead of `RESULT`.  It is NOT
 registered in `PredictorRegistry` — it feeds into `enrich_predictions()` via
 the pipeline rather than operating as an independent predictor.
 
-#### VEGAS_LINE sign convention
+### VEGAS_LINE sign convention
 
 nflverse `VEGAS_LINE` uses **positive = home favored** (PFR convention).
 Our `model_spread` uses **negative = home favored** (probit convention).
 They are exact negations.  Always negate `VEGAS_LINE` before comparing
 to `model_spread`.
 
-#### Archive schema is soft-versioned
+### Archive schema is soft-versioned
 
 The prediction archive (`predictions_log.parquet`) uses NaN fill for columns
 missing from older archives.  No schema version column — `load_prediction_log()`
 adds missing columns on load.  String columns (e.g. `confidence_tier`) get
 empty string instead of NaN.
+
+### Bankroll is decoupled from the bet ledger
+
+`ledger.py` and `bankroll.py` are independent modules with no imports
+between them. The CLI (`cli/betting.py`) orchestrates both: `bet log`
+calls `log_bet()` then `record_bet_placed()`, and `bet settle` calls
+`settle_bet()` then `record_bet_settled()`. This keeps each module
+testable in isolation and avoids circular dependencies.
+
+### Gross return model for bankroll
+
+On settlement, the bankroll receives the *gross return* (stake + pnl):
+won = stake × decimal_odds, lost = 0, push = stake. This means
+`bet_placed` always deducts the full stake, and `bet_settled` credits
+back whatever is returned. The running balance is the cumulative sum
+of all signed transactions.
 
 ---
 
@@ -518,6 +539,7 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Feature column definitions | `models/game_prediction/_columns.py` |
 | Feature engineering functions | `models/game_prediction/_features.py` |
 | Market math | `market/odds_math.py`, `market/kelly.py`, `market/edge.py`, `market/recommendations.py`, `market/clv.py` |
+| Bet tracking | `betting/ledger.py`, `betting/bankroll.py`, `betting/performance.py`, `cli/betting.py` |
 | EPA window hyperparameter infra | `models/game_prediction/_epa_window.py` |
 | Elo core formula (parameterised) | `ratings/elo/core.py` |
 | Simulation types + config | `sim/_types.py` |
@@ -636,3 +658,7 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 4. `uv run gridiron sim run`
 5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`
 6. `uv run gridiron evaluate backfill --model-version random_forest_v3`
+7. `gridiron bet log --game-id {ID} --market {TYPE} --side {SIDE} --odds {ODDS} --stake {AMT} --book {BOOK}`
+8. `gridiron bet settle {BET_ID} {won|lost|push}`
+9. `gridiron bet summary`
+10. `gridiron bet balance`
