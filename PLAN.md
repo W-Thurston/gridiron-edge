@@ -51,20 +51,34 @@ weather features are validated against holdout data.
 
 ## Backlog
 
-| ID | Workstream | Description | Blocked by | Priority |
+Workstream IDs match **ROADMAP.md** (authoritative numbering).
+
+### Completed
+
+| ID | Workstream | Summary |
+|---|---|---|
+| W1 | Quick Wins & Unblocking | DK unicode fix, game_id resolver, odds join validated |
+| W2 | Richer Game Model Outputs | Spread, total, projected scores, bands, tiers, isotonic eval |
+| W3 | Market Intelligence Foundation | odds_math.py, kelly.py — pure math, no data deps |
+| W5 | Edge Engine | edge.py, recommendations.py, clv.py, CLI (report + clv) |
+| W6 | Portfolio & Bet Tracking | ledger.py, bankroll.py, performance.py, CLI (8 commands) |
+
+*Also completed (cross-cutting, not numbered in ROADMAP):*
+- **Feature Engineering Expansion** — EPA_COLS 8→22, _EXPANDED_FEATURES 51→107, rf_v3/xgb_v3 trained
+- **Test Framework Build-out** — Three-tier pyramid, auto-markers, shared fixtures, pre-commit/pre-push hooks
+
+### Planned
+
+| ID | Workstream | Blocked by | Priority | Notes |
 |---|---|---|---|---|
-| W1 | Done: Odds Ingest & Joins | DraftKings API, game_id resolver, odds storage | — | — |
-| W2 | Done: Richer Game Model Outputs | Post-processing: spreads, bands, tiers, projected scores, isotonic recalibration | — | — |
-| W3 | Done: Feature Engineering Expansion | EPA_COLS 8->22, _EXPANDED_FEATURES 51->107, rf_v3/xgb_v3 trained | — | — |
-| W4 | Done: Test Framework Build-out | Three-tier tests, auto-markers, shared fixtures, pre-commit hooks, coverage config | — | — |
-| W5 | Done: Edge Engine | Edge calculation, recommendations, CLV, CLI commands | — | — |
-| W6 | Done: Portfolio & Bet Tracking | Bet ledger, bankroll, performance analytics, CLI | — | — |
-| W7 | Planned: Live Prediction Pipeline | Real-time pre-game predictions with current-week features | W3 | High |
-| W8 | Planned: Model Ensemble | Combine elo + logistic + rf + xgb into a weighted ensemble | None (W2, W5 done) | High |
-| W9 | Planned: Multi-Sportsbook Support | FanDuel, BetMGM ingestion alongside DraftKings | W1, odds source decision | Medium |
-| W10 | Planned: Player Data & Props | Player-level features + first prop projection models | None | Medium |
-| W11 | Planned: API Serving Layer | FastAPI endpoints for edges, games, portfolio | W5 + W6 done | Medium |
-| W12 | Planned: Automated Betting Dashboard | Web UI with live edges, CLV tracker, bankroll management | W7 + W8 + W11 | Low |
+| ~~W11~~ | ~~Live Prediction Pipeline~~ | — | — | Not needed — `output predictions` + `edges report` already covers this. Removed. |
+| **W12** | Model Ensemble | Nothing | **High** | Combine elo + logistic + rf + xgb. Must beat rf_v3 Brier by ≥0.002. |
+| **W4** | Player Data & First Prop Models | Nothing | Medium | Player-level features + QB/RB prop models → M3 |
+| **W8** | API Serving Layer | Nothing | Medium | FastAPI endpoints for edges, games, portfolio → M5 |
+| **W7** | Multi-Book Odds & Line Shopping | Odds source decision (§5.2) | Medium | Multi-book ingest, arb/middle detection → M4 |
+| **W4.5** | Scenario Engine (What-If) | W4 | Medium | Injury impact modeling, usage redistribution |
+| **W9** | Frontend | W8 | Lower | React/Next.js web UI → M5 |
+| **W10** | Real-Time & Live Game | W7 + W8 | Lowest | Live win prob, live edges, hedge calculator → M6 |
 
 ---
 
@@ -72,9 +86,10 @@ weather features are validated against holdout data.
 
 | Date | Change |
 |---|---|
+| 2026-06-03 | **Renumbered to match ROADMAP.md v2.** Added W11 (Live Prediction Pipeline) and W12 (Model Ensemble). Reconciled all IDs. Previous PLAN-only IDs (W3=FeatEng, W4=Tests, W7=LivePredict, W8=Ensemble, W9=MultiBook, W10=Props, W11=API, W12=Dashboard) retired in favor of ROADMAP-authoritative numbering. |
 | 2026-06-03 | W6 (Portfolio & Bet Tracking) complete — moved to CHANGELOG. Added deferred items to Architectural Debt. |
 | 2026-06-02 | W6 (Portfolio & Bet Tracking) activated. Phase A-E defined. |
 | 2026-06-02 | W5 (Edge Engine) complete — moved to CHANGELOG. Updated backlog dependencies. |
 | 2026-06-02 | W5 Edge Engine active — defined scope. |
-| 2026-06-01 | W2, W3, W4 completed — moved to CHANGELOG. |
-| 2026-05-31 | Initial PLAN.md created with W1-W10 backlog. |
+| 2026-06-01 | W2, Feature Eng, Test Framework completed — moved to CHANGELOG. |
+| 2026-05-31 | Initial PLAN.md created with backlog. |
