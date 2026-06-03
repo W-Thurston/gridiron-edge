@@ -3,6 +3,77 @@
 What has been built and when. Newest first.
 
 ---
+### 2026-06-02 — W5: Edge Engine — Complete
+
+The convergence point — model predictions meet market prices to surface
+betting edges.  Builds on W1 (odds ingest & joins), W2 (enriched
+predictions with spreads/bands/tiers), and W3 (market math in
+odds_math/kelly).
+
+#### Edge calculation core (`market/edge.py`)
+- Pure scalar functions, no I/O — follows the `odds_math.py` / `kelly.py` leaf pattern
+- 3 frozen dataclasses: `MoneylineEdge`, `SpreadEdge`, `TotalEdge`
+- `expected_value()`: EV = model_prob * decimal_odds - 1
+- `moneyline_edge()`: no-vig debiases market, returns +EV side or None
+- `spread_cover_prob()`: probit P(home covers) via calibrated `margin_std`
+- `spread_edge()`: cover prob -> EV -> Kelly -> +EV side or None
+- `total_cover_prob()`: probit P(over) via total model residual std
+- `total_edge()`: over/under prob -> EV -> Kelly -> +EV side or None
+- `classify_edge_strength()`: EV -> strong (>=5%) / moderate (2-5%) / lean (0-2%) / no_edge
+- 37 unit tests (`tests/unit/market/test_edge.py`)
+
+#### Edge report builder (`market/recommendations.py`)
+- `pivot_odds_to_wide()`: long-format odds -> one row per game (handles duplicate fetches via groupby/last)
+- `join_predictions_to_odds()`: inner-join predictions <-> wide odds on `game_id` (auto-pivots long odds)
+- `compute_game_edges()`: single game -> list of edges across all available markets, graceful NaN handling
+- `build_edge_report()`: full orchestrator -> 18-column report DataFrame
+  - Kelly stake = bankroll * kelly_multiplier * kelly_frac (capped at bankroll * kelly_multiplier)
+  - `classify_edge_strength()` applied to every row
+- `rank_edges()`: filter to `ev > min_ev`, sort descending
+- 21 unit tests (`tests/unit/market/test_recommendations.py`)
+
+#### Closing Line Value (`market/clv.py`)
+- `closing_line_value()`: probability-based CLV = (close_prob - bet_prob) / bet_prob
+- `spread_clv()`: point-based CLV for spread bets (home: bet - close; away: close - bet)
+- `total_clv()`: point-based CLV for total bets (over: close - bet; under: bet - close)
+- `extract_opening_odds()` / `extract_closing_odds()`: first / last pull per (game_id, market, side) from ledger
+- `build_clv_report()`: augments edge report with `opening_value`, `closing_value`, `clv` columns
+- `summarize_clv()`: mean, median, pct positive, edge count
+- Reuses `pivot_odds_to_wide` from `recommendations.py` via `_pivot_and_suffix()` (DRY)
+- 30 unit tests (`tests/unit/market/test_clv.py`)
+
+#### CLI (`cli/edges.py`)
+- `gridiron edges report --week N --season YYYY-YYYY`
+  - Loads prediction archive + current odds -> builds edge report -> ranks by EV
+  - Rich console table: color-coded EV (green/yellow/dim), Kelly stakes, confidence tiers
+  - CSV export via `--format csv` to `data/output/edges/`
+  - Options: `--model-version`, `--bankroll`, `--kelly-multiplier`, `--min-ev`
+- `gridiron edges clv --season YYYY-YYYY`
+  - Loads predictions + full odds ledger -> builds edge report -> computes CLV -> summary stats
+- Graceful empty-data handling throughout (no predictions, no odds, no edges)
+- Registered in `cli/main.py` as `edges_app`
+- 6 integration tests (`tests/integration/test_edges_cli.py`)
+
+#### Files changed
+| Action | File |
+|---|---|
+| Added | `src/gridiron_edge/market/edge.py` |
+| Added | `src/gridiron_edge/market/recommendations.py` |
+| Added | `src/gridiron_edge/market/clv.py` |
+| Added | `src/gridiron_edge/cli/edges.py` |
+| Modified | `src/gridiron_edge/cli/main.py` (import + register `edges_app`) |
+| Modified | `src/gridiron_edge/market/__init__.py` (re-exports) |
+| Added | `tests/unit/market/test_edge.py` |
+| Added | `tests/unit/market/test_recommendations.py` |
+| Added | `tests/unit/market/test_clv.py` |
+| Added | `tests/integration/test_edges_cli.py` |
+
+#### Summary
+- **4 new source files**, 2 modified
+- **4 new test files**, **94 new tests** (37 + 21 + 30 + 6)
+- `market/` package: 5 modules (odds_math, kelly, edge, recommendations, clv)
+- All quality gates green: ruff, pyrefly, pytest
+
 ### 2026-06-02 — W2: Richer Game Model Outputs — Complete
 
 Extended game prediction models to produce spread, total, projected scores,

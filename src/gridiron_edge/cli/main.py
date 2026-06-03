@@ -14,6 +14,7 @@ from typing import Annotated
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.cli.edges import edges_app
 from gridiron_edge.cli.evaluate import evaluate_app
 from gridiron_edge.cli.features import features_app
 from gridiron_edge.cli.ingest import ingest_app
@@ -64,6 +65,7 @@ app.add_typer(output_app, name="output")
 app.add_typer(sim_app, name="sim")
 app.add_typer(evaluate_app, name="evaluate")
 app.add_typer(models_app, name="models")
+app.add_typer(edges_app, name="edges")
 
 
 # ===========================================================================
