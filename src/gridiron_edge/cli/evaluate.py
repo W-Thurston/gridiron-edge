@@ -621,7 +621,7 @@ def _print_misses_section(
     if n_losses >= top_misses // 2:
         typer.echo(
             f"\n  ⚠  {n_losses}/{top_misses} worst misses were losses for the "
-            f"predicted favourite — overconfidence pattern."
+            f"predicted favorite — overconfidence pattern."
         )
 
     typer.echo("")

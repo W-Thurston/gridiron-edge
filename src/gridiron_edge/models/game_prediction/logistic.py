@@ -4,26 +4,13 @@
 
 Four variants with different feature engineering and regularisation:
 
-    logistic_v1: Differential features only (10 features)
-        TEAM_A - TEAM_B for each metric. Interpretable — positive coefficient
-        always means "helps TEAM_A win". Least expressive but most robust.
-
-    logistic_v2: Raw features for both teams (22 features)
-        Passes all raw columns directly. The model learns its own
-        relationships between team metrics and win probability.
-
-    logistic_v3: Differential + raw combined (32 features)
-        Both engineering approaches together. Maximally expressive —
-        captures both the matchup differential and absolute team quality.
-        Current best model: Brier 0.22057, AUC 0.68289.
-
-    logistic_v4: Elastic net regularisation on combined features (32 features)
-        Same feature set as v3 but with elastic net (L1+L2) regularisation
-        via the SAGA solver. Tunes both regularisation strength C and L1/L2
-        mix ratio. L1 component drives irrelevant features to exactly zero.
+    logistic: Combined differential + raw features (32 features)
+        - LogisticRegressionCV with TimeSeriesSplit CV
+        - L2 regularisation, 10 candidate C values
+        - StandardScaler preprocessing
 
 All variants:
-    - Same holdout split (2023-2026) for fair comparison with tree models
+    - Same holdout split (HOLDOUT_SEASONS) for fair comparison with tree models
     - LogisticRegressionCV with 5-fold CV over 10 regularisation strengths
     - StandardScaler in sklearn Pipeline
     - Ties excluded (15 games since 1999, ~0.2%)
@@ -96,15 +83,25 @@ def _train_logistic(
     from sklearn.linear_model import LogisticRegressionCV
 
     # pyrefly: ignore [missing-import]
+    from sklearn.model_selection import TimeSeriesSplit
+
+    # pyrefly: ignore [missing-import]
     from sklearn.pipeline import Pipeline
 
     # pyrefly: ignore [missing-import]
     from sklearn.preprocessing import StandardScaler
 
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.metrics import brier_score
+    from gridiron_edge.evaluation.metrics import (
+        accuracy,
+        brier_score,
+        expected_calibration_error,
+        log_loss,
+        roc_auc,
+    )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
     from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
 
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -118,7 +115,11 @@ def _train_logistic(
                 "clf",
                 LogisticRegressionCV(
                     Cs=10,
-                    cv=5,
+                    cv=[  # pyrefly: ignore[bad-argument-type]
+                        (train_idx, val_idx)
+                        for train_idx, val_idx in TimeSeriesSplit(n_splits=5).split(x_train)
+                        if len(train_idx) >= MIN_CV_TRAIN_ROWS
+                    ],
                     scoring="neg_brier_score",
                     max_iter=1000,
                     n_jobs=-1,
@@ -133,6 +134,10 @@ def _train_logistic(
 
     hold_probs: Series = pd.Series(pipeline.predict_proba(x_hold)[:, 1], index=x_hold.index)
     holdout_brier: float = brier_score(hold_probs, y_hold.astype(float))
+    holdout_ece: float = expected_calibration_error(hold_probs, y_hold.astype(float))
+    holdout_auc: float = roc_auc(hold_probs, y_hold.astype(float))
+    holdout_log_loss: float = log_loss(hold_probs, y_hold.astype(float))
+    holdout_accuracy: float = accuracy(hold_probs, y_hold.astype(float))
 
     train_probs: Series = pd.Series(pipeline.predict_proba(x_train)[:, 1], index=x_train.index)
     train_brier: float = brier_score(train_probs, y_train.astype(float))
@@ -157,6 +162,10 @@ def _train_logistic(
             "best_C": best_c,
             "train_brier": round(train_brier, 6),
             "overfit_gap": round(holdout_brier - train_brier, 6),
+            "holdout_ece": round(holdout_ece, 6),
+            "holdout_auc": round(holdout_auc, 6),
+            "holdout_log_loss": round(holdout_log_loss, 6),
+            "holdout_accuracy": round(holdout_accuracy, 6),
             "n_train": len(x_train),
             "n_holdout": len(x_hold),
             "n_features": len(feature_names),
@@ -202,15 +211,25 @@ def _train_elasticnet(
     from sklearn.linear_model import LogisticRegressionCV
 
     # pyrefly: ignore [missing-import]
+    from sklearn.model_selection import TimeSeriesSplit
+
+    # pyrefly: ignore [missing-import]
     from sklearn.pipeline import Pipeline
 
     # pyrefly: ignore [missing-import]
     from sklearn.preprocessing import StandardScaler
 
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.metrics import brier_score
+    from gridiron_edge.evaluation.metrics import (
+        accuracy,
+        brier_score,
+        expected_calibration_error,
+        log_loss,
+        roc_auc,
+    )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
     from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
 
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -224,7 +243,11 @@ def _train_elasticnet(
                 "clf",
                 LogisticRegressionCV(
                     Cs=10,
-                    cv=5,
+                    cv=[  # pyrefly: ignore[bad-argument-type]
+                        (train_idx, val_idx)
+                        for train_idx, val_idx in TimeSeriesSplit(n_splits=5).split(x_train)
+                        if len(train_idx) >= MIN_CV_TRAIN_ROWS
+                    ],
                     penalty="elasticnet",
                     solver="saga",
                     l1_ratios=l1_ratios,
@@ -246,6 +269,10 @@ def _train_elasticnet(
 
     hold_probs: Series = pd.Series(pipeline.predict_proba(x_hold)[:, 1], index=x_hold.index)
     holdout_brier: float = brier_score(hold_probs, y_hold.astype(float))
+    holdout_ece: float = expected_calibration_error(hold_probs, y_hold.astype(float))
+    holdout_auc: float = roc_auc(hold_probs, y_hold.astype(float))
+    holdout_log_loss: float = log_loss(hold_probs, y_hold.astype(float))
+    holdout_accuracy: float = accuracy(hold_probs, y_hold.astype(float))
 
     train_probs: Series = pd.Series(pipeline.predict_proba(x_train)[:, 1], index=x_train.index)
     train_brier: float = brier_score(train_probs, y_train.astype(float))
@@ -275,6 +302,10 @@ def _train_elasticnet(
             "l1_ratios_searched": l1_ratios,
             "train_brier": round(train_brier, 6),
             "overfit_gap": round(holdout_brier - train_brier, 6),
+            "holdout_ece": round(holdout_ece, 6),
+            "holdout_auc": round(holdout_auc, 6),
+            "holdout_log_loss": round(holdout_log_loss, 6),
+            "holdout_accuracy": round(holdout_accuracy, 6),
             "n_train": len(x_train),
             "n_holdout": len(x_hold),
             "n_features": len(feature_names),
@@ -399,15 +430,15 @@ def _make_logistic_variant(
 
     Adding a new logistic variant requires one call::
 
-        LogisticV5Predictor = _make_logistic_variant(
-            "logistic_v5",
+        NewLogistic = _make_logistic_variant(
+            "logistic_new",
             "Logistic regression — expanded features with elastic net",
             feature_set=FEATURE_SETS["expanded"],
             elasticnet=True,
         )
 
     Args:
-        name: Model version string (e.g. ``"logistic_v3"``).
+        name: Model identifier string (e.g. ``"logistic"``).
             Must be unique in the registry.
         description: Human-readable description shown in ``gridiron models list``.
         feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS``.
@@ -474,30 +505,11 @@ def _make_logistic_variant(
 
 
 # ---------------------------------------------------------------------------
-# Registered variants
+# Registered models
 # ---------------------------------------------------------------------------
 
-LogisticV1Predictor = _make_logistic_variant(
-    "logistic_v1",
-    "Logistic regression — differential features (10)",
-    feature_set=FEATURE_SETS["diff"],
-)
-
-LogisticV2Predictor = _make_logistic_variant(
-    "logistic_v2",
-    "Logistic regression — raw features both teams (22)",
-    feature_set=FEATURE_SETS["raw"],
-)
-
-LogisticV3Predictor = _make_logistic_variant(
-    "logistic_v3",
-    "Logistic regression — combined differential + raw (32)",
+LogisticPredictor = _make_logistic_variant(
+    "logistic",
+    "Logistic regression — combined features (32), TimeSeriesSplit CV",
     feature_set=FEATURE_SETS["combined"],
-)
-
-LogisticV4Predictor = _make_logistic_variant(
-    "logistic_v4",
-    "Logistic regression — combined features (32), elastic net regularisation",
-    feature_set=FEATURE_SETS["combined"],
-    elasticnet=True,
 )

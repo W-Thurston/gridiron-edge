@@ -3,7 +3,7 @@
 
 Tests cover:
 - _rebuild_features_with_window: correctness of rolling EPA recomputation
-- RandomForestV1Predictor and XGBoostV1Predictor: registration, spec, trainability
+- RandomForestPredictor and XGBoostPredictor: registration, spec, trainability
 - _train_random_forest / _train_xgboost: smoke-tests on synthetic data
 - Holdout Brier plausibility and metadata completeness
 """
@@ -23,10 +23,8 @@ from gridiron_edge.models.game_prediction._epa_window import (
 )
 import gridiron_edge.models.game_prediction.predictor  # noqa: F401
 from gridiron_edge.models.game_prediction.predictor import (
-    RandomForestV1Predictor,
-    RandomForestV2Predictor,
-    XGBoostV1Predictor,
-    XGBoostV2Predictor,
+    RandomForestPredictor,
+    XGBoostPredictor,
 )
 from gridiron_edge.models.registry import PredictorRegistry
 
@@ -254,52 +252,30 @@ class TestRebuildFeaturesWithWindow:
 class TestPredictorRegistration:
     """Verify RF and XGBoost predictors are correctly registered."""
 
-    def test_random_forest_v1_registered(self) -> None:
-        """random_forest_v1 should be in the PredictorRegistry."""
+    def test_random_forest_registered(self) -> None:
+        """random_forest should be in the PredictorRegistry."""
 
-        assert "random_forest_v1" in PredictorRegistry.names()
+        assert "random_forest" in PredictorRegistry.names()
 
-    def test_xgboost_v1_registered(self) -> None:
-        """xgboost_v1 should be in the PredictorRegistry."""
+    def test_xgboost_registered(self) -> None:
+        """xgboost should be in the PredictorRegistry."""
 
-        assert "xgboost_v1" in PredictorRegistry.names()
+        assert "xgboost" in PredictorRegistry.names()
 
-    def test_random_forest_v1_is_trainable(self) -> None:
-        """random_forest_v1 should be flagged as trainable."""
+    def test_random_forest_is_trainable(self) -> None:
+        """random_forest should be flagged as trainable."""
 
-        assert PredictorRegistry.is_trainable("random_forest_v1")
+        assert PredictorRegistry.is_trainable("random_forest")
 
-    def test_xgboost_v1_is_trainable(self) -> None:
-        """xgboost_v1 should be flagged as trainable."""
+    def test_xgboost_is_trainable(self) -> None:
+        """xgboost should be flagged as trainable."""
 
-        assert PredictorRegistry.is_trainable("xgboost_v1")
+        assert PredictorRegistry.is_trainable("xgboost")
 
-    def test_random_forest_v1_spec(self) -> None:
-        """random_forest_v1 spec should have the correct name."""
+    def test_random_forest_spec(self) -> None:
+        """random_forest spec should have the correct name."""
+        assert RandomForestPredictor.spec.name == "random_forest"
 
-        assert RandomForestV1Predictor.spec.name == "random_forest_v1"
-
-    def test_xgboost_v1_spec(self) -> None:
-        """xgboost_v1 spec should have the correct name."""
-
-        assert XGBoostV1Predictor.spec.name == "xgboost_v1"
-
-    def test_random_forest_v2_registered(self) -> None:
-        """random_forest_v2 should be in the PredictorRegistry."""
-
-        assert "random_forest_v2" in PredictorRegistry.names()
-
-    def test_xgboost_v2_registered(self) -> None:
-        """xgboost_v2 should be in the PredictorRegistry."""
-
-        assert "xgboost_v2" in PredictorRegistry.names()
-
-    def test_random_forest_v2_spec(self) -> None:
-        """random_forest_v2 spec should have the correct name."""
-
-        assert RandomForestV2Predictor.spec.name == "random_forest_v2"
-
-    def test_xgboost_v2_spec(self) -> None:
-        """xgboost_v2 spec should have the correct name."""
-
-        assert XGBoostV2Predictor.spec.name == "xgboost_v2"
+    def test_xgboost_spec(self) -> None:
+        """xgboost spec should have the correct name."""
+        assert XGBoostPredictor.spec.name == "xgboost"

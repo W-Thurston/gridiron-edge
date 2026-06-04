@@ -2,21 +2,17 @@
 
 """Tree-based game prediction models.
 
-Two variants built on the same 32-feature combined set as logistic_v3,
-designed to capture non-linear EPA x Elo interaction effects:
+Two model families using the expanded feature set (107 features):
 
-    random_forest_v1: Random Forest with isotonic calibration
-        RandomizedSearchCV over n_estimators, max_depth, min_samples_leaf,
-        max_features, and EPA rolling window.  CalibratedClassifierCV
-        (isotonic) applied post-fit to correct systematic RF overconfidence.
-        Expected Brier: 0.218-0.222.
+    random_forest: Random Forest with isotonic calibration
+        - TimeSeriesSplit CV for hyperparameter search
+        - EPA window optimization across [4, 6, 8, 10, 12]
+        - CalibratedClassifierCV(isotonic) applied unconditionally
 
-    xgboost_v1: Gradient boosted trees
-        RandomizedSearchCV over n_estimators, max_depth, learning_rate,
-        subsample, colsample_bytree, min_child_weight, gamma, and EPA window.
-        XGBoost's binary:logistic objective produces well-calibrated
-        probabilities natively; isotonic calibration applied if ECE > 0.025.
-        Expected Brier: 0.215-0.220.
+    xgboost: XGBoost gradient boosting
+        - TimeSeriesSplit CV for hyperparameter search
+        - EPA window optimization
+        - Isotonic calibration applied conditionally (holdout ECE > 0.025)
 
 Both models tune the EPA rolling window as a hyperparameter.
 
@@ -35,6 +31,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pandas as pd
 from pandas import Series
+
+# pyrefly: ignore [untyped-import]
 from tqdm import tqdm
 
 from gridiron_edge.models.base import PredictorSpec
@@ -47,6 +45,7 @@ from gridiron_edge.models.game_prediction._epa_window import (
 )
 from gridiron_edge.models.game_prediction._features import (
     FEATURE_SETS,
+    MIN_CV_TRAIN_ROWS,
     FeatureSet,
     _is_trained,
 )
@@ -188,7 +187,7 @@ def _train_random_forest(
     Optimisations vs the initial implementation:
     - Window cache: each unique EPA window is rebuilt and split at most once
       across all iterations, eliminating repeated parquet reads.
-    - StratifiedKFold is instantiated once before the loop.
+    - TimeSeriesSplit is instantiated once before the loop.
     - Feature importances averaged with np.array().mean(axis=0) (vectorised).
     - ``feature_set`` metadata derived from ``feature_names`` length rather
       than hardcoded to ``"combined_32"``.
@@ -216,7 +215,7 @@ def _train_random_forest(
     from sklearn.ensemble import RandomForestClassifier
 
     # pyrefly: ignore [missing-import]
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import TimeSeriesSplit
 
     # pyrefly: ignore [missing-import]
     from sklearn.pipeline import Pipeline
@@ -225,7 +224,13 @@ def _train_random_forest(
     from sklearn.preprocessing import StandardScaler
 
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.metrics import brier_score
+    from gridiron_edge.evaluation.metrics import (
+        accuracy,
+        brier_score,
+        expected_calibration_error,
+        log_loss,
+        roc_auc,
+    )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
     from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
 
@@ -262,7 +267,7 @@ def _train_random_forest(
 
     # Instantiate once — same random_state means identical fold assignments
     # every iteration, which is correct (we want comparable CV scores).
-    skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    tscv = TimeSeriesSplit(n_splits=cv_folds)
 
     bar = tqdm(
         range(n_iter),
@@ -283,7 +288,9 @@ def _train_random_forest(
         train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
         fold_briers: list[float] = []
-        for train_idx, val_idx in skf.split(x_train, y_train):
+        for train_idx, val_idx in tscv.split(x_train):
+            if len(train_idx) < MIN_CV_TRAIN_ROWS:
+                continue
             x_tr = x_train.iloc[train_idx]
             y_tr = y_train.iloc[train_idx]
             x_val = x_train.iloc[val_idx]
@@ -334,6 +341,10 @@ def _train_random_forest(
         best_pipeline.predict_proba(x_hold_best)[:, 1], index=x_hold_best.index
     )
     holdout_brier: float = brier_score(hold_probs, y_hold_best.astype(float))
+    holdout_ece: float = expected_calibration_error(hold_probs, y_hold_best.astype(float))
+    holdout_auc: float = roc_auc(hold_probs, y_hold_best.astype(float))
+    holdout_log_loss: float = log_loss(hold_probs, y_hold_best.astype(float))
+    holdout_accuracy: float = accuracy(hold_probs, y_hold_best.astype(float))
 
     train_probs: Series = pd.Series(
         best_pipeline.predict_proba(x_train_best)[:, 1], index=x_train_best.index
@@ -375,6 +386,10 @@ def _train_random_forest(
             **best_params,
             "calibration_method": "isotonic",
             "train_brier": round(train_brier, 6),
+            "holdout_ece": round(holdout_ece, 6),
+            "holdout_auc": round(holdout_auc, 6),
+            "holdout_log_loss": round(holdout_log_loss, 6),
+            "holdout_accuracy": round(holdout_accuracy, 6),
             "overfit_gap": round(holdout_brier - train_brier, 6),
             "cv_brier": round(best_cv_brier, 6),
             "n_iter": n_iter,
@@ -413,7 +428,7 @@ def _train_xgboost(
 
     Optimisations vs the initial implementation:
     - Window cache: each unique EPA window is rebuilt and split at most once.
-    - StratifiedKFold instantiated once before the loop.
+    - TimeSeriesSplit is instantiated once before the loop.
     - Feature importances use vectorised np.array().mean(axis=0).
     - ``feature_set`` metadata derived from feature_names length.
 
@@ -434,7 +449,7 @@ def _train_xgboost(
     from datetime import UTC, datetime
 
     # pyrefly: ignore [missing-import]
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import TimeSeriesSplit
 
     # pyrefly: ignore [missing-import]
     from sklearn.pipeline import Pipeline
@@ -446,7 +461,13 @@ def _train_xgboost(
     from xgboost import XGBClassifier
 
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.metrics import brier_score, expected_calibration_error
+    from gridiron_edge.evaluation.metrics import (
+        accuracy,
+        brier_score,
+        expected_calibration_error,
+        log_loss,
+        roc_auc,
+    )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
     from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
 
@@ -480,7 +501,7 @@ def _train_xgboost(
     best_pipeline = None
 
     param_keys = list(param_grid.keys())
-    skf = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    tscv = TimeSeriesSplit(n_splits=cv_folds)
 
     bar = tqdm(
         range(n_iter),
@@ -500,7 +521,9 @@ def _train_xgboost(
         train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
         fold_briers: list[float] = []
-        for train_idx, val_idx in skf.split(x_train, y_train):
+        for train_idx, val_idx in tscv.split(x_train):
+            if len(train_idx) < MIN_CV_TRAIN_ROWS:
+                continue
             x_tr = x_train.iloc[train_idx]
             y_tr = y_train.iloc[train_idx]
             x_val = x_train.iloc[val_idx]
@@ -561,6 +584,9 @@ def _train_xgboost(
     hold_probs = pd.Series(best_pipeline.predict_proba(x_hold_best)[:, 1], index=x_hold_best.index)
     holdout_brier = brier_score(hold_probs, y_hold_best.astype(float))
     holdout_ece: float = expected_calibration_error(hold_probs, y_hold_best.astype(float))
+    holdout_auc: float = roc_auc(hold_probs, y_hold_best.astype(float))
+    holdout_log_loss: float = log_loss(hold_probs, y_hold_best.astype(float))
+    holdout_accuracy: float = accuracy(hold_probs, y_hold_best.astype(float))
 
     train_probs = pd.Series(
         best_pipeline.predict_proba(x_train_best)[:, 1], index=x_train_best.index
@@ -577,6 +603,7 @@ def _train_xgboost(
             holdout_ece,
             _ece_calibration_threshold,
         )
+        # pyrefly: ignore [missing-import]
         from sklearn.calibration import CalibratedClassifierCV
 
         xgb_recal = XGBClassifier(
@@ -650,6 +677,9 @@ def _train_xgboost(
             **best_params,
             "calibration_applied": calibration_applied,
             "holdout_ece": round(holdout_ece, 6),
+            "holdout_auc": round(holdout_auc, 6),
+            "holdout_log_loss": round(holdout_log_loss, 6),
+            "holdout_accuracy": round(holdout_accuracy, 6),
             "train_brier": round(train_brier, 6),
             "overfit_gap": round(holdout_brier - train_brier, 6),
             "cv_brier": round(best_cv_brier, 6),
@@ -688,17 +718,18 @@ def _make_tree_variant(
     ``predict_historical``, and ``predict_upcoming``, and is registered
     with ``PredictorRegistry`` immediately.
 
-    Adding a new variant (e.g. ``random_forest_v3``) requires one call::
+    Adding a new model family requires one call::
 
-        RandomForestV3Predictor = _make_tree_variant(
-            "random_forest_v3",
-            "Random Forest — some new feature set",
+        NewPredictor = _make_tree_variant(
+            "new_model",
+            "Description of the model",
             feature_set=FEATURE_SETS["expanded"],
             model_type="rf",
         )
 
+
     Args:
-        name: Model version string (e.g. ``"random_forest_v2"``).
+        name: Model identifier string (e.g. ``"random_forest"``).
             Must be unique in the registry.
         description: Human-readable description shown in ``gridiron models list``.
         feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS`` describing
@@ -758,48 +789,19 @@ def _make_tree_variant(
 
 
 # ---------------------------------------------------------------------------
-# Registered variants
+# Registered models
 # ---------------------------------------------------------------------------
 
-RandomForestV1Predictor = _make_tree_variant(
-    "random_forest_v1",
-    "Random Forest — combined features (32), isotonic calibration",
-    feature_set=FEATURE_SETS["combined"],
-    model_type="rf",
-)
-
-XGBoostV1Predictor = _make_tree_variant(
-    "xgboost_v1",
-    "XGBoost gradient boosting — combined features (32)",
-    feature_set=FEATURE_SETS["combined"],
-    model_type="xgb",
-)
-
-RandomForestV2Predictor = _make_tree_variant(
-    "random_forest_v2",
-    "Random Forest — expanded features (51), isotonic calibration",
+RandomForestPredictor = _make_tree_variant(
+    "random_forest",
+    "Random Forest — expanded features, isotonic calibration, TimeSeriesSplit CV",
     feature_set=FEATURE_SETS["expanded"],
     model_type="rf",
 )
 
-XGBoostV2Predictor = _make_tree_variant(
-    "xgboost_v2",
-    "XGBoost gradient boosting — expanded features (51)",
-    feature_set=FEATURE_SETS["expanded"],
-    model_type="xgb",
-)
-
-
-RandomForestV3Predictor = _make_tree_variant(
-    "random_forest_v3",
-    "Random Forest — expanded features (107), PBP efficiency batch",
-    feature_set=FEATURE_SETS["expanded"],
-    model_type="rf",
-)
-
-XGBoostV3Predictor = _make_tree_variant(
-    "xgboost_v3",
-    "XGBoost gradient boosting — expanded features (107), PBP efficiency batch",
+XGBoostPredictor = _make_tree_variant(
+    "xgboost",
+    "XGBoost gradient boosting — expanded features, conditional calibration, TimeSeriesSplit CV",
     feature_set=FEATURE_SETS["expanded"],
     model_type="xgb",
 )

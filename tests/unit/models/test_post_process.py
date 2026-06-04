@@ -188,8 +188,8 @@ class TestGetSigma:
 
     def test_registered_sigma(self) -> None:
         """Registered model version returns its calibrated sigma."""
-        register_sigma("random_forest_v3", 14.22)
-        assert get_sigma("random_forest_v3") == 14.22
+        register_sigma("random_forest", 14.22)
+        assert get_sigma("random_forest") == 14.22
 
     def test_register_overwrites(self) -> None:
         """Registering again overwrites the previous value."""

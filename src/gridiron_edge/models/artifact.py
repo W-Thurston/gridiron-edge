@@ -10,7 +10,7 @@ trained, what feature schema it was trained on, and its holdout performance.
 Directory layout::
 
     data/models/
-        logistic_v1/
+        random_forest/
             model.joblib
             metadata.json
         neural_v1/
@@ -18,7 +18,7 @@ Directory layout::
             metadata.json
 
 Artifacts are immutable once written. A new training run produces a new
-version (``logistic_v2``) rather than overwriting an existing artifact.
+model. Use ``--overwrite`` to retrain and replace the current champion.
 This ensures that evaluation comparisons between versions remain valid.
 
 Typical usage::
@@ -29,10 +29,10 @@ Typical usage::
     from datetime import UTC, datetime
 
     store.save(
-        model_version="logistic_v1",
+        model_version="random_forest",
         model_obj=fitted_pipeline,
         metadata=ModelMetadata(
-            model_version="logistic_v1",
+            model_version="random_forest",
             trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
             schema_version=1,
             training_seasons=["1999-2000", ..., "2022-2023"],
@@ -44,8 +44,8 @@ Typical usage::
     )
 
     # Prediction: load the artifact
-    model = store.load("logistic_v1")
-    metadata = store.read_metadata("logistic_v1")
+    model = store.load("random_forest")
+    metadata = store.read_metadata("random_forest")
 """
 
 from __future__ import annotations

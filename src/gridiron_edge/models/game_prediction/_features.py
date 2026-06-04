@@ -43,6 +43,10 @@ from gridiron_edge.models.game_prediction._columns import (
 
 logger: Logger = logging.getLogger(__name__)
 
+# Minimum training rows per CV fold.  TimeSeriesSplit's early folds can
+# be too small for high-dimensional feature sets (e.g. 107 features on
+# ~1,600 rows).  Folds below this threshold are skipped during HP search.
+MIN_CV_TRAIN_ROWS: int = 4000
 
 # ---------------------------------------------------------------------------
 # Feature engineering
@@ -169,6 +173,8 @@ def _prepare_data(
         Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
     """
     df = df.loc[df["RESULT"] != 0.5, :].copy()
+    # Sort chronologically so TimeSeriesSplit respects temporal ordering.
+    df = df.sort_values(["YEAR", "WEEK_NUM"]).reset_index(drop=True)
 
     features = feature_fn(df)
     valid = features.notna().all(axis=1)

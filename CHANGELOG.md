@@ -3,6 +3,97 @@
 What has been built and when. Newest first.
 
 ---
+### 2026-06-04 — Champion/Challenger Model Refactor — Complete
+
+Replaced versioned model variants with a champion/challenger system and
+fixed temporal CV leakage in all model families.
+
+#### Temporal CV fix
+- `_features.py`: added chronological sort (`sort_values(["YEAR", "WEEK_NUM"])`)
+  in `_prepare_data` so TimeSeriesSplit respects temporal ordering
+- `tree.py`: switched RF and XGB from `StratifiedKFold(shuffle=True)` to
+  `TimeSeriesSplit(n_splits=5)` for hyperparameter search CV
+- `logistic.py`: switched `LogisticRegressionCV` from default 5-fold to
+  explicit `TimeSeriesSplit(n_splits=5)` fold list
+- `_features.py`: added `MIN_CV_TRAIN_ROWS = 4000` constant — early
+  TimeSeriesSplit folds with <4000 rows are skipped during HP search
+  to avoid undersized training sets biasing toward conservative HPs
+
+#### Champion/challenger promotion system
+- New module: `evaluation/champion.py`
+  - `PromotionCriteria`: gate thresholds (Brier ≥ 0.002 improvement,
+    ECE ≤ 0.01 degradation, AUC ≤ 0.01 degradation)
+  - `ComparisonResult`: full comparison outcome with per-gate results
+  - `compare_models()`: runs all gates, returns verdict
+  - `format_comparison()`: human-readable metric table with ✅/❌ gates
+  - `extract_metrics()`: standardised metric dict from ModelMetadata
+- 13 unit tests (`tests/unit/evaluation/test_champion.py`)
+
+#### Simplified model registry
+- Replaced 10 versioned registrations with 3 unversioned champions:
+  `random_forest`, `xgboost`, `logistic`
+- Old versioned names (rf_v1–v3, xgb_v1–v3, logistic_v1–v4) removed
+  from PredictorRegistry
+- Versioned names retained only in `post_process.py` sigma/margin_std
+  dicts for backward compatibility with old prediction archives
+- Default model in `cli/edges.py` changed from `random_forest_v3` to
+  `random_forest`
+- Updated `diagnostics.py` model colors, `predictor.py` docstrings,
+  `__init__.py` docstrings, `artifact.py` examples
+
+#### CLI updates (`cli/models.py`)
+- `gridiron models train <name>`: auto-compares challenger vs champion
+  using promotion gates. First training auto-saves as champion.
+  Backup/restore on rejection.
+- `--force`: promote despite failed gates
+- `--no-promote`: train and compare without replacing champion
+- `gridiron models info <name>`: shows all 5 holdout metrics
+- Removed `--overwrite` flag (replaced by auto-compare flow)
+
+#### All training functions now store 5 holdout metrics
+- Brier, ECE, AUC, log loss, accuracy stored in `parameters` dict
+- RF: added `expected_calibration_error`, `roc_auc`, `log_loss`, `accuracy`
+- XGB: added `roc_auc`, `log_loss`, `accuracy` (ECE already existed)
+- Logistic: added all 4 (none existed previously)
+
+#### Retrained champions (honest temporal CV metrics)
+
+| Model | Brier | ECE | AUC | Accuracy | Notes |
+|---|---|---|---|---|---|
+| xgboost | 0.218 | 0.014 | 0.691 | 64.0% | 🏆 Auto-selected champion |
+| random_forest | 0.220 | 0.013 | 0.702 | 64.3% | Best calibration |
+| logistic | 0.225 | 0.017 | 0.683 | 63.5% | |
+| elo_v2 (baseline) | 0.227 | 0.073 | 0.676 | 62.2% | All ML models beat Elo |
+
+Note: metrics are lower than old rf_v3 (Brier 0.195, AUC 0.774) because
+the old StratifiedKFold CV inflated HP selection. The new numbers are the
+honest ones. Calibration (ECE) improved dramatically (0.036 → 0.013).
+
+#### Files changed
+
+| Action | File |
+|---|---|
+| Added | `src/gridiron_edge/evaluation/champion.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/tree.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/logistic.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/_features.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/post_process.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/predictor.py` |
+| Modified | `src/gridiron_edge/models/game_prediction/__init__.py` |
+| Modified | `src/gridiron_edge/models/artifact.py` |
+| Modified | `src/gridiron_edge/cli/models.py` |
+| Modified | `src/gridiron_edge/cli/edges.py` |
+| Modified | `src/gridiron_edge/evaluation/diagnostics.py` |
+| Added | `tests/unit/evaluation/test_champion.py` |
+| Modified | `tests/unit/models/test_tree_models.py` |
+| Modified | `tests/integration/test_edges_cli.py` |
+| Modified | `tests/unit/market/test_recommendations.py` |
+
+#### Summary
+- **1 new source file**, 10 modified
+- **1 new test file**, 3 modified, **13 new tests**
+- All quality gates green: ruff, pyrefly, pytest
+
 ### 2026-06-03 — W6: Portfolio & Bet Tracking — Complete
 
 The feedback loop — track bets, measure performance, prove (or disprove)

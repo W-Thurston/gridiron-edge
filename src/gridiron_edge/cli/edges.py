@@ -39,7 +39,7 @@ _DEFAULT_TOTAL_STD: float = 13.17
 def report(
     week: int = typer.Option(..., help="NFL week number."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
-    model_version: str = typer.Option("random_forest_v3", help="Model version for predictions."),
+    model_version: str = typer.Option("random_forest", help="Model to use for predictions."),
     bankroll: float = typer.Option(1000.0, help="Current bankroll in dollars."),
     kelly_multiplier: float = typer.Option(
         0.25, help="Fraction of full Kelly (e.g. 0.25 for quarter-Kelly)."
@@ -121,7 +121,7 @@ def report(
 @edges_app.command()
 def clv(
     season: str | None = typer.Option(None, help="Filter to NFL season label, e.g. '2026-2027'."),
-    model_version: str = typer.Option("random_forest_v3", help="Model version for predictions."),
+    model_version: str = typer.Option("random_forest", help="Model to use for predictions."),
     min_ev: float = typer.Option(0.0, help="Minimum EV threshold for edges to include."),
 ) -> None:
     """Analyse historical closing line value."""

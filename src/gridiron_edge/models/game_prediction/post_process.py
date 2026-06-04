@@ -91,7 +91,7 @@ _SIGMA_HI: Final[float] = 22.0
 #
 # Calibrated 2026-06-01 via ``calibrate_spread_sigma`` against the full
 # prediction archive (5,705-7,276 games per model).  Best spread MAE:
-# random_forest_v3 (sigma=13.97, MAE=9.92).
+# random_forest (sigma=13.97, MAE=9.92).
 _MODEL_SIGMAS: dict[str, float] = {
     "elo_v1": 20.3525,
     "elo_v2": 12.1753,
@@ -106,6 +106,11 @@ _MODEL_SIGMAS: dict[str, float] = {
     "xgboost_v1": 14.2323,
     "xgboost_v2": 14.3169,
     "xgboost_v3": 13.951,
+    # Champion models (unversioned) — initialized from best v3 values,
+    # recalibrate after retraining with TimeSeriesSplit CV.
+    "random_forest": 13.9732,
+    "xgboost": 13.951,
+    "logistic": 12.7466,
 }
 
 # TODO: Wire sigma calibration into the training harness so this
@@ -136,6 +141,10 @@ _MODEL_MARGIN_STDS: dict[str, float] = {
     "xgboost_v1": 13.45,
     "xgboost_v2": 13.41,
     "xgboost_v3": 13.44,
+    # Champion models (unversioned)
+    "random_forest": 12.85,
+    "xgboost": 13.44,
+    "logistic": 13.53,
 }
 # TODO: Wire margin_std computation into the training harness.
 

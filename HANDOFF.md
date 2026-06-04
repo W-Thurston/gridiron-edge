@@ -23,7 +23,7 @@ How everything works right now. Assumes you know what the project does — see [
 | Simulation engine (numba) | `gridiron_edge.sim._engine` — Elo kernels, record accumulation, Monte Carlo |
 | Simulation orchestration | `gridiron_edge.sim.season` — data loading, output builders, `run_full_simulation` |
 | Visualisation | `gridiron_edge.viz` |
-| Evaluation | `gridiron_edge.evaluation` — `archive`, `metrics`, `select`, `backfill`, `tune` |
+| Evaluation | `gridiron_edge.evaluation` — `archive`, `metrics`, `select`, `backfill`, `tune`, `champion` |
 | Models | `gridiron_edge.models` — Predictor + Trainable protocols, ArtifactStore |
 | CLI | `gridiron_edge.cli` — `main.py` stage-list pipeline, sub-apps per domain |
 | Market math | `gridiron_edge.market` — `odds_math`, `kelly`, `edge`, `recommendations`, `clv` |
@@ -221,6 +221,31 @@ won = stake × decimal_odds, lost = 0, push = stake. This means
 back whatever is returned. The running balance is the cumulative sum
 of all signed transactions.
 
+#### Champion/challenger model promotion
+
+Models are registered as unversioned champions (random_forest, xgboost,
+logistic) rather than versioned variants (rf_v1, rf_v2, etc.).
+`gridiron models train <name>` auto-compares the newly trained model
+against the existing champion using three gates:
+
+1. **Brier** must improve by ≥ 0.002 (primary metric)
+2. **ECE** must not degrade by > 0.01 (calibration guardrail)
+3. **AUC** must not degrade by > 0.01 (discrimination guardrail)
+
+If all gates pass, the challenger is promoted. If any gate fails, the
+old champion is restored from backup. Use `--force` to override,
+`--no-promote` for dry-run comparison. Logic lives in
+`evaluation/champion.py`.
+
+#### Temporal CV for model training
+
+All model families use TimeSeriesSplit(n_splits=5) for cross-validation
+during hyperparameter search. Early folds with fewer than
+MIN_CV_TRAIN_ROWS (4000) rows are skipped to avoid undersized training
+sets biasing HP selection. The training data is sorted chronologically
+in `_prepare_data` before splitting. This replaced StratifiedKFold
+(shuffle=True) which had temporal leakage.
+
 ---
 
 ### Workflows (End-to-End Data Flows)
@@ -309,7 +334,7 @@ model.train(games, repo=repo)      dispatches to model-specific trainer
     |                 train_seasons, holdout_seasons)
     |
     |-- Randomized HP search with tqdm progress bar
-    |       Tree: StratifiedKFold CV on training set
+    |       Tree: TimeSeriesSplit CV on training set (folds < 4000 rows skipped)
     |       Evaluates Brier score (win models) or MAE (total model)
     |
     |-- Retrain best params on full training set
@@ -317,7 +342,9 @@ model.train(games, repo=repo)      dispatches to model-specific trainer
     +-- ArtifactStore.save(version, model, metadata)
             -> data/models/{version}/model.joblib
             -> data/models/{version}/metadata.json
-            Artifacts are immutable -- use a new version string to retrain
+            Champion/challenger: train auto-compares to existing champion.
+            Promotes if Brier improves ≥ 0.002, ECE doesn't degrade > 0.01,
+            AUC doesn't degrade > 0.01.  --force overrides gates.
 ```
 
 **Total model training** follows the same pattern but:
@@ -495,9 +522,11 @@ uv run gridiron sim run [--n-sims 10000] [--divisor 350]
 ### Model training and evaluation
 
 ```bash
-uv run gridiron models train logistic_v1 [--overwrite]
-uv run gridiron models train random_forest_v1 [--overwrite]
-uv run gridiron evaluate backfill --model-version elo_v2
+uv run gridiron models train random_forest
+uv run gridiron models train xgboost --force
+uv run gridiron models train logistic --no-promote
+uv run gridiron evaluate backfill --model-version random_forest
+uv run gridiron evaluate backfill --model-version xgboost
 uv run gridiron evaluate select-model
 uv run gridiron evaluate report
 ```
@@ -550,6 +579,7 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Weather ingest (idempotent) | `ingest/weather/openweather.py` |
 | DK odds ingest | `ingest/odds/draftkings.py` |
 | DK game_id resolution | `ingest/odds/_game_id.py` |
+| Champion/challenger promotion | `evaluation/champion.py` |
 | Post-processing (spread, bands, tier) | `models/game_prediction/post_process.py` |
 | Prediction pipeline orchestrator | `models/game_prediction/pipeline.py` |
 | Total points model | `models/game_prediction/total.py` |
@@ -657,7 +687,7 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 3. `- uv run gridiron edges report --week N --season YYYY-YYYY+1 — generate edge report`
 4. `uv run gridiron sim run`
 5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`
-6. `uv run gridiron evaluate backfill --model-version random_forest_v3`
+6. `uv run gridiron evaluate backfill --model-version random_forest`
 7. `gridiron bet log --game-id {ID} --market {TYPE} --side {SIDE} --odds {ODDS} --stake {AMT} --book {BOOK}`
 8. `gridiron bet settle {BET_ID} {won|lost|push}`
 9. `gridiron bet summary`

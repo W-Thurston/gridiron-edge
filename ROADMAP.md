@@ -468,6 +468,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 
 | Date | Change |
 |---|---|
+| 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. W11 removed (already exists). M1.5 achieved. XGBoost is auto-selected champion (Brier 0.218). |
 | 2026-06-03 | **v2 refresh.** Updated §1 (current state), marked W1–W6 complete in §4, added W11 (Live Prediction Pipeline) and W12 (Model Ensemble), updated §5.4 project structure to match built modules, redrew §6 dependency graph, marked M1/M2 achieved in §7, added M1.5 milestone. Reconciled with PLAN.md numbering. |
 | 2026-05-30 | Initial version — created from prototype review + gap analysis vs. existing gridiron_edge codebase. |
 

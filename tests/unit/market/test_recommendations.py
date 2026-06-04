@@ -142,7 +142,7 @@ def _make_predictions(
             {
                 "predicted_at": pd.Timestamp("2026-09-04 12:00:00"),
                 "is_backfilled": False,
-                "model_version": "random_forest_v3",
+                "model_version": "random_forest",
                 "season": "2026-2027",
                 "week": 1,
                 "game_id": game_id,

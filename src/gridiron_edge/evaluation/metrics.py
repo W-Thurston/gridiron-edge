@@ -100,7 +100,7 @@ def log_loss(p: Series, y: Series, *, eps: float = 1e-7) -> float:
 
 
 def accuracy(p: Series, y: Series) -> float:
-    """Fraction of games where the predicted favourite actually won.
+    """Fraction of games where the predicted favorite actually won.
 
     Args:
         p: Predicted probabilities for the away team.
@@ -531,7 +531,7 @@ def biggest_misses(df: DataFrame, *, n: int = 10) -> DataFrame:
 
     Ranks games by the magnitude of the model's error — ``|predicted_prob -
     outcome|`` — where outcome is 1 if the predicted team won, 0 if they lost.
-    A game predicted at 85 % where the favourite lost has an error of 0.85.
+    A game predicted at 85 % where the favorite lost has an error of 0.85.
 
     The ``predicted_team`` and ``actual_result`` columns make the output
     readable without reference to the away/home convention.

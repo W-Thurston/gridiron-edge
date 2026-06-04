@@ -76,6 +76,10 @@ _MODEL_COLORS: Final[dict[str, str]] = {
     "random_forest_v2": "#0e7490",  # dark cyan
     "xgboost_v1": "#15803d",  # green
     "xgboost_v2": "#166534",  # dark green
+    # Champion models (unversioned)
+    "random_forest": "#0891b2",  # cyan
+    "xgboost": "#15803d",  # green
+    "logistic": "#d97706",  # amber
 }
 _DEFAULT_COLOR: Final[str] = "#6b7280"  # gray fallback
 

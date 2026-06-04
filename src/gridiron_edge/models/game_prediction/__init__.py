@@ -9,8 +9,8 @@ before calling PredictorRegistry.names().
 
 Sub-modules:
     _shared   — shared feature engineering and training infrastructure
-    logistic  — logistic_v1, logistic_v2, logistic_v3, logistic_v4
-    tree      — random_forest_v1, xgboost_v1
+    logistic  — logistic (champion)
+    tree      — random_forest, xgboost (champions)
 
 The old monolithic predictor.py is superseded by this package.  The
 import path ``gridiron_edge.models.game_prediction.predictor`` is kept

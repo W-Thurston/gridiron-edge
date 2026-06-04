@@ -309,7 +309,7 @@ class TestBiggestMisses:
         # Second row is the near-correct prediction (error ~0.1)
         assert result.iloc[1]["actual_result"] == "WIN"
 
-    def test_home_team_favourite_aligned(self) -> None:
+    def test_home_team_favorite_aligned(self) -> None:
         """When p < 0.5, the home team is the predicted team."""
         from gridiron_edge.evaluation.metrics import biggest_misses
 

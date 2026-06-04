@@ -39,13 +39,13 @@ weather features are validated against holdout data.
 
 | Item | Notes |
 |---|---|
-| Temporal leakage in tree model CV | StratifiedKFold(shuffle=True) doesn't respect time ordering. Isotonic recalibration infrastructure built (W2) but rf_v3 already well-calibrated (ECE 0.036), so calibrator was not saved. Revisit for future model versions. |
-| Stale `__pycache__` after restructures | Clear with `find . -type d -name __pycache__ -exec rm -rf {} +` |
 | `_DEFAULT_TOTAL_STD` hardcoded in `cli/edges.py` | Currently 13.17 (total model holdout RMSE). Wire into model metadata so it updates when a new total model is trained. |
 | Historical edge validation / backtest | Deferred until season starts and real odds data is available. Run `gridiron edges clv` against a full season of archived predictions + odds to validate edge quality. |
 | Schema migration helper | `archive.migrate_archive()` exists for pre-v2 archives. Can be removed once all archives are v2+. |
 | Kelly adherence metric | `performance.kelly_adherence()` deferred — requires storing `recommended_stake` in the bet ledger schema. Add column to `_BET_COLUMNS` when implementing. |
 | Balance display cosmetic | `balance_cmd` shows `$-100.00` for outflows instead of `-$100.00`. Fix sign formatting with `abs()` in `cli/betting.py`. |
+| Recalibrate sigma/margin_std after retrain | The `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` dicts in `post_process.py` still use values calibrated from the old versioned models. After a champion retrain, re-run sigma calibration and update the unversioned entries. |
+| ModelMetadata.holdout_brier for regression | Repurposed for MAE in total model. Consider adding a generic `primary_metric` field. |
 
 ---
 
@@ -64,15 +64,15 @@ Workstream IDs match **ROADMAP.md** (authoritative numbering).
 | W6 | Portfolio & Bet Tracking | ledger.py, bankroll.py, performance.py, CLI (8 commands) |
 
 *Also completed (cross-cutting, not numbered in ROADMAP):*
-- **Feature Engineering Expansion** — EPA_COLS 8→22, _EXPANDED_FEATURES 51→107, rf_v3/xgb_v3 trained
-- **Test Framework Build-out** — Three-tier pyramid, auto-markers, shared fixtures, pre-commit/pre-push hooks
+- **Feature Engineering Expansion** — EPA_COLS 8→22, _EXPANDED_FEATURES 51→107
+- **Test Framework Build-out** — Three-tier pyramid, auto-markers, shared fixtures
+- **Champion/Challenger Refactor** — TimeSeriesSplit CV, gate-based promotion, 3 unversioned champions (random_forest, xgboost, logistic)
 
 ### Planned
 
 | ID | Workstream | Blocked by | Priority | Notes |
 |---|---|---|---|---|
-| ~~W11~~ | ~~Live Prediction Pipeline~~ | — | — | Not needed — `output predictions` + `edges report` already covers this. Removed. |
-| **W12** | Model Ensemble | Nothing | **High** | Combine elo + logistic + rf + xgb. Must beat rf_v3 Brier by ≥0.002. |
+| **W12** | Model Ensemble | Nothing | **High** | Combine elo + logistic + rf + xgb. Must beat xgboost Brier (0.218) via promotion gates. |
 | **W4** | Player Data & First Prop Models | Nothing | Medium | Player-level features + QB/RB prop models → M3 |
 | **W8** | API Serving Layer | Nothing | Medium | FastAPI endpoints for edges, games, portfolio → M5 |
 | **W7** | Multi-Book Odds & Line Shopping | Odds source decision (§5.2) | Medium | Multi-book ingest, arb/middle detection → M4 |
@@ -86,10 +86,7 @@ Workstream IDs match **ROADMAP.md** (authoritative numbering).
 
 | Date | Change |
 |---|---|
-| 2026-06-03 | **Renumbered to match ROADMAP.md v2.** Added W11 (Live Prediction Pipeline) and W12 (Model Ensemble). Reconciled all IDs. Previous PLAN-only IDs (W3=FeatEng, W4=Tests, W7=LivePredict, W8=Ensemble, W9=MultiBook, W10=Props, W11=API, W12=Dashboard) retired in favor of ROADMAP-authoritative numbering. |
-| 2026-06-03 | W6 (Portfolio & Bet Tracking) complete — moved to CHANGELOG. Added deferred items to Architectural Debt. |
-| 2026-06-02 | W6 (Portfolio & Bet Tracking) activated. Phase A-E defined. |
-| 2026-06-02 | W5 (Edge Engine) complete — moved to CHANGELOG. Updated backlog dependencies. |
-| 2026-06-02 | W5 Edge Engine active — defined scope. |
-| 2026-06-01 | W2, Feature Eng, Test Framework completed — moved to CHANGELOG. |
+| 2026-06-04 | **Complete rewrite.** Replaced stale W2-phase-detail PLAN with current state. Champion/challenger refactor complete. Removed resolved debt items (temporal CV, stale __pycache__). Updated backlog priorities (xgboost is new champion, W12 references its Brier). Removed W11 (live prediction pipeline already exists). |
+| 2026-06-03 | W6 complete. W5 complete. Renumbered to match ROADMAP v2. |
+| 2026-06-01 | W2, Feature Eng, Test Framework completed. |
 | 2026-05-31 | Initial PLAN.md created with backlog. |

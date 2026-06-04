@@ -6,9 +6,8 @@ This module is the single import that callers use to ensure all game
 prediction models are registered with PredictorRegistry.  It contains
 no model definitions itself — those live in the split module files:
 
-    logistic.py  — logistic_v1, logistic_v2, logistic_v3, logistic_v4
-    tree.py      — random_forest_v1, random_forest_v2,
-                   xgboost_v1, xgboost_v2
+    logistic.py  — logistic (champion)
+    tree.py      — random_forest (champion), xgboost (champion)
 
 Importing this module is sufficient to register every model:
 
@@ -35,15 +34,10 @@ import gridiron_edge.models.game_prediction.logistic
 # ``from gridiron_edge.models.game_prediction.predictor import X``
 # continue to work without modification.
 from gridiron_edge.models.game_prediction.logistic import (  # noqa: F401
-    LogisticV1Predictor,
-    LogisticV2Predictor,
-    LogisticV3Predictor,
-    LogisticV4Predictor,
+    LogisticPredictor,
 )
 import gridiron_edge.models.game_prediction.tree  # noqa: F401
 from gridiron_edge.models.game_prediction.tree import (  # noqa: F401
-    RandomForestV1Predictor,
-    RandomForestV2Predictor,
-    XGBoostV1Predictor,
-    XGBoostV2Predictor,
+    RandomForestPredictor,
+    XGBoostPredictor,
 )

@@ -90,11 +90,11 @@ def test_validate_columns_raises_on_missing() -> None:
 
 def test_validate_columns_includes_context_in_error() -> None:
     df = _make_df()
-    with pytest.raises(ValueError, match="logistic_v1"):
+    with pytest.raises(ValueError, match="logistic"):
         validate_columns(
             df,
             expected_columns=["MISSING"],
-            context="logistic_v1",
+            context="logistic",
         )
 
 
@@ -123,8 +123,8 @@ def test_validate_schema_version_raises_on_mismatch() -> None:
 
 def test_validate_schema_version_includes_context() -> None:
     manifest = {"schema_version": 2}
-    with pytest.raises(ValueError, match="logistic_v1"):
-        validate_schema_version(manifest, required_version=1, context="logistic_v1")
+    with pytest.raises(ValueError, match="logistic"):
+        validate_schema_version(manifest, required_version=1, context="logistic")
 
 
 def test_validate_schema_version_raises_on_retrain_hint() -> None:
