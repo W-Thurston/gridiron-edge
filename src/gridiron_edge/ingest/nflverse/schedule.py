@@ -13,7 +13,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import nfl_data_py as nfl
+# pyrefly: ignore [missing-import]
+import nflreadpy as nfl
 import pandas as pd
 
 from gridiron_edge.core.settings import get_settings
@@ -46,7 +47,7 @@ def fetch_nflverse_upcoming(
 
     logger.info("Fetching nflverse upcoming schedule for season %d", season)
 
-    df: pd.DataFrame = nfl.import_schedules([season])
+    df: pd.DataFrame = nfl.load_schedules([season]).to_pandas()
 
     # Upcoming games have no result yet
     upcoming = df.loc[df["result"].isna()].copy()

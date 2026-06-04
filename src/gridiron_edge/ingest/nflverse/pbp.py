@@ -146,7 +146,8 @@ def fetch_pbp(
     Returns:
         List of Parquet file paths written.
     """
-    import nfl_data_py as nfl  # type: ignore[import-untyped]
+    # pyrefly: ignore [missing-import]
+    import nflreadpy as nfl
 
     resolved_repo: Path = repo or get_settings().repo_root
     current: int = current_nfl_season()
@@ -166,7 +167,7 @@ def fetch_pbp(
 
         logger.info("Fetching PBP data for season %d...", season)
         try:
-            df = nfl.import_pbp_data([season], downcast=False)
+            df = nfl.load_pbp([season]).to_pandas()
         except Exception as exc:
             logger.warning("Failed to fetch PBP for season %d: %s", season, exc)
             continue

@@ -2,7 +2,7 @@
 
 """Fetch and cache weekly player statistics from nflverse.
 
-Uses ``nfl_data_py.import_weekly_data()`` which provides pre-aggregated
+Uses ``nflreadpy.load_player_stats()`` which provides pre-aggregated
 player-game-level statistics including passing, rushing, receiving,
 EPA, and usage metrics.
 
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Final
 
 # pyrefly: ignore [missing-import]
-import nfl_data_py as nfl
+import nflreadpy as nfl
 import pandas as pd
 from pandas import DataFrame
 
@@ -36,7 +36,7 @@ logger: Logger = logging.getLogger(__name__)
 # First season with reliable nflverse player stats.
 _STATS_RELIABLE_FROM: Final[int] = 1999
 
-# Columns to retain from the 53 available in import_weekly_data().
+# Columns to retain from the 115 available in load_player_stats().
 # Covers identity, passing, rushing, receiving, usage, and advanced metrics.
 # Excludes fantasy scoring, headshot URLs, 2pt conversions, and sack fumble
 # details (already captured at team level).
@@ -47,8 +47,9 @@ _KEEP_COLUMNS: Final[list[str]] = [
     "player_display_name",
     "position",
     "position_group",
-    "recent_team",
+    "team",
     "opponent_team",
+    "game_id",
     "season",
     "season_type",
     "week",
@@ -57,13 +58,13 @@ _KEEP_COLUMNS: Final[list[str]] = [
     "attempts",
     "passing_yards",
     "passing_tds",
-    "interceptions",
-    "sacks",
+    "passing_interceptions",
+    "sacks_suffered",
     "passing_air_yards",
     "passing_yards_after_catch",
     "passing_epa",
     "passing_first_downs",
-    "dakota",
+    "passing_cpoe",
     # --- Rushing ---
     "carries",
     "rushing_yards",
@@ -144,7 +145,7 @@ def fetch_player_stats(
             continue
 
         try:
-            df: DataFrame = nfl.import_weekly_data([season])
+            df: DataFrame = nfl.load_player_stats([season]).to_pandas()
         except Exception:
             logger.warning("Failed to fetch player stats for season %d", season)
             continue

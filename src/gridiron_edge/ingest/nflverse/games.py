@@ -1,8 +1,8 @@
 # src/gridiron_edge/ingest/nflverse/games.py
 
-"""Fetch historical NFL game results from nflverse via nfl_data_py.
+"""Fetch historical NFL game results from nflverse via nflreadpy.
 
-Pulls ``import_schedules()`` for the requested season range and writes the
+Pulls ``nflreadpy.load_schedules()`` for the requested season range and writes the
 raw response to ``data/raw/NFL_wk_by_wk_nflverse.parquet``. The transform
 layer (``transform.clean.games_nflverse``) is responsible for mapping the
 nflverse schema to the canonical games schema.
@@ -19,7 +19,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import nfl_data_py as nfl
+# pyrefly: ignore [missing-import]
+import nflreadpy as nfl
 import pandas as pd
 
 from gridiron_edge.core.settings import current_nfl_season, get_settings
@@ -40,7 +41,7 @@ def fetch_nflverse_games(
 ) -> Path:
     """Fetch NFL game results from nflverse and write to raw Parquet.
 
-    Fetches ``nfl_data_py.import_schedules()`` for the requested season range
+    Fetches ``nflreadpy.load_schedules()`` for the requested season range
     and overwrites the raw Parquet file. Seasons are specified as the calendar
     year the season starts (e.g. ``2025`` for the 2025-2026 season).
 
@@ -78,7 +79,7 @@ def fetch_nflverse_games(
 
     logger.info("Fetching nflverse schedules for seasons: %s", season_list)
 
-    df: pd.DataFrame = nfl.import_schedules(season_list)
+    df: pd.DataFrame = nfl.load_schedules(season_list).to_pandas()
 
     out_path = dataset_path(resolved_repo, "games_raw_nflverse")
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +120,7 @@ def fetch_nflverse_games_refresh(
 
     logger.info("Refreshing nflverse season %d", target)
 
-    df_new: pd.DataFrame = nfl.import_schedules([target])
+    df_new: pd.DataFrame = nfl.load_schedules([target]).to_pandas()
 
     raw_path = dataset_path(resolved_repo, "games_raw_nflverse")
 
