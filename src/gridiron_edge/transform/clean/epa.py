@@ -83,7 +83,9 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
         df: PBP DataFrame filtered to scrimmage plays with valid EPA.
             Must contain ``game_id``, ``season``, ``week``, ``posteam``,
             ``defteam``, ``pass``, ``rush``, ``epa``, ``success``,
-            ``yards_gained`` columns.
+            ``yards_gained``, ``yardline_100``,
+            ``score_differential``, and ``penalty`` columns.
+
         is_offense: If ``True``, group by ``posteam`` (offensive team).
             If ``False``, group by ``defteam`` (defensive team).
 
@@ -160,6 +162,39 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
         df[pass_mask].groupby(group_keys)["sack"].mean().rename(f"{prefix}_sack_rate")
     )
 
+    # -- CPOE: completion probability over expected (passing plays only) --
+    cpoe_avg: Series = df[pass_mask].groupby(group_keys)["cpoe"].mean().rename(f"{prefix}_cpoe")
+
+    # -- Yards per play --
+    yards_per_play: Series = grouped["yards_gained"].mean().rename(f"{prefix}_yards_per_play")
+
+    # -- Red zone attempts (plays inside opponent 20) --
+    redzone_attempts: Series = (
+        df.assign(_rz=(df["yardline_100"] <= 20).astype(int))
+        .groupby(group_keys)["_rz"]
+        .sum()
+        .rename(f"{prefix}_redzone_attempts")
+    )
+
+    # -- Interception rate (per pass play) --
+    int_rate: Series = (
+        df[pass_mask].groupby(group_keys)["interception"].mean().rename(f"{prefix}_int_rate")
+    )
+
+    # -- Penalty rate (penalties per play) --
+    penalty_rate: Series = grouped["penalty"].mean().rename(f"{prefix}_penalty_rate")
+
+    # -- Average score differential (game script context) --
+    avg_score_diff: Series = grouped["score_differential"].mean().rename(f"{prefix}_avg_score_diff")
+
+    # -- Close game rate (% of plays within 7 points) --
+    close_game_pct: Series = (
+        df.assign(_close=(df["score_differential"].abs() <= 7).astype(int))
+        .groupby(group_keys)["_close"]
+        .mean()
+        .rename(f"{prefix}_close_game_pct")
+    )
+
     result: DataFrame = (
         pd.concat(
             [
@@ -175,6 +210,13 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
                 turnover_rate,
                 sack_rate,
                 n_plays,
+                cpoe_avg,
+                yards_per_play,
+                redzone_attempts,
+                int_rate,
+                penalty_rate,
+                avg_score_diff,
+                close_game_pct,
             ],
             axis=1,
         )
@@ -225,6 +267,9 @@ def aggregate_epa(
         "fumble_lost",
         "yardline_100",
         "sack",
+        "cpoe",
+        "score_differential",
+        "penalty",
     ]
 
     pbp: DataFrame = load_pbp(seasons=seasons, repo=resolved_repo, columns=columns_needed)

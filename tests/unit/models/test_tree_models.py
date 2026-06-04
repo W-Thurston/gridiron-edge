@@ -137,6 +137,20 @@ def synthetic_epa_by_game() -> pd.DataFrame:
                         "def_redzone_td_pct": rng.uniform(0.40, 0.70),
                         "def_turnover_rate": rng.uniform(0.01, 0.06),
                         "def_sack_rate": rng.uniform(0.04, 0.10),
+                        "off_plays": rng.integers(50, 80),
+                        "off_yards_per_play": rng.uniform(4.0, 7.0),
+                        "off_redzone_attempts": rng.integers(2, 10),
+                        "off_int_rate": rng.uniform(0.01, 0.05),
+                        "off_penalty_rate": rng.uniform(0.02, 0.08),
+                        "off_avg_score_diff": rng.uniform(-10.0, 10.0),
+                        "off_close_game_pct": rng.uniform(0.3, 0.8),
+                        "def_plays": rng.integers(50, 80),
+                        "def_yards_per_play": rng.uniform(4.0, 7.0),
+                        "def_redzone_attempts": rng.integers(2, 10),
+                        "def_int_rate": rng.uniform(0.01, 0.05),
+                        "def_penalty_rate": rng.uniform(0.02, 0.08),
+                        "def_avg_score_diff": rng.uniform(-10.0, 10.0),
+                        "def_close_game_pct": rng.uniform(0.3, 0.8),
                     }
                 )
     return pd.DataFrame(rows)
@@ -185,7 +199,7 @@ class TestRebuildFeaturesWithWindow:
     def test_output_has_all_expected_epa_columns(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
-        """All 44 EPA columns (22 per team) must be present in the output."""
+        """All 72 EPA columns (36 per team) must be present in the output."""
 
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=3, repo=mini_repo

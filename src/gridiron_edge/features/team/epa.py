@@ -59,6 +59,7 @@ DEFAULT_ROLLING_WINDOW: Final[int] = 4
 # layer (_shared.py) and tree tuning (tree.py) derive their column lists
 # from this constant rather than maintaining independent copies.
 EPA_COLS: Final[list[str]] = [
+    # --- Offensive ---
     "off_epa_per_play",
     "off_pass_epa",
     "off_rush_epa",
@@ -70,6 +71,14 @@ EPA_COLS: Final[list[str]] = [
     "off_redzone_td_pct",
     "off_turnover_rate",
     "off_sack_rate",
+    "off_plays",
+    "off_yards_per_play",
+    "off_redzone_attempts",
+    "off_int_rate",
+    "off_penalty_rate",
+    "off_avg_score_diff",
+    "off_close_game_pct",
+    # --- Defensive ---
     "def_epa_per_play",
     "def_pass_epa",
     "def_rush_epa",
@@ -81,6 +90,13 @@ EPA_COLS: Final[list[str]] = [
     "def_redzone_td_pct",
     "def_turnover_rate",
     "def_sack_rate",
+    "def_plays",
+    "def_yards_per_play",
+    "def_redzone_attempts",
+    "def_int_rate",
+    "def_penalty_rate",
+    "def_avg_score_diff",
+    "def_close_game_pct",
 ]
 
 # Private alias kept for internal use within this module
