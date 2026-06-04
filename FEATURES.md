@@ -38,14 +38,14 @@
 | Explosive play rate | % of plays gaining 20+ yds (pass) or 10+ yds (rush) | Game | 🟡 Med | Low | ✅ Done |
 | Scoring rate | Points per drive | Game | 🟡 Med | Low | ❌ |
 | Red zone TD % | TD rate when inside opponent 20 | Game | 🟡 Med | Low | ✅ Done |
-| Red zone attempts/game | Volume of red zone trips | Game, Props | 🟡 Med | Low | ❌ |
+| Red zone attempts/game | Volume of red zone trips | Game, Props | 🟡 Med | Low | ✅ Done |
 | 3rd down conversion % | Overall and by distance bucket | Game | 🟡 Med | Low | ✅ Done |
-| Plays per game / pace | Tempo proxy — affects volume stats | Game, Props | 🟡 Med | Low | ❌ |
+| Plays per game / pace | Tempo proxy — affects volume stats | Game, Props | 🟡 Med | Low | ✅ Done |
 | Time of possession | Average TOP | Game | 🟢 Low | Low | ❌ |
 | Pass rate (neutral script) | Pass-heavy when game is close? | Props | 🟡 Med | Med | ❌ |
 | Pass rate (overall) | Raw pass/run ratio | Props | 🟢 Low | Low | ❌ |
-| Yards per play | Simpler efficiency proxy | Game | 🟢 Low | Low | ❌ |
-| CPOE | Completion % over expected | Game, Props | 🔴 High | High | ❌ |
+| Yards per play | Simpler efficiency proxy | Game | 🟢 Low | Low | ✅ Done |
+| CPOE | Completion % over expected | Game, Props | 🔴 High | High | ⚠️ Partial |
 | Air yards / attempt | Depth of target proxy | Props | 🟡 Med | Med | ❌ |
 | YAC / completion | Yards after catch — scheme/personnel signal | Props | 🟡 Med | Med | ❌ |
 
@@ -83,10 +83,10 @@
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
 | Turnover differential / game | Net turnovers — high variance but some signal | Game | 🟡 Med | Low | ✅ Done |
-| INT rate (off) | Interceptions thrown per attempt | Game | 🟡 Med | Low | ❌ |
+| INT rate (off) | Interceptions thrown per attempt | Game | 🟡 Med | Low | ✅ Done |
 | Fumble rate (off) | Fumbles per touch | Game | 🟢 Low | Low | ❌ |
 | INT rate (def) | Interceptions forced per opponent attempt | Game | 🟡 Med | Low | ❌ |
-| Penalty rate | Penalties per game | Game | 🟢 Low | Low | ❌ |
+| Penalty rate | Penalties per game | Game | 🟢 Low | Low | ✅ Done |
 | Penalty yards / game | Yardage impact of penalties | Game | 🟢 Low | Low | ❌ |
 | False start rate | Offensive discipline proxy | Game | 🟢 Low | Low | ❌ |
 | Turnover luck estimate | Compare actual TO diff to expected (fumble recovery regresses to ~50%) | Game | 🟡 Med | Med | ❌ |
@@ -322,8 +322,8 @@ Ranked by signal × cost ratio. These feed directly into PLAN.md as actionable t
 | 14 | Rest differential | Schedule | Game | Already have each team's rest — just subtract (DONE) |
 | 15 | Explosive play rate | Offense | Game | Captures big-play ability beyond EPA mean (DONE) |
 
-Items 1–7 and 14–15 are complete (feature engineering done, 107 features).
-Items 8–13 are **W4 player data** (start once player game logs are ingested).
+Items 1–7 and 14–15 are complete (feature engineering done, 149 features).
+Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ---
 
@@ -333,9 +333,9 @@ Items 8–13 are **W4 player data** (start once player game logs are ingested).
 |--------|-------|
 | Total features cataloged | ~120 |
 | Domains | 11 |
-| Currently Done | ~30 |
+| Currently Done | ~37 |
 | Partial / In Schema | ~6 |
-| Missing | ~87 |
+| Missing | ~80 |
 | High-signal features | ~35 |
 | Low-cost features | ~50 |
 
@@ -345,5 +345,6 @@ Items 8–13 are **W4 player data** (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
-| 2026-05-30 | Initial version — comprehensive brainstorm from prototype review + gap analysis. |
+| 2026-06-04 | Marked plays/pace, yards_per_play, redzone_attempts, int_rate (off), penalty_rate, avg_score_diff, close_game_pct as DONE. CPOE marked Partial (computed but excluded from model features due to NaN). EPA_COLS 22→36, _EXPANDED_FEATURES 107→149. Champions rejected challengers — features retained for future prop models and systematic selection. |
 | 2026-06-01 | Marked Phase 20e priorities 1–7, 14–15 as DONE. Added 14 features across EPA, efficiency, and situational domains. |
+| 2026-05-30 | Initial version — comprehensive brainstorm from prototype review + gap analysis. |
