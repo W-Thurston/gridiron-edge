@@ -1,3 +1,5 @@
+# src/gridiron_edge/transform/clean/player_stats.py
+
 """Clean and transform raw player game logs for downstream feature engineering.
 
 Reads cached per-season Parquet files from ``data/raw/player_stats/``,
