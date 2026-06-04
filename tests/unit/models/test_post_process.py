@@ -24,7 +24,8 @@ from gridiron_edge.models.game_prediction.post_process import (
     _NFL_DEFAULT_SIGMA,
     _PROB_CEIL,
     _PROB_FLOOR,
-    _TIER_HIGH_THRESHOLD,
+    _TIER_HIGH_PROB,
+    _TIER_MODERATE_PROB,
     apply_recalibration,
     calibrate_spread_sigma,
     classify_confidence_tier,
@@ -193,18 +194,18 @@ class TestGetSigma:
 
     def test_register_overwrites(self) -> None:
         """Registering again overwrites the previous value."""
-        register_sigma("xgboost_v3", 13.50)
-        register_sigma("xgboost_v3", 14.10)
-        assert get_sigma("xgboost_v3") == 14.10
+        register_sigma("xgboost", 13.50)
+        register_sigma("xgboost", 14.10)
+        assert get_sigma("xgboost") == 14.10
 
     def test_multiple_models(self) -> None:
         """Different models can have different sigmas."""
-        register_sigma("rf_v3", 14.22)
-        register_sigma("xgb_v3", 13.50)
-        register_sigma("logistic_v4", 15.01)
-        assert get_sigma("rf_v3") == 14.22
-        assert get_sigma("xgb_v3") == 13.50
-        assert get_sigma("logistic_v4") == 15.01
+        register_sigma("random_forest", 14.22)
+        register_sigma("xgboost", 13.50)
+        register_sigma("logistic", 15.01)
+        assert get_sigma("random_forest") == 14.22
+        assert get_sigma("xgboost") == 13.50
+        assert get_sigma("logistic") == 15.01
 
 
 # ---------------------------------------------------------------------------
@@ -347,9 +348,11 @@ class TestEnrichPredictions:
 
     def test_uses_model_sigma(self) -> None:
         """When a model sigma is registered, enrichment uses it."""
-        register_sigma("rf_v3", 15.0)
+        register_sigma("random_forest", 15.0)
         df: DataFrame = self._make_predictions_df()
-        enriched: DataFrame = enrich_predictions(df, model_version="rf_v3", recalibrate=False)
+        enriched: DataFrame = enrich_predictions(
+            df, model_version="random_forest", recalibrate=False
+        )
         for _, row in enriched.iterrows():
             expected: float = win_prob_to_spread(row["home_win_prob"], sigma=15.0)
             assert row["model_spread"] == pytest.approx(expected, abs=1e-6)
@@ -531,8 +534,8 @@ class TestSaveLoadCalibrator:
         test_probs: ndarray = np.array([0.3, 0.5, 0.7])
         expected = calibrator.predict(test_probs)
 
-        save_calibrator(calibrator, "rf_v3", repo=tmp_path)
-        loaded = load_calibrator("rf_v3", repo=tmp_path)
+        save_calibrator(calibrator, "random_forest", repo=tmp_path)
+        loaded = load_calibrator("random_forest", repo=tmp_path)
 
         assert loaded is not None
         np.testing.assert_array_almost_equal(
@@ -548,10 +551,10 @@ class TestSaveLoadCalibrator:
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Save creates the _cal directory if it doesn't exist."""
         calibrator = _make_calibrator()
-        cal_dir: Path = tmp_path / "data" / "models" / "rf_v3_cal"
+        cal_dir: Path = tmp_path / "data" / "models" / "random_forest_cal"
         assert not cal_dir.exists()
 
-        save_calibrator(calibrator, "rf_v3", repo=tmp_path)
+        save_calibrator(calibrator, "random_forest", repo=tmp_path)
         assert cal_dir.exists()
         assert (cal_dir / _CALIBRATOR_FILENAME).exists()
 
@@ -577,14 +580,14 @@ class TestEnrichWithRecalibration:
     def test_applies_calibrator_when_present(self, tmp_path: Path) -> None:
         """Recalibration adjusts probabilities when calibrator is saved."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "rf_v3", repo=tmp_path)
+        save_calibrator(calibrator, "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         original_probs: Series = df["home_win_prob"].copy()
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="rf_v3",
+            model_version="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -599,7 +602,7 @@ class TestEnrichWithRecalibration:
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="rf_v3",
+            model_version="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -612,14 +615,14 @@ class TestEnrichWithRecalibration:
     def test_skips_when_recalibrate_false(self, tmp_path: Path) -> None:
         """recalibrate=False skips calibration even if calibrator exists."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "rf_v3", repo=tmp_path)
+        save_calibrator(calibrator, "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         original_probs: Series = df["home_win_prob"].copy()
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="rf_v3",
+            model_version="random_forest",
             recalibrate=False,
             repo=tmp_path,
         )
@@ -632,12 +635,12 @@ class TestEnrichWithRecalibration:
     def test_away_prob_updated(self, tmp_path: Path) -> None:
         """After recalibration, away_win_prob = 1 - home_win_prob."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "rf_v3", repo=tmp_path)
+        save_calibrator(calibrator, "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="rf_v3",
+            model_version="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -745,7 +748,7 @@ class TestWinProbBands:
     """Tests for win_prob_bands()."""
 
     _SIGMA = 13.97
-    _MS = 12.85
+    _MS = 13.54
 
     def test_pickem_symmetric(self) -> None:
         """Bands for 50% are symmetric around 0.5."""
@@ -810,18 +813,30 @@ class TestWinProbBands:
 class TestClassifyConfidenceTier:
     """Tests for classify_confidence_tier()."""
 
-    def test_high(self) -> None:
-        assert classify_confidence_tier(0.50) == "High"
+    def test_high_confidence(self) -> None:
+        assert classify_confidence_tier(0.75) == "High"
 
-    def test_moderate(self) -> None:
-        assert classify_confidence_tier(0.70) == "Moderate"
+    def test_moderate_confidence(self) -> None:
+        assert classify_confidence_tier(0.65) == "Moderate"
 
-    def test_low(self) -> None:
-        assert classify_confidence_tier(0.85) == "Low"
+    def test_low_confidence(self) -> None:
+        assert classify_confidence_tier(0.52) == "Low"
+
+    def test_boundary_high(self) -> None:
+        """Exactly at _TIER_HIGH_PROB boundary (0.70) → High."""
+        assert classify_confidence_tier(_TIER_HIGH_PROB) == "High"
+        assert classify_confidence_tier(1.0 - _TIER_HIGH_PROB) == "High"
 
     def test_boundary_moderate(self) -> None:
-        """Exactly at _TIER_HIGH_THRESHOLD → Moderate (>= threshold)."""
-        assert classify_confidence_tier(_TIER_HIGH_THRESHOLD) == "Moderate"
+        """Exactly at _TIER_MODERATE_PROB boundary (0.60) → Moderate."""
+        assert classify_confidence_tier(_TIER_MODERATE_PROB) == "Moderate"
+        assert classify_confidence_tier(1.0 - _TIER_MODERATE_PROB) == "Moderate"
+
+    def test_symmetric_away_favorite(self) -> None:
+        """Away favorite (prob < 0.5) gets same tier as equivalent home fav."""
+        assert classify_confidence_tier(0.25) == "High"
+        assert classify_confidence_tier(0.35) == "Moderate"
+        assert classify_confidence_tier(0.48) == "Low"
 
 
 # ---------------------------------------------------------------------------

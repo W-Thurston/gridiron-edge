@@ -45,7 +45,7 @@ class PredictorSpec:
     Attributes:
         name: Unique string key used to register and look up this predictor.
             Should follow the convention ``{model_type}_v{version}``,
-            e.g. ``"elo_v1"``, ``"logistic_v1"``, ``"neural_v1"``.
+            e.g. ``"elo_v2"``, ``"logistic"``, ``"random_forest"``.
         description: Human-readable description shown in CLI help and
             evaluation output.
         trainable: Whether this predictor has an explicit training step.

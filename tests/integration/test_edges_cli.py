@@ -46,7 +46,7 @@ def _make_predictions(
                 "model_total": model_total,
                 "projected_home_score": 28.0,
                 "projected_away_score": 22.0,
-                "margin_std": 12.85,
+                "margin_std": 13.54,
                 "win_prob_lo": 0.50,
                 "win_prob_hi": 0.85,
                 "confidence_tier": "High",
@@ -163,7 +163,7 @@ _MARGIN_STD_PATH = "gridiron_edge.models.game_prediction.post_process.get_margin
 class TestReportCommand:
     """Tests for 'gridiron edges report'."""
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_CURRENT_ODDS_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_report_runs(self, mock_preds, mock_odds, mock_std) -> None:
@@ -177,7 +177,7 @@ class TestReportCommand:
         )
         assert result.exit_code == 0
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_CURRENT_ODDS_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_report_no_predictions(self, mock_preds, mock_odds, mock_std) -> None:
@@ -192,7 +192,7 @@ class TestReportCommand:
         assert result.exit_code == 0
         assert "No predictions found" in result.output
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_CURRENT_ODDS_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_report_no_odds(self, mock_preds, mock_odds, mock_std) -> None:
@@ -216,7 +216,7 @@ class TestReportCommand:
 class TestClvCommand:
     """Tests for 'gridiron edges clv'."""
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_ODDS_LEDGER_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_clv_runs(self, mock_preds, mock_ledger, mock_std) -> None:
@@ -230,7 +230,7 @@ class TestClvCommand:
         )
         assert result.exit_code == 0
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_ODDS_LEDGER_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_clv_no_predictions(self, mock_preds, mock_ledger, mock_std) -> None:
@@ -245,7 +245,7 @@ class TestClvCommand:
         assert result.exit_code == 0
         assert "No predictions found" in result.output
 
-    @patch(_MARGIN_STD_PATH, return_value=12.85)
+    @patch(_MARGIN_STD_PATH, return_value=13.54)
     @patch(_ODDS_LEDGER_PATH)
     @patch(_PREDICTIONS_PATH)
     def test_clv_no_odds(self, mock_preds, mock_ledger, mock_std) -> None:

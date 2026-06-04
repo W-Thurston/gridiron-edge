@@ -68,14 +68,6 @@ _MODEL_COLORS: Final[dict[str, str]] = {
     "elo_v1": "#2563eb",  # blue
     "elo_v2": "#7c3aed",  # purple
     "elo_v3": "#db2777",  # pink
-    "logistic_v1": "#d97706",  # amber
-    "logistic_v2": "#059669",  # emerald
-    "logistic_v3": "#dc2626",  # red
-    "logistic_v4": "#7c2d12",  # brown-red
-    "random_forest_v1": "#0891b2",  # cyan
-    "random_forest_v2": "#0e7490",  # dark cyan
-    "xgboost_v1": "#15803d",  # green
-    "xgboost_v2": "#166534",  # dark green
     # Champion models (unversioned)
     "random_forest": "#0891b2",  # cyan
     "xgboost": "#15803d",  # green

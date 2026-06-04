@@ -303,7 +303,7 @@ def evaluate_diagnostics(
     \b
     Examples:
       gridiron evaluate diagnostics --model-version elo_v1
-      gridiron evaluate diagnostics --model-version logistic_v1
+      gridiron evaluate diagnostics --model-version logistic
       gridiron evaluate diagnostics --compare
       gridiron evaluate diagnostics --model-version elo_v1 --compare
     """
@@ -669,7 +669,7 @@ def evaluate_report(
     \b
     Examples:
       gridiron evaluate report
-      gridiron evaluate report --model-version logistic_v3
+      gridiron evaluate report --model-version logistic
       gridiron evaluate report --top-misses 20
       gridiron evaluate report --season 2025-2026
       gridiron evaluate report --model-version elo_v1 --season 2025-2026

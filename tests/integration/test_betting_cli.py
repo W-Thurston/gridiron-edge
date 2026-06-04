@@ -88,7 +88,7 @@ class TestLogCommand:
         flags: list[str] = [
             *_LOG_FLAGS,
             "--model-version",
-            "rf_v3",
+            "random_forest",
             "--model-prob",
             "0.62",
             "--model-ev",

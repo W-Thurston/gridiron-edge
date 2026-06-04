@@ -45,7 +45,7 @@ from __future__ import annotations
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 # pyrefly: ignore [missing-import]
 import joblib
@@ -86,32 +86,23 @@ _SIGMA_LO: Final[float] = 8.0
 _SIGMA_HI: Final[float] = 22.0
 
 # Per-model-version calibrated sigma values.  Keyed by model_version
-# string (e.g. "random_forest_v3").  When a model_version is not found
+# string (e.g. "random_forest").  When a model_version is not found
 # here, ``get_sigma`` falls back to ``_NFL_DEFAULT_SIGMA``.
 #
 # Calibrated 2026-06-01 via ``calibrate_spread_sigma`` against the full
 # prediction archive (5,705-7,276 games per model).  Best spread MAE:
 # random_forest (sigma=13.97, MAE=9.92).
+
 _MODEL_SIGMAS: dict[str, float] = {
-    "elo_v1": 20.3525,
-    "elo_v2": 12.1753,
-    "elo_v3": 12.2485,
-    "logistic_v1": 12.9332,
-    "logistic_v2": 12.9382,
-    "logistic_v3": 12.7466,
-    "logistic_v4": 12.9515,
-    "random_forest_v1": 12.9482,
-    "random_forest_v2": 12.6314,
-    "random_forest_v3": 13.9732,
-    "xgboost_v1": 14.2323,
-    "xgboost_v2": 14.3169,
-    "xgboost_v3": 13.951,
-    # Champion models (unversioned) — initialized from best v3 values,
-    # recalibrate after retraining with TimeSeriesSplit CV.
-    "random_forest": 13.9732,
-    "xgboost": 13.951,
-    "logistic": 12.7466,
+    # Elo baseline — calibrated separately via elo tuner
+    "elo_v2": 13.60,
+    # Champion models — calibrated on holdout data after
+    # TimeSeriesSplit retrain (2026-06-04).
+    "random_forest": 10.6252,
+    "xgboost": 11.4309,
+    "logistic": 11.9914,
 }
+
 
 # TODO: Wire sigma calibration into the training harness so this
 # dict is populated automatically when a new model version is trained.
@@ -128,33 +119,22 @@ _DEFAULT_MARGIN_STD: Final[float] = 13.45
 # sigma calibration (2026-06-01).  Represents how much the model's spread
 # predictions typically deviate from actual game margins.
 _MODEL_MARGIN_STDS: dict[str, float] = {
-    "elo_v1": 13.89,
-    "elo_v2": 13.83,
-    "elo_v3": 13.84,
-    "logistic_v1": 13.53,
-    "logistic_v2": 13.53,
-    "logistic_v3": 13.53,
-    "logistic_v4": 13.53,
-    "random_forest_v1": 13.38,
-    "random_forest_v2": 13.26,
-    "random_forest_v3": 12.85,
-    "xgboost_v1": 13.45,
-    "xgboost_v2": 13.41,
-    "xgboost_v3": 13.44,
-    # Champion models (unversioned)
-    "random_forest": 12.85,
-    "xgboost": 13.44,
-    "logistic": 13.53,
+    # Elo baseline
+    "elo_v2": 13.89,
+    # Champion models — RMSE of (predicted_margin - actual_margin)
+    # on holdout seasons (2026-06-04).
+    "random_forest": 13.54,
+    "xgboost": 13.34,
+    "logistic": 13.29,
 }
 # TODO: Wire margin_std computation into the training harness.
 
-# Confidence tier band-width thresholds.  A game's band width
-# (win_prob_hi - win_prob_lo) is classified into tiers:
-#   band_width < HIGH   -> "High"   (narrow band = strong conviction)
-#   band_width < MOD    -> "Moderate"
-#   band_width >= MOD   -> "Low"    (wide band = near toss-up)
-_TIER_HIGH_THRESHOLD: Final[float] = 0.65
-_TIER_MODERATE_THRESHOLD: Final[float] = 0.82
+# Confidence tier: how far is the prediction from pick'em (0.5)?
+#   distance >= HIGH  -> "High"     (prob >= 0.70 or <= 0.30)
+#   distance >= MOD   -> "Moderate" (prob 0.60-0.70 or 0.30-0.40)
+#   distance < MOD    -> "Low"      (prob 0.40-0.60, near toss-up)
+_TIER_HIGH_PROB: Final[float] = 0.70
+_TIER_MODERATE_PROB: Final[float] = 0.60
 
 
 # Calibrator artifact filename.
@@ -298,7 +278,7 @@ def register_sigma(model_version: str, sigma: float) -> None:
     """Register a calibrated sigma for a specific model version.
 
     Args:
-        model_version: Model identifier (e.g. ``"random_forest_v3"``).
+        model_version: Model identifier (e.g. ``"random_forest"``).
         sigma: Calibrated sigma value.
     """
     _MODEL_SIGMAS[model_version] = sigma
@@ -330,7 +310,7 @@ def get_sigma(model_version: str | None = None) -> float:
 # This second-pass recalibration uses strict temporal splits.  See PLAN.md
 # for details on the temporal leakage discovery.
 #
-# Evaluation showed rf_v3 is already well-calibrated on recent data
+# Evaluation showed random_forestis already well-calibrated on recent data
 # (holdout ECE 0.036), so the calibrator was NOT saved.  The
 # infrastructure is retained for future model versions.
 
@@ -452,7 +432,7 @@ def save_calibrator(
 
     Args:
         calibrator: Fitted ``IsotonicRegression`` to persist.
-        model_version: Base model identifier (e.g. ``"random_forest_v3"``).
+        model_version: Base model identifier (e.g. ``"random_forest"``).
             The calibrator is stored under ``{model_version}_cal/``.
         repo: Repository root.  If ``None``, uses ``get_settings().repo_root``.
 
@@ -483,7 +463,7 @@ def load_calibrator(
     Returns ``None`` if no calibrator file exists (graceful fallback).
 
     Args:
-        model_version: Base model identifier (e.g. ``"random_forest_v3"``).
+        model_version: Base model identifier (e.g. ``"random_forest"``).
         repo: Repository root.  If ``None``, uses ``get_settings().repo_root``.
 
     Returns:
@@ -601,18 +581,23 @@ def win_prob_bands(
     return (prob_lo, prob_hi)
 
 
-def classify_confidence_tier(band_width: float) -> str:
-    """Classify a band width into a confidence tier.
+def classify_confidence_tier(home_win_prob: float) -> str:
+    """Classify a win probability into a confidence tier.
+
+    Folds the probability to the favorite's side [0.5, 1.0] and
+    compares directly against thresholds, avoiding floating-point
+    subtraction artifacts at boundaries.
 
     Args:
-        band_width: ``win_prob_hi - win_prob_lo``.
+        home_win_prob: Model's home win probability.
 
     Returns:
         ``"High"``, ``"Moderate"``, or ``"Low"``.
     """
-    if band_width < _TIER_HIGH_THRESHOLD:
+    prob: float = max(home_win_prob, 1.0 - home_win_prob)
+    if prob >= _TIER_HIGH_PROB:
         return "High"
-    if band_width < _TIER_MODERATE_THRESHOLD:
+    if prob >= _TIER_MODERATE_PROB:
         return "Moderate"
     return "Low"
 
@@ -731,9 +716,10 @@ def enrich_predictions(
     bands: Series = out[prob_col].apply(_bands)
     out["win_prob_lo"] = bands.apply(lambda t: t[0])
     out["win_prob_hi"] = bands.apply(lambda t: t[1])
-    out["confidence_tier"] = (out["win_prob_hi"] - out["win_prob_lo"]).apply(
-        classify_confidence_tier
+    _prob_key: Literal["HOME_WIN_PROB", "home_win_prob"] = (
+        "home_win_prob" if "home_win_prob" in out.columns else "HOME_WIN_PROB"
     )
+    out["confidence_tier"] = out[_prob_key].apply(classify_confidence_tier)
 
     # --- Projected scores (requires model_total column) ---
     if "model_total" in out.columns:

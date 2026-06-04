@@ -44,7 +44,6 @@ weather features are validated against holdout data.
 | Schema migration helper | `archive.migrate_archive()` exists for pre-v2 archives. Can be removed once all archives are v2+. |
 | Kelly adherence metric | `performance.kelly_adherence()` deferred — requires storing `recommended_stake` in the bet ledger schema. Add column to `_BET_COLUMNS` when implementing. |
 | Balance display cosmetic | `balance_cmd` shows `$-100.00` for outflows instead of `-$100.00`. Fix sign formatting with `abs()` in `cli/betting.py`. |
-| Recalibrate sigma/margin_std after retrain | The `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` dicts in `post_process.py` still use values calibrated from the old versioned models. After a champion retrain, re-run sigma calibration and update the unversioned entries. |
 | ModelMetadata.holdout_brier for regression | Repurposed for MAE in total model. Consider adding a generic `primary_metric` field. |
 
 ---

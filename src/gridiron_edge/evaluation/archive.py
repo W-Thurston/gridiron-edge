@@ -150,7 +150,7 @@ def build_archive_rows(
         if col not in rows.columns:
             rows[col] = float("nan") if col != "confidence_tier" else ""
 
-    return rows[_ARCHIVE_COLUMNS].reset_index(drop=True)
+    return rows.loc[:, _ARCHIVE_COLUMNS].reset_index(drop=True)
 
 
 def write_archive_rows(
@@ -317,7 +317,7 @@ def migrate_archive(*, repo: Path | None = None) -> int:
         return 0
 
     df["is_backfilled"] = df["predicted_at"] == _LEGACY_BACKFILL_TS
-    n = int(df["is_backfilled"].sum())
+    n = df["is_backfilled"].sum()
 
     df.to_parquet(path, index=False)
     logger.info(

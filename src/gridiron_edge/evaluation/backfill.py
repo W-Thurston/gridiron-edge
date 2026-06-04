@@ -11,7 +11,7 @@ Typical usage::
     from gridiron_edge.evaluation.backfill import backfill_model
 
     n = backfill_model("elo_v1")
-    n = backfill_model("logistic_v1")  # once registered
+    n = backfill_model("logistic")  # once registered
 """
 
 from __future__ import annotations

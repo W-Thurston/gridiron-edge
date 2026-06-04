@@ -399,8 +399,10 @@ predict_games(model_version, feature_fn, repo)
             |       z = 1.645 (90% credible interval)
             |
             |-- Confidence tier
-            |       band_width = win_prob_hi - win_prob_lo
-            |       < 0.65 -> "High" | < 0.82 -> "Moderate" | else -> "Low"
+            |       fav_prob = max(home_win_prob, 1 - home_win_prob)
+            |       >= 0.70 -> "High"     (clear favorite)
+            |       >= 0.60 -> "Moderate"  (leaning)
+            |       else    -> "Low"       (toss-up)
             |
             +-- Projected scores (if model_total present)
                     home = (total - spread) / 2

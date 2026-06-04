@@ -31,7 +31,7 @@ class TestBuildGamePredictions:
         df = self._make_modeling_df()
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
-        result = build_game_predictions(df, probs, model_version="rf_v3")
+        result = build_game_predictions(df, probs, model_version="random_forest")
         assert len(result) == 2
 
     def test_away_team_perspective(self) -> None:
@@ -39,7 +39,7 @@ class TestBuildGamePredictions:
         df = self._make_modeling_df()
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
-        result = build_game_predictions(df, probs, model_version="rf_v3")
+        result = build_game_predictions(df, probs, model_version="random_forest")
         g1 = result[result["game_id"] == "G1"].iloc[0]
         assert g1["away_win_prob"] == pytest.approx(0.45)
         assert g1["home_win_prob"] == pytest.approx(0.55)
@@ -49,8 +49,8 @@ class TestBuildGamePredictions:
         df = self._make_modeling_df()
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
-        result = build_game_predictions(df, probs, model_version="rf_v3")
-        assert (result["model_version"] == "rf_v3").all()
+        result = build_game_predictions(df, probs, model_version="random_forest")
+        assert (result["model_version"] == "random_forest").all()
 
     def test_totals_included_when_provided(self) -> None:
         """model_total column present when totals are passed."""
@@ -61,7 +61,7 @@ class TestBuildGamePredictions:
         result = build_game_predictions(
             df,
             probs,
-            model_version="rf_v3",
+            model_version="random_forest",
             totals=totals,
         )
         assert "model_total" in result.columns
@@ -72,7 +72,7 @@ class TestBuildGamePredictions:
         df = self._make_modeling_df()
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
-        result = build_game_predictions(df, probs, model_version="rf_v3")
+        result = build_game_predictions(df, probs, model_version="random_forest")
         assert "model_total" not in result.columns
 
     def test_is_backfilled_flag(self) -> None:
@@ -83,13 +83,13 @@ class TestBuildGamePredictions:
         result_bf = build_game_predictions(
             df,
             probs,
-            model_version="rf_v3",
+            model_version="random_forest",
             is_backfilled=True,
         )
         result_live = build_game_predictions(
             df,
             probs,
-            model_version="rf_v3",
+            model_version="random_forest",
             is_backfilled=False,
         )
         assert result_bf["is_backfilled"].all()
@@ -100,7 +100,7 @@ class TestBuildGamePredictions:
         df = self._make_modeling_df()
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
-        result = build_game_predictions(df, probs, model_version="rf_v3")
+        result = build_game_predictions(df, probs, model_version="random_forest")
         required = {
             "predicted_at",
             "is_backfilled",

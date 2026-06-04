@@ -67,7 +67,7 @@ class ModelMetadata:
     """Metadata recorded alongside every trained model artifact.
 
     Attributes:
-        model_version: Registered model version string (e.g. ``"logistic_v1"``).
+        model_version: Registered model version string (e.g. ``"logistic"``).
         trained_at: ISO-format UTC timestamp of when training completed.
         schema_version: Feature set schema version the model was trained on.
             Must match ``CURRENT_SCHEMA_VERSION`` in ``features/manifest.py``
@@ -197,7 +197,7 @@ class ArtifactStore:
             raise FileExistsError(
                 f"Artifact already exists for '{model_version}' at {model_path}. "
                 "Artifacts are immutable. Use a new version string "
-                "(e.g. 'logistic_v2') rather than overwriting."
+                "(e.g. 'logistic') rather than overwriting."
             )
 
         try:

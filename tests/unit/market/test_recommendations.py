@@ -133,7 +133,7 @@ def _make_predictions(
     home_win_prob: float = 0.65,
     model_spread: float = -4.5,
     model_total: float = 48.0,
-    margin_std: float = 12.85,
+    margin_std: float = 13.54,
     confidence_tier: str = "High",
 ) -> pd.DataFrame:
     """Build a single-row predictions DataFrame matching archive schema."""

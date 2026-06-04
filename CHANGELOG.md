@@ -3,6 +3,68 @@
 What has been built and when. Newest first.
 
 ---
+#### 2026-06-04 — Sigma/Margin_std Recalibration & Versioned Model Cleanup — Complete
+
+Recalibrated spread derivation parameters and confidence tiers after
+TimeSeriesSplit retrain. Cleaned all vestiges of old versioned model names.
+
+##### Sigma/margin_std recalibration
+- Calibrated on holdout seasons (2023–2025) using existing
+  calibrate_spread_sigma() infrastructure
+- random_forest: sigma 13.97→10.63, margin_std 12.85→13.54
+- xgboost: sigma 13.95→11.43, margin_std 13.44→13.34
+- logistic: sigma 12.75→11.99, margin_std 13.53→13.29
+- Spread ranges compressed (e.g. RF [-43, 16] → [-33, 12])
+- Old sigmas were inflated because StratifiedKFold CV pushed
+  models toward overconfident probabilities
+
+##### Confidence tier rework
+- Old approach: band_width (win_prob_hi - win_prob_lo) thresholds
+  at 0.65/0.82. With honest margin_std, band_width was nearly
+  constant (~0.95 for all games), making tiers useless (98.7% Low)
+- New approach: probability distance from 0.5, folded to favorite
+  side. Thresholds: >= 0.70 High, >= 0.60 Moderate, else Low
+- Uses max(prob, 1-prob) to avoid IEEE 754 subtraction artifacts
+- Validated win rates: High ~80%, Moderate ~65%, Low ~54%
+- Distribution: ~23% High / ~30% Moderate / ~47% Low
+
+##### Versioned model cleanup
+- Removed all versioned entries (rf_v1–v3, xgb_v1–v3, logistic_v1–v4,
+  elo_v1) from _MODEL_SIGMAS and _MODEL_MARGIN_STDS dicts
+- Cleaned prediction archive of ~90K old versioned-model rows
+- Updated all versioned model references in tests, docstrings,
+  comments, and diagnostics colors to unversioned champion names
+- total_rf_v1 references intentionally preserved (not part of
+  champion/challenger system)
+
+##### Scripts added
+- scripts/recalibrate_sigma.py — holdout sigma/margin_std calibration
+- scripts/clean_archive.py — archive cleanup for deprecated model versions
+
+##### Files changed
+
+| Action | File |
+|---|---|
+| Modified | src/gridiron_edge/models/game_prediction/post_process.py |
+| Modified | src/gridiron_edge/evaluation/diagnostics.py |
+| Modified | src/gridiron_edge/evaluation/backfill.py |
+| Modified | src/gridiron_edge/models/artifact.py |
+| Modified | src/gridiron_edge/models/base.py |
+| Modified | src/gridiron_edge/cli/evaluate.py |
+| Modified | tests/unit/models/test_post_process.py |
+| Modified | tests/unit/models/test_pipeline.py |
+| Modified | tests/unit/market/test_recommendations.py |
+| Modified | tests/integration/test_edges_cli.py |
+| Modified | tests/integration/test_betting_cli.py |
+| Modified | PLAN.md |
+| Modified | HANDOFF.md |
+| Added | scripts/recalibrate_sigma.py |
+| Added | scripts/clean_archive.py |
+
+##### Summary
+- **2 new scripts**, 6 source files modified, 5 test files modified
+- Resolves "Recalibrate sigma/margin_std after retrain" debt item
+
 ### 2026-06-04 — Champion/Challenger Model Refactor — Complete
 
 Replaced versioned model variants with a champion/challenger system and
