@@ -3,7 +3,7 @@
 """RB rushing yards prop model.
 
 Predicts a RB's rushing yards for a given game using player rolling
-stats and opponent matchup features. Ridge regression baseline.
+stats and opponent matchup features. ElasticNet regression baseline.
 
 Usage::
 
@@ -24,7 +24,7 @@ import pandas as pd
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import ElasticNet
 
 # pyrefly: ignore [missing-import]
 from sklearn.preprocessing import StandardScaler
@@ -36,34 +36,12 @@ from gridiron_edge.models.prop_prediction.base import (
 
 logger: Logger = logging.getLogger(__name__)
 
-_FEATURE_COLUMNS: list[str] = [
-    # --- Player rolling stats ---
-    "rushing_yards_L3_mean",
-    "rushing_yards_L3_std",
-    "rushing_yards_L6_mean",
-    "carries_L3_mean",
-    "carries_L6_mean",
-    "rushing_tds_L3_mean",
-    "rushing_epa_L3_mean",
-    "rushing_epa_L6_mean",
-    "rushing_fumbles_L3_mean",
-    # --- Receiving (RBs catch passes too) ---
-    "receiving_yards_L3_mean",
-    "targets_L3_mean",
-    # --- Opponent matchup features ---
-    "opp_rush_yards_allowed_L6",
-    "opp_rush_yards_allowed_rank_L6",
-    "opp_rush_epa_allowed_L6",
-    "opp_rush_epa_allowed_rank_L6",
-    "opp_rush_tds_allowed_L6",
-]
-
 
 class RBRushYardsTrainer(PropTrainer):
-    """RB rushing yards prop model using Ridge regression."""
+    """RB rushing yards prop model using ElasticNet regression."""
 
     _scaler: StandardScaler | None = None
-    _model: Ridge | None = None
+    _model: ElasticNet | None = None
 
     @property
     def spec(self) -> PropModelSpec:
@@ -72,11 +50,8 @@ class RBRushYardsTrainer(PropTrainer):
             name="rb_rush_yards",
             target_col="rushing_yards",
             position_filter=["RB", "FB"],
-            description="RB rushing yards — Ridge regression on rolling + matchup features",
+            description="RB rushing yards — ElasticNet regression on rolling + matchup features",
         )
-
-    def _feature_columns(self) -> list[str]:
-        return _FEATURE_COLUMNS
 
     def _build_features(self, df: DataFrame) -> DataFrame:
         """Select feature columns and target, drop NaN rows."""
@@ -100,39 +75,57 @@ class RBRushYardsTrainer(PropTrainer):
         x_val: DataFrame,
         y_val: pd.Series,
     ) -> dict[str, Any]:
-        """Fit Ridge regression with feature scaling."""
+        """Fit ElasticNet with feature scaling and hyperparameter search."""
         self._scaler = StandardScaler()
         x_train_scaled = self._scaler.fit_transform(x_train)
         x_val_scaled = self._scaler.transform(x_val)
 
         best_alpha = 1.0
+        best_l1_ratio = 0.5
         best_mae = float("inf")
 
         for alpha in [0.01, 0.1, 1.0, 10.0, 100.0]:
-            model = Ridge(alpha=alpha)
-            model.fit(x_train_scaled, y_train)
-            preds = model.predict(x_val_scaled)
-            mae = float(np.mean(np.abs(y_val.values - preds)))
-            if mae < best_mae:
-                best_mae: float = mae
-                best_alpha: float = alpha
+            for l1_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
+                model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=10000)
+                model.fit(x_train_scaled, y_train)
+                preds = model.predict(x_val_scaled)
+                mae = float(np.mean(np.abs(y_val.values - preds)))
+                if mae < best_mae:
+                    best_mae: float = mae
+                    best_alpha: float = alpha
+                    best_l1_ratio: float = l1_ratio
 
-        self._model = Ridge(alpha=best_alpha)
+        self._model = ElasticNet(
+            alpha=best_alpha,
+            l1_ratio=best_l1_ratio,
+            max_iter=10000,
+        )
         self._model.fit(x_train_scaled, y_train)
 
-        coefs: dict = dict(zip(self._feature_columns(), self._model.coef_, strict=False))
-        top_features: list = sorted(coefs.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+        # Log feature importances — ElasticNet zeros out irrelevant features
+        coefs: dict[str, float] = dict(
+            zip(self._feature_columns(), self._model.coef_, strict=False)
+        )
+        nonzero: dict[str, float] = {f: c for f, c in coefs.items() if abs(c) > 1e-6}
+        top_features: list[tuple[str, float]] = sorted(
+            nonzero.items(), key=lambda x: abs(x[1]), reverse=True
+        )[:5]
         logger.info(
-            "Best alpha=%.2f, val MAE=%.1f. Top features: %s",
+            "Best alpha=%.2f, l1_ratio=%.1f, val MAE=%.1f. Features: %d/%d nonzero. Top: %s",
             best_alpha,
+            best_l1_ratio,
             best_mae,
+            len(nonzero),
+            len(coefs),
             [(f, f"{c:.2f}") for f, c in top_features],
         )
 
         return {
             "alpha": best_alpha,
+            "l1_ratio": best_l1_ratio,
             "val_mae": best_mae,
             "n_features": len(self._feature_columns()),
+            "n_nonzero": len(nonzero),
         }
 
     def _predict(self, x: DataFrame) -> np.ndarray:

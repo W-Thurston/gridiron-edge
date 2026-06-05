@@ -5,7 +5,7 @@
 First concrete prop model. Predicts a QB's passing yards for a given
 game using player rolling stats and opponent matchup features.
 
-Uses Ridge regression as the baseline — simple, regularized, interpretable,
+Uses ElasticNet regression as the baseline — simple, regularized, interpretable,
 and fast to train. Can be swapped for XGBoost/RF once the pipeline is
 validated end-to-end.
 
@@ -28,7 +28,7 @@ import pandas as pd
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import ElasticNet
 
 # pyrefly: ignore [missing-import]
 from sklearn.preprocessing import StandardScaler
@@ -43,37 +43,13 @@ logger: Logger = logging.getLogger(__name__)
 # Feature columns for QB passing yards prediction.
 # Curated from the 164 available columns to focus on high-signal,
 # low-NaN features directly relevant to passing production.
-_FEATURE_COLUMNS: list[str] = [
-    # --- Player rolling stats (L3 = recent form) ---
-    "passing_yards_L3_mean",
-    "passing_yards_L3_std",
-    "passing_yards_L6_mean",
-    "attempts_L3_mean",
-    "attempts_L6_mean",
-    "completions_L3_mean",
-    "passing_tds_L3_mean",
-    "passing_interceptions_L3_mean",
-    "passing_air_yards_L3_mean",
-    "passing_air_yards_L6_mean",
-    "passing_epa_L3_mean",
-    "passing_epa_L6_mean",
-    "sacks_suffered_L3_mean",
-    # --- Opponent matchup features ---
-    "opp_pass_yards_allowed_L6",
-    "opp_pass_yards_allowed_rank_L6",
-    "opp_pass_epa_allowed_L6",
-    "opp_pass_epa_allowed_rank_L6",
-    "opp_sacks_allowed_L6",
-    "opp_sacks_allowed_rank_L6",
-    "opp_pass_tds_allowed_L6",
-]
 
 
 class QBPassYardsTrainer(PropTrainer):
-    """QB passing yards prop model using Ridge regression."""
+    """QB passing yards prop model using ElasticNet regression."""
 
     _scaler: StandardScaler | None = None
-    _model: Ridge | None = None
+    _model: ElasticNet | None = None
 
     @property
     def spec(self) -> PropModelSpec:
@@ -82,16 +58,13 @@ class QBPassYardsTrainer(PropTrainer):
             name="qb_pass_yards",
             target_col="passing_yards",
             position_filter=["QB"],
-            description="QB passing yards — Ridge regression on rolling + matchup features",
+            description="QB passing yards — ElasticNet regression on rolling + matchup features",
         )
-
-    def _feature_columns(self) -> list[str]:
-        return _FEATURE_COLUMNS
 
     def _build_features(self, df: DataFrame) -> DataFrame:
         """Select feature columns and target, drop NaN rows."""
-        target = self.spec.target_col
-        cols = [
+        target: str = self.spec.target_col
+        cols: list[str] = [
             *self._feature_columns(),
             target,
             "player_id",
@@ -100,7 +73,7 @@ class QBPassYardsTrainer(PropTrainer):
             "player_name",
             "game_id",
         ]
-        available = [c for c in cols if c in df.columns]
+        available: list[str] = [c for c in cols if c in df.columns]
         return df.loc[:, available].copy()
 
     def _fit(
@@ -110,41 +83,57 @@ class QBPassYardsTrainer(PropTrainer):
         x_val: DataFrame,
         y_val: pd.Series,
     ) -> dict[str, Any]:
-        """Fit Ridge regression with feature scaling."""
+        """Fit ElasticNet with feature scaling and hyperparameter search."""
         self._scaler = StandardScaler()
         x_train_scaled = self._scaler.fit_transform(x_train)
         x_val_scaled = self._scaler.transform(x_val)
 
-        # Try a few alpha values, pick best on validation
         best_alpha = 1.0
+        best_l1_ratio = 0.5
         best_mae = float("inf")
 
         for alpha in [0.01, 0.1, 1.0, 10.0, 100.0]:
-            model = Ridge(alpha=alpha)
-            model.fit(x_train_scaled, y_train)
-            preds = model.predict(x_val_scaled)
-            mae = float(np.mean(np.abs(y_val.values - preds)))
-            if mae < best_mae:
-                best_mae = mae
-                best_alpha = alpha
+            for l1_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
+                model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=10000)
+                model.fit(x_train_scaled, y_train)
+                preds = model.predict(x_val_scaled)
+                mae = float(np.mean(np.abs(y_val.values - preds)))
+                if mae < best_mae:
+                    best_mae: float = mae
+                    best_alpha: float = alpha
+                    best_l1_ratio: float = l1_ratio
 
-        self._model = Ridge(alpha=best_alpha)
+        self._model = ElasticNet(
+            alpha=best_alpha,
+            l1_ratio=best_l1_ratio,
+            max_iter=10000,
+        )
         self._model.fit(x_train_scaled, y_train)
 
-        # Log feature importances (coefficients)
-        coefs = dict(zip(self._feature_columns(), self._model.coef_, strict=False))
-        top_features = sorted(coefs.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+        # Log feature importances — ElasticNet zeros out irrelevant features
+        coefs: dict[str, float] = dict(
+            zip(self._feature_columns(), self._model.coef_, strict=False)
+        )
+        nonzero: dict[str, float] = {f: c for f, c in coefs.items() if abs(c) > 1e-6}
+        top_features: list[tuple[str, float]] = sorted(
+            nonzero.items(), key=lambda x: abs(x[1]), reverse=True
+        )[:5]
         logger.info(
-            "Best alpha=%.2f, val MAE=%.1f. Top features: %s",
+            "Best alpha=%.2f, l1_ratio=%.1f, val MAE=%.1f. Features: %d/%d nonzero. Top: %s",
             best_alpha,
+            best_l1_ratio,
             best_mae,
+            len(nonzero),
+            len(coefs),
             [(f, f"{c:.2f}") for f, c in top_features],
         )
 
         return {
             "alpha": best_alpha,
+            "l1_ratio": best_l1_ratio,
             "val_mae": best_mae,
             "n_features": len(self._feature_columns()),
+            "n_nonzero": len(nonzero),
         }
 
     def _predict(self, x: DataFrame) -> np.ndarray:

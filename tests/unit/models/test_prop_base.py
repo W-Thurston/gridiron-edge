@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy import ndarray
 import pytest
 
 from gridiron_edge.models.prop_prediction.base import (
     _MIN_ATTEMPTS,
+    UNIVERSAL_FEATURE_COLS,
     PropModelMetadata,
     PropModelSpec,
     PropPrediction,
@@ -102,38 +104,38 @@ class TestPropPrediction:
 
 class TestEvaluateProps:
     def test_perfect_prediction(self) -> None:
-        y = np.array([100.0, 200.0, 300.0])
-        metrics = evaluate_props(y, y)
+        y: ndarray = np.array([100.0, 200.0, 300.0])
+        metrics: dict[str, float] = evaluate_props(y, y)
         assert metrics["mae"] == pytest.approx(0.0)
         assert metrics["rmse"] == pytest.approx(0.0)
         assert metrics["r2"] == pytest.approx(1.0)
         assert metrics["median_ae"] == pytest.approx(0.0)
 
     def test_known_values(self) -> None:
-        y_true = np.array([250.0, 300.0, 200.0, 275.0, 320.0])
-        y_pred = np.array([240.0, 310.0, 190.0, 260.0, 305.0])
-        metrics = evaluate_props(y_true, y_pred)
+        y_true: ndarray = np.array([250.0, 300.0, 200.0, 275.0, 320.0])
+        y_pred: ndarray = np.array([240.0, 310.0, 190.0, 260.0, 305.0])
+        metrics: dict[str, float] = evaluate_props(y_true, y_pred)
         assert metrics["mae"] == pytest.approx(12.0)
         assert metrics["rmse"] == pytest.approx(12.247, abs=0.01)
         assert metrics["r2"] == pytest.approx(0.914, abs=0.01)
 
     def test_constant_prediction(self) -> None:
         """Predicting the mean should give R²=0."""
-        y_true = np.array([100.0, 200.0, 300.0])
-        y_pred = np.array([200.0, 200.0, 200.0])
-        metrics = evaluate_props(y_true, y_pred)
+        y_true: ndarray = np.array([100.0, 200.0, 300.0])
+        y_pred: ndarray = np.array([200.0, 200.0, 200.0])
+        metrics: dict[str, float] = evaluate_props(y_true, y_pred)
         assert metrics["r2"] == pytest.approx(0.0)
 
     def test_worse_than_mean(self) -> None:
         """Terrible predictions should give negative R²."""
-        y_true = np.array([100.0, 200.0, 300.0])
-        y_pred = np.array([500.0, 500.0, 500.0])
-        metrics = evaluate_props(y_true, y_pred)
+        y_true: ndarray = np.array([100.0, 200.0, 300.0])
+        y_pred: ndarray = np.array([500.0, 500.0, 500.0])
+        metrics: dict[str, float] = evaluate_props(y_true, y_pred)
         assert metrics["r2"] < 0.0
 
     def test_single_value(self) -> None:
         """Single observation — R² should be 0 (ss_tot = 0)."""
-        metrics = evaluate_props(np.array([100.0]), np.array([110.0]))
+        metrics: dict[str, float] = evaluate_props(np.array([100.0]), np.array([110.0]))
         assert metrics["mae"] == pytest.approx(10.0)
         assert metrics["r2"] == pytest.approx(0.0)
 
@@ -153,3 +155,27 @@ class TestMinAttempts:
         col, min_val = _MIN_ATTEMPTS["receiving_yards"]
         assert col == "targets"
         assert min_val == 2
+
+
+class TestUniversalFeatures:
+    def test_count(self) -> None:
+        assert len(UNIVERSAL_FEATURE_COLS) == 132
+
+    def test_has_rolling(self) -> None:
+        rolling: list[str] = [c for c in UNIVERSAL_FEATURE_COLS if "_L3_" in c or "_L6_" in c]
+        assert len(rolling) == 92
+
+    def test_has_matchup(self) -> None:
+        matchup: list[str] = [
+            c for c in UNIVERSAL_FEATURE_COLS if c.startswith("opp_") and "allowed" in c
+        ]
+        assert len(matchup) == 28
+
+    def test_has_context(self) -> None:
+        assert "implied_team_total" in UNIVERSAL_FEATURE_COLS
+        assert "spread_line" in UNIVERSAL_FEATURE_COLS
+        assert "is_home" in UNIVERSAL_FEATURE_COLS
+        assert "roof_dome" in UNIVERSAL_FEATURE_COLS
+        assert "TEMP_F" in UNIVERSAL_FEATURE_COLS
+        assert "WIND_SPEED_MPH" in UNIVERSAL_FEATURE_COLS
+        assert "rest_days" in UNIVERSAL_FEATURE_COLS
