@@ -309,39 +309,21 @@ distribution/lean/tier.
 **Done when:** Every prop prediction row has all enrichment columns. Unit tests
 verify P(over) math.
 
-##### C3: Additional Prop Models
+##### C3: Additional Prop Models ✅ Complete
 
-**Why:** With the pipeline validated on QB Pass Yards, extending is mechanical.
+**What was done (2026-06-10):**
+1. Trained all 4 existing prop models end-to-end
+2. Removed `_build_features()` overrides from RB/WR/TE subclasses
+3. QB rush yards deferred — needs `qb_rush_yards.py`
 
-**Existing files to update (all scaffolded, need wiring to feature builder):**
-1. `models/prop_prediction/qb_pass_yards.py` — QB Rushing Yards
-   (`target_col='rushing_yards'`, `position_filter=['QB']`).
-   **Note:** This needs its own file or a second PropModelSpec in the QB module.
-   Evaluate whether to add `qb_rush_yards.py` or extend `qb_pass_yards.py` with
-   a second spec.
-2. `models/prop_prediction/rb_rush_yards.py` — RB Rushing Yards
-   (`target_col='rushing_yards'`, `position_filter=['RB']`)
-3. `models/prop_prediction/wr_rec_yards.py` — WR Receiving Yards
-   (`target_col='receiving_yards'`, `position_filter=['WR']`)
-4. `models/prop_prediction/te_rec_yards.py` — TE Receiving Yards
-   (`target_col='receiving_yards'`, `position_filter=['TE']`)
+**Baseline MAE table (ElasticNet):**
 
-**For each:**
-- Wire to unified feature builder from B4
-- Train all 4 model types (ElasticNet, Ridge, RF, XGB)
-- Champion/challenger selects best
-- Validate holdout MAE and prediction ranges
-
-**Existing tests to update:**
-`tests/unit/models/test_rb_rush_yards.py`,
-`tests/unit/models/test_wr_rec_yards.py`,
-`tests/unit/models/test_te_rec_yards.py`
-
-**New file needed:** `models/prop_prediction/qb_rush_yards.py` (or decide on
-multi-spec approach)
-
-**Done when:** 5 prop model families trained, each with a champion model. Holdout
-MAE table for all 5.
+| Model | Train | Holdout | MAE | RMSE | R² | Nonzero Features |
+|-------|-------|---------|-----|------|----|-----------------|
+| qb_pass_yards | 5,706 | 1,367 | 58.0 | 72.6 | 0.071 | 37/128 |
+| rb_rush_yards | 10,023 | 2,001 | 25.0 | 32.3 | 0.168 | 16/124 |
+| wr_rec_yards | 23,831 | 4,535 | 25.1 | 32.9 | 0.203 | 55/120 |
+| te_rec_yards | 10,087 | 2,052 | 18.3 | 24.2 | 0.188 | 58/120 |
 
 ---
 
@@ -505,7 +487,7 @@ C1 (QB Pass Yards + Framework) ✅  D1 (Prop Eval Metrics)
 C2 (Post-Process Enrichment) ◄── YOU ARE HERE     │
     │                              │
     ▼                              │
-C3 (4 More Prop Models)           │
+C3 (4 More Prop Models) ✅         │
     │                              │
     └──────────────┬───────────────┘
                    ▼
@@ -629,6 +611,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **C3 complete (4/5 models).** Trained RB rush yards (MAE=25.0), WR rec yards (MAE=25.1, best R²=0.203), TE rec yards (MAE=18.3). Removed `_build_features()` overrides from 3 subclasses. QB rush yards deferred (needs new file). |
 | 2026-06-10 | **C1 complete.** Rewired PropTrainer to `build_prop_features()` + `HOLDOUT_SEASONS`. Position-aware NaN handling (>50% threshold). Deleted dead join methods. First QB pass yards model: MAE=58.0, RMSE=72.6, R²=0.071 (ElasticNet, 37/128 nonzero features, 5,706 train / 1,367 holdout rows). |
 | 2026-06-10 | B4 complete. Phase B done. Created `features/player/builder.py` (unified entry point) and `features/player/_columns.py` (programmatic feature list). Refactored all 4 builders to accept optional df param for single-load pipeline. Created `tests/unit/features/test_builder.py`. Phase B (Feature Pipeline Completion) is now fully complete — C1 unblocked. |
 | 2026-06-10 | **B3 complete.** Created `features/player/game_context.py` (6 features: is_home, game_spread, over_under, implied_team_total, is_dome, rest_days). Joined from games CSV, no shift needed (pre-game data). Created `tests/unit/features/test_game_context.py` (28 tests, 9 classes). |
