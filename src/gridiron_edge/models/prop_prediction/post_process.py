@@ -62,6 +62,7 @@ DEFAULT_CONFIDENCE: Final[float] = 0.90
 # for player-level uncertainty.  L3 is more reactive to recent form.
 TARGET_STD_MAP: Final[dict[str, str]] = {
     "qb_pass_yards": "passing_yards_L3_std",
+    "qb_rush_yards": "rushing_yards_L3_std",
     "rb_rush_yards": "rushing_yards_L3_std",
     "wr_rec_yards": "receiving_yards_L3_std",
     "te_rec_yards": "receiving_yards_L3_std",

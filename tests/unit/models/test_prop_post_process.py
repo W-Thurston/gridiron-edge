@@ -41,6 +41,7 @@ class TestConstants:
     def test_target_std_map_has_all_models(self) -> None:
         assert set(TARGET_STD_MAP.keys()) == {
             "qb_pass_yards",
+            "qb_rush_yards",
             "rb_rush_yards",
             "wr_rec_yards",
             "te_rec_yards",
