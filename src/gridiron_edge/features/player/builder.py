@@ -103,7 +103,7 @@ def build_prop_features(
     # ── Filter by position ───────────────────────────────────────────────
 
     n_before_pos = len(df)
-    df = df[df["position"].isin(position_filter)].copy()
+    df = df.loc[df["position"].isin(position_filter), :].copy()
     logger.info(
         "Position filter %s: %d → %d rows",
         position_filter,
@@ -122,21 +122,10 @@ def build_prop_features(
             missing_features[:10],
         )
 
-    # ── Drop NaN on feature columns ──────────────────────────────────────
-    # TODO(nan): Dropping all NaN rows is aggressive — loses early-season
-    # games and position-specific columns. See NaN Research Backlog in
-    # PLAN.md for future imputation strategies.
-
-    n_before_drop = len(df)
-    # pyrefly: ignore [no-matching-overload]
-    df = df.dropna(subset=available_features)
-    n_dropped = n_before_drop - len(df)
-    logger.info(
-        "Dropped %d rows with NaN in feature columns (%d → %d)",
-        n_dropped,
-        n_before_drop,
-        len(df),
-    )
+    # NaN handling is deferred to the trainer, which has position context
+    # to determine which features have reasonable coverage. Dropping here
+    # would be too aggressive (e.g., QBs have ~99% NaN in receiving
+    # features, WRs in passing features).
 
     logger.info(
         "Final prop feature DataFrame: %d rows, %d feature columns, "

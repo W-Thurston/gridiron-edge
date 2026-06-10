@@ -202,13 +202,12 @@ class TestBuildPropFeatures:
         for col in GAME_CONTEXT_COLS:
             assert col in result.columns
 
-    def test_no_nan_in_feature_columns(self, tmp_path: Path) -> None:
-        """After builder, no NaN should remain in available feature columns."""
+    def test_nan_handling_deferred_to_trainer(self, tmp_path: Path) -> None:
+        """Builder should NOT drop NaN — trainer handles it with position context."""
         _setup_data(tmp_path)
         result = build_prop_features(position_filter=["QB"], repo=tmp_path)
-        available = [c for c in PROP_FEATURE_COLS if c in result.columns]
-        nan_counts = result[available].isna().sum()
-        assert nan_counts.sum() == 0
+        # Builder returns all rows; some NaN is expected in cross-position features
+        assert len(result) > 0
 
     def test_no_raw_game_columns(self, tmp_path: Path) -> None:
         _setup_data(tmp_path)

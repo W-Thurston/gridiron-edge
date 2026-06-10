@@ -61,21 +61,6 @@ class QBPassYardsTrainer(PropTrainer):
             description="QB passing yards — ElasticNet regression on rolling + matchup features",
         )
 
-    def _build_features(self, df: DataFrame) -> DataFrame:
-        """Select feature columns and target, drop NaN rows."""
-        target: str = self.spec.target_col
-        cols: list[str] = [
-            *self._feature_columns(),
-            target,
-            "player_id",
-            "season",
-            "week",
-            "player_name",
-            "game_id",
-        ]
-        available: list[str] = [c for c in cols if c in df.columns]
-        return df.loc[:, available].copy()
-
     def _fit(
         self,
         x_train: DataFrame,

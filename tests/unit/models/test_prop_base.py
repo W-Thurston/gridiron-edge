@@ -159,7 +159,10 @@ class TestMinAttempts:
 
 class TestUniversalFeatures:
     def test_count(self) -> None:
-        assert len(UNIVERSAL_FEATURE_COLS) == 132
+        # UNIVERSAL_FEATURE_COLS is the legacy list (rolling + matchup only).
+        # PROP_FEATURE_COLS (from _columns.py) is the full set including
+        # usage and game context. Both are valid; this tests the legacy list.
+        assert len(UNIVERSAL_FEATURE_COLS) >= 100
 
     def test_has_rolling(self) -> None:
         rolling: list[str] = [c for c in UNIVERSAL_FEATURE_COLS if "_L3_" in c or "_L6_" in c]

@@ -34,12 +34,9 @@ from numpy import ndarray
 import pandas as pd
 from pandas import DataFrame, Series
 
-# pyrefly: ignore [missing-import]
-from sklearn.model_selection import TimeSeriesSplit
-
-from gridiron_edge.core.settings import get_settings
-from gridiron_edge.features.player.matchup import build_matchup_features
-from gridiron_edge.features.player.rolling import build_player_rolling_features
+from gridiron_edge.core.constants import HOLDOUT_SEASONS
+from gridiron_edge.features.player._columns import PROP_FEATURE_COLS
+from gridiron_edge.features.player.builder import build_prop_features
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -241,25 +238,28 @@ class PropTrainer(ABC):
         ...
 
     def _feature_columns(self) -> list[str]:
-        """Return the universal feature column list.
+        """Return the prop feature column list.
 
-        All prop models use the same 132 features. ElasticNet handles
-        feature selection — no manual per-model curation needed.
-        Subclasses may override if they have a reason to diverge.
+        Built programmatically from component modules via PROP_FEATURE_COLS.
+        ElasticNet handles feature selection — no manual per-model curation
+        needed. Subclasses may override if they have a reason to diverge.
         """
-        return UNIVERSAL_FEATURE_COLS
+        return list(PROP_FEATURE_COLS)
 
-    @abstractmethod
     def _build_features(self, df: DataFrame) -> DataFrame:
         """Build the feature matrix from enriched player game logs.
 
+        Default implementation returns the DataFrame as-is since
+        build_prop_features() already handles all feature engineering.
+        Subclasses may override to add position-specific derived features.
+
         Args:
-            df: Player game logs with rolling + matchup features.
+            df: Player game logs with all prop features.
 
         Returns:
             DataFrame with feature columns and target column.
         """
-        ...
+        return df
 
     @abstractmethod
     def _fit(
@@ -294,169 +294,30 @@ class PropTrainer(ABC):
         """
         ...
 
-    def _join_game_context(self, df: DataFrame, repo: Path) -> DataFrame:
-        """Join cleaned games data for market/venue context."""
-        games_path: Path = repo / "data" / "cleaned" / "NFL_wk_by_wk_cleaned.csv"
-        if not games_path.exists():
-            logger.warning("Cleaned games not found at %s — skipping game context", games_path)
-            return df
-
-        games: DataFrame = pd.read_csv(games_path)
-        game_cols: list[str] = [
-            "GAME_ID",
-            "VEGAS_LINE",
-            "OVER_UNDER",
-            "ROOF",
-            "SURFACE",
-            "DIV_GAME",
-        ]
-        df = df.merge(
-            games[game_cols],
-            left_on="game_id",
-            right_on="GAME_ID",
-            how="left",
-        ).drop(columns=["GAME_ID"])
-
-        # Derive is_home from game_id format: {season}_{week}_{away}_{home}
-        df["is_home"] = (df["game_id"].str.split("_").str[3] == df["team"]).astype(int)
-
-        # Naive implied team total (refined below with spread from schedule)
-        df["implied_team_total"] = np.where(
-            df["OVER_UNDER"].notna(),
-            df["OVER_UNDER"] / 2,
-            np.nan,
-        )
-
-        # Roof → dome flag
-        df["roof_dome"] = df["ROOF"].str.lower().isin(["dome", "closed"]).astype(int)
-
-        # Surface → turf flag
-        df["surface_turf"] = (~df["SURFACE"].str.lower().isin(["grass", "dessograss"])).astype(int)
-
-        df = df.drop(columns=["ROOF", "SURFACE"], errors="ignore")
-        logger.info("Joined game context: VEGAS_LINE, OVER_UNDER, roof, surface")
-        return df
-
-    def _join_schedule_context(self, df: DataFrame) -> DataFrame:
-        """Join nflverse schedule for TEMP_F, WIND_SPEED_MPH, rest, and proper spread."""
-        try:
-            # pyrefly: ignore [missing-import]
-            import nflreadpy as nflr
-
-            seasons: list[str] = sorted(df["season"].unique().tolist())
-            sched = nflr.load_schedules([int(s) for s in seasons]).to_pandas()
-
-            sched_rows: list[dict] = []
-            for _, g in sched.iterrows():
-                common: dict = {
-                    "game_id": g["game_id"],
-                    "TEMP_F": g.get("TEMP_F"),
-                    "WIND_SPEED_MPH": g.get("WIND_SPEED_MPH"),
-                }
-                spread = g.get("spread_line")
-                # Home row
-                sched_rows.append(
-                    {
-                        **common,
-                        "team": g["home_team"],
-                        "rest_days": g.get("home_rest"),
-                        "opp_rest_days": g.get("away_rest"),
-                        "spread_line": -spread if pd.notna(spread) else np.nan,
-                    }
-                )
-                # Away row
-                sched_rows.append(
-                    {
-                        **common,
-                        "team": g["away_team"],
-                        "rest_days": g.get("away_rest"),
-                        "opp_rest_days": g.get("home_rest"),
-                        "spread_line": spread if pd.notna(spread) else np.nan,
-                    }
-                )
-
-            sched_ctx = pd.DataFrame(sched_rows)
-            sched_ctx["team"] = sched_ctx["team"].replace(
-                {"OAK": "LV", "SD": "LAC", "STL": "LA", "JAC": "JAX"}
-            )
-            sched_ctx["rest_diff"] = sched_ctx["rest_days"] - sched_ctx["opp_rest_days"]
-
-            df = df.merge(
-                sched_ctx[
-                    [
-                        "game_id",
-                        "team",
-                        "spread_line",
-                        "TEMP_F",
-                        "WIND_SPEED_MPH",
-                        "rest_days",
-                        "opp_rest_days",
-                        "rest_diff",
-                    ]
-                ],
-                on=["game_id", "team"],
-                how="left",
-            )
-
-            # Proper implied team total with spread
-            if "OVER_UNDER" in df.columns:
-                df["implied_team_total"] = np.where(
-                    df["OVER_UNDER"].notna() & df["spread_line"].notna(),
-                    (df["OVER_UNDER"] + df["spread_line"]) / 2,
-                    df["implied_team_total"],
-                )
-
-            # Zero out TEMP_F/WIND_SPEED_MPH for domes
-            if "roof_dome" in df.columns:
-                df.loc[df["roof_dome"] == 1, "TEMP_F"] = np.nan
-                df.loc[df["roof_dome"] == 1, "WIND_SPEED_MPH"] = np.nan
-
-            logger.info("Joined schedule context: spread_line, TEMP_F, WIND_SPEED_MPH, rest")
-        except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
-            logger.warning(
-                "Failed to fetch nflverse schedules — skipping TEMP_F/WIND_SPEED_MPH/rest"
-            )
-
-        return df
-
     def _load_data(self, *, repo: Path | None = None) -> DataFrame:
-        """Load player game logs with rolling + matchup + game context features.
+        """Load player game logs with all prop features.
 
-        Chains the rolling and matchup feature builders, joins cleaned games
-        and nflverse schedule for context, then filters to the relevant
-        positions and applies minimum atTEMP_Ft thresholds.
+        Uses the unified feature builder, then applies minimum attempt
+        thresholds and drops rows where the target is NaN.
+
+        Args:
+            repo: Repository root override.
+
+        Returns:
+            DataFrame filtered to relevant positions with all features.
         """
-        resolved_repo: Path = repo or get_settings().repo_root
-
-        # Build rolling features (includes skill position filter)
-        df: DataFrame = build_player_rolling_features(repo=resolved_repo)
-
-        # Build matchup features separately and join
-        matchup_df: DataFrame = build_matchup_features(repo=resolved_repo)
-        matchup_cols: list[str] = [c for c in matchup_df.columns if c.startswith("opp_")]
-        join_keys: list[str] = ["player_id", "season", "week"]
-
-        df = df.merge(
-            # pyrefly: ignore [no-matching-overload]
-            matchup_df[join_keys + matchup_cols].drop_duplicates(subset=join_keys),
-            on=join_keys,
-            how="left",
+        df: DataFrame = build_prop_features(
+            position_filter=self.spec.position_filter,
+            repo=repo,
         )
 
-        # Game context from cleaned games + nflverse schedule
-        df = self._join_game_context(df, resolved_repo)
-        df = self._join_schedule_context(df)
-
-        # Filter to relevant positions
-        df = df.loc[df["position"].isin(self.spec.position_filter), :].copy()
-
-        # Apply minimum atTEMP_Ft threshold
+        # Apply minimum attempt threshold
         target: str = self.spec.target_col
         if target in _MIN_ATTEMPTS:
             volume_col, min_val = _MIN_ATTEMPTS[target]
             if volume_col in df.columns:
                 before: int = len(df)
-                df = df[df[volume_col] >= min_val].copy()
+                df = df.loc[df[volume_col] >= min_val, :].copy()
                 logger.info(
                     "Filtered %s >= %d: %d → %d rows",
                     volume_col,
@@ -479,12 +340,15 @@ class PropTrainer(ABC):
     def train(self, *, repo: Path | None = None) -> PropModelMetadata:
         """Full training pipeline: load data, split, fit, evaluate.
 
-        Uses TimeSeriesSplit for TEMP_Foral validation, consistent with
-        the game prediction models.
+        Uses HOLDOUT_SEASONS for the train/holdout split, consistent
+        with the game prediction models.
 
         Returns:
             PropModelMetadata with evaluation metrics.
         """
+        # Parse HOLDOUT_SEASONS ("2023-2024" → 2023) for integer season column
+        holdout_ints: set[int] = {int(s.split("-")[0]) for s in HOLDOUT_SEASONS}
+
         df: DataFrame = self._load_data(repo=repo)
         features_df: DataFrame = self._build_features(df)
         feature_cols: list[str] = self._feature_columns()
@@ -492,35 +356,72 @@ class PropTrainer(ABC):
         # Ensure chronological order
         features_df = features_df.sort_values(["season", "week"]).reset_index(drop=True)
 
-        # Drop rows with NaN in features or target
-        target: str = self.spec.target_col
-        required_cols: list[str] = [*feature_cols, target]
-        features_df = features_df.dropna(subset=required_cols)
+        # Filter to available feature columns
+        available_features: list[str] = [c for c in feature_cols if c in features_df.columns]
 
-        x: DataFrame = features_df.loc[:, feature_cols]
-        y: Series = features_df[target]
+        # Position-aware NaN handling: only keep features with reasonable
+        # coverage for this position, then drop rows with NaN in those.
+        # This avoids losing all QB rows due to receiving features being
+        # ~99% NaN, or all WR rows due to passing features.
+        target: str = self.spec.target_col
+        nan_rates: Series = features_df[available_features].isna().mean()
+        usable_features: list[str] = [c for c in available_features if nan_rates[c] < 0.5]
+        dropped_features = set(available_features) - set(usable_features)
+        if dropped_features:
+            logger.info(
+                "Dropped %d features with >50%% NaN for %s: %s",
+                len(dropped_features),
+                self.spec.position_filter,
+                sorted(dropped_features)[:10],
+            )
+
+        required_cols: list[str] = [*usable_features, target]
+        n_before = len(features_df)
+        features_df = features_df.dropna(subset=required_cols)
+        logger.info(
+            "NaN drop: %d → %d rows (%d dropped, %d usable features)",
+            n_before,
+            len(features_df),
+            n_before - len(features_df),
+            len(usable_features),
+        )
+        available_features = usable_features
+
+        # HOLDOUT_SEASONS split — consistent with game models
+        train_mask: Series = ~features_df["season"].isin(holdout_ints)
+        hold_mask: Series = features_df["season"].isin(holdout_ints)
+
+        train_df: DataFrame = features_df.loc[train_mask, :]
+        hold_df: DataFrame = features_df.loc[hold_mask, :]
+
+        x_train: DataFrame = train_df.loc[:, available_features]
+        y_train: Series = train_df[target]
+        x_hold: DataFrame = hold_df.loc[:, available_features]
+        y_hold: Series = hold_df[target]
 
         logger.info(
-            "Training %s: %d rows, %d features",
+            "Training %s: %d train rows (seasons %s), %d holdout rows (seasons %s), %d features",
             self.spec.name,
-            len(x),
-            len(feature_cols),
+            len(x_train),
+            sorted(train_df["season"].unique()),
+            len(x_hold),
+            sorted(hold_df["season"].unique()),
+            len(available_features),
         )
 
-        # TimeSeriesSplit — same approach as game models
-        tscv = TimeSeriesSplit(n_splits=5)
-        splits: list = list(tscv.split(x))
-        train_idx, val_idx = splits[-1]  # Use last split for final eval
+        if len(x_hold) == 0:
+            msg = (
+                f"No holdout data for {self.spec.name}. "
+                f"HOLDOUT_SEASONS={holdout_ints} produced 0 rows."
+            )
+            raise ValueError(msg)
 
-        x_train, x_val = x.iloc[train_idx], x.iloc[val_idx]
-        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
-
-        # Fit
-        params: dict[str, Any] = self._fit(x_train, y_train, x_val, y_val)
+        # Fit on training data, validated against holdout
+        params: dict[str, Any] = self._fit(x_train, y_train, x_hold, y_hold)
 
         # Evaluate on holdout
-        y_pred: ndarray = self._predict(x_val)
-        metrics: dict[str, float] = evaluate_props(np.asarray(y_val), y_pred)
+        y_pred: ndarray = self._predict(x_hold)
+        metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
 
         logger.info(
             "%s holdout: MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
@@ -528,12 +429,8 @@ class PropTrainer(ABC):
             metrics["mae"],
             metrics["rmse"],
             metrics["r2"],
-            len(y_val),
+            len(y_hold),
         )
-
-        # Determine season ranges
-        train_seasons: list = sorted(features_df.iloc[train_idx]["season"].unique().tolist())
-        holdout_seasons: list = sorted(features_df.iloc[val_idx]["season"].unique().tolist())
 
         return PropModelMetadata(
             model_name=self.spec.name,
@@ -542,10 +439,10 @@ class PropTrainer(ABC):
             holdout_mae=metrics["mae"],
             holdout_rmse=metrics["rmse"],
             holdout_r2=metrics["r2"],
-            training_seasons=train_seasons,
-            holdout_seasons=holdout_seasons,
+            training_seasons=sorted(train_df["season"].unique().tolist()),
+            holdout_seasons=sorted(hold_df["season"].unique().tolist()),
             parameters=params,
-            feature_columns=feature_cols,
+            feature_columns=available_features,
             n_train_rows=len(x_train),
-            n_holdout_rows=len(x_val),
+            n_holdout_rows=len(x_hold),
         )

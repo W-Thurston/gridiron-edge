@@ -54,7 +54,7 @@ def _build_prop_feature_cols() -> list[str]:
     mw = DEFAULT_MATCHUP_WINDOW
     for _positions, _raw_col, name in _MATCHUP_STATS:
         cols.append(f"opp_{name}_allowed_L{mw}")
-        cols.append(f"opp_{name}_rank_L{mw}")
+        cols.append(f"opp_{name}_allowed_rank_L{mw}")
 
     # Usage: share x window
     for share_col in _SHARE_COLS:
