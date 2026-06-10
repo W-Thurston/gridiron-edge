@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+from logging import Logger
 from pathlib import Path
 from typing import Final
 
@@ -27,7 +28,7 @@ from pandas import DataFrame
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.ingest.nflverse.player_stats import load_player_stats
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 # Historical team code normalization: relocated/renamed franchises.
 # Maps old abbreviation → current abbreviation.
@@ -59,13 +60,13 @@ def _build_schedule_lookup() -> DataFrame:
 
     try:
         sched: DataFrame = nfl.load_schedules(seasons).to_pandas()
-    except Exception:
+    except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
         logger.warning("Failed to fetch full schedule range, trying year-by-year")
         frames: list[DataFrame] = []
         for s in seasons:
             try:
                 frames.append(nfl.load_schedules([s]).to_pandas())
-            except Exception:
+            except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
                 logger.debug("No schedule for %d", s)
         sched = pd.concat(frames, ignore_index=True)
 
@@ -142,10 +143,32 @@ def clean_player_stats(
 
     # 2. Normalize team codes
     df = _normalize_team_codes(df)
+    # Drop rows with missing team/opponent — can't join to schedule without them
+    n_before: int = len(df)
+    df = df.dropna(subset=["team", "opponent_team"])
+    n_dropped: int = n_before - len(df)
+    if n_dropped:
+        logger.warning("Dropped %d row(s) with missing team/opponent_team", n_dropped)
 
     # 3. Construct game_id
     schedule: DataFrame = _build_schedule_lookup()
     df = _join_game_id(df, schedule)
+    n_null_gid: int = df["game_id"].isna().sum()
+    if n_null_gid:
+        logger.warning("Dropped %d row(s) with null game_id after schedule join", n_null_gid)
+        df = df.dropna(subset=["game_id"])
+
+    # 3b. Remove rows with duplicate (player_id, game_id) — these indicate
+    # schedule join mismatches where different games got the same game_id.
+    # Drop ALL copies (keep=False) since the game_id is wrong for both.
+    dupe_mask = df.duplicated(subset=["player_id", "game_id"], keep=False)
+    n_dupes = dupe_mask.sum()
+    if n_dupes:
+        logger.warning(
+            "Dropped %d row(s) with duplicate (player_id, game_id) — schedule join mismatch",
+            n_dupes,
+        )
+        df = df.loc[~dupe_mask, :]
 
     # 4. Tag skill positions
     df["is_skill"] = df["position"].isin(_SKILL_POSITIONS)

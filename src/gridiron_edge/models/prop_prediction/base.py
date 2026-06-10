@@ -412,7 +412,7 @@ class PropTrainer(ABC):
                 df.loc[df["roof_dome"] == 1, "WIND_SPEED_MPH"] = np.nan
 
             logger.info("Joined schedule context: spread_line, TEMP_F, WIND_SPEED_MPH, rest")
-        except Exception:
+        except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
             logger.warning(
                 "Failed to fetch nflverse schedules — skipping TEMP_F/WIND_SPEED_MPH/rest"
             )

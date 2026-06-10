@@ -146,7 +146,7 @@ def fetch_player_stats(
 
         try:
             df: DataFrame = nfl.load_player_stats([season]).to_pandas()
-        except Exception:
+        except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
             logger.warning("Failed to fetch player stats for season %d", season)
             continue
 

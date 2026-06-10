@@ -21,7 +21,7 @@ from gridiron_edge.features.player.matchup import (
 
 def _make_player_logs(n_weeks: int = 6) -> DataFrame:
     """Build minimal player game logs with two teams playing each other."""
-    rows = []
+    rows: list[dict[str, bool | float | int | str]] = []
     for week in range(1, n_weeks + 1):
         # KC offense vs LV defense
         rows.append(

@@ -45,8 +45,8 @@ _PASSING_STATS: Final[list[str]] = [
     "attempts",
     "completions",
     "passing_air_yards",
-    "passing_epa",
-    "passing_cpoe",
+    "passing_epa",  # TODO(nan): 87% NaN overall (QB-only; older seasons may lack EPA data)
+    "passing_cpoe",  # TODO(nan): 91% NaN overall (~27% for QBs). Evaluate during feature importance
     "sacks_suffered",
 ]
 
