@@ -179,32 +179,31 @@ manageable. The feature builder (B4) filters by position before training.
    0 duplicate (player_id, game_id)
 10. Final audit: **45 pass · 0 fail · 4 warn (non-blocking)**
 
-##### B2: Usage Features  🔲 Planned
+##### B2: Usage Features  ✅ Complete
 
-**Why:** Target share and carry share are 🔴 High-signal features (FEATURES.md
-Domain 8). Volume is the #1 driver of counting stats.
+**What was done (2026-06-10):**
+1. Created `features/player/usage.py` — 6 rolling usage features:
+   `usage_{target,carry,touch}_share` × L{3,6}
+2. Shares computed from raw counts (targets, carries), not nflreadpy
+   pre-computed shares — gives the model both approaches
+3. Division by zero produces 0.0 (not NaN)
+4. Per-game share intermediates dropped — only rolling features exposed
+5. Created `tests/unit/features/test_usage.py` — 16 tests, 5 classes
+6. Snap % deferred — nflreadpy does not expose snap count data
 
-**New file:** `features/player/usage.py`
-
-**Features to build:**
-- `target_share_L3`, `target_share_L6` — player targets / team total targets
-  (WR, TE)
-- `carry_share_L3`, `carry_share_L6` — player carries / team total carries (RB)
-- `touch_share_L3`, `touch_share_L6` — (targets + carries) / team total plays
-  (all skill positions)
-- Snap % — **only if** nflreadpy exposes snap count data. Check column
-  availability first. If unavailable, defer and document.
+**Features built:**
+- `usage_target_share_L3`, `usage_target_share_L6` — player targets / team
+  total targets (WR, TE)
+- `usage_carry_share_L3`, `usage_carry_share_L6` — player carries / team
+  total carries (RB)
+- `usage_touch_share_L3`, `usage_touch_share_L6` — (targets + carries) /
+  team total touches (all skill positions)
 
 **Implementation pattern:**
-- Compute team-level totals per game from `player_game_logs` (sum targets/carries
-  by team + game)
-- Join back to player rows, compute share
-- Apply rolling windows with `shift(1)` for lookahead prevention
-
-**New test:** `tests/unit/features/test_usage.py`
-
-**Done when:** Usage features join cleanly to the player feature DataFrame. NaN
-rates documented.
+- `_compute_team_totals()` → `_compute_per_game_shares()` →
+  `_rolling_shares()` → `build_usage_features()`
+- All rolling computations use `shift(1)` for lookahead prevention
+- Season boundaries respected by default (`cross_season=False`)
 
 ##### B3: Game Context Features for Props  🔲 Planned
 
@@ -490,6 +489,7 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/transform/test_player_stats.py` | Unit | 7 tests, 3 classes |
 | `tests/unit/features/test_player_rolling.py` | Unit | 12 tests, 3 classes |
 | `tests/unit/features/test_player_matchup.py` | Unit | 11 tests, 5 classes |
+| `tests/unit/features/test_usage.py` | Unit | 16 tests, 5 classes |
 | `tests/unit/models/test_prop_base.py` | Unit | 19 tests, 6 classes |
 | `tests/unit/models/test_qb_pass_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_rb_rush_yards.py` | Unit | 5 tests, 1 class |
@@ -500,7 +500,6 @@ Tests are built alongside each phase, not as a separate step at the end.
 
 | Phase | File | Tier |
 |-------|------|------|
-| B2 | `tests/unit/features/test_usage.py` | Unit |
 | B3 | `tests/unit/features/test_game_context.py` | Unit |
 | B4 | `tests/unit/features/test_builder.py` | Unit |
 | B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
@@ -522,10 +521,10 @@ Tests are built alongside each phase, not as a separate step at the end.
 B1 (Audit & Stabilize) ✅
     │
     ▼
-B2 (Usage Features) ◄── YOU ARE HERE
+B2 (Usage Features) ✅
     │                                        T (Tests — parallel)
     ▼
-B3 (Game Context Features)
+B3 (Game Context Features) ◄── YOU ARE HERE
     │
     ▼
 B4 (Unified Feature Builder)
@@ -557,7 +556,6 @@ C3 (4 More Prop Models)           │
 
 | File | Phase |
 |------|-------|
-| `features/player/usage.py` | B2 |
 | `features/player/game_context.py` | B3 |
 | `features/player/builder.py` | B4 |
 | `features/player/_columns.py` | B4 |
@@ -666,6 +664,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **B2 complete.** Created `features/player/usage.py` (6 rolling usage features: target_share, carry_share, touch_share × L3/L6). Created `tests/unit/features/test_usage.py` (16 tests, 5 classes). Snap % deferred — nflreadpy does not expose snap count data. |
 | 2026-06-10 | **B1 complete.** Remediated all audit findings: F1 (null team guard), F3 (dedup 46 schedule-join mismatches), W1–W6 resolved. F2 confirmed false positive. Per-position NaN analysis completed. Final audit: 45 pass, 0 fail, 4 warn (non-blocking). Player game logs: 138,349 rows, 4,067 players, 0 null game_ids, 0 duplicates. |
 | 2026-06-05 | **Phase A audit completed.** Ran `audit_w4_phase_a.py` (43 pass, 2 fail, 4 warn). Code review of all 9 source files + 9 test files. Documented findings: 2 blocking (F1: game_id nulls, F2: fixture bug), 6 should-fix (W1–W6), 6 observations (O1–O6). NaN landscape table added. B1 updated to include audit remediation as first task. |
 | 2026-06-05 | **W4 detailed implementation plan.** Added Phases A–E + T with step-level tasks, dependency graph, file inventories (create/modify), NaN research backlog. Reconciled against actual directory structure (136 dirs, 722 files). Confirmed Phase A complete, all 5 prop model files scaffolded with tests. Updated completed workstream summaries (added sigma recal, feature eng expansion to 149). |
