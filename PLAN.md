@@ -281,33 +281,21 @@ player_game_logs.parquet (loaded once)
 - R² is low but expected for linear model on noisy player data —
   tree models (RF, XGBoost) will be added via champion/challenger
 
-##### C2: Prop Output Enrichment (Post-Processing)
+##### C2: Prop Output Enrichment (Post-Processing) ✅ Complete
 
-**Why:** Raw yard projections need market-facing outputs to calculate edges.
-
-**New file:** `models/prop_prediction/post_process.py`
+**What was done (2026-06-10):**
+1. Created `models/prop_prediction/post_process.py` — pure function
+   architecture with 6 composable functions + 1 orchestrator
+2. Created `tests/unit/models/test_prop_post_process.py` — 26 tests,
+   7 classes
+3. Design decisions documented in module docstring
 
 **Enrichment outputs per prediction:**
-- `predicted_mean` — model point prediction
-- `predicted_std` — `sqrt(model_residual_variance + player_rolling_std²)`.
-  Model residual std captures systematic uncertainty; player's own std captures
-  individual variance.
-- `lo_90`, `hi_90` — `predicted_mean ± 1.645 * predicted_std`
-- `p_over(line)` — `1 - Φ((line - predicted_mean) / predicted_std)` using normal
-  CDF. Takes the line as input (from DK odds or user-specified).
-- `lean` — "Over" if `p_over > 0.55`, "Under" if `p_over < 0.45`, "No Edge"
-  otherwise (thresholds configurable)
-- `confidence_tier` — based on `|p_over - 0.5|`: High (> 0.15), Moderate
-  (0.08–0.15), Low (< 0.08)
-
-**Parallels game model:** Just like `enrich_predictions()` takes raw win_prob and
-adds spread/bands/tier, this takes raw predicted_yards and adds
-distribution/lean/tier.
-
-**New test:** `tests/unit/models/test_prop_post_process.py`
-
-**Done when:** Every prop prediction row has all enrichment columns. Unit tests
-verify P(over) math.
+- `predicted_std` = `sqrt(model_rmse² + player_L3_std²)`
+- `lo_90`, `hi_90` — 90% prediction interval (lo clipped at 0)
+- `p_over` — `1 - Φ((line - mean) / std)`, Normal CDF
+- `lean` — Over / Under / No Edge (0.55/0.45 thresholds)
+- `confidence_tier` — High / Moderate / Low (distance-based)
 
 ##### C3: Additional Prop Models ✅ Complete
 
@@ -447,13 +435,13 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/models/test_rb_rush_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_wr_rec_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_te_rec_yards.py` | Unit | 5 tests, 1 class |
+| `tests/unit/models/test_prop_post_process.py` | Unit | 26 tests, 7 classes |
 
 **To create:**
 
 | Phase | File | Tier |
 |-------|------|------|
 | B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
-| C2 | `tests/unit/models/test_prop_post_process.py` | Unit |
 | D1 | `tests/unit/evaluation/test_prop_metrics.py` | Unit |
 | D2 | `tests/unit/evaluation/test_prop_archive.py` | Unit |
 | E1 | `tests/integration/test_props_cli.py` | Integration |
@@ -484,7 +472,7 @@ B4 (Unified Feature Builder) ✅
 C1 (QB Pass Yards + Framework) ✅  D1 (Prop Eval Metrics)
     │                              │
     ▼                              │
-C2 (Post-Process Enrichment) ◄── YOU ARE HERE     │
+C2 (Post-Process Enrichment) ✅    │  ◄── YOU ARE HERE
     │                              │
     ▼                              │
 C3 (4 More Prop Models) ✅         │
@@ -611,6 +599,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **C2 complete.** Created `models/prop_prediction/post_process.py` (6 enrichment functions + orchestrator). P(over) via Normal CDF, lean thresholds 0.55/0.45, confidence tiers distance-based. Created `tests/unit/models/test_prop_post_process.py` (26 tests, 7 classes). |
 | 2026-06-10 | **C3 complete (4/5 models).** Trained RB rush yards (MAE=25.0), WR rec yards (MAE=25.1, best R²=0.203), TE rec yards (MAE=18.3). Removed `_build_features()` overrides from 3 subclasses. QB rush yards deferred (needs new file). |
 | 2026-06-10 | **C1 complete.** Rewired PropTrainer to `build_prop_features()` + `HOLDOUT_SEASONS`. Position-aware NaN handling (>50% threshold). Deleted dead join methods. First QB pass yards model: MAE=58.0, RMSE=72.6, R²=0.071 (ElasticNet, 37/128 nonzero features, 5,706 train / 1,367 holdout rows). |
 | 2026-06-10 | B4 complete. Phase B done. Created `features/player/builder.py` (unified entry point) and `features/player/_columns.py` (programmatic feature list). Refactored all 4 builders to accept optional df param for single-load pipeline. Created `tests/unit/features/test_builder.py`. Phase B (Feature Pipeline Completion) is now fully complete — C1 unblocked. |
