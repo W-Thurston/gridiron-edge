@@ -205,32 +205,28 @@ manageable. The feature builder (B4) filters by position before training.
 - All rolling computations use `shift(1)` for lookahead prevention
 - Season boundaries respected by default (`cross_season=False`)
 
-##### B3: Game Context Features for Props  🔲 Planned
+##### B3: Game Context Features for Props  ✅ Complete
 
-**Why:** A player's stat line is heavily influenced by game script. Big favorites
-run the ball; big underdogs throw. Implied team total sets the volume ceiling.
+**What was done (2026-06-10):**
+1. Created `features/player/game_context.py` — 6 game context features
+   joined from `data/cleaned/NFL_wk_by_wk_cleaned.csv`
+2. Features: `is_home`, `game_spread`, `over_under`, `implied_team_total`,
+   `is_dome`, `rest_days`
+3. No shift(1) needed — all features are known pre-game
+4. Full team name → abbreviation mapping (37 entries, 1999–present)
+5. Created `tests/unit/features/test_game_context.py` — 28 tests, 9 classes
 
-**New file:** `features/player/game_context.py`
+**Features built:**
+- `is_home` — derived from game_id format (4th segment = home team)
+- `game_spread` — team perspective: favorite gets negative, underdog positive
+- `over_under` — total points line from Vegas
+- `implied_team_total` — `(over_under - game_spread) / 2`
+- `is_dome` — ROOF in {dome, closed}
+- `rest_days` — calendar days since team's previous game
 
-**Features to build:**
-- `implied_team_total` — `(total ± spread) / 2` per team per game. For historical
-  games, use VEGAS_LINE and actual total. For upcoming games, use model predictions.
-- `game_spread` — the spread from the team's perspective (negative = favored).
-  Game script proxy.
-- `is_home` — binary, from player_game_logs
-- `is_dome` — binary, from stadium reference (already exists in team features)
-- `rest_days` — from schedule data (already exists in team features, needs joining
-  to player rows)
-
-**Key detail:** These are *game-level* features that get joined to player rows via
-`(game_id, team)`. Most of this data already exists in the team feature pipeline —
-this step is primarily about **wiring** it to the player feature DataFrame rather
-than recomputing.
-
-**New test:** `tests/unit/features/test_game_context.py`
-
-**Done when:** Game context features join to player rows. Each player-game row has
-team total, spread, home/dome/rest context.
+**Key design decision:** These features are NOT shifted — spread, total,
+dome, and rest are all known before kickoff and are legitimate predictors
+at prediction time.
 
 ##### B4: Unified Prop Feature Builder  🔲 Planned
 
@@ -490,6 +486,7 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/features/test_player_rolling.py` | Unit | 12 tests, 3 classes |
 | `tests/unit/features/test_player_matchup.py` | Unit | 11 tests, 5 classes |
 | `tests/unit/features/test_usage.py` | Unit | 16 tests, 5 classes |
+| `tests/unit/features/test_game_context.py` | Unit | 28 tests, 9 classes |
 | `tests/unit/models/test_prop_base.py` | Unit | 19 tests, 6 classes |
 | `tests/unit/models/test_qb_pass_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_rb_rush_yards.py` | Unit | 5 tests, 1 class |
@@ -500,7 +497,6 @@ Tests are built alongside each phase, not as a separate step at the end.
 
 | Phase | File | Tier |
 |-------|------|------|
-| B3 | `tests/unit/features/test_game_context.py` | Unit |
 | B4 | `tests/unit/features/test_builder.py` | Unit |
 | B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
 | C2 | `tests/unit/models/test_prop_post_process.py` | Unit |
@@ -524,10 +520,10 @@ B1 (Audit & Stabilize) ✅
 B2 (Usage Features) ✅
     │                                        T (Tests — parallel)
     ▼
-B3 (Game Context Features) ◄── YOU ARE HERE
+B3 (Game Context Features) ✅
     │
     ▼
-B4 (Unified Feature Builder)
+B4 (Unified Feature Builder) ◄── YOU ARE HERE
     │
     ├──────────────────────────────┐
     ▼                              ▼
@@ -556,7 +552,6 @@ C3 (4 More Prop Models)           │
 
 | File | Phase |
 |------|-------|
-| `features/player/game_context.py` | B3 |
 | `features/player/builder.py` | B4 |
 | `features/player/_columns.py` | B4 |
 | `models/prop_prediction/post_process.py` | C2 |
@@ -664,6 +659,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **B3 complete.** Created `features/player/game_context.py` (6 features: is_home, game_spread, over_under, implied_team_total, is_dome, rest_days). Joined from games CSV, no shift needed (pre-game data). Created `tests/unit/features/test_game_context.py` (28 tests, 9 classes). |
 | 2026-06-10 | **B2 complete.** Created `features/player/usage.py` (6 rolling usage features: target_share, carry_share, touch_share × L3/L6). Created `tests/unit/features/test_usage.py` (16 tests, 5 classes). Snap % deferred — nflreadpy does not expose snap count data. |
 | 2026-06-10 | **B1 complete.** Remediated all audit findings: F1 (null team guard), F3 (dedup 46 schedule-join mismatches), W1–W6 resolved. F2 confirmed false positive. Per-position NaN analysis completed. Final audit: 45 pass, 0 fail, 4 warn (non-blocking). Player game logs: 138,349 rows, 4,067 players, 0 null game_ids, 0 duplicates. |
 | 2026-06-05 | **Phase A audit completed.** Ran `audit_w4_phase_a.py` (43 pass, 2 fail, 4 warn). Code review of all 9 source files + 9 test files. Documented findings: 2 blocking (F1: game_id nulls, F2: fixture bug), 6 should-fix (W1–W6), 6 observations (O1–O6). NaN landscape table added. B1 updated to include audit remediation as first task. |
