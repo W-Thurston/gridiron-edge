@@ -21,6 +21,7 @@ from gridiron_edge.cli.features import features_app
 from gridiron_edge.cli.ingest import ingest_app
 from gridiron_edge.cli.models import models_app
 from gridiron_edge.cli.output import output_app
+from gridiron_edge.cli.props import props_app
 from gridiron_edge.cli.ratings import ratings_app
 from gridiron_edge.cli.sim import sim_app
 from gridiron_edge.cli.transform import transform_app
@@ -68,6 +69,7 @@ app.add_typer(evaluate_app, name="evaluate")
 app.add_typer(models_app, name="models")
 app.add_typer(edges_app, name="edges")
 app.add_typer(betting_app, name="bet")
+app.add_typer(props_app, name="props")
 
 
 # ===========================================================================

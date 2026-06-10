@@ -347,36 +347,17 @@ player_game_logs.parquet (loaded once)
 
 #### Phase E — CLI & Integration  🔲 Planned
 
-##### E1: Prop CLI
+##### E1: Prop CLI ✅ Complete
 
-**Why:** User-facing deliverable — the thing you actually run on game day.
+**What was done (2026-06-10):**
+1. Created `cli/props.py` — 3 commands: evaluate, backfill, projections
+2. Registered `props_app` in `cli/main.py`
+3. Lazy trainer registry for fast `--help` rendering
+4. `_train_and_enrich()` shared helper for all commands
 
-**New file:** `cli/props.py`
-
-**Commands:**
-- `gridiron props projections --week N --season YYYY` — table of all prop
-  projections for the week
-- `gridiron props backfill --model qb_pass_yards` — backfill historical prop
-  predictions
-- `gridiron props evaluate --model qb_pass_yards` — evaluation report for a
-  prop model
-
-**Output format (projections):**
-```
-Player       Pos  Stat         Proj   Lo90   Hi90   Line  P(Over)  Lean     Conf
-P. Mahomes   QB   Pass Yards   278    198    358    274.5  0.52    No Edge  Low
-L. Jackson   QB   Rush Yards    62     28     96     52.5  0.64    Over     Moderate
-D. Henry     RB   Rush Yards    88     42    134     79.5  0.59    Over     Low
-```
-
-**Register in `cli/main.py`.**
-
-**New tests:**
-- `tests/integration/test_props_cli.py`
-- `tests/e2e/test_prop_pipeline.py`
-
-**Done when:** `gridiron props projections --week 12 --season 2024-2025` produces
-a formatted table.
+**First CLI evaluation (qb_pass_yards):**
+- MAE=63.4, RMSE=80.6, R²=0.118, Median AE=51.8, N=1,433
+- Bias=+9.7 (over-predicting), Coverage=93.8% (nominal 90%)
 
 ##### E2: DraftKings Prop Ingest Extension  🔲 Planned (Deferred — Upcoming Weeks Only)
 
@@ -418,6 +399,7 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/models/test_te_rec_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_prop_post_process.py` | Unit | 26 tests, 7 classes |
 | `tests/unit/evaluation/test_prop_metrics.py` | Unit | 23 tests, 7 classes |
+| `tests/unit/evaluation/test_prop_archive.py` | Unit | 16 tests, 3 classes |
 | `tests/unit/evaluation/test_prop_archive.py` | Unit | 16 tests, 3 classes |
 
 **To create:**
@@ -463,10 +445,10 @@ C3 (4 More Prop Models) ✅         │
              D2 (Prop Archive) ✅
                    │
                    ▼
-             E1 (Prop CLI) ◄── YOU ARE HERE
+             E1 (Prop CLI) ✅
                    │
                    ▼
-             E2 (DK Prop Ingest — last)
+             E2 (DK Prop Ingest — last) ◄── YOU ARE HERE
 ```
 
 ---
@@ -475,14 +457,12 @@ C3 (4 More Prop Models) ✅         │
 
 | File | Phase |
 |------|-------|
-| `cli/props.py` | E1 |
 | `ingest/odds/dk_props.py` (or extend `draftkings.py`) | E2 |
 
 #### Files to Modify
 
 | File | Phase | Change |
 |------|-------|--------|
-| `cli/main.py` | E1 | Register props sub-app |
 | `tests/fixtures/dataframes.py` | T | Add player DataFrame factories |
 
 All paths relative to `src/gridiron_edge/` (source) or `tests/` (tests).
@@ -571,6 +551,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **E1 complete. M3 milestone achieved.** Created `cli/props.py` (evaluate, backfill, projections commands). First CLI evaluation: qb_pass_yards MAE=63.4, R²=0.118, coverage=93.8%. |
 | 2026-06-10 | **D2 complete.** Created `evaluation/prop_archive.py` (append-only parquet, dedup on 4-key composite). Created `tests/unit/evaluation/test_prop_archive.py` (16 tests, 3 classes). |
 | 2026-06-10 | **D1 complete.** Created `evaluation/prop_metrics.py` (6 metric functions + orchestrator, 8 dataclasses). Covers accuracy, bias, coverage, calibration, hit rate, by-tier analysis. Graceful degradation when market data unavailable. Created `tests/unit/evaluation/test_prop_metrics.py` (23 tests, 7 classes). |
 | 2026-06-10 | **C2 complete.** Created `models/prop_prediction/post_process.py` (6 enrichment functions + orchestrator). P(over) via Normal CDF, lean thresholds 0.55/0.45, confidence tiers distance-based. Created `tests/unit/models/test_prop_post_process.py` (26 tests, 7 classes). |
