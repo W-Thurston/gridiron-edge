@@ -335,30 +335,13 @@ player_game_logs.parquet (loaded once)
 - **By-Tier:** MAE + hit rate + |p_over − 0.5| per confidence tier
 
 
-##### D2: Prop Archive
+##### D2: Prop Archive ✅ Complete
 
-**Why:** Persist prop predictions for tracking, CLV, and historical review.
-
-**New file:** `evaluation/prop_archive.py`
-
-**Schema:**
-```
-predicted_at, is_backfilled, season, week, game_id, game_date,
-player_id, player_name, position, team,
-stat_type, model_version,
-predicted_mean, predicted_std, lo_90, hi_90,
-line (nullable — only populated when odds available),
-p_over (nullable), lean (nullable), confidence_tier
-```
-
-**Storage:** `data/output/props/prop_predictions_log.parquet`
-
-**Pattern:** Same append-only, dedup-on `(game_id, player_id, stat_type,
-model_version)` as game archive.
-
-**New test:** `tests/unit/evaluation/test_prop_archive.py`
-
-**Done when:** Prop predictions archive and load round-trip successfully.
+**What was done (2026-06-10):**
+1. Created `evaluation/prop_archive.py` — append-only parquet archive
+   with dedup on `(game_id, player_id, stat_type, model_version)`
+2. Created `tests/unit/evaluation/test_prop_archive.py` — 16 tests, 3 classes
+3. 19-column schema, optional filters on load, graceful empty state
 
 ---
 
@@ -435,13 +418,13 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/models/test_te_rec_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_prop_post_process.py` | Unit | 26 tests, 7 classes |
 | `tests/unit/evaluation/test_prop_metrics.py` | Unit | 23 tests, 7 classes |
+| `tests/unit/evaluation/test_prop_archive.py` | Unit | 16 tests, 3 classes |
 
 **To create:**
 
 | Phase | File | Tier |
 |-------|------|------|
 | B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
-| D2 | `tests/unit/evaluation/test_prop_archive.py` | Unit |
 | E1 | `tests/integration/test_props_cli.py` | Integration |
 | E1 | `tests/e2e/test_prop_pipeline.py` | E2E |
 
@@ -477,10 +460,10 @@ C3 (4 More Prop Models) ✅         │
     │                              │
     └──────────────┬───────────────┘
                    ▼
-             D2 (Prop Archive) ◄── YOU ARE HERE
+             D2 (Prop Archive) ✅
                    │
                    ▼
-             E1 (Prop CLI)
+             E1 (Prop CLI) ◄── YOU ARE HERE
                    │
                    ▼
              E2 (DK Prop Ingest — last)
@@ -492,10 +475,6 @@ C3 (4 More Prop Models) ✅         │
 
 | File | Phase |
 |------|-------|
-| `models/prop_prediction/post_process.py` | C2 |
-| `models/prop_prediction/qb_rush_yards.py` | C3 |
-| `evaluation/prop_metrics.py` | D1 |
-| `evaluation/prop_archive.py` | D2 |
 | `cli/props.py` | E1 |
 | `ingest/odds/dk_props.py` (or extend `draftkings.py`) | E2 |
 
@@ -503,11 +482,6 @@ C3 (4 More Prop Models) ✅         │
 
 | File | Phase | Change |
 |------|-------|--------|
-| `models/prop_prediction/base.py` | C1 | Multi-model support, champion/challenger |
-| `models/prop_prediction/qb_pass_yards.py` | C1 | Wire to feature builder, fix NaN |
-| `models/prop_prediction/rb_rush_yards.py` | C3 | Wire to feature builder |
-| `models/prop_prediction/wr_rec_yards.py` | C3 | Wire to feature builder |
-| `models/prop_prediction/te_rec_yards.py` | C3 | Wire to feature builder |
 | `cli/main.py` | E1 | Register props sub-app |
 | `tests/fixtures/dataframes.py` | T | Add player DataFrame factories |
 
@@ -597,6 +571,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | **D2 complete.** Created `evaluation/prop_archive.py` (append-only parquet, dedup on 4-key composite). Created `tests/unit/evaluation/test_prop_archive.py` (16 tests, 3 classes). |
 | 2026-06-10 | **D1 complete.** Created `evaluation/prop_metrics.py` (6 metric functions + orchestrator, 8 dataclasses). Covers accuracy, bias, coverage, calibration, hit rate, by-tier analysis. Graceful degradation when market data unavailable. Created `tests/unit/evaluation/test_prop_metrics.py` (23 tests, 7 classes). |
 | 2026-06-10 | **C2 complete.** Created `models/prop_prediction/post_process.py` (6 enrichment functions + orchestrator). P(over) via Normal CDF, lean thresholds 0.55/0.45, confidence tiers distance-based. Created `tests/unit/models/test_prop_post_process.py` (26 tests, 7 classes). |
 | 2026-06-10 | **C3 complete (4/5 models).** Trained RB rush yards (MAE=25.0), WR rec yards (MAE=25.1, best R²=0.203), TE rec yards (MAE=18.3). Removed `_build_features()` overrides from 3 subclasses. QB rush yards deferred (needs new file). |
