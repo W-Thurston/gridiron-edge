@@ -145,6 +145,7 @@ def _rank_defenses(def_rolling: DataFrame, *, window: int) -> DataFrame:
 
 def build_matchup_features(
     *,
+    df: DataFrame | None = None,
     window: int | None = None,
     repo: Path | None = None,
 ) -> DataFrame:
@@ -154,6 +155,7 @@ def build_matchup_features(
     defense has performed against their position group recently.
 
     Args:
+        df: Pre-loaded player game logs.  If ``None``, loads from disk.
         window: Rolling window size for defensive averages. Defaults to 6.
         repo: Repository root.
 
@@ -163,19 +165,23 @@ def build_matchup_features(
     Raises:
         FileNotFoundError: If cleaned player game logs don't exist.
     """
-    resolved_repo: Path = repo or get_settings().repo_root
     resolved_window: int = window or DEFAULT_MATCHUP_WINDOW
 
-    path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
-    if not path.exists():
-        msg = f"Cleaned player game logs not found at {path}. Run the player stats pipeline first."
-        raise FileNotFoundError(msg)
+    if df is None:
+        resolved_repo: Path = repo or get_settings().repo_root
 
-    player_logs: DataFrame = pd.read_parquet(path)
+        path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
+        if not path.exists():
+            msg: str = f"Cleaned player game logs not found at {path}"
+            raise FileNotFoundError(msg)
+
+        player_logs: DataFrame = pd.read_parquet(path)
+    else:
+        player_logs = df.copy()
     logger.info("Loaded %d player-game rows for matchup features", len(player_logs))
 
     # Step 1: Compute what each defense allows per game
-    def_allowed = _compute_def_allowed_per_game(player_logs)
+    def_allowed: DataFrame = _compute_def_allowed_per_game(player_logs)
     logger.info(
         "Defensive allowances: %d team-game rows, %d stats",
         len(def_allowed),
@@ -183,24 +189,24 @@ def build_matchup_features(
     )
 
     # Step 2: Rolling averages (shifted — no lookahead)
-    def_rolling = _rolling_def_allowed(def_allowed, window=resolved_window)
+    def_rolling: DataFrame = _rolling_def_allowed(def_allowed, window=resolved_window)
 
     # Step 3: Rank defenses
     def_rolling = _rank_defenses(def_rolling, window=resolved_window)
 
     # Step 4: Join back to player logs on opponent_team = defense team
-    matchup_cols = [c for c in def_rolling.columns if f"_L{resolved_window}" in c]
-    join_cols = ["team", "season", "week", *matchup_cols]
+    matchup_cols: list[str] = [c for c in def_rolling.columns if f"_L{resolved_window}" in c]
+    join_cols: list[str] = ["team", "season", "week", *matchup_cols]
 
-    result = player_logs.merge(
+    result: DataFrame = player_logs.merge(
         # pyrefly: ignore [no-matching-overload]
         def_rolling[join_cols].rename(columns={"team": "opponent_team"}),
         on=["opponent_team", "season", "week"],
         how="left",
     )
 
-    n_matchup = len(matchup_cols)
-    n_matched = result[matchup_cols[0]].notna().sum() if matchup_cols else 0
+    n_matchup: int = len(matchup_cols)
+    n_matched: int = result[matchup_cols[0]].notna().sum() if matchup_cols else 0
     logger.info(
         "Joined %d matchup features. Matched: %d / %d rows (%.1f%%)",
         n_matchup,

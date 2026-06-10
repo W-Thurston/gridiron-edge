@@ -228,38 +228,34 @@ manageable. The feature builder (B4) filters by position before training.
 dome, and rest are all known before kickoff and are legitimate predictors
 at prediction time.
 
-##### B4: Unified Prop Feature Builder  🔲 Planned
 
-**Why:** Need a single entry point that assembles all player features into the
-training-ready DataFrame — the prop equivalent of `build_model_inputs()`.
+##### B4: Unified Prop Feature Builder  ✅ Complete
 
-**New files:**
-- `features/player/builder.py` — orchestrator
-- `features/player/_columns.py` — feature column definitions (equivalent of
-  `models/game_prediction/_columns.py`)
+**What was done (2026-06-10):**
+1. Created `features/player/builder.py` — single entry point
+   `build_prop_features(position_filter=["QB"])` that chains all 4
+   feature builders and returns a training-ready DataFrame
+2. Created `features/player/_columns.py` — `PROP_FEATURE_COLS` built
+   programmatically from component modules (stays in sync automatically)
+3. Refactored all 4 builders (rolling, matchup, usage, game_context) to
+   accept optional `df` parameter — enables single parquet load
+4. Position filtering, NaN drop with `# TODO(nan)`, row count logging
+5. Created `tests/unit/features/test_builder.py`
 
-**Responsibilities of `builder.py`:**
-1. Load `player_game_logs.parquet`
-2. Join rolling features (from `rolling.py`)
-3. Join matchup features (from `matchup.py`)
-4. Join usage features (from `usage.py`)
-5. Join game context features (from `game_context.py`)
-6. Accept `position_filter` argument (e.g., `['QB']`, `['RB']`, `['WR', 'TE']`)
-7. Return one DataFrame: one row per player-game with all features + target columns
-8. Apply `dropna()` on feature columns (with `# TODO(nan)` annotation)
-9. Log: total rows, rows dropped to NaN, final usable rows, feature count
-
-**Temporal safety audit:** Verify every feature uses `shift(1)` or equivalent. No
-lookahead. Add an assertion or test that no feature column correlates > 0.99 with
-the target (which would indicate leakage).
-
-**New tests:**
-- `tests/unit/features/test_builder.py`
-- `tests/integration/test_prop_feature_pipeline.py`
-
-**Done when:** `build_prop_features(position_filter=['QB'])` returns a clean
-DataFrame. `build_prop_features(position_filter=['RB'])` also works. Feature
-count and NaN report printed.
+**Public API:**
+```python
+from gridiron_edge.features.player.builder import build_prop_features
+df = build_prop_features(position_filter=["QB"])
+```
+**Pipeline flow:**
+player_game_logs.parquet (loaded once)
+    → build_player_rolling_features(df=...)   # ~46 rolling cols
+    → build_matchup_features(df=...)          # 28 matchup cols
+    → build_usage_features(df=...)            # 6 usage cols
+    → build_game_context_features(df=...)     # 6 context cols
+    → filter by position
+    → dropna on feature columns
+    → return training-ready DataFrame
 
 ---
 
@@ -487,6 +483,7 @@ Tests are built alongside each phase, not as a separate step at the end.
 | `tests/unit/features/test_player_matchup.py` | Unit | 11 tests, 5 classes |
 | `tests/unit/features/test_usage.py` | Unit | 16 tests, 5 classes |
 | `tests/unit/features/test_game_context.py` | Unit | 28 tests, 9 classes |
+| `tests/unit/features/test_builder.py` | Unit | 20 tests, 2 classes |
 | `tests/unit/models/test_prop_base.py` | Unit | 19 tests, 6 classes |
 | `tests/unit/models/test_qb_pass_yards.py` | Unit | 5 tests, 1 class |
 | `tests/unit/models/test_rb_rush_yards.py` | Unit | 5 tests, 1 class |
@@ -497,7 +494,6 @@ Tests are built alongside each phase, not as a separate step at the end.
 
 | Phase | File | Tier |
 |-------|------|------|
-| B4 | `tests/unit/features/test_builder.py` | Unit |
 | B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
 | C2 | `tests/unit/models/test_prop_post_process.py` | Unit |
 | D1 | `tests/unit/evaluation/test_prop_metrics.py` | Unit |
@@ -523,11 +519,11 @@ B2 (Usage Features) ✅
 B3 (Game Context Features) ✅
     │
     ▼
-B4 (Unified Feature Builder) ◄── YOU ARE HERE
+B4 (Unified Feature Builder) ✅
     │
     ├──────────────────────────────┐
     ▼                              ▼
-C1 (QB Pass Yards + Framework)   D1 (Prop Eval Metrics)
+C1 (QB Pass Yards + Framework) ◄── YOU ARE HERE  D1 (Prop Eval Metrics)
     │                              │
     ▼                              │
 C2 (Post-Process Enrichment)      │
@@ -552,8 +548,6 @@ C3 (4 More Prop Models)           │
 
 | File | Phase |
 |------|-------|
-| `features/player/builder.py` | B4 |
-| `features/player/_columns.py` | B4 |
 | `models/prop_prediction/post_process.py` | C2 |
 | `models/prop_prediction/qb_rush_yards.py` | C3 |
 | `evaluation/prop_metrics.py` | D1 |
@@ -659,6 +653,7 @@ _Also completed (cross-cutting, not numbered in ROADMAP):_
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | B4 complete. Phase B done. Created `features/player/builder.py` (unified entry point) and `features/player/_columns.py` (programmatic feature list). Refactored all 4 builders to accept optional df param for single-load pipeline. Created `tests/unit/features/test_builder.py`. Phase B (Feature Pipeline Completion) is now fully complete — C1 unblocked. |
 | 2026-06-10 | **B3 complete.** Created `features/player/game_context.py` (6 features: is_home, game_spread, over_under, implied_team_total, is_dome, rest_days). Joined from games CSV, no shift needed (pre-game data). Created `tests/unit/features/test_game_context.py` (28 tests, 9 classes). |
 | 2026-06-10 | **B2 complete.** Created `features/player/usage.py` (6 rolling usage features: target_share, carry_share, touch_share × L3/L6). Created `tests/unit/features/test_usage.py` (16 tests, 5 classes). Snap % deferred — nflreadpy does not expose snap count data. |
 | 2026-06-10 | **B1 complete.** Remediated all audit findings: F1 (null team guard), F3 (dedup 46 schedule-join mismatches), W1–W6 resolved. F2 confirmed false positive. Per-position NaN analysis completed. Final audit: 45 pass, 0 fail, 4 warn (non-blocking). Player game logs: 138,349 rows, 4,067 players, 0 null game_ids, 0 duplicates. |

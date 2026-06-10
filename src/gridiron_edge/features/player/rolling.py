@@ -134,6 +134,7 @@ def _compute_rolling(
 
 def build_player_rolling_features(
     *,
+    df: DataFrame | None = None,
     windows: list[int] | None = None,
     cross_season: bool = False,
     repo: Path | None = None,
@@ -141,6 +142,7 @@ def build_player_rolling_features(
     """Load cleaned player game logs and compute rolling features.
 
     Args:
+        df: Pre-loaded player game logs.  If ``None``, loads from disk.
         windows: Rolling window sizes. Defaults to ``[3, 6]``.
         cross_season: Whether rolling windows span season boundaries.
         repo: Repository root.
@@ -151,18 +153,22 @@ def build_player_rolling_features(
     Raises:
         FileNotFoundError: If cleaned player game logs don't exist.
     """
-    resolved_repo: Path = repo or get_settings().repo_root
     resolved_windows: list[int] = windows or DEFAULT_WINDOWS
+    if df is None:
+        resolved_repo: Path = repo or get_settings().repo_root
 
-    path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
-    if not path.exists():
-        msg: str = (
-            f"Cleaned player game logs not found at {path}. "
-            "Run: gridiron run-data-pipeline --only clean-player-stats"
-        )
-        raise FileNotFoundError(msg)
+        path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
+        if not path.exists():
+            msg: str = (
+                f"Cleaned player game logs not found at {path}. "
+                "Run: gridiron run-data-pipeline --only clean-player-stats"
+            )
+            raise FileNotFoundError(msg)
 
-    df: DataFrame = pd.read_parquet(path)
+        df = pd.read_parquet(path)
+    else:
+        df = df.copy()
+
     logger.info("Loaded %d player-game rows for rolling features", len(df))
 
     # Filter to skill positions — rolling features are only meaningful

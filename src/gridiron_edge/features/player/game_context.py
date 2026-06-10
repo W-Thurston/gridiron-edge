@@ -250,6 +250,7 @@ def _drop_raw_game_columns(df: DataFrame) -> DataFrame:
 
 def build_game_context_features(
     *,
+    df: DataFrame | None = None,
     repo: Path | None = None,
 ) -> DataFrame:
     """Build game context features for player prop models.
@@ -258,6 +259,7 @@ def build_game_context_features(
     derives team-perspective context features.
 
     Args:
+        df: Pre-loaded player game logs.  If ``None``, loads from disk.
         repo: Repository root override.
 
     Returns:
@@ -269,13 +271,17 @@ def build_game_context_features(
         FileNotFoundError: If player game logs or games data not found.
     """
     resolved_repo: Path = repo or get_settings().repo_root
-    logs_path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
+    if df is None:
+        logs_path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
 
-    if not logs_path.exists():
-        msg: str = f"Cleaned player game logs not found: {logs_path}"
-        raise FileNotFoundError(msg)
+        if not logs_path.exists():
+            msg: str = f"Cleaned player game logs not found: {logs_path}"
+            raise FileNotFoundError(msg)
 
-    df: DataFrame = pd.read_parquet(logs_path)
+        df = pd.read_parquet(logs_path)
+    else:
+        df = df.copy()
+
     logger.info("Loaded %d player game logs for game context features", len(df))
 
     games: DataFrame = _load_games(resolved_repo)

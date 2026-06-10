@@ -113,6 +113,7 @@ def _rolling_shares(
 
 def build_usage_features(
     *,
+    df: DataFrame | None = None,
     windows: list[int] | None = None,
     cross_season: bool = False,
     repo: Path | None = None,
@@ -120,6 +121,7 @@ def build_usage_features(
     """Load cleaned player game logs and compute usage share features.
 
     Args:
+        df: Pre-loaded player game logs.  If ``None``, loads from disk.
         windows: Rolling window sizes.  Defaults to [3, 6].
         cross_season: If True, rolling windows cross season boundaries.
         repo: Repository root override.
@@ -132,14 +134,17 @@ def build_usage_features(
     Raises:
         FileNotFoundError: If cleaned player game logs not found.
     """
-    resolved_repo = repo or get_settings().repo_root
-    logs_path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
+    if df is None:
+        resolved_repo: Path = repo or get_settings().repo_root
+        logs_path: Path = resolved_repo / "data" / "cleaned" / "player_game_logs.parquet"
 
-    if not logs_path.exists():
-        msg = f"Cleaned player game logs not found: {logs_path}"
-        raise FileNotFoundError(msg)
+        if not logs_path.exists():
+            msg: str = f"Cleaned player game logs not found: {logs_path}"
+            raise FileNotFoundError(msg)
 
-    df = pd.read_parquet(logs_path)
+        df = pd.read_parquet(logs_path)
+    else:
+        df = df.copy()
     logger.info("Loaded %d player game logs for usage features", len(df))
 
     if windows is None:
