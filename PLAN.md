@@ -1,13 +1,14 @@
-## Gridiron Edge — Development Plan
+# Gridiron Edge — Development Plan
 
-**Purpose:** single source of truth for _what to build next_ and _why_.
-Updated at the start and close of every workstream.
+> **Purpose:** single source of truth for *what to build next* and *why*.
+> Updated at the start and close of every workstream.
 
 | Document | Role |
 |----------|------|
 | **PLAN.md** (this file) | What is planned, what is active, what is deferred |
 | **CHANGELOG.md** | What was built and when (completed workstream details) |
 | **HANDOFF.md** | How the system works today (architecture, workflows, operations) |
+| **ROADMAP.md** | Long-term strategic direction, workstream inventory, architecture decisions |
 
 #### Status key
 
@@ -20,550 +21,711 @@ Updated at the start and close of every workstream.
 
 ---
 
-### Currently Active Workstream: W4 — Player Data & First Prop Models
+## High-Level Priority Order
 
-**Goal:** Complete the player-level data layer, feature pipeline, and first prop
-projection models. Achieve **M3** (first prop edge report).
+Agreed 2026-06-10. See ROADMAP.md for full workstream inventory.
 
-**Design decisions (locked in):**
+| # | Workstream | Status |
+|---|-----------|--------|
+| 1 | Champion/Challenger for Props (RF + XGBoost) | **Active** |
+| 2 | Game Model Refactor (align to props pattern) | Planned |
+| 3 | Integration & E2E Tests | Planned |
+| 4 | Deep Code Review + Test Suite Review | Planned |
+| 5 | Scenario / "What If" Engine (W4.5) | Planned |
+| 6 | API & Frontend (W8 + W9) | Planned |
+| 7 | All External Odds (DK props, historical, line shopping) | Planned |
+| 8 | Evaluate remaining work | Planned |
 
-- **NaN strategy:** Drop rows with NaN for now. Mark every drop-site in code with
-  `# TODO(nan): <reason>` for future audit. A dedicated research item is in the
-  backlog to investigate data-driven imputation methods (see NaN Research Backlog
-  below).
-- **Model architecture:** One PropTrainer per prop type (e.g., QBPassYardsTrainer),
-  mirroring how game models work — one model predicts the raw stat, post-processing
-  derives P(over), lean, confidence tier.
-- **Model types:** Champion/challenger across ElasticNet, Ridge, RandomForest,
-  XGBoost (and potentially LightGBM). Same promotion gate pattern as game models
-  (primary metric: MAE; guardrails: coverage, calibration).
-- **Feature philosophy:** "Throw everything in, let the model decide." No manual
-  feature selection up front. Systematic feature importance / elimination (e.g.,
-  permutation importance, AIC/BIC) is a future workstream.
-- **Prop odds:** Historical prop odds deferred. Upcoming-week prop odds via
-  DraftKings ingest extension. Prop edge calculations will work once DK prop
-  ingest is wired.
-- **Stat families for V1:** QB passing yards, QB rushing yards, RB rushing yards,
-  WR receiving yards, TE receiving yards (5 total).
+Two code reviews planned: one after workstream 3 (before building more),
+one near completion of all workstreams. A separate dedicated test suite
+review is included as part of workstream 4.
 
 ---
 
-#### Phase A — Player Data Foundation  ✅ Complete
+## Workstream 1: Champion/Challenger for Props (RF + XGBoost)
 
-| Step | Status | Deliverable |
-|------|--------|-------------|
-| A1: Player stats ingest | ✅ Done | `ingest/nflverse/player_stats.py` — nflreadpy, 1999–2024, ~5K rows/season, 42 cols. Stored at `data/raw/player_stats/player_stats_{season}.parquet`. |
-| A2: Player game logs + game_id | ✅ Done | `transform/clean/player_stats.py` → `data/cleaned/player_game_logs.parquet` — 138,349 rows, 44 cols, 4,067 unique players, 0% game_id null, 0 duplicate (player_id, game_id). |
-| A3: Rolling features | ✅ Done | `features/player/rolling.py` — `ROLLING_STAT_COLS` covering passing/rushing/receiving stats at L3/L6 windows. shift(1) for lookahead prevention. |
-| A4: Matchup features | ✅ Done | `features/player/matchup.py` — 28 features (14 defensive-allowed stats × 2: L6 rolling avg + rank). Rankings: 1 = toughest, 32 = most generous. Joined via opponent_team. |
+**Goal:** Add RandomForest and XGBoost as prop model types alongside
+ElasticNet, build a champion selection system, and improve R² across all
+5 stat families.
 
-**Existing tests:**
-`tests/unit/ingest/test_player_stats.py` (9 tests, 3 classes),
-`tests/unit/transform/test_player_stats.py` (7 tests, 3 classes),
-`tests/unit/features/test_player_rolling.py` (12 tests, 3 classes),
-`tests/unit/features/test_player_matchup.py` (11 tests, 5 classes)
+**Why it matters:** ElasticNet R² ranges from 0.071 (QB pass) to 0.203
+(WR rec). Tree models capture nonlinear interactions ElasticNet cannot.
+This is the single highest-impact improvement available.
 
----
+**ROADMAP ref:** W4 extension.
 
-#### Phase A — Audit Findings
+### Current Baseline (ElasticNet only)
 
-_Automated audit: 2026-06-05. Manual code review: same session.
-B1 remediation: 2026-06-10. Final audit: **45 pass · 0 fail · 4 warn (non-blocking)**._
-_Audit script: `scripts/audit_w4_phase_a.py`_
-
-##### 🔴 Blocking Issues — All Resolved
-
-**F1 — game_id null rate was 0.0007%** ✅ Resolved
-- Was 1 row: Steve Bono, 1999 wk 9, `team=None`, `opponent_team=None`.
-- Fix: Added `dropna(subset=["team", "opponent_team"])` guard in
-  `clean_player_stats()` before the schedule join.
-
-**F2 — game_id fixture bug in `test_player_matchup.py`** ✅ Resolved (false positive)
-- Code review was based on garbled SharePoint `.py.txt` rendering.
-  Actual fixture code was already correct.
-
-**F3 — 46 duplicate (player_id, game_id) rows** ✅ Resolved (discovered during B1)
-- Root cause: Schedule join mismatches — two different weeks of a player's
-  data got assigned the same incorrect game_id (e.g., T.Duckett on ATL
-  assigned `2002_03_NO_CHI`). The player's team didn't appear in the
-  game_id at all.
-- Fix: Added dedup in `clean_player_stats()` that drops all copies of
-  duplicate `(player_id, game_id)` rows since the game_id is wrong for
-  both. Removed 46 rows (23 mismatched pairs) out of 138K.
-
-##### 🟡 Should-Fix Items — All Resolved
-
-**W1 — `recent_team` column** ✅ Resolved
-- Audit script expected `recent_team` but nflreadpy uses `team`. Fixed
-  audit script. No source code change needed.
-
-**W2 — 3 columns with >80% NaN** ✅ Resolved (analysis complete, no code change)
-- Per-position NaN analysis confirmed these are **position-specific stats
-  applied to all positions**. When filtered to the relevant position:
-  - `passing_cpoe`: 91% overall → **27% for QBs** (manageable)
-  - `passing_epa`: 87% overall → **>95% coverage for QBs across all seasons**
-  - `pacr`: 87% overall → QB-only composite, similar to passing_epa
-- No code changes needed. NaN rates are acceptable per-position.
-
-**W3 — 4 broad `except Exception:` clauses** ✅ Resolved
-- All 4 catch nflreadpy API calls (network, parse, schema errors).
-  Broad catch is justified. Added justification comments to each.
-
-**W4 — `base.py` is 551 lines** 📝 Noted for C1
-- Consider splitting when adding multi-model support: `_types.py`,
-  `_evaluate.py`, `base.py` (PropTrainer only).
-
-**W5 — Verify `test_no_lookahead_week1` assertions** ✅ Resolved
-- Test has proper `assert pd.isna()` on both mean and std for week 1.
-
-**W6 — Add `# TODO(nan)` comments** ✅ Resolved
-- Added to `passing_epa` and `passing_cpoe` in `_PASSING_STATS` in
-  `rolling.py`.
-
-##### 🟢 Non-Blocking Observations
-
-**O1–O2:** Audit script bugs (import name mismatch, positional arg error).
-Not source code bugs. Script has been partially fixed; remaining warns
-are non-blocking.
-
-**O3:** `target_share` and `air_yards_share` in `ROLLING_STAT_COLS` are
-pre-computed shares from nflreadpy. Rolling averages of shares are
-semantically valid. B2 will also compute shares from raw counts. Both
-approaches retained — let the model decide.
-
-**O4:** Prop model subclass tests have 5 tests each (adequate for
-scaffolding, expand during Phase C).
-
-**O5:** ElasticNet-only in prop subclasses. Expected — multi-model added
-in C1.
-
-**O6:** Non-skill positions (P, OT, DB, CB, LB) present in
-player_game_logs. The `is_skill` column filters these for prop models.
-
-##### NaN Landscape (from audit)
-
-| Column | Overall NaN% | Per-Position NaN% | Notes |
-|--------|-------------|-------------------|-------|
-| `passing_cpoe` | 90.62% | QB: 27% | Older seasons + low-attempt games |
-| `pacr` | 87.42% | QB: ~13% | Passer rating composite |
-| `passing_epa` | 87.13% | QB: <5% | >95% coverage all seasons for QBs |
-| `rushing_epa` | 58.73% | RB: 8%, QB: 17% | Players with 0 carries → no EPA |
-| `wopr` | 25.09% | WR: 24%, TE: 23% | Weighted opportunity rating |
-| `racr` | 21.53% | RB: 25%, WR: <5% | Receiver air conversion ratio |
-| `target_share` | 19.95% | WR: 19%, TE: 18% | Non-receivers have no targets |
-| `receiving_epa` | 19.63% | WR: <5%, TE: <5% | Non-receivers |
-| `air_yards_share` | 15.15% | WR: 14%, TE: 13% | Non-receivers |
-
-**Key insight:** When filtered to the relevant position, NaN rates are
-manageable. The feature builder (B4) filters by position before training.
-
----
-
-#### Phase B — Feature Pipeline Completion
-
-##### B1: Audit & Stabilize Existing Features  ✅ Complete
-
-**What was done (2026-06-10):**
-1. Fixed F1: Added `dropna(subset=["team", "opponent_team"])` guard —
-   removed 1 row (Steve Bono, 1999 wk9, team=None)
-2. Fixed F3: Added `(player_id, game_id)` dedup — removed 46 rows
-   (23 schedule join mismatch pairs)
-3. Confirmed F2 was a false positive (SharePoint rendering artifact)
-4. Ran per-position NaN analysis (W2) — confirmed NaN rates are
-   position-specific noise, not data quality issues
-5. Added justification comments to 4 broad except clauses (W3)
-6. Verified `test_no_lookahead_week1` has proper assertions (W5)
-7. Added `# TODO(nan)` comments to `passing_epa` and `passing_cpoe` (W6)
-8. Fixed audit script `recent_team` → `team` expectation (W1)
-9. Regenerated `player_game_logs.parquet`: 138,349 rows, 0 null game_ids,
-   0 duplicate (player_id, game_id)
-10. Final audit: **45 pass · 0 fail · 4 warn (non-blocking)**
-
-##### B2: Usage Features  ✅ Complete
-
-**What was done (2026-06-10):**
-1. Created `features/player/usage.py` — 6 rolling usage features:
-   `usage_{target,carry,touch}_share` × L{3,6}
-2. Shares computed from raw counts (targets, carries), not nflreadpy
-   pre-computed shares — gives the model both approaches
-3. Division by zero produces 0.0 (not NaN)
-4. Per-game share intermediates dropped — only rolling features exposed
-5. Created `tests/unit/features/test_usage.py` — 16 tests, 5 classes
-6. Snap % deferred — nflreadpy does not expose snap count data
-
-**Features built:**
-- `usage_target_share_L3`, `usage_target_share_L6` — player targets / team
-  total targets (WR, TE)
-- `usage_carry_share_L3`, `usage_carry_share_L6` — player carries / team
-  total carries (RB)
-- `usage_touch_share_L3`, `usage_touch_share_L6` — (targets + carries) /
-  team total touches (all skill positions)
-
-**Implementation pattern:**
-- `_compute_team_totals()` → `_compute_per_game_shares()` →
-  `_rolling_shares()` → `build_usage_features()`
-- All rolling computations use `shift(1)` for lookahead prevention
-- Season boundaries respected by default (`cross_season=False`)
-
-##### B3: Game Context Features for Props  ✅ Complete
-
-**What was done (2026-06-10):**
-1. Created `features/player/game_context.py` — 6 game context features
-   joined from `data/cleaned/NFL_wk_by_wk_cleaned.csv`
-2. Features: `is_home`, `game_spread`, `over_under`, `implied_team_total`,
-   `is_dome`, `rest_days`
-3. No shift(1) needed — all features are known pre-game
-4. Full team name → abbreviation mapping (37 entries, 1999–present)
-5. Created `tests/unit/features/test_game_context.py` — 28 tests, 9 classes
-
-**Features built:**
-- `is_home` — derived from game_id format (4th segment = home team)
-- `game_spread` — team perspective: favorite gets negative, underdog positive
-- `over_under` — total points line from Vegas
-- `implied_team_total` — `(over_under - game_spread) / 2`
-- `is_dome` — ROOF in {dome, closed}
-- `rest_days` — calendar days since team's previous game
-
-**Key design decision:** These features are NOT shifted — spread, total,
-dome, and rest are all known before kickoff and are legitimate predictors
-at prediction time.
-
-
-##### B4: Unified Prop Feature Builder  ✅ Complete
-
-**What was done (2026-06-10):**
-1. Created `features/player/builder.py` — single entry point
-   `build_prop_features(position_filter=["QB"])` that chains all 4
-   feature builders and returns a training-ready DataFrame
-2. Created `features/player/_columns.py` — `PROP_FEATURE_COLS` built
-   programmatically from component modules (stays in sync automatically)
-3. Refactored all 4 builders (rolling, matchup, usage, game_context) to
-   accept optional `df` parameter — enables single parquet load
-4. Position filtering, NaN drop with `# TODO(nan)`, row count logging
-5. Created `tests/unit/features/test_builder.py`
-
-**Public API:**
-```python
-from gridiron_edge.features.player.builder import build_prop_features
-df = build_prop_features(position_filter=["QB"])
-```
-**Pipeline flow:**
-player_game_logs.parquet (loaded once)
-    → build_player_rolling_features(df=...)   # ~46 rolling cols
-    → build_matchup_features(df=...)          # 28 matchup cols
-    → build_usage_features(df=...)            # 6 usage cols
-    → build_game_context_features(df=...)     # 6 context cols
-    → filter by position
-    → dropna on feature columns
-    → return training-ready DataFrame
-
----
-
-#### Phase C — Prop Model Training  🔲 Planned
-
-##### C1: Prop Trainer Framework + QB Passing Yards (First End-to-End Model) ✅ Complete
-
-**What was done (2026-06-10):**
-1. Rewired `_load_data()` to use `build_prop_features()` — single call
-   replaces manual rolling+matchup+context chaining
-2. Switched `train()` to `HOLDOUT_SEASONS` split (2023–2025 holdout)
-3. Added position-aware NaN handling: features with >50% NaN for the
-   filtered position are dropped (fixes 5,706 usable rows vs. 3)
-4. Made `_build_features()` non-abstract (default no-op)
-5. Deleted dead `_join_game_context()` and `_join_schedule_context()`
-6. Fixed `_columns.py` matchup rank naming mismatch
-7. Removed `dropna` from builder — deferred to trainer with position context
-
-**First training results (qb_pass_yards ElasticNet):**
-- Train: 5,706 rows (2009–2022), Holdout: 1,367 rows (2023–2025)
-- MAE: 58.0 yards, RMSE: 72.6 yards, R²: 0.071
-- 37/128 nonzero features after ElasticNet selection
-- R² is low but expected for linear model on noisy player data —
-  tree models (RF, XGBoost) will be added via champion/challenger
-
-##### C2: Prop Output Enrichment (Post-Processing) ✅ Complete
-
-**What was done (2026-06-10):**
-1. Created `models/prop_prediction/post_process.py` — pure function
-   architecture with 6 composable functions + 1 orchestrator
-2. Created `tests/unit/models/test_prop_post_process.py` — 26 tests,
-   7 classes
-3. Design decisions documented in module docstring
-
-**Enrichment outputs per prediction:**
-- `predicted_std` = `sqrt(model_rmse² + player_L3_std²)`
-- `lo_90`, `hi_90` — 90% prediction interval (lo clipped at 0)
-- `p_over` — `1 - Φ((line - mean) / std)`, Normal CDF
-- `lean` — Over / Under / No Edge (0.55/0.45 thresholds)
-- `confidence_tier` — High / Moderate / Low (distance-based)
-
-##### C3: Additional Prop Models ✅ Complete
-
-**What was done (2026-06-10):**
-1. Trained all 4 existing prop models end-to-end
-2. Removed `_build_features()` overrides from RB/WR/TE subclasses
-3. QB rush yards deferred — needs `qb_rush_yards.py`
-
-**Baseline MAE table (ElasticNet):**
-
-| Model | Train | Holdout | MAE | RMSE | R² | Nonzero Features |
-|-------|-------|---------|-----|------|----|-----------------|
+| Model | Train | Holdout | MAE | RMSE | R² | Nonzero |
+|-------|-------|---------|-----|------|----|---------|
 | qb_pass_yards | 5,706 | 1,367 | 58.0 | 72.6 | 0.071 | 37/128 |
+| qb_rush_yards | 1,434 | 468 | 16.4 | 20.2 | 0.090 | 52/128 |
 | rb_rush_yards | 10,023 | 2,001 | 25.0 | 32.3 | 0.168 | 16/124 |
 | wr_rec_yards | 23,831 | 4,535 | 25.1 | 32.9 | 0.203 | 55/120 |
 | te_rec_yards | 10,087 | 2,052 | 18.3 | 24.2 | 0.188 | 58/120 |
 
+### Locked Decisions
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| 1 | Multi-model architecture | Factory in base class, `model_type` param on `train()` | Prop subclasses are spec-only — no training logic divergence across model types |
+| 2 | Model types | ElasticNet, RandomForest, XGBoost | Ridge is subsumed by ElasticNet (l1_ratio=0) |
+| 3 | Scaling | StandardScaler for ElasticNet, None for trees | Tree models don't need feature scaling |
+| 4 | HP search strategy | Grid search evaluated on holdout set | Consistent with current approach; HOLDOUT_SEASONS split provides temporal validation |
+| 5 | ElasticNet grid | 5 alpha × 5 l1_ratio = 25 combos | Current grid, keep unchanged |
+| 6 | RF grid | `n_estimators` ∈ [100, 300, 500], `max_depth` ∈ [8, 12, 16, None], `min_samples_leaf` ∈ [5, 10, 20] = 36 combos | Standard, fast |
+| 7 | XGB grid | `n_estimators` ∈ [100, 300, 500], `max_depth` ∈ [4, 6, 8], `learning_rate` ∈ [0.01, 0.05, 0.1], `subsample` ∈ [0.8, 1.0] = 54 combos | Standard, fast |
+| 8 | Promotion primary metric | Lowest holdout MAE | Direct measure of prediction accuracy for regression |
+| 9 | Guardrail 1 | R² > 0 | Must beat mean baseline |
+| 10 | Guardrail 2 | Coverage ∈ [85%, 97%] for 90% nominal interval | Uncertainty estimates not wildly off |
+| 11 | Fallback champion | ElasticNet if no model passes guardrails | Known stable baseline |
+| 12 | Model persistence | Retrain on demand (no artifacts) | Same as current; artifact storage is a future optimization |
+| 13 | Clip ranges | Per-spec via `clip_lo`, `clip_hi` on `PropModelSpec` | Centralized, not scattered in predict methods |
+| 14 | Champion comparison | External function in `evaluation/champion.py`, generalized for both classification and regression | Same separation of concerns as game models |
+| 15 | Comparison architecture | Single generalized `compare_models()` supporting both Brier (classification) and MAE (regression) gates | Unified champion/challenger pattern across all models |
+| 16 | Selection loop location | Outside the trainer (CLI or utility function) | The trainer trains, the evaluator judges |
+
+### Phase A: Prop Model Factory — Steps
+
+#### A1: Add PropModelType enum and factory to base.py
+
+New enum:
+
+    class PropModelType(str, Enum):
+        ELASTICNET = "elasticnet"
+        RANDOM_FOREST = "random_forest"
+        XGBOOST = "xgboost"
+
+New factory method in PropTrainer:
+
+    def _create_model(self, model_type: PropModelType, params: dict) -> tuple[Any, StandardScaler | None]
+
+Returns `(model_instance, scaler_or_none)`. ElasticNet gets a
+StandardScaler; RF and XGB get None.
+
+New HP grid method:
+
+    def _get_param_grid(self, model_type: PropModelType) -> list[dict]
+
+Returns the parameter grid for the given model type.
+
+Modified `train()` signature:
+
+    def train(self, *, model_type: str = "elasticnet", repo: Path | None = None) -> PropModelMetadata
+
+Internally calls `_create_model()`, iterates over `_get_param_grid()`,
+evaluates each on holdout, selects best, retrains on full training set.
+
+New `_fit()` in base (**no longer abstract**):
+- Iterates over param grid with tqdm progress bar
+- Trains model + optional scaler with each param combo
+- Evaluates MAE on holdout
+- Selects best params
+- Retrains on full training set with best params
+
+New `_predict()` in base (**no longer abstract**):
+- Applies scaler if present
+- Calls `model.predict()`
+- Clips to `spec.clip_lo` / `spec.clip_hi`
+
+| Status | Step |
+|--------|------|
+| Not started | A1 |
+
+#### A2: Add clip_lo / clip_hi to PropModelSpec
+
+Update `PropModelSpec` dataclass:
+
+    @dataclass(frozen=True)
+    class PropModelSpec:
+        name: str
+        target_col: str
+        position_filter: list[str]
+        description: str
+        clip_lo: float = 0.0
+        clip_hi: float = 600.0
+
+Clip ranges per stat family:
+
+| Model | clip_hi |
+|-------|---------|
+| qb_pass_yards | 600 |
+| qb_rush_yards | 200 |
+| rb_rush_yards | 250 |
+| wr_rec_yards | 300 |
+| te_rec_yards | 250 |
+
+Update all 5 subclass specs to set their clip_hi values.
+
+| Status | Step |
+|--------|------|
+| Not started | A2 |
+
+#### A3: Strip _fit() / _predict() / _scaler / _model from all 5 subclasses
+
+Each subclass becomes ~15-20 lines: just the `spec` property.
+All training + prediction logic lives in the base class.
+
+Subclasses affected:
+- `qb_pass_yards.py`
+- `qb_rush_yards.py`
+- `rb_rush_yards.py`
+- `wr_rec_yards.py`
+- `te_rec_yards.py`
+
+| Status | Step |
+|--------|------|
+| Not started | A3 (depends on A1) |
+
+#### A4: Add model_type to PropModelMetadata
+
+Ensure `PropModelMetadata` (or its equivalent) stores `model_type` so
+the champion comparison function knows which model type was used.
+This should align with what `evaluation/champion.py` expects.
+
+| Status | Step |
+|--------|------|
+| Not started | A4 |
+
+### Phase B: Generalized Champion/Challenger Gates — Steps
+
+#### B1: Generalize evaluation/champion.py for regression
+
+Currently supports classification only (Brier, ECE, AUC).
+
+Add regression support:
+
+    @dataclass(frozen=True)
+    class RegressionPromotionGates:
+        max_mae_tolerance: float = 0.0   # challenger MAE must be <= champion MAE
+        min_r2: float = 0.0              # must beat mean baseline
+        min_coverage: float = 0.85       # 90% interval coverage floor
+        max_coverage: float = 0.97       # 90% interval coverage ceiling
+
+Design approach: generalize `compare_models()` to accept a `mode`
+parameter ("classification" or "regression") or auto-detect based on
+which metrics are present in the metadata. The function selects the
+appropriate gate system.
+
+Single `ComparisonResult` return type — same structure for both.
+
+Existing `PromotionGates` (Brier/ECE/AUC) stays for classification.
+New `RegressionPromotionGates` added for regression.
+
+    def compare_models(
+        champion: ModelMetadata | PropModelMetadata,
+        challenger: ModelMetadata | PropModelMetadata,
+        *,
+        mode: str = "classification",
+        classification_gates: PromotionGates = PromotionGates(),
+        regression_gates: RegressionPromotionGates = RegressionPromotionGates(),
+    ) -> ComparisonResult
+
+`format_comparison()` also generalized to show the right metrics
+and gate labels depending on mode.
+
+| Status | Step |
+|--------|------|
+| Not started | B1 |
+
+#### B2: Champion selection utility function
+
+New function (in `evaluation/champion.py` or `evaluation/prop_champion.py`):
+
+    def select_prop_champion(
+        results: list[PropModelMetadata],
+        gates: RegressionPromotionGates = RegressionPromotionGates(),
+    ) -> tuple[PropModelMetadata, str]
+
+Logic:
+1. Filter to models passing all guardrails (R² > 0, coverage in range)
+2. Among eligible models, select lowest MAE
+3. If no model passes guardrails, return ElasticNet as fallback
+4. Return `(champion_metadata, comparison_table_string)`
+
+| Status | Step |
+|--------|------|
+| Not started | B2 (depends on B1) |
+
+### Phase C: CLI Integration — Steps
+
+#### C1: Add --model-type option to evaluate command
+
+    gridiron props evaluate --model qb_pass_yards --model-type xgboost
+
+If `--model-type` not specified, uses champion model type (default
+elasticnet until champion selection is run).
+
+| Status | Step |
+|--------|------|
+| Not started | C1 |
+
+#### C2: Add champion command
+
+    gridiron props champion --model qb_pass_yards
+    gridiron props champion --model all
+
+Trains all 3 model types for the specified stat family (or all 5
+families), shows comparison table, reports champion:
+
+    🏈 Champion/Challenger: qb_pass_yards
+
+      Model Type     MAE    RMSE      R²  Coverage  Status
+      ─────────────────────────────────────────────────────
+      elasticnet    58.0    72.6   0.071    93.8%   Eligible
+      random_forest 52.1    66.3   0.142    91.2%   ★ CHAMPION
+      xgboost       53.4    67.8   0.128    90.5%   Eligible
+
+| Status | Step |
+|--------|------|
+| Not started | C2 (depends on A1–A4, B1–B2) |
+
+#### C3: Train all 15 models and validate
+
+Run `gridiron props champion --model all`. Paste results into this
+document and CHANGELOG.md. Verify:
+- All 15 models train without error
+- At least one non-ElasticNet model wins per stat family
+- Coverage stays in [85%, 97%] for all models
+- R² improves for QB pass (currently 0.071)
+
+| Status | Step |
+|--------|------|
+| Not started | C3 (depends on C2) |
+
+### Phase A/B/C: Test Plan
+
+**File:** `tests/unit/models/test_prop_champion.py`
+
+| Test | What It Validates |
+|------|-------------------|
+| `test_model_type_enum_values` | 3 values: elasticnet, random_forest, xgboost |
+| `test_create_model_elasticnet` | Returns (ElasticNet, StandardScaler) |
+| `test_create_model_rf` | Returns (RandomForestRegressor, None) |
+| `test_create_model_xgb` | Returns (XGBRegressor, None) |
+| `test_param_grid_elasticnet` | 25 combos |
+| `test_param_grid_rf` | 36 combos |
+| `test_param_grid_xgb` | 54 combos |
+| `test_clip_ranges_from_spec` | Predictions clipped to spec.clip_lo/clip_hi |
+
+**File:** `tests/unit/evaluation/test_champion.py` (extend existing)
+
+| Test | What It Validates |
+|------|-------------------|
+| `test_regression_gates_default_values` | max_mae_tolerance=0.0, min_r2=0.0, coverage=[0.85, 0.97] |
+| `test_compare_models_regression_mode` | Correct gates applied in regression mode |
+| `test_regression_champion_selects_lowest_mae` | Given 3 results, picks lowest MAE |
+| `test_regression_guardrail_r2` | R² <= 0 model excluded |
+| `test_regression_guardrail_coverage_low` | Coverage < 85% excluded |
+| `test_regression_guardrail_coverage_high` | Coverage > 97% excluded |
+| `test_regression_fallback_elasticnet` | If no model passes, ElasticNet wins |
+| `test_format_comparison_regression` | Output contains MAE, R², Coverage labels |
+| `test_classification_mode_unchanged` | Existing Brier/ECE/AUC gates still work |
+
+**Updates to existing test files:**
+- `test_qb_pass_yards.py` etc.: Remove tests for `_fit()` / `_predict()` (now in base). Verify spec has clip_lo/clip_hi.
+- `test_prop_base.py` (new or extend): Model type factory tests.
+
+### Phase A/B/C: Files Inventory
+
+| Action | File |
+|--------|------|
+| **Modify** | `models/prop_prediction/base.py` — PropModelType enum, factory, HP grids, train(model_type=) |
+| **Modify** | `models/prop_prediction/qb_pass_yards.py` — spec-only, remove _fit/_predict/_scaler/_model |
+| **Modify** | `models/prop_prediction/qb_rush_yards.py` — same |
+| **Modify** | `models/prop_prediction/rb_rush_yards.py` — same |
+| **Modify** | `models/prop_prediction/wr_rec_yards.py` — same |
+| **Modify** | `models/prop_prediction/te_rec_yards.py` — same |
+| **Modify** | `evaluation/champion.py` — RegressionPromotionGates, generalized compare_models(), select_prop_champion() |
+| **Modify** | `cli/props.py` — --model-type option, champion command |
+| **Create** | `tests/unit/models/test_prop_champion.py` |
+| **Modify** | `tests/unit/evaluation/test_champion.py` — regression gate tests |
+| **Modify** | `tests/unit/models/test_qb_pass_yards.py` — remove _fit tests, add clip spec |
+| **Modify** | `tests/unit/models/test_qb_rush_yards.py` — same |
+| **Modify** | `tests/unit/models/test_rb_rush_yards.py` — same |
+| **Modify** | `tests/unit/models/test_wr_rec_yards.py` — same |
+| **Modify** | `tests/unit/models/test_te_rec_yards.py` — same |
+
 ---
 
-#### Phase D — Evaluation & Persistence  ✅ Complete
+## Workstream 2: Game Model Refactor (Align to Props Pattern)
 
-##### D1: Prop Evaluation Metrics
+**Goal:** Refactor game model training to use the same factory + spec
+pattern as props, eliminating `_make_tree_variant()` dynamic class
+creation and aligning ModelMetadata structures.
 
-**What was done (2026-06-10):**
-1. Created `evaluation/prop_metrics.py` — 6 metric functions + orchestrator
-   + 8 structured dataclasses + formatted report printer
-2. Created `tests/unit/evaluation/test_prop_metrics.py` — 23 tests, 7 classes
-3. Graceful degradation: accuracy/bias always computed; coverage, calibration,
-   hit rate, tier analysis only when relevant inputs are provided
+**Why now:** Immediately after building the props framework, patterns
+and naming are fresh. Code reuse opportunities are obvious. Integration
+tests (workstream 3) will validate the unified architecture.
 
-**Metrics available:**
-- **Accuracy:** MAE, RMSE, R², median AE
-- **Bias:** mean error, % over-predicted
-- **Coverage:** actual vs nominal (90%), mean/median interval width
-- **Calibration:** P(over) reliability diagram, MACE
-- **Hit Rate:** Over/Under/overall, push exclusion
-- **By-Tier:** MAE + hit rate + |p_over − 0.5| per confidence tier
+**ROADMAP ref:** Cross-cutting architectural alignment.
 
+### Locked Decisions
 
-##### D2: Prop Archive ✅ Complete
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| 1 | Replace `_make_tree_variant()` | Factory in base/shared module, `model_type` param | Aligns with props; dynamic class creation is over-engineered for 3 champions |
+| 2 | Keep separate train functions for logistic vs tree | Yes — training logic genuinely diverges (CV strategy, scoring) | Unlike props where all types share identical training flow |
+| 3 | Align ModelMetadata | Shared base or identical field set with PropModelMetadata | Champion comparison function needs consistent interface |
+| 4 | PredictorRegistry | Keep — game models still need it for predict_historical/predict_upcoming dispatch | Props don't use PredictorRegistry (simpler pipeline) |
+| 5 | Champion comparison | Reuse generalized `evaluation/champion.py` from Workstream 1 | Same external evaluator for both game and prop models |
+| 6 | Existing game model tests | Must pass unchanged after refactor | Refactor must be behavior-preserving |
 
-**What was done (2026-06-10):**
-1. Created `evaluation/prop_archive.py` — append-only parquet archive
-   with dedup on `(game_id, player_id, stat_type, model_version)`
-2. Created `tests/unit/evaluation/test_prop_archive.py` — 16 tests, 3 classes
-3. 19-column schema, optional filters on load, graceful empty state
+### Implementation Steps
 
----
+#### D1: Assess shared metadata
 
-#### Phase E — CLI & Integration  🔲 Planned
+Review `ModelMetadata` (game) and `PropModelMetadata` (prop). Define a
+shared base type or align field names so `compare_models()` works with
+both without type sniffing.
 
-##### E1: Prop CLI ✅ Complete
+| Status | Step |
+|--------|------|
+| Not started | D1 |
 
-**What was done (2026-06-10):**
-1. Created `cli/props.py` — 3 commands: evaluate, backfill, projections
-2. Registered `props_app` in `cli/main.py`
-3. Lazy trainer registry for fast `--help` rendering
-4. `_train_and_enrich()` shared helper for all commands
+#### D2: Replace _make_tree_variant() with factory pattern
 
-**First CLI evaluation (qb_pass_yards):**
-- MAE=63.4, RMSE=80.6, R²=0.118, Median AE=51.8, N=1,433
-- Bias=+9.7 (over-predicting), Coverage=93.8% (nominal 90%)
+Remove dynamic class creation. Replace with explicit classes or a
+`model_type` approach that matches how props work. The key constraint:
+game models have `predict_historical()` and `predict_upcoming()` methods
+that props don't — so the factory is for training only.
 
-##### E2: DraftKings Prop Ingest Extension  🔲 Planned (Deferred — Upcoming Weeks Only)
+| Status | Step |
+|--------|------|
+| Not started | D2 |
 
-**Why:** To calculate prop edges, we need prop lines from the market.
+#### D3: Wire game models into generalized champion.py
 
-**Extend:** `ingest/odds/draftkings.py` (or new `ingest/odds/dk_props.py`)
+Game model CLI (`cli/models.py`) currently calls `compare_models()` from
+`evaluation/champion.py` with classification gates. Verify this still
+works after the generalization in Workstream 1 B1. Should require zero
+or minimal changes if generalization is clean.
 
-**Scope:** Parse DK player prop markets (pass yards, rush yards, receiving yards
-O/U). Map to `(player_id, stat_type, line, odds_over, odds_under)`. Store in
-`data/odds/dk_prop_odds_log.parquet`.
+| Status | Step |
+|--------|------|
+| Not started | D3 (depends on W1 B1) |
 
-**Note:** This is the last step because it requires understanding the DK prop API
-response format. Historical prop odds remain deferred.
+#### D4: Run full game model test suite
 
-**Done when:** DK prop lines for the current week can be ingested and joined to
-prop predictions.
+Verify all existing game model tests pass unchanged. This is the
+critical acceptance criterion — the refactor must be
+behavior-preserving.
 
----
+    uv run pytest tests/unit/models/ tests/unit/evaluation/ -v
 
-#### Phase T — Testing  🔄 Parallel with all phases
+| Status | Step |
+|--------|------|
+| Not started | D4 |
 
-Tests are built alongside each phase, not as a separate step at the end.
+#### D5: Retrain game model champions, verify metrics unchanged
 
-**Already existing (from Phase A):**
+Train random_forest, xgboost, logistic via refactored code. Verify
+holdout metrics match pre-refactor baselines:
 
-| File | Tier | Count |
-|------|------|-------|
-| `tests/unit/ingest/test_player_stats.py` | Unit | 9 tests, 3 classes |
-| `tests/unit/transform/test_player_stats.py` | Unit | 7 tests, 3 classes |
-| `tests/unit/features/test_player_rolling.py` | Unit | 12 tests, 3 classes |
-| `tests/unit/features/test_player_matchup.py` | Unit | 11 tests, 5 classes |
-| `tests/unit/features/test_usage.py` | Unit | 16 tests, 5 classes |
-| `tests/unit/features/test_game_context.py` | Unit | 28 tests, 9 classes |
-| `tests/unit/features/test_builder.py` | Unit | 20 tests, 2 classes |
-| `tests/unit/models/test_prop_base.py` | Unit | 19 tests, 6 classes |
-| `tests/unit/models/test_qb_pass_yards.py` | Unit | 5 tests, 1 class |
-| `tests/unit/models/test_rb_rush_yards.py` | Unit | 5 tests, 1 class |
-| `tests/unit/models/test_wr_rec_yards.py` | Unit | 5 tests, 1 class |
-| `tests/unit/models/test_te_rec_yards.py` | Unit | 5 tests, 1 class |
-| `tests/unit/models/test_prop_post_process.py` | Unit | 26 tests, 7 classes |
-| `tests/unit/evaluation/test_prop_metrics.py` | Unit | 23 tests, 7 classes |
-| `tests/unit/evaluation/test_prop_archive.py` | Unit | 16 tests, 3 classes |
-| `tests/unit/evaluation/test_prop_archive.py` | Unit | 16 tests, 3 classes |
+| Model | Brier | ECE | AUC | Accuracy |
+|-------|-------|-----|-----|----------|
+| xgboost | 0.218 | 0.014 | 0.691 | 64.0% |
+| random_forest | 0.220 | 0.013 | 0.702 | 64.3% |
+| logistic | 0.225 | 0.017 | 0.683 | 63.5% |
 
-**To create:**
+Small floating-point variance is acceptable. Large deviations indicate
+a bug in the refactor.
 
-| Phase | File | Tier |
-|-------|------|------|
-| B4 | `tests/integration/test_prop_feature_pipeline.py` | Integration |
-| E1 | `tests/integration/test_props_cli.py` | Integration |
-| E1 | `tests/e2e/test_prop_pipeline.py` | E2E |
+| Status | Step |
+|--------|------|
+| Not started | D5 |
 
-**Also needed:** Add player-related DataFrame factories to
-`tests/fixtures/dataframes.py` (e.g., `make_player_game_logs()`,
-`make_player_features()`).
+### Game Model Refactor: Files Inventory
 
----
-
-#### Dependency Graph
-
-```
-B1 (Audit & Stabilize) ✅
-    │
-    ▼
-B2 (Usage Features) ✅
-    │                                        T (Tests — parallel)
-    ▼
-B3 (Game Context Features) ✅
-    │
-    ▼
-B4 (Unified Feature Builder) ✅
-    │
-    ├──────────────────────────────┐
-    ▼                              ▼
-C1 (QB Pass Yards + Framework) ✅  D1 (Prop Eval Metrics) ✅
-    │                              │
-    ▼                              │
-C2 (Post-Process Enrichment) ✅    │
-    │                              │
-    ▼                              │
-C3 (4 More Prop Models) ✅         │
-    │                              │
-    └──────────────┬───────────────┘
-                   ▼
-             D2 (Prop Archive) ✅
-                   │
-                   ▼
-             E1 (Prop CLI) ✅
-                   │
-                   ▼
-             E2 (DK Prop Ingest — last) ◄── YOU ARE HERE
-```
+| Action | File |
+|--------|------|
+| **Modify** | `models/game_prediction/tree.py` — remove _make_tree_variant(), add factory or explicit classes |
+| **Modify** | `models/game_prediction/logistic.py` — align metadata structure |
+| **Modify** | `models/game_prediction/predictor.py` — if PredictorRegistry changes needed |
+| **Modify** | `models/artifact.py` — if ModelMetadata changes |
+| **Modify** | `cli/models.py` — verify champion flow still works |
+| **Modify** | `tests/unit/models/test_tree_models.py` — update for new structure |
+| **Modify** | `tests/unit/evaluation/test_champion.py` — verify classification path |
 
 ---
 
-#### Files to Create
+## Workstream 3: Integration & E2E Tests
 
-| File | Phase |
-|------|-------|
-| `ingest/odds/dk_props.py` (or extend `draftkings.py`) | E2 |
+**Goal:** Validate the full prop pipeline end-to-end and add cross-module
+tests that catch breakages unit tests miss.
 
-#### Files to Modify
+**Why:** A column rename in `rolling.py` could silently break the
+builder → trainer chain. Integration tests close this gap.
 
-| File | Phase | Change |
-|------|-------|--------|
-| `tests/fixtures/dataframes.py` | T | Add player DataFrame factories |
+**Depends on:** Workstreams 1 and 2 (tests should cover the unified
+architecture including champion commands).
 
-All paths relative to `src/gridiron_edge/` (source) or `tests/` (tests).
+### Locked Decisions
+
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| 1 | Test tier definitions | Unit (<1s, synthetic), Integration (5-30s, multi-module), E2E (30s-5min, full workflow) | Matches existing three-tier pyramid |
+| 2 | Test marking | Auto-markers by directory (already configured) | No changes needed |
+| 3 | Integration test data | Synthetic DataFrames via fixture factories | Fast, deterministic, no external deps |
+| 4 | E2E test data | Synthetic data written to disk (tmp_path) | Tests full I/O path |
+| 5 | CLI testing approach | Mock data layer for integration; disk data for E2E | Separation of concerns |
+| 6 | Fixture data scale | 2 seasons × 10 weeks × 4 teams × 4 players/team = ~320 rows | Fast but exercises all feature types |
+
+### Fixture Data Specifications
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Seasons | 2 (e.g., 2023, 2024) | Enough for holdout split |
+| Weeks per season | 10 | Enough for L6 rolling features |
+| Teams | 4 (KC, LV, BUF, MIA) | Enough for matchup variation |
+| Players per team | 4 (1 QB, 1 RB, 1 WR, 1 TE) | One per position |
+| Total rows | ~320 | Fast but realistic |
+
+Key requirements for fixture data:
+- Enough rows for rolling features to compute without all-NaN (≥7 weeks)
+- Team variation for matchup features (≥4 teams)
+- Team totals > 0 for usage features
+- Game IDs that match between player logs and games CSV
+- All 4 positions represented
+
+### Implementation Steps
+
+#### E1: Player DataFrame factories
+
+Add to `tests/fixtures/dataframes.py`:
+
+- `make_player_game_logs(n_players, n_weeks, positions)` — returns DataFrame
+  matching cleaned `player_game_logs.parquet` schema
+- `make_games_csv(n_weeks)` — returns DataFrame matching
+  `NFL_wk_by_wk_cleaned.csv` schema
+- `make_prop_predictions(n, model_name)` — returns DataFrame with
+  predicted_mean + enrichment columns
+
+| Status | Step |
+|--------|------|
+| Not started | E1 |
+
+#### E2: Prop repo fixture
+
+Add to `tests/fixtures/repos.py`:
+
+- `make_prop_repo(tmp_path)` — writes both files to disk:
+  - `data/cleaned/player_game_logs.parquet`
+  - `data/cleaned/NFL_wk_by_wk_cleaned.csv`
+
+This fixture is reused by all integration and E2E tests.
+
+| Status | Step |
+|--------|------|
+| Not started | E2 (depends on E1) |
+
+#### E3: Integration tests — feature pipeline
+
+**File:** `tests/integration/test_prop_feature_pipeline.py`
+
+| Test | What It Validates |
+|------|-------------------|
+| `test_builder_produces_all_feature_types` | Rolling + matchup + usage + context columns all present |
+| `test_builder_position_filter_correct` | QB filter → only QB rows; RB → only RB rows |
+| `test_builder_no_lookahead` | Week N features don't use week N data (spot-check shift) |
+| `test_builder_no_row_duplication` | No duplicate (player_id, game_id) in output |
+| `test_builder_nan_rates_reasonable` | NaN rates per feature < 50% for filtered position |
+| `test_feature_columns_match_prop_feature_cols` | Columns match PROP_FEATURE_COLS |
+| `test_builder_with_missing_games` | Player logs with no matching game → NaN context, not crash |
+
+| Status | Step |
+|--------|------|
+| Not started | E3 (depends on E2) |
+
+#### E4: Integration tests — CLI
+
+**File:** `tests/integration/test_props_cli.py`
+
+| Test | What It Validates |
+|------|-------------------|
+| `test_evaluate_runs_without_error` | `gridiron props evaluate --model qb_pass_yards` exits 0 |
+| `test_evaluate_output_contains_mae` | Output contains "MAE" |
+| `test_backfill_creates_archive` | After backfill, archive file exists |
+| `test_projections_output_has_table` | Output contains player names and predicted values |
+| `test_champion_runs_all_types` | Champion command trains 3 model types |
+| `test_unknown_model_exits_error` | `--model fake_model` exits with error message |
+
+CLI tests use `typer.testing.CliRunner` with mocked data layer.
+
+| Status | Step |
+|--------|------|
+| Not started | E4 (depends on E2, W1 C2) |
+
+#### E5: E2E tests
+
+**File:** `tests/e2e/test_prop_pipeline.py`
+
+| Test | What It Validates |
+|------|-------------------|
+| `test_full_pipeline_data_to_archive` | Synthetic data → clean → features → train → predict → enrich → archive |
+| `test_full_pipeline_multiple_models` | Train QB pass + RB rush, verify both produce valid results |
+| `test_evaluate_report_structure` | Full eval report has accuracy, bias, coverage sections |
+
+E2E tests write synthetic data to disk via `make_prop_repo()`.
+
+| Status | Step |
+|--------|------|
+| Not started | E5 (depends on E2) |
+
+#### E6: Full suite validation
+
+Run all tiers, verify green:
+
+    uv run pytest -v
+
+| Status | Step |
+|--------|------|
+| Not started | E6 (depends on E3–E5) |
+
+### Integration & E2E: Files Inventory
+
+| Action | File |
+|--------|------|
+| **Modify** | `tests/fixtures/dataframes.py` — add player/game/prop factories |
+| **Modify** | `tests/fixtures/repos.py` — add make_prop_repo() |
+| **Create** | `tests/integration/test_prop_feature_pipeline.py` |
+| **Create** | `tests/integration/test_props_cli.py` |
+| **Create** | `tests/e2e/test_prop_pipeline.py` |
 
 ---
 
-#### NaN Research Backlog  🔲 Deferred
+## Dependency Graph
 
-**Problem:** Dropping NaN rows for early-season games (weeks 1–2 for L3, weeks
-1–5 for L6) loses significant training data and makes early-season predictions
-impossible.
+    Workstream 1: Champion/Challenger for Props
+        │
+        ├── A1: PropModelType enum + factory in base.py
+        │
+        ├── A2: clip_lo/clip_hi in PropModelSpec
+        │
+        ├── A3: Strip _fit/_predict from 5 subclasses
+        │       (depends on A1)
+        │
+        ├── A4: model_type in PropModelMetadata
+        │
+        ├── B1: Generalize evaluation/champion.py
+        │       (independent of A*)
+        │
+        ├── B2: select_prop_champion() utility
+        │       (depends on B1)
+        │
+        ├── C1: CLI --model-type option
+        │       (depends on A1)
+        │
+        ├── C2: CLI champion command
+        │       (depends on A1–A4, B1–B2)
+        │
+        └── C3: Train all 15 models, validate
+                (depends on C2)
 
-**Research directions to explore:**
-- **Bayesian shrinkage priors:** Use league-average or position-average as a
-  prior, blend with observed data as games accumulate (empirical Bayes)
-- **Seasonal carry-forward with decay:** Use prior season's final rolling average,
-  decayed by a factor (e.g., 0.7) to reflect roster/scheme changes
-- **Multiple imputation:** Generate multiple plausible feature sets, train on each,
-  average predictions
-- **Hierarchical models:** Player nested within team nested within position —
-  partial pooling handles sparse data naturally
-- **Missing-indicator pattern:** Add binary `is_imputed_*` flags so the model can
-  learn to weight imputed features differently
+    Workstream 2: Game Model Refactor
+        │
+        ├── D1: Assess shared metadata
+        │       (depends on W1 A4)
+        │
+        ├── D2: Replace _make_tree_variant()
+        │       (depends on D1)
+        │
+        ├── D3: Wire into generalized champion.py
+        │       (depends on W1 B1, D2)
+        │
+        ├── D4: Run full game model test suite
+        │       (depends on D2, D3)
+        │
+        └── D5: Retrain champions, verify metrics
+                (depends on D4)
 
-**Data sources to investigate:** Does nflreadpy expose preseason stats? Can we use
-combine/draft data as cold-start priors for rookies?
+    Workstream 3: Integration & E2E Tests
+        │
+        ├── E1: Player DataFrame factories
+        │
+        ├── E2: Prop repo fixture
+        │       (depends on E1)
+        │
+        ├── E3: Feature pipeline integration tests
+        │       (depends on E2)
+        │
+        ├── E4: CLI integration tests
+        │       (depends on E2, W1 C2)
+        │
+        ├── E5: E2E tests
+        │       (depends on E2)
+        │
+        └── E6: Full suite validation
+                (depends on E3–E5)
 
-**When:** After W4 V1 is complete and evaluated.
+    Order: W1 complete → W2 complete → W3
 
 ---
 
-### Parallel / Lower Priority
+## Future Workstreams (High-Level)
 
-#### Weather Feature Integration (Deferred)
+### Workstream 4: Deep Code Review + Test Suite Review
 
-Deferred until OpenWeatherMap API key is reliably available and
-weather features are validated against holdout data.
+Two-part review session:
+1. **Code review:** Pattern consistency across game + prop models, CLI
+   output formatting parity, naming conventions, dead code, import
+   hygiene, docstring completeness.
+2. **Test suite review:** Edge case coverage audit, fixture quality,
+   test isolation, missing negative tests, coverage ratchet assessment.
 
-### Architectural Debt / Housekeeping
+Detailed plan created when workstreams 1–3 complete.
 
-| Item | Notes |
-|------|-------|
-| `_DEFAULT_TOTAL_STD` hardcoded in `cli/edges.py` | Currently 13.17 (total model holdout RMSE). Wire into model metadata so it updates when a new total model is trained. |
-| Historical edge validation / backtest | Deferred until season starts and real odds data is available. Run `gridiron edges clv` against a full season of archived predictions + odds to validate edge quality. |
-| Schema migration helper | `archive.migrate_archive()` exists for pre-v2 archives. Can be removed once all archives are v2+. |
-| Kelly adherence metric | `performance.kelly_adherence()` deferred — requires storing `recommended_stake` in the bet ledger schema. Add column to `_BET_COLUMNS` when implementing. |
-| Balance display cosmetic | `balance_cmd` shows `$-100.00` for outflows instead of `-$100.00`. Fix sign formatting with `abs()` in `cli/betting.py`. |
-| Recalibrate sigma/margin_std after retrain | The `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` dicts in `post_process.py` still use values calibrated from the old versioned models. After a champion retrain, re-run sigma calibration and update the unversioned entries. |
-| `ModelMetadata.holdout_brier` for regression | Repurposed for MAE in total model. Consider adding a generic `primary_metric` field. |
+### Workstream 5: Scenario / "What If" Engine (W4.5)
 
-### Backlog
+See ROADMAP.md W4.5 for full description. Now unblocked by W4 completion.
+Five phases: player impact quantification → team adjustment → usage
+redistribution → conditional re-forecasting → CLI interface.
 
-Workstream IDs match **ROADMAP.md** (authoritative numbering).
+### Workstream 6: API & Frontend (W8 + W9)
 
-#### Completed
+FastAPI serving layer + React/Next.js frontend consuming it. See
+ROADMAP.md W8/W9.
 
-| ID | Workstream | Summary |
-|----|-----------|---------|
-| W1 | Quick Wins & Unblocking | DK unicode fix, game_id resolver, odds join validated |
-| W2 | Richer Game Model Outputs | Spread, total, projected scores, bands, tiers, isotonic eval |
-| W3 | Market Intelligence Foundation | odds_math.py, kelly.py — pure math, no data deps |
-| W5 | Edge Engine | edge.py, recommendations.py, clv.py, CLI (report + clv) |
-| W6 | Portfolio & Bet Tracking | ledger.py, bankroll.py, performance.py, CLI (8 commands) |
+### Workstream 7: All External Odds
 
-_Also completed (cross-cutting, not numbered in ROADMAP):_
-- **Feature Engineering Expansion** — EPA_COLS 8→22→36, _EXPANDED_FEATURES 51→107→149
-- **Test Framework Build-out** — Three-tier pyramid, auto-markers, shared fixtures
-- **Champion/Challenger Refactor** — TimeSeriesSplit CV, gate-based promotion, 3
-  unversioned champions (random_forest, xgboost, logistic)
-- **Sigma & Confidence Tier Recalibration** — Probability-distance-based tiers
-  replacing band-width thresholds
+DraftKings prop odds ingest (E2 from W4), historical odds data, multi-book
+line shopping (W7). Requires odds source decision (ROADMAP.md §5.2).
 
-#### Planned
+### Workstream 8: Evaluate Remaining Work
 
-| ID | Workstream | Blocked by | Priority | Notes |
-|----|-----------|------------|----------|-------|
-| **W12** | Model Ensemble | Nothing | **High** | Combine elo + logistic + rf + xgb. Must beat xgboost Brier (0.218) via promotion gates. |
-| **W4** | Player Data & First Prop Models | Nothing | **Active** | See active workstream above. |
-| **W8** | API Serving Layer | Nothing | Medium | FastAPI endpoints for edges, games, portfolio → M5 |
-| **W7** | Multi-Book Odds & Line Shopping | Odds source decision (§5.2) | Medium | Multi-book ingest, arb/middle detection → M4 |
-| **W4.5** | Scenario Engine (What-If) | W4 | Medium | Injury impact modeling, usage redistribution |
-| **W9** | Frontend | W8 | Lower | React/Next.js web UI → M5 |
-| **W10** | Real-Time & Live Game | W7 + W8 | Lowest | Live win prob, live edges, hedge calculator → M6 |
+Assessment of what's left: model ensemble (W12), real-time/live (W10),
+feature engineering backlog, NaN research, architectural debt.
 
-### Changelog (PLAN.md edits only)
+---
+
+## Architectural Debt / Housekeeping
+
+| Item | Notes | When |
+|------|-------|------|
+| `_DEFAULT_TOTAL_STD` hardcoded in `cli/edges.py` | Currently 13.17 (total model holdout RMSE). Wire into model metadata. | Code review (W4) |
+| base.py line count | Currently ~550 lines. Will grow with factory methods. Monitor and split if >700. | Code review (W4) |
+| Backport factory pattern to game models | Covered by Workstream 2 (D2). | W2 |
+| `PROP_FEATURE_COLS` vs `_EXPANDED_FEATURES` naming | Ensure consistent naming convention across game/prop feature lists. | Code review (W4) |
+
+---
+
+## NaN Research Backlog (Deferred)
+
+Current strategy: drop rows with NaN, with `# TODO(nan)` markers at each
+drop site. Future investigation items:
+
+- Bayesian shrinkage priors for early-season rolling stats
+- Seasonal carry-forward (use last season's final L6 as prior for week 1)
+- Multiple imputation for missing game context features
+- Missing-indicator pattern (add `feature_is_missing` binary columns)
+- Rookie cold-start with draft capital / combine data
+
+Best done after model architecture is stable (post workstream 2).
+
+---
+
+## Changelog
 
 | Date | Change |
 |------|--------|
-| 2026-06-10 | **E1 complete. M3 milestone achieved.** Created `cli/props.py` (evaluate, backfill, projections commands). First CLI evaluation: qb_pass_yards MAE=63.4, R²=0.118, coverage=93.8%. |
-| 2026-06-10 | **D2 complete.** Created `evaluation/prop_archive.py` (append-only parquet, dedup on 4-key composite). Created `tests/unit/evaluation/test_prop_archive.py` (16 tests, 3 classes). |
-| 2026-06-10 | **D1 complete.** Created `evaluation/prop_metrics.py` (6 metric functions + orchestrator, 8 dataclasses). Covers accuracy, bias, coverage, calibration, hit rate, by-tier analysis. Graceful degradation when market data unavailable. Created `tests/unit/evaluation/test_prop_metrics.py` (23 tests, 7 classes). |
-| 2026-06-10 | **C2 complete.** Created `models/prop_prediction/post_process.py` (6 enrichment functions + orchestrator). P(over) via Normal CDF, lean thresholds 0.55/0.45, confidence tiers distance-based. Created `tests/unit/models/test_prop_post_process.py` (26 tests, 7 classes). |
-| 2026-06-10 | **C3 complete (4/5 models).** Trained RB rush yards (MAE=25.0), WR rec yards (MAE=25.1, best R²=0.203), TE rec yards (MAE=18.3). Removed `_build_features()` overrides from 3 subclasses. QB rush yards deferred (needs new file). |
-| 2026-06-10 | **C1 complete.** Rewired PropTrainer to `build_prop_features()` + `HOLDOUT_SEASONS`. Position-aware NaN handling (>50% threshold). Deleted dead join methods. First QB pass yards model: MAE=58.0, RMSE=72.6, R²=0.071 (ElasticNet, 37/128 nonzero features, 5,706 train / 1,367 holdout rows). |
-| 2026-06-10 | B4 complete. Phase B done. Created `features/player/builder.py` (unified entry point) and `features/player/_columns.py` (programmatic feature list). Refactored all 4 builders to accept optional df param for single-load pipeline. Created `tests/unit/features/test_builder.py`. Phase B (Feature Pipeline Completion) is now fully complete — C1 unblocked. |
-| 2026-06-10 | **B3 complete.** Created `features/player/game_context.py` (6 features: is_home, game_spread, over_under, implied_team_total, is_dome, rest_days). Joined from games CSV, no shift needed (pre-game data). Created `tests/unit/features/test_game_context.py` (28 tests, 9 classes). |
-| 2026-06-10 | **B2 complete.** Created `features/player/usage.py` (6 rolling usage features: target_share, carry_share, touch_share × L3/L6). Created `tests/unit/features/test_usage.py` (16 tests, 5 classes). Snap % deferred — nflreadpy does not expose snap count data. |
-| 2026-06-10 | **B1 complete.** Remediated all audit findings: F1 (null team guard), F3 (dedup 46 schedule-join mismatches), W1–W6 resolved. F2 confirmed false positive. Per-position NaN analysis completed. Final audit: 45 pass, 0 fail, 4 warn (non-blocking). Player game logs: 138,349 rows, 4,067 players, 0 null game_ids, 0 duplicates. |
-| 2026-06-05 | **Phase A audit completed.** Ran `audit_w4_phase_a.py` (43 pass, 2 fail, 4 warn). Code review of all 9 source files + 9 test files. Documented findings: 2 blocking (F1: game_id nulls, F2: fixture bug), 6 should-fix (W1–W6), 6 observations (O1–O6). NaN landscape table added. B1 updated to include audit remediation as first task. |
-| 2026-06-05 | **W4 detailed implementation plan.** Added Phases A–E + T with step-level tasks, dependency graph, file inventories (create/modify), NaN research backlog. Reconciled against actual directory structure (136 dirs, 722 files). Confirmed Phase A complete, all 5 prop model files scaffolded with tests. Updated completed workstream summaries (added sigma recal, feature eng expansion to 149). |
-| 2026-06-04 | **Complete rewrite.** Replaced stale W2-phase-detail PLAN with current state. Champion/challenger refactor complete. Removed resolved debt items (temporal CV, stale __pycache__). Updated backlog priorities (xgboost is new champion, W12 references its Brier). Removed W11 (live prediction pipeline already exists). |
-| 2026-06-03 | W6 complete. W5 complete. Renumbered to match ROADMAP v2. |
-| 2026-06-01 | W2, Feature Eng, Test Framework completed. |
-| 2026-05-31 | Initial PLAN.md created with backlog. |
+| 2026-06-10 | **Full rewrite.** New priority order: champion/challenger → game model refactor → integration tests → code review → scenario engine → API/frontend → external odds → evaluate. Three workstreams planned in detail (champion/challenger, game model refactor, integration tests). All design decisions locked. Generalized champion.py (option B) chosen for unified classification + regression gates. |

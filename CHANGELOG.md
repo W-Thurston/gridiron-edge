@@ -3,6 +3,160 @@
 What has been built and when. Newest first.
 
 ---
+#### 2026-06-10 — W4: Player Data & First Prop Models — Mostly Complete
+
+Complete player-level data pipeline, 5 trained prop models, post-processing
+enrichment, evaluation metrics, archive, and CLI. M3 milestone achieved.
+
+##### Player data foundation (Phase A)
+- **nflreadpy migration:** Switched from archived nfl_data_py to nflreadpy.
+  Key API changes: import_weekly_data() → load_player_stats().to_pandas().
+  nflreadpy returns Polars DataFrames requiring .to_pandas() conversion.
+- **Player stats ingest:** 26 seasons (1999–2024), ~5K rows/season,
+  42 columns per player-game row. Stored at data/raw/player_stats/.
+- **Player stats cleaning:** Dropped rows with null game_id (1 row,
+  1999 week 9), deduplicated 46 schedule-join mismatch rows.
+
+##### Player feature engineering (Phase B)
+- **Rolling features (features/player/rolling.py):** L3 and L6 rolling
+  mean + std for 23 stat columns (~46 features). Shift(1) prevents
+  lookahead. Position-specific stat columns.
+- **Matchup features (features/player/matchup.py):** 28 features —
+  14 defensive-allowed stats × 2 (L6 rolling average + rank).
+  Rankings: 1=toughest, 32=most generous. Joined via opponent_team.
+- **Usage features (features/player/usage.py):** 6 features —
+  target_share, carry_share, touch_share × L3/L6 windows.
+- **Game context features (features/player/game_context.py):** 6 features
+  from cleaned games CSV — is_home, game_spread, over_under,
+  implied_team_total, is_dome, rest_days. No shift(1) needed —
+  these are known pre-game.
+- **Unified builder (features/player/builder.py):**
+  build_prop_features(position_filter=["QB"]) chains all 4 builders
+  with single parquet load. NaN handling deferred to trainer.
+- **Programmatic feature list (features/player/_columns.py):**
+  PROP_FEATURE_COLS built from component modules — stays in sync.
+
+##### Prop model training (Phase C)
+- **PropTrainer base class (models/prop_prediction/base.py):**
+  - _load_data() calls build_prop_features()
+  - train() uses HOLDOUT_SEASONS (2023–2025) — consistent with game models
+  - Position-aware NaN handling: features with >50% NaN for the filtered
+    position are dropped before training
+  - _feature_columns() returns PROP_FEATURE_COLS
+  - _build_features() non-abstract — default returns df as-is
+  - Deleted dead _join_game_context() and _join_schedule_context()
+- **5 trained models (ElasticNet baselines):**
+
+| Model | Train | Holdout | MAE | RMSE | R² | Nonzero |
+|-------|-------|---------|-----|------|----|---------|
+| qb_pass_yards | 5,706 | 1,367 | 58.0 | 72.6 | 0.071 | 37/128 |
+| qb_rush_yards | 1,434 | 468 | 16.4 | 20.2 | 0.090 | 52/128 |
+| rb_rush_yards | 10,023 | 2,001 | 25.0 | 32.3 | 0.168 | 16/124 |
+| wr_rec_yards | 23,831 | 4,535 | 25.1 | 32.9 | 0.203 | 55/120 |
+| te_rec_yards | 10,087 | 2,052 | 18.3 | 24.2 | 0.188 | 58/120 |
+
+##### Post-processing enrichment (Phase C2)
+- **models/prop_prediction/post_process.py:** Pure function architecture.
+  - predicted_std = sqrt(model_rmse² + player_L3_std²)
+  - 90% prediction intervals, lo_90 clipped at 0
+  - P(over) = 1 - Φ((line - mean) / std), Normal CDF for V1
+  - Lean: Over (>0.55), Under (<0.45), No Edge
+  - Confidence tier: High (|p-0.5|>0.15), Moderate (>0.08), Low
+  - Line input optional — NaN line → NaN p_over/lean/tier
+  - TARGET_STD_MAP maps model names to rolling std columns
+
+##### Evaluation metrics (Phase D1)
+- **evaluation/prop_metrics.py:** 6 metric functions + orchestrator.
+  - AccuracyMetrics: MAE, RMSE, R², median AE
+  - BiasMetrics: mean error, % over-predicted
+  - CoverageMetrics: actual vs nominal coverage, interval width
+  - CalibrationMetrics: P(over) reliability diagram, MACE
+  - HitRateMetrics: Over/Under/overall, push exclusion
+  - TierMetrics: per-tier MAE, hit rate, |p_over - 0.5|
+  - PropEvalReport.print_summary() formatted output
+  - Graceful degradation: accuracy/bias always; others when data available
+
+##### Prop archive (Phase D2)
+- **evaluation/prop_archive.py:** Append-only Parquet.
+  - 19-column schema, dedup on (game_id, player_id, stat_type, model_version)
+  - Metadata: predicted_at, is_backfilled, model_version
+  - Optional filters on load: stat_type, season
+
+##### Prop CLI (Phase E1)
+- **cli/props.py:** 3 commands registered as gridiron props.
+  - gridiron props evaluate --model qb_pass_yards
+  - gridiron props projections [--model all] [--top 20]
+  - gridiron props backfill --model qb_pass_yards
+  - Lazy trainer registry for fast --help
+  - _train_and_enrich() shared helper
+
+##### First CLI evaluation (qb_pass_yards)
+- MAE: 63.4, RMSE: 80.6, R²: 0.118, Median AE: 51.8, N: 1,433
+- Bias: +9.7 (over-predicting), 52.8% over-predicted
+- Coverage: 93.8% (nominal 90%), interval width: 323.6
+
+##### Key design decisions
+- Position-aware NaN handling (>50% threshold per position)
+- predicted_std combines model RMSE + player L3 rolling std
+- No shift(1) on game context features (known pre-game)
+- Builder does NOT dropna — trainer handles with position context
+- PROP_FEATURE_COLS built programmatically from component modules
+- Spread derived from FAVORITED + abs(VEGAS_LINE)
+- Normal CDF for P(over) V1 — upgradeable to empirical later
+- Lean/tier thresholds consistent with game model post-processing
+
+##### Deferred
+- E2: DraftKings prop odds ingest
+- Champion/challenger for props (RF, XGBoost)
+- Integration/E2E tests for prop pipeline
+- Snap % features (nflreadpy doesn't expose snap counts)
+
+##### Tests added: ~90 new
+- test_prop_post_process.py (26 tests, 7 classes)
+- test_prop_archive.py (16 tests, 3 classes)
+- test_prop_metrics.py (23 tests, 7 classes)
+- test_builder.py (unit tests for unified builder)
+- test_qb_rush_yards.py (5 tests)
+- Updates to test_qb_pass_yards, test_rb_rush_yards, test_wr_rec_yards,
+  test_te_rec_yards (PROP_FEATURE_COLS migration)
+
+##### Files added
+
+| File |
+|------|
+| src/gridiron_edge/features/player/builder.py |
+| src/gridiron_edge/features/player/_columns.py |
+| src/gridiron_edge/features/player/game_context.py |
+| src/gridiron_edge/features/player/usage.py |
+| src/gridiron_edge/models/prop_prediction/post_process.py |
+| src/gridiron_edge/models/prop_prediction/qb_rush_yards.py |
+| src/gridiron_edge/evaluation/prop_metrics.py |
+| src/gridiron_edge/evaluation/prop_archive.py |
+| src/gridiron_edge/cli/props.py |
+| tests/unit/features/test_builder.py |
+| tests/unit/models/test_prop_post_process.py |
+| tests/unit/models/test_qb_rush_yards.py |
+| tests/unit/evaluation/test_prop_metrics.py |
+| tests/unit/evaluation/test_prop_archive.py |
+
+##### Files modified
+
+| File | Change |
+|------|--------|
+| src/gridiron_edge/models/prop_prediction/base.py | Rewired to build_prop_features, HOLDOUT_SEASONS, position-aware NaN |
+| src/gridiron_edge/models/prop_prediction/qb_pass_yards.py | Removed _build_features override |
+| src/gridiron_edge/models/prop_prediction/rb_rush_yards.py | Removed _build_features override |
+| src/gridiron_edge/models/prop_prediction/wr_rec_yards.py | Removed _build_features override |
+| src/gridiron_edge/models/prop_prediction/te_rec_yards.py | Removed _build_features override |
+| src/gridiron_edge/features/player/rolling.py | Added optional df param |
+| src/gridiron_edge/features/player/matchup.py | Added optional df param, fixed line length |
+| src/gridiron_edge/cli/main.py | Registered props_app |
+
+##### Summary
+- **9 new source files**, 8 modified
+- **5 new test files**, 4 modified, **~90 new tests**
+- All quality gates green: ruff, pyrefly, pytest
+
 #### 2026-06-04 — Sigma/Margin_std Recalibration & Versioned Model Cleanup — Complete
 
 Recalibrated spread derivation parameters and confidence tiers after

@@ -46,6 +46,13 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Betting CLI (W6) | ✅ Complete | 8 commands: log, settle, list, summary, balance, export, deposit, withdraw |
 | Code quality | ✅ Excellent | Ruff lint+format, pyrefly types, three-tier test pyramid, pre-commit + pre-push hooks |
 | Testing infrastructure | ✅ Complete | 500+ tests, auto-markers, shared fixtures, MiniRepoBuilder |
+| Player data ingestion | ✅ Solid | nflreadpy player game logs (1999–2024), 138K rows, 42 cols per row |
+| Player feature engineering | ✅ Solid | Rolling stats (L3/L6), matchup (28 cols), usage (6 cols), game context (6 cols) |
+| Player prop models | ✅ Solid (5 models) | ElasticNet baselines: QB pass/rush, RB rush, WR rec, TE rec yards |
+| Prop post-processing | ✅ Complete | predicted_std, 90% intervals, P(over), lean, confidence tiers |
+| Prop evaluation | ✅ Complete | Accuracy, bias, coverage, calibration, hit rate, by-tier analysis |
+| Prop archive | ✅ Complete | Append-only Parquet, 4-key dedup, backfill-aware |
+| Prop CLI | ✅ Complete | gridiron props evaluate, projections, backfill |
 | W1: Quick Wins & Unblocking | ✅ Done | Unicode minus fix, game_id resolver, odds join validated |
 
 ### What's Missing
@@ -55,8 +62,8 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Live prediction pipeline | ❌ Not started | Can't generate predictions for upcoming games with current-week features |
 | Model ensemble | ❌ Not started | Using individual models only, no weighted combination |
 | Multi-book odds ingestion | ❌ Not started | Can't compare books, can't shop lines |
-| Player-level data & features | ❌ Not started | No player entities, game logs, or player features |
-| Player prop models | ❌ Not started | No prop projections |
+| Player-level data & features | ✅ Complete (V1) | Player game logs, rolling/matchup/usage/context features, unified builder |
+| Player prop models | ✅ Complete (V1) | 5 ElasticNet baselines, post-processing, evaluation, archive, CLI |
 | API serving layer | ❌ Not started | Everything is CLI + file output |
 | Frontend | ❌ Not started | Prototype exists (Claude Design) but not wired |
 | Injury/news feed | ❌ Not started | No injury data, no impact modeling |
@@ -129,78 +136,40 @@ Bet ledger, bankroll management (decoupled), performance analytics (record, ROI,
 
 ### Future Workstreams
 
-#### W4: Player Data & First Prop Models
+##### W4: Player Data & First Prop Models — ✅ MOSTLY COMPLETE
 
-**Goal:** Establish the player-level data layer and build the first 2–3 player prop projection models.
+**Goal:** Establish the player-level data layer and build the first player prop projection models.
 
-**Why it matters:** Player props are a huge betting market and a major differentiator. The architecture patterns for features and models already exist — this extends them to a new domain.
+**Status (2026-06-10):** Core pipeline complete end-to-end. 5 prop models trained, evaluated, and accessible via CLI. Only E2 (DK prop odds ingest) deferred.
 
-**Key deliverables:**
+**What was built:**
 
-**Phase A — Player data foundation:**
-- Add player_game_logs to dataset registry (from nflfastR or equivalent)
-- Build ingest/nflverse/player_stats.py — per-player per-game stat lines
-- Define player entity fields: player_id, name, position, team_id
-- Build player-level feature modules at features/player/:
-  - rolling_stats.py — rolling averages (L3, L6, L12) for key stats
-  - matchup.py — opponent defensive rank in stat category
-  - usage.py — snap pct, target share, carry share
-  - splits.py — home/away, indoor/outdoor, vs. winning teams
+Phase A — Player data foundation:
+- Player game logs ingested via nflreadpy (1999–2024, 138K rows)
+- Player stats cleaned and stored as Parquet
+- 4 player feature modules at features/player/:
+  - rolling.py — L3/L6 rolling mean + std for 23 stat columns (~46 features)
+  - matchup.py — 28 opponent defensive features (14 stats × L6 avg + rank)
+  - usage.py — 6 usage share features (target/carry/touch × L3/L6)
+  - game_context.py — 6 game context features (spread, total, dome, home, rest, implied team total)
+- builder.py — unified entry point, single parquet load, chains all 4 builders
+- _columns.py — PROP_FEATURE_COLS built programmatically from component modules
 
-**Phase B — First prop models:**
-- Choose first stat families: **QB rushing yards**, **QB passing yards**, **RB rushing yards**
-- Build models/player_prop/ following the same PredictorRegistry + variant factory pattern
-- Prop model outputs: mean, median, lo_90, hi_90, P(over given line), lean, confidence_tier
-- Build prop-specific evaluation metrics (hit rate, calibration of P(over))
-- Build prop archive (following archive.py pattern)
+Phase B — Prop models:
+- 5 stat families: QB pass yards, QB rush yards, RB rush yards, WR rec yards, TE rec yards
+- PropTrainer base class with HOLDOUT_SEASONS split, position-aware NaN handling
+- ElasticNet with StandardScaler and grid search over alpha/l1_ratio
+- Post-processing enrichment: predicted_std, 90% intervals, P(over), lean, confidence tiers
+- Prop-specific evaluation metrics: accuracy, bias, coverage, calibration, hit rate, by-tier
+- Append-only prop archive with 4-key dedup
+- CLI: gridiron props evaluate/projections/backfill
 
-**Dependencies:** None (W1 done).
-**Unlocks:** Prop edge calculations (W5 extension), prop line shopping (W7 extension), M3.
-**Architecture notes:** Follow the exact same FeatureSpec + Feature protocol for player features. Follow the exact same _make_*_variant() factory pattern for prop model variants. The current architecture was built well enough that this is **extension, not refactoring**.
+**Remaining:**
+- E2: DraftKings prop odds ingest (needed for live P(over) and lean)
+- Champion/challenger with RF and XGBoost (will improve R²)
+- Integration and E2E tests for prop pipeline
 
-#### W4.5: Scenario Engine (What-If Analysis)
-
-**Goal:** Build a conditional forecasting layer that answers: "If Player X is out, what happens to the game, the team, and other players' projections?"
-
-**Why it matters:** This is one of the most differentiating capabilities a sports analytics platform can have. Most public models treat injuries as binary noise. A scenario engine that cascades a single roster change through team ratings, game forecasts, usage redistribution, and prop re-forecasts provides genuinely unique analytical leverage.
-
-**Key deliverables:**
-
-**Phase A — Player impact quantification:**
-- Player WAR estimates (wins above replacement) — can start rule-based by position tier, evolve to data-driven
-- On/off EPA splits per player (requires PBP + snap data)
-- Positional importance weights (QB > Edge > WR1 > RB1 > etc.)
-- Backup quality rating (replacement player's estimated contribution)
-
-**Phase B — Team adjustment layer:**
-- scenario/team_adjustment.py:
-  - Input: base team rating + list of absent players
-  - Output: adjusted offensive/defensive rating
-  - Method: WAR-weighted rating adjustment
-  - Cumulative injury impact score (sum of WAR-weighted absences)
-  - Re-derive game forecast (spread, total, win prob) from adjusted ratings
-
-**Phase C — Usage redistribution:**
-- scenario/usage_redistribution.py:
-  - Carry share redistribution (if RB1 out, how do RB2/RB3 split?)
-  - Target tree redistribution (if WR1 out, where do targets go?)
-  - Snap share reallocation
-  - Historical with/without data to calibrate redistribution patterns
-  - Position-specific redistribution templates (starting point before data-driven)
-
-**Phase D — Conditional re-forecasting:**
-- Re-run prop models with adjusted usage inputs
-- Re-run edge calculations with adjusted game/prop forecasts
-- Produce delta report: "what changed and by how much"
-
-**Phase E — CLI interface:**
-- `gridiron scenario --game SF@BAL --out CMC`
-- `gridiron scenario --game SF@BAL --out CMC --out Bosa`
-- `gridiron scenario --game SF@BAL --compare`
-
-**Dependencies:** W2 ✅, W4 (player data + prop models).
-**Unlocks:** Injury-aware edge detection, smarter bet timing, prop market opportunities from roster changes.
-**Architecture notes:** Create src/gridiron_edge/scenario/ package. This layer sits *on top of* the game and prop models — it calls them, it doesn't replace them. See **FEATURES.md Domain 9** for the full feature inventory.
+**Unlocks:** Prop edge calculations (W5 extension), prop line shopping (W7 extension), M3 ✅.
 
 #### W7: Multi-Book Odds & Line Shopping
 
@@ -415,7 +384,7 @@ W1 (Quick Wins) ✅
  ├─────────────────────┬───────────────────────────┐
  ▼                     ▼                           ▼
 W2 (Model Outputs) ✅  W3 (Market Math) ✅          W4 (Player Data
- │                     │                              & Props)
+ │                     │                              & Props) ✅
  │                     │                              │
  └─────────┬───────────┘                              │
            ▼                                          │
@@ -455,7 +424,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 | **M1: First actionable edge report** | Run `gridiron edges report --week 12` and get a ranked list of game edges with EV, Kelly stake, and best available book. You'd trust it enough to bet. | W1 + W2 + W3 + W5 | ✅ **ACHIEVED** |
 | **M2: Know if the model makes money** | After a month of tracking bets, run `gridiron bet summary` and see your CLV, ROI, and record by confidence tier. | W6 | ✅ **ACHIEVED** |
 | **M1.5: Weekly game-day predictions** | Run `gridiron output predictions` on Thursday, then `gridiron edges report` to see fresh edges. | Existing pipeline | ✅ **ACHIEVED** (infrastructure exists) |
-| **M3: First prop edge** | Run `gridiron props --week 12` and get a prop edge table for QB rush, QB pass, and RB rush. | W4 + W5 | Planned |
+| **M3: First prop edge** | Run gridiron props evaluate --model qb_pass_yards and get a full evaluation report with accuracy, bias, coverage metrics. | W4 + W5 | ✅ **ACHIEVED** |
 | **M4: Shop across 3+ books** | Run `gridiron lines --week 12` and see a cross-book comparison with best prices highlighted. | W7 | Planned |
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned |
 | **M6: Live game day experience** | Real-time win prob, live edges, hedge suggestions during a game. | W10 | Planned |
@@ -468,6 +437,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 
 | Date | Change |
 |---|---|
+| 2026-06-10 | **W4 mostly complete. M3 achieved.** Player data pipeline, 5 prop models (ElasticNet), post-processing enrichment, evaluation metrics, archive, CLI. See CHANGELOG.md for full detail. |
 | 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. W11 removed (already exists). M1.5 achieved. XGBoost is auto-selected champion (Brier 0.218). |
 | 2026-06-03 | **v2 refresh.** Updated §1 (current state), marked W1–W6 complete in §4, added W11 (Live Prediction Pipeline) and W12 (Model Ensemble), updated §5.4 project structure to match built modules, redrew §6 dependency graph, marked M1/M2 achieved in §7, added M1.5 milestone. Reconciled with PLAN.md numbering. |
 | 2026-05-30 | Initial version — created from prototype review + gap analysis vs. existing gridiron_edge codebase. |

@@ -135,7 +135,7 @@
 | Season week number | Early vs late season dynamics | Game | 🟢 Low | Low | ❌ |
 | Playoff/elimination context | Must-win games may play differently | Game | 🟢 Low | Med | ❌ |
 | Rest differential | Team A days rest minus Team B days rest | Game | 🟡 Med | Low | ✅ Done |
-| Opponent rest | The other team's rest situation | Game | 🟡 Med | Low | ❌ |
+| Opponent rest | The other team's rest situation | Game | 🟡 Med | Low | ✅ Done |
 | Back-to-back road games | Fatigue / travel compounding | Game | 🟢 Low | Low | ❌ |
 
 ---
@@ -170,7 +170,7 @@
 | Consensus closing total | Market estimate of combined scoring | Game, Props | 🔴 High | Med | ❌ |
 | Opening line | Where the line opened — often reflects sharp money | Game | 🟡 Med | Med | ❌ |
 | Line movement (open → current) | Direction and magnitude of movement | Game | 🟡 Med | Med | ❌ |
-| Implied team total | (Total ± Spread) / 2 — crucial for prop context | Props | 🔴 High | Low | ❌ |
+| Implied team total | (Total ± Spread) / 2 — crucial for prop context | Props | 🔴 High | Low | ✅ Done |
 | Market win probability (no-vig) | De-vigged implied probability from market | Game | 🔴 High | Med | ❌ |
 | Reverse line movement flag | Line moves opposite to public money | Game | 🟡 Med | High | ❌ |
 | Sharp book (Pinnacle) line | Pinnacle as a separate "sharp" feature | Game | 🟡 Med | Med | ❌ |
@@ -184,26 +184,26 @@
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| Rolling stat mean (L3, L6, L12) | Per-stat rolling averages at multiple windows | Props | 🔴 High | Med | ❌ |
+| Rolling stat mean (L3, L6, L12) | Per-stat rolling averages at multiple windows | Props | 🔴 High | Med | ✅ Done (L3 + L6) |
 | Rolling stat median | More robust to outliers than mean | Props | 🟡 Med | Med | ❌ |
-| Rolling stat std dev | Player's own variance — feeds uncertainty bands | Props | 🔴 High | Med | ❌ |
+| Rolling stat std dev | Player's own variance — feeds uncertainty bands | Props | 🔴 High | Med | ✅ Done |
 | Season average | Full-season baseline | Props | 🟡 Med | Low | ❌ |
 | Snap % (rolling) | Playing time trend | Props | 🔴 High | Med | ❌ |
-| Target share (WR/TE) | % of team targets | Props | 🔴 High | Med | ❌ |
-| Carry share (RB) | % of team carries | Props | 🔴 High | Med | ❌ |
+| Target share (WR/TE) | % of team targets | Props | 🔴 High | Med | ✅ Done |
+| Carry share (RB) | % of team carries | Props | 🔴 High | Med | ✅ Done |
 | Route participation rate | % of pass plays where WR runs a route | Props | 🟡 Med | High | ❌ |
 | Red zone target/carry share | High-value touch distribution | Props | 🟡 Med | Med | ❌ |
-| Air yards share | % of team air yards (WR) | Props | 🟡 Med | Med | ❌ |
+| Air yards share | % of team air yards (WR) | Props | 🟡 Med | Med | ✅ Done |
 | Yards per route run | Efficiency per opportunity (WR/TE) | Props | 🔴 High | High | ❌ |
 | Yards per carry (rolling) | RB efficiency | Props | 🟡 Med | Low | ❌ |
 | Yards per target (rolling) | WR/TE efficiency | Props | 🟡 Med | Low | ❌ |
-| Matchup: opponent rank vs position | Opponent's defensive rank against this stat | Props | 🔴 High | Med | ❌ |
-| Matchup: opponent EPA allowed vs position | More granular matchup quality | Props | 🔴 High | Med | ❌ |
+| Matchup: opponent rank vs position | Opponent's defensive rank against this stat | Props | 🔴 High | Med | ✅ Done |
+| Matchup: opponent EPA allowed vs position | More granular matchup quality | Props | 🔴 High | Med | ✅ Done |
 | Home/away split | Player's home vs away performance | Props | 🟡 Med | Low | ❌ |
 | Indoor/outdoor split | Dome vs open-air | Props | 🟡 Med | Low | ❌ |
 | vs. winning teams split | Performance against good teams | Props | 🟢 Low | Low | ❌ |
-| Game script proxy (spread) | Implied game flow from spread | Props | 🔴 High | Low | ❌ |
-| Implied team total | (Total ± Spread) / 2 — volume expectation | Props | 🔴 High | Low | ❌ |
+| Game script proxy (spread) | Implied game flow from spread | Props | 🔴 High | Low | ✅ Done |
+| Implied team total | (Total ± Spread) / 2 — volume expectation | Props | 🔴 High | Low | ✅ Done |
 | Weather × stat interaction | Wind + cold suppress passing, boost rushing | Props | 🟡 Med | Med | ❌ |
 | Return from injury flag | First game back — usage often limited | Props, What-If | 🟡 Med | Med | ❌ |
 | Weeks since injury | Ramp-up trajectory | Props, What-If | 🟡 Med | Med | ❌ |
@@ -313,11 +313,11 @@ Ranked by signal × cost ratio. These feed directly into PLAN.md as actionable t
 | 5 | Red zone TD % (off + def) | Off/Def | Game | Easy from PBP, affects scoring (DONE) |
 | 6 | Turnover differential / game | Turnovers | Game | Simple, some signal (DONE) |
 | 7 | Sack rate (off + def) | Off/Def | Game, Props | Easy from PBP, affects QB props (DONE) |
-| 8 | Implied team total | Market | Props | Pure math once you have spread + total |
-| 9 | Rolling stat mean (L6) per player | Player | Props | Foundation for all prop models |
-| 10 | Rolling stat std dev per player | Player | Props | Feeds uncertainty bands |
-| 11 | Snap % (rolling) per player | Player | Props | Usage = volume = projections |
-| 12 | Matchup: opponent rank vs position | Player | Props | The #1 prop-specific feature |
+| 8 | Implied team total | Market | Props | Pure math once you have spread + total ✅ Done (game_context.py) |
+| 9 | Rolling stat mean (L6) per player | Player | Props | Foundation for all prop models ✅ Done (L3 + L6, rolling.py) |
+| 10 | Rolling stat std dev per player | Player | Props | Feeds uncertainty bands ✅ Done (rolling.py) |
+| 11 | Snap % (rolling) per player | Player | Props | Usage = volume = projections Deferred (nflreadpy doesn't expose snap counts) |
+| 12 | Matchup: opponent rank vs position | Player | Props | The #1 prop-specific feature ✅ Done (matchup.py) |
 | 13 | QB rush yards/game (rolling) | QB | Props | Direct input for first prop model |
 | 14 | Rest differential | Schedule | Game | Already have each team's rest — just subtract (DONE) |
 | 15 | Explosive play rate | Offense | Game | Captures big-play ability beyond EPA mean (DONE) |
@@ -333,9 +333,9 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 |--------|-------|
 | Total features cataloged | ~120 |
 | Domains | 11 |
-| Currently Done | ~37 |
+| Currently Done | ~45+ |
 | Partial / In Schema | ~6 |
-| Missing | ~80 |
+| Missing | ~75 |
 | High-signal features | ~35 |
 | Low-cost features | ~50 |
 
@@ -345,6 +345,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-06-10 | W4 player features built. Marked ~15 Domain 8 features as Done: rolling stats (L3+L6 mean/std), usage shares (target/carry/touch), matchup ranks, game context (spread, total, dome, home, rest, implied team total). Priority Matrix items 8–10, 12 complete. Snap % deferred (nflreadpy doesn't expose snap counts). |
 | 2026-06-04 | Marked plays/pace, yards_per_play, redzone_attempts, int_rate (off), penalty_rate, avg_score_diff, close_game_pct as DONE. CPOE marked Partial (computed but excluded from model features due to NaN). EPA_COLS 22→36, _EXPANDED_FEATURES 107→149. Champions rejected challengers — features retained for future prop models and systematic selection. |
 | 2026-06-01 | Marked Phase 20e priorities 1–7, 14–15 as DONE. Added 14 features across EPA, efficiency, and situational domains. |
 | 2026-05-30 | Initial version — comprehensive brainstorm from prototype review + gap analysis. |

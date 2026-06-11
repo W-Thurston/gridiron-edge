@@ -38,6 +38,14 @@ How everything works right now. Assumes you know what the project does — see [
 | Bankroll management | `gridiron_edge.betting.bankroll` — transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
 | Performance analytics | `gridiron_edge.betting.performance` — pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
 | Betting CLI | `gridiron_edge.cli.betting` — 8 commands: log, settle, list, summary, balance, export, deposit, with |
+| Player stats ingest | `gridiron_edge.ingest.nflverse` (nflreadpy player game logs, 1999–2024) |
+| Player stats cleaning | `gridiron_edge.transform.clean.player_stats` |
+| Player feature engineering | `gridiron_edge.features.player` — rolling, matchup, usage, game_context, builder, _columns |
+| Prop model training | `gridiron_edge.models.prop_prediction` — base (PropTrainer), qb_pass_yards, qb_rush_yards, rb_rush_yards, wr_rec_yards, te_rec_yards |
+| Prop post-processing | `gridiron_edge.models.prop_prediction.post_process` — predicted_std, intervals, P(over), lean, confidence tiers |
+| Prop evaluation metrics | `gridiron_edge.evaluation.prop_metrics` — accuracy, bias, coverage, calibration, hit rate, by-tier |
+| Prop prediction archive | `gridiron_edge.evaluation.prop_archive` — append-only Parquet, 4-key dedup |
+| Prop CLI | `gridiron_edge.cli.props` — evaluate, projections, backfill |
 
 ---
 
@@ -49,10 +57,12 @@ How everything works right now. Assumes you know what the project does — see [
 | `src/gridiron_edge/ingest/` | All data ingestion (nflverse, weather, odds) |
 | `src/gridiron_edge/transform/` | Raw → canonical schema mappers |
 | `src/gridiron_edge/features/` | Feature registry, pipeline, dependency validation |
+| `src/gridiron_edge/features/player/` | Player feature modules: rolling, matchup, usage, game_context, builder, _columns |
 | `src/gridiron_edge/market/` | Odds math, Kelly staking, edge detection, edge reports, CLV analysis |
 | `src/gridiron_edge/betting/` | Bet ledger, bankroll transaction log, performance analytics |
 | `src/gridiron_edge/ratings/elo/` | Elo table, fit, predict, evaluate |
 | `src/gridiron_edge/models/` | Predictor protocol, artifact store, model registry, game prediction variants |
+| `src/gridiron_edge/models/prop_prediction/` | PropTrainer base + 5 position-stat trainers + post_process |
 | `src/gridiron_edge/evaluation/` | Metrics, backfill, archive, tuning, model selection |
 | `src/gridiron_edge/sim/` | Monte Carlo season + playoff simulation |
 | `src/gridiron_edge/viz/` | Predictions image/HTML, playoff table, rankings CSV |
@@ -65,13 +75,17 @@ How everything works right now. Assumes you know what the project does — see [
 ```
 data/
   raw/          nflverse Parquet files (games, upcoming schedule, PBP)
+    /player_stats/    per-season player game logs (Parquet)
   cleaned/      Canonical CSVs (games, schedule, Elo state, stadiums)
+    /player_game_logs.parquet   cleaned player stats
   modeling/     Feature matrix (base + full, Parquet)
   output/
     predictions/{year}/          week_NN_predictions.png + .html + .csv
     predictions/predictions_log.parquet   prediction archive (all models)
     rankings/                    elo_rankings_{year}_wkNN.csv
     sim/                         playoff probability tables
+    props/
+      prop_predictions_log.parquet   prop prediction archive (all models)
   odds/
     dk_odds_log.parquet          Full historical ledger (all pulls)
     dk_odds_current.parquet      Latest pull snapshot (for viz)
@@ -220,6 +234,49 @@ won = stake × decimal_odds, lost = 0, push = stake. This means
 `bet_placed` always deducts the full stake, and `bet_settled` credits
 back whatever is returned. The running balance is the cumulative sum
 of all signed transactions.
+
+#### Player feature pipeline is a single-load chain
+
+build_prop_features(position_filter=["QB"]) loads player_game_logs.parquet
+once, then chains all 4 feature builders in sequence:
+rolling → matchup → usage → game_context → filter by position.
+NaN handling is deferred to the trainer (not the builder) because the
+trainer has position context to determine which features have reasonable
+coverage. Features with >50% NaN for the filtered position are dropped.
+
+#### Prop models use HOLDOUT_SEASONS, consistent with game models
+
+PropTrainer.train() parses HOLDOUT_SEASONS ("2023-2024" → int 2023) for
+the integer season column in player data. Same holdout split as game models.
+
+#### Prop post-processing is a separate pure function
+
+enrich_prop_predictions() is a standalone function, not inside train().
+Works for both holdout evaluation and live predictions. Matches the game
+model pattern (enrich_predictions is separate from predict).
+
+#### predicted_std combines two uncertainty sources
+
+predicted_std = sqrt(model_rmse² + player_L3_std²). Model RMSE is the same
+for all players; player rolling std captures per-player volatility. When
+player std is NaN (early season), defaults to model RMSE alone (conservative).
+
+#### Game context features do not use shift(1)
+
+Spread, total, dome, rest are known pre-game — they are legitimate
+predictors at prediction time, unlike rolling stats which would cause
+lookahead if not shifted.
+
+#### PROP_FEATURE_COLS is built programmatically
+
+features/player/_columns.py builds the feature list from component modules
+(rolling, matchup, usage, game_context). Adding a feature to any module
+automatically includes it in the prop model feature set.
+
+#### Prop archive dedup key
+
+(game_id, player_id, stat_type, model_version) — last write wins.
+Same append-only pattern as the game prediction archive.
 
 #### Champion/challenger model promotion
 
@@ -541,6 +598,19 @@ python -c "from gridiron_edge.evaluation.archive import migrate_archive; migrate
 
 Adds `is_backfilled` column to existing prediction archives. Idempotent.
 
+```bash
+#### Prop model evaluation
+uv run gridiron props evaluate --model qb_pass_yards
+uv run gridiron props evaluate --model rb_rush_yards
+
+#### Prop projections
+uv run gridiron props projections --model all --top 20
+uv run gridiron props projections --model qb_pass_yards --top 10
+
+#### Prop backfill
+uv run gridiron props backfill --model qb_pass_yards
+```
+
 ---
 
 ## File contract
@@ -556,6 +626,9 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | `data/output/predictions/predictions_log.parquet` | Prediction archive — `is_backfilled` flags historical vs live |
 | `data/odds/dk_odds_log.parquet` | Full DK odds history (long format) |
 | `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot for viz |
+| `data/raw/player_stats/player_stats_{season}.parquet` | Per-season player game logs from nflreadpy |
+| `data/cleaned/player_game_logs.parquet` | Cleaned player stats (138K rows, deduped) |
+| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive — dedup on (game_id, player_id, stat_type, model_version) |
 
 ---
 
@@ -586,6 +659,16 @@ Adds `is_backfilled` column to existing prediction archives. Idempotent.
 | Prediction pipeline orchestrator | `models/game_prediction/pipeline.py` |
 | Total points model | `models/game_prediction/total.py` |
 | Prediction archive schema | `evaluation/archive.py` — `_ARCHIVE_COLUMNS` |
+| Player feature pipeline | `features/player/builder.py`, `features/player/_columns.py` |
+| Player rolling features | `features/player/rolling.py` |
+| Player matchup features | `features/player/matchup.py` |
+| Player usage features | `features/player/usage.py` |
+| Player game context features | `features/player/game_context.py` |
+| Prop model base class | `models/prop_prediction/base.py` |
+| Prop post-processing | `models/prop_prediction/post_process.py` |
+| Prop evaluation metrics | `evaluation/prop_metrics.py` |
+| Prop prediction archive | `evaluation/prop_archive.py` |
+| Prop CLI | `cli/props.py` |
 
 All paths relative to `src/gridiron_edge/`.
 
@@ -694,3 +777,5 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 8. `gridiron bet settle {BET_ID} {won|lost|push}`
 9. `gridiron bet summary`
 10. `gridiron bet balance`
+11. `uv run gridiron props evaluate --model qb_pass_yards` — evaluate prop model
+12. `uv run gridiron props projections --model all` — generate prop projections
