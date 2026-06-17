@@ -3,6 +3,54 @@
 What has been built and when. Newest first.
 
 ---
+
+### 2026-06-17 — Workstream 1: Champion/Challenger for Props
+
+- **Prop model factory pattern** (`PropModelType` enum: elasticnet,
+  random_forest, xgboost) with `_create_model()` factory and
+  `_get_param_grid()` providing per-algorithm HP search spaces
+  (ElasticNet: 25 combos, RandomForest: 36, XGBoost: 54).
+- **Spec-only subclasses**: all 5 prop trainers (`qb_pass_yards`,
+  `qb_rush_yards`, `rb_rush_yards`, `wr_rec_yards`, `te_rec_yards`)
+  reduced to ~15-20 lines each. Shared `_fit()`, `_predict()`,
+  and `train(model_type=)` consolidated in `PropTrainer` base.
+- **`clip_lo` / `clip_hi` on `PropModelSpec`**: spec-driven prediction
+  clipping (0.0 floor; per-position ceilings of 200-600 yards).
+- **`model_type` field on `PropModelMetadata`**: artifact tracking.
+- **Generalized champion/challenger gates** in `evaluation/champion.py`:
+  - Classification path (game models) renamed for symmetry:
+    `ClassificationPromotionGates`, `ClassificationComparisonResult`,
+    `extract_classification_metrics`, `compare_classification_models`,
+    `format_classification_comparison`.
+  - Regression path (prop models): `RegressionPromotionGates` (R² > 0,
+    coverage in [0.85, 0.97]), `RegressionModelResult`,
+    `RegressionComparisonResult`, `compare_regression_models()`,
+    `select_prop_champion()` (lowest MAE among eligible, ElasticNet
+    fallback per Decision #11), `format_regression_comparison()`.
+- **CLI enhancements** in `cli/props.py`:
+  - `evaluate --model-type {elasticnet,random_forest,xgboost}`
+  - New `champion` command — trains all 3 types, compares, selects
+  - `console.header()` / `step()` / `console.summary()` parity with
+    game model CLI; tqdm bars match game model styling
+    (ncols=88, colour="cyan", live best-metric postfix).
+- **Tests**: 15 prop champion tests (factory, grids, clips), 16
+  regression champion gate tests, 5 CLI structure tests, plus
+  updates to existing classification tests for renamed symbols.
+
+### Validated
+
+- All 15 prop model trainings completed via
+  `gridiron props champion --model all`.
+- ElasticNet selected as champion in 5/5 stat families.
+- `qb_rush_yards` triggered fallback policy (no model passes R²>0
+  guardrail) — known limitation; feature work deferred to later WS.
+
+### Changed
+
+- `cli/models.py`: updated to use renamed classification symbols
+  (`ClassificationComparisonResult`, `compare_classification_models`,
+  `extract_classification_metrics`).
+
 #### 2026-06-10 — W4: Player Data & First Prop Models — Mostly Complete
 
 Complete player-level data pipeline, 5 trained prop models, post-processing
