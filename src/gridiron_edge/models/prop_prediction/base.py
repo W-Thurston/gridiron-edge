@@ -374,7 +374,14 @@ class PropTrainer(ABC):
         best_mae: float = float("inf")
         best_params: dict[str, Any] = {}
 
-        for params in tqdm(grid, desc=f"HP search ({model_type.value})"):
+        bar = tqdm(
+            grid,
+            desc=f"  {self.spec.name} ({model_type})",
+            unit="combo",
+            ncols=88,
+            colour="cyan",
+        )
+        for params in bar:
             model, scaler = _create_model(model_type)
             model.set_params(**params)
 
@@ -392,6 +399,7 @@ class PropTrainer(ABC):
             if mae < best_mae:
                 best_mae = mae
                 best_params = params
+                bar.set_postfix_str(f"best MAE={best_mae:.1f}")
 
         # Retrain on full training set with best params
         model, scaler = _create_model(model_type)

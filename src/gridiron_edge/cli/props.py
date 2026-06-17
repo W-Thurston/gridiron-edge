@@ -1,11 +1,11 @@
 # src/gridiron_edge/cli/props.py
 """CLI commands for player prop projections.
 
-Provides three sub-commands:
-
+Provides four sub-commands:
     gridiron props projections   Prop projections table for a given week
     gridiron props evaluate      Holdout evaluation report for a prop model
     gridiron props backfill      Backfill historical predictions to archive
+    gridiron props champion      Train all model types, compare, select champion
 """
 
 from __future__ import annotations
@@ -15,13 +15,15 @@ from logging import Logger
 from pathlib import Path
 from typing import Final
 
+from numpy import ndarray
 from pandas import DataFrame, Series
 
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.core.console import console, step
 from gridiron_edge.evaluation.prop_metrics import PropEvalReport
-from gridiron_edge.models.prop_prediction.base import PropTrainer
+from gridiron_edge.models.prop_prediction.base import PropModelMetadata, PropModelType, PropTrainer
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -56,8 +58,15 @@ def _get_trainer(model_name: str) -> PropTrainer:
     return cls()
 
 
-def _train_and_enrich(model_name: str) -> tuple[DataFrame, float]:
+def _train_and_enrich(
+    model_name: str,
+    model_type: PropModelType = PropModelType.ELASTICNET,
+) -> tuple[DataFrame, float]:
     """Train a model, generate holdout predictions, and enrich them.
+
+    Args:
+        model_name: Which stat family (e.g. "qb_pass_yards").
+        model_type: Algorithm to use (elasticnet, random_forest, xgboost).
 
     Returns:
         Tuple of (enriched predictions DataFrame, model RMSE).
@@ -70,8 +79,8 @@ def _train_and_enrich(model_name: str) -> tuple[DataFrame, float]:
         enrich_prop_predictions,
     )
 
-    trainer = _get_trainer(model_name)
-    meta = trainer.train()
+    trainer: PropTrainer = _get_trainer(model_name)
+    meta: PropModelMetadata = trainer.train(model_type=model_type)
 
     # Build features for holdout predictions
     from gridiron_edge.core.constants import HOLDOUT_SEASONS
@@ -83,13 +92,13 @@ def _train_and_enrich(model_name: str) -> tuple[DataFrame, float]:
     df = df.loc[df["season"].isin(holdout_ints), :].copy()
 
     # Get feature columns and filter to usable ones
-    feature_cols = trainer._feature_columns()
+    feature_cols: list[str] = trainer._feature_columns()
     available: list[str] = [c for c in feature_cols if c in df.columns]
     nan_rates: Series = df[available].isna().mean()
     usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
 
     # Drop NaN
-    target = trainer.spec.target_col
+    target: str = trainer.spec.target_col
     df = df.dropna(subset=[*usable, target])
 
     if len(df) == 0:
@@ -97,7 +106,7 @@ def _train_and_enrich(model_name: str) -> tuple[DataFrame, float]:
         raise typer.Exit(code=1)
 
     # Generate predictions
-    preds = trainer._predict(df[usable])
+    preds: ndarray = trainer._predict(df[usable])
     df["predicted_mean"] = preds
     df["stat_type"] = model_name
 
@@ -128,39 +137,145 @@ def evaluate_cmd(
         "-m",
         help=f"Model to evaluate. Options: {_ALL_MODELS}",
     ),
+    model_type: str = typer.Option(
+        "elasticnet",
+        "--model-type",
+        "-t",
+        help="Algorithm type: elasticnet, random_forest, xgboost",
+    ),
 ) -> None:
     """Run holdout evaluation report for a prop model."""
     from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
 
-    typer.echo(f"\n🏈 Evaluating {model}...\n")
+    mt = PropModelType(model_type)
+    console.header("props evaluate", subtitle=f"{model} · {mt}")
 
-    enriched, _rmse = _train_and_enrich(model)
-    target = _get_trainer(model).spec.target_col
+    with step(f"Train {model} ({mt})") as s:
+        enriched, _rmse = _train_and_enrich(model, model_type=mt)
+        s.set_rows(len(enriched))
+        s.set_detail(f"RMSE={_rmse:.1f}")
 
-    report: PropEvalReport = evaluate_prop_model(
-        model_name=model,
-        actual=enriched[target],
-        predicted_mean=enriched["predicted_mean"],
-        predicted_std=enriched.get("predicted_std"),
-        lo_90=enriched.get("lo_90"),
-        hi_90=enriched.get("hi_90"),
-    )
+    with step("Evaluate holdout") as s:
+        target = _get_trainer(model).spec.target_col
+        report: PropEvalReport = evaluate_prop_model(
+            model_name=model,
+            actual=enriched[target],
+            predicted_mean=enriched["predicted_mean"],
+            predicted_std=enriched.get("predicted_std"),
+            lo_90=enriched.get("lo_90"),
+            hi_90=enriched.get("hi_90"),
+        )
+        s.set_detail(f"MAE={report.accuracy.mae:.1f}  R²={report.accuracy.r2:.3f}")
 
-    # Print accuracy summary to console
-    typer.echo(f"  MAE:       {report.accuracy.mae:.1f}")
+    typer.echo(f"\n  MAE:       {report.accuracy.mae:.1f}")
     typer.echo(f"  RMSE:      {report.accuracy.rmse:.1f}")
     typer.echo(f"  R²:        {report.accuracy.r2:.3f}")
     typer.echo(f"  Median AE: {report.accuracy.median_ae:.1f}")
     typer.echo(f"  N:         {report.accuracy.n:,}")
     typer.echo(f"\n  Bias:      {report.bias.mean_error:+.1f}")
     typer.echo(f"  % Over:    {report.bias.pct_over_predicted:.1%}")
-
     if report.coverage is not None:
         typer.echo(
             f"\n  Coverage:  {report.coverage.actual_coverage:.1%}"
             f" (nominal {report.coverage.nominal_coverage:.0%})"
         )
         typer.echo(f"  Interval:  {report.coverage.mean_interval_width:.1f} avg width")
+
+    console.summary()
+
+
+@props_app.command("champion")
+def champion_cmd(
+    model: str = typer.Option(
+        "all",
+        "--model",
+        "-m",
+        help=f"Model to run champion selection on. 'all' runs all. Options: {_ALL_MODELS}",
+    ),
+) -> None:
+    """Train all model types for a stat family and select champion.
+
+    Trains ElasticNet, RandomForest, and XGBoost for each specified model,
+    runs guardrail checks, and selects the champion with lowest MAE.
+    """
+    from gridiron_edge.evaluation.champion import (
+        RegressionComparisonResult,
+        RegressionModelResult,
+        compare_regression_models,
+        format_regression_comparison,
+        select_prop_champion,
+    )
+    from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
+
+    models: list[str] = _ALL_MODELS if model == "all" else [model]
+    model_types: list[PropModelType] = list(PropModelType)
+
+    for m in models:
+        console.header("props champion", subtitle=m)
+
+        results: list[RegressionModelResult] = []
+
+        for mt in model_types:
+            with step(f"Train {m} ({mt})") as s:
+                try:
+                    enriched, _rmse = _train_and_enrich(m, model_type=mt)
+                    target: str = _get_trainer(m).spec.target_col
+
+                    report: PropEvalReport = evaluate_prop_model(
+                        model_name=m,
+                        actual=enriched[target],
+                        predicted_mean=enriched["predicted_mean"],
+                        predicted_std=enriched.get("predicted_std"),
+                        lo_90=enriched.get("lo_90"),
+                        hi_90=enriched.get("hi_90"),
+                    )
+
+                    coverage: float = float("nan")
+                    if report.coverage is not None:
+                        coverage = report.coverage.actual_coverage
+
+                    result = RegressionModelResult(
+                        model_type=str(mt),
+                        mae=report.accuracy.mae,
+                        rmse=report.accuracy.rmse,
+                        r2=report.accuracy.r2,
+                        coverage=coverage,
+                    )
+                    results.append(result)
+
+                    s.set_detail(
+                        f"MAE={result.mae:.1f}  RMSE={result.rmse:.1f}  R²={result.r2:.3f}"
+                    )
+                    s.set_rows(len(enriched))
+
+                except Exception as e:
+                    typer.echo(f"    ⚠️  {mt} failed: {e}")
+                    raise
+
+        if not results:
+            typer.echo(f"\n  ❌ No models trained successfully for {m}.")
+            console.summary()
+            continue
+
+        # Select champion
+        with step("Select champion") as s:
+            champion, summary = select_prop_champion(results)
+            s.set_detail(f"🏆 {champion.model_type} (MAE={champion.mae:.2f})")
+
+        typer.echo(summary)
+
+        # Show pairwise comparisons against champion
+        challengers: list[RegressionModelResult] = [
+            r for r in results if r.model_type != champion.model_type
+        ]
+        for challenger in challengers:
+            comparison: RegressionComparisonResult = compare_regression_models(champion, challenger)
+            typer.echo(format_regression_comparison(comparison))
+
+        console.summary()
+
+    if len(models) > 1:
+        typer.echo("  Champion selection complete across all stat families.\n")
 
 
 @props_app.command("backfill")
