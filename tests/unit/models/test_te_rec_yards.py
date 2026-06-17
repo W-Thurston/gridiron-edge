@@ -3,9 +3,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
-import pytest
-
 from gridiron_edge.features.player._columns import PROP_FEATURE_COLS
 from gridiron_edge.models.prop_prediction.te_rec_yards import (
     TERecYardsTrainer,
@@ -22,11 +19,11 @@ class TestTERecYardsSpec:
     def test_position_filter(self) -> None:
         assert TERecYardsTrainer().spec.position_filter == ["TE"]
 
-    def test_not_fitted_raises(self) -> None:
-        trainer = TERecYardsTrainer()
-        dummy = pd.DataFrame({col: [0.0] for col in PROP_FEATURE_COLS})
-        with pytest.raises(RuntimeError, match="Model not fitted"):
-            trainer._predict(dummy)
+    def test_clip_hi(self) -> None:
+        assert TERecYardsTrainer().spec.clip_hi == 250
+
+    def test_clip_lo(self) -> None:
+        assert TERecYardsTrainer().spec.clip_lo == 0.0
 
     def test_uses_prop_feature_cols(self) -> None:
         trainer = TERecYardsTrainer()

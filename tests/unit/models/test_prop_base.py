@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 from numpy import ndarray
+import pandas as pd
 import pytest
 
 from gridiron_edge.models.prop_prediction.base import (
@@ -13,6 +14,7 @@ from gridiron_edge.models.prop_prediction.base import (
     PropModelMetadata,
     PropModelSpec,
     PropPrediction,
+    PropTrainer,
     evaluate_props,
 )
 
@@ -74,6 +76,29 @@ class TestPropModelMetadata:
         assert meta.feature_columns == []
         assert meta.n_train_rows == 0
         assert meta.notes == ""
+
+    def test_model_type_default(self) -> None:
+        meta = PropModelMetadata(
+            model_name="test",
+            trained_at="now",
+            target_col="col",
+            holdout_mae=0.0,
+            holdout_rmse=0.0,
+            holdout_r2=0.0,
+        )
+        assert meta.model_type == "elasticnet"
+
+    def test_model_type_custom(self) -> None:
+        meta = PropModelMetadata(
+            model_name="test",
+            trained_at="now",
+            target_col="col",
+            holdout_mae=0.0,
+            holdout_rmse=0.0,
+            holdout_r2=0.0,
+            model_type="random_forest",
+        )
+        assert meta.model_type == "random_forest"
 
 
 class TestPropPrediction:
@@ -182,3 +207,26 @@ class TestUniversalFeatures:
         assert "TEMP_F" in UNIVERSAL_FEATURE_COLS
         assert "WIND_SPEED_MPH" in UNIVERSAL_FEATURE_COLS
         assert "rest_days" in UNIVERSAL_FEATURE_COLS
+
+
+class _StubTrainer(PropTrainer):
+    """Minimal concrete trainer for base class tests."""
+
+    @property
+    def spec(self) -> PropModelSpec:
+        return PropModelSpec(
+            name="stub",
+            target_col="rushing_yards",
+            position_filter=["RB"],
+            description="Test stub",
+            clip_hi=250,
+        )
+
+
+class TestPredictNotFitted:
+    def test_not_fitted_raises(self) -> None:
+        trainer = _StubTrainer()
+        # _model is None before train() is called
+        dummy = pd.DataFrame({"a": [1.0, 2.0]})
+        with pytest.raises(RuntimeError, match="Model not fitted"):
+            trainer._predict(dummy)

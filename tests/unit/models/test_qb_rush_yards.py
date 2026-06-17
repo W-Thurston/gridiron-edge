@@ -19,6 +19,12 @@ class TestQBRushYardsSpec:
     def test_position_filter(self) -> None:
         assert QBRushYardsTrainer().spec.position_filter == ["QB"]
 
+    def test_clip_hi(self) -> None:
+        assert QBRushYardsTrainer().spec.clip_hi == 200
+
+    def test_clip_lo(self) -> None:
+        assert QBRushYardsTrainer().spec.clip_lo == 0.0
+
     def test_uses_prop_feature_cols(self) -> None:
         trainer = QBRushYardsTrainer()
         assert trainer._feature_columns() == list(PROP_FEATURE_COLS)

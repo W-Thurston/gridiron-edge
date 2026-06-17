@@ -133,7 +133,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["gridiron_edge", "PFR_scraper"]
+known-first-party = ["gridiron_edge"]
 force-sort-within-sections = true
 
 [tool.ruff.lint.per-file-ignores]
@@ -153,18 +153,7 @@ force-sort-within-sections = true
     "PLR0911", # Too many return statements — inherent to tiebreaker logic
     "D417",    # Missing argument descriptions — numba kernel params are self-describing
 ]
-"src/PFR_scraper/**" = [
-    "ANN",  # Scrapy boilerplate uses framework types; annotation noise outweighs value
-    "D102", # Missing docstring in public method — Scrapy lifecycle methods are self-evident
-    "D101", # Missing docstring in public class — Scrapy Item/Spider classes
-    "N801", # Class name convention — Scrapy spider names use underscores by convention
-    "E501", # Long lines — XPath selectors and URL strings exceed 100 chars by necessity
-]
-"src/gridiron_edge/ingest/pfr/collector_impl.py" = [
-    "PLR0912", # Too many branches — complex scraper/enrichment methods are intentionally dense
-    "PLR0915", # Too many statements — same rationale
-    "E501",    # Long lines — API URLs and field mappings exceed 100 chars by necessity
-]
+
 "src/gridiron_edge/ratings/elo/table.py" = [
     "PLR0912", # Too many branches — Elo table builder iterates many sequential season steps
     "PLR0915", # Too many statements — same rationale
@@ -207,4 +196,3 @@ docstring-code-format = true
 [tool.pyrefly]
 project-includes = ["src"]
 python-version = "3.12"
-ignore = ["src/PFR_scraper/**"]

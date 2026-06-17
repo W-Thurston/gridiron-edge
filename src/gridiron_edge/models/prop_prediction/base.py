@@ -24,6 +24,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
+from itertools import product
 import logging
 from logging import Logger
 from pathlib import Path
@@ -31,7 +33,6 @@ from typing import Any, Final
 
 import numpy as np
 from numpy import ndarray
-import pandas as pd
 from pandas import DataFrame, Series
 
 from gridiron_edge.core.constants import HOLDOUT_SEASONS
@@ -46,6 +47,14 @@ logger: Logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class PropModelType(StrEnum):
+    """Supported prop model algorithm types."""
+
+    ELASTICNET = "elasticnet"
+    RANDOM_FOREST = "random_forest"
+    XGBOOST = "xgboost"
+
+
 @dataclass(frozen=True)
 class PropModelSpec:
     """Metadata describing a prop model's identity.
@@ -55,12 +64,16 @@ class PropModelSpec:
         target_col: Column in player game logs that is the prediction target.
         position_filter: Position(s) this model applies to.
         description: Human-readable description.
+        clip_lo: Minimum predicted value (predictions clipped to this floor).
+        clip_hi: Maximum predicted value (predictions clipped to this ceiling).
     """
 
     name: str
     target_col: str
     position_filter: list[str]
     description: str = ""
+    clip_lo: float = 0.0
+    clip_hi: float = 1000.0
 
 
 @dataclass
@@ -74,6 +87,7 @@ class PropModelMetadata:
         holdout_mae: MAE on holdout set (primary metric).
         holdout_rmse: RMSE on holdout set.
         holdout_r2: R² on holdout set.
+        model_type: Type of model to be trained
         training_seasons: Seasons used for training.
         holdout_seasons: Seasons used for evaluation.
         parameters: Hyperparameters.
@@ -89,6 +103,7 @@ class PropModelMetadata:
     holdout_mae: float
     holdout_rmse: float
     holdout_r2: float
+    model_type: str = "elasticnet"
     training_seasons: list[int] = field(default_factory=list)
     holdout_seasons: list[int] = field(default_factory=list)
     parameters: dict[str, Any] = field(default_factory=dict)
@@ -211,25 +226,93 @@ def _build_universal_features() -> list[str]:
 UNIVERSAL_FEATURE_COLS: Final[list[str]] = _build_universal_features()
 
 # ---------------------------------------------------------------------------
+# Model factory + hyperparameter grids
+# ---------------------------------------------------------------------------
+
+
+def _create_model(model_type: PropModelType) -> tuple[Any, Any]:
+    """Create a model instance and optional scaler.
+
+    Returns:
+        Tuple of (model_instance, scaler_or_none).
+        ElasticNet gets a StandardScaler; tree models get None.
+    """
+    if model_type == PropModelType.ELASTICNET:
+        from sklearn.linear_model import ElasticNet  # pyrefly: ignore [missing-import]
+        from sklearn.preprocessing import StandardScaler  # pyrefly: ignore [missing-import]
+
+        return ElasticNet(max_iter=10_000), StandardScaler()
+
+    if model_type == PropModelType.RANDOM_FOREST:
+        from sklearn.ensemble import RandomForestRegressor  # pyrefly: ignore [missing-import]
+
+        return RandomForestRegressor(n_jobs=-1, random_state=42), None
+
+    if model_type == PropModelType.XGBOOST:
+        from xgboost import XGBRegressor  # pyrefly: ignore [missing-import]
+
+        return XGBRegressor(n_jobs=-1, random_state=42, verbosity=0), None
+
+    msg: str = f"Unknown model type: {model_type}"
+    raise ValueError(msg)
+
+
+def _get_param_grid(model_type: PropModelType) -> list[dict[str, Any]]:
+    """Return the hyperparameter search grid for the given model type."""
+    if model_type == PropModelType.ELASTICNET:
+        return [
+            {"alpha": a, "l1_ratio": r}
+            for a, r in product(
+                [0.001, 0.01, 0.1, 1.0, 10.0],
+                [0.1, 0.3, 0.5, 0.7, 0.9],
+            )
+        ]
+
+    if model_type == PropModelType.RANDOM_FOREST:
+        return [
+            {"n_estimators": n, "max_depth": d, "min_samples_leaf": leaf}
+            for n, d, leaf in product(
+                [100, 300, 500],
+                [8, 12, 16, None],
+                [5, 10, 20],
+            )
+        ]
+
+    if model_type == PropModelType.XGBOOST:
+        return [
+            {
+                "n_estimators": n,
+                "max_depth": d,
+                "learning_rate": lr,
+                "subsample": s,
+            }
+            for n, d, lr, s in product(
+                [100, 300, 500],
+                [4, 6, 8],
+                [0.01, 0.05, 0.1],
+                [0.8, 1.0],
+            )
+        ]
+
+    msg: str = f"Unknown model type: {model_type}"
+    raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
 # Base trainer
 # ---------------------------------------------------------------------------
 
 
 class PropTrainer(ABC):
-    """Abstract base class for prop model trainers.
+    """Base class for prop model trainers.
 
-    Subclasses implement:
-        - ``spec`` — PropModelSpec describing the model
-        - ``_feature_columns()`` — which feature columns to use
-        - ``_build_features()`` — assemble the feature matrix
-        - ``_fit()`` — train the underlying sklearn/xgb model
-
-    The base class handles:
-        - Data loading and filtering
-        - Train/holdout splitting (TimeSeriesSplit)
-        - Evaluation
-        - Artifact persistence
+    Subclasses implement only ``spec`` — all training and prediction
+    logic lives here. The factory pattern (``_create_model``) handles
+    ElasticNet, RandomForest, and XGBoost transparently.
     """
+
+    _model: Any = None
+    _scaler: Any = None
 
     @property
     @abstractmethod
@@ -261,38 +344,84 @@ class PropTrainer(ABC):
         """
         return df
 
-    @abstractmethod
     def _fit(
         self,
         x_train: DataFrame,
-        y_train: pd.Series,
+        y_train: Series,
         x_val: DataFrame,
-        y_val: pd.Series,
+        y_val: Series,
+        model_type: PropModelType = PropModelType.ELASTICNET,
     ) -> dict[str, Any]:
-        """Fit the model and return hyperparameters used.
+        """Fit the model via grid search, selecting lowest holdout MAE.
+
+        Iterates over the parameter grid for *model_type*, trains each
+        combination, evaluates MAE on the validation set, selects the
+        best, and retrains on the full training set.
 
         Args:
             x_train: Training features.
             y_train: Training target.
             x_val: Validation features.
             y_val: Validation target.
+            model_type: Algorithm to use.
 
         Returns:
-            Dict of hyperparameters for metadata recording.
+            Dict of best hyperparameters for metadata recording.
         """
-        ...
+        from tqdm import tqdm  # pyrefly: ignore [missing-import]
 
-    @abstractmethod
-    def _predict(self, x: DataFrame) -> np.ndarray:
-        """Generate predictions from fitted model.
+        grid: list[dict[str, Any]] = _get_param_grid(model_type)
+        best_mae: float = float("inf")
+        best_params: dict[str, Any] = {}
+
+        for params in tqdm(grid, desc=f"HP search ({model_type.value})"):
+            model, scaler = _create_model(model_type)
+            model.set_params(**params)
+
+            if scaler is not None:
+                x_tr = scaler.fit_transform(x_train)
+                x_va = scaler.transform(x_val)
+            else:
+                x_tr = x_train.values
+                x_va = x_val.values
+
+            model.fit(x_tr, y_train)
+            preds: ndarray = model.predict(x_va)
+            mae: float = float(np.mean(np.abs(y_val.values - preds)))
+
+            if mae < best_mae:
+                best_mae = mae
+                best_params = params
+
+        # Retrain on full training set with best params
+        model, scaler = _create_model(model_type)
+        model.set_params(**best_params)
+
+        x_tr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
+
+        model.fit(x_tr, y_train)
+        self._model = model
+        self._scaler = scaler
+
+        return best_params
+
+    def _predict(self, x: DataFrame) -> ndarray:
+        """Generate predictions from fitted model with spec-based clipping.
 
         Args:
-            x: Feature matrix.
+            x: Feature matrix (columns must match training features).
 
         Returns:
-            Array of predicted values.
+            Array of predicted values, clipped to [spec.clip_lo, spec.clip_hi].
         """
-        ...
+        if self._model is None:
+            msg = "Model not fitted. Call train() first."
+            raise RuntimeError(msg)
+
+        x_scaled = self._scaler.transform(x) if self._scaler is not None else x.values
+
+        preds: ndarray = self._model.predict(x_scaled)
+        return np.clip(preds, self.spec.clip_lo, self.spec.clip_hi)
 
     def _load_data(self, *, repo: Path | None = None) -> DataFrame:
         """Load player game logs with all prop features.
@@ -337,11 +466,20 @@ class PropTrainer(ABC):
         )
         return df
 
-    def train(self, *, repo: Path | None = None) -> PropModelMetadata:
+    def train(
+        self,
+        *,
+        model_type: PropModelType = PropModelType.ELASTICNET,
+        repo: Path | None = None,
+    ) -> PropModelMetadata:
         """Full training pipeline: load data, split, fit, evaluate.
 
         Uses HOLDOUT_SEASONS for the train/holdout split, consistent
         with the game prediction models.
+
+        Args:
+            model_type: Algorithm to use (elasticnet, random_forest, xgboost).
+            repo: Repository root override.
 
         Returns:
             PropModelMetadata with evaluation metrics.
@@ -410,14 +548,14 @@ class PropTrainer(ABC):
         )
 
         if len(x_hold) == 0:
-            msg = (
+            msg: str = (
                 f"No holdout data for {self.spec.name}. "
                 f"HOLDOUT_SEASONS={holdout_ints} produced 0 rows."
             )
             raise ValueError(msg)
 
         # Fit on training data, validated against holdout
-        params: dict[str, Any] = self._fit(x_train, y_train, x_hold, y_hold)
+        params: dict[str, Any] = self._fit(x_train, y_train, x_hold, y_hold, model_type=model_type)
 
         # Evaluate on holdout
         y_pred: ndarray = self._predict(x_hold)
@@ -439,6 +577,7 @@ class PropTrainer(ABC):
             holdout_mae=metrics["mae"],
             holdout_rmse=metrics["rmse"],
             holdout_r2=metrics["r2"],
+            model_type=model_type.value,
             training_seasons=sorted(train_df["season"].unique().tolist()),
             holdout_seasons=sorted(hold_df["season"].unique().tolist()),
             parameters=params,
