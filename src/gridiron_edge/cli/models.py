@@ -11,7 +11,7 @@ from pandas import DataFrame
 # pyrefly: ignore [missing-import]
 import typer
 
-from gridiron_edge.evaluation.champion import ComparisonResult
+from gridiron_edge.evaluation.champion import ClassificationComparisonResult
 
 if TYPE_CHECKING:
     from gridiron_edge.models.artifact import ModelMetadata
@@ -35,7 +35,10 @@ def _apply_promotion_decision(
     """Compare challenger to champion and handle promotion/rejection."""
     import shutil
 
-    from gridiron_edge.evaluation.champion import compare_models, format_comparison
+    from gridiron_edge.evaluation.champion import (
+        compare_classification_models,
+        format_classification_comparison,
+    )
 
     if champion_meta is None:
         typer.echo("\nNo existing champion. Saved as champion.")
@@ -43,8 +46,10 @@ def _apply_promotion_decision(
         typer.echo(f"  Artifact: {champion_dir}")
         return
 
-    result: ComparisonResult = compare_models(champion_meta, challenger_meta)
-    typer.echo(format_comparison(result))
+    result: ClassificationComparisonResult = compare_classification_models(
+        champion_meta, challenger_meta
+    )
+    typer.echo(format_classification_comparison(result))
 
     promote: bool = (result.should_promote or force) and not no_promote
 
@@ -218,7 +223,7 @@ def models_info(
       gridiron models info random_forest
     """
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.champion import extract_metrics
+    from gridiron_edge.evaluation.champion import extract_classification_metrics
     from gridiron_edge.models.artifact import ArtifactStore
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
@@ -234,7 +239,7 @@ def models_info(
         raise typer.Exit(code=1)
 
     meta: ModelMetadata = store.read_metadata(model_name)
-    metrics: dict[str, float] = extract_metrics(meta)
+    metrics: dict[str, float] = extract_classification_metrics(meta)
 
     typer.echo(f"Model:           {meta.model_version}")
     typer.echo(f"Description:     {meta.notes or '(none)'}")
