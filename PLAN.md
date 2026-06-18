@@ -415,148 +415,73 @@ All three classification Brier baselines exceeded their pre-WS2 targets. Total m
 
 ---
 
-## Workstream 3: Integration & E2E Tests
+### Workstream 3: Integration & End-to-End Tests
 
-**Goal:** Validate the full prop pipeline end-to-end and add cross-module
-tests that catch breakages unit tests miss.
+**Goal:** Build a comprehensive integration and end-to-end test layer that exercises the full lifecycle of the prediction pipeline. Catches the kinds of bugs that surfaced during WS2 D5 verification — specifically the scaler-not-applied-at-predict-time issue that only manifested when the scaler was loaded from disk and applied to production-shaped data. Covers both game and prop model paths.
 
-**Why:** A column rename in `rolling.py` could silently break the
-builder → trainer chain. Integration tests close this gap.
+**Status:** **Active** (started 2026-06-18).
 
-**Depends on:** Workstreams 1 and 2 (tests should cover the unified
-architecture including champion commands).
+#### Why this workstream now
 
-### Locked Decisions
+The WS2 D5 verification phase exposed a real test gap. Training reported Brier 0.223 for `win_prob_logistic`, but archive-derived Brier was 0.355 — a ~3 hour triage cycle that would have been caught overnight by a fit-load-predict integration test. The pattern across WS2 was that unit tests caught structural issues but missed integration bugs. WS3 closes that gap.
 
-| # | Decision | Choice | Rationale |
-|---|----------|--------|-----------|
-| 1 | Test tier definitions | Unit (<1s, synthetic), Integration (5-30s, multi-module), E2E (30s-5min, full workflow) | Matches existing three-tier pyramid |
-| 2 | Test marking | Auto-markers by directory (already configured) | No changes needed |
-| 3 | Integration test data | Synthetic DataFrames via fixture factories | Fast, deterministic, no external deps |
-| 4 | E2E test data | Synthetic data written to disk (tmp_path) | Tests full I/O path |
-| 5 | CLI testing approach | Mock data layer for integration; disk data for E2E | Separation of concerns |
-| 6 | Fixture data scale | 2 seasons × 10 weeks × 4 teams × 4 players/team = ~320 rows | Fast but exercises all feature types |
+#### Goals
 
-### Fixture Data Specifications
+- Cover the full fit → load → predict → archive → evaluate lifecycle for all 5 game models + Elo.
+- Cover the full train → predict → archive lifecycle for all 5 prop models.
+- Exercise the actual sklearn estimators (no stubs) with minimized HP grids for tractability.
+- Build shared test infrastructure (fixtures + helpers) that benefits future workstreams.
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Seasons | 2 (e.g., 2023, 2024) | Enough for holdout split |
-| Weeks per season | 10 | Enough for L6 rolling features |
-| Teams | 4 (KC, LV, BUF, MIA) | Enough for matchup variation |
-| Players per team | 4 (1 QB, 1 RB, 1 WR, 1 TE) | One per position |
-| Total rows | ~320 | Fast but realistic |
+#### Sub-workstreams
 
-Key requirements for fixture data:
-- Enough rows for rolling features to compute without all-NaN (≥7 weeks)
-- Team variation for matchup features (≥4 teams)
-- Team totals > 0 for usage features
-- Game IDs that match between player logs and games CSV
-- All 4 positions represented
+| Phase | Description | Scope | Speed mark |
+|---|---|---|---|
+| E0 | Shared infrastructure | 3 file extensions + 1 new helpers file | n/a (used by all) |
+| E1-games | Fit-load-predict for 5 game models + Elo | tests/e2e/test_games_fit_load_predict.py | `slow` |
+| E1-props | Fit-load-predict for 5 prop models | tests/e2e/test_props_fit_load_predict.py | `slow` |
+| E2 | Archive round-trip (games + props) | tests/integration/test_archive_roundtrip.py | `integration` |
+| E3-games | Backfill flow end-to-end | tests/integration/test_games_backfill.py | `integration` |
+| E3-props | Prop archive flow | tests/integration/test_props_archive.py | `integration` |
+| E4 | CLI workflow smoke tests | tests/integration/test_cli_workflows.py (extend) | `integration` |
+| E5 | Scaler-application regression test | Folded into E1-games | `slow` |
 
-### Implementation Steps
+#### Decisions locked
 
-#### E1: Player DataFrame factories
+- **Speed budget:** under 5 minutes total. E1 and E5 marked `@pytest.mark.slow`, run on PR but not on every commit.
+- **Test infrastructure:** extend existing `tests/fixtures/dataframes.py` and `MiniRepoBuilder` in `tests/fixtures/repos.py`. New `tests/fixtures/helpers.py` holds shared assertion + context-manager helpers.
+- **sklearn coverage:** real estimators end-to-end with minimized HP grids via context-manager patching of `_get_param_grid` and `_n_iter_for`. Catches integration bugs the stub approach would miss.
+- **Scope:** WS2 game models + all 5 props. No new tests for the props if WS1-style tests already exist; WS3 adds the integration layer prop-side too so future refactors don't regress them.
+- **No Brier baseline assertions:** integration tests verify plumbing correctness. Model quality is verified through D5-style production runs.
+- **Module-scoped tiny-model fixture:** E2/E3/E4 reuse a `@pytest.fixture(scope="module")` tiny trained model rather than re-training between every test. Trades ~30s once per module for tighter test runtimes.
 
-Add to `tests/fixtures/dataframes.py`:
+#### File plan
 
-- `make_player_game_logs(n_players, n_weeks, positions)` — returns DataFrame
-  matching cleaned `player_game_logs.parquet` schema
-- `make_games_csv(n_weeks)` — returns DataFrame matching
-  `NFL_wk_by_wk_cleaned.csv` schema
-- `make_prop_predictions(n, model_name)` — returns DataFrame with
-  predicted_mean + enrichment columns
+| # | File | Action |
+|---|---|---|
+| 1 | `tests/fixtures/dataframes.py` | Add `make_games_modeling_df`, `make_props_modeling_df`, `make_modeling_manifest` |
+| 2 | `tests/fixtures/repos.py` | Add `with_modeling_file`, `with_epa_by_game` cleanup, `with_player_stats` |
+| 3 | `tests/fixtures/helpers.py` | New: `patch_minimal_param_grid`, `assert_archive_schema_valid`, `assert_predictions_reasonable` |
+| 4 | `tests/e2e/test_games_fit_load_predict.py` | New: 5 tests (logistic, RF, XGB classification; RF, XGB regression) + Elo predict-only + scaler regression |
+| 5 | `tests/e2e/test_props_fit_load_predict.py` | New: 5 tests (QB pass, QB rush, RB rush, WR rec, TE rec) |
+| 6 | `tests/integration/test_games_backfill.py` | New: 4 tests (writes, overwrite, skip-without-overwrite, evaluation join) |
+| 7 | `tests/integration/test_props_archive.py` | New: 2 tests (write to log, load with filters) |
+| 8 | `tests/integration/test_archive_roundtrip.py` | New: 3 tests (games round-trip, props round-trip, multi-column dedup) |
+| 9 | `tests/integration/test_cli_workflows.py` | Extend: 4 CliRunner smoke tests for models train, evaluate backfill, evaluate select-model, models list |
 
-| Status | Step |
-|--------|------|
-| Not started | E1 |
+#### Definition of done
 
-#### E2: Prop repo fixture
+- All 9 files apply cleanly.
+- `uv run pytest -m "unit and not slow"` continues to pass without slowdown.
+- `uv run pytest -m "integration"` runs in under 3 minutes.
+- `uv run pytest -m "slow"` runs in under 5 minutes.
+- Each test marked appropriately (`unit`, `integration`, `slow`, `e2e`).
+- The scaler bug from WS2 D5 is reproducible via `test_win_prob_logistic_fit_load_predict` (would fail if reintroduced).
 
-Add to `tests/fixtures/repos.py`:
+#### Known follow-ups (post-WS3 scope)
 
-- `make_prop_repo(tmp_path)` — writes both files to disk:
-  - `data/cleaned/player_game_logs.parquet`
-  - `data/cleaned/NFL_wk_by_wk_cleaned.csv`
-
-This fixture is reused by all integration and E2E tests.
-
-| Status | Step |
-|--------|------|
-| Not started | E2 (depends on E1) |
-
-#### E3: Integration tests — feature pipeline
-
-**File:** `tests/integration/test_prop_feature_pipeline.py`
-
-| Test | What It Validates |
-|------|-------------------|
-| `test_builder_produces_all_feature_types` | Rolling + matchup + usage + context columns all present |
-| `test_builder_position_filter_correct` | QB filter → only QB rows; RB → only RB rows |
-| `test_builder_no_lookahead` | Week N features don't use week N data (spot-check shift) |
-| `test_builder_no_row_duplication` | No duplicate (player_id, game_id) in output |
-| `test_builder_nan_rates_reasonable` | NaN rates per feature < 50% for filtered position |
-| `test_feature_columns_match_prop_feature_cols` | Columns match PROP_FEATURE_COLS |
-| `test_builder_with_missing_games` | Player logs with no matching game → NaN context, not crash |
-
-| Status | Step |
-|--------|------|
-| Not started | E3 (depends on E2) |
-
-#### E4: Integration tests — CLI
-
-**File:** `tests/integration/test_props_cli.py`
-
-| Test | What It Validates |
-|------|-------------------|
-| `test_evaluate_runs_without_error` | `gridiron props evaluate --model qb_pass_yards` exits 0 |
-| `test_evaluate_output_contains_mae` | Output contains "MAE" |
-| `test_backfill_creates_archive` | After backfill, archive file exists |
-| `test_projections_output_has_table` | Output contains player names and predicted values |
-| `test_champion_runs_all_types` | Champion command trains 3 model types |
-| `test_unknown_model_exits_error` | `--model fake_model` exits with error message |
-
-CLI tests use `typer.testing.CliRunner` with mocked data layer.
-
-| Status | Step |
-|--------|------|
-| Not started | E4 (depends on E2, W1 C2) |
-
-#### E5: E2E tests
-
-**File:** `tests/e2e/test_prop_pipeline.py`
-
-| Test | What It Validates |
-|------|-------------------|
-| `test_full_pipeline_data_to_archive` | Synthetic data → clean → features → train → predict → enrich → archive |
-| `test_full_pipeline_multiple_models` | Train QB pass + RB rush, verify both produce valid results |
-| `test_evaluate_report_structure` | Full eval report has accuracy, bias, coverage sections |
-
-E2E tests write synthetic data to disk via `make_prop_repo()`.
-
-| Status | Step |
-|--------|------|
-| Not started | E5 (depends on E2) |
-
-#### E6: Full suite validation
-
-Run all tiers, verify green:
-
-    uv run pytest -v
-
-| Status | Step |
-|--------|------|
-| Not started | E6 (depends on E3–E5) |
-
-### Integration & E2E: Files Inventory
-
-| Action | File |
-|--------|------|
-| **Modify** | `tests/fixtures/dataframes.py` — add player/game/prop factories |
-| **Modify** | `tests/fixtures/repos.py` — add make_prop_repo() |
-| **Create** | `tests/integration/test_prop_feature_pipeline.py` |
-| **Create** | `tests/integration/test_props_cli.py` |
-| **Create** | `tests/e2e/test_prop_pipeline.py` |
+- `repos.py::with_epa_by_game` bypasses the `_write` helper unnecessarily. The helper already handles parquet correctly; the bypass is a copy-paste leftover. Worth a one-line cleanup but outside WS3.
+- Prop tests don't currently exercise the `enrich_prop_predictions` post-processing path (predicted_std, lo_90, hi_90 derivation). WS3 covers it minimally as part of E3-props; if more coverage is needed, follow-up workstream.
+- WS3 doesn't establish performance baselines for tests. If test runtime grows in future workstreams, may need a `pytest-benchmark` pass to track regressions.
 
 ---
 

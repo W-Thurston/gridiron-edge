@@ -41,6 +41,8 @@ _GAME_DEFAULTS: dict[str, Any] = {
     "SURFACE": "grass",
     "GAMETIME": "20:20",
     "GAME_DAY_OF_WEEK": "Thursday",
+    "PTS_WINNER": 27,
+    "PTS_LOSER": 20,
 }
 
 
@@ -257,6 +259,20 @@ def make_epa_by_game(
                         "def_redzone_td_pct": rng.uniform(0.40, 0.70),
                         "def_turnover_rate": rng.uniform(0.01, 0.06),
                         "def_sack_rate": rng.uniform(0.04, 0.10),
+                        "off_plays": rng.integers(50, 80),
+                        "off_yards_per_play": rng.uniform(4.0, 7.0),
+                        "off_redzone_attempts": rng.integers(2, 10),
+                        "off_int_rate": rng.uniform(0.01, 0.05),
+                        "off_penalty_rate": rng.uniform(0.02, 0.08),
+                        "off_avg_score_diff": rng.uniform(-10.0, 10.0),
+                        "off_close_game_pct": rng.uniform(0.3, 0.8),
+                        "def_plays": rng.integers(50, 80),
+                        "def_yards_per_play": rng.uniform(4.0, 7.0),
+                        "def_redzone_attempts": rng.integers(2, 10),
+                        "def_int_rate": rng.uniform(0.01, 0.05),
+                        "def_penalty_rate": rng.uniform(0.02, 0.08),
+                        "def_avg_score_diff": rng.uniform(-10.0, 10.0),
+                        "def_close_game_pct": rng.uniform(0.3, 0.8),
                     }
                 )
     return pd.DataFrame(rows)
@@ -414,3 +430,371 @@ def make_accessor(
         weather_enriched if weather_enriched is not None else pd.DataFrame()
     )
     return acc
+
+
+# ---------------------------------------------------------------------------
+# Modeling and props training data
+# ---------------------------------------------------------------------------
+# These builders produce synthetic data sized for full fit-load-predict
+# integration tests. They mirror the schemas of load_modeling_file() and
+# build_prop_features() so that downstream training paths receive
+# realistically-shaped inputs.
+
+
+# Game-side feature columns used by the expanded feature set. Order
+# matters for the trainer's NaN-detection logic.
+def _build_games_modeling_cols() -> list[str]:
+    """Build the games modeling column list from the production EPA schema.
+
+    Sources the EPA suffix list from ``features.team.epa.EPA_COLS`` so the
+    fixture stays in sync with production. Any new EPA stat added there
+    automatically becomes part of the synthetic schema.
+    """
+    from gridiron_edge.features.team.epa import EPA_COLS
+
+    base_cols: list[str] = [
+        "GAME_ID",
+        "TEAM_A",
+        "TEAM_B",
+        "YEAR",
+        "WEEK_NUM",
+        "RESULT",
+        "HOME_FIELD",
+        "TEAM_A_ELO",
+        "TEAM_B_ELO",
+    ]
+
+    # EPA columns: TEAM_A_<UPPER_NAME>, TEAM_B_<UPPER_NAME> for every EPA stat.
+    epa_cols: list[str] = []
+    for epa_name in EPA_COLS:
+        upper = epa_name.upper()
+        epa_cols.append(f"TEAM_A_{upper}")
+    for epa_name in EPA_COLS:
+        upper = epa_name.upper()
+        epa_cols.append(f"TEAM_B_{upper}")
+
+    tail_cols: list[str] = ["PTS_WINNER", "PTS_LOSER"]
+    return base_cols + epa_cols + tail_cols
+
+
+_GAMES_MODELING_COLS: list[str] = _build_games_modeling_cols()
+
+
+def make_games_modeling_df(
+    *,
+    seasons: tuple[int, ...] = (2006, 2007, 2008, 2009, 2010, 2023, 2024),
+    games_per_season: int = 30,
+    teams: tuple[str, ...] = ("KC", "SF", "BUF", "PHI", "DAL", "NYG", "MIA", "LAR"),
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Build a synthetic modeling DataFrame matching the games schema.
+
+    Sized to produce non-empty train and holdout splits when
+    ``HOLDOUT_SEASONS`` filters apply. Default span covers both training
+    (2006-2010) and holdout (2023-2024) seasons, giving the trainer
+    enough rows to run a small HP search without crashing.
+
+    Args:
+        seasons: Season years to generate. Use the "YYYY" format —
+            converted to "YYYY-YYYY" for the YEAR column.
+        games_per_season: Games per season. Each game produces TWO rows
+            (TEAM_A and TEAM_B perspectives) to match the real schema.
+        teams: Team abbreviations used as TEAM_A / TEAM_B values.
+        seed: RNG seed for reproducibility.
+
+    Returns:
+        DataFrame conforming to the games modeling schema with EPA
+        features filled in.
+    """
+    rng: Generator = np.random.default_rng(seed)
+    rows: list[dict[str, Any]] = []
+
+    for season_int in seasons:
+        season_str: str = f"{season_int}-{season_int + 1}"
+        for game_idx in range(games_per_season):
+            week: int = (game_idx % 17) + 1
+            team_a: str = teams[game_idx % len(teams)]
+            team_b: str = teams[(game_idx + 1) % len(teams)]
+            game_id: str = f"{season_int}_{week:02d}_{team_a}_{team_b}"
+
+            # Synthetic game outcome
+            home_won: int = int(rng.random() > 0.45)  # mild home-field bias
+            pts_winner: int = int(rng.uniform(17, 38))
+            pts_loser: int = int(rng.uniform(7, pts_winner))
+
+            # Generate two rows: TEAM_A=team_a (home), then swap
+            for home_field in (1, 0):
+                if home_field == 1:
+                    ta, tb = team_a, team_b
+                    result: int = home_won
+                else:
+                    ta, tb = team_b, team_a
+                    result = 1 - home_won
+
+                row: dict[str, Any] = {
+                    "GAME_ID": game_id,
+                    "TEAM_A": ta,
+                    "TEAM_B": tb,
+                    "YEAR": season_str,
+                    "WEEK_NUM": week,
+                    "RESULT": result,
+                    "HOME_FIELD": home_field,
+                    "TEAM_A_ELO": rng.uniform(1400, 1600),
+                    "TEAM_B_ELO": rng.uniform(1400, 1600),
+                    "PTS_WINNER": pts_winner,
+                    "PTS_LOSER": pts_loser,
+                }
+                # Fill all EPA columns with realistic ranges
+                for col in _GAMES_MODELING_COLS:
+                    if col not in row:
+                        if "EPA" in col:
+                            row[col] = rng.uniform(-0.3, 0.4)
+                        elif "RATE" in col or "PCT" in col:
+                            row[col] = rng.uniform(0.2, 0.7)
+                        else:
+                            row[col] = rng.uniform(-0.2, 0.3)
+                rows.append(row)
+
+    return pd.DataFrame(rows)[_GAMES_MODELING_COLS]
+
+
+def make_games_from_modeling_df(
+    modeling_df: pd.DataFrame,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Build a games DataFrame matching the GAME_IDs in a modeling DataFrame.
+
+    Use this when a test needs both a modeling file and a corresponding
+    games file (e.g. for the total trainer, which joins them by GAME_ID).
+    The games DataFrame is sized to match exactly the unique GAME_IDs in
+    the modeling file.
+
+    Args:
+        modeling_df: Modeling DataFrame from :func:`make_games_modeling_df`.
+        seed: RNG seed for outcome generation.
+
+    Returns:
+        Games DataFrame with one row per unique GAME_ID, populated with
+        WINNER, LOSER, WIN_OR_TIE, GAME_LOCATION, PTS_WINNER, PTS_LOSER,
+        and the YEAR/WEEK_NUM/GAME_DATE fields needed for the join.
+    """
+    rng: Generator = np.random.default_rng(seed)
+
+    # One row per game (away-team perspective in modeling)
+    away_rows = modeling_df.loc[modeling_df["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
+
+    rows: list[dict[str, Any]] = []
+    for _, row in away_rows.iterrows():
+        # In modeling: TEAM_A=away, TEAM_B=home
+        # In games: WINNER/LOSER decided by RESULT; LOCATION marks side
+        away_team: str = row["TEAM_A"]
+        home_team: str = row["TEAM_B"]
+        away_won: int = int(row["RESULT"])
+
+        winner: str = away_team if away_won else home_team
+        loser: str = home_team if away_won else away_team
+        location: str = "@" if away_won else "NULL_VALUE"
+
+        pts_winner: int = int(rng.uniform(20, 38))
+        pts_loser: int = int(rng.uniform(7, pts_winner))
+
+        rows.append(
+            {
+                "GAME_ID": row["GAME_ID"],
+                "YEAR": row["YEAR"],
+                "WEEK_NUM": row["WEEK_NUM"],
+                "WINNER": winner,
+                "LOSER": loser,
+                "WIN_OR_TIE": 1,
+                "GAME_LOCATION": location,
+                "GAME_DATE": f"2024-{row['WEEK_NUM']:02d}-01",
+                "STADIUM": f"{home_team} Stadium",
+                "ROOF": "outdoors",
+                "SURFACE": "grass",
+                "GAMETIME": "13:00",
+                "GAME_DAY_OF_WEEK": "Sunday",
+                "PTS_WINNER": pts_winner,
+                "PTS_LOSER": pts_loser,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+# Prop-side feature columns used by build_prop_features. Mirrors the
+# columns produced by the real builder.
+_PROPS_MODELING_COLS: list[str] = [
+    "player_id",
+    "player_name",
+    "position",
+    "team_abbr",
+    "opponent_team",
+    "season",
+    "week",
+    "game_id",
+    # Volume / target column candidates
+    "attempts",
+    "carries",
+    "targets",
+    "passing_yards",
+    "rushing_yards",
+    "receiving_yards",
+    # Rolling feature stand-ins (simulated)
+    "passing_yards_L3_mean",
+    "passing_yards_L3_std",
+    "rushing_yards_L3_mean",
+    "rushing_yards_L3_std",
+    "receiving_yards_L3_mean",
+    "receiving_yards_L3_std",
+    # Game context
+    "implied_team_total",
+    "spread_line",
+    "OVER_UNDER",
+    "is_home",
+    "roof_dome",
+    "surface_turf",
+    "TEMP_F",
+    "WIND_SPEED_MPH",
+    "rest_days",
+    "opp_rest_days",
+    "rest_diff",
+    "DIV_GAME",
+]
+
+
+def make_props_modeling_df(
+    *,
+    seasons: tuple[int, ...] = (2020, 2021, 2022, 2023, 2024),
+    players_per_position: int = 4,
+    games_per_season: int = 12,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Build a synthetic player-game DataFrame matching the prop feature schema.
+
+    Generates rows for QB, RB, WR, TE positions across multiple seasons
+    so PropTrainer's holdout split (HOLDOUT_SEASONS = 2023+) produces
+    non-empty train and holdout subsets.
+
+    Args:
+        seasons: Season years.
+        players_per_position: How many distinct players per position.
+        games_per_season: Games per player per season.
+        seed: RNG seed.
+
+    Returns:
+        DataFrame with player_id, position, target stats, rolling
+        features, and game context.
+    """
+    rng: Generator = np.random.default_rng(seed)
+    positions: list[str] = ["QB", "RB", "WR", "TE"]
+    rows: list[dict[str, Any]] = []
+
+    for season_int in seasons:
+        for position in positions:
+            for player_idx in range(players_per_position):
+                player_id: str = f"{position}_{player_idx}"
+                player_name: str = f"{position} Player {player_idx}"
+                for week in range(1, games_per_season + 1):
+                    # Position-aware target generation
+                    if position == "QB":
+                        passing_yards: float = float(rng.uniform(180, 320))
+                        rushing_yards: float = float(rng.uniform(0, 40))
+                        receiving_yards: float = float("nan")
+                        attempts: int = int(rng.uniform(25, 45))
+                        carries: int = int(rng.uniform(2, 8))
+                        targets: int = 0
+                    elif position == "RB":
+                        passing_yards = float("nan")
+                        rushing_yards = float(rng.uniform(30, 130))
+                        receiving_yards = float(rng.uniform(0, 40))
+                        attempts = 0
+                        carries = int(rng.uniform(8, 25))
+                        targets = int(rng.uniform(1, 6))
+                    else:  # WR or TE
+                        passing_yards = float("nan")
+                        rushing_yards = float("nan")
+                        receiving_yards = float(
+                            rng.uniform(20, 110) if position == "WR" else rng.uniform(15, 80)
+                        )
+                        attempts = 0
+                        carries = 0
+                        targets = int(rng.uniform(3, 12))
+
+                    row: dict[str, Any] = {
+                        "player_id": player_id,
+                        "player_name": player_name,
+                        "position": position,
+                        "team_abbr": "KC",
+                        "opponent_team": "LAR",
+                        "season": season_int,
+                        "week": week,
+                        "game_id": f"{season_int}_{week:02d}_KC_LAR",
+                        "attempts": attempts,
+                        "carries": carries,
+                        "targets": targets,
+                        "passing_yards": passing_yards,
+                        "rushing_yards": rushing_yards,
+                        "receiving_yards": receiving_yards,
+                        "passing_yards_L3_mean": (
+                            float(rng.uniform(200, 280)) if position == "QB" else float("nan")
+                        ),
+                        "passing_yards_L3_std": (
+                            float(rng.uniform(30, 60)) if position == "QB" else float("nan")
+                        ),
+                        "rushing_yards_L3_mean": (
+                            float(rng.uniform(60, 100)) if position == "RB" else float("nan")
+                        ),
+                        "rushing_yards_L3_std": (
+                            float(rng.uniform(15, 35)) if position == "RB" else float("nan")
+                        ),
+                        "receiving_yards_L3_mean": (
+                            float(rng.uniform(40, 80)) if position in ("WR", "TE") else float("nan")
+                        ),
+                        "receiving_yards_L3_std": (
+                            float(rng.uniform(15, 30)) if position in ("WR", "TE") else float("nan")
+                        ),
+                        "implied_team_total": float(rng.uniform(20, 30)),
+                        "spread_line": float(rng.uniform(-7, 7)),
+                        "OVER_UNDER": float(rng.uniform(42, 52)),
+                        "is_home": int(rng.random() > 0.5),
+                        "roof_dome": int(rng.random() > 0.7),
+                        "surface_turf": int(rng.random() > 0.5),
+                        "TEMP_F": float(rng.uniform(40, 80)),
+                        "WIND_SPEED_MPH": float(rng.uniform(0, 15)),
+                        "rest_days": int(rng.uniform(6, 10)),
+                        "opp_rest_days": int(rng.uniform(6, 10)),
+                        "rest_diff": int(rng.uniform(-3, 3)),
+                        "DIV_GAME": int(rng.random() > 0.7),
+                    }
+                    rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def make_modeling_manifest(
+    *,
+    schema_version: int = 4,
+    columns: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a minimal modeling_file_manifest.json structure.
+
+    The manifest is required by ``load_modeling_file`` when called with
+    ``required_schema_version=...`` (which is the case for the predict
+    path in ``GamesPredictor``). Without this, predict-side integration
+    tests fail with ``FileNotFoundError: No feature manifest found``.
+
+    Args:
+        schema_version: Schema version the manifest declares. Should
+            match ``CURRENT_SCHEMA_VERSION`` from the feature manifest
+            module for the tests to pass validation.
+        columns: Column list to record in the manifest. If None, an
+            empty list is recorded — the load path uses the manifest
+            primarily for version validation, not column validation.
+
+    Returns:
+        Dict ready to be written via ``json.dump``.
+    """
+    return {
+        "schema_version": schema_version,
+        "columns": columns if columns is not None else [],
+    }

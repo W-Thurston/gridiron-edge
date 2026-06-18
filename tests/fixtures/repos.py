@@ -83,6 +83,8 @@ class MiniRepoBuilder:
                         "GAME_DATE": "2025-09-07",
                         "GAME_LOCATION": "NULL_VALUE",
                         "STADIUM": "Stadium A",
+                        "PTS_WINNER": 27,
+                        "PTS_LOSER": 20,
                     },
                     {
                         "GAME_ID": "2025_02_B_A",
@@ -94,6 +96,8 @@ class MiniRepoBuilder:
                         "GAME_DATE": "2025-09-14",
                         "GAME_LOCATION": "NULL_VALUE",
                         "STADIUM": "Stadium B",
+                        "PTS_WINNER": 31,
+                        "PTS_LOSER": 17,
                     },
                 ]
             )
@@ -122,6 +126,96 @@ class MiniRepoBuilder:
         return self._write(
             "weather_enriched",
             df if df is not None else make_weather_enriched(),
+        )
+
+    def with_modeling_file(
+        self,
+        df: pd.DataFrame | None = None,
+        *,
+        schema_version: int = 4,
+    ) -> MiniRepoBuilder:
+        """Add a modeling file (parquet) and its manifest.
+
+        Writes the modeling parquet via the dataset registry's
+        ``modeling_full`` path and writes the matching
+        ``modeling_file_manifest.json`` next to it. The manifest is required
+        by :func:`load_modeling_file` when called with
+        ``required_schema_version=...`` (the case for predict paths in
+        :class:`GamesPredictor`).
+
+        Args:
+            df: Modeling DataFrame. Uses :func:`make_games_modeling_df`
+                defaults if None.
+            schema_version: Schema version to declare in the manifest.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        import json
+
+        from tests.fixtures.dataframes import (
+            make_games_modeling_df,
+            make_modeling_manifest,
+        )
+
+        modeling: pd.DataFrame = df if df is not None else make_games_modeling_df()
+
+        parquet_path: Path = self._root / DATASETS["modeling_full"].relpath
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
+        modeling.to_parquet(parquet_path, index=False)
+
+        manifest_path: Path = parquet_path.parent / "modeling_file_manifest.json"
+        manifest: dict = make_modeling_manifest(
+            schema_version=schema_version,
+            columns=list(modeling.columns),
+        )
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f)
+
+        return self
+
+    def with_player_stats(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
+        """Add a player-game stats parquet for the prop training path.
+
+        Writes ``data/cleaned/player_stats.parquet``. PropTrainer reads
+        this through :func:`build_prop_features`.
+
+        Args:
+            df: Player-game DataFrame. Uses :func:`make_props_modeling_df`
+                defaults if None.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        from tests.fixtures.dataframes import make_props_modeling_df
+
+        stats: pd.DataFrame = df if df is not None else make_props_modeling_df()
+
+        cleaned_dir: Path = self._root / "data" / "cleaned"
+        cleaned_dir.mkdir(parents=True, exist_ok=True)
+
+        path: Path = cleaned_dir / "player_stats.parquet"
+        stats.to_parquet(path, index=False)
+
+        return self
+
+    def with_full_games_setup(self) -> MiniRepoBuilder:
+        """Add games + EPA + modeling file + stadiums + Elo state.
+
+        Convenience method for tests that need the full game-side fixture
+        suite. Equivalent to chaining each builder individually with
+        defaults; provided so tests don't need to know which datasets
+        the game pipeline reads.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        return (
+            self.with_games()
+            .with_stadiums()
+            .with_elo_state()
+            .with_epa_by_game()
+            .with_modeling_file()
         )
 
     def build(self) -> Path:
