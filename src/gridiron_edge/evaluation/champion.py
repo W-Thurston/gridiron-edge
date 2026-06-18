@@ -3,19 +3,25 @@
 """Champion/challenger model comparison and promotion logic.
 
 Classification (existing):
-    ClassificationPromotionGates       Gate thresholds (Brier/ECE/AUC)
-    ClassificationComparisonResult        Comparison outcome
+    ClassificationPromotionGates           Gate thresholds (Brier/ECE/AUC)
+    ClassificationComparisonResult         Comparison outcome
     extract_classification_metrics         Pull metrics from GameModelMetadata
     compare_classification_models          Run classification gates
     format_classification_comparison       Human-readable classification report
 
 Regression (new):
-    RegressionPromotionGates    Gate thresholds (R²/Coverage)
-    RegressionModelResult       Standardised regression metrics
-    RegressionComparisonResult  Comparison outcome
-    compare_regression_models   Run regression gates
-    select_prop_champion        Pick best model from multiple results
-    format_regression_comparison Human-readable regression report
+    RegressionPromotionGates               Gate thresholds (R²/Coverage)
+    RegressionModelResult                  Standardised regression metrics
+    RegressionComparisonResult             Comparison outcome
+    compare_regression_models              Run regression gates
+    select_prop_champion                   Pick best model from multiple results
+    format_regression_comparison           Human-readable regression report
+
+Workstream 2 D3 status:
+    ECE/AUC/log_loss/accuracy are now first-class fields on
+    :class:`GameModelMetadata` (set by ``GamesTrainer._build_classification_metadata``).
+    ``extract_classification_metrics`` reads them directly off the
+    metadata object. The legacy ``_PARAM_KEYS`` mapping is gone.
 
 Usage::
 
@@ -27,7 +33,7 @@ Usage::
     result = compare_classification_models(champion_meta, challenger_meta)
     print(format_classification_comparison(result))
     if result.should_promote:
-        store.save("random_forest", challenger_obj, metadata=challenger_meta)
+        store.save(metadata=challenger_meta, model_obj=challenger_obj)
 """
 
 from __future__ import annotations
@@ -105,20 +111,14 @@ class ClassificationComparisonResult:
 # Metric extraction
 # ---------------------------------------------------------------------------
 
-_PARAM_KEYS: dict[str, str] = {
-    "ece": "holdout_ece",
-    "auc": "holdout_auc",
-    "log_loss": "holdout_log_loss",
-    "accuracy": "holdout_accuracy",
-}
-
 
 def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
     """Pull a standardised metric dict from GameModelMetadata.
 
-    Brier comes from the top-level ``holdout_brier`` field.  All other
-    metrics are read from the ``parameters`` dict and default to NaN
-    if absent.
+    All metrics are first-class fields on :class:`GameModelMetadata`
+    (populated by ``GamesTrainer._build_classification_metadata``). Fields
+    default to NaN when not populated, so the returned dict surfaces
+    NaN for any metric that wasn't recorded at training time.
 
     Args:
         meta: Trained model metadata.
@@ -127,10 +127,13 @@ def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
         Dict with keys ``brier``, ``ece``, ``auc``, ``log_loss``,
         ``accuracy``.
     """
-    metrics: dict[str, float] = {"brier": meta.holdout_brier}
-    for short_name, param_key in _PARAM_KEYS.items():
-        metrics[short_name] = meta.parameters.get(param_key, float("nan"))
-    return metrics
+    return {
+        "brier": meta.holdout_brier,
+        "ece": meta.holdout_ece,
+        "auc": meta.holdout_auc,
+        "log_loss": meta.holdout_log_loss,
+        "accuracy": meta.holdout_accuracy,
+    }
 
 
 @dataclass(frozen=True)

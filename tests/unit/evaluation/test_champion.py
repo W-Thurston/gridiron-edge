@@ -32,22 +32,12 @@ def _make_meta(
     model_name: str = "win_prob",
     model_type: str = "test_model",
 ) -> GameModelMetadata:
-    """Build a GameModelMetadata with classification metrics in parameters.
+    """Build a GameModelMetadata with classification metrics as first-class fields.
 
-    D1b state: extract_classification_metrics still reads ECE/AUC/log_loss/
-    accuracy from meta.parameters. D3 promotes them to first-class fields
-    on GameModelMetadata; this helper updates with the parameters→fields
-    flip at that point.
+    All metrics are set as first-class fields on :class:`GameModelMetadata`
+    (post-Workstream 2 D3). Optional kwargs default to NaN so callers can
+    omit individual metrics to test the missing-data code paths.
     """
-    params: dict[str, object] = {}
-    if ece is not None:
-        params["holdout_ece"] = ece
-    if auc is not None:
-        params["holdout_auc"] = auc
-    if log_loss is not None:
-        params["holdout_log_loss"] = log_loss
-    if accuracy is not None:
-        params["holdout_accuracy"] = accuracy
     return GameModelMetadata(
         model_name=model_name,
         model_type=model_type,
@@ -55,11 +45,15 @@ def _make_meta(
         trained_at="2026-06-03T00:00:00",
         training_seasons=["2020-2021"],
         holdout_seasons=["2023-2024"],
-        parameters=params,
+        parameters={},
         feature_columns=["f1", "f2"],
         n_train_rows=10,
         n_holdout_rows=2,
         holdout_brier=brier,
+        holdout_ece=ece if ece is not None else float("nan"),
+        holdout_auc=auc if auc is not None else float("nan"),
+        holdout_log_loss=log_loss if log_loss is not None else float("nan"),
+        holdout_accuracy=accuracy if accuracy is not None else float("nan"),
     )
 
 
