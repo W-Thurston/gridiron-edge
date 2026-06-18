@@ -1,8 +1,9 @@
 # tests/unit/models/test_games_predictor.py
 
-"""Tests for GamesPredictor + composite-key registrations (Workstream 2 D2b.1).
+"""Tests for GamesPredictor + composite-key registrations + build_game_predictions.
 
-Covers the static surface of the new predictor classes:
+Covers the static surface of the predictor classes plus the module-level
+``build_game_predictions`` helper:
     - All 5 composite keys are registered.
     - Each subclass has the right (model_name, model_type, spec).
     - GamesPredictor delegates train() to the right trainer.
@@ -12,6 +13,7 @@ Covers the static surface of the new predictor classes:
     - _maybe_predict_totals() returns None when:
         * called from a total predictor (no recursion).
         * the configured total model is not trained.
+    - build_game_predictions() constructs the standard archive schema.
 
 End-to-end fit-and-predict smoke tests against real modeling data are
 deferred to slow integration tests; this unit-test file exercises the
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -37,6 +40,7 @@ from gridiron_edge.models.game_prediction.predictor import (
     WinProbLogisticPredictor,
     WinProbRandomForestPredictor,
     WinProbXGBoostPredictor,
+    build_game_predictions,
 )
 from gridiron_edge.models.game_prediction.total import TotalTrainer
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
@@ -252,29 +256,6 @@ class TestMaybePredictTotals:
 
 
 # ---------------------------------------------------------------------------
-# Legacy + new registrations coexist (D2b.1 contract)
-# ---------------------------------------------------------------------------
-
-
-class TestCoexistence:
-    """During D2b.1, both flat and composite keys must be registered."""
-
-    def test_legacy_keys_still_registered(self) -> None:
-        for legacy_key in ("logistic", "random_forest", "xgboost"):
-            assert legacy_key in PredictorRegistry.names()
-
-    def test_composite_keys_registered(self) -> None:
-        for composite_key in (
-            "win_prob_logistic",
-            "win_prob_random_forest",
-            "win_prob_xgboost",
-            "total_random_forest",
-            "total_xgboost",
-        ):
-            assert composite_key in PredictorRegistry.names()
-
-
-# ---------------------------------------------------------------------------
 # Type-coverage smoke: every predictor's spec round-trips through PredictorSpec
 # ---------------------------------------------------------------------------
 
@@ -330,3 +311,137 @@ class TestModelTypeEnumRoundtrip:
     ) -> None:
         # GameModelType("logistic") / ("random_forest") / ("xgboost") must succeed.
         assert GameModelType(predictor_cls.model_type) in GameModelType
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper: build_game_predictions
+# ---------------------------------------------------------------------------
+
+
+class TestBuildGamePredictions:
+    """Tests for ``build_game_predictions()`` — assembles archive rows.
+
+    The function lives at module scope in ``predictor.py`` (not a method
+    of ``GamesPredictor``) because it's a pure data-shape helper used by
+    the classification prediction path.
+    """
+
+    def _make_modeling_df(self) -> pd.DataFrame:
+        """Minimal modeling DataFrame with two rows per game (home/away)."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": ["G1", "G1", "G2", "G2"],
+                "TEAM_A": ["Chiefs", "Ravens", "Bills", "Dolphins"],
+                "TEAM_B": ["Ravens", "Chiefs", "Dolphins", "Bills"],
+                "YEAR": ["2024-2025"] * 4,
+                "WEEK_NUM": [1, 1, 1, 1],
+                "HOME_FIELD": [0, 1, 0, 1],
+            }
+        )
+
+    def test_one_row_per_game(self) -> None:
+        """Output has one row per game, not two."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        assert len(result) == 2
+
+    def test_away_team_perspective(self) -> None:
+        """Away team probability matches the HOME_FIELD==0 row."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        g1 = result[result["game_id"] == "G1"].iloc[0]
+        assert g1["away_win_prob"] == pytest.approx(0.45)
+        assert g1["home_win_prob"] == pytest.approx(0.55)
+
+    def test_model_name_and_type_tagged(self) -> None:
+        """All rows have the correct (model_name, model_type) pair."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        assert (result["model_name"] == "win_prob").all()
+        assert (result["model_type"] == "random_forest").all()
+
+    def test_totals_included_when_provided(self) -> None:
+        """model_total column present when totals are passed."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+        totals = pd.Series([44.0, 44.0, 48.0, 48.0], index=df.index)
+
+        result = build_game_predictions(
+            df,
+            probs,
+            model_name="win_prob",
+            model_type="random_forest",
+            totals=totals,
+        )
+        assert "model_total" in result.columns
+        assert result["model_total"].notna().all()
+
+    def test_totals_absent_when_not_provided(self) -> None:
+        """model_total column absent when totals are not passed."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        assert "model_total" not in result.columns
+
+    def test_is_backfilled_flag(self) -> None:
+        """is_backfilled flag is set correctly."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result_bf = build_game_predictions(
+            df,
+            probs,
+            model_name="win_prob",
+            model_type="random_forest",
+            is_backfilled=True,
+        )
+        result_live = build_game_predictions(
+            df,
+            probs,
+            model_name="win_prob",
+            model_type="random_forest",
+            is_backfilled=False,
+        )
+        assert result_bf["is_backfilled"].all()
+        assert not result_live["is_backfilled"].any()
+
+    def test_required_columns_present(self) -> None:
+        """Output contains all base archive columns."""
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        required = {
+            "predicted_at",
+            "is_backfilled",
+            "model_name",
+            "model_type",
+            "season",
+            "week",
+            "game_id",
+            "game_date",
+            "away_team",
+            "home_team",
+            "away_elo",
+            "home_elo",
+            "away_win_prob",
+            "home_win_prob",
+        }
+        assert required.issubset(set(result.columns))

@@ -1,11 +1,14 @@
-# tests/models/test_tree_models.py
-"""Unit tests for tree-based models: Random Forest and XGBoost.
+# tests/unit/models/test_epa_window.py
 
+"""Unit tests for _rebuild_features_with_window (rolling EPA recomputation).
+
+Used by GamesTrainer's hyperparameter search over EPA window sizes.
 Tests cover:
-- _rebuild_features_with_window: correctness of rolling EPA recomputation
-- RandomForestPredictor and XGBoostPredictor: registration, spec, trainability
-- _train_random_forest / _train_xgboost: smoke-tests on synthetic data
-- Holdout Brier plausibility and metadata completeness
+- Window=4 fast path (no disk read)
+- Different window sizes produce different EPA values
+- Output schema preserved
+- No lookahead leakage
+- Graceful handling of missing epa_by_game.parquet
 """
 
 from __future__ import annotations
@@ -21,12 +24,6 @@ import pytest
 from gridiron_edge.models.game_prediction._epa_window import (
     _rebuild_features_with_window,
 )
-import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-from gridiron_edge.models.game_prediction.predictor import (
-    RandomForestPredictor,
-    XGBoostPredictor,
-)
-from gridiron_edge.models.registry import PredictorRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -37,14 +34,13 @@ from gridiron_edge.models.registry import PredictorRegistry
 def synthetic_modeling_df() -> pd.DataFrame:
     """Minimal modeling DataFrame resembling the real schema.
 
-    Covers 4 seasons (2006-2010) so _prepare_data has both train and
-    holdout rows.  EPA columns use the standard TEAM_A_*/TEAM_B_* names
-    with window=4 values pre-filled.
+    Covers seasons straddling the holdout boundary so _prepare_data has
+    both train and holdout rows. EPA columns use the standard
+    TEAM_A_*/TEAM_B_* names with window=4 values pre-filled.
     """
     rng: Generator = np.random.default_rng(0)
     n = 400
 
-    # Seasons straddling the holdout boundary
     seasons: list[str] = (
         ["2006-2007"] * 80
         + ["2007-2008"] * 80
@@ -92,7 +88,6 @@ def synthetic_modeling_df() -> pd.DataFrame:
         }
     )
 
-    # Add EPA columns
     for suffix in epa_suffixes:
         df[f"TEAM_A_{suffix}"] = rng.uniform(-0.2, 0.3, n)
         df[f"TEAM_B_{suffix}"] = rng.uniform(-0.2, 0.3, n)
@@ -177,7 +172,6 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window=4 is the fast path — should return identical DataFrame."""
-
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=4, repo=mini_repo
         )
@@ -187,11 +181,9 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Window != 4 should produce different EPA column values."""
-
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=2, repo=mini_repo
         )
-        # The EPA columns should differ from the original 4-game window
         assert not result["TEAM_A_OFF_EPA_PER_PLAY"].equals(
             synthetic_modeling_df["TEAM_A_OFF_EPA_PER_PLAY"]
         )
@@ -199,8 +191,7 @@ class TestRebuildFeaturesWithWindow:
     def test_output_has_all_expected_epa_columns(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
-        """All 72 EPA columns (36 per team) must be present in the output."""
-
+        """All EPA columns (per team) must be present in the output."""
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=3, repo=mini_repo
         )
@@ -222,7 +213,6 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """Row count should be identical to the input."""
-
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=6, repo=mini_repo
         )
@@ -232,7 +222,6 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
         """First-season week-1 rows should have NaN EPA (no prior games to average)."""
-
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=3, repo=mini_repo
         )
@@ -249,47 +238,8 @@ class TestRebuildFeaturesWithWindow:
         self, synthetic_modeling_df: pd.DataFrame, tmp_path: Path
     ) -> None:
         """If epa_by_game.parquet is missing, return the original DataFrame."""
-
-        # tmp_path has no epa_by_game.parquet
         (tmp_path / "data" / "cleaned").mkdir(parents=True)
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=2, repo=tmp_path
         )
         pd.testing.assert_frame_equal(result, synthetic_modeling_df)
-
-
-# ---------------------------------------------------------------------------
-# Predictor registration and spec
-# ---------------------------------------------------------------------------
-
-
-class TestPredictorRegistration:
-    """Verify RF and XGBoost predictors are correctly registered."""
-
-    def test_random_forest_registered(self) -> None:
-        """random_forest should be in the PredictorRegistry."""
-
-        assert "random_forest" in PredictorRegistry.names()
-
-    def test_xgboost_registered(self) -> None:
-        """xgboost should be in the PredictorRegistry."""
-
-        assert "xgboost" in PredictorRegistry.names()
-
-    def test_random_forest_is_trainable(self) -> None:
-        """random_forest should be flagged as trainable."""
-
-        assert PredictorRegistry.is_trainable("random_forest")
-
-    def test_xgboost_is_trainable(self) -> None:
-        """xgboost should be flagged as trainable."""
-
-        assert PredictorRegistry.is_trainable("xgboost")
-
-    def test_random_forest_spec(self) -> None:
-        """random_forest spec should have the correct name."""
-        assert RandomForestPredictor.spec.name == "random_forest"
-
-    def test_xgboost_spec(self) -> None:
-        """xgboost spec should have the correct name."""
-        assert XGBoostPredictor.spec.name == "xgboost"

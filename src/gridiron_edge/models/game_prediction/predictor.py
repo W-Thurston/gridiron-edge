@@ -3,30 +3,34 @@
 """Game prediction model registry entry point.
 
 This module is the single import that callers use to ensure all game
-prediction models are registered with ``PredictorRegistry``.
+prediction models are registered with ``PredictorRegistry``. After
+Workstream 2 D2b.3 it contains:
 
-Workstream 2 D2b.1 status:
-    Both legacy and new registrations coexist. Legacy classes register
-    flat keys (``"logistic"``, ``"random_forest"``, ``"xgboost"``) via
-    side-effect imports of ``logistic`` and ``tree``. New classes
-    register composite keys (``"win_prob_logistic"``,
-    ``"win_prob_random_forest"``, ``"win_prob_xgboost"``,
-    ``"total_random_forest"``, ``"total_xgboost"``) directly here.
+- The :class:`GamesPredictor` base class (Predictor + Trainable protocols).
+- Five composite-key subclasses registered with ``PredictorRegistry``:
+    * ``"win_prob_logistic"`` / ``"win_prob_random_forest"`` / ``"win_prob_xgboost"``
+    * ``"total_random_forest"`` / ``"total_xgboost"``
+- The :func:`build_game_predictions` helper used internally by
+  classification predict_historical to assemble game-level rows.
 
-    D2b.2 flips all callers to use composite keys. D2b.3 deletes the
-    legacy side-effect imports + re-exports + the underlying
-    ``logistic.py`` / ``tree.py`` modules.
+Workstream 2 D2b.3 status:
+    The legacy ``logistic.py`` and ``tree.py`` modules have been deleted.
+    The flat ``PredictorRegistry`` keys (``"logistic"``, ``"random_forest"``,
+    ``"xgboost"``) are gone. All game-side training and prediction flows
+    through :class:`GamesTrainer` and this module's :class:`GamesPredictor`.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import logging
+from logging import Logger
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 import pandas as pd
 
-# WS2 D2b.1 imports for the new GamesPredictor surface.
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.loaders import load_modeling_file
@@ -41,30 +45,13 @@ from gridiron_edge.models.game_prediction.base import (
     GameModelType,
     GamesTrainer,
 )
-
-# Side-effect imports — registers all legacy game prediction models with
-# PredictorRegistry. logistic.py and tree.py use variant factories that
-# call PredictorRegistry.register() at module load time.
-import gridiron_edge.models.game_prediction.logistic
-from gridiron_edge.models.game_prediction.logistic import (  # noqa: F401
-    LogisticPredictor,
-)
-from gridiron_edge.models.game_prediction.pipeline import build_game_predictions
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.game_prediction.total import TotalTrainer
-import gridiron_edge.models.game_prediction.tree  # noqa: F401
-from gridiron_edge.models.game_prediction.tree import (  # noqa: F401
-    RandomForestPredictor,
-    XGBoostPredictor,
-)
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
 from gridiron_edge.models.registry import PredictorRegistry
 
 if TYPE_CHECKING:
     from pandas import DataFrame, Series
-
-import logging
-from logging import Logger
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -78,6 +65,75 @@ _TRAINER_FOR_NAME: dict[str, type[GamesTrainer]] = {
     "win_prob": WinProbTrainer,
     "total": TotalTrainer,
 }
+
+
+# ---------------------------------------------------------------------------
+# build_game_predictions — internal helper for assembling archive rows
+# ---------------------------------------------------------------------------
+
+
+def build_game_predictions(
+    df: pd.DataFrame,
+    probs: np.ndarray,
+    *,
+    model_name: str,
+    model_type: str,
+    is_backfilled: bool = True,
+    totals: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Map raw model outputs onto game-level prediction rows.
+
+    The modeling DataFrame has one row per team-game (two rows per game).
+    This function filters to the away-team rows (``HOME_FIELD == 0``),
+    deduplicates on GAME_ID, and constructs the standard prediction
+    schema used by the archive.
+
+    Args:
+        df: Modeling DataFrame (must include GAME_ID, TEAM_A, TEAM_B,
+            YEAR, WEEK_NUM, HOME_FIELD). Aligned with *probs*.
+        probs: Predicted probability that TEAM_A wins, aligned with *df*.
+        model_name: Win-probability model purpose (e.g. ``"win_prob"``).
+        model_type: Win-probability model algorithm (e.g. ``"random_forest"``).
+        is_backfilled: Whether these are historical backfill predictions.
+        totals: Optional predicted game totals, aligned with *df*.
+
+    Returns:
+        Game-level predictions DataFrame with one row per game.
+    """
+    work = df.copy()
+    work["_prob"] = probs
+    if totals is not None:
+        work["_total"] = totals
+
+    # One row per game — keep the away-team perspective.
+    # pyrefly: ignore [no-matching-overload]
+    away = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
+
+    ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
+
+    result = pd.DataFrame(
+        {
+            "predicted_at": ts,
+            "is_backfilled": is_backfilled,
+            "model_name": model_name,
+            "model_type": model_type,
+            "season": away["YEAR"],
+            "week": away["WEEK_NUM"].astype(int),
+            "game_id": away["GAME_ID"],
+            "game_date": "",
+            "away_team": away["TEAM_A"],
+            "home_team": away["TEAM_B"],
+            "away_elo": float("nan"),
+            "home_elo": float("nan"),
+            "away_win_prob": away["_prob"],
+            "home_win_prob": 1.0 - away["_prob"],
+        }
+    )
+
+    if "_total" in away.columns:
+        result["model_total"] = away["_total"].values
+
+    return result.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +272,9 @@ class GamesPredictor:
     def _predict_historical_classification(self, *, repo: Path) -> pd.DataFrame:
         """Historical prediction lifecycle for classification (win_prob).
 
-        Mirrors :func:`pipeline.predict_games`. Loads the modeling file,
-        applies the feature function, runs ``predict_proba``, optionally
-        attaches totals, builds game predictions, and enriches.
+        Loads the modeling file, applies the feature function, runs
+        ``predict_proba``, optionally attaches totals, builds game
+        predictions, and enriches.
         """
         store = ArtifactStore(repo)
 
@@ -269,8 +325,7 @@ class GamesPredictor:
     ) -> pd.DataFrame:
         """Upcoming prediction lifecycle for classification (win_prob).
 
-        Mirrors the legacy ``_predict_upcoming_tree`` / ``_predict_upcoming_logistic``
-        flows: builds features on the schedule, runs ``predict_proba``,
+        Builds features on the schedule, runs ``predict_proba``,
         attaches totals when available, and enriches.
         """
         store = ArtifactStore(repo)
@@ -336,8 +391,6 @@ class GamesPredictor:
         ``model_name``, ``model_type``, ``season``, ``week``, ``game_id``,
         ``model_total``.
         """
-        from datetime import UTC, datetime
-
         store = ArtifactStore(repo)
 
         if not store.is_trained(self.model_name, self.model_type):
@@ -365,7 +418,7 @@ class GamesPredictor:
         df_valid["_total"] = preds
         away = df_valid.loc[df_valid["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
 
-        ts = datetime.now(tz=UTC).replace(tzinfo=None)
+        ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
         result = pd.DataFrame(
             {
                 "predicted_at": ts,
@@ -458,7 +511,7 @@ class GamesPredictor:
 
 
 # ---------------------------------------------------------------------------
-# Composite-key registrations (Workstream 2 D2b.1)
+# Composite-key registrations
 # ---------------------------------------------------------------------------
 
 

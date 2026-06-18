@@ -5,24 +5,26 @@ Workstream 2 user surface:
     All commands that touch a specific model take two positional args —
     ``model_name`` (purpose, e.g. ``"win_prob"``) and ``model_type``
     (algorithm, e.g. ``"random_forest"``). This matches the ``ArtifactStore``
-    storage scheme at ``data/models/{model_name}/{model_type}/``.
+    storage scheme at ``data/models/{model_name}/{model_type}/`` and the
+    composite ``PredictorRegistry`` keys (e.g. ``"win_prob_random_forest"``).
 
 Examples:
     gridiron models train win_prob random_forest
     gridiron models info  win_prob xgboost
     gridiron models list
 
-Transitional internal mapping:
-    The ``PredictorRegistry`` still uses flat keys in D1b (e.g.
-    ``"random_forest"``). The ``_ARTIFACT_TO_REGISTRY`` map below bridges
-    the WS2 CLI surface to those keys. It is deleted in D2b when registry
-    keys themselves become composite (e.g. ``"win_prob_random_forest"``).
+Workstream 2 D2b.3 status:
+    The transitional ``_ARTIFACT_TO_REGISTRY`` map is gone. All
+    ``PredictorRegistry`` keys are composite, so the resolution is a
+    pure ``f"{model_name}_{model_type}"`` concatenation. Any pair that
+    isn't a registered key surfaces as a ``KeyError`` from
+    ``PredictorRegistry.get`` — clear and loud.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Literal
 
 from pandas import DataFrame
 
@@ -42,36 +44,28 @@ models_app = typer.Typer(
 
 
 # ---------------------------------------------------------------------------
-# WS2 (model_name, model_type) → registry key bridge (transitional)
+# Internal helpers
 # ---------------------------------------------------------------------------
 
-#: Maps a WS2 ``(model_name, model_type)`` pair to the flat
-#: ``PredictorRegistry`` key used internally during D1b.
-#:
-#: D2b deletes this map: when registry keys become composite, the CLI
-#: looks up the predictor via ``PredictorRegistry.get(f"{model_name}_{model_type}")``
-#: with no intermediate translation.
-_ARTIFACT_TO_REGISTRY: Final[dict[tuple[str, str], str]] = {
-    ("win_prob", "logistic"): "logistic",
-    ("win_prob", "random_forest"): "random_forest",
-    ("win_prob", "xgboost"): "xgboost",
-    # Elo predictor isn't migrated to WS2 schema yet — add a mapping
-    # here when it is.
-}
 
+def _split_composite_key(key: str) -> tuple[str, str] | None:
+    """Split a composite registry key into ``(model_name, model_type)``.
 
-def _resolve_registry_key(model_name: str, model_type: str) -> str:
-    """Translate ``(model_name, model_type)`` to its registry key.
+    Used by :func:`models_list` to display the WS2 pair for each registry
+    entry. Returns ``None`` if the key does not contain an underscore
+    (defensive — every registered key should be composite, but ``None``
+    lets ``models list`` render gracefully instead of crashing).
 
-    Raises ``typer.BadParameter`` if the pair isn't a known WS2 model.
+    Args:
+        key: Composite registry key (e.g. ``"win_prob_random_forest"``).
+
+    Returns:
+        Tuple of ``(model_name, model_type)``, or ``None`` if malformed.
     """
-    pair: tuple[str, str] = (model_name, model_type)
-    if pair not in _ARTIFACT_TO_REGISTRY:
-        known: list[str] = [f"{n} {t}" for n, t in sorted(_ARTIFACT_TO_REGISTRY)]
-        raise typer.BadParameter(
-            f"'{model_name} {model_type}' is not a known Workstream 2 game model. Known: {known}"
-        )
-    return _ARTIFACT_TO_REGISTRY[pair]
+    if "_" not in key:
+        return None
+    name, _, mtype = key.partition("_")
+    return name, mtype
 
 
 def _apply_promotion_decision(
@@ -85,8 +79,8 @@ def _apply_promotion_decision(
 ) -> None:
     """Compare challenger to champion and handle promotion/rejection.
 
-    Champion / backup directories live under the new nested scheme;
-    backup is co-located with champion at
+    Champion / backup directories live under the nested scheme; backup
+    is co-located with champion at
     ``data/models/{model_name}/{model_type}__backup/``.
     """
     import shutil
@@ -180,12 +174,18 @@ def models_train(
     store = ArtifactStore(repo)
     console.header("models train", subtitle=f"{model_name} {model_type}")
 
-    # ── Resolve (name, type) → registry key ─────────────────────────
-    registry_key: str = _resolve_registry_key(model_name, model_type)
+    # ── Resolve (name, type) → composite registry key ─────────────
+    registry_key: str = f"{model_name}_{model_type}"
 
     # ── Resolve model ──────────────────────────────────────────────
     with step("Resolve model") as s:
-        predictor: Predictor = PredictorRegistry.get(registry_key)()
+        try:
+            predictor: Predictor = PredictorRegistry.get(registry_key)()
+        except KeyError as exc:
+            raise typer.BadParameter(
+                f"'{registry_key}' is not a registered predictor. "
+                f"Available: {PredictorRegistry.trainable_names()}"
+            ) from exc
         if not isinstance(predictor, Trainable):
             raise typer.BadParameter(
                 f"'{registry_key}' does not implement Trainable. "
@@ -237,8 +237,8 @@ def models_list() -> None:
     r"""List all registered models and their training status.
 
     Shows the WS2 ``(model_name, model_type)`` pair for each registry
-    entry that has been migrated. Predictors not yet migrated to the
-    WS2 schema display ``(— / —)`` and skip artifact lookup.
+    entry. Every key is composite after D2b.3 so the pair is derived
+    by splitting on the first underscore.
 
     \b
     Examples:
@@ -256,35 +256,30 @@ def models_list() -> None:
     repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
 
-    # Inverse of _ARTIFACT_TO_REGISTRY for quick lookup by registry key.
-    registry_to_artifact: dict[str, tuple[str, str]] = {
-        rk: pair for pair, rk in _ARTIFACT_TO_REGISTRY.items()
-    }
-
     rows: list[dict[str, str]] = []
-    for name in PredictorRegistry.names():
-        predictor: Predictor = PredictorRegistry.get(name)()
+    for key in PredictorRegistry.names():
+        predictor: Predictor = PredictorRegistry.get(key)()
         is_trainable: bool = isinstance(predictor, Trainable)
         kind: Literal["analytic", "trainable"] = "trainable" if is_trainable else "analytic"
 
-        artifact_pair: tuple[str, str] | None = registry_to_artifact.get(name)
+        pair: tuple[str, str] | None = _split_composite_key(key)
 
-        if is_trainable and artifact_pair is not None and store.is_trained(*artifact_pair):
-            meta: BaseModelMetadata = store.read_metadata(*artifact_pair)
+        if is_trainable and pair is not None and store.is_trained(*pair):
+            meta: BaseModelMetadata = store.read_metadata(*pair)
             trained_at: str = meta.trained_at
             brier: str = f"{meta.holdout_brier:.5f}"  # type: ignore[attr-defined]
         else:
             trained_at = "(not trained)" if is_trainable else "(no artifact)"
             brier = "-"
 
-        model_name_disp: str = artifact_pair[0] if artifact_pair else "—"
-        model_type_disp: str = artifact_pair[1] if artifact_pair else "—"
+        model_name_disp: str = pair[0] if pair else "—"
+        model_type_disp: str = pair[1] if pair else "—"
 
         rows.append(
             {
                 "model_name": model_name_disp,
                 "model_type": model_type_disp,
-                "registry_key": name,
+                "registry_key": key,
                 "kind": kind,
                 "trained_at": trained_at,
                 "holdout_brier": brier,
@@ -311,13 +306,21 @@ def models_info(
     from gridiron_edge.models.artifact import ArtifactStore
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    from gridiron_edge.models.registry import PredictorRegistry
 
     repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
+    registry_key: str = f"{model_name}_{model_type}"
 
-    # Validate the pair is known (gives a clean error message before
-    # falling through to a generic FileNotFoundError from the store).
-    _resolve_registry_key(model_name, model_type)
+    # Validate the pair is a registered key (gives a clean error message
+    # before falling through to a generic FileNotFoundError from the store).
+    try:
+        PredictorRegistry.get(registry_key)
+    except KeyError as exc:
+        raise typer.BadParameter(
+            f"'{registry_key}' is not a registered predictor. "
+            f"Available: {sorted(PredictorRegistry.names())}"
+        ) from exc
 
     if not store.is_trained(model_name, model_type):
         typer.echo(
