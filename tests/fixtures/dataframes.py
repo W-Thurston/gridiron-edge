@@ -43,6 +43,9 @@ _GAME_DEFAULTS: dict[str, Any] = {
     "GAME_DAY_OF_WEEK": "Thursday",
     "PTS_WINNER": 27,
     "PTS_LOSER": 20,
+    "VEGAS_LINE": -3.5,
+    "OVER_UNDER": 47.5,
+    "FAVORITED": "Kansas City Chiefs",
 }
 
 
@@ -615,6 +618,9 @@ def make_games_from_modeling_df(
                 "GAME_DAY_OF_WEEK": "Sunday",
                 "PTS_WINNER": pts_winner,
                 "PTS_LOSER": pts_loser,
+                "VEGAS_LINE": float(rng.uniform(-10, 10)),
+                "OVER_UNDER": float(rng.uniform(40, 55)),
+                "FAVORITED": home_team,
             }
         )
 
@@ -627,8 +633,10 @@ _PROPS_MODELING_COLS: list[str] = [
     "player_id",
     "player_name",
     "position",
+    "team",
     "team_abbr",
     "opponent_team",
+    "is_skill",
     "season",
     "week",
     "game_id",
@@ -724,8 +732,10 @@ def make_props_modeling_df(
                         "player_id": player_id,
                         "player_name": player_name,
                         "position": position,
+                        "team": "KC",
                         "team_abbr": "KC",
                         "opponent_team": "LAR",
+                        "is_skill": position in ("QB", "RB", "WR", "TE"),
                         "season": season_int,
                         "week": week,
                         "game_id": f"{season_int}_{week:02d}_KC_LAR",

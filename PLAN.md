@@ -29,7 +29,7 @@ Agreed 2026-06-10. See ROADMAP.md for full workstream inventory.
 |---|-----------|--------|
 | 1 | Champion/Challenger for Props (RF + XGBoost) | Done |
 | 2 | Game Model Refactor (align to props pattern) | Done |
-| 3 | Integration & E2E Tests | **Active** |
+| 3 | Integration & E2E Tests | Done |
 | 4 | Deep Code Review + Test Suite Review | Planned |
 | 5 | Scenario / "What If" Engine (W4.5) | Planned |
 | 6 | API & Frontend (W8 + W9) | Planned |
@@ -434,16 +434,18 @@ The WS2 D5 verification phase exposed a real test gap. Training reported Brier 0
 
 #### Sub-workstreams
 
-| Phase | Description | Scope | Speed mark |
-|---|---|---|---|
-| E0 | Shared infrastructure | 3 file extensions + 1 new helpers file | n/a (used by all) |
-| E1-games | Fit-load-predict for 5 game models + Elo | tests/e2e/test_games_fit_load_predict.py | `slow` |
-| E1-props | Fit-load-predict for 5 prop models | tests/e2e/test_props_fit_load_predict.py | `slow` |
-| E2 | Archive round-trip (games + props) | tests/integration/test_archive_roundtrip.py | `integration` |
-| E3-games | Backfill flow end-to-end | tests/integration/test_games_backfill.py | `integration` |
-| E3-props | Prop archive flow | tests/integration/test_props_archive.py | `integration` |
-| E4 | CLI workflow smoke tests | tests/integration/test_cli_workflows.py (extend) | `integration` |
-| E5 | Scaler-application regression test | Folded into E1-games | `slow` |
+#### Sub-workstreams
+
+| Phase | Description | Status |
+|---|---|---|
+| E0 | Shared infrastructure | Done |
+| E1-games | Fit-load-predict for 5 game models + Elo | Done |
+| E1-props | Fit-load-predict for 5 prop models | Deferred |
+| E2 | Archive round-trip (games) | Done |
+| E3-games | Backfill flow end-to-end | Done |
+| E3-props | Prop archive flow | Deferred |
+| E4 | CLI workflow smoke tests | Done |
+| E5 | Scaler-application regression test | Done (folded into E1-games) |
 
 #### Decisions locked
 
@@ -477,11 +479,24 @@ The WS2 D5 verification phase exposed a real test gap. Training reported Brier 0
 - Each test marked appropriately (`unit`, `integration`, `slow`, `e2e`).
 - The scaler bug from WS2 D5 is reproducible via `test_win_prob_logistic_fit_load_predict` (would fail if reintroduced).
 
-#### Known follow-ups (post-WS3 scope)
+#### Known follow-ups (post-workstream)
 
-- `repos.py::with_epa_by_game` bypasses the `_write` helper unnecessarily. The helper already handles parquet correctly; the bypass is a copy-paste leftover. Worth a one-line cleanup but outside WS3.
-- Prop tests don't currently exercise the `enrich_prop_predictions` post-processing path (predicted_std, lo_90, hi_90 derivation). WS3 covers it minimally as part of E3-props; if more coverage is needed, follow-up workstream.
-- WS3 doesn't establish performance baselines for tests. If test runtime grows in future workstreams, may need a `pytest-benchmark` pass to track regressions.
+- Props e2e fit-load-predict tests deferred. The prop feature pipeline
+  reads from multiple synthetic DataFrames with distinct column
+  expectations from downstream builders (game_context, rolling, matchup,
+  usage). Reactive iteration approach proved too expensive; needs
+  upfront fixture design study. Track as future workstream session: read
+  the prop builders end-to-end and ship one fixture extension that
+  covers all required columns. Once that lands, prop archive integration
+  tests follow naturally.
+- repos.py::with_epa_by_game still bypasses the _write helper
+  unnecessarily. The helper already handles parquet correctly; the
+  bypass is a copy-paste leftover. One-line cleanup pending.
+- Logistic feature names lost across joblib round-trip (sklearn
+  UserWarning, cosmetic; predict path uses .values arrays). Same issue
+  flagged in Workstream 2 follow-ups.
+- Performance baselines not established for tests. If runtime grows in
+  future workstreams, may need a pytest-benchmark pass.
 
 ---
 

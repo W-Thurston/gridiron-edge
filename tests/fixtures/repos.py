@@ -85,6 +85,9 @@ class MiniRepoBuilder:
                         "STADIUM": "Stadium A",
                         "PTS_WINNER": 27,
                         "PTS_LOSER": 20,
+                        "VEGAS_LINE": -3.0,
+                        "OVER_UNDER": 45.0,
+                        "FAVORITED": "Team A",
                     },
                     {
                         "GAME_ID": "2025_02_B_A",
@@ -98,6 +101,9 @@ class MiniRepoBuilder:
                         "STADIUM": "Stadium B",
                         "PTS_WINNER": 31,
                         "PTS_LOSER": 17,
+                        "VEGAS_LINE": -7.0,
+                        "OVER_UNDER": 48.0,
+                        "FAVORITED": "Team B",
                     },
                 ]
             )
@@ -175,10 +181,10 @@ class MiniRepoBuilder:
         return self
 
     def with_player_stats(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
-        """Add a player-game stats parquet for the prop training path.
+        """Add a player-game logs parquet for the prop training path.
 
-        Writes ``data/cleaned/player_stats.parquet``. PropTrainer reads
-        this through :func:`build_prop_features`.
+        Writes ``data/cleaned/player_game_logs.parquet``, the canonical
+        path :func:`build_prop_features` reads from.
 
         Args:
             df: Player-game DataFrame. Uses :func:`make_props_modeling_df`
@@ -194,7 +200,7 @@ class MiniRepoBuilder:
         cleaned_dir: Path = self._root / "data" / "cleaned"
         cleaned_dir.mkdir(parents=True, exist_ok=True)
 
-        path: Path = cleaned_dir / "player_stats.parquet"
+        path: Path = cleaned_dir / "player_game_logs.parquet"
         stats.to_parquet(path, index=False)
 
         return self
