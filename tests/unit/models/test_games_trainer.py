@@ -1,6 +1,6 @@
 # tests/unit/models/test_games_trainer.py
 
-"""Tests for GamesTrainer infrastructure (Workstream 2 D2a).
+"""Tests for GamesTrainer infrastructure.
 
 Covers the static surface of the new trainer infrastructure:
     - GameModelType enum values.

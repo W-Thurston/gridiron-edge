@@ -83,7 +83,7 @@ class TestArchiveSchemaExtension:
 
     def test_backward_compat_load_fills_missing_enrichment(self, tmp_path: Path) -> None:
         """Archive missing enrichment columns loads with NaN/empty fill."""
-        # Pre-enrichment archive: has the WS2 model identity columns
+        # Pre-enrichment archive: has the model identity columns
         # (model_name + model_type) but no enrichment columns.
         old_df = pd.DataFrame(
             {

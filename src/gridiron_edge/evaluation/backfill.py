@@ -17,7 +17,7 @@ Typical usage::
 Registry key construction:
     The function builds the flat ``PredictorRegistry`` key as
     ``f"{model_name}_{model_type}"``. This matches the composite-key
-    convention introduced in Workstream 2 D2b.1.
+    convention used by all game-side predictors.
 """
 
 from __future__ import annotations

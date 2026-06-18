@@ -100,8 +100,8 @@ _SIGMA_HI: Final[float] = 22.0
 # ``_NFL_DEFAULT_SIGMA``.
 #
 # Calibrated 2026-06-04 via ``calibrate_spread_sigma`` against the full
-# prediction archive after the WS1 TimeSeriesSplit retrain. The Elo entry
-# carries the pre-WS2 v2 calibration; re-run ``calibrate_spread_sigma``
+# prediction archive after the TimeSeriesSplit champion retrain. The Elo
+# entry carries the legacy v2 calibration; re-run ``calibrate_spread_sigma``
 # after the next Elo backfill to refresh.
 #
 # TODO: Wire sigma calibration into the training harness so this map
@@ -122,7 +122,7 @@ _DEFAULT_MARGIN_STD: Final[float] = 13.45
 
 # Per-model margin std, keyed by (model_name, model_type). Derived from
 # sqrt(MSE) at optimal sigma during sigma calibration (2026-06-04). The
-# Elo entry carries the pre-WS2 v2 calibration; re-run after the next
+# Elo entry carries the legacy v2 calibration; re-run after the next
 # Elo backfill to refresh.
 #
 # TODO: Wire margin_std computation into the training harness.

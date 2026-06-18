@@ -214,7 +214,7 @@ class ArtifactStore:
             filename: Filename for the serialised model.
             scaler_filename: Filename for the serialised scaler.
             overwrite: If False (default), raises if an artifact already
-                exists. WS2 retrains pass ``overwrite=True``.
+                exists. Champion retrains pass ``overwrite=True``.
 
         Returns:
             Path to the written model file.

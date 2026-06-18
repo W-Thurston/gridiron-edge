@@ -1,6 +1,6 @@
 # tests/unit/models/test_metadata.py
 
-"""Tests for shared model metadata dataclasses (Workstream 2 D1a).
+"""Tests for shared model metadata dataclasses.
 
 Covers:
     - BaseModelMetadata: construction, defaults, kw_only enforcement,

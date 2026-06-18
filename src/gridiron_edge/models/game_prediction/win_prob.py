@@ -9,10 +9,9 @@ which feature sets and target column define the ``win_prob`` family.
 Logistic uses the combined feature set; tree-based models use the expanded
 feature set — matches the existing trainer behavior.
 
-Workstream 2 D2a status: this trainer is built alongside the existing
-``_train_random_forest`` / ``_train_xgboost`` / ``_train_logistic``
-functions. It is not yet registered with ``PredictorRegistry`` — D2b
-flips registration over and deletes the legacy code.
+The trainer contributes only the spec; all training behavior — feature
+selection, HP search, fit, eval — lives in the :class:`GamesTrainer`
+base class.
 """
 
 from __future__ import annotations

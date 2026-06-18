@@ -13,9 +13,8 @@ Examples:
     gridiron models info  win_prob xgboost
     gridiron models list
 
-Workstream 2 D2b.3 status:
-    The transitional ``_ARTIFACT_TO_REGISTRY`` map is gone. All
-    ``PredictorRegistry`` keys are composite, so the resolution is a
+Registry key resolution:
+    All ``PredictorRegistry`` keys are composite, so resolution is a
     pure ``f"{model_name}_{model_type}"`` concatenation. Any pair that
     isn't a registered key surfaces as a ``KeyError`` from
     ``PredictorRegistry.get`` — clear and loud.
@@ -240,9 +239,9 @@ def models_train(
 def models_list() -> None:
     r"""List all registered models and their training status.
 
-    Shows the WS2 ``(model_name, model_type)`` pair for each registry
-    entry. Every key is composite after D2b.3 so the pair is derived
-    by splitting on the first underscore.
+    Shows the ``(model_name, model_type)`` pair for each registry
+    entry. Every key is composite so the pair is derived by matching
+    the key against the known model_name prefixes.
 
     \b
     Examples:

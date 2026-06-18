@@ -3,8 +3,7 @@
 """Game prediction model registry entry point.
 
 This module is the single import that callers use to ensure all game
-prediction models are registered with ``PredictorRegistry``. After
-Workstream 2 D2b.3 it contains:
+prediction models are registered with ``PredictorRegistry``. It contains:
 
 - The :class:`GamesPredictor` base class (Predictor + Trainable protocols).
 - Five composite-key subclasses registered with ``PredictorRegistry``:
@@ -13,11 +12,10 @@ Workstream 2 D2b.3 it contains:
 - The :func:`build_game_predictions` helper used internally by
   classification predict_historical to assemble game-level rows.
 
-Workstream 2 D2b.3 status:
-    The legacy ``logistic.py`` and ``tree.py`` modules have been deleted.
-    The flat ``PredictorRegistry`` keys (``"logistic"``, ``"random_forest"``,
-    ``"xgboost"``) are gone. All game-side training and prediction flows
-    through :class:`GamesTrainer` and this module's :class:`GamesPredictor`.
+All game-side training and prediction flows through :class:`GamesTrainer`
+and this module's :class:`GamesPredictor`. ``PredictorRegistry`` keys use
+the composite ``{model_name}_{model_type}`` convention (e.g.
+``"win_prob_random_forest"``).
 """
 
 from __future__ import annotations

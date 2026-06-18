@@ -1,6 +1,6 @@
 # tests/evaluation/test_archive.py
 
-"""Tests for the prediction archive store (Workstream 2 D2b.2a).
+"""Tests for the prediction archive store.
 
 The archive schema uses ``(model_name, model_type)`` as the model identity.
 ``model_version`` no longer exists in the schema, function signatures, or

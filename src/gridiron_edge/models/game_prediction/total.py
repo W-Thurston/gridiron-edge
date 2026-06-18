@@ -17,11 +17,9 @@ Public API:
     DEFAULT_TOTAL_MODEL_NAME / DEFAULT_TOTAL_MODEL_TYPE: identity
         constants used by GamesPredictor when defaulting the total model.
 
-Workstream 2 D2b.3:
-    The legacy ``train_total_model`` / ``load_total_model`` /
-    ``predict_total`` free functions were deleted. All total-model
-    training, loading, and prediction now flow through ``GamesTrainer``
-    / ``GamesPredictor``.
+All total-model training, loading, and prediction flow through
+``GamesTrainer`` / ``GamesPredictor``. The :class:`TotalTrainer` here
+contributes only the spec; behavior lives in the trainer base class.
 """
 
 from __future__ import annotations

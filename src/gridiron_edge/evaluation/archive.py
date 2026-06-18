@@ -9,7 +9,7 @@ calibration, and tracked against closing lines for CLV analysis.
 Storage layout:
     data/output/predictions/predictions_log.parquet
 
-Schema (Workstream 2 D2b.2a):
+Schema:
     predicted_at    datetime64[ns]  UTC timestamp of the prediction run.
                                     Live predictions use the actual run time.
                                     Backfilled predictions use the time of the

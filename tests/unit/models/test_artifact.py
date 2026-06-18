@@ -1,6 +1,6 @@
 # tests/unit/models/test_artifact.py
 
-"""Tests for gridiron_edge.models.artifact — ArtifactStore (Workstream 2 D1b).
+"""Tests for gridiron_edge.models.artifact — ArtifactStore.
 
 Covers the (model_name, model_type) API and nested path scheme, plus the
 metadata-subclass discrimination on read.

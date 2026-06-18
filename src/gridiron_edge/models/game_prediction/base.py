@@ -15,11 +15,10 @@ Public API:
     _get_param_grid     module-level hyperparameter grid factory
     _n_iter_for         iteration count for randomized HP search
 
-Workstream 2 D2a status:
-    GameModelType / GameModelSpec / GamesTrainer are added alongside the
-    existing _train_random_forest / _train_xgboost / _train_logistic /
-    train_total_model free functions. The existing functions remain wired
-    through PredictorRegistry until D2b flips registration over.
+The trainer infrastructure (GameModelType, GameModelSpec, GamesTrainer)
+operates as the single training surface for game-side models — both
+classification (win_prob) and regression (total) tasks dispatch from
+here.
 """
 
 from __future__ import annotations

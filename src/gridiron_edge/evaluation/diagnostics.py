@@ -607,8 +607,8 @@ def plot_single_model(
     paths.append(plot_brier_decomposition(eval_df, repo=repo))
     paths.append(plot_performance_by_context(eval_df, repo=repo))
 
-    # The eval_df schema changed in WS2 D1b — model identity is now
-    # carried as separate (model_name, model_type) columns. The
+    # The eval_df schema carries model identity as separate
+    # (model_name, model_type) columns. The
     # ``eval_df["model_version"]`` accesses elsewhere in this module
     # are a known runtime breakage tracked for D4 (archive regenerate).
     if "model_name" in eval_df.columns and "model_type" in eval_df.columns:
