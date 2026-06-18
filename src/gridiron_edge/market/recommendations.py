@@ -8,8 +8,8 @@ spread, and total markets, and produces a ranked edge report.
 Unlike ``odds_math.py``, ``kelly.py``, and ``edge.py``, this module
 **does** use pandas — it orchestrates the data joins that connect model
 outputs to market prices.  Callers are responsible for loading the data
-(via ``load_prediction_log`` / ``load_current_odds``); this module
-operates on DataFrames passed as arguments.
+(via ``load_prediction_log`` or the model enrichment pipeline); this
+module operates on DataFrames passed as arguments.
 
 Public API:
     pivot_odds_to_wide          Long odds → one row per game
@@ -52,7 +52,7 @@ _REPORT_COLUMNS: list[str] = [
     "week",
     "away_team",
     "home_team",
-    "model_version",
+    "model_key",
     "confidence_tier",
     "market_type",
     "side",
@@ -298,8 +298,9 @@ def build_edge_report(
     Parameters
     ----------
     predictions_df : pd.DataFrame
-        Enriched predictions (from ``load_prediction_log`` or
-        ``predict_games``).
+        Enriched predictions (from ``load_prediction_log`` or the model
+        enrichment pipeline). Must contain ``model_name`` and
+        ``model_type`` columns; ``model_key`` is derived in the output.
     odds_df : pd.DataFrame
         Odds data — long or wide format.
     margin_std : float
@@ -315,7 +316,9 @@ def build_edge_report(
     -------
     pd.DataFrame
         Edge report with columns matching :data:`_REPORT_COLUMNS`.
-        Contains all edges including ``"no_edge"`` rows.
+        Contains all edges including ``"no_edge"`` rows. The
+        ``model_key`` column is the composite ``f"{model_name}_{model_type}"``
+        derived from the prediction row.
     """
     joined: DataFrame = join_predictions_to_odds(predictions_df, odds_df)
 
@@ -325,6 +328,10 @@ def build_edge_report(
     report_rows: list[dict] = []
 
     for _, row in joined.iterrows():
+        model_name: str = str(row.get("model_name", ""))
+        model_type: str = str(row.get("model_type", ""))
+        model_key: str = f"{model_name}_{model_type}"
+
         game_base: dict = {
             "game_id": row.get("game_id", ""),
             "game_date": row.get("game_date", ""),
@@ -332,7 +339,7 @@ def build_edge_report(
             "week": row.get("week", ""),
             "away_team": row.get("away_team", ""),
             "home_team": row.get("home_team", ""),
-            "model_version": row.get("model_version", ""),
+            "model_key": model_key,
             "confidence_tier": row.get("confidence_tier", ""),
         }
 
