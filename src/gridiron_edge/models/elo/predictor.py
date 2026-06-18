@@ -93,7 +93,8 @@ def _build_archive_rows(
 
     result = enrich_predictions(
         result,
-        model_version=model_version,
+        model_name=None,
+        model_type=None,
         recalibrate=False,
     )
 

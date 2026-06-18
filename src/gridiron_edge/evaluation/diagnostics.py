@@ -46,7 +46,7 @@ from gridiron_edge.evaluation.metrics import (
     expected_calibration_error,
     roc_auc,
 )
-from gridiron_edge.models.artifact import ModelMetadata
+from gridiron_edge.models.artifact import BaseModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -364,7 +364,8 @@ def plot_brier_decomposition(
 
 
 def plot_feature_importance(
-    model_version: str,
+    model_name: str,
+    model_type: str,
     *,
     repo: Path,
 ) -> Path | None:
@@ -375,7 +376,8 @@ def plot_feature_importance(
     For XGBoost/tree models: plots gain-based feature importance.
 
     Args:
-        model_version: Registered model version string.
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
         repo: Repository root.
 
     Returns:
@@ -385,18 +387,19 @@ def plot_feature_importance(
     from gridiron_edge.models.artifact import ArtifactStore
 
     store = ArtifactStore(repo)
-    if not store.is_trained(model_version):
-        logger.warning("%s: no artifact found.", model_version)
+    display: str = f"{model_name}/{model_type}"
+    if not store.is_trained(model_name, model_type):
+        logger.warning("%s: no artifact found.", display)
         return None
 
-    pipeline = store.load(model_version)
-    metadata: ModelMetadata = store.read_metadata(model_version)
+    pipeline = store.load(model_name, model_type)
+    metadata: BaseModelMetadata = store.read_metadata(model_name, model_type)
     feature_names: list[str] = metadata.feature_columns
 
     # Try logistic regression coefficients
     clf = pipeline.named_steps.get("clf")
     if clf is None:
-        logger.warning("%s: no 'clf' step in pipeline.", model_version)
+        logger.warning("%s: no 'clf' step in pipeline.", display)
         return None
 
     if hasattr(clf, "coef_"):
@@ -412,7 +415,7 @@ def plot_feature_importance(
         ax.axvline(0, color="black", linewidth=0.8)
         ax.set_xlabel("Coefficient (positive = helps away team win)", fontsize=10)
         ax.set_title(
-            f"Logistic Regression Coefficients — {model_version}",
+            f"Logistic Regression Coefficients — {display}",
             fontsize=12,
             fontweight="bold",
         )
@@ -429,22 +432,22 @@ def plot_feature_importance(
         ax.barh(
             df_imp["feature"],
             df_imp["importance"],
-            color=_model_color(model_version),
+            color=_model_color(display),
             edgecolor="white",
         )
         ax.set_xlabel("Feature importance (gain)", fontsize=10)
         ax.set_title(
-            f"Feature Importance — {model_version}",
+            f"Feature Importance — {display}",
             fontsize=12,
             fontweight="bold",
         )
         ax.grid(True, alpha=0.3, axis="x")
 
     else:
-        logger.info("%s: model type does not support feature importance plots.", model_version)
+        logger.info("%s: model type does not support feature importance plots.", display)
         return None
 
-    out: Path = _output_dir(repo, model_version) / "feature_importance.png"
+    out: Path = _output_dir(repo, display.replace("/", "_")) / "feature_importance.png"
     return _save(fig, out)
 
 
@@ -604,7 +607,20 @@ def plot_single_model(
     paths.append(plot_brier_decomposition(eval_df, repo=repo))
     paths.append(plot_performance_by_context(eval_df, repo=repo))
 
-    fi_path: Path | None = plot_feature_importance(model, repo=repo)
+    # The eval_df schema changed in WS2 D1b — model identity is now
+    # carried as separate (model_name, model_type) columns. The
+    # ``eval_df["model_version"]`` accesses elsewhere in this module
+    # are a known runtime breakage tracked for D4 (archive regenerate).
+    if "model_name" in eval_df.columns and "model_type" in eval_df.columns:
+        m_name: str = eval_df["model_name"].iloc[0]
+        m_type: str = eval_df["model_type"].iloc[0]
+        fi_path: Path | None = plot_feature_importance(m_name, m_type, repo=repo)
+    else:
+        fi_path = None
+        logger.warning(
+            "plot_single_model: eval_df lacks (model_name, model_type) columns; "
+            "skipping feature importance plot."
+        )
     if fi_path is not None:
         paths.append(fi_path)
 

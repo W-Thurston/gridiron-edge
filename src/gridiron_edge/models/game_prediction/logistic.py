@@ -2,12 +2,16 @@
 
 """Logistic regression game prediction models.
 
-Four variants with different feature engineering and regularisation:
+Variants:
 
     logistic: Combined differential + raw features (32 features)
         - LogisticRegressionCV with TimeSeriesSplit CV
         - L2 regularisation, 10 candidate C values
         - StandardScaler preprocessing
+
+    elasticnet (factory only, not registered): Same data shape, SAGA solver,
+        elastic net penalty tuning both C and l1_ratio. Retained as a
+        train helper for future champions. Removed in D2b.
 
 All variants:
     - Same holdout split (HOLDOUT_SEASONS) for fair comparison with tree models
@@ -15,6 +19,12 @@ All variants:
     - StandardScaler in sklearn Pipeline
     - Ties excluded (15 games since 1999, ~0.2%)
     - NaN rows excluded (covers pre-2006 and incomplete rolling windows)
+
+Artifact storage (Workstream 2): trainers write to
+``data/models/{model_name}/{model_type}/``. ``model_name`` is ``"win_prob"``
+for all variants; ``model_type`` is ``"logistic"`` or ``"elasticnet"``.
+The factory pattern (``_make_logistic_variant``) and ``_train_elasticnet``
+are killed in D2b — replaced by ``GamesTrainer`` + ``WinProbTrainer``.
 """
 
 from __future__ import annotations
@@ -23,7 +33,6 @@ from collections.abc import Callable
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pandas as pd
 from pandas import DataFrame, Series
@@ -37,14 +46,12 @@ from gridiron_edge.models.game_prediction._features import (
     _is_trained,
     _prepare_data,
 )
+from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
 # pyrefly: ignore [missing-import]
 from gridiron_edge.models.game_prediction.pipeline import predict_games
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.registry import PredictorRegistry
-
-if TYPE_CHECKING:
-    from gridiron_edge.models.artifact import ModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -57,25 +64,24 @@ logger: Logger = logging.getLogger(__name__)
 def _train_logistic(
     df: pd.DataFrame,
     *,
-    model_version: str,
     feature_fn: Callable,
     feature_names: list[str],
     repo: Path | None,
-) -> ModelMetadata:
+) -> GameModelMetadata:
     """Shared logistic regression training logic for all variants.
 
     Uses LogisticRegressionCV with 5-fold CV over 10 regularisation
-    strengths (Cs), scored by neg_brier_score.
+    strengths (Cs), scored by neg_brier_score. Writes the artifact to
+    ``data/models/win_prob/logistic/``.
 
     Args:
         df: Full modeling DataFrame.
-        model_version: Model version string for artifact naming.
         feature_fn: Feature engineering function.
         feature_names: List of feature column names produced by feature_fn.
         repo: Repository root.
 
     Returns:
-        ModelMetadata with holdout Brier and training details.
+        GameModelMetadata with holdout Brier and training details.
     """
     from datetime import UTC, datetime
 
@@ -100,7 +106,7 @@ def _train_logistic(
         roc_auc,
     )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
-    from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
 
     resolved_repo: Path = repo or get_settings().repo_root
@@ -129,7 +135,7 @@ def _train_logistic(
         ]
     )
 
-    logger.info("Fitting %s on %d training rows...", model_version, len(x_train))
+    logger.info("Fitting win_prob/logistic on %d training rows...", len(x_train))
     pipeline.fit(x_train, y_train)
 
     hold_probs: Series = pd.Series(pipeline.predict_proba(x_hold)[:, 1], index=x_hold.index)
@@ -144,20 +150,20 @@ def _train_logistic(
     best_c = float(pipeline.named_steps["clf"].C_[0])
 
     logger.info(
-        "%s: train=%.5f  holdout=%.5f  C=%.4f",
-        model_version,
+        "win_prob/logistic: train=%.5f  holdout=%.5f  C=%.4f",
         train_brier,
         holdout_brier,
         best_c,
     )
 
-    metadata = ModelMetadata(
-        model_version=model_version,
+    metadata = GameModelMetadata(
+        model_name="win_prob",
+        model_type="logistic",
+        task="classification",
         trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         schema_version=CURRENT_SCHEMA_VERSION,
         training_seasons=train_seasons,
         holdout_seasons=hold_seasons,
-        holdout_brier=round(holdout_brier, 6),
         parameters={
             "best_C": best_c,
             "train_brier": round(train_brier, 6),
@@ -169,41 +175,46 @@ def _train_logistic(
             "n_train": len(x_train),
             "n_holdout": len(x_hold),
             "n_features": len(feature_names),
-            "feature_set": model_version,
+            "feature_set": f"combined_{len(feature_names)}",
             "epa_window": 4,
             "cv_folds": 5,
         },
         feature_columns=feature_names,
+        n_train_rows=len(x_train),
+        n_holdout_rows=len(x_hold),
+        holdout_brier=round(holdout_brier, 6),
     )
 
-    store.save(model_version, pipeline, metadata=metadata)
+    store.save(metadata=metadata, model_obj=pipeline, overwrite=True)
     return metadata
 
 
 def _train_elasticnet(
     df: pd.DataFrame,
     *,
-    model_version: str,
     feature_fn: Callable,
     feature_names: list[str],
     l1_ratios: list[float],
     repo: Path | None,
-) -> ModelMetadata:
+) -> GameModelMetadata:
     """Train elastic net logistic regression and save artifact.
 
     Uses the SAGA solver which supports elastic net penalties. Tunes
-    both regularisation strength C and L1/L2 mix ratio via CV.
+    both regularisation strength C and L1/L2 mix ratio via CV. Writes
+    the artifact to ``data/models/win_prob/elasticnet/``.
+
+    Currently not wired through the registry — retained as a future
+    champion candidate. Removed in D2b.
 
     Args:
         df: Full modeling DataFrame.
-        model_version: Model version string for artifact naming.
         feature_fn: Feature engineering function.
         feature_names: Feature column names produced by feature_fn.
         l1_ratios: L1/L2 mix ratios to search (0.0=ridge, 1.0=lasso).
         repo: Repository root.
 
     Returns:
-        ModelMetadata with holdout Brier, best C, and best l1_ratio.
+        GameModelMetadata with holdout Brier, best C, and best l1_ratio.
     """
     from datetime import UTC, datetime
 
@@ -228,7 +239,7 @@ def _train_elasticnet(
         roc_auc,
     )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
-    from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
 
     resolved_repo: Path = repo or get_settings().repo_root
@@ -260,7 +271,7 @@ def _train_elasticnet(
         ]
     )
 
-    logger.info("Fitting %s (elastic net) on %d training rows...", model_version, len(x_train))
+    logger.info("Fitting win_prob/elasticnet on %d training rows...", len(x_train))
     pipeline.fit(x_train, y_train)
 
     clf = pipeline.named_steps["clf"]
@@ -278,8 +289,7 @@ def _train_elasticnet(
     train_brier: float = brier_score(train_probs, y_train.astype(float))
 
     logger.info(
-        "%s: train=%.5f  holdout=%.5f  C=%.4f  l1_ratio=%.2f",
-        model_version,
+        "win_prob/elasticnet: train=%.5f  holdout=%.5f  C=%.4f  l1_ratio=%.2f",
         train_brier,
         holdout_brier,
         best_c,
@@ -287,15 +297,18 @@ def _train_elasticnet(
     )
 
     coefs = clf.coef_[0]
-    nonzero_features = [f for f, c in zip(feature_names, coefs, strict=True) if abs(c) > 1e-6]
+    nonzero_features: list[str] = [
+        f for f, c in zip(feature_names, coefs, strict=True) if abs(c) > 1e-6
+    ]
 
-    metadata = ModelMetadata(
-        model_version=model_version,
+    metadata = GameModelMetadata(
+        model_name="win_prob",
+        model_type="elasticnet",
+        task="classification",
         trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         schema_version=CURRENT_SCHEMA_VERSION,
         training_seasons=train_seasons,
         holdout_seasons=hold_seasons,
-        holdout_brier=round(holdout_brier, 6),
         parameters={
             "best_C": best_c,
             "best_l1_ratio": best_l1_ratio,
@@ -311,14 +324,17 @@ def _train_elasticnet(
             "n_features": len(feature_names),
             "n_nonzero_features": len(nonzero_features),
             "nonzero_features": nonzero_features,
-            "feature_set": model_version,
+            "feature_set": f"combined_{len(feature_names)}",
             "epa_window": 4,
             "cv_folds": 5,
         },
         feature_columns=feature_names,
+        n_train_rows=len(x_train),
+        n_holdout_rows=len(x_hold),
+        holdout_brier=round(holdout_brier, 6),
     )
 
-    store.save(model_version, pipeline, metadata=metadata)
+    store.save(metadata=metadata, model_obj=pipeline, overwrite=True)
     return metadata
 
 
@@ -330,13 +346,15 @@ def _train_elasticnet(
 def _predict_historical_logistic(
     games: pd.DataFrame,
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
     """Shared historical prediction logic for all logistic variants."""
     return predict_games(
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         feature_fn=feature_fn,
         repo=repo,
         is_backfilled=True,
@@ -346,7 +364,8 @@ def _predict_historical_logistic(
 def _predict_upcoming_logistic(
     schedule: pd.DataFrame,
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
@@ -354,7 +373,8 @@ def _predict_upcoming_logistic(
 
     Args:
         schedule: Upcoming games schedule DataFrame.
-        model_version: Registered model version string.
+        model_name: Model purpose (``"win_prob"``).
+        model_type: Model algorithm (``"logistic"`` or ``"elasticnet"``).
         feature_fn: Feature engineering function.
         repo: Repository root.
 
@@ -370,11 +390,11 @@ def _predict_upcoming_logistic(
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
 
-    if not store.is_trained(model_version):
-        logger.warning("%s: no artifact found.", model_version)
+    if not store.is_trained(model_name, model_type):
+        logger.warning("(%s, %s): no artifact found.", model_name, model_type)
         return pd.DataFrame()
 
-    pipeline = store.load(model_version)
+    pipeline = store.load(model_name, model_type)
     datasets = DatasetAccessor(repo=resolved_repo)
 
     upcoming_df: DataFrame = run_features(df=schedule, feature_names=FEATURES, datasets=datasets)
@@ -397,9 +417,10 @@ def _predict_upcoming_logistic(
     result["AWAY_TEAM_ELO"] = upcoming_valid.get("TEAM_A_ELO", float("nan"))
     result["HOME_TEAM_ELO"] = upcoming_valid.get("TEAM_B_ELO", float("nan"))
 
-    result = enrich_predictions(
+    result: DataFrame = enrich_predictions(
         result,
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         recalibrate=True,
         repo=resolved_repo,
     )
@@ -413,9 +434,10 @@ def _predict_upcoming_logistic(
 
 
 def _make_logistic_variant(
-    name: str,
+    registry_key: str,
     description: str,
     *,
+    model_name: str,
     feature_set: FeatureSet,
     elasticnet: bool = False,
     l1_ratios: list[float] | None = None,
@@ -423,41 +445,39 @@ def _make_logistic_variant(
     """Produce and register a logistic predictor class for a given variant.
 
     Eliminates the ~35-line boilerplate class body required per variant.
-    The produced class is functionally identical to a hand-written class:
-    it has a ``spec``, implements ``train``, ``is_trained``,
-    ``predict_historical``, and ``predict_upcoming``, and is registered
-    with ``PredictorRegistry`` immediately.
+    The produced class is functionally identical to a hand-written class.
 
-    Adding a new logistic variant requires one call::
-
-        NewLogistic = _make_logistic_variant(
-            "logistic_new",
-            "Logistic regression — expanded features with elastic net",
-            feature_set=FEATURE_SETS["expanded"],
-            elasticnet=True,
-        )
+    Note (Workstream 2): this factory will be deleted in D2b and replaced
+    by ``GamesTrainer`` + ``WinProbTrainer``. For D1b the factory stays so
+    the registry surface is unchanged — only artifact paths move to the
+    new ``data/models/{model_name}/{model_type}/`` scheme.
 
     Args:
-        name: Model identifier string (e.g. ``"logistic"``).
-            Must be unique in the registry.
+        registry_key: ``PredictorRegistry`` key (e.g. ``"logistic"``).
+            Currently flat; becomes composite (``"win_prob_logistic"``)
+            in D2a/D2b.
         description: Human-readable description shown in ``gridiron models list``.
-        feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS``.
-        elasticnet: If True, use ``_train_elasticnet``; otherwise ``_train_logistic``.
-        l1_ratios: L1/L2 mix ratios passed to ``_train_elasticnet``. Ignored when
-            ``elasticnet=False``. Defaults to ``[0.0, 0.1, 0.5, 0.9, 1.0]``.
+        model_name: Artifact ``model_name`` (e.g. ``"win_prob"``).
+        feature_set: A ``FeatureSet`` from ``FEATURE_SETS``.
+        elasticnet: If ``True``, use ``_train_elasticnet``; otherwise
+            ``_train_logistic``. Drives both the trainer choice and the
+            artifact ``model_type`` ("elasticnet" vs "logistic").
+        l1_ratios: L1/L2 mix ratios passed to ``_train_elasticnet``.
+            Ignored when ``elasticnet=False``. Defaults to
+            ``[0.0, 0.1, 0.5, 0.9, 1.0]``.
 
     Returns:
         The produced and registered class object.
     """
     _feature_fn = feature_set.feature_fn
-    _feature_names = feature_set.feature_names
+    _feature_names: list[str] = feature_set.feature_names
     _l1_ratios: list[float] = l1_ratios if l1_ratios is not None else [0.0, 0.1, 0.5, 0.9, 1.0]
+    _artifact_type: str = "elasticnet" if elasticnet else "logistic"
 
-    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> GameModelMetadata:
         if elasticnet:
             return _train_elasticnet(
                 df,
-                model_version=name,
                 feature_fn=_feature_fn,
                 feature_names=_feature_names,
                 l1_ratios=_l1_ratios,
@@ -465,34 +485,42 @@ def _make_logistic_variant(
             )
         return _train_logistic(
             df,
-            model_version=name,
             feature_fn=_feature_fn,
             feature_names=_feature_names,
             repo=repo,
         )
 
     def is_trained(self: object, *, repo: Path | None = None) -> bool:
-        return _is_trained(name, repo)
+        # pyrefly: ignore [bad-argument-type]
+        return _is_trained(model_name, _artifact_type, repo)
 
     def predict_historical(
         self: object, games: pd.DataFrame, *, repo: Path | None = None
     ) -> pd.DataFrame:
         return _predict_historical_logistic(
-            games, model_version=name, feature_fn=_feature_fn, repo=repo
+            games,
+            model_name=model_name,
+            model_type=_artifact_type,
+            feature_fn=_feature_fn,
+            repo=repo,
         )
 
     def predict_upcoming(
         self: object, schedule: pd.DataFrame, *, repo: Path | None = None
     ) -> pd.DataFrame:
         return _predict_upcoming_logistic(
-            schedule, model_version=name, feature_fn=_feature_fn, repo=repo
+            schedule,
+            model_name=model_name,
+            model_type=_artifact_type,
+            feature_fn=_feature_fn,
+            repo=repo,
         )
 
     cls = type(
-        f"Logistic{name.title().replace('_', '')}Predictor",
+        f"Logistic{registry_key.title().replace('_', '')}Predictor",
         (),
         {
-            "spec": PredictorSpec(name=name, description=description, trainable=True),
+            "spec": PredictorSpec(name=registry_key, description=description, trainable=True),
             "train": train,
             "is_trained": is_trained,
             "predict_historical": predict_historical,
@@ -511,5 +539,6 @@ def _make_logistic_variant(
 LogisticPredictor = _make_logistic_variant(
     "logistic",
     "Logistic regression — combined features (32), TimeSeriesSplit CV",
+    model_name="win_prob",
     feature_set=FEATURE_SETS["combined"],
 )

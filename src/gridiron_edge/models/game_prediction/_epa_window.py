@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 import pandas as pd
-from pandas import Series
+from pandas import DataFrame, Series
 
 from gridiron_edge.features.team.epa import EPA_COLS as _EPA_COLS_RAW
 
@@ -119,7 +119,7 @@ def _rebuild_features_with_window(
     # Compute rolling mean per team with shift(1) to prevent lookahead
     rolled_parts: list[pd.DataFrame] = []
     for _team, grp in epa_sorted.groupby("team", sort=False):
-        grp_sorted = grp.sort_values(["season", "week"]).copy()
+        grp_sorted: DataFrame = grp.sort_values(["season", "week"]).copy()
         for col in _EPA_RAW_COLS:
             grp_sorted[f"{col}_roll"] = (
                 grp_sorted[col].shift(1).rolling(window=window, min_periods=1).mean()
@@ -129,7 +129,7 @@ def _rebuild_features_with_window(
     rolled: pd.DataFrame = pd.concat(rolled_parts, ignore_index=True)
 
     roll_cols: list[str] = [f"{c}_roll" for c in _EPA_RAW_COLS]
-    lookup: pd.DataFrame = rolled[["season", "week", "team", *roll_cols]].copy()
+    lookup: DataFrame = rolled.loc[:, ["season", "week", "team", *roll_cols]].copy()
 
     # Build season int → YEAR string mapping from the modeling file itself
     # (epa_by_game uses int seasons like 2024; modeling file uses "2024-2025")
@@ -142,28 +142,28 @@ def _rebuild_features_with_window(
     lookup = lookup.dropna(subset=["YEAR"])
 
     # Drop existing EPA columns before merging updated ones
-    team_a_epa_cols = [f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
-    team_b_epa_cols = [f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
+    team_a_epa_cols: list[str] = [f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
+    team_b_epa_cols: list[str] = [f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
     df = df.copy().drop(columns=team_a_epa_cols + team_b_epa_cols, errors="ignore")
 
     # Merge TEAM_A EPA
-    team_a_merge = lookup.rename(
+    team_a_merge: DataFrame = lookup.rename(
         columns={
             "team": "TEAM_A",
             "week": "WEEK_NUM",
             **{f"{c}_roll": f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
         }
-    )[["TEAM_A", "YEAR", "WEEK_NUM", *[f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
+    ).loc[:, ["TEAM_A", "YEAR", "WEEK_NUM", *[f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
     df = df.merge(team_a_merge, on=["TEAM_A", "YEAR", "WEEK_NUM"], how="left")
 
     # Merge TEAM_B EPA
-    team_b_merge = lookup.rename(
+    team_b_merge: DataFrame = lookup.rename(
         columns={
             "team": "TEAM_B",
             "week": "WEEK_NUM",
             **{f"{c}_roll": f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
         }
-    )[["TEAM_B", "YEAR", "WEEK_NUM", *[f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
+    ).loc[:, ["TEAM_B", "YEAR", "WEEK_NUM", *[f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
     df = df.merge(team_b_merge, on=["TEAM_B", "YEAR", "WEEK_NUM"], how="left")
 
     return df
@@ -203,7 +203,7 @@ def _get_cached_window_data(
     if window not in cache:
         from gridiron_edge.models.game_prediction._features import _prepare_data
 
-        df_w = _rebuild_features_with_window(df, window=window, repo=repo)
+        df_w: DataFrame = _rebuild_features_with_window(df, window=window, repo=repo)
         x_tr, y_tr, x_ho, y_ho, tr_s, ho_s = _prepare_data(df_w, feature_fn)
         cache[window] = WindowData(df_w, x_tr, y_tr, x_ho, y_ho, tr_s, ho_s)
     return cache[window]

@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from gridiron_edge.models.artifact import ModelMetadata
+    from gridiron_edge.models.artifact import BaseModelMetadata
 
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ class Trainable(Protocol):
         df: pd.DataFrame,
         *,
         repo: Path | None = None,
-    ) -> ModelMetadata:
+    ) -> BaseModelMetadata:
         """Train the model and save the artifact to the store.
 
         Implementations should:
@@ -139,14 +139,14 @@ class Trainable(Protocol):
           3. Fit the model on training data
           4. Score on holdout set (Brier score)
           5. Save artifact via ``ArtifactStore.save``
-          6. Return populated ``ModelMetadata``
+          6. Return populated ``BaseModelMetadata``
 
         Args:
             df: Full feature matrix from ``load_modeling_file()``.
             repo: Repository root path.
 
         Returns:
-            ``ModelMetadata`` describing the trained artifact.
+            ``BaseModelMetadata`` describing the trained artifact.
         """
         ...
 

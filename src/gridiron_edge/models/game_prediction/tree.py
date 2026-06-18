@@ -18,6 +18,13 @@ Both models tune the EPA rolling window as a hyperparameter.
 
 Training progress is reported via tqdm: one bar per model showing
 iteration count, current best CV Brier, and ETA.
+
+Artifact storage (Workstream 2): each trainer writes to
+``data/models/{model_name}/{model_type}/``. ``model_name`` is ``"win_prob"``
+for both variants; ``model_type`` is ``"random_forest"`` or ``"xgboost"``.
+The factory pattern (``_make_tree_variant``) is killed in D2b — replaced
+by ``GamesTrainer`` + spec subclasses. Until then ``PredictorRegistry`` keys
+remain flat (``"random_forest"``, ``"xgboost"``) to limit D1b scope.
 """
 
 from __future__ import annotations
@@ -26,13 +33,15 @@ from collections.abc import Callable
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
+from numpy import ndarray
+from numpy.random import Generator
 import pandas as pd
-from pandas import Series
+from pandas import DataFrame, Series
 
-# pyrefly: ignore [untyped-import]
+# pyrefly: ignore [missing-import, untyped-import]
 from tqdm import tqdm
 
 from gridiron_edge.models.base import PredictorSpec
@@ -49,10 +58,8 @@ from gridiron_edge.models.game_prediction._features import (
     FeatureSet,
     _is_trained,
 )
+from gridiron_edge.models.game_prediction.base import GameModelMetadata
 from gridiron_edge.models.registry import PredictorRegistry
-
-if TYPE_CHECKING:
-    from gridiron_edge.models.artifact import ModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -65,7 +72,8 @@ logger: Logger = logging.getLogger(__name__)
 def _predict_historical_tree(
     games: pd.DataFrame,
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
@@ -73,7 +81,8 @@ def _predict_historical_tree(
 
     Args:
         games: Games DataFrame (unused — full modeling file loaded from disk).
-        model_version: Registered model version string.
+        model_name: Model purpose (``"win_prob"``).
+        model_type: Model algorithm (``"random_forest"`` or ``"xgboost"``).
         feature_fn: Feature engineering function.
         repo: Repository root.
 
@@ -83,7 +92,8 @@ def _predict_historical_tree(
     from gridiron_edge.models.game_prediction.pipeline import predict_games
 
     return predict_games(
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         feature_fn=feature_fn,
         repo=repo,
         is_backfilled=True,
@@ -93,7 +103,8 @@ def _predict_historical_tree(
 def _predict_upcoming_tree(
     schedule: pd.DataFrame,
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     feature_fn: Callable,
     repo: Path | None,
 ) -> pd.DataFrame:
@@ -101,7 +112,8 @@ def _predict_upcoming_tree(
 
     Args:
         schedule: Upcoming games schedule DataFrame.
-        model_version: Registered model version string.
+        model_name: Model purpose (``"win_prob"``).
+        model_type: Model algorithm.
         feature_fn: Feature engineering function.
         repo: Repository root.
 
@@ -119,14 +131,14 @@ def _predict_upcoming_tree(
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
 
-    if not store.is_trained(model_version):
-        logger.warning("%s: no artifact found.", model_version)
+    if not store.is_trained(model_name, model_type):
+        logger.warning("(%s, %s): no artifact found.", model_name, model_type)
         return pd.DataFrame()
 
-    pipeline = store.load(model_version)
+    pipeline = store.load(model_name, model_type)
     datasets = DatasetAccessor(repo=resolved_repo)
 
-    upcoming_df = run_features(df=schedule, feature_names=FEATURES, datasets=datasets)
+    upcoming_df: DataFrame = run_features(df=schedule, feature_names=FEATURES, datasets=datasets)
     features = feature_fn(upcoming_df)
     valid = features.notna().all(axis=1)
     upcoming_valid = upcoming_df.loc[valid].copy()
@@ -150,14 +162,15 @@ def _predict_upcoming_tree(
     try:
         from gridiron_edge.models.game_prediction.total import predict_total
 
-        totals = predict_total(upcoming_valid, repo=resolved_repo)
+        totals: Series = predict_total(upcoming_valid, repo=resolved_repo)
         result["model_total"] = totals.loc[upcoming_valid.loc[valid].index].values
     except (FileNotFoundError, Exception):
         logger.debug("_predict_upcoming_tree: total model not available")
 
-    result = enrich_predictions(
+    result: DataFrame = enrich_predictions(
         result,
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         recalibrate=True,
         repo=resolved_repo,
     )
@@ -173,15 +186,14 @@ def _predict_upcoming_tree(
 def _train_random_forest(
     df: pd.DataFrame,
     *,
-    model_version: str,
     feature_fn: Callable,
     feature_names: list[str],
     repo: Path | None,
-) -> ModelMetadata:
+) -> GameModelMetadata:
     """Train a Random Forest classifier with randomised hyperparameter search.
 
     Searches over n_estimators, max_depth, min_samples_leaf, max_features,
-    and epa_window.  CalibratedClassifierCV(isotonic) is applied
+    and epa_window. CalibratedClassifierCV(isotonic) is applied
     unconditionally to correct systematic RF overconfidence.
 
     Optimisations vs the initial implementation:
@@ -197,14 +209,14 @@ def _train_random_forest(
 
     Args:
         df: Full modeling DataFrame from load_modeling_file.
-        model_version: Model version string for artifact naming.
         feature_fn: Feature engineering function.
         feature_names: Feature column names produced by feature_fn.
         repo: Repository root.
 
     Returns:
-        ModelMetadata with holdout Brier, best parameters, and feature
-        importances (top 10, averaged across calibration folds).
+        GameModelMetadata with holdout Brier, best parameters, and feature
+        importances (top 10, averaged across calibration folds). Artifact
+        is written to ``data/models/win_prob/random_forest/``.
     """
     from datetime import UTC, datetime
 
@@ -232,7 +244,7 @@ def _train_random_forest(
         roc_auc,
     )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
-    from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.artifact import ArtifactStore
 
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -247,14 +259,14 @@ def _train_random_forest(
 
     n_iter: int = 50
     cv_folds: int = 5
-    rng = np.random.default_rng(42)
+    rng: Generator = np.random.default_rng(42)
 
     # Window cache: keyed by window size → (df_w, x_train, y_train, x_hold, y_hold, ...)
     # Bounded by len(_EPA_WINDOW_OPTIONS); eliminates repeated parquet reads.
     window_cache: dict[int, WindowData] = {}
 
     # Pre-populate window=4 (fast path; also initialises *_best for static analysis)
-    _wd0 = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
+    _wd0: WindowData = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
     x_train_best, y_train_best = _wd0.x_train, _wd0.y_train
     x_hold_best, y_hold_best = _wd0.x_holdout, _wd0.y_holdout
     train_seasons, hold_seasons = _wd0.train_seasons, _wd0.holdout_seasons
@@ -263,7 +275,7 @@ def _train_random_forest(
     best_params: dict = {}
     best_pipeline = None
 
-    param_keys = list(param_grid.keys())
+    param_keys: list[str] = list(param_grid.keys())
 
     # Instantiate once — same random_state means identical fold assignments
     # every iteration, which is correct (we want comparable CV scores).
@@ -271,7 +283,7 @@ def _train_random_forest(
 
     bar = tqdm(
         range(n_iter),
-        desc=f"  {model_version}",
+        desc="  win_prob/random_forest",
         unit="iter",
         ncols=88,
         colour="cyan",
@@ -283,7 +295,9 @@ def _train_random_forest(
         window: int = sampled.pop("epa_window")
 
         # Cache hit if this window was seen before — no disk read
-        _wd = _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
+        _wd: WindowData = _get_cached_window_data(
+            window_cache, window, df, feature_fn, resolved_repo
+        )
         x_train, y_train = _wd.x_train, _wd.y_train
         train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
@@ -300,7 +314,7 @@ def _train_random_forest(
             cal = CalibratedClassifierCV(rf, method="isotonic", cv=3)
             pipe = Pipeline([("scaler", StandardScaler()), ("clf", cal)])
             pipe.fit(x_tr, y_tr)
-            val_probs = pd.Series(pipe.predict_proba(x_val)[:, 1])
+            val_probs: Series = pd.Series(pipe.predict_proba(x_val)[:, 1])
             fold_briers.append(brier_score(val_probs, y_val.astype(float).reset_index(drop=True)))
 
         cv_brier: float = float(np.mean(fold_briers))
@@ -335,7 +349,9 @@ def _train_random_forest(
     bar.close()
 
     if best_pipeline is None:
-        raise RuntimeError(f"{model_version}: hyperparameter search produced no valid pipeline")
+        raise RuntimeError(
+            "win_prob/random_forest: hyperparameter search produced no valid pipeline"
+        )
 
     hold_probs: Series = pd.Series(
         best_pipeline.predict_proba(x_hold_best)[:, 1], index=x_hold_best.index
@@ -352,8 +368,7 @@ def _train_random_forest(
     train_brier: float = brier_score(train_probs, y_train_best.astype(float))
 
     logger.info(
-        "%s: train=%.5f  holdout=%.5f  best_params=%s",
-        model_version,
+        "win_prob/random_forest: train=%.5f  holdout=%.5f  best_params=%s",
         train_brier,
         holdout_brier,
         best_params,
@@ -364,24 +379,25 @@ def _train_random_forest(
     # CalibratedClassifierCV(cv=3) trains 3 internal fold clones;
     # clf.estimator is the *unfitted* original — use calibrated_classifiers_.
     cal_clf = best_pipeline.named_steps["clf"]
-    fold_importances = np.array(
+    fold_importances: ndarray = np.array(
         [cc.estimator.feature_importances_ for cc in cal_clf.calibrated_classifiers_]
     )
     importances: list[float] = fold_importances.mean(axis=0).tolist()
-    importance_pairs = sorted(
+    importance_pairs: list[tuple[str, float]] = sorted(
         zip(feature_names, importances, strict=True),
         key=lambda x: x[1],
         reverse=True,
     )
     top10_importances: dict[str, float] = {f: round(imp, 6) for f, imp in importance_pairs[:10]}
 
-    metadata = ModelMetadata(
-        model_version=model_version,
+    metadata = GameModelMetadata(
+        model_name="win_prob",
+        model_type="random_forest",
+        task="classification",
         trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         schema_version=CURRENT_SCHEMA_VERSION,
         training_seasons=train_seasons,
         holdout_seasons=hold_seasons,
-        holdout_brier=round(holdout_brier, 6),
         parameters={
             **best_params,
             "calibration_method": "isotonic",
@@ -401,9 +417,12 @@ def _train_random_forest(
             "top10_feature_importances": top10_importances,
         },
         feature_columns=feature_names,
+        n_train_rows=len(x_train_best),
+        n_holdout_rows=len(x_hold_best),
+        holdout_brier=round(holdout_brier, 6),
     )
 
-    store.save(model_version, best_pipeline, metadata=metadata)
+    store.save(metadata=metadata, model_obj=best_pipeline, overwrite=True)
     return metadata
 
 
@@ -415,11 +434,10 @@ def _train_random_forest(
 def _train_xgboost(
     df: pd.DataFrame,
     *,
-    model_version: str,
     feature_fn: Callable,
     feature_names: list[str],
     repo: Path | None,
-) -> ModelMetadata:
+) -> GameModelMetadata:
     """Train an XGBoost classifier with randomised hyperparameter search.
 
     Searches over n_estimators, max_depth, learning_rate, subsample,
@@ -437,14 +455,14 @@ def _train_xgboost(
 
     Args:
         df: Full modeling DataFrame from load_modeling_file.
-        model_version: Model version string for artifact naming.
         feature_fn: Feature engineering function.
         feature_names: Feature column names produced by feature_fn.
         repo: Repository root.
 
     Returns:
-        ModelMetadata with holdout Brier, best parameters, gain-based
-        feature importances (top 10), and calibration status.
+        GameModelMetadata with holdout Brier, best parameters, gain-based
+        feature importances (top 10), and calibration status. Artifact is
+        written to ``data/models/win_prob/xgboost/``.
     """
     from datetime import UTC, datetime
 
@@ -469,7 +487,7 @@ def _train_xgboost(
         roc_auc,
     )
     from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
-    from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+    from gridiron_edge.models.artifact import ArtifactStore
 
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -487,11 +505,11 @@ def _train_xgboost(
 
     n_iter: int = 75
     cv_folds: int = 5
-    rng = np.random.default_rng(42)
+    rng: Generator = np.random.default_rng(42)
 
     window_cache: dict[int, WindowData] = {}
 
-    _wd0 = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
+    _wd0: WindowData = _get_cached_window_data(window_cache, 4, df, feature_fn, resolved_repo)
     x_train_best, y_train_best = _wd0.x_train, _wd0.y_train
     x_hold_best, y_hold_best = _wd0.x_holdout, _wd0.y_holdout
     train_seasons, hold_seasons = _wd0.train_seasons, _wd0.holdout_seasons
@@ -500,12 +518,12 @@ def _train_xgboost(
     best_params: dict = {}
     best_pipeline = None
 
-    param_keys = list(param_grid.keys())
+    param_keys: list[str] = list(param_grid.keys())
     tscv = TimeSeriesSplit(n_splits=cv_folds)
 
     bar = tqdm(
         range(n_iter),
-        desc=f"  {model_version}",
+        desc="  win_prob/xgboost",
         unit="iter",
         ncols=88,
         colour="cyan",
@@ -516,7 +534,9 @@ def _train_xgboost(
         }
         window: int = sampled.pop("epa_window")
 
-        _wd = _get_cached_window_data(window_cache, window, df, feature_fn, resolved_repo)
+        _wd: WindowData = _get_cached_window_data(
+            window_cache, window, df, feature_fn, resolved_repo
+        )
         x_train, y_train = _wd.x_train, _wd.y_train
         train_seasons, hold_seasons = _wd.train_seasons, _wd.holdout_seasons
 
@@ -539,7 +559,7 @@ def _train_xgboost(
             )
             pipe = Pipeline([("scaler", StandardScaler()), ("clf", xgb)])
             pipe.fit(x_tr, y_tr)
-            val_probs = pd.Series(pipe.predict_proba(x_val)[:, 1])
+            val_probs: Series = pd.Series(pipe.predict_proba(x_val)[:, 1])
             fold_briers.append(brier_score(val_probs, y_val.astype(float).reset_index(drop=True)))
 
         cv_brier = float(np.mean(fold_briers))
@@ -579,27 +599,28 @@ def _train_xgboost(
     bar.close()
 
     if best_pipeline is None:
-        raise RuntimeError(f"{model_version}: hyperparameter search produced no valid pipeline")
+        raise RuntimeError("win_prob/xgboost: hyperparameter search produced no valid pipeline")
 
-    hold_probs = pd.Series(best_pipeline.predict_proba(x_hold_best)[:, 1], index=x_hold_best.index)
-    holdout_brier = brier_score(hold_probs, y_hold_best.astype(float))
+    hold_probs: Series = pd.Series(
+        best_pipeline.predict_proba(x_hold_best)[:, 1], index=x_hold_best.index
+    )
+    holdout_brier: float = brier_score(hold_probs, y_hold_best.astype(float))
     holdout_ece: float = expected_calibration_error(hold_probs, y_hold_best.astype(float))
     holdout_auc: float = roc_auc(hold_probs, y_hold_best.astype(float))
     holdout_log_loss: float = log_loss(hold_probs, y_hold_best.astype(float))
     holdout_accuracy: float = accuracy(hold_probs, y_hold_best.astype(float))
 
-    train_probs = pd.Series(
+    train_probs: Series = pd.Series(
         best_pipeline.predict_proba(x_train_best)[:, 1], index=x_train_best.index
     )
-    train_brier = brier_score(train_probs, y_train_best.astype(float))
+    train_brier: float = brier_score(train_probs, y_train_best.astype(float))
 
     # Apply isotonic calibration if ECE indicates overconfidence
     _ece_calibration_threshold: float = 0.025
     calibration_applied: bool = False
     if holdout_ece > _ece_calibration_threshold:
         logger.info(
-            "%s: ECE=%.4f > %.3f — applying isotonic calibration",
-            model_version,
+            "win_prob/xgboost: ECE=%.4f > %.3f — applying isotonic calibration",
             holdout_ece,
             _ece_calibration_threshold,
         )
@@ -629,15 +650,13 @@ def _train_xgboost(
         best_pipeline = cal_pipeline
         calibration_applied = True
         logger.info(
-            "%s: post-calibration holdout Brier=%.5f  ECE=%.4f",
-            model_version,
+            "win_prob/xgboost: post-calibration holdout Brier=%.5f  ECE=%.4f",
             holdout_brier,
             holdout_ece,
         )
 
     logger.info(
-        "%s: train=%.5f  holdout=%.5f  ECE=%.4f  calibrated=%s  best_params=%s",
-        model_version,
+        "win_prob/xgboost: train=%.5f  holdout=%.5f  ECE=%.4f  calibrated=%s  best_params=%s",
         train_brier,
         holdout_brier,
         holdout_ece,
@@ -652,27 +671,28 @@ def _train_xgboost(
     #     calibrated_classifiers_[i].estimator for fitted instances.
     xgb_step = best_pipeline.named_steps["clf"]
     if hasattr(xgb_step, "calibrated_classifiers_"):
-        fold_importances_xgb = np.array(
+        fold_importances_xgb: ndarray = np.array(
             [cc.estimator.feature_importances_ for cc in xgb_step.calibrated_classifiers_]
         )
         importances_list: list[float] = fold_importances_xgb.mean(axis=0).tolist()
     else:
         importances_list = xgb_step.feature_importances_.tolist()
 
-    importance_pairs = sorted(
+    importance_pairs: list[tuple[str, float]] = sorted(
         zip(feature_names, importances_list, strict=True),
         key=lambda x: x[1],
         reverse=True,
     )
     top10_importances: dict[str, float] = {f: round(imp, 6) for f, imp in importance_pairs[:10]}
 
-    metadata = ModelMetadata(
-        model_version=model_version,
+    metadata = GameModelMetadata(
+        model_name="win_prob",
+        model_type="xgboost",
+        task="classification",
         trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         schema_version=CURRENT_SCHEMA_VERSION,
         training_seasons=train_seasons,
         holdout_seasons=hold_seasons,
-        holdout_brier=round(holdout_brier, 6),
         parameters={
             **best_params,
             "calibration_applied": calibration_applied,
@@ -692,9 +712,12 @@ def _train_xgboost(
             "top10_feature_importances": top10_importances,
         },
         feature_columns=feature_names,
+        n_train_rows=len(x_train_best),
+        n_holdout_rows=len(x_hold_best),
+        holdout_brier=round(holdout_brier, 6),
     )
 
-    store.save(model_version, best_pipeline, metadata=metadata)
+    store.save(metadata=metadata, model_obj=best_pipeline, overwrite=True)
     return metadata
 
 
@@ -704,9 +727,10 @@ def _train_xgboost(
 
 
 def _make_tree_variant(
-    name: str,
+    registry_key: str,
     description: str,
     *,
+    model_name: str,
     feature_set: FeatureSet,
     model_type: Literal["rf", "xgb"],
 ) -> type:
@@ -718,65 +742,69 @@ def _make_tree_variant(
     ``predict_historical``, and ``predict_upcoming``, and is registered
     with ``PredictorRegistry`` immediately.
 
-    Adding a new model family requires one call::
-
-        NewPredictor = _make_tree_variant(
-            "new_model",
-            "Description of the model",
-            feature_set=FEATURE_SETS["expanded"],
-            model_type="rf",
-        )
-
+    Note (Workstream 2): this factory will be deleted in D2b and replaced
+    by ``GamesTrainer`` + ``WinProbTrainer`` spec subclasses. For D1b the
+    factory stays so the registry surface is unchanged — only artifact
+    paths move to the new ``data/models/{model_name}/{model_type}/`` scheme.
 
     Args:
-        name: Model identifier string (e.g. ``"random_forest"``).
-            Must be unique in the registry.
+        registry_key: ``PredictorRegistry`` key (e.g. ``"random_forest"``).
+            Currently flat; becomes composite (``"win_prob_random_forest"``)
+            in D2a/D2b.
         description: Human-readable description shown in ``gridiron models list``.
-        feature_set: A ``FeatureSet`` from ``_shared.FEATURE_SETS`` describing
-            which features this variant uses.
+        model_name: Artifact ``model_name`` (e.g. ``"win_prob"``).
+        feature_set: A ``FeatureSet`` from ``FEATURE_SETS``.
         model_type: ``"rf"`` for Random Forest, ``"xgb"`` for XGBoost.
 
     Returns:
-        The produced and registered class object.  Assign to a module-level
-        name so it is importable and re-exportable from ``predictor.py``.
+        The produced and registered class object.
     """
     _train_fn = _train_random_forest if model_type == "rf" else _train_xgboost
     _feature_fn = feature_set.feature_fn
     _feature_names = feature_set.feature_names
+    _artifact_type = "random_forest" if model_type == "rf" else "xgboost"
 
-    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> ModelMetadata:
+    def train(self: object, df: pd.DataFrame, *, repo: Path | None = None) -> GameModelMetadata:
         return _train_fn(
             df,
-            model_version=name,
             feature_fn=_feature_fn,
             feature_names=_feature_names,
             repo=repo,
         )
 
     def is_trained(self: object, *, repo: Path | None = None) -> bool:
-        return _is_trained(name, repo)
+        # pyrefly: ignore [bad-argument-type]
+        return _is_trained(model_name, _artifact_type, repo)
 
     def predict_historical(
         self: object, games: pd.DataFrame, *, repo: Path | None = None
     ) -> pd.DataFrame:
         return _predict_historical_tree(
-            games, model_version=name, feature_fn=_feature_fn, repo=repo
+            games,
+            model_name=model_name,
+            model_type=_artifact_type,
+            feature_fn=_feature_fn,
+            repo=repo,
         )
 
     def predict_upcoming(
         self: object, schedule: pd.DataFrame, *, repo: Path | None = None
     ) -> pd.DataFrame:
         return _predict_upcoming_tree(
-            schedule, model_version=name, feature_fn=_feature_fn, repo=repo
+            schedule,
+            model_name=model_name,
+            model_type=_artifact_type,
+            feature_fn=_feature_fn,
+            repo=repo,
         )
 
     family = "RandomForest" if model_type == "rf" else "XGBoost"
-    cls_name = f"{family}{name.title().replace('_', '')}Predictor"
+    cls_name = f"{family}{registry_key.title().replace('_', '')}Predictor"
     cls = type(
         cls_name,
         (),
         {
-            "spec": PredictorSpec(name=name, description=description, trainable=True),
+            "spec": PredictorSpec(name=registry_key, description=description, trainable=True),
             "train": train,
             "is_trained": is_trained,
             "predict_historical": predict_historical,
@@ -795,6 +823,7 @@ def _make_tree_variant(
 RandomForestPredictor = _make_tree_variant(
     "random_forest",
     "Random Forest — expanded features, isotonic calibration, TimeSeriesSplit CV",
+    model_name="win_prob",
     feature_set=FEATURE_SETS["expanded"],
     model_type="rf",
 )
@@ -802,6 +831,7 @@ RandomForestPredictor = _make_tree_variant(
 XGBoostPredictor = _make_tree_variant(
     "xgboost",
     "XGBoost gradient boosting — expanded features, conditional calibration, TimeSeriesSplit CV",
+    model_name="win_prob",
     feature_set=FEATURE_SETS["expanded"],
     model_type="xgb",
 )

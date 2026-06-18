@@ -1,5 +1,4 @@
 # tests/unit/evaluation/test_champion.py
-
 """Tests for gridiron_edge.evaluation.champion — promotion gate logic."""
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from gridiron_edge.evaluation.champion import (
     format_regression_comparison,
     select_prop_champion,
 )
-from gridiron_edge.models.artifact import ModelMetadata
+from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
 
 def _make_meta(
@@ -30,9 +29,16 @@ def _make_meta(
     auc: float | None = None,
     log_loss: float | None = None,
     accuracy: float | None = None,
-    model_version: str = "test_model",
-) -> ModelMetadata:
-    """Build a ModelMetadata with metrics in the parameters dict."""
+    model_name: str = "win_prob",
+    model_type: str = "test_model",
+) -> GameModelMetadata:
+    """Build a GameModelMetadata with classification metrics in parameters.
+
+    D1b state: extract_classification_metrics still reads ECE/AUC/log_loss/
+    accuracy from meta.parameters. D3 promotes them to first-class fields
+    on GameModelMetadata; this helper updates with the parameters→fields
+    flip at that point.
+    """
     params: dict[str, object] = {}
     if ece is not None:
         params["holdout_ece"] = ece
@@ -42,15 +48,18 @@ def _make_meta(
         params["holdout_log_loss"] = log_loss
     if accuracy is not None:
         params["holdout_accuracy"] = accuracy
-    return ModelMetadata(
-        model_version=model_version,
+    return GameModelMetadata(
+        model_name=model_name,
+        model_type=model_type,
+        task="classification",
         trained_at="2026-06-03T00:00:00",
-        schema_version=4,
         training_seasons=["2020-2021"],
         holdout_seasons=["2023-2024"],
-        holdout_brier=brier,
         parameters=params,
         feature_columns=["f1", "f2"],
+        n_train_rows=10,
+        n_holdout_rows=2,
+        holdout_brier=brier,
     )
 
 
@@ -78,7 +87,7 @@ def _make_regression(
 
 class TestExtractMetrics:
     def test_all_metrics_present(self) -> None:
-        meta: ModelMetadata = _make_meta(
+        meta: GameModelMetadata = _make_meta(
             brier=0.195, ece=0.036, auc=0.774, log_loss=0.58, accuracy=0.708
         )
         m: dict[str, float] = extract_classification_metrics(meta)
@@ -89,7 +98,7 @@ class TestExtractMetrics:
         assert m["accuracy"] == 0.708
 
     def test_missing_metrics_are_nan(self) -> None:
-        meta: ModelMetadata = _make_meta(brier=0.200)
+        meta: GameModelMetadata = _make_meta(brier=0.200)
         m: dict[str, float] = extract_classification_metrics(meta)
         assert m["brier"] == 0.200
         assert isnan(m["ece"])
@@ -98,7 +107,7 @@ class TestExtractMetrics:
         assert isnan(m["accuracy"])
 
     def test_partial_metrics(self) -> None:
-        meta: ModelMetadata = _make_meta(brier=0.195, ece=0.036)
+        meta: GameModelMetadata = _make_meta(brier=0.195, ece=0.036)
         m: dict[str, float] = extract_classification_metrics(meta)
         assert m["brier"] == 0.195
         assert m["ece"] == 0.036
@@ -112,8 +121,8 @@ class TestExtractMetrics:
 
 class TestCompareModels:
     def test_clear_improvement_promotes(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.195, ece=0.035, auc=0.775)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.035, auc=0.775)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is True
         assert result.gates["brier_improved"] is True
@@ -121,45 +130,45 @@ class TestCompareModels:
         assert result.gates["auc_acceptable"] is True
 
     def test_brier_below_threshold_rejects(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.199, ece=0.035, auc=0.775)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.199, ece=0.035, auc=0.775)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is False
         assert result.gates["brier_improved"] is False
 
     def test_ece_degradation_rejects(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.195, ece=0.050, auc=0.775)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.050, auc=0.775)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is False
         assert result.gates["brier_improved"] is True
         assert result.gates["ece_acceptable"] is False
 
     def test_auc_degradation_rejects(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.780)
-        challenger: ModelMetadata = _make_meta(brier=0.195, ece=0.025, auc=0.760)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.780)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.025, auc=0.760)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is False
         assert result.gates["brier_improved"] is True
         assert result.gates["auc_acceptable"] is False
 
     def test_missing_ece_skips_gate(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.195, auc=0.775)
+        champion: GameModelMetadata = _make_meta(brier=0.200, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, auc=0.775)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is True
         assert result.gates["ece_acceptable"] is True
 
     def test_missing_auc_skips_gate(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030)
-        challenger: ModelMetadata = _make_meta(brier=0.195, ece=0.025)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.025)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is True
         assert result.gates["auc_acceptable"] is True
 
     def test_custom_criteria(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.199, ece=0.035, auc=0.755)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.199, ece=0.035, auc=0.755)
         strict = ClassificationPromotionGates(
             min_brier_improvement=0.005,
             max_ece_degradation=0.002,
@@ -173,8 +182,8 @@ class TestCompareModels:
 
     def test_exact_threshold_boundary(self) -> None:
         """Brier improvement exactly at threshold should promote."""
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.198, ece=0.030, auc=0.760)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.198, ece=0.030, auc=0.760)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is True
         assert result.gates["brier_improved"] is True
@@ -187,26 +196,26 @@ class TestCompareModels:
 
 class TestFormatComparison:
     def test_promote_contains_verdict(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.195, ece=0.035, auc=0.775)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.035, auc=0.775)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         text: str = format_classification_comparison(result)
         assert "PROMOTE" in text
         assert "VERDICT" in text
 
     def test_reject_contains_verdict(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
-        challenger: ModelMetadata = _make_meta(brier=0.199, ece=0.050, auc=0.740)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.030, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.199, ece=0.050, auc=0.740)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         text: str = format_classification_comparison(result)
         assert "REJECT" in text
         assert "VERDICT" in text
 
     def test_contains_all_metric_labels(self) -> None:
-        champion: ModelMetadata = _make_meta(
+        champion: GameModelMetadata = _make_meta(
             brier=0.200, ece=0.040, auc=0.760, log_loss=0.58, accuracy=0.70
         )
-        challenger: ModelMetadata = _make_meta(
+        challenger: GameModelMetadata = _make_meta(
             brier=0.195, ece=0.035, auc=0.775, log_loss=0.57, accuracy=0.71
         )
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
@@ -215,8 +224,8 @@ class TestFormatComparison:
             assert label in text
 
     def test_missing_metrics_show_na(self) -> None:
-        champion: ModelMetadata = _make_meta(brier=0.200)
-        challenger: ModelMetadata = _make_meta(brier=0.195)
+        champion: GameModelMetadata = _make_meta(brier=0.200)
+        challenger: GameModelMetadata = _make_meta(brier=0.195)
         result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         text: str = format_classification_comparison(result)
         assert "n/a" in text
@@ -367,32 +376,40 @@ class TestSelectPropChampion:
 # ---------------------------------------------------------------------------
 class TestFormatRegressionComparison:
     def test_contains_metric_labels(self) -> None:
-        champ = _make_regression(model_type="elasticnet", mae=58.0, r2=0.07, coverage=0.93)
-        chall = _make_regression(model_type="rf", mae=52.0, r2=0.15, coverage=0.91)
-        result = compare_regression_models(champ, chall)
+        champ: RegressionModelResult = _make_regression(
+            model_type="elasticnet", mae=58.0, r2=0.07, coverage=0.93
+        )
+        chall: RegressionModelResult = _make_regression(
+            model_type="rf", mae=52.0, r2=0.15, coverage=0.91
+        )
+        result: RegressionComparisonResult = compare_regression_models(champ, chall)
         text = format_regression_comparison(result)
         for label in ("MAE", "RMSE", "R²", "Coverage"):
             assert label in text
 
     def test_promote_verdict(self) -> None:
-        champ = _make_regression(model_type="elasticnet", mae=58.0, r2=0.07, coverage=0.93)
-        chall = _make_regression(model_type="rf", mae=52.0, r2=0.15, coverage=0.91)
-        result = compare_regression_models(champ, chall)
-        text = format_regression_comparison(result)
+        champ: RegressionModelResult = _make_regression(
+            model_type="elasticnet", mae=58.0, r2=0.07, coverage=0.93
+        )
+        chall: RegressionModelResult = _make_regression(
+            model_type="rf", mae=52.0, r2=0.15, coverage=0.91
+        )
+        result: RegressionComparisonResult = compare_regression_models(champ, chall)
+        text: str = format_regression_comparison(result)
         assert "PROMOTE" in text
 
     def test_reject_verdict(self) -> None:
-        champ = _make_regression(mae=50.0, r2=0.15)
-        chall = _make_regression(model_type="xgb", mae=55.0, r2=-0.01)
-        result = compare_regression_models(champ, chall)
-        text = format_regression_comparison(result)
+        champ: RegressionModelResult = _make_regression(mae=50.0, r2=0.15)
+        chall: RegressionModelResult = _make_regression(model_type="xgb", mae=55.0, r2=-0.01)
+        result: RegressionComparisonResult = compare_regression_models(champ, chall)
+        text: str = format_regression_comparison(result)
         assert "REJECT" in text
 
     def test_classification_mode_unchanged(self) -> None:
         """Existing classification comparison still works after additions."""
-        champion = _make_meta(brier=0.200, ece=0.040, auc=0.760)
-        challenger = _make_meta(brier=0.195, ece=0.035, auc=0.775)
-        result = compare_classification_models(champion, challenger)
+        champion: GameModelMetadata = _make_meta(brier=0.200, ece=0.040, auc=0.760)
+        challenger: GameModelMetadata = _make_meta(brier=0.195, ece=0.035, auc=0.775)
+        result: ClassificationComparisonResult = compare_classification_models(champion, challenger)
         assert result.should_promote is True
-        text = format_classification_comparison(result)
+        text: str = format_classification_comparison(result)
         assert "PROMOTE" in text

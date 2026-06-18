@@ -1,13 +1,13 @@
 # src/gridiron_edge/models/game_prediction/total.py
 """Total points regression model.
 
-Trains Random Forest and XGBoost regressors to predict the combined
-score of an NFL game.  Uses the same expanded feature set as the
-win-probability models but targets ``actual_total = PTS_WINNER +
-PTS_LOSER`` instead of ``RESULT``.
+Trains a Random Forest regressor (xgboost variant coming in D2a) to predict
+the combined score of an NFL game. Uses the same expanded feature set as
+the win-probability models but targets ``actual_total = PTS_WINNER + PTS_LOSER``
+instead of ``RESULT``.
 
-This is a supporting model — it feeds into ``enrich_predictions()``
-rather than operating through the ``PredictorRegistry``.
+This is a supporting model — it feeds into ``enrich_predictions()`` rather
+than operating through the ``PredictorRegistry``.
 
 Public API:
     train_total_model    Train and save a total-points regressor
@@ -25,8 +25,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from numpy import ndarray
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
 # pyrefly: ignore [missing-import]
 from sklearn.ensemble import RandomForestRegressor
@@ -34,23 +35,30 @@ from sklearn.ensemble import RandomForestRegressor
 # pyrefly: ignore [missing-import]
 from sklearn.model_selection import TimeSeriesSplit
 
-# pyrefly: ignore [untyped-import]
+# pyrefly: ignore [missing-import, untyped-import]
 from tqdm import tqdm
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.loaders import load_games, load_modeling_file
 from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
-from gridiron_edge.models.artifact import ArtifactStore, ModelMetadata
+from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction._features import (
     HOLDOUT_SEASONS,
     _make_expanded_features,
 )
+from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+#: Default ``model_name`` for the total points regression family.
+DEFAULT_TOTAL_MODEL_NAME: str = "total"
+
+#: Default ``model_type`` for the total points regression family.
+DEFAULT_TOTAL_MODEL_TYPE: str = "random_forest"
 
 # Hyperparameter search space — mirrors tree.py RF pattern but for regression.
 _RF_PARAM_SPACE: dict[str, list[Any]] = {
@@ -79,15 +87,16 @@ def _prepare_total_data(
     train / holdout using the same ``HOLDOUT_SEASONS`` as the win model.
 
     Returns:
-        Tuple of (x_train, y_train, x_hold, y_hold,
-        train_seasons, holdout_seasons).
+        Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, holdout_seasons).
+        Season lists are formatted as ``"YYYY-YYYY"`` strings to match the
+        :class:`BaseModelMetadata` convention.
     """
     df: DataFrame = load_modeling_file(repo)
     games: DataFrame = load_games(repo)
 
     # Build total lookup: GAME_ID → actual_total
     games_lookup: DataFrame = games.dropna(subset=["PTS_WINNER", "PTS_LOSER"]).copy()
-    games_lookup: DataFrame = games_lookup.drop_duplicates(subset=["GAME_ID"])
+    games_lookup = games_lookup.drop_duplicates(subset=["GAME_ID"])
     games_lookup["actual_total"] = games_lookup["PTS_WINNER"] + games_lookup["PTS_LOSER"]
 
     # Join to modeling DataFrame
@@ -102,7 +111,7 @@ def _prepare_total_data(
 
     # Build features (same as win model)
     features: DataFrame = _make_expanded_features(df)
-    valid = features.notna().all(axis=1)
+    valid: Series[bool] = features.notna().all(axis=1)
     df = df.loc[valid, :].copy()
     features = features.loc[valid, :].copy()
 
@@ -124,14 +133,19 @@ def _prepare_total_data(
         y.mean(),
     )
 
+    train_year_ints: list[int] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
+    hold_year_ints: list[int] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
+    train_szns: list[str] = [f"{y}-{y + 1}" for y in train_year_ints]
+    hold_szns: list[str] = [f"{y}-{y + 1}" for y in hold_year_ints]
+
     # pyrefly: ignore [bad-return]
     return (
         features.loc[train_mask],
         y.loc[train_mask],
         features.loc[hold_mask],
         y.loc[hold_mask],
-        sorted(df.loc[train_mask, "YEAR"].unique().tolist()),
-        sorted(df.loc[hold_mask, "YEAR"].unique().tolist()),
+        train_szns,
+        hold_szns,
     )
 
 
@@ -141,26 +155,28 @@ def _prepare_total_data(
 
 
 def train_total_model(
-    model_version: str = "total_rf_v1",
     *,
+    model_name: str = DEFAULT_TOTAL_MODEL_NAME,
+    model_type: str = DEFAULT_TOTAL_MODEL_TYPE,
     repo: Path | None = None,
     n_iter: int = _N_ITER,
     cv_folds: int = _CV_FOLDS,
-) -> dict[str, Any]:
+) -> GameModelMetadata:
     """Train a Random Forest regressor for total points prediction.
 
     Uses randomized hyperparameter search with cross-validated MAE,
     matching the pattern in ``tree.py`` but for regression.
 
     Args:
-        model_version: Artifact name (e.g. ``"total_rf_v1"``).
-        repo: Repository root.  Defaults to ``get_settings().repo_root``.
+        model_name: Artifact ``model_name`` (defaults to ``"total"``).
+        model_type: Artifact ``model_type`` (defaults to ``"random_forest"``).
+        repo: Repository root. Defaults to ``get_settings().repo_root``.
         n_iter: Number of random hyperparameter samples.
         cv_folds: Number of cross-validation folds.
 
     Returns:
-        Dict with training metadata (best_params, train_mae, holdout_mae,
-        n_train, n_holdout, train_seasons, holdout_seasons).
+        :class:`GameModelMetadata` describing the trained artifact. Same shape
+        as the win_prob trainers — homogeneous across the game model family.
     """
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -210,7 +226,7 @@ def train_total_model(
     best_model = RandomForestRegressor(random_state=42, n_jobs=-1, **best_params)
     best_model.fit(x_train, y_train)
 
-    # Evaluate on holdout
+    # Evaluate on full training set + holdout
     train_preds = best_model.predict(x_train)
     hold_preds = best_model.predict(x_hold)
     train_mae = float(np.mean(np.abs(train_preds - y_train)))
@@ -218,45 +234,53 @@ def train_total_model(
     train_rmse = float(np.sqrt(np.mean((train_preds - y_train) ** 2)))
     hold_rmse = float(np.sqrt(np.mean((hold_preds - y_hold) ** 2)))
 
+    # R² on holdout (used by GameModelMetadata first-class field).
+    y_hold_arr: ndarray = np.asarray(y_hold, dtype=float)
+    ss_res = float(np.sum((hold_preds - y_hold_arr) ** 2))
+    ss_tot = float(np.sum((y_hold_arr - y_hold_arr.mean()) ** 2))
+    hold_r2: float = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
     logger.info(
         "train_total_model: DONE  train_MAE=%.3f  holdout_MAE=%.3f  "
-        "train_RMSE=%.3f  holdout_RMSE=%.3f",
+        "train_RMSE=%.3f  holdout_RMSE=%.3f  holdout_R2=%.3f",
         train_mae,
         hold_mae,
         train_rmse,
         hold_rmse,
+        hold_r2,
     )
 
-    # Save
-    metadata = ModelMetadata(
-        model_version=model_version,
+    metadata = GameModelMetadata(
+        model_name=model_name,
+        model_type=model_type,
+        task="regression",
         trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         schema_version=CURRENT_SCHEMA_VERSION,
         training_seasons=train_szns,
         holdout_seasons=hold_szns,
-        holdout_brier=hold_mae,  # repurpose: MAE for regression models
+        parameters={
+            "best_params": best_params,
+            "n_iter": n_iter,
+            "cv_folds": cv_folds,
+            "cv_mae": best_mae,
+            "train_mae": train_mae,
+            "train_rmse": train_rmse,
+            "mean_total_train": y_train.mean(),
+            "mean_total_holdout": y_hold.mean(),
+        },
+        feature_columns=list(x_train.columns),
+        n_train_rows=len(x_train),
+        n_holdout_rows=len(x_hold),
+        # First-class regression metrics
+        holdout_mae=hold_mae,
+        holdout_rmse=hold_rmse,
+        holdout_r2=hold_r2,
     )
 
-    store.save(model_version, best_model, metadata=metadata)
-    logger.info("train_total_model: saved %s", model_version)
+    store.save(metadata=metadata, model_obj=best_model, overwrite=True)
+    logger.info("train_total_model: saved (%s, %s)", model_name, model_type)
 
-    return {
-        "best_params": best_params,
-        "n_iter": n_iter,
-        "cv_folds": cv_folds,
-        "cv_mae": best_mae,
-        "train_mae": train_mae,
-        "holdout_mae": hold_mae,
-        "train_rmse": train_rmse,
-        "holdout_rmse": hold_rmse,
-        "n_train": len(x_train),
-        "n_holdout": len(x_hold),
-        "train_seasons": train_szns,
-        "holdout_seasons": hold_szns,
-        "n_features": x_train.shape[1],
-        "mean_total_train": y_train.mean(),
-        "mean_total_holdout": y_hold.mean(),
-    }
+    return metadata
 
 
 # ---------------------------------------------------------------------------
@@ -265,8 +289,9 @@ def train_total_model(
 
 
 def load_total_model(
-    model_version: str = "total_rf_v1",
     *,
+    model_name: str = DEFAULT_TOTAL_MODEL_NAME,
+    model_type: str = DEFAULT_TOTAL_MODEL_TYPE,
     repo: Path | None = None,
 ) -> RandomForestRegressor | None:
     """Load a trained total model from the artifact store.
@@ -276,27 +301,29 @@ def load_total_model(
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
 
-    if not store.is_trained(model_version):
-        logger.debug("load_total_model: %s not found", model_version)
+    if not store.is_trained(model_name, model_type):
+        logger.debug("load_total_model: (%s, %s) not found", model_name, model_type)
         return None
 
-    model = store.load(model_version)
-    logger.info("load_total_model: loaded %s", model_version)
+    model = store.load(model_name, model_type)
+    logger.info("load_total_model: loaded (%s, %s)", model_name, model_type)
     return model
 
 
 def predict_total(
     df: pd.DataFrame,
-    model_version: str = "total_rf_v1",
     *,
+    model_name: str = DEFAULT_TOTAL_MODEL_NAME,
+    model_type: str = DEFAULT_TOTAL_MODEL_TYPE,
     repo: Path | None = None,
 ) -> pd.Series:
     """Predict total points for each game in a modeling DataFrame.
 
     Args:
         df: Modeling DataFrame (same format as ``load_modeling_file()``
-            output).  Must contain the expanded feature columns.
-        model_version: Total model artifact name.
+            output). Must contain the expanded feature columns.
+        model_name: Total model ``model_name`` (defaults to ``"total"``).
+        model_type: Total model ``model_type`` (defaults to ``"random_forest"``).
         repo: Repository root.
 
     Returns:
@@ -305,25 +332,29 @@ def predict_total(
     Raises:
         FileNotFoundError: If the total model has not been trained.
     """
-    model = load_total_model(model_version, repo=repo)
+    model: RandomForestRegressor | None = load_total_model(
+        model_name=model_name, model_type=model_type, repo=repo
+    )
     if model is None:
         raise FileNotFoundError(
-            f"Total model '{model_version}' not found. Run train_total_model() first."
+            f"Total model ({model_name!r}, {model_type!r}) not found. "
+            f"Run train_total_model() first."
         )
 
     features: DataFrame = _make_expanded_features(df)
 
     # Handle missing features gracefully (same as win model)
-    valid = features.notna().all(axis=1)
-    preds = pd.Series(np.nan, index=df.index, dtype=float)
+    valid: Series[bool] = features.notna().all(axis=1)
+    preds: Series[float] = pd.Series(np.nan, index=df.index, dtype=float)
     if valid.sum() > 0:
         preds.loc[valid] = model.predict(features.loc[valid])
 
     logger.info(
-        "predict_total: predicted %d/%d games (model=%s)",
+        "predict_total: predicted %d/%d games (model=(%s, %s))",
         valid.sum(),
         len(df),
-        model_version,
+        model_name,
+        model_type,
     )
 
     return preds

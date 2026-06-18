@@ -14,7 +14,7 @@ _make_raw_features          DataFrame -> DataFrame (47 cols)
 _make_combined_features     DataFrame -> DataFrame (70 cols)
 _make_expanded_features     DataFrame -> DataFrame (107 cols)
 _prepare_data               DataFrame -> train/holdout split tuple
-_is_trained                 str, Path | None -> bool
+_is_trained                 str, str, Path | None -> bool
 """
 
 from __future__ import annotations
@@ -171,6 +171,8 @@ def _prepare_data(
 
     Returns:
         Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
+        Season lists are returned as ``"YYYY-YYYY"`` strings to match the
+        :class:`gridiron_edge.models.artifact.BaseModelMetadata` convention.
     """
     df = df.loc[df["RESULT"] != 0.5, :].copy()
     # Sort chronologically so TimeSeriesSplit respects temporal ordering.
@@ -191,25 +193,31 @@ def _prepare_data(
         hold_mask.sum(),
     )
 
+    train_year_ints: list[int] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
+    hold_year_ints: list[int] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
+    train_seasons: list[str] = [f"{y}-{y + 1}" for y in train_year_ints]
+    hold_seasons: list[str] = [f"{y}-{y + 1}" for y in hold_year_ints]
+
     return (
         features.loc[train_mask],
         y.loc[train_mask],
         features.loc[hold_mask],
         y.loc[hold_mask],
-        sorted(df.loc[train_mask, "YEAR"].unique().tolist()),
-        sorted(df.loc[hold_mask, "YEAR"].unique().tolist()),
+        train_seasons,
+        hold_seasons,
     )
 
 
-def _is_trained(model_version: str, repo: Path | None) -> bool:
-    """Check if a trained artifact exists for the given model version.
+def _is_trained(model_name: str, model_type: str, repo: Path | None) -> bool:
+    """Check if a trained artifact exists for the given (model_name, model_type) pair.
 
     Args:
-        model_version: Registered model version string.
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
         repo: Repository root. Defaults to settings repo root.
 
     Returns:
         True if an artifact exists, False otherwise.
     """
     resolved_repo: Path = repo or get_settings().repo_root
-    return ArtifactStore(resolved_repo).is_trained(model_version)
+    return ArtifactStore(resolved_repo).is_trained(model_name, model_type)

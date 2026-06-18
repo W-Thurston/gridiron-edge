@@ -5,7 +5,7 @@
 Classification (existing):
     ClassificationPromotionGates       Gate thresholds (Brier/ECE/AUC)
     ClassificationComparisonResult        Comparison outcome
-    extract_classification_metrics         Pull metrics from ModelMetadata
+    extract_classification_metrics         Pull metrics from GameModelMetadata
     compare_classification_models          Run classification gates
     format_classification_comparison       Human-readable classification report
 
@@ -37,7 +37,7 @@ from math import isnan
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from gridiron_edge.models.artifact import ModelMetadata
+    from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +113,8 @@ _PARAM_KEYS: dict[str, str] = {
 }
 
 
-def extract_classification_metrics(meta: ModelMetadata) -> dict[str, float]:
-    """Pull a standardised metric dict from ModelMetadata.
+def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
+    """Pull a standardised metric dict from GameModelMetadata.
 
     Brier comes from the top-level ``holdout_brier`` field.  All other
     metrics are read from the ``parameters`` dict and default to NaN
@@ -158,8 +158,8 @@ class RegressionModelResult:
 
 
 def compare_classification_models(
-    champion: ModelMetadata,
-    challenger: ModelMetadata,
+    champion: GameModelMetadata,
+    challenger: GameModelMetadata,
     criteria: ClassificationPromotionGates | None = None,
 ) -> ClassificationComparisonResult:
     """Compare champion and challenger on all gates.

@@ -2,7 +2,7 @@
 """Prediction pipeline — feature prep → inference → enrichment.
 
 Orchestrates the steps that produce a fully enriched game-level
-predictions DataFrame.  Each step is a composable function:
+predictions DataFrame. Each step is a composable function:
 
     load features → run model(s) → build game rows → enrich → return
 
@@ -13,6 +13,11 @@ pipeline.
 Public API:
     predict_games            Full pipeline for historical predictions
     build_game_predictions   Map raw model output onto game-level rows
+
+Model identification (Workstream 2):
+    Win-probability and total models are identified by the pair
+    ``(model_name, model_type)``. The archive schema carries both as
+    separate columns rather than a composite ``model_version`` string.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -33,35 +39,38 @@ def build_game_predictions(
     df: pd.DataFrame,
     probs: np.ndarray,
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     is_backfilled: bool = True,
     totals: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Map raw model outputs onto game-level prediction rows.
 
     The modeling DataFrame has one row per team-game (two rows per game).
-    This function filters to the away-team rows (HOME_FIELD == 0),
+    This function filters to the away-team rows (``HOME_FIELD == 0``),
     deduplicates on GAME_ID, and constructs the standard prediction
     schema.
 
     Args:
         df: Modeling DataFrame (must include GAME_ID, TEAM_A, TEAM_B,
-            YEAR, WEEK_NUM, HOME_FIELD).  Aligned with *probs*.
+            YEAR, WEEK_NUM, HOME_FIELD). Aligned with *probs*.
         probs: Predicted probability that TEAM_A wins, aligned with *df*.
-        model_version: Model identifier string.
+        model_name: Win-probability model purpose (e.g. ``"win_prob"``).
+        model_type: Win-probability model algorithm (e.g. ``"random_forest"``).
         is_backfilled: Whether these are historical backfill predictions.
         totals: Optional predicted game totals, aligned with *df*.
 
     Returns:
         Game-level predictions DataFrame with one row per game.
     """
-    work = df.copy()
+    work: DataFrame = df.copy()
     work["_prob"] = probs
     if totals is not None:
         work["_total"] = totals
 
     # One row per game — keep the away-team perspective.
-    away = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
+    # pyrefly: ignore [no-matching-overload]
+    away: DataFrame = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
 
     ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
 
@@ -69,7 +78,8 @@ def build_game_predictions(
         {
             "predicted_at": ts,
             "is_backfilled": is_backfilled,
-            "model_version": model_version,
+            "model_name": model_name,
+            "model_type": model_type,
             "season": away["YEAR"],
             "week": away["WEEK_NUM"].astype(int),
             "game_id": away["GAME_ID"],
@@ -91,19 +101,24 @@ def build_game_predictions(
 
 def predict_games(
     *,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     feature_fn: Callable,
     repo: Path | None = None,
-    total_model_version: str = "total_rf_v1",
+    total_model_name: str = "total",
+    total_model_type: str = "random_forest",
     is_backfilled: bool = True,
 ) -> pd.DataFrame:
     """Full prediction pipeline: load → predict → enrich.
 
     Args:
-        model_version: Win-probability model version.
+        model_name: Win-probability model purpose (e.g. ``"win_prob"``).
+        model_type: Win-probability model algorithm (e.g. ``"random_forest"``).
         feature_fn: Feature engineering function.
         repo: Repository root.
-        total_model_version: Total model to use.  Empty string to skip.
+        total_model_name: Total model purpose (defaults to ``"total"``).
+            Pass an empty string to skip total prediction.
+        total_model_type: Total model algorithm (defaults to ``"random_forest"``).
         is_backfilled: Whether these are backfill predictions.
 
     Returns:
@@ -119,11 +134,11 @@ def predict_games(
     store = ArtifactStore(resolved_repo)
 
     # --- Step 1: Load features ---
-    if not store.is_trained(model_version):
-        logger.warning("predict_games: %s not trained.", model_version)
+    if not store.is_trained(model_name, model_type):
+        logger.warning("predict_games: (%s, %s) not trained.", model_name, model_type)
         return pd.DataFrame()
 
-    df = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
+    df: DataFrame = load_modeling_file(resolved_repo, required_schema_version=_SCHEMA_VERSION)
     features = feature_fn(df)
     valid = features.notna().all(axis=1)
     df_valid = df.loc[valid].copy()
@@ -133,27 +148,34 @@ def predict_games(
         return pd.DataFrame()
 
     # --- Step 2: Win probability inference ---
-    pipeline = store.load(model_version)
+    pipeline = store.load(model_name, model_type)
     probs = pipeline.predict_proba(x_feat)[:, 1]
 
     # --- Step 3: Total points inference (optional) ---
     totals: pd.Series | None = None
-    if total_model_version:
+    if total_model_name:
         try:
             from gridiron_edge.models.game_prediction.total import predict_total
 
-            totals = predict_total(df_valid, model_version=total_model_version, repo=resolved_repo)
+            totals = predict_total(
+                df_valid,
+                model_name=total_model_name,
+                model_type=total_model_type,
+                repo=resolved_repo,
+            )
         except FileNotFoundError:
             logger.debug(
-                "predict_games: total model %s not available",
-                total_model_version,
+                "predict_games: total model (%s, %s) not available",
+                total_model_name,
+                total_model_type,
             )
 
     # --- Step 4: Build game-level rows ---
-    result = build_game_predictions(
+    result: DataFrame = build_game_predictions(
         df_valid,
         probs,
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         is_backfilled=is_backfilled,
         totals=totals,
     )
@@ -161,7 +183,8 @@ def predict_games(
     # --- Step 5: Enrich ---
     result = enrich_predictions(
         result,
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         recalibrate=True,
         repo=resolved_repo,
     )

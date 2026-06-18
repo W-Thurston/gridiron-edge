@@ -2,42 +2,52 @@
 """Post-processing enrichment for game prediction outputs.
 
 Derives additional outputs from base model win probabilities without
-modifying model internals.  Every predictor that outputs ``home_win_prob``
+modifying model internals. Every predictor that outputs ``home_win_prob``
 can be enriched by calling ``enrich_predictions()`` on its output
 DataFrame.
 
 The spread derivation uses the probit link: the relationship between
 win probability and point spread is mediated by the margin-of-victory
-distribution, which is approximately normal in the NFL.  The conversion
+distribution, which is approximately normal in the NFL. The conversion
 is::
 
     model_spread = -sigma * Phi_inv(home_win_prob)
 
 where *sigma* is the standard deviation of the margin-of-victory
 distribution (approx 13.86 league-wide) and *Phi_inv* is the inverse
-normal CDF.  Sigma is calibrated per model version for maximum accuracy.
+normal CDF. Sigma is calibrated per ``(model_name, model_type)`` pair
+for maximum accuracy.
+
+Model identification (Workstream 2):
+    Models are identified by the pair ``(model_name, model_type)`` —
+    e.g. ``("win_prob", "random_forest")``. Sigma and margin_std maps
+    are keyed by this tuple. Calibrators live alongside model artifacts
+    at ``data/models/{model_name}/{model_type}/calibrator.joblib``.
 
 Spread + sigma calibration:
-    win_prob_to_spread   home_win_prob -> NFL point spread
-    spread_to_win_prob   NFL point spread -> home_win_prob (inverse)
-    calibrate_spread_sigma  Fit sigma from historical predictions + outcomes
-    get_sigma            Look up per-model calibrated sigma
-    enrich_predictions   Orchestrator: adds post-processed columns
+    win_prob_to_spread       home_win_prob -> NFL point spread
+    spread_to_win_prob       NFL point spread -> home_win_prob (inverse)
+    calibrate_spread_sigma   Fit sigma from historical predictions + outcomes
+    register_sigma           Add a calibrated sigma to the in-memory map
+    get_sigma                Look up per-model calibrated sigma
 
 Isotonic recalibration:
-    fit_recalibration    Fit isotonic mapping with temporal split
-    apply_recalibration  Apply fitted calibrator to probabilities
-    save_calibrator      Persist calibrator to data/models/{version}_cal/
-    load_calibrator      Load calibrator (None if absent)
+    fit_recalibration        Fit isotonic mapping with temporal split
+    apply_recalibration      Apply fitted calibrator to probabilities
+    save_calibrator          Persist calibrator alongside the model artifact
+    load_calibrator          Load calibrator (None if absent)
 
 Uncertainty bands + confidence tiers:
-    compute_margin_std   Residual std from predicted vs actual margins
-    get_margin_std       Look up per-model margin std
-    win_prob_bands       Derive (win_prob_lo, win_prob_hi) credible interval
-    classify_confidence_tier  Band width -> High / Moderate / Low
+    compute_margin_std       Residual std from predicted vs actual margins
+    get_margin_std           Look up per-model margin std
+    win_prob_bands           Derive (win_prob_lo, win_prob_hi) credible interval
+    classify_confidence_tier Band width -> High / Moderate / Low
 
 Projected scores:
-    projected_scores     Derive home/away scores from spread + total
+    projected_scores         Derive home/away scores from spread + total
+
+Orchestrator:
+    enrich_predictions       Apply all enrichments to a predictions DataFrame
 """
 
 from __future__ import annotations
@@ -69,8 +79,8 @@ logger: Logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-# NFL historical margin-of-victory standard deviation.  Used as the
-# fallback when no per-model calibrated sigma is available.  Derived
+# NFL historical margin-of-victory standard deviation. Used as the
+# fallback when no per-model calibrated sigma is available. Derived
 # from league-wide game results 2000-2024.
 _NFL_DEFAULT_SIGMA: Final[float] = 13.86
 
@@ -85,59 +95,52 @@ _PROB_CEIL: Final[float] = 0.999
 _SIGMA_LO: Final[float] = 8.0
 _SIGMA_HI: Final[float] = 22.0
 
-# Per-model-version calibrated sigma values.  Keyed by model_version
-# string (e.g. "random_forest").  When a model_version is not found
-# here, ``get_sigma`` falls back to ``_NFL_DEFAULT_SIGMA``.
+# Per-model calibrated sigma values, keyed by (model_name, model_type).
+# When a pair is not found here, ``get_sigma`` falls back to
+# ``_NFL_DEFAULT_SIGMA``.
 #
-# Calibrated 2026-06-01 via ``calibrate_spread_sigma`` against the full
-# prediction archive (5,705-7,276 games per model).  Best spread MAE:
-# random_forest (sigma=13.97, MAE=9.92).
-
-_MODEL_SIGMAS: dict[str, float] = {
-    # Elo baseline — calibrated separately via elo tuner
-    "elo_v2": 13.60,
-    # Champion models — calibrated on holdout data after
-    # TimeSeriesSplit retrain (2026-06-04).
-    "random_forest": 10.6252,
-    "xgboost": 11.4309,
-    "logistic": 11.9914,
+# Calibrated 2026-06-04 via ``calibrate_spread_sigma`` against the full
+# prediction archive after the WS1 TimeSeriesSplit retrain.
+#
+# TODO: Wire sigma calibration into the training harness so this map
+# is populated automatically when a new model is trained.
+# TODO: Re-register Elo sigma here when the Elo predictor is migrated
+# to the WS2 (model_name, model_type) schema. Removed value was 13.60.
+_MODEL_SIGMAS: dict[tuple[str, str], float] = {
+    ("win_prob", "random_forest"): 10.6252,
+    ("win_prob", "xgboost"): 11.4309,
+    ("win_prob", "logistic"): 11.9914,
 }
 
-
-# TODO: Wire sigma calibration into the training harness so this
-# dict is populated automatically when a new model version is trained.
-
-
-# Default z-score for credible intervals.  1.645 corresponds to a 90% CI.
+# Default z-score for credible intervals. 1.645 corresponds to a 90% CI.
 _DEFAULT_Z: Final[float] = 1.645
 
-# Default margin standard deviation (league-wide fallback).  This is the
+# Default margin standard deviation (league-wide fallback). This is the
 # standard deviation of (predicted_margin - actual_margin) residuals.
 _DEFAULT_MARGIN_STD: Final[float] = 13.45
 
-# Per-model margin std -- derived from sqrt(MSE) at optimal sigma during
-# sigma calibration (2026-06-01).  Represents how much the model's spread
-# predictions typically deviate from actual game margins.
-_MODEL_MARGIN_STDS: dict[str, float] = {
-    # Elo baseline
-    "elo_v2": 13.89,
-    # Champion models — RMSE of (predicted_margin - actual_margin)
-    # on holdout seasons (2026-06-04).
-    "random_forest": 13.54,
-    "xgboost": 13.34,
-    "logistic": 13.29,
-}
+# Per-model margin std, keyed by (model_name, model_type). Derived from
+# sqrt(MSE) at optimal sigma during sigma calibration (2026-06-04).
+# Represents how much the model's spread predictions typically deviate
+# from actual game margins.
+#
 # TODO: Wire margin_std computation into the training harness.
+# TODO: Re-register Elo margin_std here when migrated. Removed value was 13.89.
+_MODEL_MARGIN_STDS: dict[tuple[str, str], float] = {
+    ("win_prob", "random_forest"): 13.54,
+    ("win_prob", "xgboost"): 13.34,
+    ("win_prob", "logistic"): 13.29,
+}
 
 # Confidence tier: how far is the prediction from pick'em (0.5)?
 #   distance >= HIGH  -> "High"     (prob >= 0.70 or <= 0.30)
 #   distance >= MOD   -> "Moderate" (prob 0.60-0.70 or 0.30-0.40)
-#   distance < MOD    -> "Low"      (prob 0.40-0.60, near toss-up)
+#   distance <  MOD   -> "Low"      (prob 0.40-0.60, near toss-up)
 _TIER_HIGH_PROB: Final[float] = 0.70
 _TIER_MODERATE_PROB: Final[float] = 0.60
 
-
-# Calibrator artifact filename.
+# Calibrator artifact filename. Lives in the same directory as the model
+# artifact: ``data/models/{model_name}/{model_type}/calibrator.joblib``.
 _CALIBRATOR_FILENAME: Final[str] = "calibrator.joblib"
 
 # Default number of most-recent seasons held out for calibrator validation.
@@ -156,7 +159,7 @@ def win_prob_to_spread(
 ) -> float:
     """Convert a home-team win probability to an NFL point spread.
 
-    Uses the probit (inverse-normal) link function.  The returned spread
+    Uses the probit (inverse-normal) link function. The returned spread
     follows NFL convention: **negative** means home team is favored,
     **positive** means away team is favored.
 
@@ -168,13 +171,13 @@ def win_prob_to_spread(
 
     Args:
         home_win_prob: Predicted probability that the home team wins,
-            in the range [0, 1].  Values at the extremes are clamped
+            in the range [0, 1]. Values at the extremes are clamped
             to (_PROB_FLOOR, _PROB_CEIL) to avoid +/-inf.
         sigma: Standard deviation of the margin-of-victory distribution.
             Defaults to ``_NFL_DEFAULT_SIGMA`` (13.86).
 
     Returns:
-        Point spread (float).  Negative = home favored.
+        Point spread (float). Negative = home favored.
     """
     clamped: float = float(np.clip(home_win_prob, _PROB_FLOOR, _PROB_CEIL))
     return -sigma * float(norm.ppf(clamped))
@@ -187,7 +190,7 @@ def spread_to_win_prob(
 ) -> float:
     """Convert an NFL point spread to a home-team win probability.
 
-    Inverse of ``win_prob_to_spread``.  Uses the normal CDF.
+    Inverse of ``win_prob_to_spread``. Uses the normal CDF.
 
     Args:
         spread: Point spread (negative = home favored).
@@ -274,32 +277,37 @@ def calibrate_spread_sigma(
     return optimal_sigma
 
 
-def register_sigma(model_version: str, sigma: float) -> None:
-    """Register a calibrated sigma for a specific model version.
+def register_sigma(model_name: str, model_type: str, sigma: float) -> None:
+    """Register a calibrated sigma for a specific (model_name, model_type) pair.
 
     Args:
-        model_version: Model identifier (e.g. ``"random_forest"``).
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
         sigma: Calibrated sigma value.
     """
-    _MODEL_SIGMAS[model_version] = sigma
-    logger.info("register_sigma: %s -> %.4f", model_version, sigma)
+    _MODEL_SIGMAS[(model_name, model_type)] = sigma
+    logger.info("register_sigma: (%s, %s) -> %.4f", model_name, model_type, sigma)
 
 
-def get_sigma(model_version: str | None = None) -> float:
-    """Look up the calibrated sigma for a model version.
+def get_sigma(
+    model_name: str | None = None,
+    model_type: str | None = None,
+) -> float:
+    """Look up the calibrated sigma for a (model_name, model_type) pair.
 
-    Falls back to ``_NFL_DEFAULT_SIGMA`` if the model version is not
-    registered or is ``None``.
+    Falls back to ``_NFL_DEFAULT_SIGMA`` if the pair is not registered
+    or if either argument is ``None``.
 
     Args:
-        model_version: Model identifier, or ``None`` for the default.
+        model_name: Model purpose, or ``None`` for the default.
+        model_type: Model algorithm, or ``None`` for the default.
 
     Returns:
         Sigma value (float).
     """
-    if model_version is None:
+    if model_name is None or model_type is None:
         return _NFL_DEFAULT_SIGMA
-    return _MODEL_SIGMAS.get(model_version, _NFL_DEFAULT_SIGMA)
+    return _MODEL_SIGMAS.get((model_name, model_type), _NFL_DEFAULT_SIGMA)
 
 
 # ---------------------------------------------------------------------------
@@ -307,11 +315,11 @@ def get_sigma(model_version: str | None = None) -> float:
 # ---------------------------------------------------------------------------
 # The existing tree model training uses StratifiedKFold(shuffle=True) and
 # CalibratedClassifierCV(cv=3), which do not respect temporal ordering.
-# This second-pass recalibration uses strict temporal splits.  See PLAN.md
+# This second-pass recalibration uses strict temporal splits. See PLAN.md
 # for details on the temporal leakage discovery.
 #
-# Evaluation showed random_forestis already well-calibrated on recent data
-# (holdout ECE 0.036), so the calibrator was NOT saved.  The
+# Evaluation showed random_forest is already well-calibrated on recent data
+# (holdout ECE 0.036), so the calibrator was NOT saved. The
 # infrastructure is retained for future model versions.
 
 
@@ -336,9 +344,9 @@ def fit_recalibration(
         actual_outcomes: Binary outcomes (1 = that team won, 0 = lost),
             aligned with *predicted_probs*.
         seasons: Season labels (e.g. ``"2023-2024"``), aligned with
-            *predicted_probs*.  Used for the temporal split.
+            *predicted_probs*. Used for the temporal split.
         holdout_seasons: Number of most-recent seasons to hold out
-            for validation.  Defaults to 2.
+            for validation. Defaults to 2.
 
     Returns:
         Tuple of (fitted IsotonicRegression, diagnostics dict).
@@ -423,18 +431,20 @@ def apply_recalibration(
 
 def save_calibrator(
     calibrator: IsotonicRegression,
-    model_version: str,
+    model_name: str,
+    model_type: str,
     repo: Path | None = None,
 ) -> Path:
-    """Persist an isotonic calibrator alongside a model's artifacts.
+    """Persist an isotonic calibrator alongside a model's artifact.
 
-    Saves to ``data/models/{model_version}_cal/calibrator.joblib``.
+    Saves to ``data/models/{model_name}/{model_type}/calibrator.joblib``,
+    the same directory as the model artifact itself.
 
     Args:
         calibrator: Fitted ``IsotonicRegression`` to persist.
-        model_version: Base model identifier (e.g. ``"random_forest"``).
-            The calibrator is stored under ``{model_version}_cal/``.
-        repo: Repository root.  If ``None``, uses ``get_settings().repo_root``.
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
+        repo: Repository root. If ``None``, uses ``get_settings().repo_root``.
 
     Returns:
         Path to the saved calibrator file.
@@ -444,7 +454,7 @@ def save_calibrator(
 
         repo = get_settings().repo_root
 
-    cal_dir: Path = repo / "data" / "models" / f"{model_version}_cal"
+    cal_dir: Path = repo / "data" / "models" / model_name / model_type
     cal_dir.mkdir(parents=True, exist_ok=True)
     cal_path: Path = cal_dir / _CALIBRATOR_FILENAME
 
@@ -455,16 +465,18 @@ def save_calibrator(
 
 
 def load_calibrator(
-    model_version: str,
+    model_name: str,
+    model_type: str,
     repo: Path | None = None,
 ) -> IsotonicRegression | None:
-    """Load an isotonic calibrator for a model version.
+    """Load an isotonic calibrator for a (model_name, model_type) pair.
 
     Returns ``None`` if no calibrator file exists (graceful fallback).
 
     Args:
-        model_version: Base model identifier (e.g. ``"random_forest"``).
-        repo: Repository root.  If ``None``, uses ``get_settings().repo_root``.
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
+        repo: Repository root. If ``None``, uses ``get_settings().repo_root``.
 
     Returns:
         Fitted ``IsotonicRegression``, or ``None`` if not found.
@@ -474,7 +486,7 @@ def load_calibrator(
 
         repo = get_settings().repo_root
 
-    cal_path: Path = repo / "data" / "models" / f"{model_version}_cal" / _CALIBRATOR_FILENAME
+    cal_path: Path = repo / "data" / "models" / model_name / model_type / _CALIBRATOR_FILENAME
 
     if not cal_path.exists():
         logger.debug("load_calibrator: no calibrator at %s", cal_path)
@@ -490,9 +502,9 @@ def load_calibrator(
 # ---------------------------------------------------------------------------
 
 # Uses the per-model residual standard deviation (margin_std) to build
-# credible intervals around the point-estimate win probability.  The
+# credible intervals around the point-estimate win probability. The
 # spread +/- z * margin_std interval is converted back to probability space
-# via the probit link, producing (win_prob_lo, win_prob_hi).  Band width
+# via the probit link, producing (win_prob_lo, win_prob_hi). Band width
 # determines the confidence tier.
 
 
@@ -540,14 +552,18 @@ def compute_margin_std(
     return float(np.std(residuals, ddof=1))
 
 
-def get_margin_std(model_version: str | None = None) -> float:
-    """Look up the residual margin std for a model version.
+def get_margin_std(
+    model_name: str | None = None,
+    model_type: str | None = None,
+) -> float:
+    """Look up the residual margin std for a (model_name, model_type) pair.
 
-    Falls back to ``_DEFAULT_MARGIN_STD`` if not registered or ``None``.
+    Falls back to ``_DEFAULT_MARGIN_STD`` if the pair is not registered
+    or if either argument is ``None``.
     """
-    if model_version is None:
+    if model_name is None or model_type is None:
         return _DEFAULT_MARGIN_STD
-    return _MODEL_MARGIN_STDS.get(model_version, _DEFAULT_MARGIN_STD)
+    return _MODEL_MARGIN_STDS.get((model_name, model_type), _DEFAULT_MARGIN_STD)
 
 
 def win_prob_bands(
@@ -567,10 +583,10 @@ def win_prob_bands(
         home_win_prob: Point-estimate probability.
         margin_std: Residual standard deviation for this model.
         sigma: Calibrated sigma for this model.
-        z: Z-score for the interval.  Default 1.645 (90% CI).
+        z: Z-score for the interval. Default 1.645 (90% CI).
 
     Returns:
-        Tuple of (win_prob_lo, win_prob_hi).  ``win_prob_lo`` is always
+        Tuple of (win_prob_lo, win_prob_hi). ``win_prob_lo`` is always
         the lower probability (worse for home team).
     """
     spread: float = win_prob_to_spread(home_win_prob, sigma=sigma)
@@ -635,7 +651,8 @@ def projected_scores(
 def enrich_predictions(
     df: pd.DataFrame,
     *,
-    model_version: str | None = None,
+    model_name: str | None = None,
+    model_type: str | None = None,
     recalibrate: bool = True,
     repo: Path | None = None,
 ) -> pd.DataFrame:
@@ -646,29 +663,30 @@ def enrich_predictions(
     columns.
 
     When *recalibrate* is ``True`` (the default), the function attempts
-    to load a saved isotonic calibrator for *model_version*.  If found,
-    ``home_win_prob`` and ``away_win_prob`` are replaced in-place with
-    calibrated values before deriving the spread.
+    to load a saved isotonic calibrator for the (model_name, model_type)
+    pair. If found, ``home_win_prob`` and ``away_win_prob`` are replaced
+    in-place with calibrated values before deriving the spread.
 
     Spread columns:
         model_spread       float -- NFL point spread (neg = home favored)
 
     Uncertainty columns:
-        margin_std         float -- residual std for this model version
+        margin_std         float -- residual std for this model
         win_prob_lo        float -- lower bound of 90% credible interval
         win_prob_hi        float -- upper bound of 90% credible interval
         confidence_tier    str   -- "High" / "Moderate" / "Low"
 
     Args:
-        df: Predictions DataFrame.  Must contain a home win probability
+        df: Predictions DataFrame. Must contain a home win probability
             column (case-insensitive: ``home_win_prob`` or
             ``HOME_WIN_PROB``).
-        model_version: Model identifier for sigma lookup and calibrator
-            loading.  If ``None``, uses the default sigma and skips
-            recalibration.
+        model_name: Model purpose (e.g. ``"win_prob"``). If ``None``,
+            uses the default sigma and skips recalibration.
+        model_type: Model algorithm (e.g. ``"random_forest"``). If
+            ``None``, uses the default sigma and skips recalibration.
         recalibrate: If ``True``, attempt to load and apply an isotonic
-            calibrator for *model_version*.  Set to ``False`` to skip.
-        repo: Repository root for calibrator loading.  If ``None``,
+            calibrator for the pair. Set to ``False`` to skip.
+        repo: Repository root for calibrator loading. If ``None``,
             uses ``get_settings().repo_root``.
 
     Returns:
@@ -690,24 +708,25 @@ def enrich_predictions(
         raise KeyError("DataFrame must contain 'home_win_prob' or 'HOME_WIN_PROB'")
 
     # --- Isotonic recalibration ---
-    if recalibrate and model_version is not None:
-        calibrator = load_calibrator(model_version, repo=repo)
+    if recalibrate and model_name is not None and model_type is not None:
+        calibrator = load_calibrator(model_name, model_type, repo=repo)
         if calibrator is not None:
             out[prob_col] = apply_recalibration(out[prob_col], calibrator)
             if away_col in out.columns:
                 out[away_col] = 1.0 - out[prob_col]
             logger.debug(
-                "enrich_predictions: applied recalibration for %s",
-                model_version,
+                "enrich_predictions: applied recalibration for (%s, %s)",
+                model_name,
+                model_type,
             )
 
     # --- Spread derivation ---
-    sigma: float = get_sigma(model_version)
+    sigma: float = get_sigma(model_name, model_type)
 
     out["model_spread"] = out[prob_col].apply(lambda p: win_prob_to_spread(p, sigma=sigma))
 
     # --- Uncertainty bands + confidence tier ---
-    ms: float = get_margin_std(model_version)
+    ms: float = get_margin_std(model_name, model_type)
     out["margin_std"] = ms
 
     def _bands(p: float) -> tuple[float, float]:
@@ -731,11 +750,12 @@ def enrich_predictions(
         out["projected_away_score"] = scores.apply(lambda t: t[1])
 
     logger.debug(
-        "enrich_predictions: enriched %d rows (sigma=%.4f, margin_std=%.2f, model=%s)",
+        "enrich_predictions: enriched %d rows (sigma=%.4f, margin_std=%.2f, model=(%s, %s))",
         len(out),
         sigma,
         ms,
-        model_version or "default",
+        model_name or "default",
+        model_type or "default",
     )
 
     return out

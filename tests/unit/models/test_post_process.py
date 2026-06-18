@@ -189,23 +189,23 @@ class TestGetSigma:
 
     def test_registered_sigma(self) -> None:
         """Registered model version returns its calibrated sigma."""
-        register_sigma("random_forest", 14.22)
-        assert get_sigma("random_forest") == 14.22
+        register_sigma("win_prob", "random_forest", 14.22)
+        assert get_sigma("win_prob", "random_forest") == 14.22
 
     def test_register_overwrites(self) -> None:
         """Registering again overwrites the previous value."""
-        register_sigma("xgboost", 13.50)
-        register_sigma("xgboost", 14.10)
-        assert get_sigma("xgboost") == 14.10
+        register_sigma("win_prob", "xgboost", 13.50)
+        register_sigma("win_prob", "xgboost", 14.10)
+        assert get_sigma("win_prob", "xgboost") == 14.10
 
     def test_multiple_models(self) -> None:
         """Different models can have different sigmas."""
-        register_sigma("random_forest", 14.22)
-        register_sigma("xgboost", 13.50)
-        register_sigma("logistic", 15.01)
-        assert get_sigma("random_forest") == 14.22
-        assert get_sigma("xgboost") == 13.50
-        assert get_sigma("logistic") == 15.01
+        register_sigma("win_prob", "random_forest", 14.22)
+        register_sigma("win_prob", "xgboost", 13.50)
+        register_sigma("win_prob", "logistic", 15.01)
+        assert get_sigma("win_prob", "random_forest") == 14.22
+        assert get_sigma("win_prob", "xgboost") == 13.50
+        assert get_sigma("win_prob", "logistic") == 15.01
 
 
 # ---------------------------------------------------------------------------
@@ -348,10 +348,13 @@ class TestEnrichPredictions:
 
     def test_uses_model_sigma(self) -> None:
         """When a model sigma is registered, enrichment uses it."""
-        register_sigma("random_forest", 15.0)
+        register_sigma("win_prob", "random_forest", 15.0)
         df: DataFrame = self._make_predictions_df()
         enriched: DataFrame = enrich_predictions(
-            df, model_version="random_forest", recalibrate=False
+            df,
+            model_name="win_prob",
+            model_type="random_forest",
+            recalibrate=False,
         )
         for _, row in enriched.iterrows():
             expected: float = win_prob_to_spread(row["home_win_prob"], sigma=15.0)
@@ -534,8 +537,8 @@ class TestSaveLoadCalibrator:
         test_probs: ndarray = np.array([0.3, 0.5, 0.7])
         expected = calibrator.predict(test_probs)
 
-        save_calibrator(calibrator, "random_forest", repo=tmp_path)
-        loaded = load_calibrator("random_forest", repo=tmp_path)
+        save_calibrator(calibrator, "win_prob", "random_forest", repo=tmp_path)
+        loaded = load_calibrator("win_prob", "random_forest", repo=tmp_path)
 
         assert loaded is not None
         np.testing.assert_array_almost_equal(
@@ -545,16 +548,16 @@ class TestSaveLoadCalibrator:
 
     def test_load_missing_returns_none(self, tmp_path: Path) -> None:
         """Loading from a path with no calibrator returns None."""
-        result = load_calibrator("nonexistent_model", repo=tmp_path)
+        result = load_calibrator("win_prob", "nonexistent_model", repo=tmp_path)
         assert result is None
 
     def test_creates_directory(self, tmp_path: Path) -> None:
         """Save creates the _cal directory if it doesn't exist."""
         calibrator = _make_calibrator()
-        cal_dir: Path = tmp_path / "data" / "models" / "random_forest_cal"
+        cal_dir: Path = tmp_path / "data" / "models" / "win_prob" / "random_forest"
         assert not cal_dir.exists()
 
-        save_calibrator(calibrator, "random_forest", repo=tmp_path)
+        save_calibrator(calibrator, "win_prob", "random_forest", repo=tmp_path)
         assert cal_dir.exists()
         assert (cal_dir / _CALIBRATOR_FILENAME).exists()
 
@@ -580,14 +583,15 @@ class TestEnrichWithRecalibration:
     def test_applies_calibrator_when_present(self, tmp_path: Path) -> None:
         """Recalibration adjusts probabilities when calibrator is saved."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "random_forest", repo=tmp_path)
+        save_calibrator(calibrator, "win_prob", "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         original_probs: Series = df["home_win_prob"].copy()
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="random_forest",
+            model_name="win_prob",
+            model_type="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -602,7 +606,8 @@ class TestEnrichWithRecalibration:
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="random_forest",
+            model_name="win_prob",
+            model_type="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -615,14 +620,15 @@ class TestEnrichWithRecalibration:
     def test_skips_when_recalibrate_false(self, tmp_path: Path) -> None:
         """recalibrate=False skips calibration even if calibrator exists."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "random_forest", repo=tmp_path)
+        save_calibrator(calibrator, "win_prob", "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         original_probs: Series = df["home_win_prob"].copy()
 
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="random_forest",
+            model_name="win_prob",
+            model_type="random_forest",
             recalibrate=False,
             repo=tmp_path,
         )
@@ -635,12 +641,13 @@ class TestEnrichWithRecalibration:
     def test_away_prob_updated(self, tmp_path: Path) -> None:
         """After recalibration, away_win_prob = 1 - home_win_prob."""
         calibrator = _make_calibrator()
-        save_calibrator(calibrator, "random_forest", repo=tmp_path)
+        save_calibrator(calibrator, "win_prob", "random_forest", repo=tmp_path)
 
         df: DataFrame = self._make_predictions_df()
         enriched: DataFrame = enrich_predictions(
             df,
-            model_version="random_forest",
+            model_name="win_prob",
+            model_type="random_forest",
             recalibrate=True,
             repo=tmp_path,
         )
@@ -735,8 +742,8 @@ class TestGetMarginStd:
         assert get_margin_std("nonexistent_v99") == _DEFAULT_MARGIN_STD
 
     def test_registered_value(self) -> None:
-        _MODEL_MARGIN_STDS["test_model"] = 12.0
-        assert get_margin_std("test_model") == 12.0
+        _MODEL_MARGIN_STDS[("test", "model")] = 12.0
+        assert get_margin_std("test", "model") == 12.0
 
 
 # ---------------------------------------------------------------------------
