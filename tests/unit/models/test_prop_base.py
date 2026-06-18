@@ -52,6 +52,8 @@ class TestPropModelMetadata:
     def test_required_fields(self) -> None:
         meta = PropModelMetadata(
             model_name="qb_pass_yards",
+            model_type="elasticnet",
+            task="regression",
             trained_at="2024-01-01T00:00:00Z",
             target_col="passing_yards",
             holdout_mae=25.0,
@@ -59,46 +61,70 @@ class TestPropModelMetadata:
             holdout_r2=0.45,
         )
         assert meta.model_name == "qb_pass_yards"
+        assert meta.model_type == "elasticnet"
+        assert meta.task == "regression"
+        assert meta.target_col == "passing_yards"
         assert meta.holdout_mae == 25.0
+        assert meta.holdout_rmse == 32.0
+        assert meta.holdout_r2 == 0.45
 
     def test_defaults(self) -> None:
         meta = PropModelMetadata(
             model_name="test",
+            model_type="elasticnet",
+            task="regression",
             trained_at="now",
             target_col="col",
             holdout_mae=0.0,
             holdout_rmse=0.0,
             holdout_r2=0.0,
         )
+        # Inherited BaseModelMetadata defaults
+        assert meta.schema_version == 2
         assert meta.training_seasons == []
         assert meta.holdout_seasons == []
         assert meta.parameters == {}
         assert meta.feature_columns == []
         assert meta.n_train_rows == 0
+        assert meta.n_holdout_rows == 0
         assert meta.notes == ""
 
-    def test_model_type_default(self) -> None:
-        meta = PropModelMetadata(
-            model_name="test",
-            trained_at="now",
-            target_col="col",
-            holdout_mae=0.0,
-            holdout_rmse=0.0,
-            holdout_r2=0.0,
-        )
-        assert meta.model_type == "elasticnet"
+    def test_model_type_required(self) -> None:
+        """model_type and task are now required kwargs (Workstream 2)."""
+        with pytest.raises(TypeError):
+            PropModelMetadata(  # type: ignore[call-arg]
+                model_name="test",
+                trained_at="now",
+                target_col="col",
+                holdout_mae=0.0,
+                holdout_rmse=0.0,
+                holdout_r2=0.0,
+                task="regression",
+            )
+        with pytest.raises(TypeError):
+            PropModelMetadata(  # type: ignore[call-arg]
+                model_name="test",
+                trained_at="now",
+                target_col="col",
+                holdout_mae=0.0,
+                holdout_rmse=0.0,
+                holdout_r2=0.0,
+                model_type="elasticnet",
+            )
 
-    def test_model_type_custom(self) -> None:
+        # Both supplied → construction succeeds with the chosen model_type
         meta = PropModelMetadata(
             model_name="test",
+            model_type="random_forest",
+            task="regression",
             trained_at="now",
             target_col="col",
             holdout_mae=0.0,
             holdout_rmse=0.0,
             holdout_r2=0.0,
-            model_type="random_forest",
         )
         assert meta.model_type == "random_forest"
+        assert meta.task == "regression"
 
 
 class TestPropPrediction:

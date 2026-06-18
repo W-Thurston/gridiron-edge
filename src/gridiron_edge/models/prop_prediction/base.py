@@ -22,7 +22,7 @@ Adding a new prop model:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from itertools import product
@@ -38,6 +38,7 @@ from pandas import DataFrame, Series
 from gridiron_edge.core.constants import HOLDOUT_SEASONS
 from gridiron_edge.features.player._columns import PROP_FEATURE_COLS
 from gridiron_edge.features.player.builder import build_prop_features
+from gridiron_edge.models.artifact import BaseModelMetadata
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -76,41 +77,26 @@ class PropModelSpec:
     clip_hi: float = 1000.0
 
 
-@dataclass
-class PropModelMetadata:
+@dataclass(kw_only=True)
+class PropModelMetadata(BaseModelMetadata):
     """Metadata recorded alongside a trained prop model artifact.
 
+    Inherits the shared metadata fields from :class:`BaseModelMetadata`
+    (model_name, model_type, task, trained_at, schema_version,
+    training_seasons, holdout_seasons, parameters, feature_columns,
+    n_train_rows, n_holdout_rows, notes). Adds prop-specific fields below.
+
     Attributes:
-        model_name: Registered model name.
-        trained_at: ISO-format UTC timestamp.
-        target_col: Target column name.
+        target_col: Target column name (e.g. ``"passing_yards"``).
         holdout_mae: MAE on holdout set (primary metric).
         holdout_rmse: RMSE on holdout set.
         holdout_r2: R² on holdout set.
-        model_type: Type of model to be trained
-        training_seasons: Seasons used for training.
-        holdout_seasons: Seasons used for evaluation.
-        parameters: Hyperparameters.
-        feature_columns: Ordered feature columns the model expects.
-        n_train_rows: Number of training rows.
-        n_holdout_rows: Number of holdout rows.
-        notes: Free-text notes.
     """
 
-    model_name: str
-    trained_at: str
     target_col: str
     holdout_mae: float
     holdout_rmse: float
     holdout_r2: float
-    model_type: str = "elasticnet"
-    training_seasons: list[int] = field(default_factory=list)
-    holdout_seasons: list[int] = field(default_factory=list)
-    parameters: dict[str, Any] = field(default_factory=dict)
-    feature_columns: list[str] = field(default_factory=list)
-    n_train_rows: int = 0
-    n_holdout_rows: int = 0
-    notes: str = ""
 
 
 @dataclass
@@ -580,14 +566,15 @@ class PropTrainer(ABC):
 
         return PropModelMetadata(
             model_name=self.spec.name,
+            model_type=model_type.value,
+            task="regression",
             trained_at=datetime.now(UTC).isoformat(),
             target_col=self.spec.target_col,
             holdout_mae=metrics["mae"],
             holdout_rmse=metrics["rmse"],
             holdout_r2=metrics["r2"],
-            model_type=model_type.value,
-            training_seasons=sorted(train_df["season"].unique().tolist()),
-            holdout_seasons=sorted(hold_df["season"].unique().tolist()),
+            training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
+            holdout_seasons=[f"{y}-{y + 1}" for y in sorted(hold_df["season"].unique().tolist())],
             parameters=params,
             feature_columns=available_features,
             n_train_rows=len(x_train),

@@ -53,13 +53,63 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import json
 import logging
+from logging import Logger
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 _METADATA_FILENAME = "metadata.json"
-_MODELS_DIR = Path("data") / "models"
+_MODELS_DIR: Path = Path("data") / "models"
+
+
+@dataclass(kw_only=True)
+class BaseModelMetadata:
+    """Shared metadata for all trained model artifacts.
+
+    Both :class:`gridiron_edge.models.game_prediction.base.GameModelMetadata`
+    and :class:`gridiron_edge.models.prop_prediction.base.PropModelMetadata`
+    inherit from this class. Subclasses add task-specific holdout metrics.
+
+    Field naming convention (Workstream 2):
+        - ``model_name``: model purpose (e.g. ``"win_prob"``, ``"total"``,
+          ``"qb_pass_yards"``).
+        - ``model_type``: algorithm (e.g. ``"random_forest"``, ``"xgboost"``,
+          ``"logistic"``, ``"elasticnet"``).
+        - ``task``: ``"classification"`` or ``"regression"``.
+
+    Construction is keyword-only (``kw_only=True``) so that subclasses can
+    add required fields without dataclass field-ordering errors.
+
+    Attributes:
+        model_name: Model purpose.
+        model_type: Model algorithm.
+        task: ``"classification"`` or ``"regression"``.
+        trained_at: ISO-format UTC timestamp of when training completed.
+        schema_version: Feature set schema version. Bumped to ``2`` for the
+            WS2 metadata break.
+        training_seasons: Season labels used for training, e.g.
+            ``["1999-2000", ..., "2022-2023"]``.
+        holdout_seasons: Season labels held out from training.
+        parameters: Hyperparameters used during training.
+        feature_columns: Ordered list of feature columns the model expects.
+        n_train_rows: Number of training rows.
+        n_holdout_rows: Number of holdout rows.
+        notes: Optional free-text notes about this training run.
+    """
+
+    model_name: str
+    model_type: str
+    task: str
+    trained_at: str
+    schema_version: int = 2
+    training_seasons: list[str] = field(default_factory=list)
+    holdout_seasons: list[str] = field(default_factory=list)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    feature_columns: list[str] = field(default_factory=list)
+    n_train_rows: int = 0
+    n_holdout_rows: int = 0
+    notes: str = ""
 
 
 @dataclass
@@ -101,7 +151,7 @@ class ArtifactStore:
     """
 
     def __init__(self, repo: Path) -> None:
-        self._root = repo / _MODELS_DIR
+        self._root: Path = repo / _MODELS_DIR
 
     def artifact_dir(self, model_version: str) -> Path:
         """Return the artifact directory for a model version.
@@ -137,7 +187,7 @@ class ArtifactStore:
         Raises:
             FileNotFoundError: If no artifact exists for this model version.
         """
-        path = self.artifact_dir(model_version) / _METADATA_FILENAME
+        path: Path = self.artifact_dir(model_version) / _METADATA_FILENAME
         if not path.exists():
             raise FileNotFoundError(
                 f"No trained artifact found for '{model_version}'. "
@@ -155,9 +205,9 @@ class ArtifactStore:
         Returns:
             Path to the written ``metadata.json`` file.
         """
-        directory = self.artifact_dir(metadata.model_version)
+        directory: Path = self.artifact_dir(metadata.model_version)
         directory.mkdir(parents=True, exist_ok=True)
-        path = directory / _METADATA_FILENAME
+        path: Path = directory / _METADATA_FILENAME
         path.write_text(json.dumps(asdict(metadata), indent=2))
         logger.debug("Model metadata written to %s", path)
         return path
@@ -190,8 +240,8 @@ class ArtifactStore:
             FileExistsError: If an artifact already exists for this version.
                 Artifacts are immutable — use a new version string instead.
         """
-        directory = self.artifact_dir(model_version)
-        model_path = directory / filename
+        directory: Path = self.artifact_dir(model_version)
+        model_path: Path = directory / filename
 
         if model_path.exists():
             raise FileExistsError(
@@ -237,7 +287,7 @@ class ArtifactStore:
         Raises:
             FileNotFoundError: If no artifact exists for this version.
         """
-        path = self.artifact_dir(model_version) / filename
+        path: Path = self.artifact_dir(model_version) / filename
         if not path.exists():
             raise FileNotFoundError(
                 f"No model artifact found at {path}. "
@@ -265,7 +315,7 @@ class ArtifactStore:
         for version_dir in sorted(self._root.iterdir()):
             if not version_dir.is_dir():
                 continue
-            meta_path = version_dir / _METADATA_FILENAME
+            meta_path: Path = version_dir / _METADATA_FILENAME
             if meta_path.exists():
                 try:
                     data = json.loads(meta_path.read_text())

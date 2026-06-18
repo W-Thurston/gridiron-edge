@@ -100,6 +100,7 @@ exclude_lines = [
 target-version = "py312"
 line-length = 100
 src = ["src"]
+extend-exclude = ["scripts/"]
 
 [tool.ruff.lint]
 select = [
@@ -127,6 +128,7 @@ ignore = [
     "N999",    # Invalid module name — repo name NFL_Predict triggers this; not actionable
     "PLR0913", # Too many arguments — numba kernels legitimately need many
     "PLR2004", # Magic value comparisons — acceptable in numba/sports context
+    "ANN101",  # Missing type annotation for `self` in method - REMOVED
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -196,3 +198,6 @@ docstring-code-format = true
 [tool.pyrefly]
 project-includes = ["src"]
 python-version = "3.12"
+project-excludes = [
+    "scripts/**"
+]
