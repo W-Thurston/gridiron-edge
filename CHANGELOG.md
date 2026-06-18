@@ -3,6 +3,28 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-06-18 — Workstream 2: Game Model Refactor
+
+### Added
+- `BaseModelMetadata` shared metadata type with `GameModelMetadata` and `PropModelMetadata` subclasses.
+- `GamesTrainer` + spec subclasses (`WinProbTrainer`, `TotalTrainer`) for unified game model training.
+- `GamesPredictor` base class with five composite-key registrations.
+- Composite registry keys (e.g. `win_prob_random_forest`) replacing flat keys.
+- Nested artifact path scheme `data/models/{model_name}/{model_type}/`.
+- Elo migrated to `win_prob_elo` composite registration.
+
+### Changed
+- All classification metrics (Brier, ECE, AUC, log_loss, accuracy) are now first-class fields on `GameModelMetadata`.
+- Prediction archive schema migrated from `model_version` to `(model_name, model_type)`.
+- CLI commands use `(model_name, model_type)` pair throughout.
+
+### Removed
+- `models/game_prediction/tree.py`, `logistic.py`, `pipeline.py`.
+- Free functions `train_total_model`, `load_total_model`, `predict_total`.
+- Flat registry keys: `logistic`, `random_forest`, `xgboost`.
+- Legacy `LogisticPredictor`, `RandomForestPredictor`, `XGBoostPredictor` re-exports.
+- `EloV1Predictor`, `EloV2Predictor`, `EloV3Predictor` (collapsed into `WinProbEloPredictor`).
+- `evaluation/archive.py::migrate_archive` (no longer needed).
 
 ### 2026-06-17 — Workstream 1: Champion/Challenger for Props
 

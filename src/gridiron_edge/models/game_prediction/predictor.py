@@ -67,6 +67,21 @@ _TRAINER_FOR_NAME: dict[str, type[GamesTrainer]] = {
 }
 
 
+def get_known_model_names() -> tuple[str, ...]:
+    """Return the model_names recognized by ``GamesPredictor``.
+
+    Used by composite-key parsing in other modules (e.g.
+    :mod:`evaluation.select`, :mod:`cli.models`, :mod:`cli.evaluate`)
+    to split keys of the form ``f"{model_name}_{model_type}"`` correctly
+    when ``model_name`` itself contains underscores.
+
+    Returns:
+        Tuple of registered model_names, sorted longest-first so that
+        prefix matching against ambiguous keys is deterministic.
+    """
+    return tuple(sorted(_TRAINER_FOR_NAME.keys(), key=len, reverse=True))
+
+
 # ---------------------------------------------------------------------------
 # build_game_predictions — internal helper for assembling archive rows
 # ---------------------------------------------------------------------------
@@ -297,7 +312,9 @@ class GamesPredictor:
             return pd.DataFrame()
 
         pipeline = store.load(self.model_name, self.model_type)
-        probs = pipeline.predict_proba(x_feat)[:, 1]
+        scaler = store.load_scaler(self.model_name, self.model_type)
+        x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
+        probs = pipeline.predict_proba(x_feat_arr)[:, 1]
 
         # Attach totals via the configured total model. Best-effort —
         # totals are silently omitted if the total model isn't trained.
@@ -338,7 +355,6 @@ class GamesPredictor:
             )
             return pd.DataFrame()
 
-        pipeline = store.load(self.model_name, self.model_type)
         datasets = DatasetAccessor(repo=repo)
 
         upcoming_df: DataFrame = run_features(
@@ -353,7 +369,10 @@ class GamesPredictor:
         if x_feat.empty:
             return pd.DataFrame()
 
-        probs = pipeline.predict_proba(x_feat)[:, 1]
+        pipeline = store.load(self.model_name, self.model_type)
+        scaler = store.load_scaler(self.model_name, self.model_type)
+        x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
+        probs = pipeline.predict_proba(x_feat_arr)[:, 1]
         result = upcoming_valid[["GAME_ID", "AWAY_TEAM", "HOME_TEAM", "WEEK_NUM"]].copy()
         result["AWAY_WIN_PROB"] = probs
         result["HOME_WIN_PROB"] = 1.0 - probs
@@ -412,7 +431,9 @@ class GamesPredictor:
             return pd.DataFrame()
 
         model = store.load(self.model_name, self.model_type)
-        preds: np.ndarray = model.predict(x_feat)
+        scaler = store.load_scaler(self.model_name, self.model_type)
+        x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
+        preds: np.ndarray = model.predict(x_feat_arr)
 
         # One row per game (away-team perspective, dedup on GAME_ID).
         df_valid["_total"] = preds
@@ -460,7 +481,9 @@ class GamesPredictor:
         if x_feat.empty:
             return pd.DataFrame()
 
-        preds: np.ndarray = model.predict(x_feat)
+        scaler = store.load_scaler(self.model_name, self.model_type)
+        x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
+        preds: np.ndarray = model.predict(x_feat_arr)
         result = upcoming_valid[["GAME_ID", "AWAY_TEAM", "HOME_TEAM", "WEEK_NUM"]].copy()
         result["model_total"] = preds
         result["model_name"] = self.model_name
@@ -504,9 +527,14 @@ class GamesPredictor:
         valid = features.notna().all(axis=1)
 
         model = store.load(total_model_name, total_model_type)
-        preds = pd.Series(np.nan, index=df.index, dtype=float)
+        scaler = store.load_scaler(total_model_name, total_model_type)
+        preds: Series[float] = pd.Series(np.nan, index=df.index, dtype=float)
         if valid.sum() > 0:
-            preds.loc[valid] = model.predict(features.loc[valid])
+            features_valid = features.loc[valid]
+            features_arr = (
+                scaler.transform(features_valid) if scaler is not None else features_valid.values
+            )
+            preds.loc[valid] = model.predict(features_arr)
         return preds
 
 

@@ -38,9 +38,10 @@ evaluate_app = typer.Typer(
 def _split_composite_key(key: str) -> tuple[str | None, str | None]:
     """Split a composite model_key into (model_name, model_type) for filtering.
 
-    Used by commands that take a single ``--model-key`` option and need to
-    filter the archive via ``build_evaluation_df``. Returns ``(None, None)``
-    when the key is ``"all"`` so callers can skip the filter entirely.
+    Matches against the known model_name prefixes returned by
+    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`.
+    Returns ``(None, None)`` when the key is ``"all"`` so callers can skip
+    the filter entirely.
 
     Args:
         key: Composite registry key (e.g. ``"win_prob_random_forest"``)
@@ -48,18 +49,22 @@ def _split_composite_key(key: str) -> tuple[str | None, str | None]:
 
     Returns:
         Tuple of ``(model_name, model_type)``. Both ``None`` if ``key == "all"``.
-        Raises if ``key`` is malformed.
+        Raises if ``key`` doesn't match any known prefix.
     """
+    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+
     if key == "all":
         return None, None
-    if "_" not in key:
-        raise typer.BadParameter(
-            f"Model key {key!r} is not a valid composite key. "
-            f"Expected format: '{{model_name}}_{{model_type}}' "
-            f"(e.g. 'win_prob_random_forest')."
-        )
-    name, _, mtype = key.partition("_")
-    return name, mtype
+    known_names = get_known_model_names()
+    for model_name in known_names:
+        prefix = f"{model_name}_"
+        if key.startswith(prefix):
+            return model_name, key[len(prefix) :]
+    raise typer.BadParameter(
+        f"Model key {key!r} is not a valid composite key. "
+        f"Expected format: '{{model_name}}_{{model_type}}'. "
+        f"Known model_names: {sorted(known_names)}."
+    )
 
 
 @evaluate_app.command("summary")

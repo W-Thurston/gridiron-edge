@@ -124,10 +124,8 @@ def _prepare_total_data(
         y.mean(),
     )
 
-    train_year_ints: list[int] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
-    hold_year_ints: list[int] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
-    train_szns: list[str] = [f"{y}-{y + 1}" for y in train_year_ints]
-    hold_szns: list[str] = [f"{y}-{y + 1}" for y in hold_year_ints]
+    train_seasons: list[str] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
+    hold_seasons: list[str] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
 
     # pyrefly: ignore [bad-return]
     return (
@@ -135,8 +133,8 @@ def _prepare_total_data(
         y.loc[train_mask],
         features.loc[hold_mask],
         y.loc[hold_mask],
-        train_szns,
-        hold_szns,
+        train_seasons,
+        hold_seasons,
     )
 
 

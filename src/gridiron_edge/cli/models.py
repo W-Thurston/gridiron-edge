@@ -51,21 +51,25 @@ models_app = typer.Typer(
 def _split_composite_key(key: str) -> tuple[str, str] | None:
     """Split a composite registry key into ``(model_name, model_type)``.
 
-    Used by :func:`models_list` to display the WS2 pair for each registry
-    entry. Returns ``None`` if the key does not contain an underscore
-    (defensive — every registered key should be composite, but ``None``
-    lets ``models list`` render gracefully instead of crashing).
+    Matches the key against the known model_name prefixes returned by
+    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`.
+    Returns ``None`` if the key doesn't match any known prefix (so
+    ``models list`` can display ``—`` instead of crashing).
 
     Args:
         key: Composite registry key (e.g. ``"win_prob_random_forest"``).
 
     Returns:
-        Tuple of ``(model_name, model_type)``, or ``None`` if malformed.
+        Tuple of ``(model_name, model_type)``, or ``None`` if no known
+        prefix matches.
     """
-    if "_" not in key:
-        return None
-    name, _, mtype = key.partition("_")
-    return name, mtype
+    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+
+    for model_name in get_known_model_names():
+        prefix: str = f"{model_name}_"
+        if key.startswith(prefix):
+            return model_name, key[len(prefix) :]
+    return None
 
 
 def _apply_promotion_decision(

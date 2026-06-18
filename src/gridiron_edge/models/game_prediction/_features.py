@@ -193,10 +193,8 @@ def _prepare_data(
         hold_mask.sum(),
     )
 
-    train_year_ints: list[int] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
-    hold_year_ints: list[int] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
-    train_seasons: list[str] = [f"{y}-{y + 1}" for y in train_year_ints]
-    hold_seasons: list[str] = [f"{y}-{y + 1}" for y in hold_year_ints]
+    train_seasons: list[str] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
+    hold_seasons: list[str] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
 
     return (
         features.loc[train_mask],

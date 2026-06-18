@@ -47,6 +47,7 @@ from gridiron_edge.models.artifact import BaseModelMetadata
 
 if TYPE_CHECKING:
     # pyrefly: ignore [missing-import]
+    from sklearn.base import BaseEstimator
     from sklearn.model_selection import TimeSeriesSplit
 
     from gridiron_edge.models.game_prediction._columns import FeatureSet
@@ -163,6 +164,10 @@ def _create_model(model_type: GameModelType, task: str) -> tuple[Any, Any]:
             return (
                 LogisticRegressionCV(
                     Cs=10,
+                    solver="saga",
+                    l1_ratios=(0.0, 0.5, 1.0),
+                    # pyrefly: ignore [unexpected-keyword]
+                    use_legacy_attributes=False,
                     scoring="neg_brier_score",
                     max_iter=1000,
                     n_jobs=-1,
@@ -374,6 +379,25 @@ class _SearchResult:
     hold_seasons: list[str]
 
 
+def _apply_params(model: BaseEstimator, params: dict[str, Any]) -> None:
+    """Apply hyperparameters to a model, handling CalibratedClassifierCV wrapping.
+
+    When the model is wrapped in :class:`CalibratedClassifierCV`, the
+    underlying estimator's params are addressed via ``estimator__<name>``
+    rather than directly on the wrapper. This helper detects the wrap and
+    forwards params correctly so callers don't need to know the model
+    structure.
+    """
+    # pyrefly: ignore [missing-import]
+    from sklearn.calibration import CalibratedClassifierCV
+
+    if isinstance(model, CalibratedClassifierCV):
+        prefixed: dict[str, Any] = {f"estimator__{k}": v for k, v in params.items()}
+        model.set_params(**prefixed)
+    else:
+        model.set_params(**params)
+
+
 class GamesTrainer(ABC):
     """Base class for game model trainers.
 
@@ -552,7 +576,7 @@ class GamesTrainer(ABC):
                 best_score = score
                 best_params = {**sampled, "epa_window": window}
                 model, scaler = _create_model(model_type, spec.task)
-                model.set_params(**sampled)
+                _apply_params(model, sampled)
                 x_tr_arr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
                 model.fit(x_tr_arr, y_train)
                 best_model = model
@@ -660,7 +684,7 @@ class GamesTrainer(ABC):
             y_val = y_train.iloc[val_idx]
 
             model, scaler = _create_model(model_type, spec.task)
-            model.set_params(**params)
+            _apply_params(model, params)
             if scaler is not None:
                 x_tr_arr = scaler.fit_transform(x_tr)
                 x_val_arr = scaler.transform(x_val)
@@ -740,9 +764,11 @@ class GamesTrainer(ABC):
                 holdout_ece,
                 _ECE_CALIBRATION_THRESHOLD,
             )
-            params_no_window = {k: v for k, v in best_params.items() if k != "epa_window"}
+            params_no_window: dict[str, Any] = {
+                k: v for k, v in best_params.items() if k != "epa_window"
+            }
             xgb_recal, _ = _create_model(model_type, spec.task)
-            xgb_recal.set_params(**params_no_window)
+            _apply_params(xgb_recal, params_no_window)
             if self._scaler is not None:
                 cal_pipeline = Pipeline(
                     [

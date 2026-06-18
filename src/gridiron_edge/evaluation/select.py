@@ -33,29 +33,26 @@ from pandas import DataFrame, Series
 def _parse_composite_key(key: str) -> tuple[str, str]:
     """Split a PredictorRegistry composite key into (model_name, model_type).
 
-    All registered keys follow ``f"{model_name}_{model_type}"`` where
-    ``model_name`` is a single token without underscores. Splits on the
-    first underscore.
-
-    Args:
-        key: Composite registry key, e.g. ``"win_prob_random_forest"``.
-
-    Returns:
-        Tuple of ``(model_name, model_type)``.
-
-    Raises:
-        ValueError: If the key does not contain an underscore.
-            All registry entries must be composite keys; a non-composite
-            key indicates a registration bug.
+    All registered keys follow ``f"{model_name}_{model_type}"``. Because both
+    ``model_name`` (e.g. ``"win_prob"``) and ``model_type``
+    (e.g. ``"random_forest"``) can contain underscores, this function matches
+    the key against the known model_name prefixes returned by
+    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`
+    rather than splitting on a single underscore.
     """
-    if "_" not in key:
-        msg: str = (
-            f"Composite key {key!r} does not contain an underscore. "
-            f"Expected format: '{{model_name}}_{{model_type}}'."
-        )
-        raise ValueError(msg)
-    name, _, mtype = key.partition("_")
-    return name, mtype
+    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+
+    known_names: tuple[str, ...] = get_known_model_names()
+    for model_name in known_names:
+        prefix: str = f"{model_name}_"
+        if key.startswith(prefix):
+            model_type: str = key[len(prefix) :]
+            return model_name, model_type
+    msg: str = (
+        f"Composite key {key!r} does not match any known model_name prefix. "
+        f"Known prefixes: {sorted(known_names)}."
+    )
+    raise ValueError(msg)
 
 
 def collect_model_metrics(
@@ -95,6 +92,12 @@ def collect_model_metrics(
             repo=repo,
         )
         if df_eval.empty:
+            continue
+
+        # Only classification models have meaningful win-probability metrics.
+        # Regression models (e.g. ``total``) populate ``model_total`` instead
+        # of ``away_win_prob`` and should not be ranked alongside classifiers.
+        if df_eval["away_win_prob"].isna().all():
             continue
 
         p: Series = df_eval["away_win_prob"]

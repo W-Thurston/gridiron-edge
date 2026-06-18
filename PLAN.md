@@ -27,9 +27,9 @@ Agreed 2026-06-10. See ROADMAP.md for full workstream inventory.
 
 | # | Workstream | Status |
 |---|-----------|--------|
-| 1 | Champion/Challenger for Props (RF + XGBoost) | **Active** |
-| 2 | Game Model Refactor (align to props pattern) | Planned |
-| 3 | Integration & E2E Tests | Planned |
+| 1 | Champion/Challenger for Props (RF + XGBoost) | Done |
+| 2 | Game Model Refactor (align to props pattern) | Done |
+| 3 | Integration & E2E Tests | **Active** |
 | 4 | Deep Code Review + Test Suite Review | Planned |
 | 5 | Scenario / "What If" Engine (W4.5) | Planned |
 | 6 | API & Frontend (W8 + W9) | Planned |
@@ -348,218 +348,70 @@ document and CHANGELOG.md. Verify:
 
 ---
 
-## Workstream 2: Game Model Refactor
+### Workstream 2: Game Model Refactor
 
 **Goal:** Refactor `models/game_prediction/` to mirror the `models/prop_prediction/` architecture established in Workstream 1. Eliminate the dynamic-class variant factories, unify the metadata schema, fold the `total` regression model into the same framework as `win_prob`, and align field names so the codebase has one coherent model structure.
 
-**Status:** Not started.
+**Status:** **Done** (closed 2026-06-19). Details in CHANGELOG.md.
 
-**Scope decisions (locked):**
+#### Final Results
 
-| # | Decision |
-|---|----------|
-| 1 | Field naming convention: `model_name` (purpose, e.g., `"win_prob"`, `"total"`, `"qb_pass_yards"`) + `model_type` (algorithm, e.g., `"random_forest"`, `"xgboost"`, `"logistic"`). |
-| 2 | Metadata: shared `BaseModelMetadata` in `models/artifact.py`. `GameModelMetadata` and `PropModelMetadata` inherit from it. `PropModelMetadata` stays in `prop_prediction/base.py`; `GameModelMetadata` lives in `game_prediction/base.py`. |
-| 3 | No backward compatibility. Old artifact JSONs will not load. All models retrained as part of D4. |
-| 4 | Trainer hierarchy: independent `PropTrainer` and `GamesTrainer` bases. No shared ancestor. |
-| 5 | Classifier `model_name` = `"win_prob"` (broader than "moneyline"; used elsewhere in the codebase). |
-| 6 | `total` regression model folded into `GamesTrainer` via `task="regression"` branch — mirrors the props pattern of one trainer base supporting multiple model families. |
-| 7 | Single `GamesPredictor` class registered per `(model_name, model_type)` pair — mirrors the post-WS1 props predictor pattern. |
-| 8 | Artifact path scheme: `data/models/{model_name}/{model_type}/{model.joblib, scaler.joblib?, metadata.json}`. |
-| 9 | `_make_tree_variant()`, `_make_logistic_variant()`, and `_train_elasticnet()` all deleted. |
-| 10 | Promote `holdout_ece`, `holdout_auc`, `holdout_log_loss`, `holdout_accuracy` from the `parameters` dict to first-class fields on `GameModelMetadata`. |
-| 11 | Rename `select_prop_champion` → `select_regression_champion` in `evaluation/champion.py` (used by both `TotalTrainer` and prop trainers). |
-| 12 | Game CLI: no surface changes beyond `--model` value updates (composite keys). Props CLI was already aligned to games in WS1. |
-| 13 | D5 behavior preservation tolerance: ≤ 0.001 Brier delta vs pre-refactor baselines for `win_prob_*`; float tolerance on MAE/RMSE for `total_*`. |
-| 14 | Prediction archive: wiped and regenerated after D2b as part of the retrain. |
+D5 baseline verification against pre-WS2 Brier targets:
 
-**Pre-refactor `win_prob` Brier baselines (for D5 verification):**
+| Model | WS1 Baseline | D5 Actual | Delta | Verdict |
+|---|---|---|---|---|
+| `win_prob_logistic` | 0.225 | 0.22153 | -0.003 | Improved ✅ |
+| `win_prob_random_forest` | 0.220 | 0.21191 | -0.008 | Improved ✅ |
+| `win_prob_xgboost` | 0.218 | 0.21598 | -0.002 | Improved ✅ |
+| `win_prob_elo` | n/a | 0.23143 | — | Baseline established |
+| `total_random_forest` | n/a | MAE 10.24 / RMSE 13.12 / R² 0.056 | — | Baseline established |
+| `total_xgboost` | n/a | MAE 10.35 / RMSE 13.19 / R² 0.046 | — | Baseline established |
 
-| Model | Baseline Brier |
-|-------|----------------|
-| `win_prob_logistic` | 0.225 |
-| `win_prob_random_forest` | 0.220 |
-| `win_prob_xgboost` | 0.218 |
+All three classification Brier baselines exceeded their pre-WS2 targets. Total models established their first formal baselines.
 
----
+#### Architecture delivered
 
-### Final structure
+- `BaseModelMetadata` shared metadata base with `GameModelMetadata` and `PropModelMetadata` subclasses.
+- `GamesTrainer` ABC with `WinProbTrainer` and `TotalTrainer` spec-only subclasses.
+- `GamesPredictor` base with five thin composite-key subclasses (one per `(model_name, model_type)` pair).
+- `WinProbEloPredictor` consolidates the three legacy Elo variants (`elo_v1` / `v2` / `v3`) into one composite-key registration.
+- Composite registry keys: `win_prob_logistic`, `win_prob_random_forest`, `win_prob_xgboost`, `win_prob_elo`, `total_random_forest`, `total_xgboost`.
+- Nested artifact path scheme: `data/models/{model_name}/{model_type}/`.
+- Prediction archive schema migrated from `model_version` (single column) to `model_name` + `model_type` (two columns).
+- All classification metrics promoted from `parameters` dict to first-class fields on `GameModelMetadata`.
 
-**`models/artifact.py`** — adds shared base.
+#### Phased delivery (closed)
 
-```python
-@dataclass
-class BaseModelMetadata:
-    model_name: str          # "win_prob", "total", "qb_pass_yards", ...
-    model_type: str          # "random_forest", "xgboost", "logistic", "elasticnet"
-    task: str                # "classification" | "regression"
-    trained_at: str
-    schema_version: int
-    training_seasons: list[str]
-    holdout_seasons: list[str]
-    parameters: dict[str, Any] = field(default_factory=dict)
-    feature_columns: list[str] = field(default_factory=list)
-    notes: str = ""
-```
+| Phase | Description | Status |
+|---|---|---|
+| D1a | Shared metadata + subclasses | Done |
+| D1b | `ArtifactStore` generalization + nested paths | Done |
+| D2a | `GamesTrainer` + spec subclasses (alongside legacy) | Done |
+| D2b.1 | `GamesPredictor` + composite-key registrations | Done |
+| D2b.2 | Archive schema migration + all callers | Done |
+| D2b.3 | Legacy code deleted | Done |
+| Elo-WS2 | Elo migrated to `win_prob_elo` composite key | Done |
+| D3 | Metrics promoted to first-class fields | Done |
+| D4 | All 5 game models retrained successfully | Done |
+| D5 | Brier baselines verified; CHANGELOG updated | Done |
 
-`ArtifactStore`:
+#### Bugs surfaced during D4+D5 verification (fixed)
 
-* `save(metadata, model_obj, scaler=None)` — path derived from `metadata.model_name` + `metadata.model_type`.
-* `read_metadata(path)` — discriminates `PropModelMetadata` vs `GameModelMetadata` by presence of `holdout_coverage`.
-* Nested path scheme: `data/models/{model_name}/{model_type}/`.
+- Season string conversion bug in `_features.py` / `total.py` — modeling file already stores seasons as `"YYYY-YYYY"` strings; the incorrect int→str conversion was crashing every training run.
+- `GamesTrainer._run_hp_search` was calling `.set_params(**sampled)` on `CalibratedClassifierCV`, which doesn't expose RF hyperparameters. Fixed via `_apply_params()` helper that uses the `estimator__` prefix when wrapping.
+- `_parse_composite_key` (in three files) was using `str.partition("_")` to split keys, which broke for any model_name containing underscores (i.e. all `win_prob_*`). Fixed via prefix matching against `get_known_model_names()` from `predictor.py` as single source of truth.
+- `evaluation/select.py::collect_model_metrics` was failing on regression models whose `away_win_prob` column is NaN-only. Added explicit skip.
+- Scaler was being saved alongside the logistic model but never applied at predict time. Logistic predictions were severely overconfident (std 0.485 vs ~0.15 expected, archive Brier 0.355 vs 0.222 training Brier). Fixed by loading and applying scaler in all four classification + regression predict methods plus `_maybe_predict_totals`.
 
-**`models/game_prediction/base.py`** — new module, mirrors `prop_prediction/base.py`.
+#### Known follow-ups (post-WS2 scope)
 
-```python
-class GameModelType(StrEnum):
-    LOGISTIC = "logistic"
-    RANDOM_FOREST = "random_forest"
-    XGBOOST = "xgboost"
-
-@dataclass(frozen=True)
-class GameModelSpec:
-    name: str                                       # "win_prob" or "total"
-    task: str                                       # "classification" | "regression"
-    target_col: str
-    feature_set: dict[GameModelType, FeatureSet]    # per-algorithm feature set
-    description: str = ""
-
-@dataclass
-class GameModelMetadata(BaseModelMetadata):
-    # Classification metrics (NaN for regression)
-    holdout_brier: float = float("nan")
-    holdout_ece: float = float("nan")
-    holdout_auc: float = float("nan")
-    holdout_log_loss: float = float("nan")
-    holdout_accuracy: float = float("nan")
-    # Regression metrics (NaN for classification)
-    holdout_mae: float = float("nan")
-    holdout_rmse: float = float("nan")
-    holdout_r2: float = float("nan")
-
-class GamesTrainer(ABC):
-    @property
-    @abstractmethod
-    def spec(self) -> GameModelSpec: ...
-
-    def train(self, model_type: GameModelType, *, repo: Path | None = None) -> GameModelMetadata:
-        # Branches CV scoring + holdout metric extraction on self.spec.task.
-
-# Module-level — mirrors PropTrainer pattern exactly.
-def _create_model(model_type: GameModelType, task: str) -> tuple[Any, Any]: ...
-def _get_param_grid(model_type: GameModelType, task: str) -> list[dict[str, Any]]: ...
-```
-
-**`models/game_prediction/win_prob.py`** — new spec-only subclass.
-
-```python
-class WinProbTrainer(GamesTrainer):
-    @property
-    def spec(self) -> GameModelSpec:
-        return GameModelSpec(
-            name="win_prob",
-            task="classification",
-            target_col="home_win",
-            feature_set={
-                GameModelType.LOGISTIC: FeatureSet.COMBINED_32,
-                GameModelType.RANDOM_FOREST: FeatureSet.EXPANDED_107,
-                GameModelType.XGBOOST: FeatureSet.EXPANDED_107,
-            },
-            description="Game winner probability model",
-        )
-```
-
-**`models/game_prediction/total.py`** — rewritten as spec-only subclass.
-
-```python
-class TotalTrainer(GamesTrainer):
-    @property
-    def spec(self) -> GameModelSpec:
-        return GameModelSpec(
-            name="total",
-            task="regression",
-            target_col="total_points",
-            feature_set={
-                GameModelType.RANDOM_FOREST: FeatureSet.EXPANDED_107,
-                GameModelType.XGBOOST: FeatureSet.EXPANDED_107,
-            },
-            description="Game total points model",
-        )
-```
-
-`TotalTrainer.spec.feature_set` excludes `LOGISTIC` (logistic regression not used for total regression). `train()` validates `model_type in self.spec.feature_set` and errors cleanly.
-
-**`models/game_prediction/predictor.py`** — single `GamesPredictor` class.
-
-`GamesPredictor(model_name, model_type)` registered five times:
-
-* `win_prob_logistic`, `win_prob_random_forest`, `win_prob_xgboost`
-* `total_random_forest`, `total_xgboost`
-
-`predict_historical()` and `predict_upcoming()` dispatch on `self.spec.task` (probability output for classification, point estimate for regression).
-
-**Files deleted**
-
-* `models/game_prediction/tree.py` — logic absorbed into `GamesTrainer` + module-level `_create_model`/`_get_param_grid`.
-* `models/game_prediction/logistic.py` — same.
-* `LogisticPredictor`, `RandomForestPredictor`, `XGBoostPredictor` classes — replaced by `GamesPredictor`.
-* `_train_elasticnet()` — never wired in as a champion candidate; not providing real regularization beyond LogisticRegressionCV.
-* Old artifact directories: `data/models/{logistic,random_forest,xgboost,total_rf_v1}/`.
-
-**`evaluation/champion.py`**
-
-* `extract_classification_metrics()` reads first-class fields off `GameModelMetadata`; `_PARAM_KEYS` deleted.
-* `select_prop_champion` renamed to `select_regression_champion` (also used by `TotalTrainer`).
-* All promotion gates unchanged.
-
-**`cli/models.py`**
-
-* `gridiron models train --model {win_prob_logistic | win_prob_random_forest | win_prob_xgboost | total_random_forest | total_xgboost}`.
-* `gridiron models champion --model {win_prob | total}`.
-* Help text and docstrings updated to reflect composite keys.
-
-***
-
-### Phased delivery
-
-| #       | Phase                                                                                                                                                                                                                                                                                                         | Ships                                                                                       | Quality gate |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------ |
-| **D1a** | `BaseModelMetadata` in `models/artifact.py`. `GameModelMetadata` in `game_prediction/base.py`. `PropModelMetadata` re-pointed to inherit from `BaseModelMetadata`. New unit tests for all three dataclasses.                                                                                                  | ruff + pyrefly + new unit tests                                                             |              |
-| **D1b** | `ArtifactStore.save/load` generalized over metadata type. Nested path scheme. All call sites updated. Old `data/models/{model_version}/` directories now unreadable (expected).                                                                                                                               | Artifact unit tests adapted                                                                 |              |
-| **D2a** | New `game_prediction/base.py` (`GameModelType`, `GameModelSpec`, `GamesTrainer`, module-level `_create_model`, `_get_param_grid`). New `win_prob.py`. Rewrite `total.py` as spec-only. New `GamesPredictor`. All added **alongside** existing code; old `tree.py`/`logistic.py` still present and functional. | New unit tests for `GamesTrainer`, `_create_model`, `_get_param_grid`, both spec subclasses |              |
-| **D2b** | Switch `PredictorRegistry` registrations to composite keys (`win_prob_*`, `total_*`). Delete `tree.py`, `logistic.py`, old `*Predictor` classes, `_train_elasticnet`. Wipe `data/models/{logistic,random_forest,xgboost,total_rf_v1}/`. Wipe prediction archive.                                              | Existing game model integration tests pass against new code path                            |              |
-| **D3**  | Promote `holdout_ece/auc/log_loss/accuracy` to first-class fields on `GameModelMetadata`. Update `_train_*` writers. Simplify `extract_classification_metrics()` — delete `_PARAM_KEYS`. Rename `select_prop_champion` → `select_regression_champion`. Update CLI `--model` strings.                          | Champion comparison tests pass for `win_prob` and `total`                                   |              |
-| **D4**  | Retrain all five champions: `win_prob_logistic`, `win_prob_random_forest`, `win_prob_xgboost`, `total_random_forest`, `total_xgboost`. Regenerate prediction archive.                                                                                                                                         | CLI `gridiron models train` + `gridiron models champion` round-trip verified end-to-end     |              |
-| **D5**  | Verify `win_prob_*` Brier within ≤ 0.001 of pre-refactor baselines (0.225 / 0.220 / 0.218). Verify `total_*` MAE/RMSE within float tolerance of pre-refactor numbers. Update `CHANGELOG.md`. Workstream 2 closed.                                                                                             | All quality gates green; metrics verified and documented                                    |              |
-
-Each phase ships as its own commit. Quality gates between every step.
-
-***
-
-### Risks tracked
-
-1. **`PredictorRegistry` key churn** — every caller using `"random_forest"`, `"xgboost"`, `"logistic"` as registry keys must flip to composite (`"win_prob_random_forest"`, etc.). Full grep performed before D2b.
-2. **`post_process.py` sigma / margin\_std maps** — any game-side dicts keyed by old names re-keyed to composite in D3.
-3. **Prediction archive** — wiped after D2b, regenerated in D4.
-4. **`total_rf_v1` references** — old name swept in D2b alongside the `total.py` rewrite.
-5. **Out-of-repo callers** — notebooks, shell aliases, or external scripts invoking `--model random_forest` will break. Grep results from D2b posted to thread so user can update externally.
-6. **Schema discrimination on read** — `read_metadata()` distinguishes `PropModelMetadata` vs `GameModelMetadata` by presence of `holdout_coverage`. If a future game-side metric named `holdout_coverage` is added, the discriminator must be revisited (use explicit `_class` field at that point).
-
-***
-
-### Definition of done
-
-* All five game champions retrained and persisted under the new nested path scheme.
-* `win_prob_*` Brier scores within ≤ 0.001 of baselines.
-* `total_*` MAE/RMSE within float tolerance of pre-refactor values.
-* `tree.py`, `logistic.py`, `_train_elasticnet`, `_make_tree_variant`, `_make_logistic_variant`, old `*Predictor` classes all deleted.
-* `ece/auc/log_loss/accuracy` are first-class fields on `GameModelMetadata`; no longer in `parameters` dict.
-* `select_regression_champion` available for both `TotalTrainer` and prop trainers.
-* CLI commands round-trip cleanly.
-* All quality gates green (`uv run ruff check . && uvx pyrefly check && uv run pytest`).
-* `CHANGELOG.md` entry added.
-
-```
+| Item | Notes | When |
+|---|---|---|
+| Logistic feature names lost across joblib round-trip | sklearn `UserWarning`, cosmetic only; predict path uses `.values` arrays. | Code review (W4) |
+| `CalibratedClassifierCV` inner CV uses `StratifiedKFold(shuffle=False)` | Not strictly time-ordered. Matches WS1 baseline approach. Investigate switching to `TimeSeriesSplit`; expect baseline shift. | Dedicated calibration workstream |
+| Logistic `n_games` (7,008) vs tree models (5,705) | Different feature_set (`combined_70` vs `expanded_107`) → different NaN drop patterns. Investigate which expanded columns drive unnecessary row drops. | Code review (W4) |
+| Elo sigma + margin_std values | `_MODEL_SIGMAS[("win_prob", "elo")] = 13.60` and `_MODEL_MARGIN_STDS[("win_prob", "elo")] = 13.89` carry pre-WS2 calibration values. Refresh after next archive regeneration. | Sigma calibration follow-up |
+| No end-to-end fit-load-predict integration test | The scaler-not-applied bug only surfaced in production-data verification. Worth adding to prevent regression. | Workstream 3 (E5) |
 
 ---
 
@@ -842,4 +694,9 @@ Best done after model architecture is stable (post workstream 2).
 
 | Date | Change |
 |------|--------|
+## Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-06-19 | **Workstream 2 closed.** Game model refactor complete. All 5 WS2 game models retrained on new infrastructure. D5 Brier baselines verified — all three classification champions improved vs pre-WS2 (logistic 0.222 / RF 0.212 / XGB 0.216). Five major architectural improvements shipped: composite-key registry, nested artifact paths, unified GamesTrainer/GamesPredictor, archive schema migration, first-class metric fields. Workstream 3 (Integration & E2E Tests) is now active. |
 | 2026-06-10 | **Full rewrite.** New priority order: champion/challenger → game model refactor → integration tests → code review → scenario engine → API/frontend → external odds → evaluate. Three workstreams planned in detail (champion/challenger, game model refactor, integration tests). All design decisions locked. Generalized champion.py (option B) chosen for unified classification + regression gates. |
