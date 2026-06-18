@@ -7,6 +7,14 @@ by evaluation metrics and producing ranked results. These functions are
 intentionally CLI-agnostic so they can be called from tests or notebooks
 without importing the CLI layer.
 
+Workstream 2 convention:
+    Functions accept ``PredictorRegistry`` keys — the flat composite
+    strings like ``"win_prob_random_forest"``, ``"total_xgboost"``,
+    ``"win_prob_elo"``. Each key is split internally on the first
+    underscore into ``(model_name, model_type)`` before querying the
+    archive. The output ``model_key`` column carries the registry key
+    as a display label.
+
 Public API
 ----------
 collect_model_metrics   Compute evaluation metrics for all models with archived data.
@@ -21,20 +29,49 @@ from pathlib import Path
 from pandas import DataFrame, Series
 
 
+def _parse_composite_key(key: str) -> tuple[str, str]:
+    """Split a PredictorRegistry composite key into (model_name, model_type).
+
+    The convention from Workstream 2 D2b.1 is ``f"{model_name}_{model_type}"``
+    where ``model_name`` is a single token (no underscores). Splits on the
+    first underscore.
+
+    Args:
+        key: Composite registry key, e.g. ``"win_prob_random_forest"``.
+
+    Returns:
+        Tuple of ``(model_name, model_type)``.
+
+    Raises:
+        ValueError: If the key does not contain an underscore.
+    """
+    if "_" not in key:
+        msg: str = (
+            f"Composite key {key!r} does not contain an underscore. "
+            f"Expected format: '{{model_name}}_{{model_type}}'."
+        )
+        raise ValueError(msg)
+    name, _, mtype = key.partition("_")
+    return name, mtype
+
+
 def collect_model_metrics(
-    model_names: list[str],
+    model_keys: list[str],
     *,
     repo: Path,
 ) -> list[dict]:
     """Compute evaluation metrics for all models with archived predictions.
 
     Args:
-        model_names: List of registered model version strings.
+        model_keys: List of PredictorRegistry composite keys
+            (e.g. ``"win_prob_random_forest"``).
         repo: Repository root.
 
     Returns:
         List of metric dicts, one per model that has archived predictions.
-        Models with no archived data are silently skipped.
+        Models with no archived data are silently skipped. Each dict
+        carries a ``"model_key"`` field holding the registry key as a
+        display label.
     """
     from gridiron_edge.evaluation.metrics import (
         accuracy,
@@ -46,15 +83,28 @@ def collect_model_metrics(
     )
 
     rows: list[dict[str, float | int | str]] = []
-    for mv in model_names:
-        df_eval: DataFrame = build_evaluation_df(model_version=mv, repo=repo)
+    for key in model_keys:
+        try:
+            model_name, model_type = _parse_composite_key(key)
+        except ValueError:
+            # Skip keys that don't follow the composite-key convention
+            # (e.g. legacy flat keys still floating around during the
+            # WS2 transition).
+            continue
+
+        df_eval: DataFrame = build_evaluation_df(
+            model_name=model_name,
+            model_type=model_type,
+            repo=repo,
+        )
         if df_eval.empty:
             continue
+
         p: Series = df_eval["away_win_prob"]
         y: Series = df_eval["away_team_won"]
         rows.append(
             {
-                "model_version": mv,
+                "model_key": key,
                 "n_games": len(df_eval),
                 "brier": round(brier_score(p, y), 5),
                 "ece": round(expected_calibration_error(p, y), 5),
@@ -82,7 +132,8 @@ def rank_models(
     Returns:
         Ranked DataFrame sorted by composite_rank ascending, then primary
         criterion. Includes a ``composite_rank`` column and one
-        ``rank_{criterion}`` column per criterion.
+        ``rank_{criterion}`` column per criterion. The model identity
+        column is ``"model_key"``.
     """
     import pandas as pd
 
@@ -105,7 +156,7 @@ def rank_models(
 
 def compute_report_data(
     *,
-    target_mv: str,
+    target_key: str,
     season: str | None,
     top_misses: int,
     repo: Path,
@@ -113,7 +164,8 @@ def compute_report_data(
     """Load predictions and compute all four report DataFrames.
 
     Args:
-        target_mv: Model version to analyse.
+        target_key: Composite PredictorRegistry key of the model to analyse
+            (e.g. ``"win_prob_random_forest"``).
         season: Optional season filter.
         top_misses: Number of worst predictions to surface.
         repo: Repository root.
@@ -122,7 +174,8 @@ def compute_report_data(
         Tuple of (df_eval, df_tiers, df_seasons, df_misses).
 
     Raises:
-        ValueError: If no completed games are found for the model.
+        ValueError: If ``target_key`` is not a valid composite key, or if
+            no completed games are found for the model.
     """
     from gridiron_edge.evaluation.metrics import (
         biggest_misses,
@@ -131,9 +184,16 @@ def compute_report_data(
         build_evaluation_df,
     )
 
-    df_eval: DataFrame = build_evaluation_df(model_version=target_mv, season=season, repo=repo)
+    model_name, model_type = _parse_composite_key(target_key)
+
+    df_eval: DataFrame = build_evaluation_df(
+        model_name=model_name,
+        model_type=model_type,
+        season=season,
+        repo=repo,
+    )
     if df_eval.empty:
-        raise ValueError(f"No completed games found for '{target_mv}'.")
+        raise ValueError(f"No completed games found for {target_key!r}.")
 
     df_tiers: DataFrame = brier_by_confidence_tier(df_eval)
     df_seasons: DataFrame = brier_by_season(df_eval)

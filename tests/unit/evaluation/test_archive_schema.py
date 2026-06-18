@@ -51,7 +51,8 @@ class TestArchiveSchemaExtension:
         """build_archive_rows fills NaN for enrichment columns not in input."""
         rows = build_archive_rows(
             self._make_predictions_df(),
-            model_version="test_v1",
+            model_name="test",
+            model_type="v1",
             season="2024-2025",
             week=1,
         )
@@ -69,7 +70,8 @@ class TestArchiveSchemaExtension:
 
         rows = build_archive_rows(
             df,
-            model_version="test_v1",
+            model_name="test",
+            model_type="v1",
             season="2024-2025",
             week=1,
         )
@@ -79,13 +81,16 @@ class TestArchiveSchemaExtension:
         # at predict time, not at archive time.
         assert set(_ARCHIVE_COLUMNS) == set(rows.columns)
 
-    def test_backward_compat_load(self, tmp_path: Path) -> None:
-        """Old archive without enrichment columns loads with NaN fill."""
+    def test_backward_compat_load_fills_missing_enrichment(self, tmp_path: Path) -> None:
+        """Archive missing enrichment columns loads with NaN/empty fill."""
+        # Pre-enrichment archive: has the WS2 model identity columns
+        # (model_name + model_type) but no enrichment columns.
         old_df = pd.DataFrame(
             {
                 "predicted_at": [datetime.datetime(2024, 1, 1)],
                 "is_backfilled": [True],
-                "model_version": ["elo_v1"],
+                "model_name": ["win_prob"],
+                "model_type": ["elo"],
                 "season": ["2024-2025"],
                 "week": [1],
                 "game_id": ["2024_01_KC_BAL"],
@@ -103,7 +108,11 @@ class TestArchiveSchemaExtension:
         old_df.to_parquet(archive_dir / "predictions_log.parquet", index=False)
 
         loaded = load_prediction_log(repo=tmp_path)
+        # Enrichment columns are filled in by load_prediction_log on read.
         assert "model_spread" in loaded.columns
         assert "confidence_tier" in loaded.columns
         assert pd.isna(loaded["model_spread"].iloc[0])
         assert loaded["confidence_tier"].iloc[0] == ""
+        # Identity columns from the archive should round-trip cleanly.
+        assert loaded["model_name"].iloc[0] == "win_prob"
+        assert loaded["model_type"].iloc[0] == "elo"

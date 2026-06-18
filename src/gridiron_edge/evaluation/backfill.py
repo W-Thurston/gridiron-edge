@@ -3,15 +3,21 @@
 """Bulk historical prediction archiving.
 
 Generates and archives predictions for every historical game in a single
-pass. Uses the PredictorRegistry to retrieve any registered model by name,
-so adding a new model requires zero changes here.
+pass. Uses the PredictorRegistry to retrieve any registered model by
+composite ``(model_name, model_type)`` key, so adding a new model
+requires zero changes here.
 
 Typical usage::
 
     from gridiron_edge.evaluation.backfill import backfill_model
 
-    n = backfill_model("elo_v1")
-    n = backfill_model("logistic")  # once registered
+    n = backfill_model(model_name="win_prob", model_type="random_forest")
+    n = backfill_model(model_name="total", model_type="xgboost")
+
+Registry key construction:
+    The function builds the flat ``PredictorRegistry`` key as
+    ``f"{model_name}_{model_type}"``. This matches the composite-key
+    convention introduced in Workstream 2 D2b.1.
 """
 
 from __future__ import annotations
@@ -53,29 +59,32 @@ def _reconstruct_away_home(games: pd.DataFrame) -> pd.DataFrame:
 
 
 def backfill_model(
-    model_version: str,
     *,
+    model_name: str,
+    model_type: str,
     overwrite: bool = False,
     repo: Path | None = None,
 ) -> int:
     """Archive predictions for all historical games using any registered model.
 
-    Retrieves the predictor from PredictorRegistry, runs predict_historical
-    on the full games dataset, and appends the results to the prediction
-    archive. Deduplicates on (game_id, model_version) so re-running is safe.
+    Retrieves the predictor from ``PredictorRegistry`` using the composite
+    key ``f"{model_name}_{model_type}"``, runs ``predict_historical`` on
+    the full games dataset, and appends the results to the prediction
+    archive. Deduplicates on ``(game_id, model_name, model_type)`` so
+    re-running is safe.
 
     Args:
-        model_version: Registered model version string (e.g. ``"elo_v1"``).
-            Run ``gridiron evaluate list-models`` to see available versions.
+        model_name: Model purpose (e.g. ``"win_prob"``).
+        model_type: Model algorithm (e.g. ``"random_forest"``).
         overwrite: If ``True``, re-archive all games even if predictions
-            for this model version already exist.
+            for this ``(model_name, model_type)`` pair already exist.
         repo: Repository root. Defaults to settings repo root.
 
     Returns:
         Number of new prediction rows written to the archive.
 
     Raises:
-        KeyError: If ``model_version`` is not registered.
+        KeyError: If no predictor is registered for the composite key.
     """
     # Import here to trigger registration of all predictor modules.
     import gridiron_edge.models.elo.predictor
@@ -83,7 +92,9 @@ def backfill_model(
     from gridiron_edge.models.registry import PredictorRegistry
 
     resolved_repo: Path = repo or get_settings().repo_root
-    predictor: Predictor = PredictorRegistry.get(model_version)()
+    registry_key: str = f"{model_name}_{model_type}"
+
+    predictor: Predictor = PredictorRegistry.get(registry_key)()
 
     games_raw: DataFrame = loaders.load_games(resolved_repo)
     games: DataFrame = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()
@@ -91,19 +102,36 @@ def backfill_model(
     df_new: DataFrame = predictor.predict_historical(games, repo=resolved_repo)
 
     if df_new.empty:
-        logger.warning("backfill_model: no predictions generated for '%s'.", model_version)
+        logger.warning(
+            "backfill_model: no predictions generated for (%s, %s).",
+            model_name,
+            model_type,
+        )
         return 0
 
     if not overwrite:
-        existing: DataFrame = load_prediction_log(model_version=model_version, repo=resolved_repo)
+        existing: DataFrame = load_prediction_log(
+            model_name=model_name,
+            model_type=model_type,
+            repo=resolved_repo,
+        )
         if not existing.empty:
             already_archived: set = set(existing["game_id"].unique())
             df_new = df_new.loc[~df_new["game_id"].isin(already_archived), :].copy()
             if df_new.empty:
-                logger.info("All historical games already archived for '%s'.", model_version)
+                logger.info(
+                    "All historical games already archived for (%s, %s).",
+                    model_name,
+                    model_type,
+                )
                 return 0
 
     n_new: int = len(df_new)
     write_archive_rows(df_new, repo=resolved_repo)
-    logger.info("backfill_model: %d predictions archived for '%s'.", n_new, model_version)
+    logger.info(
+        "backfill_model: %d predictions archived for (%s, %s).",
+        n_new,
+        model_name,
+        model_type,
+    )
     return n_new

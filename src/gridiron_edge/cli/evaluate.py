@@ -1,5 +1,14 @@
 # src/gridiron_edge/cli/evaluate.py
-"""CLI commands for model evaluation."""
+"""CLI commands for model evaluation.
+
+Workstream 2 convention:
+    Model identity uses the composite ``model_key`` — ``f"{model_name}_{model_type}"``
+    matching the ``PredictorRegistry`` keys (e.g. ``"win_prob_random_forest"``,
+    ``"total_xgboost"``). The ``backfill`` command takes ``--model-name`` +
+    ``--model-type`` as separate options since it calls into ``backfill_model``
+    directly; all other commands accept a single ``--model-key`` for display
+    and filtering purposes.
+"""
 
 from __future__ import annotations
 
@@ -26,17 +35,47 @@ evaluate_app = typer.Typer(
 )
 
 
+def _split_composite_key(key: str) -> tuple[str | None, str | None]:
+    """Split a composite model_key into (model_name, model_type) for filtering.
+
+    Used by commands that take a single ``--model-key`` option and need to
+    filter the archive via ``build_evaluation_df``. Returns ``(None, None)``
+    when the key is ``"all"`` so callers can skip the filter entirely.
+
+    Args:
+        key: Composite registry key (e.g. ``"win_prob_random_forest"``)
+            or ``"all"``.
+
+    Returns:
+        Tuple of ``(model_name, model_type)``. Both ``None`` if ``key == "all"``.
+        Raises if ``key`` is malformed.
+    """
+    if key == "all":
+        return None, None
+    if "_" not in key:
+        raise typer.BadParameter(
+            f"Model key {key!r} is not a valid composite key. "
+            f"Expected format: '{{model_name}}_{{model_type}}' "
+            f"(e.g. 'win_prob_random_forest')."
+        )
+    name, _, mtype = key.partition("_")
+    return name, mtype
+
+
 @evaluate_app.command("summary")
 def evaluate_summary(
     *,
-    model_version: str = typer.Option(
+    model_key: str = typer.Option(
         "all",
-        help="Model version to evaluate, or 'all' to compare all versions.",
+        help=(
+            "Composite model key to evaluate (e.g. 'win_prob_random_forest'), "
+            "or 'all' to compare all models."
+        ),
     ),
     season: str | None = typer.Option(None, help="Filter to a specific season e.g. '2025-2026'."),
     group_by: str = typer.Option(
         "season",
-        help="Group results by: season, week, or model_version.",
+        help="Group results by: season, week, model_name, or model_type.",
     ),
 ) -> None:
     r"""Print prediction accuracy summary from the archive.
@@ -46,19 +85,24 @@ def evaluate_summary(
       gridiron evaluate summary
       gridiron evaluate summary --season 2025-2026
       gridiron evaluate summary --group-by week
+      gridiron evaluate summary --model-key win_prob_random_forest
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
 
-    mv_filter: str | None = None if model_version == "all" else model_version
-    subtitle: str = f"model={model_version}"
+    name_filter, type_filter = _split_composite_key(model_key)
+    subtitle: str = f"model={model_key}"
     if season:
         subtitle += f"  season={season}"
     subtitle += f"  group={group_by}"
     console.header("evaluate summary", subtitle=subtitle)
 
     with step("Join predictions to outcomes") as s:
-        df_eval: DataFrame = build_evaluation_df(model_version=mv_filter, season=season)
+        df_eval: DataFrame = build_evaluation_df(
+            model_name=name_filter,
+            model_type=type_filter,
+            season=season,
+        )
         if df_eval.empty:
             s.set_detail("no evaluated games — run 'output predictions' first")
         else:
@@ -77,9 +121,12 @@ def evaluate_summary(
 @evaluate_app.command("calibration")
 def evaluate_calibration(
     *,
-    model_version: str = typer.Option(
-        "elo_v1",
-        help="Model version to evaluate, or 'all' for all versions combined.",
+    model_key: str = typer.Option(
+        "win_prob_elo",
+        help=(
+            "Composite model key to evaluate (e.g. 'win_prob_random_forest'), "
+            "or 'all' for all models combined."
+        ),
     ),
     season: str | None = typer.Option(None, help="Filter to a specific season e.g. '2025-2026'."),
     buckets: int = typer.Option(10, help="Number of probability buckets (default 10)."),
@@ -90,18 +137,23 @@ def evaluate_calibration(
     Examples:
       gridiron evaluate calibration
       gridiron evaluate calibration --season 2025-2026 --buckets 20
+      gridiron evaluate calibration --model-key win_prob_random_forest
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.metrics import build_evaluation_df, calibration_table
 
-    mv_filter_cal: str | None = None if model_version == "all" else model_version
-    subtitle: str = f"model={model_version}"
+    name_filter, type_filter = _split_composite_key(model_key)
+    subtitle: str = f"model={model_key}"
     if season:
         subtitle += f"  season={season}"
     console.header("evaluate calibration", subtitle=subtitle)
 
     with step("Join predictions to outcomes") as s:
-        df_eval: DataFrame = build_evaluation_df(model_version=mv_filter_cal, season=season)
+        df_eval: DataFrame = build_evaluation_df(
+            model_name=name_filter,
+            model_type=type_filter,
+            season=season,
+        )
         if df_eval.empty:
             s.set_detail("no evaluated games — run 'output predictions' first")
         else:
@@ -120,31 +172,42 @@ def evaluate_calibration(
 @evaluate_app.command("backfill")
 def evaluate_backfill(
     *,
-    model_version: str = typer.Option("elo_v1", help="Model version to backfill."),
+    model_name: str = typer.Option(
+        "win_prob",
+        help="Model purpose (e.g. 'win_prob', 'total').",
+    ),
+    model_type: str = typer.Option(
+        "elo",
+        help="Model algorithm (e.g. 'random_forest', 'xgboost', 'logistic', 'elo').",
+    ),
     overwrite: bool = typer.Option(
         False,
         "--overwrite/--no-overwrite",
         help="Re-archive all games even if already present.",
     ),
 ) -> None:
-    r"""Archive Elo predictions for all historical games in one pass.
+    r"""Archive predictions for all historical games in one pass.
 
-    Loads games and Elo state once and generates predictions for every
-    game in the dataset. Use this to populate the archive before running
-    evaluate summary or calibration.
+    Loads games and the trained predictor once and generates predictions
+    for every game in the dataset. Use this to populate the archive before
+    running evaluate summary or calibration.
 
     \b
     Examples:
-      gridiron evaluate backfill
-      gridiron evaluate backfill --overwrite
+      gridiron evaluate backfill --model-name win_prob --model-type elo
+      gridiron evaluate backfill --model-name win_prob --model-type random_forest --overwrite
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.backfill import backfill_model
 
-    console.header("evaluate backfill", subtitle=f"model={model_version}")
+    console.header("evaluate backfill", subtitle=f"model={model_name}_{model_type}")
 
     with step("Generate + archive historical predictions") as s:
-        n: int = backfill_model(model_version, overwrite=overwrite)
+        n: int = backfill_model(
+            model_name=model_name,
+            model_type=model_type,
+            overwrite=overwrite,
+        )
         s.set_detail(f"{n:,} predictions archived")
 
     console.summary()
@@ -184,7 +247,7 @@ def evaluate_tune(
     score wins.
 
     Use --apply to immediately backfill the best parameters into the
-    prediction archive as model version 'elo_v2'.
+    prediction archive.
 
     \b
     Examples:
@@ -256,8 +319,15 @@ def evaluate_tune(
             with step("Backfill elo_v3 predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
-                n: int = backfill_model("elo_v3", overwrite=True)
-                s.set_detail(f"{n:,} predictions archived as elo_v3")
+                # TODO(elo-ws2): Elo predictor not yet migrated to register
+                # under composite key "win_prob_elo". Until then this raises
+                # KeyError at PredictorRegistry.get(). Tracked as Elo-WS2.
+                n: int = backfill_model(
+                    model_name="win_prob",
+                    model_type="elo",
+                    overwrite=True,
+                )
+                s.set_detail(f"{n:,} predictions archived as win_prob/elo")
         else:
             params = best_params(results)
             k_val: float = params["k"]
@@ -270,8 +340,15 @@ def evaluate_tune(
             with step("Backfill elo_v2 predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
-                n = backfill_model("elo_v2", overwrite=True)
-                s.set_detail(f"{n:,} predictions archived as elo_v2")
+                # TODO(elo-ws2): Elo predictor not yet migrated to register
+                # under composite key "win_prob_elo". Until then this raises
+                # KeyError at PredictorRegistry.get(). Tracked as Elo-WS2.
+                n = backfill_model(
+                    model_name="win_prob",
+                    model_type="elo",
+                    overwrite=True,
+                )
+                s.set_detail(f"{n:,} predictions archived as win_prob/elo")
 
     console.summary()
 
@@ -279,9 +356,12 @@ def evaluate_tune(
 @evaluate_app.command("diagnostics")
 def evaluate_diagnostics(
     *,
-    model_version: str = typer.Option(
+    model_key: str = typer.Option(
         "all",
-        help="Model version to diagnose, or 'all' for multi-model comparison.",
+        help=(
+            "Composite model key to diagnose (e.g. 'win_prob_random_forest'), "
+            "or 'all' for multi-model comparison."
+        ),
     ),
     compare: bool = typer.Option(
         False,
@@ -291,10 +371,10 @@ def evaluate_diagnostics(
 ) -> None:
     r"""Generate diagnostic plots for one or all models.
 
-    Single-model mode (--model-version X):
+    Single-model mode (--model-key X):
         Saves calibration curve, confidence distribution, ROC curve,
         Brier decomposition, performance by context, and feature
-        importance to data/output/evaluation/{model_version}/.
+        importance to data/output/evaluation/{model_key}/.
 
     Comparison mode (--compare):
         Overlays all models on shared calibration, ROC, and metric
@@ -302,10 +382,9 @@ def evaluate_diagnostics(
 
     \b
     Examples:
-      gridiron evaluate diagnostics --model-version elo_v1
-      gridiron evaluate diagnostics --model-version logistic
+      gridiron evaluate diagnostics --model-key win_prob_random_forest
       gridiron evaluate diagnostics --compare
-      gridiron evaluate diagnostics --model-version elo_v1 --compare
+      gridiron evaluate diagnostics --model-key win_prob_random_forest --compare
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
@@ -317,22 +396,26 @@ def evaluate_diagnostics(
 
     repo: Path = get_settings().repo_root
     subtitle_parts: list[str] = []
-    if model_version != "all":
-        subtitle_parts.append(f"model={model_version}")
+    if model_key != "all":
+        subtitle_parts.append(f"model={model_key}")
     if compare:
         subtitle_parts.append("compare")
     console.header("evaluate diagnostics", subtitle="  ".join(subtitle_parts) or "all")
 
     # Single-model diagnostics
-    if model_version != "all":
-        with step(f"Load predictions — {model_version}") as s:
-            df_eval: DataFrame = build_evaluation_df(model_version=model_version)
+    if model_key != "all":
+        name_filter, type_filter = _split_composite_key(model_key)
+        with step(f"Load predictions — {model_key}") as s:
+            df_eval: DataFrame = build_evaluation_df(
+                model_name=name_filter,
+                model_type=type_filter,
+            )
             if df_eval.empty:
                 s.set_detail("no data — run evaluate backfill first")
                 raise typer.Exit(1)
             s.set_detail(f"{len(df_eval):,} games")
 
-        with step(f"Generate single-model plots — {model_version}") as s:
+        with step(f"Generate single-model plots — {model_key}") as s:
             paths: list[Path] = plot_single_model(df_eval, repo=repo)
             s.set_detail(f"{len(paths)} plots")
             for p in paths:
@@ -344,14 +427,20 @@ def evaluate_diagnostics(
         import gridiron_edge.models.game_prediction.predictor  # noqa: F401
         from gridiron_edge.models.registry import PredictorRegistry
 
-        all_models: list[str] = PredictorRegistry.names()
+        all_keys: list[str] = PredictorRegistry.names()
 
         with step("Load predictions — all models") as s:
             eval_dfs: dict = {}
-            for mv in all_models:
-                df: DataFrame = build_evaluation_df(model_version=mv)
+            for key in all_keys:
+                try:
+                    nm, ty = _split_composite_key(key)
+                except typer.BadParameter:
+                    # Skip legacy non-composite keys (e.g. transitional
+                    # Elo entries still registered as 'elo_v1').
+                    continue
+                df: DataFrame = build_evaluation_df(model_name=nm, model_type=ty)
                 if not df.empty:
-                    eval_dfs[mv] = df
+                    eval_dfs[key] = df
             s.set_detail(f"{len(eval_dfs)} models with data")
 
         if len(eval_dfs) < 2:
@@ -455,7 +544,7 @@ def evaluate_select_model(
 
     # Display results
     display_cols: list[str] = [
-        "model_version",
+        "model_key",
         "n_games",
         "brier",
         "ece",
@@ -470,7 +559,7 @@ def evaluate_select_model(
     # Recommendation
     best: Series = df.iloc[0]
     typer.echo("")
-    typer.echo(f"Recommendation: {best['model_version']}")
+    typer.echo(f"Recommendation: {best['model_key']}")
 
     reasons: list[str] = []
     for criterion in criteria_list:
@@ -499,8 +588,8 @@ def _print_ranking_section(
     display_cols: list[str],
     *,
     auto_select: bool,
-    recommended_mv: str,
-    target_mv: str,
+    recommended_key: str,
+    target_key: str,
     criteria_list: list[str],
     lower_is_better: set[str],
     divider: LiteralString,
@@ -513,11 +602,11 @@ def _print_ranking_section(
     typer.echo("")
 
     if auto_select:
-        typer.echo(f"  → Auto-selected: {recommended_mv}")
+        typer.echo(f"  → Auto-selected: {recommended_key}")
     else:
-        typer.echo(f"  → Ranked #1: {recommended_mv}  ·  Analysing: {target_mv}")
+        typer.echo(f"  → Ranked #1: {recommended_key}  ·  Analysing: {target_key}")
 
-    best_in_ranked: Series = ranked_df.loc[ranked_df["model_version"] == recommended_mv].iloc[0]
+    best_in_ranked: Series = ranked_df.loc[ranked_df["model_key"] == recommended_key].iloc[0]
     reasons: list[str] = []
     for criterion in criteria_list:
         if best_in_ranked[f"rank_{criterion}"] == 1:
@@ -532,13 +621,13 @@ def _print_ranking_section(
 def _print_confidence_section(
     df_tiers: DataFrame,
     *,
-    target_mv: str,
+    target_key: str,
     season: str | None,
     divider: LiteralString,
 ) -> None:
     """Print section 2: confidence-stratified Brier with overconfidence flag."""
     typer.echo(f"\n{divider}")
-    typer.echo(f"[2] Confidence-Stratified Brier — {target_mv}")
+    typer.echo(f"[2] Confidence-Stratified Brier — {target_key}")
     if season:
         typer.echo(f"    season filter: {season}")
     typer.echo(divider)
@@ -570,12 +659,12 @@ def _print_confidence_section(
 def _print_stability_section(
     df_seasons: DataFrame,
     *,
-    target_mv: str,
+    target_key: str,
     divider: LiteralString,
 ) -> None:
     """Print section 3: season-over-season Brier with drift flag."""
     typer.echo(f"\n{divider}")
-    typer.echo(f"[3] Season-over-Season Brier — {target_mv}")
+    typer.echo(f"[3] Season-over-Season Brier — {target_key}")
     typer.echo(divider)
     typer.echo(df_seasons.to_string(index=False))
 
@@ -595,14 +684,14 @@ def _print_stability_section(
 def _print_misses_section(
     df_misses: DataFrame,
     *,
-    target_mv: str,
+    target_key: str,
     top_misses: int,
     season: str | None,
     divider: LiteralString,
 ) -> None:
     """Print section 4: top-N misses with heuristic pattern summary."""
     typer.echo(f"\n{divider}")
-    typer.echo(f"[4] Top {top_misses} Misses — {target_mv}")
+    typer.echo(f"[4] Top {top_misses} Misses — {target_key}")
     if season:
         typer.echo(f"    season filter: {season}")
     typer.echo(divider)
@@ -630,11 +719,12 @@ def _print_misses_section(
 @evaluate_app.command("report")
 def evaluate_report(
     *,
-    model_version: str = typer.Option(
+    model_key: str = typer.Option(
         "auto",
         help=(
-            "Model to report on. Use 'auto' (default) to auto-select the best "
-            "model via composite ranking, or pass a specific version string."
+            "Composite model key to report on. Use 'auto' (default) to "
+            "auto-select the best model via composite ranking, or pass a "
+            "specific key (e.g. 'win_prob_random_forest')."
         ),
     ),
     top_misses: int = typer.Option(
@@ -663,16 +753,16 @@ def evaluate_report(
       3. Is performance drifting over time? (season-over-season Brier)
       4. What are its worst individual calls?  (top-N misses with context)
 
-    With --model-version auto (default), the best model is chosen automatically.
-    Pass a specific version to force analysis of that model regardless of ranking.
+    With --model-key auto (default), the best model is chosen automatically.
+    Pass a specific key to force analysis of that model regardless of ranking.
 
     \b
     Examples:
       gridiron evaluate report
-      gridiron evaluate report --model-version logistic
+      gridiron evaluate report --model-key win_prob_random_forest
       gridiron evaluate report --top-misses 20
       gridiron evaluate report --season 2025-2026
-      gridiron evaluate report --model-version elo_v1 --season 2025-2026
+      gridiron evaluate report --model-key win_prob_xgboost --season 2025-2026
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
@@ -691,8 +781,8 @@ def evaluate_report(
         typer.echo(f"Unknown criteria: {invalid}. Valid: {sorted(valid_criteria)}")
         raise typer.Exit(1)
 
-    auto_select: bool = model_version == "auto"
-    subtitle: str = f"model={'auto-select' if auto_select else model_version}"
+    auto_select: bool = model_key == "auto"
+    subtitle: str = f"model={'auto-select' if auto_select else model_key}"
     if season:
         subtitle += f"  season={season}"
     console.header("evaluate report", subtitle=subtitle)
@@ -711,7 +801,7 @@ def evaluate_report(
     )
     rank_cols: list[str] = [f"rank_{c}" for c in criteria_list]
     display_cols: list[str] = [
-        "model_version",
+        "model_key",
         "n_games",
         "brier",
         "ece",
@@ -720,20 +810,20 @@ def evaluate_report(
         *rank_cols,
         "composite_rank",
     ]
-    recommended_mv: str = str(ranked_df.iloc[0]["model_version"])
-    target_mv: str = recommended_mv if auto_select else model_version
+    recommended_key: str = str(ranked_df.iloc[0]["model_key"])
+    target_key: str = recommended_key if auto_select else model_key
 
-    if target_mv not in {str(r["model_version"]) for r in all_rows}:
+    if target_key not in {str(r["model_key"]) for r in all_rows}:
         typer.echo(
-            f"No archived predictions for '{target_mv}'. "
-            f"Run 'gridiron evaluate backfill --model-version {target_mv}' first."
+            f"No archived predictions for {target_key!r}. "
+            f"Run 'gridiron evaluate backfill --model-name <name> --model-type <type>' first."
         )
         raise typer.Exit(1)
 
     # ── Compute depth metrics ────────────────────────────────────────────────
     try:
         _df_eval, df_tiers, df_seasons, df_misses = _compute_report_data(
-            target_mv=target_mv, season=season, top_misses=top_misses, repo=repo
+            target_key=target_key, season=season, top_misses=top_misses, repo=repo
         )
     except ValueError as exc:
         typer.echo(str(exc))
@@ -746,14 +836,14 @@ def evaluate_report(
         ranked_df,
         display_cols,
         auto_select=auto_select,
-        recommended_mv=recommended_mv,
-        target_mv=target_mv,
+        recommended_key=recommended_key,
+        target_key=target_key,
         criteria_list=criteria_list,
         lower_is_better=lower_is_better,
         divider=_divider,
     )
-    _print_confidence_section(df_tiers, target_mv=target_mv, season=season, divider=_divider)
-    _print_stability_section(df_seasons, target_mv=target_mv, divider=_divider)
+    _print_confidence_section(df_tiers, target_key=target_key, season=season, divider=_divider)
+    _print_stability_section(df_seasons, target_key=target_key, divider=_divider)
     _print_misses_section(
-        df_misses, target_mv=target_mv, top_misses=top_misses, season=season, divider=_divider
+        df_misses, target_key=target_key, top_misses=top_misses, season=season, divider=_divider
     )

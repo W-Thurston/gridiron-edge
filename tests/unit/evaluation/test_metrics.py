@@ -30,7 +30,7 @@ def _make_eval_df(
             "home_team": "MIA",
             "away_win_prob": 0.6,
             "away_team_won": 1,
-            "model_version": "test_model",
+            "model_name": "test_model",
         }
         for i in range(len(rows))
     ]
@@ -115,7 +115,7 @@ class TestBrierByConfidenceTier:
                     "away_team",
                     "home_team",
                     "game_id",
-                    "model_version",
+                    "model_name",
                 ]
             )
         )
@@ -360,7 +360,7 @@ class TestBiggestMisses:
                     "away_win_prob",
                     "away_team_won",
                     "game_id",
-                    "model_version",
+                    "model_name",
                 ]
             ),
             n=10,

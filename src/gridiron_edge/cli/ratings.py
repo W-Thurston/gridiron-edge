@@ -60,18 +60,18 @@ def elo_evaluate() -> None:
 
     \b
     Equivalent to:
-      gridiron evaluate summary --model-version elo_v1 --group-by season
-      gridiron evaluate summary --model-version elo_v1 --group-by week
+      gridiron evaluate summary --model-name win_prob --model-type elo --group-by season
+      gridiron evaluate summary --model-name win_prob --model-type elo --group-by week
     """
     typer.echo("Note: superseded by 'gridiron evaluate summary'.\n")
 
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
 
-    console.header("ratings elo evaluate", subtitle="elo_v1")
+    console.header("ratings elo evaluate", subtitle="win_prob/elo")
 
     with step("Join predictions to outcomes") as s:
-        df_eval = build_evaluation_df(model_version="elo_v1")
+        df_eval = build_evaluation_df(model_name="win_prob", model_type="elo")
         if df_eval.empty:
             s.set_detail("no data — run 'gridiron evaluate backfill' first")
         else:

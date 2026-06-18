@@ -37,14 +37,14 @@ class TestCollectModelMetrics:
             result: list[dict] = collect_model_metrics(["test_v1"], repo=tmp_path)
             assert len(result) == 1
             row: dict = result[0]
-            assert "model_version" in row
-            assert row["model_version"] == "test_v1"
+            assert "model_key" in row
+            assert row["model_key"] == "test_v1"
 
     def test_skips_models_without_data(self, tmp_path: Path) -> None:
         """If one model has data and another doesn't, only the valid one appears."""
 
-        def mock_build(model_version: str, repo: Path) -> pd.DataFrame:
-            if model_version == "good_v1":
+        def mock_build(*, model_name: str, model_type: str, repo: Path) -> pd.DataFrame:
+            if model_name == "good" and model_type == "v1":
                 return pd.DataFrame(
                     {
                         "away_win_prob": [0.6, 0.4],
@@ -59,7 +59,7 @@ class TestCollectModelMetrics:
         ):
             result: list[dict] = collect_model_metrics(["good_v1", "empty_v1"], repo=tmp_path)
             assert len(result) == 1
-            assert result[0]["model_version"] == "good_v1"
+            assert result[0]["model_key"] == "good_v1"
 
 
 class TestRankModels:

@@ -12,7 +12,8 @@ All functions accept a standard *evaluation DataFrame* produced by
     home_team        str
     away_win_prob    float - model's predicted probability that away team wins
     away_team_won    int   - 1 if away team won, 0 if home team won
-    model_version    str
+    model_name       str   - model purpose (e.g. "win_prob", "total")
+    model_type       str   - model algorithm (e.g. "random_forest", "elo")
 
 Public API
 ----------
@@ -24,7 +25,8 @@ log_loss                     Scalar log loss.
 accuracy                     Fraction of games where argmax matches outcome.
 roc_auc                      ROC-AUC.
 expected_calibration_error   ECE (single-number calibration summary).
-brier_decomposition          Murphy (1973) decomposition: reliability, resolution, uncertainty.
+brier_decomposition          Murphy (1973) decomposition: reliability,
+                             resolution, uncertainty.
 
 ----------------
 brier_by_confidence_tier     Brier + calibration gap per predicted-prob bucket.
@@ -238,7 +240,8 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
 
 def build_evaluation_df(
     *,
-    model_version: str | None = None,
+    model_name: str | None = None,
+    model_type: str | None = None,
     season: str | None = None,
     repo: Path | None = None,
 ) -> DataFrame:
@@ -249,20 +252,25 @@ def build_evaluation_df(
     (upcoming games) are dropped.
 
     Args:
-        model_version: Filter to a specific model version string.
-            If ``None``, all versions are returned.
+        model_name: Filter to a specific model purpose (e.g. ``"win_prob"``).
+            If ``None``, all purposes are returned.
+        model_type: Filter to a specific model algorithm
+            (e.g. ``"random_forest"``). If ``None``, all algorithms are
+            returned.
         season: Filter to a specific season (e.g. ``"2024-2025"``).
             If ``None``, all seasons are returned.
         repo: Repository root.  Defaults to settings repo root.
 
     Returns:
         DataFrame with columns: game_id, season, week, away_team, home_team,
-        away_win_prob, away_team_won, model_version.  Empty if no data.
+        away_win_prob, away_team_won, model_name, model_type.
+        Empty if no data.
     """
     resolved_repo: Path = repo or get_settings().repo_root
 
     log: DataFrame = load_prediction_log(
-        model_version=model_version,
+        model_name=model_name,
+        model_type=model_type,
         season=season,
         repo=resolved_repo,
     )
@@ -296,7 +304,8 @@ def build_evaluation_df(
         "home_team",
         "away_win_prob",
         "away_team_won",
-        "model_version",
+        "model_name",
+        "model_type",
     ]
     available: list[str] = [c for c in cols if c in log.columns]
     return log.loc[:, available].reset_index(drop=True)
@@ -313,7 +322,7 @@ def summarise(df: DataFrame, *, group_by: str = "season") -> DataFrame:
     Args:
         df: Evaluation DataFrame from ``build_evaluation_df``.
         group_by: Column to group by — one of ``"season"``, ``"week"``,
-            or ``"model_version"``.
+            ``"model_name"``, or ``"model_type"``.
 
     Returns:
         Summary DataFrame with columns: [group_by], n_games, brier, accuracy.
@@ -321,7 +330,7 @@ def summarise(df: DataFrame, *, group_by: str = "season") -> DataFrame:
     Raises:
         ValueError: If ``group_by`` is not a recognised column.
     """
-    valid: set[str] = {"season", "week", "model_version"}
+    valid: set[str] = {"season", "week", "model_name", "model_type"}
     if group_by not in valid:
         raise ValueError(f"group_by must be one of {valid!r}, got {group_by!r}")
 

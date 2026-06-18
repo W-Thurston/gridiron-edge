@@ -49,7 +49,8 @@ def output_predictions(
         with step("Archive predictions") as s:
             archive_path = append_to_prediction_log(
                 df,
-                model_version="elo_v1",
+                model_name="win_prob",
+                model_type="elo",
                 season=year,
                 week=week,
             )

@@ -5,6 +5,11 @@ Provides two sub-commands:
 
     gridiron edges report   Weekly edge report (the Sunday artifact)
     gridiron edges clv      Historical closing line value analysis
+
+Workstream 2 convention:
+    These commands operate on win_prob predictions. The ``--model-type``
+    option selects the algorithm (``random_forest``, ``xgboost``,
+    ``logistic``, ``elo``); ``model_name="win_prob"`` is implied.
 """
 
 from __future__ import annotations
@@ -39,7 +44,12 @@ _DEFAULT_TOTAL_STD: float = 13.17
 def report(
     week: int = typer.Option(..., help="NFL week number."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
-    model_version: str = typer.Option("random_forest", help="Model to use for predictions."),
+    model_type: str = typer.Option(
+        "random_forest",
+        help=(
+            "Win-probability model algorithm to use. One of: random_forest, xgboost, logistic, elo."
+        ),
+    ),
     bankroll: float = typer.Option(1000.0, help="Current bankroll in dollars."),
     kelly_multiplier: float = typer.Option(
         0.25, help="Fraction of full Kelly (e.g. 0.25 for quarter-Kelly)."
@@ -61,10 +71,11 @@ def report(
         predictions: DataFrame = load_prediction_log(
             season=season,
             week=week,
-            model_version=model_version,
+            model_name="win_prob",
+            model_type=model_type,
         )
     if predictions.empty:
-        typer.echo(f"No predictions found for {model_version} / {season} / week {week}.")
+        typer.echo(f"No predictions found for win_prob/{model_type} / {season} / week {week}.")
         raise typer.Exit()
 
     typer.echo(f"  {len(predictions)} prediction(s) loaded.")
@@ -79,7 +90,7 @@ def report(
     typer.echo(f"  {len(odds)} odds row(s) loaded.")
 
     # ── Build edge report ─────────────────────────────────────────────
-    margin_std: float = get_margin_std(model_version)
+    margin_std: float = get_margin_std("win_prob", model_type)
     total_std: float = _DEFAULT_TOTAL_STD
 
     with step("Computing edges"):
@@ -121,7 +132,12 @@ def report(
 @edges_app.command()
 def clv(
     season: str | None = typer.Option(None, help="Filter to NFL season label, e.g. '2026-2027'."),
-    model_version: str = typer.Option("random_forest", help="Model to use for predictions."),
+    model_type: str = typer.Option(
+        "random_forest",
+        help=(
+            "Win-probability model algorithm to use. One of: random_forest, xgboost, logistic, elo."
+        ),
+    ),
     min_ev: float = typer.Option(0.0, help="Minimum EV threshold for edges to include."),
 ) -> None:
     """Analyse historical closing line value."""
@@ -138,10 +154,11 @@ def clv(
     with step("Loading predictions"):
         predictions: DataFrame = load_prediction_log(
             season=season,
-            model_version=model_version,
+            model_name="win_prob",
+            model_type=model_type,
         )
     if predictions.empty:
-        typer.echo(f"No predictions found for {model_version}.")
+        typer.echo(f"No predictions found for win_prob/{model_type}.")
         raise typer.Exit()
 
     typer.echo(f"  {len(predictions)} prediction(s) loaded.")
@@ -155,7 +172,7 @@ def clv(
     typer.echo(f"  {len(odds_ledger)} odds row(s) loaded.")
 
     # ── Build edge report for historical games ────────────────────────
-    margin_std: float = get_margin_std(model_version)
+    margin_std: float = get_margin_std("win_prob", model_type)
     total_std: float = _DEFAULT_TOTAL_STD
 
     with step("Building edge report"):
