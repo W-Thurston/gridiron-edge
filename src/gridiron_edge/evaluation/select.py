@@ -8,12 +8,13 @@ intentionally CLI-agnostic so they can be called from tests or notebooks
 without importing the CLI layer.
 
 Workstream 2 convention:
-    Functions accept ``PredictorRegistry`` keys — the flat composite
-    strings like ``"win_prob_random_forest"``, ``"total_xgboost"``,
-    ``"win_prob_elo"``. Each key is split internally on the first
-    underscore into ``(model_name, model_type)`` before querying the
-    archive. The output ``model_key`` column carries the registry key
-    as a display label.
+    All registered ``PredictorRegistry`` keys are composite strings
+    of the form ``f"{model_name}_{model_type}"`` (e.g.
+    ``"win_prob_random_forest"``, ``"total_xgboost"``, ``"win_prob_elo"``).
+    Functions in this module split each key on the first underscore
+    into ``(model_name, model_type)`` before querying the archive. The
+    output ``model_key`` column carries the registry key as a display
+    label.
 
 Public API
 ----------
@@ -32,8 +33,8 @@ from pandas import DataFrame, Series
 def _parse_composite_key(key: str) -> tuple[str, str]:
     """Split a PredictorRegistry composite key into (model_name, model_type).
 
-    The convention from Workstream 2 D2b.1 is ``f"{model_name}_{model_type}"``
-    where ``model_name`` is a single token (no underscores). Splits on the
+    All registered keys follow ``f"{model_name}_{model_type}"`` where
+    ``model_name`` is a single token without underscores. Splits on the
     first underscore.
 
     Args:
@@ -44,6 +45,8 @@ def _parse_composite_key(key: str) -> tuple[str, str]:
 
     Raises:
         ValueError: If the key does not contain an underscore.
+            All registry entries must be composite keys; a non-composite
+            key indicates a registration bug.
     """
     if "_" not in key:
         msg: str = (
@@ -84,13 +87,7 @@ def collect_model_metrics(
 
     rows: list[dict[str, float | int | str]] = []
     for key in model_keys:
-        try:
-            model_name, model_type = _parse_composite_key(key)
-        except ValueError:
-            # Skip keys that don't follow the composite-key convention
-            # (e.g. legacy flat keys still floating around during the
-            # WS2 transition).
-            continue
+        model_name, model_type = _parse_composite_key(key)
 
         df_eval: DataFrame = build_evaluation_df(
             model_name=model_name,

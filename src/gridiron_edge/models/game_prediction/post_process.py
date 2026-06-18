@@ -100,16 +100,17 @@ _SIGMA_HI: Final[float] = 22.0
 # ``_NFL_DEFAULT_SIGMA``.
 #
 # Calibrated 2026-06-04 via ``calibrate_spread_sigma`` against the full
-# prediction archive after the WS1 TimeSeriesSplit retrain.
+# prediction archive after the WS1 TimeSeriesSplit retrain. The Elo entry
+# carries the pre-WS2 v2 calibration; re-run ``calibrate_spread_sigma``
+# after the next Elo backfill to refresh.
 #
 # TODO: Wire sigma calibration into the training harness so this map
 # is populated automatically when a new model is trained.
-# TODO: Re-register Elo sigma here when the Elo predictor is migrated
-# to the WS2 (model_name, model_type) schema. Removed value was 13.60.
 _MODEL_SIGMAS: dict[tuple[str, str], float] = {
     ("win_prob", "random_forest"): 10.6252,
     ("win_prob", "xgboost"): 11.4309,
     ("win_prob", "logistic"): 11.9914,
+    ("win_prob", "elo"): 13.60,
 }
 
 # Default z-score for credible intervals. 1.645 corresponds to a 90% CI.
@@ -120,16 +121,16 @@ _DEFAULT_Z: Final[float] = 1.645
 _DEFAULT_MARGIN_STD: Final[float] = 13.45
 
 # Per-model margin std, keyed by (model_name, model_type). Derived from
-# sqrt(MSE) at optimal sigma during sigma calibration (2026-06-04).
-# Represents how much the model's spread predictions typically deviate
-# from actual game margins.
+# sqrt(MSE) at optimal sigma during sigma calibration (2026-06-04). The
+# Elo entry carries the pre-WS2 v2 calibration; re-run after the next
+# Elo backfill to refresh.
 #
 # TODO: Wire margin_std computation into the training harness.
-# TODO: Re-register Elo margin_std here when migrated. Removed value was 13.89.
 _MODEL_MARGIN_STDS: dict[tuple[str, str], float] = {
     ("win_prob", "random_forest"): 13.54,
     ("win_prob", "xgboost"): 13.34,
     ("win_prob", "logistic"): 13.29,
+    ("win_prob", "elo"): 13.89,
 }
 
 # Confidence tier: how far is the prediction from pick'em (0.5)?

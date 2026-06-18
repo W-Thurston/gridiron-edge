@@ -316,12 +316,9 @@ def evaluate_tune(
                 f"k_week18={params['k_week18']:.0f}  k_post={params['k_post']:.0f}  "
                 f"divisor={params['divisor']:.0f}  regress={params['regress_frac']:.2f}"
             )
-            with step("Backfill elo_v3 predictions") as s:
+            with step("Backfill predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
-                # TODO(elo-ws2): Elo predictor not yet migrated to register
-                # under composite key "win_prob_elo". Until then this raises
-                # KeyError at PredictorRegistry.get(). Tracked as Elo-WS2.
                 n: int = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
@@ -337,12 +334,9 @@ def evaluate_tune(
                 f"Applying best elo_v2 params: "
                 f"k={k_val:.0f}  divisor={div_val:.0f}  regress={reg_val:.2f}"
             )
-            with step("Backfill elo_v2 predictions") as s:
+            with step("Backfill predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
-                # TODO(elo-ws2): Elo predictor not yet migrated to register
-                # under composite key "win_prob_elo". Until then this raises
-                # KeyError at PredictorRegistry.get(). Tracked as Elo-WS2.
                 n = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
@@ -432,12 +426,7 @@ def evaluate_diagnostics(
         with step("Load predictions — all models") as s:
             eval_dfs: dict = {}
             for key in all_keys:
-                try:
-                    nm, ty = _split_composite_key(key)
-                except typer.BadParameter:
-                    # Skip legacy non-composite keys (e.g. transitional
-                    # Elo entries still registered as 'elo_v1').
-                    continue
+                nm, ty = _split_composite_key(key)
                 df: DataFrame = build_evaluation_df(model_name=nm, model_type=ty)
                 if not df.empty:
                     eval_dfs[key] = df
