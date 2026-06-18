@@ -1,18 +1,24 @@
 # src/gridiron_edge/models/game_prediction/total.py
 """Total points regression model.
 
-Trains a Random Forest regressor (xgboost variant coming in D2a) to predict
-the combined score of an NFL game. Uses the same expanded feature set as
-the win-probability models but targets ``actual_total = PTS_WINNER + PTS_LOSER``
-instead of ``RESULT``.
+Trains a Random Forest regressor (xgboost variant via TotalTrainer) to
+predict the combined score of an NFL game. Uses the same expanded feature
+set as the win-probability models but targets
+``actual_total = PTS_WINNER + PTS_LOSER`` instead of ``RESULT``.
 
 This is a supporting model — it feeds into ``enrich_predictions()`` rather
 than operating through the ``PredictorRegistry``.
 
 Public API:
-    train_total_model    Train and save a total-points regressor
+    train_total_model    Train and save a total-points regressor (function)
     predict_total        Load model and predict totals for a DataFrame
     load_total_model     Load a trained total model from the artifact store
+    TotalTrainer         Spec-only subclass of GamesTrainer (Workstream 2 D2a)
+
+Workstream 2 D2a status:
+    ``TotalTrainer`` is added alongside the existing free functions. The
+    functions remain wired through callers (CLI, pipeline) until D2b
+    flips over and deletes them.
 """
 
 from __future__ import annotations
@@ -25,9 +31,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from numpy import ndarray
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
 from sklearn.ensemble import RandomForestRegressor
@@ -43,10 +48,16 @@ from gridiron_edge.datasets.loaders import load_games, load_modeling_file
 from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION
 from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction._features import (
+    FEATURE_SETS,
     HOLDOUT_SEASONS,
     _make_expanded_features,
 )
-from gridiron_edge.models.game_prediction.base import GameModelMetadata
+from gridiron_edge.models.game_prediction.base import (
+    GameModelMetadata,
+    GameModelSpec,
+    GameModelType,
+    GamesTrainer,
+)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -99,19 +110,16 @@ def _prepare_total_data(
     games_lookup = games_lookup.drop_duplicates(subset=["GAME_ID"])
     games_lookup["actual_total"] = games_lookup["PTS_WINNER"] + games_lookup["PTS_LOSER"]
 
-    # Join to modeling DataFrame
     df = df.merge(
         games_lookup[["GAME_ID", "actual_total"]],
         on="GAME_ID",
         how="inner",
     )
 
-    # Drop rows with missing total (shouldn't happen, but defensive)
     df = df.dropna(subset=["actual_total"])
 
-    # Build features (same as win model)
     features: DataFrame = _make_expanded_features(df)
-    valid: Series[bool] = features.notna().all(axis=1)
+    valid = features.notna().all(axis=1)
     df = df.loc[valid, :].copy()
     features = features.loc[valid, :].copy()
 
@@ -150,7 +158,7 @@ def _prepare_total_data(
 
 
 # ---------------------------------------------------------------------------
-# Training
+# Training (function — legacy path, removed in D2b)
 # ---------------------------------------------------------------------------
 
 
@@ -175,8 +183,7 @@ def train_total_model(
         cv_folds: Number of cross-validation folds.
 
     Returns:
-        :class:`GameModelMetadata` describing the trained artifact. Same shape
-        as the win_prob trainers — homogeneous across the game model family.
+        :class:`GameModelMetadata` describing the trained artifact.
     """
     resolved_repo: Path = repo or get_settings().repo_root
     store = ArtifactStore(resolved_repo)
@@ -192,11 +199,9 @@ def train_total_model(
     best_model: RandomForestRegressor | None = None
 
     for i in tqdm(range(n_iter), desc="Total model HP search", unit="iter"):
-        # Sample hyperparameters
         # pyrefly: ignore [missing-attribute]
         sampled: dict[str, Any] = {k: v[rng.integers(len(v))] for k, v in _RF_PARAM_SPACE.items()}
 
-        # Cross-validated MAE
         fold_maes: list[float] = []
         for train_idx, val_idx in tscv.split(x_train):
             xt, xv = x_train.iloc[train_idx], x_train.iloc[val_idx]
@@ -222,11 +227,9 @@ def train_total_model(
                 sampled,
             )
 
-    # Retrain best model on full training set
     best_model = RandomForestRegressor(random_state=42, n_jobs=-1, **best_params)
     best_model.fit(x_train, y_train)
 
-    # Evaluate on full training set + holdout
     train_preds = best_model.predict(x_train)
     hold_preds = best_model.predict(x_hold)
     train_mae = float(np.mean(np.abs(train_preds - y_train)))
@@ -234,8 +237,7 @@ def train_total_model(
     train_rmse = float(np.sqrt(np.mean((train_preds - y_train) ** 2)))
     hold_rmse = float(np.sqrt(np.mean((hold_preds - y_hold) ** 2)))
 
-    # R² on holdout (used by GameModelMetadata first-class field).
-    y_hold_arr: ndarray = np.asarray(y_hold, dtype=float)
+    y_hold_arr = np.asarray(y_hold, dtype=float)
     ss_res = float(np.sum((hold_preds - y_hold_arr) ** 2))
     ss_tot = float(np.sum((y_hold_arr - y_hold_arr.mean()) ** 2))
     hold_r2: float = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
@@ -271,7 +273,6 @@ def train_total_model(
         feature_columns=list(x_train.columns),
         n_train_rows=len(x_train),
         n_holdout_rows=len(x_hold),
-        # First-class regression metrics
         holdout_mae=hold_mae,
         holdout_rmse=hold_rmse,
         holdout_r2=hold_r2,
@@ -332,9 +333,7 @@ def predict_total(
     Raises:
         FileNotFoundError: If the total model has not been trained.
     """
-    model: RandomForestRegressor | None = load_total_model(
-        model_name=model_name, model_type=model_type, repo=repo
-    )
+    model = load_total_model(model_name=model_name, model_type=model_type, repo=repo)
     if model is None:
         raise FileNotFoundError(
             f"Total model ({model_name!r}, {model_type!r}) not found. "
@@ -343,9 +342,8 @@ def predict_total(
 
     features: DataFrame = _make_expanded_features(df)
 
-    # Handle missing features gracefully (same as win model)
-    valid: Series[bool] = features.notna().all(axis=1)
-    preds: Series[float] = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = features.notna().all(axis=1)
+    preds = pd.Series(np.nan, index=df.index, dtype=float)
     if valid.sum() > 0:
         preds.loc[valid] = model.predict(features.loc[valid])
 
@@ -358,3 +356,35 @@ def predict_total(
     )
 
     return preds
+
+
+# ---------------------------------------------------------------------------
+# TotalTrainer (Workstream 2 D2a) — spec-only subclass of GamesTrainer
+# ---------------------------------------------------------------------------
+
+
+class TotalTrainer(GamesTrainer):
+    """Train total-points regressors (random_forest / xgboost).
+
+    Logistic is excluded — it is not a regression estimator. Attempting
+    ``TotalTrainer().train(df, model_type=GameModelType.LOGISTIC)`` raises
+    ``ValueError`` via the spec validation in :meth:`GamesTrainer.train`.
+
+    Workstream 2 D2a status: added alongside :func:`train_total_model`.
+    The free function remains wired through callers (CLI) until D2b
+    flips over and deletes it.
+    """
+
+    @property
+    def spec(self) -> GameModelSpec:
+        """Return the total-points model specification."""
+        return GameModelSpec(
+            name="total",
+            task="regression",
+            target_col="actual_total",
+            feature_set={
+                GameModelType.RANDOM_FOREST: FEATURE_SETS["expanded"],
+                GameModelType.XGBOOST: FEATURE_SETS["expanded"],
+            },
+            description="Game total points — regression.",
+        )
