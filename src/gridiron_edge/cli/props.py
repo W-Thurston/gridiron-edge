@@ -58,32 +58,25 @@ def _get_trainer(model_name: str) -> PropTrainer:
     return cls()
 
 
-def _train_and_enrich(
+def _prepare_holdout_data(
     model_name: str,
-    model_type: PropModelType = PropModelType.ELASTICNET,
-) -> tuple[DataFrame, float]:
-    """Train a model, generate holdout predictions, and enrich them.
+) -> tuple[PropTrainer, DataFrame, list[str]]:
+    """Build features once and prepare holdout-filtered, NaN-cleaned data.
+
+    Shared by champion_cmd across model types so feature engineering
+    runs once per stat family rather than once per (stat, model_type)
+    combination.
 
     Args:
         model_name: Which stat family (e.g. "qb_pass_yards").
-        model_type: Algorithm to use (elasticnet, random_forest, xgboost).
 
     Returns:
-        Tuple of (enriched predictions DataFrame, model RMSE).
+        Tuple of (trainer, holdout_df, usable_feature_columns).
     """
-    import numpy as np
-
+    from gridiron_edge.core.constants import HOLDOUT_SEASONS
     from gridiron_edge.features.player.builder import build_prop_features
-    from gridiron_edge.models.prop_prediction.post_process import (
-        TARGET_STD_MAP,
-        enrich_prop_predictions,
-    )
 
     trainer: PropTrainer = _get_trainer(model_name)
-    meta: PropModelMetadata = trainer.train(model_type=model_type)
-
-    # Build features for holdout predictions
-    from gridiron_edge.core.constants import HOLDOUT_SEASONS
 
     holdout_ints: set[int] = {int(s.split("-")[0]) for s in HOLDOUT_SEASONS}
     df: DataFrame = build_prop_features(position_filter=trainer.spec.position_filter)
@@ -105,22 +98,75 @@ def _train_and_enrich(
         typer.echo(f"No holdout data available for {model_name}")
         raise typer.Exit(code=1)
 
+    return trainer, df, usable
+
+
+def _enrich_predictions_for_holdout(
+    trainer: PropTrainer,
+    holdout_df: DataFrame,
+    usable_features: list[str],
+    model_rmse: float,
+) -> DataFrame:
+    """Predict on prepared holdout data and enrich with post-process columns.
+
+    Args:
+        trainer: Already-trained PropTrainer instance.
+        holdout_df: Holdout DataFrame from _prepare_holdout_data().
+        usable_features: Feature columns to use for prediction.
+        model_rmse: Trained model's holdout RMSE for std computation.
+
+    Returns:
+        Enriched predictions DataFrame.
+    """
+    import numpy as np
+
+    from gridiron_edge.models.prop_prediction.post_process import (
+        TARGET_STD_MAP,
+        enrich_prop_predictions,
+    )
+
     # Generate predictions
-    preds: ndarray = trainer._predict(df[usable])
+    preds: ndarray = trainer._predict(holdout_df.loc[:, usable_features])
+    df = holdout_df.copy()
     df["predicted_mean"] = preds
-    df["stat_type"] = model_name
+    df["stat_type"] = trainer.spec.name
 
     # Enrich
-    std_col: str = TARGET_STD_MAP.get(model_name, f"{target}_L3_std")
+    target: str = trainer.spec.target_col
+    std_col: str = TARGET_STD_MAP.get(trainer.spec.name, f"{target}_L3_std")
     if std_col not in df.columns:
         df[std_col] = np.nan
 
     enriched: DataFrame = enrich_prop_predictions(
         df=df,
-        model_rmse=meta.holdout_rmse,
+        model_rmse=model_rmse,
         target_std_col=std_col,
     )
 
+    return enriched
+
+
+def _train_and_enrich(
+    model_name: str,
+    model_type: PropModelType = PropModelType.ELASTICNET,
+) -> tuple[DataFrame, float]:
+    """Train a model, generate holdout predictions, and enrich them.
+
+    Convenience wrapper combining _prepare_holdout_data and training.
+    Used by evaluate_cmd, backfill_cmd, and projections_cmd which only
+    need to handle one model type. champion_cmd uses the split functions
+    directly to share data prep across model types.
+
+    Args:
+        model_name: Which stat family (e.g. "qb_pass_yards").
+        model_type: Algorithm to use.
+
+    Returns:
+        Tuple of (enriched predictions DataFrame, model RMSE).
+    """
+    trainer, holdout_df, usable = _prepare_holdout_data(model_name)
+    meta: PropModelMetadata = trainer.train(model_type=model_type)
+    enriched = _enrich_predictions_for_holdout(trainer, holdout_df, usable, meta.holdout_rmse)
     return enriched, meta.holdout_rmse
 
 
@@ -197,6 +243,10 @@ def champion_cmd(
 
     Trains ElasticNet, RandomForest, and XGBoost for each specified model,
     runs guardrail checks, and selects the champion with lowest MAE.
+
+    Data preparation (feature engineering, holdout filtering, NaN handling)
+    runs ONCE per stat family and is shared across all three model types,
+    rather than being repeated for each (stat, model_type) combination.
     """
     from gridiron_edge.evaluation.champion import (
         RegressionComparisonResult,
@@ -213,13 +263,22 @@ def champion_cmd(
     for m in models:
         console.header("props champion", subtitle=m)
 
+        # Prepare data ONCE per stat family — shared across model types.
+        with step(f"Prepare data for {m}") as s:
+            trainer, holdout_df, usable = _prepare_holdout_data(m)
+            s.set_rows(len(holdout_df))
+            s.set_detail(f"{len(usable)} usable features")
+
         results: list[RegressionModelResult] = []
 
         for mt in model_types:
             with step(f"Train {m} ({mt})") as s:
                 try:
-                    enriched, _rmse = _train_and_enrich(m, model_type=mt)
-                    target: str = _get_trainer(m).spec.target_col
+                    meta: PropModelMetadata = trainer.train(model_type=mt)
+                    enriched = _enrich_predictions_for_holdout(
+                        trainer, holdout_df, usable, meta.holdout_rmse
+                    )
+                    target: str = trainer.spec.target_col
 
                     report: PropEvalReport = evaluate_prop_model(
                         model_name=m,

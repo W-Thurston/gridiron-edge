@@ -106,21 +106,38 @@ def _compute_rolling(
     if missing_stats:
         logger.debug("Stat columns not in data (skipped): %s", missing_stats)
 
+    if not available_stats:
+        return df
+
+    # Shift once: each row's stats become the prior row's values within group.
+    # This produces NaN for the first row of each group (which becomes week 1's
+    # "no prior data" condition after the rolling reduction).
+    shifted = df.groupby(group_cols, sort=False)[available_stats].shift(1)
+
+    # For each window, compute rolling mean and std on the shifted frame.
+    # We group again because rolling needs the group context to reset at
+    # group boundaries.
     for window in windows:
+        rolled_grouped = shifted.groupby(
+            df[group_cols[0]] if len(group_cols) == 1 else [df[c] for c in group_cols], sort=False
+        )
+
+        means = rolled_grouped.rolling(window=window, min_periods=1).mean()
+        stds = rolled_grouped.rolling(window=window, min_periods=1).std()
+
+        # rolling() adds the group keys as outer index levels. Drop them so
+        # the result aligns with df by position.
+        means = means.reset_index(level=list(range(len(group_cols))), drop=True)
+        stds = stds.reset_index(level=list(range(len(group_cols))), drop=True)
+
+        # Sort to match df's index ordering (rolling can reorder by group)
+        means = means.sort_index()
+        stds = stds.sort_index()
+
+        # Assign all stat columns for this window at once
         for stat in available_stats:
-            # Simpler approach: use the shifted series directly with groupby
-            mean_col: str = f"{stat}_L{window}_mean"
-            std_col: str = f"{stat}_L{window}_std"
-
-            # Compute rolling within groups using transform
-            grouped = df.groupby(group_cols)
-
-            df[mean_col] = grouped[stat].transform(
-                lambda s, w=window: s.shift(1).rolling(window=w, min_periods=1).mean()
-            )
-            df[std_col] = grouped[stat].transform(
-                lambda s, w=window: s.shift(1).rolling(window=w, min_periods=1).std()
-            )
+            df[f"{stat}_L{window}_mean"] = means[stat]
+            df[f"{stat}_L{window}_std"] = stds[stat]
 
     n_new_cols: int = len(available_stats) * len(windows) * 2
     logger.info(

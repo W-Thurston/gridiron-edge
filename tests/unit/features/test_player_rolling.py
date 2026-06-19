@@ -160,3 +160,56 @@ class TestBuildPlayerRollingFeatures:
     def test_raises_when_no_data(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="Cleaned player game logs not found"):
             build_player_rolling_features(repo=tmp_path)
+
+
+class TestVectorizedEquivalence:
+    """Verify the vectorized _compute_rolling produces identical output.
+
+    These tests guard against future regressions when the vectorization
+    is touched. They check both numerical equality and shape preservation.
+    """
+
+    def test_consistent_across_runs(self) -> None:
+        """Computing rolling features twice gives identical results."""
+        df = _make_player_season(n_weeks=10)
+        result1 = _compute_rolling(df.copy(), windows=[3, 6])
+        result2 = _compute_rolling(df.copy(), windows=[3, 6])
+
+        for col in result1.columns:
+            if col in result2.columns:
+                pd.testing.assert_series_equal(result1[col], result2[col], check_names=False)
+
+    def test_multiple_seasons_independent_groups(self) -> None:
+        """Rolling stats for player A season 2023 don't affect player A season 2024."""
+        p_2023 = _make_player_season(player_id="P1", season=2023, n_weeks=10)
+        p_2024 = _make_player_season(player_id="P1", season=2024, n_weeks=10)
+        df = pd.concat([p_2023, p_2024], ignore_index=True)
+
+        result = _compute_rolling(df, windows=[3])
+
+        # Week 1 of 2024 should still be NaN (season-boundary reset)
+        w1_2024 = result[(result["season"] == 2024) & (result["week"] == 1)]
+        assert pd.isna(w1_2024["passing_yards_L3_mean"].iloc[0])
+
+        # Week 4 of 2024 should use weeks 1-3 of 2024 only
+        w4_2024 = result[(result["season"] == 2024) & (result["week"] == 4)]
+        prior_3_2024 = result[(result["season"] == 2024) & (result["week"].isin([1, 2, 3]))][
+            "passing_yards"
+        ].values
+        assert w4_2024["passing_yards_L3_mean"].iloc[0] == pytest.approx(prior_3_2024.mean())
+
+    def test_three_players_independent(self) -> None:
+        """Rolling stats for three players must be fully independent."""
+        p1 = _make_player_season(player_id="P1", player_name="A", n_weeks=10)
+        p2 = _make_player_season(player_id="P2", player_name="B", n_weeks=10)
+        p3 = _make_player_season(player_id="P3", player_name="C", n_weeks=10)
+        df = pd.concat([p1, p2, p3], ignore_index=True)
+
+        result = _compute_rolling(df, windows=[3])
+
+        # For each player, week 4 mean must equal their own prior 3 weeks' mean.
+        for pid in ("P1", "P2", "P3"):
+            player = result[result["player_id"] == pid]
+            prior_3 = player[player["week"].isin([1, 2, 3])]["passing_yards"].values
+            w4_mean = player[player["week"] == 4]["passing_yards_L3_mean"].iloc[0]
+            assert w4_mean == pytest.approx(prior_3.mean()), f"player {pid} mismatch"
