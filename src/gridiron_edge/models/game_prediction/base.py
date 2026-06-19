@@ -154,15 +154,18 @@ def _create_model(model_type: GameModelType, task: str) -> tuple[Any, Any]:
     """
     if task == "classification":
         if model_type == GameModelType.LOGISTIC:
-            # pyrefly: ignore [missing-import]
             from sklearn.linear_model import LogisticRegressionCV
-
-            # pyrefly: ignore [missing-import]
+            from sklearn.model_selection import TimeSeriesSplit
             from sklearn.preprocessing import StandardScaler
 
+            # TimeSeriesSplit for inner CV preserves temporal ordering when
+            # selecting C and l1_ratio. The default StratifiedKFold would
+            # produce random folds over chronologically sorted data, leaking
+            # future information into HP selection (game_base/H1).
             return (
                 LogisticRegressionCV(
                     Cs=10,
+                    cv=TimeSeriesSplit(n_splits=_CV_FOLDS),
                     solver="saga",
                     l1_ratios=(0.0, 0.5, 1.0),
                     # pyrefly: ignore [unexpected-keyword]
@@ -176,14 +179,19 @@ def _create_model(model_type: GameModelType, task: str) -> tuple[Any, Any]:
             )
 
         if model_type == GameModelType.RANDOM_FOREST:
-            # pyrefly: ignore [missing-import]
             from sklearn.calibration import CalibratedClassifierCV
-
-            # pyrefly: ignore [missing-import]
             from sklearn.ensemble import RandomForestClassifier
+            from sklearn.model_selection import TimeSeriesSplit
 
             rf = RandomForestClassifier(n_jobs=-1, random_state=42)
-            return CalibratedClassifierCV(rf, method="isotonic", cv=3), None
+            # TimeSeriesSplit for isotonic calibration: fold prediction order
+            # matters because calibrating with mixed-time folds leaks the most
+            # recent calibration data into older seasons' calibration curve
+            # (game_base/H2).
+            return (
+                CalibratedClassifierCV(rf, method="isotonic", cv=TimeSeriesSplit(n_splits=3)),
+                None,
+            )
 
         if model_type == GameModelType.XGBOOST:
             # pyrefly: ignore [missing-import]
@@ -720,13 +728,9 @@ class GamesTrainer(ABC):
         schema_version: int,
     ) -> GameModelMetadata:
         """Evaluate holdout for classification + apply XGB post-calibration."""
-        # pyrefly: ignore [missing-import]
         from sklearn.calibration import CalibratedClassifierCV
-
-        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
         from sklearn.pipeline import Pipeline
-
-        # pyrefly: ignore [missing-import]
         from sklearn.preprocessing import StandardScaler
 
         from gridiron_edge.evaluation.metrics import (
@@ -768,13 +772,19 @@ class GamesTrainer(ABC):
             }
             xgb_recal, _ = _create_model(model_type, spec.task)
             _apply_params(xgb_recal, params_no_window)
+
+            # TimeSeriesSplit for post-training calibration: same rationale as
+            # the RANDOM_FOREST branch above (game_base/H2). The training data
+            # is already chronologically sorted at this point.
+            calibration_cv = TimeSeriesSplit(n_splits=3)
+
             if self._scaler is not None:
                 cal_pipeline = Pipeline(
                     [
                         ("scaler", StandardScaler()),
                         (
                             "clf",
-                            CalibratedClassifierCV(xgb_recal, method="isotonic", cv=3),
+                            CalibratedClassifierCV(xgb_recal, method="isotonic", cv=calibration_cv),
                         ),
                     ]
                 )
@@ -782,7 +792,7 @@ class GamesTrainer(ABC):
                 self._model = cal_pipeline
                 self._scaler = None
             else:
-                cal = CalibratedClassifierCV(xgb_recal, method="isotonic", cv=3)
+                cal = CalibratedClassifierCV(xgb_recal, method="isotonic", cv=calibration_cv)
                 cal.fit(x_train_arr, y_train)
                 self._model = cal
 

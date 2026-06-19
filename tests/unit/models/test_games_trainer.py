@@ -303,3 +303,47 @@ class TestGameModelMetadataContract:
         )
         assert meta.task == "regression"
         assert meta.holdout_mae == pytest.approx(8.2)
+
+
+# ---------------------------------------------------------------------------
+# Tests for TimeSeriesSplit inner CV (Unit 1b: game_base/H1, game_base/H2)
+# ---------------------------------------------------------------------------
+
+
+class TestInnerCVTemporalAwareness:
+    """Verify inner CV uses TimeSeriesSplit instead of default StratifiedKFold.
+
+    The outer HP search loop already uses TimeSeriesSplit. These tests ensure
+    that the *inner* CVs nested inside the estimators are also temporally
+    aware, closing game_base/H1 (LogisticRegressionCV) and game_base/H2
+    (CalibratedClassifierCV).
+    """
+
+    def test_logistic_uses_timeseries_split(self) -> None:
+        """LogisticRegressionCV.cv must be a TimeSeriesSplit instance."""
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        model, _ = _create_model(GameModelType.LOGISTIC, "classification")
+        assert isinstance(model.cv, TimeSeriesSplit)
+
+    def test_rf_calibration_uses_timeseries_split(self) -> None:
+        """RF's CalibratedClassifierCV.cv must be a TimeSeriesSplit instance."""
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        model, _ = _create_model(GameModelType.RANDOM_FOREST, "classification")
+        assert isinstance(model.cv, TimeSeriesSplit)
+
+    def test_timeseries_split_n_splits_matches_cv_folds_for_logistic(self) -> None:
+        """Logistic's inner CV n_splits should equal _CV_FOLDS for consistency."""
+        from gridiron_edge.models.game_prediction.base import _CV_FOLDS
+
+        model, _ = _create_model(GameModelType.LOGISTIC, "classification")
+        assert model.cv.n_splits == _CV_FOLDS
+
+    def test_calibration_n_splits_is_three(self) -> None:
+        """RF calibration uses n_splits=3 (smaller than CV_FOLDS because
+        the calibration curve fit is a simpler problem than HP selection)."""
+        model, _ = _create_model(GameModelType.RANDOM_FOREST, "classification")
+        assert model.cv.n_splits == 3
