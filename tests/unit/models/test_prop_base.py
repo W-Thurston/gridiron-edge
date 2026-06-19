@@ -3,16 +3,22 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy import ndarray
+from numpy.random import Generator
 import pandas as pd
+from pandas import Series
 import pytest
 
 from gridiron_edge.models.prop_prediction.base import (
+    _CV_FOLDS,
     _MIN_ATTEMPTS,
     UNIVERSAL_FEATURE_COLS,
     PropModelMetadata,
     PropModelSpec,
+    PropModelType,
     PropPrediction,
     PropTrainer,
     evaluate_props,
@@ -256,3 +262,97 @@ class TestPredictNotFitted:
         dummy = pd.DataFrame({"a": [1.0, 2.0]})
         with pytest.raises(RuntimeError, match="Model not fitted"):
             trainer._predict(dummy)
+
+
+# ---------------------------------------------------------------------------
+# Tests for _fit() TimeSeriesSplit CV discipline (Unit 1: prop_base/C1, C2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def synthetic_training_data() -> tuple[pd.DataFrame, pd.Series]:
+    """Synthetic training data large enough for 5-fold TimeSeriesSplit.
+
+    Target is a noisy linear function of feat_a so any reasonable
+    regressor learns a non-trivial signal. Size chosen so each fold
+    has enough samples to fit ElasticNet meaningfully.
+    """
+    rng: Generator = np.random.default_rng(42)
+    n = 500
+    x = pd.DataFrame(
+        {
+            "feat_a": rng.normal(size=n),
+            "feat_b": rng.normal(size=n),
+            "feat_c": rng.normal(size=n),
+        }
+    )
+    y: Series = pd.Series(x["feat_a"] * 10.0 + rng.normal(scale=2.0, size=n), name="y")
+    return x, y
+
+
+class TestFitCVDiscipline:
+    """Verify _fit uses TimeSeriesSplit inner CV without touching holdout."""
+
+    def test_returns_best_params_with_cv_mae(
+        self,
+        synthetic_training_data: tuple[pd.DataFrame, pd.Series],
+    ) -> None:
+        """_fit returns best_params dict including cv_mae from inner CV."""
+        x_train, y_train = synthetic_training_data
+        trainer = _StubTrainer()
+        params: dict[str, Any] = trainer._fit(x_train, y_train, model_type=PropModelType.ELASTICNET)
+
+        assert "cv_mae" in params
+        assert isinstance(params["cv_mae"], float)
+        assert params["cv_mae"] > 0
+        # ElasticNet HPs should also be present
+        assert "alpha" in params
+        assert "l1_ratio" in params
+
+    def test_sets_model_and_scaler(
+        self,
+        synthetic_training_data: tuple[pd.DataFrame, pd.Series],
+    ) -> None:
+        """_fit populates self._model and self._scaler for downstream _predict."""
+        x_train, y_train = synthetic_training_data
+        trainer = _StubTrainer()
+        trainer._fit(x_train, y_train, model_type=PropModelType.ELASTICNET)
+
+        assert trainer._model is not None
+        # ElasticNet always gets a StandardScaler
+        assert trainer._scaler is not None
+
+    def test_fitted_model_predicts(
+        self,
+        synthetic_training_data: tuple[pd.DataFrame, pd.Series],
+    ) -> None:
+        """End-to-end: _fit then _predict produces sensible outputs."""
+        x_train, y_train = synthetic_training_data
+        trainer = _StubTrainer()
+        trainer._fit(x_train, y_train, model_type=PropModelType.ELASTICNET)
+
+        preds: ndarray = trainer._predict(x_train.head(10))
+        assert len(preds) == 10
+        # Predictions clipped by stub spec to [0, 250]
+        assert preds.min() >= 0
+        assert preds.max() <= 250
+
+    def test_raises_when_training_too_small_for_cv(self) -> None:
+        """_fit raises when training set is too small for TimeSeriesSplit folds."""
+        # TimeSeriesSplit requires at least n_splits+1 samples; we give 3.
+        x_train = pd.DataFrame({"feat_a": [1.0, 2.0, 3.0]})
+        y_train: Series = pd.Series([1.0, 2.0, 3.0])
+        trainer = _StubTrainer()
+
+        with pytest.raises((RuntimeError, ValueError)):
+            trainer._fit(x_train, y_train, model_type=PropModelType.ELASTICNET)
+
+    def test_cv_folds_matches_games_trainer(self) -> None:
+        """_CV_FOLDS in prop_base matches GamesTrainer's _CV_FOLDS.
+
+        Structural-consistency check. If someone changes one side's fold
+        count without considering the other, this test forces the conversation.
+        """
+        from gridiron_edge.models.game_prediction.base import _CV_FOLDS as GAMES_CV_FOLDS
+
+        assert _CV_FOLDS == GAMES_CV_FOLDS

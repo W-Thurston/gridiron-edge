@@ -163,6 +163,10 @@ _MIN_ATTEMPTS: Final[dict[str, tuple[str, int]]] = {
     "receiving_yards": ("targets", 2),
 }
 
+# Number of TimeSeriesSplit folds for inner CV during HP search.
+# Matches the GamesTrainer convention (also _CV_FOLDS = 5).
+_CV_FOLDS: Final[int] = 5
+
 # ---------------------------------------------------------------------------
 # Universal feature columns — shared by all prop models.
 # Built programmatically so they stay in sync with rolling + matchup modules.
@@ -334,33 +338,41 @@ class PropTrainer(ABC):
         self,
         x_train: DataFrame,
         y_train: Series,
-        x_val: DataFrame,
-        y_val: Series,
         model_type: PropModelType = PropModelType.ELASTICNET,
     ) -> dict[str, Any]:
-        """Fit the model via grid search, selecting lowest holdout MAE.
+        """Fit the model via HP search with TimeSeriesSplit inner CV.
 
-        Iterates over the parameter grid for *model_type*, trains each
-        combination, evaluates MAE on the validation set, selects the
-        best, and retrains on the full training set.
+        For each hyperparameter combination, trains on TimeSeriesSplit folds
+        of the training data and averages fold MAE. Selects the combination
+        with the lowest mean fold MAE, then retrains on the full training
+        set with those params.
+
+        The holdout set is not touched by this method. The caller
+        (``PropTrainer.train``) evaluates the refit model on the holdout
+        exactly once for honest metrics.
 
         Args:
-            x_train: Training features.
-            y_train: Training target.
-            x_val: Validation features.
-            y_val: Validation target.
+            x_train: Training features (chronologically sorted).
+            y_train: Training target (aligned with x_train).
             model_type: Algorithm to use.
 
         Returns:
-            Dict of best hyperparameters for metadata recording.
+            Dict of best hyperparameters plus ``cv_mae`` (mean fold MAE
+            of the selected combination) for metadata recording.
         """
-        from tqdm import tqdm  # pyrefly: ignore [missing-import]
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        # pyrefly: ignore [missing-import, untyped-import]
+        from tqdm import tqdm
 
         grid: list[dict[str, Any]] = _get_param_grid(model_type)
-        best_mae: float = float("inf")
+        tscv = TimeSeriesSplit(n_splits=_CV_FOLDS)
+
+        best_cv_mae: float = float("inf")
         best_params: dict[str, Any] = {}
 
-        bar = tqdm(
+        bar: tqdm[dict[str, Any]] = tqdm(
             grid,
             desc=f"  {self.spec.name} ({model_type})",
             unit="combo",
@@ -368,36 +380,59 @@ class PropTrainer(ABC):
             colour="cyan",
         )
         for params in bar:
-            model, scaler = _create_model(model_type)
-            model.set_params(**params)
+            fold_scores: list[float] = []
 
-            if scaler is not None:
-                x_tr = scaler.fit_transform(x_train)
-                x_va = scaler.transform(x_val)
-            else:
-                x_tr = x_train.values
-                x_va = x_val.values
+            for train_idx, val_idx in tscv.split(x_train):
+                x_tr_fold = x_train.iloc[train_idx]
+                y_tr_fold = y_train.iloc[train_idx]
+                x_va_fold = x_train.iloc[val_idx]
+                y_va_fold = y_train.iloc[val_idx]
 
-            model.fit(x_tr, y_train)
-            preds: ndarray = model.predict(x_va)
-            mae: float = float(np.mean(np.abs(y_val.values - preds)))
+                model, scaler = _create_model(model_type)
+                model.set_params(**params)
 
-            if mae < best_mae:
-                best_mae = mae
+                if scaler is not None:
+                    x_tr_arr = scaler.fit_transform(x_tr_fold)
+                    x_va_arr = scaler.transform(x_va_fold)
+                else:
+                    x_tr_arr = x_tr_fold.values
+                    x_va_arr = x_va_fold.values
+
+                model.fit(x_tr_arr, y_tr_fold)
+                preds: ndarray = model.predict(x_va_arr)
+                fold_mae: float = float(np.mean(np.abs(y_va_fold.values - preds)))
+                fold_scores.append(fold_mae)
+
+            if not fold_scores:
+                continue
+
+            mean_cv_mae: float = float(np.mean(fold_scores))
+
+            if mean_cv_mae < best_cv_mae:
+                best_cv_mae = mean_cv_mae
                 best_params = params
-                bar.set_postfix_str(f"best MAE={best_mae:.1f}")
+                bar.set_postfix_str(f"best CV MAE={best_cv_mae:.1f}")
 
-        # Retrain on full training set with best params
+        if not best_params:
+            msg: str = (
+                f"{self.spec.name}/{model_type.value}: HP search produced no "
+                f"valid CV folds. Training set may be too small for "
+                f"{_CV_FOLDS}-fold TimeSeriesSplit."
+            )
+            raise RuntimeError(msg)
+
+        # Refit best params on the full training set
         model, scaler = _create_model(model_type)
         model.set_params(**best_params)
 
-        x_tr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
+        x_tr_full = scaler.fit_transform(x_train) if scaler is not None else x_train.values
+        model.fit(x_tr_full, y_train)
 
-        model.fit(x_tr, y_train)
         self._model = model
         self._scaler = scaler
 
-        return best_params
+        # Include CV score in returned params for metadata observability
+        return {**best_params, "cv_mae": round(best_cv_mae, 6)}
 
     def _predict(self, x: DataFrame) -> ndarray:
         """Generate predictions from fitted model with spec-based clipping.
@@ -548,8 +583,8 @@ class PropTrainer(ABC):
             )
             raise ValueError(msg)
 
-        # Fit on training data, validated against holdout
-        params: dict[str, Any] = self._fit(x_train, y_train, x_hold, y_hold, model_type=model_type)
+        # Fit on training data using TimeSeriesSplit inner CV.
+        params: dict[str, Any] = self._fit(x_train, y_train, model_type=model_type)
 
         # Evaluate on holdout
         y_pred: ndarray = self._predict(x_hold)
