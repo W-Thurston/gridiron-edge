@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import pandas as pd
 from pandas import DataFrame
+import pytest
 from tests.fixtures.dataframes import make_epa_by_game
 
 from gridiron_edge.features.registry import FeatureRegistry
@@ -108,3 +109,59 @@ class TestBuildRollingEpa:
         result: DataFrame = _build_rolling_epa(epa, window=4)
         week6 = result.loc[(result["season"] == 2024) & (result["week"] == 6), :]
         assert not week6["rolling_off_epa_per_play"].isna().any()
+
+
+class TestBuildRollingEpaExcludePlayoffs:
+    """Verify the playoff-exclusion flag in _build_rolling_epa (epa/C1)."""
+
+    def _make_history_with_playoffs(self) -> pd.DataFrame:
+        """Build epa_by_game spanning regular and playoff weeks for one team.
+
+        2024 weeks 17, 18 are regular-season; weeks 19, 20 are playoff
+        rounds. 2025 week 1 is the start of the next regular season.
+        """
+        return pd.DataFrame(
+            {
+                "game_id": [
+                    "2024_17_a",
+                    "2024_18_a",
+                    "2024_19_a",
+                    "2024_20_a",
+                    "2025_01_a",
+                ],
+                "season": [2024, 2024, 2024, 2024, 2025],
+                "week": [17, 18, 19, 20, 1],
+                "team": ["KC", "KC", "KC", "KC", "KC"],
+                "off_epa_per_play": [0.10, 0.20, 0.30, 0.40, 0.50],
+            }
+        )
+
+    def test_excludes_playoff_games_by_default(self) -> None:
+        epa = self._make_history_with_playoffs()
+        rolled: DataFrame = _build_rolling_epa(epa, window=2)
+
+        wk1 = rolled.loc[(rolled["season"] == 2025) & (rolled["week"] == 1), :]
+        assert len(wk1) == 1
+        # 2025 week 1 rolling should be the mean of weeks 17 and 18.
+        assert wk1["rolling_off_epa_per_play"].iloc[0] == pytest.approx((0.10 + 0.20) / 2)
+
+    def test_includes_playoff_games_when_flag_false(self) -> None:
+        epa = self._make_history_with_playoffs()
+        rolled: DataFrame = _build_rolling_epa(
+            epa,
+            window=2,
+            exclude_playoffs=False,
+        )
+
+        wk1 = rolled.loc[(rolled["season"] == 2025) & (rolled["week"] == 1), :]
+        assert len(wk1) == 1
+        # 2025 week 1 rolling should be the mean of weeks 19 and 20.
+        assert wk1["rolling_off_epa_per_play"].iloc[0] == pytest.approx((0.30 + 0.40) / 2)
+
+    def test_playoff_weeks_dropped_from_output(self) -> None:
+        """When exclude_playoffs=True, no rolling rows exist for playoff weeks."""
+        epa = self._make_history_with_playoffs()
+        rolled: DataFrame = _build_rolling_epa(epa, window=2)
+
+        playoff_rows = rolled.loc[rolled["week"] > 18, :]
+        assert playoff_rows.empty

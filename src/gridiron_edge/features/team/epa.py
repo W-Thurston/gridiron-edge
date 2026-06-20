@@ -107,10 +107,17 @@ _TEAM_A_COLS: Final[list[str]] = [f"TEAM_A_{c.upper()}" for c in EPA_COLS]
 _TEAM_B_COLS: Final[list[str]] = [f"TEAM_B_{c.upper()}" for c in EPA_COLS]
 
 
+# Maximum regular-season week. Used by ``_build_rolling_epa`` to
+# optionally exclude prior-season playoff games from the rolling
+# window (epa/C1).
+_MAX_REG_SEASON_WEEK: Final[int] = 18
+
+
 def _build_rolling_epa(
     epa_by_game: pd.DataFrame,
     *,
     window: int,
+    exclude_playoffs: bool = True,
 ) -> pd.DataFrame:
     """Compute rolling EPA features for every (team, season, week) triple.
 
@@ -125,6 +132,12 @@ def _build_rolling_epa(
         epa_by_game: Game-level EPA aggregation with columns
             ``game_id``, ``season``, ``week``, ``team``, plus EPA metric cols.
         window: Number of prior games to include in each rolling window.
+        exclude_playoffs: If ``True`` (default), playoff games are
+            excluded from the rolling window source. Early-season
+            features therefore reflect only prior regular-season form,
+            not the structurally different playoff slate. Set to
+            ``False`` to include all completed games in the rolling
+            window. See ``epa/C1``.
 
     Returns:
         DataFrame with columns ``season``, ``week``, ``team``,
@@ -132,6 +145,11 @@ def _build_rolling_epa(
         One row per (season, week, team) matching the input.
     """
     df: DataFrame = epa_by_game.copy()
+
+    # Optionally drop playoff games so they do not contribute to the
+    # rolling window of any subsequent (regular- or post-season) game.
+    if exclude_playoffs:
+        df = df.loc[df["week"] <= _MAX_REG_SEASON_WEEK, :].copy()
 
     # Sort chronologically within each team
     df = df.sort_values(["team", "season", "week"]).reset_index(drop=True)
@@ -206,14 +224,23 @@ class TeamEpaFeature:
         produces=_TEAM_A_COLS + _TEAM_B_COLS,
     )
 
-    def __init__(self, window: int = DEFAULT_ROLLING_WINDOW) -> None:
-        """Initialise with a rolling window size.
+    def __init__(
+        self,
+        window: int = DEFAULT_ROLLING_WINDOW,
+        *,
+        exclude_playoffs: bool = True,
+    ) -> None:
+        """Initialise with a rolling window size and playoff-exclusion flag.
 
         Args:
             window: Number of prior games to use in each rolling window.
                 Defaults to ``DEFAULT_ROLLING_WINDOW`` (4 games).
+            exclude_playoffs: If ``True`` (default), prior-season playoff
+                games are excluded from the rolling window source. See
+                ``epa/C1``.
         """
         self.window = window
+        self.exclude_playoffs = exclude_playoffs
 
     def compute(
         self,
@@ -242,7 +269,11 @@ class TeamEpaFeature:
             # Use assign() to avoid mutating the caller's DataFrame.
             return df.assign(**{col: float("nan") for col in _TEAM_A_COLS + _TEAM_B_COLS})
 
-        rolled: DataFrame = _build_rolling_epa(epa_raw, window=self.window)
+        rolled: DataFrame = _build_rolling_epa(
+            epa_raw,
+            window=self.window,
+            exclude_playoffs=self.exclude_playoffs,
+        )
 
         # The modeling DataFrame uses long season labels ("2025-2026") and
         # WEEK_NUM, but EPA data uses season int (2025) and week int.

@@ -5,6 +5,14 @@
 Enriches the cleaned games dataset with weather conditions at game time by
 calling the OWM One Call API timemachine endpoint for each game in the most
 recently completed NFL week.
+
+Idempotency:
+    The fetch loop is guarded against re-fetching games already present
+    in ``weather_enriched``. See the ``# Idempotency check`` block in
+    :func:`fetch_weather`. The append path therefore relies on these
+    guards rather than performing an explicit dedup at write time
+    (see ``weather/H1`` from audit_2026_06_18.md, which is closed as
+    no-longer-applicable).
 """
 
 from __future__ import annotations
