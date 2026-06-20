@@ -889,3 +889,94 @@ class TestEnrichBands:
     def test_spread_columns_preserved(self) -> None:
         enriched: DataFrame = enrich_predictions(self._make_df(), recalibrate=False)
         assert "model_spread" in enriched.columns
+
+
+# ---------------------------------------------------------------------------
+# TestGetTotalStd
+# ---------------------------------------------------------------------------
+
+
+class TestGetTotalStd:
+    """Tests for get_total_std() — artifact-driven total RMSE lookup."""
+
+    def test_returns_rmse_when_artifact_present(self, tmp_path: Path) -> None:
+        from gridiron_edge.models.artifact import ArtifactStore
+        from gridiron_edge.models.game_prediction.base import GameModelMetadata
+        from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-20T00:00:00",
+            metrics={"rmse": 10.5},
+        )
+        store = ArtifactStore(tmp_path)
+        store.save(metadata=meta, model_obj={"x": 1})
+
+        result: float = get_total_std("total", "random_forest", repo=tmp_path)
+        assert result == pytest.approx(10.5)
+
+    def test_returns_default_when_no_artifact(self, tmp_path: Path) -> None:
+        from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+        result: float = get_total_std(
+            "total",
+            "elo",
+            repo=tmp_path,
+            default=13.0,
+        )
+        assert result == 13.0
+
+    def test_returns_default_when_rmse_missing(self, tmp_path: Path) -> None:
+        from gridiron_edge.models.artifact import ArtifactStore
+        from gridiron_edge.models.game_prediction.base import GameModelMetadata
+        from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-20T00:00:00",
+            metrics={"mae": 8.0},  # no rmse key
+        )
+        store = ArtifactStore(tmp_path)
+        store.save(metadata=meta, model_obj={"x": 1})
+
+        result: float = get_total_std(
+            "total",
+            "random_forest",
+            repo=tmp_path,
+            default=12.0,
+        )
+        assert result == 12.0
+
+    def test_returns_default_when_rmse_is_nan(self, tmp_path: Path) -> None:
+        from gridiron_edge.models.artifact import ArtifactStore
+        from gridiron_edge.models.game_prediction.base import GameModelMetadata
+        from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-20T00:00:00",
+            metrics={"rmse": float("nan")},
+        )
+        store = ArtifactStore(tmp_path)
+        store.save(metadata=meta, model_obj={"x": 1})
+
+        result: float = get_total_std(
+            "total",
+            "random_forest",
+            repo=tmp_path,
+            default=14.5,
+        )
+        assert result == 14.5
+
+    def test_returns_default_when_model_args_none(self) -> None:
+        from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+        assert get_total_std(None, "random_forest", default=11.0) == 11.0
+        assert get_total_std("total", None, default=11.0) == 11.0
+        assert get_total_std(None, None, default=11.0) == 11.0

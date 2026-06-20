@@ -567,6 +567,57 @@ def get_margin_std(
     return _MODEL_MARGIN_STDS.get((model_name, model_type), _DEFAULT_MARGIN_STD)
 
 
+def get_total_std(
+    model_name: str | None = None,
+    model_type: str | None = None,
+    *,
+    repo: Path | None = None,
+    default: float = 13.0,
+) -> float:
+    """Look up the holdout RMSE for a total model from its artifact metadata.
+
+    Used by edge calculations as the standard deviation of total-points
+    residuals (``total_std``). Falls back to ``default`` when:
+
+    - ``model_name`` or ``model_type`` is ``None``,
+    - no trained artifact exists for the pair,
+    - the artifact metadata does not record an ``rmse`` metric,
+    - the recorded ``rmse`` is NaN.
+
+    Args:
+        model_name: Total model purpose (typically ``"total"``).
+        model_type: Total model algorithm (e.g. ``"random_forest"``).
+        repo: Repository root override.
+        default: Value returned when artifact lookup yields no usable
+            RMSE.
+
+    Returns:
+        Total holdout RMSE, or ``default``.
+    """
+    import math
+
+    if model_name is None or model_type is None:
+        return default
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    resolved_repo: Path = repo or get_settings().repo_root
+    store = ArtifactStore(resolved_repo)
+
+    if not store.is_trained(model_name, model_type):
+        return default
+
+    meta = store.read_metadata(model_name, model_type)
+    rmse: object = meta.metrics.get("rmse")
+    if not isinstance(rmse, int | float):
+        return default
+    rmse_float = float(rmse)
+    if math.isnan(rmse_float):
+        return default
+    return rmse_float
+
+
 def win_prob_bands(
     home_win_prob: float,
     *,

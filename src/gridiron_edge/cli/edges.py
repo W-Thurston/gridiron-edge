@@ -22,6 +22,7 @@ from pandas import DataFrame
 import typer
 
 from gridiron_edge.core.settings import Settings
+from gridiron_edge.models.game_prediction.post_process import get_total_std
 
 edges_app = typer.Typer(help="Betting edge analysis.", no_args_is_help=True)
 
@@ -29,10 +30,10 @@ edges_app = typer.Typer(help="Betting edge analysis.", no_args_is_help=True)
 # Default constants
 # ---------------------------------------------------------------------------
 
-# Total model holdout RMSE — used as total_std for total cover probabilities.
-# TODO: Wire into model metadata so this updates automatically when a new
-# total model is trained.
-_DEFAULT_TOTAL_STD: float = 13.17
+# Fallback total_std used when no trained total model artifact exists
+# for the requested model_type (e.g. when the win_prob model is elo and
+# there is no matching total_elo artifact).
+_TOTAL_STD_FALLBACK: float = 13.0
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +92,11 @@ def report(
 
     # ── Build edge report ─────────────────────────────────────────────
     margin_std: float = get_margin_std("win_prob", model_type)
-    total_std: float = _DEFAULT_TOTAL_STD
+    total_std: float = get_total_std(
+        "total",
+        model_type,
+        default=_TOTAL_STD_FALLBACK,
+    )
 
     with step("Computing edges"):
         edge_report: DataFrame = build_edge_report(
@@ -173,7 +178,11 @@ def clv(
 
     # ── Build edge report for historical games ────────────────────────
     margin_std: float = get_margin_std("win_prob", model_type)
-    total_std: float = _DEFAULT_TOTAL_STD
+    total_std: float = get_total_std(
+        "total",
+        model_type,
+        default=_TOTAL_STD_FALLBACK,
+    )
 
     with step("Building edge report"):
         edge_report: DataFrame = build_edge_report(
