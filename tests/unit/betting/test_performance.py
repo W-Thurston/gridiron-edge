@@ -41,6 +41,8 @@ def _make_bet(
     edge_strength: str | None = None,
     placed_at: datetime | None = None,
     game_id: str = "2026_01_KC_LAC",
+    model_name: str | None = None,
+    model_type: str | None = None,
 ) -> dict:
     """Build a single bet row as a dict."""
     if placed_at is None:
@@ -55,7 +57,8 @@ def _make_bet(
         "odds": odds,
         "stake": stake,
         "book": book,
-        "model_version": None,
+        "model_name": model_name,
+        "model_type": model_type,
         "model_prob": model_prob,
         "model_ev": model_ev,
         "edge_strength": edge_strength,

@@ -55,7 +55,8 @@ _BET_COLUMNS: Final[list[str]] = [
     "odds",
     "stake",
     "book",
-    "model_version",
+    "model_name",
+    "model_type",
     "model_prob",
     "model_ev",
     "edge_strength",
@@ -114,10 +115,16 @@ def _read_ledger(repo: Path | None = None) -> pd.DataFrame:
     if not path.exists():
         return _empty_ledger()
     df: DataFrame = pd.read_parquet(path)
-    # Ensure all columns are present (forward compatibility)
+
+    # Backward compatibility for ledgers written before the
+    # model_name / model_type migration (Unit 6a). Old ledgers stored
+    # model identity as a single ``model_version`` column. New schema
+    # adds ``model_name`` and ``model_type`` as NA, and the obsolete
+    # ``model_version`` is dropped by the final column projection.
     for col in _BET_COLUMNS:
         if col not in df.columns:
             df[col] = None
+
     return df.loc[:, _BET_COLUMNS]
 
 
@@ -179,7 +186,8 @@ def log_bet(
     book: str,
     *,
     line: float | None = None,
-    model_version: str | None = None,
+    model_name: str | None = None,
+    model_type: str | None = None,
     model_prob: float | None = None,
     model_ev: float | None = None,
     edge_strength: str | None = None,
@@ -200,7 +208,10 @@ def log_bet(
         stake: Dollar amount wagered.
         book: Sportsbook name (e.g. ``"draftkings"``).
         line: Point spread or total line. ``None`` for moneyline bets.
-        model_version: Model version used to identify the edge.
+        model_name: Model purpose used to identify the edge
+            (e.g. ``"win_prob"``, ``"qb_pass_yards"``).
+        model_type: Algorithm used to compute the edge
+            (e.g. ``"random_forest"``, ``"elasticnet"``).
         model_prob: Model probability at bet time.
         model_ev: Expected value at bet time.
         edge_strength: Edge classification at bet time.
@@ -225,7 +236,8 @@ def log_bet(
         "odds": odds,
         "stake": stake,
         "book": book,
-        "model_version": model_version,
+        "model_name": model_name,
+        "model_type": model_type,
         "model_prob": model_prob,
         "model_ev": model_ev,
         "edge_strength": edge_strength,

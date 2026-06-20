@@ -109,7 +109,8 @@ class TestLogBet:
         _log_one(tmp_path)
         df = load_bets(repo=tmp_path)
         row = df.iloc[0]
-        assert pd.isna(row["model_version"])
+        assert pd.isna(row["model_name"])
+        assert pd.isna(row["model_type"])
         assert pd.isna(row["model_prob"])
 
     def test_status_is_open(self, tmp_path: Path) -> None:
@@ -123,6 +124,93 @@ class TestLogBet:
         bet_id: str = _log_one(tmp_path)
         parsed = UUID(bet_id)
         assert str(parsed) == bet_id
+
+
+# ---------------------------------------------------------------------------
+# TestLedgerSchema
+# ---------------------------------------------------------------------------
+
+
+class TestLedgerSchema:
+    """Schema invariants for the bet ledger."""
+
+    def test_includes_model_identity(self) -> None:
+        assert "model_name" in _BET_COLUMNS
+        assert "model_type" in _BET_COLUMNS
+
+    def test_excludes_model_version(self) -> None:
+        assert "model_version" not in _BET_COLUMNS
+
+
+class TestLogBetModelIdentity:
+    """Bet identity uses (model_name, model_type), not model_version."""
+
+    def test_log_bet_records_model_identity(self, tmp_path: Path) -> None:
+        bet_id: str = log_bet(
+            game_id=_GAME_ID,
+            market_type="moneyline",
+            side="home",
+            odds=-110,
+            stake=100.0,
+            book="draftkings",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        df = load_bets(repo=tmp_path)
+        row = df.loc[df["bet_id"] == bet_id].iloc[0]
+
+        assert row["model_name"] == "win_prob"
+        assert row["model_type"] == "random_forest"
+
+    def test_log_bet_does_not_collapse_model_variants(self, tmp_path: Path) -> None:
+        """Different algorithms for the same game must produce distinct rows."""
+        log_bet(
+            game_id=_GAME_ID,
+            market_type="moneyline",
+            side="home",
+            odds=-110,
+            stake=100.0,
+            book="draftkings",
+            model_name="win_prob",
+            model_type="elasticnet",
+            repo=tmp_path,
+        )
+        log_bet(
+            game_id=_GAME_ID,
+            market_type="moneyline",
+            side="home",
+            odds=-110,
+            stake=100.0,
+            book="draftkings",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        df = load_bets(repo=tmp_path)
+        assert len(df) == 2
+        assert set(df["model_type"]) == {"elasticnet", "random_forest"}
+
+    def test_log_bet_persists_both_identity_fields_independently(self, tmp_path: Path) -> None:
+        """model_name and model_type are independently nullable."""
+        log_bet(
+            game_id=_GAME_ID,
+            market_type="moneyline",
+            side="home",
+            odds=-110,
+            stake=100.0,
+            book="draftkings",
+            model_name="qb_pass_yards",
+            model_type=None,
+            repo=tmp_path,
+        )
+
+        df = load_bets(repo=tmp_path)
+        row = df.iloc[0]
+        assert row["model_name"] == "qb_pass_yards"
+        assert pd.isna(row["model_type"])
 
 
 # ---------------------------------------------------------------------------
