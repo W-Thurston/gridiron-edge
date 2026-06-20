@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
 from typer.testing import CliRunner
 
 from gridiron_edge.cli.props import props_app
@@ -85,3 +88,97 @@ class TestPropsRegistry:
         trainer = _get_trainer("qb_pass_yards")
         assert isinstance(trainer, PropTrainer)
         assert trainer.spec.name == "qb_pass_yards"
+
+
+class TestBackfillWalkForward:
+    """Walk-forward CLI semantics for ``gridiron props backfill``."""
+
+    def test_rejects_start_season_with_no_prior_training_window(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import pandas as pd
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.props import props_app
+
+        sentinel_df = pd.DataFrame(
+            {
+                "season": [2018, 2018, 2019, 2019, 2020, 2020],
+                "week": [1, 2, 1, 2, 1, 2],
+                "player_id": ["a"] * 6,
+                "game_id": [f"g{i}" for i in range(6)],
+                "passing_yards": [200.0] * 6,
+                "attempts": [25.0] * 6,
+            }
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.features.player.builder.build_prop_features",
+            lambda *_, **__: sentinel_df,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            props_app,
+            [
+                "backfill",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "elasticnet",
+                "--start-season",
+                "2018",
+                "--end-season",
+                "2018",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "no prior training window" in result.stdout.lower()
+
+    def test_rejects_invalid_season_range(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import pandas as pd
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.props import props_app
+
+        sentinel_df = pd.DataFrame(
+            {
+                "season": [2018, 2019],
+                "week": [1, 1],
+                "player_id": ["a", "a"],
+                "game_id": ["g1", "g2"],
+                "passing_yards": [200.0, 250.0],
+                "attempts": [25.0, 30.0],
+            }
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.features.player.builder.build_prop_features",
+            lambda *_, **__: sentinel_df,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            props_app,
+            [
+                "backfill",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "elasticnet",
+                "--start-season",
+                "2020",
+                "--end-season",
+                "2019",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "must be >=" in result.stdout

@@ -616,3 +616,131 @@ class PropTrainer(ABC):
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
         )
+
+    def train_through(
+        self,
+        *,
+        cutoff_season: int,
+        model_type: PropModelType = PropModelType.ELASTICNET,
+        repo: Path | None = None,
+    ) -> PropModelMetadata:
+        """Train using only seasons strictly before ``cutoff_season``.
+
+        Walk-forward variant of ``train()``. Training data is restricted to
+        seasons whose integer label is ``< cutoff_season``. The
+        ``cutoff_season`` itself becomes the implicit holdout window for
+        this training run, so the returned ``PropModelMetadata`` reflects
+        honest historical generalisation rather than the standard
+        ``HOLDOUT_SEASONS`` split.
+
+        Used by ``gridiron props backfill`` to produce season-by-season
+        predictions without leaking future information into the training
+        set. Each call performs a full HP search and a single refit; the
+        caller is responsible for iterating across seasons.
+
+        Args:
+            cutoff_season: Integer season label (e.g. ``2024``). Training
+                uses only seasons strictly less than this. The same value
+                is used as the single holdout season for evaluation.
+            model_type: Algorithm to use.
+            repo: Repository root override.
+
+        Returns:
+            ``PropModelMetadata`` for the walk-forward run.
+
+        Raises:
+            ValueError: If no training rows precede ``cutoff_season``, or
+                the cutoff season has no rows to evaluate against.
+        """
+        df: DataFrame = self._load_data(repo=repo)
+        features_df: DataFrame = self._build_features(df)
+        feature_cols: list[str] = self._feature_columns()
+
+        features_df = features_df.sort_values(["season", "week"]).reset_index(drop=True)
+
+        available_features: list[str] = [c for c in feature_cols if c in features_df.columns]
+
+        target: str = self.spec.target_col
+        nan_rates: Series = features_df[available_features].isna().mean()
+        usable_features: list[str] = [c for c in available_features if nan_rates[c] < 0.5]
+        dropped_features = set(available_features) - set(usable_features)
+        if dropped_features:
+            logger.info(
+                "Dropped %d features with >50%% NaN for %s: %s",
+                len(dropped_features),
+                self.spec.position_filter,
+                sorted(dropped_features)[:10],
+            )
+
+        required_cols: list[str] = [*usable_features, target]
+        n_before = len(features_df)
+        features_df = features_df.dropna(subset=required_cols)
+        logger.info(
+            "NaN drop: %d → %d rows (%d dropped, %d usable features)",
+            n_before,
+            len(features_df),
+            n_before - len(features_df),
+            len(usable_features),
+        )
+        available_features = usable_features
+
+        train_mask: Series = features_df["season"] < cutoff_season
+        hold_mask: Series = features_df["season"] == cutoff_season
+
+        train_df: DataFrame = features_df.loc[train_mask, :]
+        hold_df: DataFrame = features_df.loc[hold_mask, :]
+
+        x_train: DataFrame = train_df.loc[:, available_features]
+        y_train: Series = train_df[target]
+        x_hold: DataFrame = hold_df.loc[:, available_features]
+        y_hold: Series = hold_df[target]
+
+        logger.info(
+            "Walk-forward train %s through %d: %d train rows, %d holdout rows, %d features",
+            self.spec.name,
+            cutoff_season,
+            len(x_train),
+            len(x_hold),
+            len(available_features),
+        )
+
+        if len(x_train) == 0:
+            msg: str = (
+                f"No training rows precede cutoff_season={cutoff_season} for {self.spec.name}."
+            )
+            raise ValueError(msg)
+        if len(x_hold) == 0:
+            msg = f"No rows available for cutoff_season={cutoff_season} for {self.spec.name}."
+            raise ValueError(msg)
+
+        params: dict[str, Any] = self._fit(x_train, y_train, model_type=model_type)
+
+        y_pred: ndarray = self._predict(x_hold)
+        metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
+
+        logger.info(
+            "%s walk-forward holdout (cutoff=%d): MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
+            self.spec.name,
+            cutoff_season,
+            metrics["mae"],
+            metrics["rmse"],
+            metrics["r2"],
+            len(y_hold),
+        )
+
+        return PropModelMetadata(
+            model_name=self.spec.name,
+            model_type=model_type.value,
+            task="regression",
+            trained_at=datetime.now(UTC).isoformat(),
+            target_col=self.spec.target_col,
+            holdout_mae=metrics["mae"],
+            holdout_rmse=metrics["rmse"],
+            holdout_r2=metrics["r2"],
+            training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
+            holdout_seasons=[f"{cutoff_season}-{cutoff_season + 1}"],
+            parameters=params,
+            feature_columns=available_features,
+            n_train_rows=len(x_train),
+            n_holdout_rows=len(x_hold),
+        )

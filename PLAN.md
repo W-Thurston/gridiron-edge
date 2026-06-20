@@ -606,13 +606,17 @@ cleanup as files are touched.
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 Latest completion:
-- Unit 5 completed (2026-06-20).
-- Introduced Model / GameModel / PropModel architecture.
-- Added ModelRegistry and removed props registry bypass.
-- Migrated prop archive identity from model_version to
-  model_name + model_type.
-- Prop archive now uniquely tracks algorithm variants and no
-  longer collapses all models into a shared v1 identity.
+- Unit 7b completed (2026-06-20).
+- Added PropTrainer.train_through for honest walk-forward
+  training.
+- Rewrote `gridiron props backfill` to iterate season by
+  season, archiving each season's predictions with
+  canonical (model_name, model_type) identity.
+- Prop archive now reflects honest historical
+  generalisation rather than holdout-window-only
+  predictions.
+- Prepares the way for Unit 7c (artifact-driven prop CLI
+  commands).
 
 #### Unit summary
 
@@ -625,8 +629,11 @@ Latest completion:
 | 3    | ✅ Complete  | diagnostics, store, models, predictor | No |
 | 4    | ✅ Complete  | travel perf, Elo drift | Yes (Elo) |
 | 5    | ✅ Complete | Predictor Registry unification + prop archive identity migration | No |
-| 6    | Planned | Remaining WS2 migration work (ledger + artifact identity) | No |
-| 7    | Pending  | Prop integration spine (reduced scope) | Yes (prop) |
+| 6a   | ✅ Complete | Betting ledger identity migration | No |
+| 6b   | ✅ Complete | Artifact discriminator cleanup | No |
+| 7a   | ✅ Complete | Canonical prop evaluation join | No |
+| 7b   | ✅ Complete | Prop walk-forward backfill | Yes (prop) |
+| 7c   | Planned | Artifact-loading prop CLI commands | No |
 | 8    | Pending  | Elo engine unification | Parity test |
 | 9    | Pending  | Task-discriminated metadata | No |
 | 10   | Pending  | Trainable Protocol decision | No |

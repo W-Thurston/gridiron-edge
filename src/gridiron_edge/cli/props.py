@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from logging import Logger
-from pathlib import Path
 
 from numpy import ndarray
 from pandas import DataFrame, Series
@@ -188,6 +187,61 @@ def _train_and_enrich(
     trainer, holdout_df, usable = _prepare_holdout_data(model_name)
     meta: PropModelMetadata = trainer.train(model_type=model_type)
     enriched = _enrich_predictions_for_holdout(trainer, holdout_df, usable, meta.holdout_rmse)
+    return enriched, meta.holdout_rmse
+
+
+def _walk_forward_predict_for_season(
+    *,
+    model_name: str,
+    model_type: PropModelType,
+    season: int,
+    features_df: DataFrame,
+) -> tuple[DataFrame, float]:
+    """Train through ``season`` and predict that season's player-games.
+
+    Used by ``backfill_cmd`` to walk forward across the historical
+    range. Predictions are enriched with the standard post-process
+    columns so the result is archive-ready.
+
+    Args:
+        model_name: Prop family name (e.g. ``"qb_pass_yards"``).
+        model_type: Algorithm to use.
+        season: Integer season label. Becomes the cutoff and the
+            single prediction window.
+        features_df: Pre-built features DataFrame containing all
+            seasons. Sliced by ``season`` for the prediction step
+            to avoid rebuilding features for each iteration.
+
+    Returns:
+        Tuple of (enriched predictions DataFrame, model RMSE).
+    """
+    trainer: PropTrainer = _get_trainer(model_name)
+
+    meta: PropModelMetadata = trainer.train_through(
+        cutoff_season=season,
+        model_type=model_type,
+    )
+
+    season_df: DataFrame = features_df.loc[features_df["season"] == season, :].copy()
+
+    feature_cols: list[str] = trainer._feature_columns()
+    available: list[str] = [c for c in feature_cols if c in season_df.columns]
+    nan_rates: Series = season_df[available].isna().mean()
+    usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
+
+    target: str = trainer.spec.target_col
+    season_df = season_df.dropna(subset=[*usable, target])
+
+    if season_df.empty:
+        return DataFrame(), meta.holdout_rmse
+
+    enriched: DataFrame = _enrich_predictions_for_holdout(
+        trainer,
+        season_df,
+        usable,
+        meta.holdout_rmse,
+    )
+
     return enriched, meta.holdout_rmse
 
 
@@ -372,9 +426,22 @@ def backfill_cmd(
         "-t",
         help="Algorithm type: elasticnet, random_forest, xgboost",
     ),
+    start_season: int | None = typer.Option(
+        None,
+        "--start-season",
+        help="Earliest season to backfill (inclusive). Defaults to "
+        "the second-earliest season available so a prior training "
+        "window always exists.",
+    ),
+    end_season: int | None = typer.Option(
+        None,
+        "--end-season",
+        help="Latest season to backfill (inclusive). Defaults to the most recent season available.",
+    ),
 ) -> None:
-    """Backfill historical predictions to the archive."""
+    """Walk-forward backfill of prop predictions to the archive."""
     from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
+    from gridiron_edge.features.player.builder import build_prop_features
 
     mt = PropModelType(model_type)
     console.header(
@@ -382,21 +449,76 @@ def backfill_cmd(
         subtitle=f"{model} · {mt}",
     )
 
-    with step(f"Train {model} ({mt})") as s:
-        enriched, rmse = _train_and_enrich(model, model_type=mt)
-        s.set_rows(len(enriched))
-        s.set_detail(f"RMSE={rmse:.1f}")
+    trainer: PropTrainer = _get_trainer(model)
 
-    with step("Archive predictions") as s:
-        path: Path = archive_prop_predictions(
-            enriched,
-            is_backfilled=True,
-            model_name=model,
-            model_type=mt.value,
+    with step("Load feature data") as s:
+        features_df: DataFrame = build_prop_features(
+            position_filter=trainer.spec.position_filter,
         )
-        s.set_rows(len(enriched))
+        s.set_rows(len(features_df))
 
-    typer.echo(f"  Archived {len(enriched):,} predictions → {path}")
+    if features_df.empty:
+        typer.echo("No feature data available; nothing to backfill.")
+        raise typer.Exit(code=1)
+
+    seasons_available: list[int] = sorted(
+        int(s) for s in features_df["season"].dropna().unique().tolist()
+    )
+    if len(seasons_available) < 2:
+        typer.echo("Walk-forward backfill requires at least two seasons of feature data.")
+        raise typer.Exit(code=1)
+
+    resolved_start: int = start_season if start_season is not None else seasons_available[1]
+    resolved_end: int = end_season if end_season is not None else seasons_available[-1]
+
+    if resolved_start <= seasons_available[0]:
+        typer.echo(
+            f"--start-season {resolved_start} has no prior training "
+            f"window. Minimum allowed is {seasons_available[1]}."
+        )
+        raise typer.Exit(code=1)
+
+    if resolved_end < resolved_start:
+        typer.echo("--end-season must be >= --start-season.")
+        raise typer.Exit(code=1)
+
+    target_seasons: list[int] = [
+        s for s in seasons_available if resolved_start <= s <= resolved_end
+    ]
+    if not target_seasons:
+        typer.echo("No seasons fall within the requested backfill range.")
+        raise typer.Exit(code=1)
+
+    total_archived: int = 0
+    for season in target_seasons:
+        with step(f"Train {model} ({mt}) through {season}") as s:
+            enriched, rmse = _walk_forward_predict_for_season(
+                model_name=model,
+                model_type=mt,
+                season=season,
+                features_df=features_df,
+            )
+            s.set_rows(len(enriched))
+            s.set_detail(f"RMSE={rmse:.1f}")
+
+        if enriched.empty:
+            continue
+
+        with step(f"Archive {model} ({mt}) {season}") as s:
+            archive_prop_predictions(
+                enriched,
+                is_backfilled=True,
+                model_name=model,
+                model_type=mt.value,
+            )
+            s.set_rows(len(enriched))
+            total_archived += len(enriched)
+
+    typer.echo(
+        f"  Walk-forward backfill complete: {total_archived:,} rows "
+        f"archived across {len(target_seasons)} seasons."
+    )
+    console.summary()
 
 
 @props_app.command("projections")
