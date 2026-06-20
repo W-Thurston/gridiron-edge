@@ -93,6 +93,7 @@ class PropModelMetadata(BaseModelMetadata):
         holdout_r2: R² on holdout set.
     """
 
+    kind: str = "prop"
     target_col: str
     holdout_mae: float
     holdout_rmse: float

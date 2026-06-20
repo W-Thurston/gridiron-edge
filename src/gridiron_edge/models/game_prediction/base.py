@@ -71,6 +71,8 @@ class GameModelMetadata(BaseModelMetadata):
     ``task="regression"`` (used by ``total``). Unused metrics remain NaN.
     """
 
+    kind: str = "game"
+
     # Classification metrics (NaN for regression)
     holdout_brier: float = float("nan")
     holdout_ece: float = float("nan")

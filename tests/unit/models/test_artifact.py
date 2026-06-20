@@ -266,3 +266,92 @@ class TestSaveMetadataOnly:
         store.save_metadata(_make_game_meta())
         path: Path = tmp_path / "data" / "models" / "win_prob" / "random_forest" / "metadata.json"
         assert path.exists()
+
+
+class TestKindInvariant:
+    def test_game_meta_has_kind_game(self) -> None:
+        meta = _make_game_meta()
+        assert meta.kind == "game"
+
+    def test_prop_meta_has_kind_prop(self) -> None:
+        meta = _make_prop_meta()
+        assert meta.kind == "prop"
+
+
+class TestExplicitKindDiscriminator:
+    def test_game_metadata_roundtrips_as_game(self, tmp_path: Path) -> None:
+        store = ArtifactStore(tmp_path)
+        meta = _make_game_meta()
+        store.save(metadata=meta, model_obj={"x": 1})
+
+        out = store.read_metadata("win_prob", "random_forest")
+        assert isinstance(out, GameModelMetadata)
+        assert out.kind == "game"
+
+    def test_prop_metadata_roundtrips_as_prop(self, tmp_path: Path) -> None:
+        store = ArtifactStore(tmp_path)
+        meta = _make_prop_meta()
+        store.save(metadata=meta, model_obj={"x": 1})
+
+        out = store.read_metadata("qb_pass_yards", "elasticnet")
+        assert isinstance(out, PropModelMetadata)
+        assert out.kind == "prop"
+
+
+class TestBackwardCompatNoKind:
+    def test_legacy_prop_metadata_detected_via_target_col(self, tmp_path: Path) -> None:
+        """Old artifacts without `kind` should still discriminate correctly."""
+        import json
+
+        artifact_dir = tmp_path / "data" / "models" / "qb_pass_yards" / "elasticnet"
+        artifact_dir.mkdir(parents=True)
+        legacy: dict[str, object] = {
+            "model_name": "qb_pass_yards",
+            "model_type": "elasticnet",
+            "task": "regression",
+            "trained_at": "2025-01-01T00:00:00",
+            "schema_version": 2,
+            "training_seasons": [],
+            "holdout_seasons": [],
+            "parameters": {},
+            "feature_columns": [],
+            "n_train_rows": 0,
+            "n_holdout_rows": 0,
+            "notes": "",
+            "target_col": "passing_yards",
+            "holdout_mae": 0.0,
+            "holdout_rmse": 0.0,
+            "holdout_r2": 0.0,
+        }
+        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        store = ArtifactStore(tmp_path)
+        out = store.read_metadata("qb_pass_yards", "elasticnet")
+        assert isinstance(out, PropModelMetadata)
+        assert out.target_col == "passing_yards"
+
+    def test_legacy_game_metadata_defaults_to_game(self, tmp_path: Path) -> None:
+        import json
+
+        artifact_dir = tmp_path / "data" / "models" / "win_prob" / "random_forest"
+        artifact_dir.mkdir(parents=True)
+        legacy: dict[str, object] = {
+            "model_name": "win_prob",
+            "model_type": "random_forest",
+            "task": "classification",
+            "trained_at": "2025-01-01T00:00:00",
+            "schema_version": 2,
+            "training_seasons": [],
+            "holdout_seasons": [],
+            "parameters": {},
+            "feature_columns": [],
+            "n_train_rows": 0,
+            "n_holdout_rows": 0,
+            "notes": "",
+            "holdout_brier": 0.5,
+        }
+        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        store = ArtifactStore(tmp_path)
+        out = store.read_metadata("win_prob", "random_forest")
+        assert isinstance(out, GameModelMetadata)

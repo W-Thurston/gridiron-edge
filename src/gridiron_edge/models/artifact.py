@@ -111,6 +111,7 @@ class BaseModelMetadata:
     task: str
     trained_at: str
     schema_version: int = 2
+    kind: str = "game"
     training_seasons: list[str] = field(default_factory=list)
     holdout_seasons: list[str] = field(default_factory=list)
     parameters: dict[str, Any] = field(default_factory=dict)
@@ -123,17 +124,24 @@ class BaseModelMetadata:
 def _read_metadata_subclass(data: dict[str, Any]) -> BaseModelMetadata:
     """Discriminate metadata subclass from on-disk JSON.
 
-    Strategy: presence of ``target_col`` (a required, prop-only field) →
-    ``PropModelMetadata``. Otherwise → ``GameModelMetadata``. Both branches
-    strip unknown keys defensively to survive future schema additions on
-    the *other* subclass without crashing on this load.
+    Preferred discriminator: explicit ``kind`` field. Backward-compat:
+    artifacts written before Unit 6b stored no ``kind`` field; fall back
+    to detecting prop metadata by the presence of ``target_col``.
+
+    Both branches strip unknown keys defensively so additions to the
+    *other* subclass do not crash on this load.
     """
-    # Local imports avoid circular dependency: artifact.py is imported by
-    # both game_prediction/base.py and prop_prediction/base.py.
     from gridiron_edge.models.game_prediction.base import GameModelMetadata
     from gridiron_edge.models.prop_prediction.base import PropModelMetadata
 
-    cls: type[BaseModelMetadata] = PropModelMetadata if "target_col" in data else GameModelMetadata
+    kind: str | None = data.get("kind")
+    if kind == "prop":
+        cls: type[BaseModelMetadata] = PropModelMetadata
+    elif kind == "game":
+        cls = GameModelMetadata
+    else:
+        cls = PropModelMetadata if "target_col" in data else GameModelMetadata
+
     known: set[str] = {f.name for f in fields(cls)}
     filtered: dict[str, Any] = {k: v for k, v in data.items() if k in known}
     return cls(**filtered)
