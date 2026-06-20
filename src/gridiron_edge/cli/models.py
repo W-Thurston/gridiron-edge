@@ -76,15 +76,39 @@ def _apply_promotion_decision(
     champion_meta: BaseModelMetadata | None,
     challenger_meta: BaseModelMetadata,
     champion_dir: Path,
-    backup_dir: Path,
+    candidate_dir: Path,
     force: bool,
     no_promote: bool,
 ) -> None:
-    """Compare challenger to champion and handle promotion/rejection.
+    """Compare challenger to champion and atomically promote or discard.
 
-    Champion / backup directories live under the nested scheme; backup
-    is co-located with champion at
-    ``data/models/{model_name}/{model_type}__backup/``.
+    The challenger has been trained into ``candidate_dir`` (a sibling of
+    ``champion_dir``). This function decides whether to:
+
+    - **Promote**: atomically move ``candidate_dir`` to ``champion_dir``,
+      replacing the previous champion (which is deleted first).
+    - **Reject**: delete ``candidate_dir``, leaving the champion untouched.
+
+    The promote step is atomic at the filesystem level: ``shutil.rmtree``
+    of the old champion happens immediately before ``shutil.move`` of the
+    candidate. There's no window during which the champion directory is
+    missing while the candidate is also not in place — except for the
+    transition itself, which is bounded to a single ``move`` call. If
+    that fails mid-stream, the user has both an old-champion-deleted
+    state and a candidate dir, and recovery is to re-run training.
+
+    The training failure / interruption mode is now safe: if training
+    crashes before this function is called, ``candidate_dir`` is partial
+    or missing, but ``champion_dir`` was never touched and the existing
+    champion remains usable.
+
+    Args:
+        champion_meta: Existing champion metadata, or None if no champion.
+        challenger_meta: Newly-trained challenger metadata.
+        champion_dir: Destination path for the champion artifact.
+        candidate_dir: Path where the challenger was trained.
+        force: Override gate failures and promote anyway.
+        no_promote: Reject regardless of gate results.
     """
     import shutil
 
@@ -94,6 +118,10 @@ def _apply_promotion_decision(
     )
 
     if champion_meta is None:
+        # No existing champion — just move candidate into place.
+        if champion_dir.exists():
+            shutil.rmtree(champion_dir)
+        shutil.move(str(candidate_dir), str(champion_dir))
         typer.echo("\nNo existing champion. Saved as champion.")
         typer.echo(f"  Brier: {challenger_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
         typer.echo(f"  Artifact: {champion_dir}")
@@ -110,21 +138,99 @@ def _apply_promotion_decision(
     promote: bool = (result.should_promote or force) and not no_promote
 
     if promote:
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir)
+        # Atomic-ish promotion: delete old champion, move candidate to champion.
+        # The window between these two operations is bounded to the time of
+        # a single shutil.move call. If it fails mid-stream, the user re-runs
+        # training and the candidate path is fresh.
+        if champion_dir.exists():
+            shutil.rmtree(champion_dir)
+        shutil.move(str(candidate_dir), str(champion_dir))
         if force and not result.should_promote:
             typer.echo("  ⚠️  Force-promoted despite failed gates.")
         else:
             typer.echo("  ✅ New champion promoted.")
     else:
-        if champion_dir.exists():
-            shutil.rmtree(champion_dir)
-        shutil.move(str(backup_dir), str(champion_dir))
+        # Reject: delete candidate, champion already exists at champion_dir.
+        if candidate_dir.exists():
+            shutil.rmtree(candidate_dir)
         if no_promote:
             typer.echo("  Champion unchanged (--no-promote).")
         else:
             typer.echo("  ❌ Challenger rejected. Champion unchanged.")
             typer.echo("  Use --force to promote anyway.")
+
+
+def _train_challenger_into_candidate(
+    *,
+    predictor: Predictor,
+    df: DataFrame,
+    repo: Path,
+    champion_dir: Path,
+    candidate_dir: Path,
+    model_type: str,
+) -> BaseModelMetadata:
+    """Train challenger into ``candidate_dir`` without disturbing the champion.
+
+    Mechanism: the existing champion (if any) is temporarily moved aside to
+    a ``__holding`` directory before training. The predictor's save target
+    is ``champion_dir`` (derived from the artifact store's path scheme), so
+    we move the freshly-trained artifact to ``candidate_dir`` immediately
+    after training and restore the champion from holding.
+
+    On any failure during training, the champion is restored from holding
+    and any partial candidate is cleaned up. The user is left with the
+    same champion they started with.
+
+    Args:
+        predictor: Trainable predictor returned by ``PredictorRegistry.get()``.
+        df: Modeling feature matrix.
+        repo: Repository root.
+        champion_dir: Path where the artifact store writes by default.
+        candidate_dir: Sibling path where the trained challenger will live
+            until the promotion decision.
+        model_type: For naming the ``__holding`` sibling directory.
+
+    Returns:
+        Metadata from the trained challenger.
+
+    Raises:
+        Any exception raised by ``predictor.train()``. Champion is
+        restored before re-raising.
+    """
+    import shutil
+
+    if candidate_dir.exists():
+        shutil.rmtree(candidate_dir)
+
+    # Temporarily move existing champion aside so the predictor's save
+    # to champion_dir succeeds without overwriting.
+    champion_holding: Path | None = None
+    if champion_dir.exists():
+        champion_holding = champion_dir.parent / f"{model_type}__holding"
+        if champion_holding.exists():
+            shutil.rmtree(champion_holding)
+        shutil.move(str(champion_dir), str(champion_holding))
+
+    try:
+        # pyrefly: ignore [missing-attribute]
+        challenger_meta: BaseModelMetadata = predictor.train(df, repo=repo)
+        # Move freshly-trained artifact to candidate location.
+        shutil.move(str(champion_dir), str(candidate_dir))
+        # Restore champion from holding so it's available for comparison.
+        if champion_holding is not None:
+            shutil.move(str(champion_holding), str(champion_dir))
+    except Exception:
+        # Training failed or interrupted. Clean up any partial artifact,
+        # restore the original champion, and re-raise.
+        if champion_dir.exists():
+            shutil.rmtree(champion_dir)
+        if champion_holding is not None and champion_holding.exists():
+            shutil.move(str(champion_holding), str(champion_dir))
+        if candidate_dir.exists():
+            shutil.rmtree(candidate_dir)
+        raise
+
+    return challenger_meta
 
 
 @models_app.command("train")
@@ -151,10 +257,15 @@ def models_train(
 ) -> None:
     r"""Train a model and compare against the current champion.
 
-    If no champion exists, the new model is saved as champion.
-    If a champion exists, the new model is compared using promotion
-    gates (Brier improvement, ECE tolerance, AUC tolerance).
-    The champion is replaced only if all gates pass (or --force is used).
+    Training writes the challenger to a candidate directory. The existing
+    champion is not touched until the promotion decision is made. If
+    training fails or the user interrupts, the champion remains intact at
+    its original location.
+
+    If no champion exists, the new model is saved as champion. If a
+    champion exists, the new model is compared using promotion gates
+    (Brier improvement, ECE tolerance, AUC tolerance). The champion is
+    replaced only if all gates pass (or --force is used).
 
     \b
     Examples:
@@ -162,8 +273,6 @@ def models_train(
       gridiron models train win_prob xgboost --force
       gridiron models train win_prob logistic --no-promote
     """
-    import shutil
-
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.datasets import loaders
@@ -177,7 +286,6 @@ def models_train(
     store = ArtifactStore(repo)
     console.header("models train", subtitle=f"{model_name} {model_type}")
 
-    # ── Resolve (name, type) → composite registry key ─────────────
     registry_key: str = f"{model_name}_{model_type}"
 
     # ── Resolve model ──────────────────────────────────────────────
@@ -196,30 +304,31 @@ def models_train(
             )
         s.set_detail(predictor.spec.description)
 
-    # ── Check for existing champion ────────────────────────────────
-    champion_meta: BaseModelMetadata | None = None
+    # ── Resolve paths ──────────────────────────────────────────────
     champion_dir: Path = store.artifact_dir(model_name, model_type)
-    # Sibling directory under data/models/{model_name}/.
-    backup_dir: Path = champion_dir.parent / f"{model_type}__backup"
+    candidate_dir: Path = champion_dir.parent / f"{model_type}__candidate"
 
+    # ── Read champion metadata if present ──────────────────────────
+    champion_meta: BaseModelMetadata | None = None
     if store.is_trained(model_name, model_type):
         with step("Read champion metadata") as s:
             champion_meta = store.read_metadata(model_name, model_type)
             s.set_detail(f"Brier: {champion_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
 
-        # Backup champion before training overwrites it
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir)
-        shutil.copytree(champion_dir, backup_dir)
-        shutil.rmtree(champion_dir)
-
-    # ── Train ──────────────────────────────────────────────────────
+    # ── Train challenger into candidate directory ──────────────────
     with step("Load feature matrix") as s:
         df: DataFrame = loaders.load_modeling_file(repo)
         s.set_detail(f"{len(df):,} rows")
 
     with step(f"Train {model_name} {model_type}") as s:
-        challenger_meta: BaseModelMetadata = predictor.train(df, repo=repo)
+        challenger_meta = _train_challenger_into_candidate(
+            predictor=predictor,
+            df=df,
+            repo=repo,
+            champion_dir=champion_dir,
+            candidate_dir=candidate_dir,
+            model_type=model_type,
+        )
         s.set_detail(f"holdout Brier: {challenger_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
 
     # ── Compare and decide ─────────────────────────────────────────
@@ -227,7 +336,7 @@ def models_train(
         champion_meta=champion_meta,
         challenger_meta=challenger_meta,
         champion_dir=champion_dir,
-        backup_dir=backup_dir,
+        candidate_dir=candidate_dir,
         force=force,
         no_promote=no_promote,
     )

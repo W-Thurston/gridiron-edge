@@ -60,31 +60,50 @@ _FIGSIZE_SINGLE: Final[tuple[int, int]] = (8, 6)
 _FIGSIZE_WIDE: Final[tuple[int, int]] = (12, 6)
 _FIGSIZE_GRID: Final[tuple[int, int]] = (14, 10)
 
-# Consistent colour palette for model versions.
-# Each registered model version has a distinct colour so multi-model
-# comparison plots remain readable. Add new entries here when registering
-# a new model variant.
+# Consistent colour palette for composite model keys. Keys match the
+# PredictorRegistry composite-key format f"{model_name}_{model_type}".
+# Add new entries here when registering a new model variant.
 _MODEL_COLORS: Final[dict[str, str]] = {
-    "elo_v1": "#2563eb",  # blue
-    "elo_v2": "#7c3aed",  # purple
-    "elo_v3": "#db2777",  # pink
-    # Champion models (unversioned)
-    "random_forest": "#0891b2",  # cyan
-    "xgboost": "#15803d",  # green
-    "logistic": "#d97706",  # amber
+    "win_prob_elo": "#2563eb",  # blue
+    "win_prob_logistic": "#d97706",  # amber
+    "win_prob_random_forest": "#0891b2",  # cyan
+    "win_prob_xgboost": "#15803d",  # green
+    "total_random_forest": "#7c3aed",  # purple
+    "total_xgboost": "#db2777",  # pink
 }
 _DEFAULT_COLOR: Final[str] = "#6b7280"  # gray fallback
 
 
-def _model_color(model_version: str) -> str:
-    """Return consistent colour for a model version."""
-    return _MODEL_COLORS.get(model_version, _DEFAULT_COLOR)
+def _model_color(model_key: str) -> str:
+    """Return consistent colour for a composite model key."""
+    return _MODEL_COLORS.get(model_key, _DEFAULT_COLOR)
 
 
-def _output_dir(repo: Path, model_version: str | None = None) -> Path:
+def _model_key(eval_df: pd.DataFrame) -> str:
+    """Build composite model key from eval_df's canonical schema.
+
+    The prediction archive uses (model_name, model_type) per WS2's composite
+    key migration. This helper assembles the key for display labels and
+    output paths.
+
+    Args:
+        eval_df: Evaluation DataFrame from build_evaluation_df.
+
+    Returns:
+        Composite key f"{model_name}_{model_type}".
+
+    Raises:
+        KeyError: If eval_df is missing model_name or model_type columns.
+    """
+    name: str = str(eval_df["model_name"].iloc[0])
+    type_: str = str(eval_df["model_type"].iloc[0])
+    return f"{name}_{type_}"
+
+
+def _output_dir(repo: Path, model_key: str | None = None) -> Path:
     """Return and create the output directory for evaluation plots."""
     base: Path = repo / _EVAL_DIR
-    directory: Path = base / model_version if model_version else base
+    directory: Path = base / model_key if model_key else base
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
@@ -121,7 +140,7 @@ def plot_calibration_curve(
     Returns:
         Path to the written PNG file.
     """
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
     cal: DataFrame = calibration_table(eval_df, n_buckets=n_buckets)
     ece: float = expected_calibration_error(eval_df["away_win_prob"], eval_df["away_team_won"])
 
@@ -195,7 +214,7 @@ def plot_confidence_distribution(
     Returns:
         Path to the written PNG file.
     """
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
 
     # Split by correct / incorrect predictions (exclude ties)
     no_ties: DataFrame = eval_df.loc[eval_df["away_team_won"] != 0.5, :].copy()
@@ -268,7 +287,7 @@ def plot_roc_curve(
     Returns:
         Path to the written PNG file.
     """
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
     color: str = _model_color(model)
 
     no_ties = eval_df.loc[eval_df["away_team_won"] != 0.5, :]
@@ -322,7 +341,7 @@ def plot_brier_decomposition(
     Returns:
         Path to the written PNG file.
     """
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
     decomp: dict[str, float] = brier_decomposition(
         eval_df["away_win_prob"], eval_df["away_team_won"]
     )
@@ -371,9 +390,13 @@ def plot_feature_importance(
 ) -> Path | None:
     """Plot feature coefficients (logistic) or importance (tree models).
 
-    For logistic regression: plots signed coefficients showing direction
-    and magnitude of each feature's influence.
-    For XGBoost/tree models: plots gain-based feature importance.
+    Handles the artifact shapes the codebase actually produces:
+        - LogisticRegressionCV (bare): use .coef_
+        - LogisticRegression (bare, wrapped in Pipeline): unwrap via named_steps
+        - CalibratedClassifierCV: unwrap to base estimator
+        - Pipeline([..., ("clf", CalibratedClassifierCV(...))]): unwrap both
+        - RandomForestClassifier / RandomForestRegressor: use .feature_importances_
+        - XGBClassifier / XGBRegressor: use .feature_importances_
 
     Args:
         model_name: Model purpose (e.g. ``"win_prob"``).
@@ -381,8 +404,8 @@ def plot_feature_importance(
         repo: Repository root.
 
     Returns:
-        Path to the written PNG file, or None if the model type
-        does not support feature importance.
+        Path to the written PNG file, or None if the model artifact does
+        not expose coefficients or importances.
     """
     from gridiron_edge.models.artifact import ArtifactStore
 
@@ -392,26 +415,38 @@ def plot_feature_importance(
         logger.warning("%s: no artifact found.", display)
         return None
 
-    pipeline = store.load(model_name, model_type)
+    artifact = store.load(model_name, model_type)
     metadata: BaseModelMetadata = store.read_metadata(model_name, model_type)
     feature_names: list[str] = metadata.feature_columns
 
-    # Try logistic regression coefficients
-    clf = pipeline.named_steps.get("clf")
-    if clf is None:
-        logger.warning("%s: no 'clf' step in pipeline.", display)
+    # Unwrap nested artifact structures to find the underlying estimator.
+    estimator = _unwrap_estimator(artifact)
+    if estimator is None:
+        logger.info(
+            "%s: could not unwrap estimator from artifact type %s.",
+            display,
+            type(artifact).__name__,
+        )
         return None
 
-    if hasattr(clf, "coef_"):
-        # Logistic regression — single coefficient per feature
-        coefs = clf.coef_[0]
-        df_imp: DataFrame = pd.DataFrame(
-            {"feature": feature_names, "coefficient": coefs}
-        ).sort_values("coefficient")
+    # Use the right attribute for this estimator type.
+    coefs_or_importance, kind = _extract_importance(estimator, feature_names)
+    if coefs_or_importance is None:
+        logger.info(
+            "%s: estimator %s does not expose coef_ or feature_importances_.",
+            display,
+            type(estimator).__name__,
+        )
+        return None
 
-        fig, ax = plt.subplots(figsize=(8, max(4, len(feature_names) * 0.4)))
-        colors: list[str] = ["#dc2626" if c < 0 else "#2563eb" for c in df_imp["coefficient"]]
-        ax.barh(df_imp["feature"], df_imp["coefficient"], color=colors, edgecolor="white")
+    df_imp: DataFrame = pd.DataFrame(
+        {"feature": feature_names, "value": coefs_or_importance}
+    ).sort_values("value")
+
+    fig, ax = plt.subplots(figsize=(8, max(4, len(feature_names) * 0.4)))
+    if kind == "coefficient":
+        colors: list[str] = ["#dc2626" if v < 0 else "#2563eb" for v in df_imp["value"]]
+        ax.barh(df_imp["feature"], df_imp["value"], color=colors, edgecolor="white")
         ax.axvline(0, color="black", linewidth=0.8)
         ax.set_xlabel("Coefficient (positive = helps away team win)", fontsize=10)
         ax.set_title(
@@ -419,20 +454,11 @@ def plot_feature_importance(
             fontsize=12,
             fontweight="bold",
         )
-        ax.grid(True, alpha=0.3, axis="x")
-
-    elif hasattr(clf, "feature_importances_"):
-        # Tree-based model — feature importance
-        importances = clf.feature_importances_
-        df_imp = pd.DataFrame({"feature": feature_names, "importance": importances}).sort_values(
-            "importance"
-        )
-
-        fig, ax = plt.subplots(figsize=(8, max(4, len(feature_names) * 0.4)))
+    else:  # importance
         ax.barh(
             df_imp["feature"],
-            df_imp["importance"],
-            color=_model_color(display),
+            df_imp["value"],
+            color=_model_color(f"{model_name}_{model_type}"),
             edgecolor="white",
         )
         ax.set_xlabel("Feature importance (gain)", fontsize=10)
@@ -441,14 +467,90 @@ def plot_feature_importance(
             fontsize=12,
             fontweight="bold",
         )
-        ax.grid(True, alpha=0.3, axis="x")
+    ax.grid(True, alpha=0.3, axis="x")
 
-    else:
-        logger.info("%s: model type does not support feature importance plots.", display)
-        return None
-
-    out: Path = _output_dir(repo, display.replace("/", "_")) / "feature_importance.png"
+    out: Path = _output_dir(repo, f"{model_name}_{model_type}") / "feature_importance.png"
     return _save(fig, out)
+
+
+def _unwrap_estimator(artifact: object) -> object | None:
+    """Unwrap nested wrappers to find the underlying fittable estimator.
+
+    Handles Pipeline (extracts the final 'clf' step) and
+    CalibratedClassifierCV (extracts the calibrated_classifiers_[0].estimator).
+    Returns the artifact unchanged if it's already a bare estimator.
+    Returns None if no recognized structure is found.
+    """
+    # pyrefly: ignore [missing-import]
+    from sklearn.calibration import CalibratedClassifierCV
+
+    # pyrefly: ignore [missing-import]
+    from sklearn.pipeline import Pipeline
+
+    # Pipeline: unwrap to the 'clf' step (or last step if no clf)
+    if isinstance(artifact, Pipeline):
+        if "clf" in artifact.named_steps:
+            inner = artifact.named_steps["clf"]
+        else:
+            # Last step is conventionally the estimator
+            inner = artifact.steps[-1][1]
+        # Recurse — the inner could itself be CalibratedClassifierCV
+        return _unwrap_estimator(inner)
+
+    # CalibratedClassifierCV: unwrap to the underlying estimator. After
+    # fitting, calibrated_classifiers_ holds the fitted folds; their
+    # .estimator attribute is the actual model. We use the first fold's
+    # estimator as representative.
+    if isinstance(artifact, CalibratedClassifierCV):
+        if hasattr(artifact, "calibrated_classifiers_") and artifact.calibrated_classifiers_:
+            return artifact.calibrated_classifiers_[0].estimator
+        # Pre-fit (shouldn't happen for a loaded artifact), fall through
+        # pyrefly: ignore [missing-attribute]
+        return artifact.estimator
+
+    # Bare estimator
+    return artifact
+
+
+def _extract_importance(
+    estimator: object,
+    feature_names: list[str],
+) -> tuple[list[float] | None, str | None]:
+    """Extract coefficients or feature importances from an unwrapped estimator.
+
+    Returns:
+        Tuple of (values, kind). ``kind`` is ``"coefficient"`` for linear
+        models or ``"importance"`` for tree models. Both are ``None`` if
+        the estimator type isn't supported.
+    """
+    # Linear models: coef_
+    if hasattr(estimator, "coef_"):
+        coef = estimator.coef_
+        # For binary classification, coef_ is shape (1, n_features); flatten
+        if coef.ndim == 2:
+            coef = coef[0]
+        if len(coef) != len(feature_names):
+            logger.warning(
+                "Coefficient length (%d) does not match feature_names (%d); skipping.",
+                len(coef),
+                len(feature_names),
+            )
+            return None, None
+        return list(coef), "coefficient"
+
+    # Tree models: feature_importances_
+    if hasattr(estimator, "feature_importances_"):
+        importances = estimator.feature_importances_
+        if len(importances) != len(feature_names):
+            logger.warning(
+                "Importance length (%d) does not match feature_names (%d); skipping.",
+                len(importances),
+                len(feature_names),
+            )
+            return None, None
+        return list(importances), "importance"
+
+    return None, None
 
 
 def plot_performance_by_context(
@@ -470,7 +572,7 @@ def plot_performance_by_context(
     """
     from gridiron_edge.evaluation.metrics import accuracy
 
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
     color: str = _model_color(model)
     no_ties = eval_df.loc[eval_df["away_team_won"] != 0.5, :].copy()
 
@@ -598,7 +700,7 @@ def plot_single_model(
     Returns:
         List of paths to all written PNG files.
     """
-    model = eval_df["model_version"].iloc[0]
+    model: str = _model_key(eval_df)
     paths: list[Path] = []
 
     paths.append(plot_calibration_curve(eval_df, repo=repo))
@@ -607,20 +709,11 @@ def plot_single_model(
     paths.append(plot_brier_decomposition(eval_df, repo=repo))
     paths.append(plot_performance_by_context(eval_df, repo=repo))
 
-    # The eval_df schema carries model identity as separate
-    # (model_name, model_type) columns. The
-    # ``eval_df["model_version"]`` accesses elsewhere in this module
-    # are a known runtime breakage tracked for D4 (archive regenerate).
-    if "model_name" in eval_df.columns and "model_type" in eval_df.columns:
-        m_name: str = eval_df["model_name"].iloc[0]
-        m_type: str = eval_df["model_type"].iloc[0]
-        fi_path: Path | None = plot_feature_importance(m_name, m_type, repo=repo)
-    else:
-        fi_path = None
-        logger.warning(
-            "plot_single_model: eval_df lacks (model_name, model_type) columns; "
-            "skipping feature importance plot."
-        )
+    # Feature importance plot (best-effort; returns None if model type
+    # doesn't expose coefficients or importances).
+    m_name: str = str(eval_df["model_name"].iloc[0])
+    m_type: str = str(eval_df["model_type"].iloc[0])
+    fi_path: Path | None = plot_feature_importance(m_name, m_type, repo=repo)
     if fi_path is not None:
         paths.append(fi_path)
 
@@ -642,7 +735,7 @@ def plot_calibration_overlay(
     """Overlay calibration curves for all models on one plot.
 
     Args:
-        eval_dfs: Dict mapping model_version string to its eval DataFrame.
+        eval_dfs: Dict mapping composite model_key string to its eval DataFrame.
         repo: Repository root.
         n_buckets: Number of probability buckets for calibration.
 
@@ -687,7 +780,7 @@ def plot_roc_overlay(
     """Overlay ROC curves for all models on one plot.
 
     Args:
-        eval_dfs: Dict mapping model_version string to its eval DataFrame.
+        eval_dfs: Dict mapping composite model_key string to its eval DataFrame.
         repo: Repository root.
 
     Returns:
@@ -740,7 +833,7 @@ def plot_metric_comparison(
     """Bar chart comparing Brier score, log loss, and AUC across models.
 
     Args:
-        eval_dfs: Dict mapping model_version string to its eval DataFrame.
+        eval_dfs: Dict mapping composite model_key string to its eval DataFrame.
         repo: Repository root.
 
     Returns:
@@ -802,7 +895,7 @@ def plot_agreement_matrix(
     things; low agreement reveals where models diverge.
 
     Args:
-        eval_dfs: Dict mapping model_version string to its eval DataFrame.
+        eval_dfs: Dict mapping composite model_key string to its eval DataFrame.
         repo: Repository root.
 
     Returns:
@@ -871,7 +964,7 @@ def plot_model_comparison(
     """Generate all multi-model comparison plots.
 
     Args:
-        eval_dfs: Dict mapping model_version string to its eval DataFrame.
+        eval_dfs: Dict mapping composite model_key string to its eval DataFrame.
         repo: Repository root.
 
     Returns:

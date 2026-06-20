@@ -42,15 +42,21 @@ def _make_long_odds(n: int = 2) -> pd.DataFrame:
 
 class TestWideToLong:
     def _make_wide(self) -> pd.DataFrame:
+        """Wide-format fixture for KC @ LAC.
+
+        Row 0: Los Angeles Chargers at home (location=1).
+        Row 1: Kansas City Chiefs as visitors (location=0).
+        Canonical game_id is YYYY_WW_AWAY_HOME = "2026_01_KC_LAC".
+        """
         return pd.DataFrame(
             {
-                "team": ["Kansas City Chiefs", "Los Angeles Chargers"],
-                "opponent": ["Los Angeles Chargers", "Kansas City Chiefs"],
-                "location": [1, 0],  # 1 = home, 0 = away
+                "team": ["Los Angeles Chargers", "Kansas City Chiefs"],
+                "opponent": ["Kansas City Chiefs", "Los Angeles Chargers"],
+                "location": [1, 0],
                 "start_time": ["2026-09-10T20:20:00Z", "2026-09-10T20:20:00Z"],
                 "event_id": ["evt_001", "evt_001"],
-                "moneyline": [-150, 130],
-                "spread_value": [-3.0, 3.0],
+                "moneyline": [130, -150],  # home favored less, away favored more
+                "spread_value": [3.0, -3.0],  # home is underdog
                 "spread_odds": [-110, -110],
                 "total_OU_value": [47.5, 47.5],
                 "over_total_odds": [-110, -110],
@@ -78,6 +84,47 @@ class TestWideToLong:
         required: set[str] = {"sportsbook", "season", "week", "game_id", "market", "side"}
         assert required <= set(result.columns)
 
+    def test_game_id_uses_canonical_format(self) -> None:
+        """game_id must be YYYY_WW_AWAY_HOME, not event_id-based.
+
+        This is the store/H2 fix from audit_2026_06_18.md.
+        """
+        result: DataFrame = wide_to_long(
+            self._make_wide(),
+            sportsbook="draftkings",
+            season="2026-2027",
+            week=1,
+        )
+        # All rows for one game should share the same canonical game_id.
+        unique_gids = result["game_id"].unique()
+        assert len(unique_gids) == 1
+        assert unique_gids[0] == "2026_01_KC_LAC"
+
+    def test_skips_unresolvable_team(self) -> None:
+        """Games with unknown teams should be skipped, not crash."""
+        wide = pd.DataFrame(
+            {
+                "team": ["Fake Team", "Made Up FC"],
+                "opponent": ["Made Up FC", "Fake Team"],
+                "location": [1, 0],
+                "start_time": ["2026-09-10T20:20:00Z", "2026-09-10T20:20:00Z"],
+                "event_id": ["evt_999", "evt_999"],
+                "moneyline": [-110, -110],
+                "spread_value": [-3.0, 3.0],
+                "spread_odds": [-110, -110],
+                "total_OU_value": [47.5, 47.5],
+                "over_total_odds": [-110, -110],
+                "under_total_odds": [-110, -110],
+            }
+        )
+        result: DataFrame = wide_to_long(
+            wide,
+            sportsbook="draftkings",
+            season="2026-2027",
+            week=1,
+        )
+        assert len(result) == 0
+
 
 class TestAppendToOddsLedger:
     def test_creates_parquet_file(self, tmp_path: Path) -> None:
@@ -91,6 +138,48 @@ class TestAppendToOddsLedger:
         path: Path = append_to_odds_ledger(df, repo=tmp_path)
         loaded: DataFrame = pd.read_parquet(path)
         assert len(loaded) == 3
+
+    def test_dedup_removes_duplicate_pulls(self, tmp_path: Path) -> None:
+        """Calling append twice with the same df should NOT double rows.
+
+        This is the store/C1 fix from audit_2026_06_18.md. The original
+        df_long.loc[key_cols, :] indexing was silently broken, so dedup
+        was a no-op and re-runs would accumulate duplicate rows.
+        """
+        df: DataFrame = _make_long_odds(n=2)
+        append_to_odds_ledger(df, repo=tmp_path)
+        path: Path = append_to_odds_ledger(df, repo=tmp_path)
+
+        loaded: DataFrame = pd.read_parquet(path)
+        # Both calls used the same fetched_at, so the second call should
+        # have replaced the first call's rows, not appended to them.
+        assert len(loaded) == 2
+
+    def test_dedup_keeps_distinct_pulls(self, tmp_path: Path) -> None:
+        """Two pulls at different fetched_at timestamps should both be retained."""
+        df1: DataFrame = _make_long_odds(n=2)
+        # Change fetched_at on the second batch
+        df2: DataFrame = _make_long_odds(n=2)
+        df2["fetched_at"] = pd.Timestamp("2026-09-10 18:00:00", tz="UTC")
+        append_to_odds_ledger(df1, repo=tmp_path)
+        path: Path = append_to_odds_ledger(df2, repo=tmp_path)
+
+        loaded: DataFrame = pd.read_parquet(path)
+        # Different fetched_at means both batches should persist
+        assert len(loaded) == 4
+
+    def test_empty_df_short_circuits(self, tmp_path: Path) -> None:
+        """Appending an empty DataFrame should not touch the file."""
+        df: DataFrame = _make_long_odds(n=2)
+        path1: Path = append_to_odds_ledger(df, repo=tmp_path)
+
+        # Append empty — should be a no-op
+        empty = pd.DataFrame(columns=df.columns)
+        path2: Path = append_to_odds_ledger(empty, repo=tmp_path)
+
+        loaded: DataFrame = pd.read_parquet(path2)
+        assert len(loaded) == 2  # original rows still there
+        assert path1 == path2
 
 
 class TestWriteCurrentOddsSnapshot:

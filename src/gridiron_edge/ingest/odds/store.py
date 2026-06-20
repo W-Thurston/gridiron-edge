@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 
@@ -85,7 +85,8 @@ def wide_to_long(
     The wide format from ``pull_dk_sportsbook_odds_refactored()`` has one
     row per team per game with columns like ``moneyline``, ``spread_value``,
     ``spread_odds``, ``total_OU_value``, etc.  This function melts it into
-    one row per market per side per game.
+    one row per market per side per game and resolves canonical
+    ``game_id`` values via ``_game_id.resolve_dk_game_ids``.
 
     Args:
         df_wide: DataFrame from ``pull_dk_sportsbook_odds_refactored()``.
@@ -100,28 +101,41 @@ def wide_to_long(
 
     Returns:
         Long-format DataFrame with columns matching ``_LEDGER_COLUMNS``.
+        Rows whose teams can't be resolved to canonical game_ids are
+        excluded.
     """
-    ts = fetched_at or datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
+    from gridiron_edge.ingest.odds._game_id import resolve_dk_game_ids
+
+    # Keep UTC tz on the timestamp; archive consumers expect tz-aware
+    # datetimes per archive/H1.
+    ts = fetched_at or datetime.datetime.now(tz=datetime.UTC)
+
+    # Resolve canonical game_ids from team names. The resolver handles
+    # both the intermediate (home_team/away_team) and wide (team/opponent/
+    # location) DataFrame formats and adds a ``game_id`` column.
+    season_year: int = int(season[:4])
+    df_with_gid = resolve_dk_game_ids(df_wide, season_year=season_year, week=week)
 
     rows: list[dict] = []
-
-    # Deduplicate to one row per game (not per team)
-    games = (
-        df_wide.loc[df_wide["location"] == 1, :]
-        .copy()
-        .rename(columns={"team": "home_team_raw", "opponent": "away_team_raw"})
-    )
-    if games.empty:
-        # Fallback: group by event_id and take first
-        games: DataFrame = df_wide.groupby("event_id", sort=False).first().reset_index()
-
-    away_rows = df_wide[df_wide["location"] == 0].set_index("event_id")
-    home_rows = df_wide[df_wide["location"] == 1].set_index("event_id")
+    away_rows = df_with_gid[df_with_gid["location"] == 0].set_index("event_id")
+    home_rows = df_with_gid[df_with_gid["location"] == 1].set_index("event_id")
 
     for event_id, home_row in home_rows.iterrows():
         if event_id not in away_rows.index:
             continue
         away_row = away_rows.loc[[event_id]].iloc[0]  # type: ignore[index]
+
+        # Skip games whose teams didn't resolve to canonical short codes.
+        canonical_game_id = home_row.get("game_id")
+        if canonical_game_id is None or pd.isna(canonical_game_id):
+            logger.warning(
+                "wide_to_long: skipping event_id=%s — game_id resolution failed "
+                "for home='%s' away='%s'",
+                event_id,
+                home_row.get("team"),
+                away_row.get("team"),
+            )
+            continue
 
         home_team = str(home_row["team"])
         away_team = str(away_row["team"])
@@ -130,17 +144,12 @@ def wide_to_long(
             pd.Timestamp(start_time).strftime("%Y-%m-%d") if pd.notna(start_time) else ""
         )
 
-        # Build a canonical game_id from start_time + teams
-        # We don't have the full GAME_ID from DK so we construct a best-effort key.
-        # Format: YYYY_WW_AWAYSHORT_HOMESHORT — will be matched to canonical IDs downstream.
-        game_id: str = f"{season[:4]}_{week:02d}_{event_id}"
-
-        base: dict[str, Any | int | str] = {
+        base: dict[str, Any] = {
             "fetched_at": ts,
             "sportsbook": sportsbook,
             "season": season,
             "week": week,
-            "game_id": game_id,
+            "game_id": canonical_game_id,
             "game_date": game_date,
             "away_team": away_team,
             "home_team": home_team,
@@ -239,25 +248,28 @@ def append_to_odds_ledger(
     """
     path: Path = _odds_dir(repo) / "dk_odds_log.parquet"
 
-    if path.exists():
-        existing: DataFrame = pd.read_parquet(path)
-        # Drop any rows from the same pull (idempotent re-runs)
-        if not df_long.empty:
-            key_cols: list[str] = ["sportsbook", "season", "week", "fetched_at"]
-            key_vals: DataFrame = df_long.loc[key_cols, :].drop_duplicates()
-            mask: Series = pd.Series([True] * len(existing))
-            for _, krow in key_vals.iterrows():
-                match = (
-                    (existing["sportsbook"] == krow["sportsbook"])
-                    & (existing["season"] == krow["season"])
-                    & (existing["week"] == krow["week"])
-                    & (existing["fetched_at"] == krow["fetched_at"])
-                )
-                mask = mask & ~match
-            existing = existing.loc[mask, :]
-        df_out: DataFrame = pd.concat([existing, df_long], ignore_index=True)
-    else:
+    if not path.exists():
         df_out = df_long.copy()
+    elif df_long.empty:
+        # Nothing to add; just return the existing file path unchanged.
+        return path
+    else:
+        existing: DataFrame = pd.read_parquet(path)
+
+        # Drop any rows from the same pull (idempotent re-runs).
+        # The bug fixed here: df_long.loc[col_list, :] tried to select
+        # rows whose *index* matched those strings (not column projection).
+        # df_long[col_list] is the correct column-projection form.
+        key_cols: list[str] = ["sportsbook", "season", "week", "fetched_at"]
+        key_vals: DataFrame = df_long.loc[:, key_cols].drop_duplicates()
+
+        # Build a boolean mask: True for rows we want to KEEP from existing
+        # (i.e. rows whose key tuple does NOT appear in df_long).
+        existing_keys = existing[key_cols].apply(tuple, axis=1)
+        new_keys = key_vals.apply(tuple, axis=1)
+        existing = existing.loc[~existing_keys.isin(new_keys), :]
+
+        df_out = pd.concat([existing, df_long], ignore_index=True)
 
     df_out.to_parquet(path, index=False)
     logger.info("Odds ledger: %d total rows → %s", len(df_out), path)

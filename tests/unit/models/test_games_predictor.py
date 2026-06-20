@@ -445,3 +445,97 @@ class TestBuildGamePredictions:
             "home_win_prob",
         }
         assert required.issubset(set(result.columns))
+
+    def _make_neutral_site_df(self) -> pd.DataFrame:
+        """Modeling DataFrame with a neutral-site game (both rows HOME_FIELD=0)."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": ["G_NEUTRAL", "G_NEUTRAL"],
+                "TEAM_A": ["Chiefs", "Ravens"],
+                "TEAM_B": ["Ravens", "Chiefs"],
+                "YEAR": ["2024-2025"] * 2,
+                "WEEK_NUM": [5, 5],
+                "HOME_FIELD": [0, 0],  # Neutral: both 0
+            }
+        )
+
+    def test_neutral_site_produces_one_row(self) -> None:
+        """Neutral games must produce exactly one prediction row, not two."""
+        df = self._make_neutral_site_df()
+        probs = np.array([0.55, 0.45])  # P(Chiefs beat Ravens), P(Ravens beat Chiefs)
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        assert len(result) == 1
+
+    def test_neutral_site_deterministic_labeling(self) -> None:
+        """Neutral games label the alphabetically-first team as away."""
+        df = self._make_neutral_site_df()
+        probs = np.array([0.55, 0.45])
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        # Chiefs < Ravens alphabetically, so Chiefs is labeled "away"
+        assert result["away_team"].iloc[0] == "Chiefs"
+        assert result["home_team"].iloc[0] == "Ravens"
+
+    def test_neutral_site_probability_matches_labeling(self) -> None:
+        """The away_win_prob must match the labeled away team's win probability."""
+        df = self._make_neutral_site_df()
+        # Row 1: TEAM_A=Chiefs, prob = P(Chiefs beats Ravens) = 0.55
+        # Row 2: TEAM_A=Ravens, prob = P(Ravens beats Chiefs) = 0.45
+        probs = np.array([0.55, 0.45])
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        # Chiefs is labeled away; away_win_prob should be P(Chiefs beats Ravens)
+        assert result["away_win_prob"].iloc[0] == pytest.approx(0.55)
+        assert result["home_win_prob"].iloc[0] == pytest.approx(0.45)
+
+    def test_neutral_site_stable_across_input_order(self) -> None:
+        """Reversing input row order must produce the same output."""
+        df1 = self._make_neutral_site_df()
+        probs1 = np.array([0.55, 0.45])
+
+        # Reverse input rows
+        df2 = df1.iloc[::-1].reset_index(drop=True)
+        probs2 = probs1[::-1]
+
+        result1 = build_game_predictions(
+            df1, probs1, model_name="win_prob", model_type="random_forest"
+        )
+        result2 = build_game_predictions(
+            df2, probs2, model_name="win_prob", model_type="random_forest"
+        )
+
+        # Same away team, same probability, regardless of input order
+        assert result1["away_team"].iloc[0] == result2["away_team"].iloc[0]
+        assert result1["away_win_prob"].iloc[0] == pytest.approx(result2["away_win_prob"].iloc[0])
+
+    def test_mixed_standard_and_neutral_games(self) -> None:
+        """Standard and neutral games can coexist in one call."""
+        df = pd.DataFrame(
+            {
+                "GAME_ID": ["G_STD", "G_STD", "G_NEUTRAL", "G_NEUTRAL"],
+                "TEAM_A": ["Bills", "Dolphins", "Chiefs", "Ravens"],
+                "TEAM_B": ["Dolphins", "Bills", "Ravens", "Chiefs"],
+                "YEAR": ["2024-2025"] * 4,
+                "WEEK_NUM": [1, 1, 5, 5],
+                "HOME_FIELD": [0, 1, 0, 0],  # Std: Dolphins home. Neutral: both 0.
+            }
+        )
+        probs = np.array([0.60, 0.40, 0.55, 0.45])
+        result = build_game_predictions(
+            df, probs, model_name="win_prob", model_type="random_forest"
+        )
+        assert len(result) == 2
+
+        std_row = result[result["game_id"] == "G_STD"].iloc[0]
+        # Bills (HOME_FIELD=0) is the away team
+        assert std_row["away_team"] == "Bills"
+        assert std_row["away_win_prob"] == pytest.approx(0.60)
+
+        neutral_row = result[result["game_id"] == "G_NEUTRAL"].iloc[0]
+        # Chiefs alphabetically first, labeled away
+        assert neutral_row["away_team"] == "Chiefs"
+        assert neutral_row["away_win_prob"] == pytest.approx(0.55)

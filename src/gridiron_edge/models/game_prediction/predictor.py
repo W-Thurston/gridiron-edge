@@ -97,9 +97,18 @@ def build_game_predictions(
     """Map raw model outputs onto game-level prediction rows.
 
     The modeling DataFrame has one row per team-game (two rows per game).
-    This function filters to the away-team rows (``HOME_FIELD == 0``),
-    deduplicates on GAME_ID, and constructs the standard prediction
-    schema used by the archive.
+    This function picks exactly one row per game and constructs the
+    standard archive schema.
+
+    For standard games (one team has HOME_FIELD=1, the other HOME_FIELD=0),
+    the HOME_FIELD=0 row is kept and labeled as the away perspective.
+
+    For neutral-site games (both rows have HOME_FIELD=0 — e.g. London,
+    Mexico City), there is no canonical away/home distinction. We pick
+    the row whose TEAM_A name is alphabetically first, then label that
+    team as "away" purely for archive-schema compatibility. The actual
+    win probability assignment remains correct because TEAM_A is the
+    perspective for which ``probs`` was computed.
 
     Args:
         df: Modeling DataFrame (must include GAME_ID, TEAM_A, TEAM_B,
@@ -111,16 +120,38 @@ def build_game_predictions(
         totals: Optional predicted game totals, aligned with *df*.
 
     Returns:
-        Game-level predictions DataFrame with one row per game.
+        Game-level predictions DataFrame with exactly one row per game.
     """
     work = df.copy()
     work["_prob"] = probs
     if totals is not None:
         work["_total"] = totals
 
-    # One row per game — keep the away-team perspective.
-    # pyrefly: ignore [no-matching-overload]
-    away = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
+    # Identify games that have a "true home" (one HOME_FIELD=1 row).
+    has_home: pd.Series = work.groupby("GAME_ID")["HOME_FIELD"].transform("max") == 1
+
+    # Pick one row per game:
+    # - Standard games (has_home == True): keep the HOME_FIELD=0 row (away).
+    # - Neutral games (has_home == False): keep the row where TEAM_A is
+    #   alphabetically smaller. Stable tiebreaker; ensures the same game
+    #   gets the same away/home labeling across runs.
+    standard_rows = work.loc[has_home & (work["HOME_FIELD"] == 0)]
+
+    # For neutral games: sort by GAME_ID then TEAM_A, take the first row
+    # per GAME_ID. This deterministic picking closes the neutral-site
+    # arbitrary-labeling bug (predictor/C1 from audit_2026_06_18.md).
+    neutral_rows = (
+        work.loc[~has_home]
+        # pyrefly: ignore [no-matching-overload]
+        .sort_values(["GAME_ID", "TEAM_A"], kind="stable")
+        .drop_duplicates(subset=["GAME_ID"], keep="first")
+    )
+
+    away = (
+        pd.concat([standard_rows, neutral_rows], ignore_index=False)
+        .drop_duplicates(subset=["GAME_ID"], keep="first")
+        .sort_values(["YEAR", "WEEK_NUM", "GAME_ID"])
+    )
 
     ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
 
@@ -130,21 +161,21 @@ def build_game_predictions(
             "is_backfilled": is_backfilled,
             "model_name": model_name,
             "model_type": model_type,
-            "season": away["YEAR"],
-            "week": away["WEEK_NUM"].astype(int),
-            "game_id": away["GAME_ID"],
+            "season": away["YEAR"].values,
+            "week": away["WEEK_NUM"].astype(int).values,
+            "game_id": away["GAME_ID"].values,
             "game_date": "",
-            "away_team": away["TEAM_A"],
-            "home_team": away["TEAM_B"],
+            "away_team": away["TEAM_A"].values,
+            "home_team": away["TEAM_B"].values,
             "away_elo": float("nan"),
             "home_elo": float("nan"),
-            "away_win_prob": away["_prob"],
-            "home_win_prob": 1.0 - away["_prob"],
+            "away_win_prob": away["_prob"].to_numpy(dtype=float),
+            "home_win_prob": 1.0 - away["_prob"].to_numpy(dtype=float),
         }
     )
 
     if "_total" in away.columns:
-        result["model_total"] = away["_total"].values
+        result["model_total"] = away["_total"].to_numpy(dtype=float)
 
     return result.reset_index(drop=True)
 
