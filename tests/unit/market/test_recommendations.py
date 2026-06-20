@@ -486,3 +486,44 @@ class TestRankEdges:
         ranked: DataFrame = rank_edges(self._make_report(), min_ev=0.03)
         assert len(ranked) == 1
         assert ranked.iloc[0]["ev"] == 0.08
+
+
+class TestComputeGameEdgesHomeProbDerivation:
+    """Verify defensive derivation of home_win_prob (Unit 11 / recommendations/H2)."""
+
+    def test_uses_home_win_prob_when_present(self) -> None:
+        row = pd.Series(
+            {
+                "home_win_prob": 0.65,
+                "ml_home": -150,
+                "ml_away": 130,
+            }
+        )
+        edges = compute_game_edges(row, margin_std=10.0, total_std=10.0)
+        ml_edges = [e for e in edges if hasattr(e, "model_prob")]
+        assert len(ml_edges) == 1
+        assert ml_edges[0].model_prob == pytest.approx(0.65)
+
+    def test_derives_from_away_win_prob_when_home_missing(self) -> None:
+        row = pd.Series(
+            {
+                "away_win_prob": 0.35,
+                "ml_home": -150,
+                "ml_away": 130,
+            }
+        )
+        edges = compute_game_edges(row, margin_std=10.0, total_std=10.0)
+        ml_edges = [e for e in edges if hasattr(e, "model_prob")]
+        assert len(ml_edges) == 1
+        assert ml_edges[0].model_prob == pytest.approx(0.65)
+
+    def test_no_edge_when_neither_prob_present(self) -> None:
+        row = pd.Series(
+            {
+                "ml_home": -150,
+                "ml_away": 130,
+            }
+        )
+        edges = compute_game_edges(row, margin_std=10.0, total_std=10.0)
+        ml_edges = [e for e in edges if hasattr(e, "model_prob")]
+        assert len(ml_edges) == 0

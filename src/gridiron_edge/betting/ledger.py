@@ -434,14 +434,34 @@ def _compute_clv_for_bet(
 
 
 def _ml_clv(bet_odds: int, closing_odds: int) -> float | None:
-    """Moneyline CLV using raw implied probabilities."""
+    """Moneyline CLV using the canonical closing_line_value helper.
+
+    Unifies the ledger's CLV computation with the formula used in
+    ``market/clv.py``. The single-sided ledger row does not carry the
+    opposing odds, so the calculation still operates on raw implied
+    probabilities rather than no-vig probabilities. The canonical
+    helper performs the relative-change calculation in a single place.
+
+    Returns ``None`` for unusable inputs (e.g. American odds of zero,
+    which ``american_to_implied_prob`` rejects) so the ledger's
+    settlement path never raises mid-write.
+    """
+    from gridiron_edge.market.clv import closing_line_value
     from gridiron_edge.market.odds_math import american_to_implied_prob
 
-    bet_prob: float = american_to_implied_prob(bet_odds)
-    close_prob: float = american_to_implied_prob(closing_odds)
-    if bet_prob > 0 and close_prob > 0:
-        return (close_prob - bet_prob) / bet_prob
-    return None
+    try:
+        bet_prob: float = american_to_implied_prob(bet_odds)
+        close_prob: float = american_to_implied_prob(closing_odds)
+    except ValueError:
+        return None
+
+    if bet_prob <= 0 or close_prob <= 0:
+        return None
+
+    try:
+        return closing_line_value(bet_prob, close_prob)
+    except ValueError:
+        return None
 
 
 def _line_clv(

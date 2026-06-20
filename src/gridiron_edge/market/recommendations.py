@@ -228,15 +228,24 @@ def compute_game_edges(
     """
     edges: list[MoneylineEdge | SpreadEdge | TotalEdge] = []
 
-    # Moneyline
+    # Moneyline. Prefer the explicit ``home_win_prob`` column when
+    # present; otherwise derive it from ``away_win_prob`` so the
+    # function is robust against archives that only carry one side.
     if _has(row, "ml_home") and _has(row, "ml_away"):
-        ml: MoneylineEdge | None = moneyline_edge(
-            row["home_win_prob"],
-            int(row["ml_home"]),
-            int(row["ml_away"]),
-        )
-        if ml is not None:
-            edges.append(ml)
+        home_prob: float | None = None
+        if _has(row, "home_win_prob"):
+            home_prob = float(row["home_win_prob"])
+        elif _has(row, "away_win_prob"):
+            home_prob = 1.0 - float(row["away_win_prob"])
+
+        if home_prob is not None:
+            ml: MoneylineEdge | None = moneyline_edge(
+                home_prob,
+                int(row["ml_home"]),
+                int(row["ml_away"]),
+            )
+            if ml is not None:
+                edges.append(ml)
 
     # Spread
     if (

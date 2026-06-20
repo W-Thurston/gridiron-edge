@@ -315,3 +315,30 @@ class TestLoadBets:
         _log_one(tmp_path, market_type="moneyline", side="home", book="draftkings")
         df = load_bets(market_type="spread", book="draftkings", repo=tmp_path)
         assert len(df) == 1
+
+
+class TestMlClvUnification:
+    """Verify the ledger's _ml_clv matches the canonical CLV helper."""
+
+    def test_ml_clv_matches_canonical_helper(self) -> None:
+        from gridiron_edge.betting.ledger import _ml_clv
+        from gridiron_edge.market.clv import closing_line_value
+        from gridiron_edge.market.odds_math import american_to_implied_prob
+
+        bet_odds = -110
+        closing_odds = -130
+
+        bet_prob = american_to_implied_prob(bet_odds)
+        close_prob = american_to_implied_prob(closing_odds)
+        expected = closing_line_value(bet_prob, close_prob)
+
+        actual = _ml_clv(bet_odds, closing_odds)
+        assert actual is not None
+        assert actual == pytest.approx(expected)
+
+    def test_ml_clv_returns_none_on_invalid_odds(self) -> None:
+        from gridiron_edge.betting.ledger import _ml_clv
+
+        # american_to_implied_prob of 0 yields 0 prob -> returns None.
+        assert _ml_clv(0, -130) is None
+        assert _ml_clv(-110, 0) is None
