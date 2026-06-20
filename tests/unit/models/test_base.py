@@ -68,17 +68,13 @@ class TestTrainableProtocol:
             def predict_upcoming(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
 
-            def train(self, *, repo: Path) -> object:
-                return None
-
-            def is_trained(self, *, repo: Path) -> bool:
+            def is_trained(self, *, repo: Path | None = None) -> bool:
                 return False
 
         dummy = DummyTrainable()
         assert isinstance(dummy, Trainable)
-        assert isinstance(dummy, Predictor)  # Trainable implies Predictor
 
-    def test_predictor_without_train_is_not_trainable(self) -> None:
+    def test_predictor_without_is_trained_is_not_trainable(self) -> None:
         class PredictorOnly:
             spec = PredictorSpec(name="pred_v1", description="Predict only")
 

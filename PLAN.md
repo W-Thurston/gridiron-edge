@@ -606,17 +606,20 @@ cleanup as files are touched.
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 Latest completion:
-- Unit 9 completed (2026-06-20).
-- Collapsed eleven NaN-filled holdout metric fields across
-  GameModelMetadata and PropModelMetadata into a single
-  task-discriminated `metrics: dict[str, float]` on
-  BaseModelMetadata.
-- Schema version bumped to 3; legacy artifacts migrate
-  silently on read.
-- gridiron models list / info now display task-appropriate
-  metrics.
-- Champion/challenger comparator and prop CLI both consume
-  the new dict surface.
+- Unit 10 completed (2026-06-20).
+- Made ModelSpec.trainable the canonical declarative
+  source of truth for trainability.
+- Shrunk Trainable to describe the artifact lifecycle
+  (spec + is_trained), reflecting the architectural
+  reality that game and prop trainers have intentionally
+  different training call shapes.
+- ModelRegistry.register cross-checks spec.trainable
+  against the structural protocol so the two signals
+  can never drift.
+- Unit 10 surfaced and closed two latent gaps:
+  PropModelSpec gained a trainable field and PropTrainer
+  gained an is_trained method.
+
 #### Unit summary
 
 | Unit | Status | Findings closed | Re-baseline? |
@@ -635,7 +638,7 @@ Latest completion:
 | 7c   | ✅ Complete | Artifact-loading prop CLI commands | No |
 | 8    | ✅ Complete | Elo engine unification | No (parity test in place) |
 | 9    | ✅ Complete | Task-discriminated metadata | No |
-| 10   | Pending  | Trainable Protocol decision | No |
+| 10   | ✅ Complete | Trainable Protocol decision | No |
 | 11   | Pending  | Tier 3 surgical | Per fix |
 | Tier 4 | Ongoing | Documentation, dead code, naming | No |
 

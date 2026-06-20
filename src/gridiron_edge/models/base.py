@@ -31,8 +31,6 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from gridiron_edge.models.artifact import BaseModelMetadata
-
 
 @dataclass(frozen=True)
 class ModelSpec:
@@ -95,18 +93,19 @@ class PropModel(Model, Protocol):
 
 @runtime_checkable
 class Trainable(Protocol):
-    """Optional capability protocol for models with an explicit training step."""
+    """Optional capability protocol for models with persisted training state.
+
+    Members:
+        spec: Model identity.
+        is_trained: Whether a saved artifact exists.
+
+    The training call itself (``train(...)``) is intentionally NOT part
+    of this protocol because game trainers and prop trainers have
+    different training call shapes. The protocol describes the artifact
+    lifecycle, not the training workflow.
+    """
 
     spec: ModelSpec
-
-    def train(
-        self,
-        df: pd.DataFrame,
-        *,
-        repo: Path | None = None,
-    ) -> BaseModelMetadata:
-        """Train the model and save the artifact."""
-        ...
 
     def is_trained(self, *, repo: Path | None = None) -> bool:
         """Return whether a trained artifact exists."""

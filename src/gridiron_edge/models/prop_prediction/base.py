@@ -67,6 +67,9 @@ class PropModelSpec:
         description: Human-readable description.
         clip_lo: Minimum predicted value (predictions clipped to this floor).
         clip_hi: Maximum predicted value (predictions clipped to this ceiling).
+        trainable: Whether this model has an explicit training step.
+            Defaults to ``True`` since all prop trainers implement the
+            Trainable protocol.
     """
 
     name: str
@@ -75,6 +78,7 @@ class PropModelSpec:
     description: str = ""
     clip_lo: float = 0.0
     clip_hi: float = 1000.0
+    trainable: bool = True
 
 
 @dataclass(kw_only=True)
@@ -775,3 +779,20 @@ class PropTrainer(ABC):
         )
 
         return meta
+
+    def is_trained(self, *, repo: Path | None = None) -> bool:
+        """Return whether a trained artifact exists for the default algorithm.
+
+        Mirrors the game-side ``is_trained`` semantics so prop trainers
+        satisfy the ``Trainable`` protocol. Defaults to the
+        ``PropModelType.ELASTICNET`` artifact since the prop CLI uses
+        that algorithm as the canonical baseline.
+        """
+        from gridiron_edge.core.settings import get_settings
+        from gridiron_edge.models.artifact import ArtifactStore
+
+        resolved_repo = repo or get_settings().repo_root
+        return ArtifactStore(resolved_repo).is_trained(
+            self.spec.name,
+            PropModelType.ELASTICNET.value,
+        )

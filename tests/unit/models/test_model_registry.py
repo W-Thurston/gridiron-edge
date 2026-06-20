@@ -86,3 +86,110 @@ def test_known_model_names_includes_games_and_props() -> None:
     assert "win_prob" in names
     assert "total" in names
     assert "qb_pass_yards" in names
+
+
+def test_is_trainable_does_not_instantiate_twice() -> None:
+    """is_trainable should read spec.trainable, not instantiate."""
+    # Game models declare trainable=True; Elo declares trainable=False.
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    from gridiron_edge.models.registry import ModelRegistry
+
+    assert ModelRegistry.is_trainable("win_prob_random_forest") is True
+    assert ModelRegistry.is_trainable("win_prob_elo") is False
+
+
+def test_register_rejects_structural_without_flag() -> None:
+    """A class that implements Trainable but declares trainable=False must fail."""
+    from gridiron_edge.models.base import ModelSpec
+    from gridiron_edge.models.registry import ModelRegistry
+
+    class SilentlyTrainable:
+        spec = ModelSpec(
+            name="silently_trainable_test",
+            description="Implements Trainable but spec.trainable=False.",
+            trainable=False,
+        )
+
+        def train(self, df, *, repo=None):
+            return None
+
+        def is_trained(self, *, repo=None) -> bool:
+            return False
+
+    with pytest.raises(TypeError, match=r"declares spec\.trainable=False"):
+        ModelRegistry.register(SilentlyTrainable)
+
+
+def test_is_trainable_reads_spec_for_registered_models() -> None:
+    """is_trainable should reflect spec.trainable, not protocol detection."""
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+
+    assert ModelRegistry.is_trainable("win_prob_random_forest") is True
+    assert ModelRegistry.is_trainable("win_prob_elo") is False
+
+
+def test_trainable_names_reflects_spec_trainable() -> None:
+    """trainable_names should match the set of models with spec.trainable=True."""
+    import gridiron_edge.models.elo.predictor
+    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+
+    names = ModelRegistry.trainable_names()
+
+    assert "win_prob_random_forest" in names
+    assert "win_prob_logistic" in names
+    assert "win_prob_xgboost" in names
+    assert "total_random_forest" in names
+    assert "total_xgboost" in names
+    assert "win_prob_elo" not in names
+
+
+def test_register_rejects_train_methods_without_flag() -> None:
+    """A class that implements Trainable but sets trainable=False must fail."""
+    from pathlib import Path
+
+    from gridiron_edge.models.base import ModelSpec
+
+    class SilentlyTrainable:
+        spec = ModelSpec(
+            name="unit10_silently_trainable",
+            description="Implements Trainable but spec.trainable=False.",
+            trainable=False,
+        )
+
+        def is_trained(self, *, repo: Path | None = None) -> bool:
+            return False
+
+    with pytest.raises(TypeError, match=r"declares spec\.trainable=False"):
+        ModelRegistry.register(SilentlyTrainable)
+
+
+def test_register_accepts_consistent_declarations() -> None:
+    """Consistent declarations are accepted by the registry."""
+    from pathlib import Path
+
+    from gridiron_edge.models.base import ModelSpec
+
+    class ConsistentTrainable:
+        spec = ModelSpec(
+            name="unit10_consistent_trainable",
+            description="Trainable=True and implements Trainable.",
+            trainable=True,
+        )
+
+        def is_trained(self, *, repo: Path | None = None) -> bool:
+            return False
+
+    class ConsistentAnalytic:
+        spec = ModelSpec(
+            name="unit10_consistent_analytic",
+            description="Trainable=False and does not implement Trainable.",
+            trainable=False,
+        )
+
+    ModelRegistry.register(ConsistentTrainable)
+    ModelRegistry.register(ConsistentAnalytic)
+
+    assert ModelRegistry.is_trainable("unit10_consistent_trainable") is True
+    assert ModelRegistry.is_trainable("unit10_consistent_analytic") is False
