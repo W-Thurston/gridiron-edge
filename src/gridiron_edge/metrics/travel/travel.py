@@ -37,6 +37,10 @@ _STADIUMS_BY_NAME_COLS: Final[list[str]] = [
 # Earth radius in km for haversine
 _EARTH_RADIUS_KM: Final[float] = 6371.0
 
+# Coordinate equality tolerance for is_true_home check. ~11m at equator.
+# Smaller than any plausible inter-stadium distance.
+_COORD_TOL_DEG: Final[float] = 1e-4
+
 
 def _haversine_km(
     lat1: np.ndarray,
@@ -240,10 +244,22 @@ def add_travel_timezone_altitude(
     )
 
     # --- Determine travel mask ---
+    # Compare on stadium coordinates rather than stadium names: name
+    # spellings can drift between data sources (e.g. "Lambeau Field" vs
+    # "Lambeau Field, Green Bay"), silently falsifying string-equality
+    # comparisons even for actual home games. See audit_2026_06_18.md
+    # travel/C1. Coordinates are sourced from the same stadiums.csv for
+    # both home and game-site lookups, so coordinate equality is robust.
+
+    lat_match = (base["LATITUDE_SITE"] - base["LATITUDE_A"]).abs() < _COORD_TOL_DEG
+    lon_match = (base["LONGITUDE_SITE"] - base["LONGITUDE_A"]).abs() < _COORD_TOL_DEG
+
     is_true_home = (
         (base["HOME_FIELD"] == 1)
-        & base["STADIUM_GAME"].notna()
-        & (base["STADIUM_GAME"] == base["STADIUM_A_HOME"])
+        & base["LATITUDE_SITE"].notna()
+        & base["LATITUDE_A"].notna()
+        & lat_match
+        & lon_match
     )
     travel_mask = ~is_true_home
 

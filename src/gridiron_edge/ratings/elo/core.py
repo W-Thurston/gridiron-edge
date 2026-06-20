@@ -43,6 +43,23 @@ def update_elo(
 ) -> tuple[float, float]:
     """Update Elo ratings for winner/loser given the outcome.
 
+    Uses the zero-sum delta form: ``delta = k * (score - p_win)``,
+    ``new_winner = winner + delta``, ``new_loser = loser - delta``.
+    This is mathematically equivalent to the textbook expanded form
+    in exact arithmetic but is drift-free under floating-point: the
+    invariant ``new_winner + new_loser == winner + loser`` holds to
+    machine precision regardless of how ``p_a + p_b`` rounds.
+
+    The legacy expanded form (``new_winner = winner + k * (score_w - p_win)``,
+    ``new_loser = loser + k * (score_l - p_lose)``) accumulates drift
+    across thousands of updates because it implicitly assumes
+    ``p_a + p_b == 1.0`` exactly, but ``elo_win_probability`` only
+    guarantees this up to floating error.
+
+    Matches the form used by ``sim/_engine.py::_elo_update`` (numba)
+    and the inlined update in ``evaluation/tune.py::_simulate_and_score``.
+    See ``audit_2026_06_18.md`` ``elo_core/H1`` and ``engine/C1``.
+
     Args:
         winning_team_elo: Elo for the winner (or team A if tie).
         losing_team_elo: Elo for the loser (or team B if tie).
@@ -52,25 +69,21 @@ def update_elo(
             ``elo_win_probability``. Defaults to ``DEFAULT_ELO_DIVISOR``.
 
     Returns:
-        ``(new_winner_elo, new_loser_elo)``.
+        ``(new_winner_elo, new_loser_elo)`` with the zero-sum invariant
+        preserved to machine precision.
 
     Raises:
         ValueError: If ``win_or_tie`` is not ``1.0`` or ``0.5``.
     """
-    winners_chances, losers_chances = elo_win_probability(
+    if win_or_tie not in (1.0, 0.5):
+        msg: str = f"win_or_tie must be 1 (win) or 0.5 (tie). Your value: {win_or_tie}"
+        raise ValueError(msg)
+
+    p_winner, _ = elo_win_probability(
         winning_team_elo,
         losing_team_elo,
         divisor=divisor,
     )
 
-    if win_or_tie == 1:
-        new_winner_elo: float = winning_team_elo + k * (1 - winners_chances)
-        new_loser_elo: float = losing_team_elo + k * (0 - losers_chances)
-    elif win_or_tie == 0.5:
-        new_winner_elo = winning_team_elo + k * (0.5 - winners_chances)
-        new_loser_elo = losing_team_elo + k * (0.5 - losers_chances)
-    else:
-        msg: str = f"win_or_tie must be 1 (win) or 0.5 (tie). Your value: {win_or_tie}"
-        raise ValueError(msg)
-
-    return new_winner_elo, new_loser_elo
+    delta: float = k * (win_or_tie - p_winner)
+    return winning_team_elo + delta, losing_team_elo - delta
