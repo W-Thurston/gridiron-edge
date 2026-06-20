@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -356,3 +357,48 @@ class TestFitCVDiscipline:
         from gridiron_edge.models.game_prediction.base import _CV_FOLDS as GAMES_CV_FOLDS
 
         assert _CV_FOLDS == GAMES_CV_FOLDS
+
+
+def test_train_and_save_persists_artifact(tmp_path: Path) -> None:
+    """train_and_save writes a usable artifact via ArtifactStore."""
+    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.prop_prediction.base import (
+        PropModelMetadata,
+        PropModelType,
+    )
+    from gridiron_edge.models.prop_prediction.qb_pass_yards import (
+        QBPassYardsTrainer,
+    )
+
+    trainer = QBPassYardsTrainer()
+
+    # Inject fake fitted state so we can verify persistence without
+    # running the full training pipeline (which requires player game
+    # logs on disk).
+    trainer._model = {"fake": "model"}
+    trainer._scaler = {"fake": "scaler"}
+
+    fake_meta = PropModelMetadata(
+        model_name=trainer.spec.name,
+        model_type=PropModelType.ELASTICNET.value,
+        task="regression",
+        trained_at="2026-06-20T00:00:00",
+        target_col=trainer.spec.target_col,
+        holdout_mae=0.0,
+        holdout_rmse=0.0,
+        holdout_r2=0.0,
+    )
+
+    # Monkey-patch `train` to skip the heavy path and exercise only
+    # the persistence side of `train_and_save`.
+    original_train = trainer.train
+    try:
+        trainer.train = lambda *_, **__: fake_meta  # type: ignore[assignment]
+        trainer.train_and_save(repo=tmp_path)
+    finally:
+        trainer.train = original_train  # type: ignore[assignment]
+
+    store = ArtifactStore(tmp_path)
+    assert store.is_trained(trainer.spec.name, PropModelType.ELASTICNET.value)
+    loaded = store.load(trainer.spec.name, PropModelType.ELASTICNET.value)
+    assert loaded == {"fake": "model"}

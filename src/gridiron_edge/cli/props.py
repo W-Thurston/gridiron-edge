@@ -246,6 +246,73 @@ def _walk_forward_predict_for_season(
 
 
 # ---------------------------------------------------------------------------
+# Archive + upcoming-feature helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_archive_or_exit(
+    *,
+    model_name: str,
+    model_type: PropModelType,
+    season: int | None = None,
+) -> DataFrame:
+    """Load archive predictions for a model, exit if empty or unregistered."""
+    from gridiron_edge.evaluation.prop_archive import build_prop_evaluation_df
+
+    try:
+        eval_df: DataFrame = build_prop_evaluation_df(
+            model_name=model_name,
+            model_type=model_type.value,
+            season=season,
+        )
+    except KeyError as exc:
+        available = _all_prop_models()
+        typer.echo(f"Unknown model: {model_name}. Available: {available}")
+        raise typer.Exit(code=1) from exc
+
+    if eval_df.empty:
+        typer.echo(
+            f"No archived predictions found for {model_name} ({model_type}).\n"
+            f"Run: gridiron props backfill --model {model_name} "
+            f"--model-type {model_type.value}"
+        )
+        raise typer.Exit(code=1)
+
+    return eval_df
+
+
+def _load_upcoming_prop_features(
+    trainer: PropTrainer,
+) -> DataFrame:
+    """Load upcoming-week features for a prop trainer.
+
+    Returns an empty DataFrame when no upcoming player-game rows exist
+    yet (out-of-season, or feature pipeline not refreshed). Callers
+    must handle the empty case explicitly.
+
+    Args:
+        trainer: Prop trainer whose position filter drives feature load.
+
+    Returns:
+        DataFrame of upcoming player-game features. Empty if no
+        upcoming rows are available.
+    """
+    from gridiron_edge.features.player.builder import build_prop_features
+
+    df: DataFrame = build_prop_features(
+        position_filter=trainer.spec.position_filter,
+    )
+
+    if df.empty:
+        return df
+
+    if "is_upcoming" in df.columns:
+        df = df.loc[df["is_upcoming"], :].copy()
+
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -264,27 +331,35 @@ def evaluate_cmd(
         "-t",
         help="Algorithm type: elasticnet, random_forest, xgboost",
     ),
+    season: int | None = typer.Option(
+        None,
+        "--season",
+        help="Optional season filter (e.g. 2024).",
+    ),
 ) -> None:
-    """Run holdout evaluation report for a prop model."""
+    """Archive-driven holdout evaluation report for a prop model."""
     from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
 
     mt = PropModelType(model_type)
     console.header("props evaluate", subtitle=f"{model} · {mt}")
 
-    with step(f"Train {model} ({mt})") as s:
-        enriched, _rmse = _train_and_enrich(model, model_type=mt)
-        s.set_rows(len(enriched))
-        s.set_detail(f"RMSE={_rmse:.1f}")
+    with step("Load archived predictions") as s:
+        eval_df: DataFrame = _load_archive_or_exit(
+            model_name=model,
+            model_type=mt,
+            season=season,
+        )
+        s.set_rows(len(eval_df))
+        s.set_detail(f"{eval_df['season'].nunique()} season(s)")
 
     with step("Evaluate holdout") as s:
-        target = _get_trainer(model).spec.target_col
         report: PropEvalReport = evaluate_prop_model(
             model_name=model,
-            actual=enriched[target],
-            predicted_mean=enriched["predicted_mean"],
-            predicted_std=enriched.get("predicted_std"),
-            lo_90=enriched.get("lo_90"),
-            hi_90=enriched.get("hi_90"),
+            actual=eval_df["actual"],
+            predicted_mean=eval_df["predicted_mean"],
+            predicted_std=eval_df.get("predicted_std"),
+            lo_90=eval_df.get("lo_90"),
+            hi_90=eval_df.get("hi_90"),
         )
         s.set_detail(f"MAE={report.accuracy.mae:.1f}  R²={report.accuracy.r2:.3f}")
 
@@ -313,15 +388,18 @@ def champion_cmd(
         "-m",
         help="Model to run champion selection on, e.g. qb_pass_yards. 'all' runs all.",
     ),
+    season: int | None = typer.Option(
+        None,
+        "--season",
+        help="Optional season filter (e.g. 2024).",
+    ),
 ) -> None:
-    """Train all model types for a stat family and select champion.
+    """Archive-driven champion selection.
 
-    Trains ElasticNet, RandomForest, and XGBoost for each specified model,
-    runs guardrail checks, and selects the champion with lowest MAE.
-
-    Data preparation (feature engineering, holdout filtering, NaN handling)
-    runs ONCE per stat family and is shared across all three model types,
-    rather than being repeated for each (stat, model_type) combination.
+    For each requested stat family, compare ElasticNet, RandomForest,
+    and XGBoost archive performance and pick the lowest-MAE algorithm.
+    Requires that ``gridiron props backfill`` has already populated
+    the archive for the algorithms being compared.
     """
     from gridiron_edge.evaluation.champion import (
         RegressionComparisonResult,
@@ -338,72 +416,69 @@ def champion_cmd(
     for m in models:
         console.header("props champion", subtitle=m)
 
-        # Prepare data ONCE per stat family — shared across model types.
-        with step(f"Prepare data for {m}") as s:
-            trainer, holdout_df, usable = _prepare_holdout_data(m)
-            s.set_rows(len(holdout_df))
-            s.set_detail(f"{len(usable)} usable features")
-
         results: list[RegressionModelResult] = []
 
         for mt in model_types:
-            with step(f"Train {m} ({mt})") as s:
-                try:
-                    meta: PropModelMetadata = trainer.train(model_type=mt)
-                    enriched = _enrich_predictions_for_holdout(
-                        trainer, holdout_df, usable, meta.holdout_rmse
-                    )
-                    target: str = trainer.spec.target_col
+            with step(f"Load archive for {m} ({mt})") as s:
+                from gridiron_edge.evaluation.prop_archive import (
+                    build_prop_evaluation_df,
+                )
 
-                    report: PropEvalReport = evaluate_prop_model(
-                        model_name=m,
-                        actual=enriched[target],
-                        predicted_mean=enriched["predicted_mean"],
-                        predicted_std=enriched.get("predicted_std"),
-                        lo_90=enriched.get("lo_90"),
-                        hi_90=enriched.get("hi_90"),
-                    )
+                eval_df: DataFrame = build_prop_evaluation_df(
+                    model_name=m,
+                    model_type=mt.value,
+                    season=season,
+                )
+                if eval_df.empty:
+                    s.set_detail("no archive rows — skipping")
+                    continue
 
-                    coverage: float = float("nan")
-                    if report.coverage is not None:
-                        coverage = report.coverage.actual_coverage
+                s.set_rows(len(eval_df))
 
-                    result = RegressionModelResult(
-                        model_type=str(mt),
-                        mae=report.accuracy.mae,
-                        rmse=report.accuracy.rmse,
-                        r2=report.accuracy.r2,
-                        coverage=coverage,
-                    )
-                    results.append(result)
+            with step(f"Evaluate {m} ({mt})") as s:
+                report: PropEvalReport = evaluate_prop_model(
+                    model_name=m,
+                    actual=eval_df["actual"],
+                    predicted_mean=eval_df["predicted_mean"],
+                    predicted_std=eval_df.get("predicted_std"),
+                    lo_90=eval_df.get("lo_90"),
+                    hi_90=eval_df.get("hi_90"),
+                )
 
-                    s.set_detail(
-                        f"MAE={result.mae:.1f}  RMSE={result.rmse:.1f}  R²={result.r2:.3f}"
-                    )
-                    s.set_rows(len(enriched))
+                coverage: float = float("nan")
+                if report.coverage is not None:
+                    coverage = report.coverage.actual_coverage
 
-                except Exception as e:
-                    typer.echo(f"    ⚠️  {mt} failed: {e}")
-                    raise
+                result = RegressionModelResult(
+                    model_type=str(mt),
+                    mae=report.accuracy.mae,
+                    rmse=report.accuracy.rmse,
+                    r2=report.accuracy.r2,
+                    coverage=coverage,
+                )
+                results.append(result)
+
+                s.set_detail(f"MAE={result.mae:.1f}  RMSE={result.rmse:.1f}  R²={result.r2:.3f}")
 
         if not results:
-            typer.echo(f"\n  ❌ No models trained successfully for {m}.")
+            typer.echo(f"\n  ❌ No archived predictions found for {m}.")
             console.summary()
             continue
 
-        # Select champion
         with step("Select champion") as s:
             champion, summary = select_prop_champion(results)
             s.set_detail(f"🏆 {champion.model_type} (MAE={champion.mae:.2f})")
 
         typer.echo(summary)
 
-        # Show pairwise comparisons against champion
         challengers: list[RegressionModelResult] = [
             r for r in results if r.model_type != champion.model_type
         ]
         for challenger in challengers:
-            comparison: RegressionComparisonResult = compare_regression_models(champion, challenger)
+            comparison: RegressionComparisonResult = compare_regression_models(
+                champion,
+                challenger,
+            )
             typer.echo(format_regression_comparison(comparison))
 
         console.summary()
@@ -521,13 +596,88 @@ def backfill_cmd(
     console.summary()
 
 
+def _project_for_model(
+    *,
+    model_name: str,
+    model_type: PropModelType,
+) -> DataFrame:
+    """Load a trained prop artifact and project upcoming player-games.
+
+    Returns an empty DataFrame when:
+        - no trained artifact exists,
+        - no upcoming feature rows exist,
+        - all upcoming rows are dropped by NaN filtering.
+
+    Callers should accumulate non-empty results and present them as a
+    single projection table.
+    """
+    import numpy as np
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.prop_prediction.post_process import (
+        TARGET_STD_MAP,
+        enrich_prop_predictions,
+    )
+
+    trainer: PropTrainer = _get_trainer(model_name)
+    store = ArtifactStore(get_settings().repo_root)
+
+    if not store.is_trained(trainer.spec.name, model_type.value):
+        return DataFrame()
+
+    artifact = store.load(trainer.spec.name, model_type.value)
+    scaler = store.load_scaler(trainer.spec.name, model_type.value)
+
+    upcoming_df: DataFrame = _load_upcoming_prop_features(trainer)
+    if upcoming_df.empty:
+        return DataFrame()
+
+    feature_cols: list[str] = trainer._feature_columns()
+    available: list[str] = [c for c in feature_cols if c in upcoming_df.columns]
+    nan_rates: Series = upcoming_df[available].isna().mean()
+    usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
+
+    upcoming_clean: DataFrame = upcoming_df.dropna(subset=usable).copy()
+    if upcoming_clean.empty:
+        return DataFrame()
+
+    trainer._model = artifact
+    trainer._scaler = scaler
+
+    preds: ndarray = trainer._predict(upcoming_clean.loc[:, usable])
+
+    enriched_input: DataFrame = upcoming_clean.copy()
+    enriched_input["predicted_mean"] = preds
+    enriched_input["stat_type"] = trainer.spec.name
+
+    target: str = trainer.spec.target_col
+    std_col: str = TARGET_STD_MAP.get(trainer.spec.name, f"{target}_L3_std")
+    if std_col not in enriched_input.columns:
+        enriched_input[std_col] = np.nan
+
+    enriched: DataFrame = enrich_prop_predictions(
+        df=enriched_input,
+        model_rmse=float("nan"),
+        target_std_col=std_col,
+    )
+
+    return enriched
+
+
 @props_app.command("projections")
 def projections_cmd(
     model: str = typer.Option(
         "all",
         "--model",
         "-m",
-        help="Prop model family to project, e.g. qb_pass_yards. 'all' runs all models",
+        help="Prop model family to project, e.g. qb_pass_yards. 'all' runs all models.",
+    ),
+    model_type: str = typer.Option(
+        "elasticnet",
+        "--model-type",
+        "-t",
+        help="Algorithm type to use for projections.",
     ),
     top: int = typer.Option(
         20,
@@ -536,41 +686,32 @@ def projections_cmd(
         help="Number of top projections to display.",
     ),
 ) -> None:
-    """Display prop projections table."""
+    """Project upcoming-week player props using trained artifacts."""
+    mt = PropModelType(model_type)
     subtitle: str = "all models" if model == "all" else model
-
-    console.header(
-        "props projections",
-        subtitle=subtitle,
-    )
+    console.header("props projections", subtitle=subtitle)
 
     models: list[str] = _all_prop_models() if model == "all" else [model]
 
     all_enriched: list[DataFrame] = []
-
     for m in models:
-        with step(f"Train {m}") as s:
-            try:
-                enriched, rmse = _train_and_enrich(m)
-                s.set_rows(len(enriched))
-                s.set_detail(f"RMSE={rmse:.1f}")
-                all_enriched.append(enriched)
-            except Exception as e:
-                typer.echo(f"  ⚠️  {m} failed: {e}")
+        with step(f"Project {m} ({mt})") as s:
+            enriched: DataFrame = _project_for_model(model_name=m, model_type=mt)
+            if enriched.empty:
+                s.set_detail("no projection produced")
                 continue
+            s.set_rows(len(enriched))
+            all_enriched.append(enriched)
 
     if not all_enriched:
-        typer.echo("No models produced results.")
+        typer.echo("No projections produced.")
         raise typer.Exit(code=1)
 
     import pandas as pd
 
     combined: DataFrame = pd.concat(all_enriched, ignore_index=True)
-
-    # Sort by predicted_mean descending
     combined = combined.sort_values("predicted_mean", ascending=False)
 
-    # Format output table
     display_cols: list[str] = [
         "player_name",
         "position",
@@ -583,12 +724,10 @@ def projections_cmd(
     available_display: list[str] = [c for c in display_cols if c in combined.columns]
     display = combined[available_display].head(top).copy()
 
-    # Round numeric columns
     for col in ["predicted_mean", "lo_90", "hi_90", "predicted_std"]:
         if col in display.columns:
             display[col] = display[col].round(1)
 
-    # Rename for display
     rename_map: dict[str, str] = {
         "player_name": "Player",
         "position": "Pos",

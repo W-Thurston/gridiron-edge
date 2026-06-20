@@ -744,3 +744,41 @@ class PropTrainer(ABC):
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
         )
+
+    def train_and_save(
+        self,
+        *,
+        model_type: PropModelType = PropModelType.ELASTICNET,
+        repo: Path | None = None,
+    ) -> PropModelMetadata:
+        """Train using the standard HOLDOUT_SEASONS split and persist the artifact.
+
+        Convenience wrapper for the prop CLI workflows that need a trained,
+        persisted model. Mirrors the game-side artifact persistence pattern:
+        one call produces a fitted model, its scaler, and an on-disk
+        artifact that downstream commands (``projections_cmd``) can reload
+        without retraining.
+
+        Args:
+            model_type: Algorithm to train.
+            repo: Repository root override. Defaults to
+                ``get_settings().repo_root``.
+
+        Returns:
+            ``PropModelMetadata`` for the persisted artifact.
+        """
+        from gridiron_edge.core.settings import get_settings
+        from gridiron_edge.models.artifact import ArtifactStore
+
+        resolved_repo: Path = repo or get_settings().repo_root
+
+        meta: PropModelMetadata = self.train(model_type=model_type, repo=resolved_repo)
+
+        ArtifactStore(resolved_repo).save(
+            metadata=meta,
+            model_obj=self._model,
+            scaler=self._scaler,
+            overwrite=True,
+        )
+
+        return meta

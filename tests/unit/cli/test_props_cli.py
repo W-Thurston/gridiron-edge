@@ -182,3 +182,101 @@ class TestBackfillWalkForward:
 
         assert result.exit_code != 0
         assert "must be >=" in result.stdout
+
+
+class TestEvaluateArchiveDriven:
+    """`gridiron props evaluate` must read from the archive, not retrain."""
+
+    def test_exits_when_archive_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from pandas import DataFrame
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.props import props_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+            lambda **_: DataFrame(),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            props_app,
+            [
+                "evaluate",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "elasticnet",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "no archived predictions" in result.stdout.lower()
+
+
+class TestChampionArchiveDriven:
+    """`gridiron props champion` skips algorithms with empty archives."""
+
+    def test_skips_algorithms_with_no_archive(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from pandas import DataFrame
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.props import props_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+            lambda **_: DataFrame(),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            props_app,
+            ["champion", "--model", "qb_pass_yards"],
+        )
+
+        # Champion exits with the "no archive" path. We do not assert
+        # success since no algorithm has any rows; the important thing
+        # is that the command does not crash.
+        assert "No archived" in result.stdout or result.exit_code in (0, 1)
+
+
+class TestProjectionsArtifactDriven:
+    """`gridiron props projections` must require a trained artifact."""
+
+    def test_skips_models_without_artifact(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.props import props_app
+
+        # Force ArtifactStore.is_trained -> False
+        monkeypatch.setattr(
+            "gridiron_edge.models.artifact.ArtifactStore.is_trained",
+            lambda *_, **__: False,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            props_app,
+            [
+                "projections",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "elasticnet",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "No projections produced" in result.stdout

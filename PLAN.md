@@ -606,17 +606,14 @@ cleanup as files are touched.
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 Latest completion:
-- Unit 7b completed (2026-06-20).
-- Added PropTrainer.train_through for honest walk-forward
-  training.
-- Rewrote `gridiron props backfill` to iterate season by
-  season, archiving each season's predictions with
-  canonical (model_name, model_type) identity.
-- Prop archive now reflects honest historical
-  generalisation rather than holdout-window-only
-  predictions.
-- Prepares the way for Unit 7c (artifact-driven prop CLI
-  commands).
+- Unit 7c completed (2026-06-20).
+- Prop CLI commands are now archive- or artifact-driven
+  instead of retraining inside each invocation.
+- Introduced PropTrainer.train_and_save.
+- Restored friendly Unknown-model CLI errors broken by
+  the Unit 5a registry unification.
+- Prop integration spine is complete; the prop CLI now
+  mirrors the game CLI architecture.
 
 #### Unit summary
 
@@ -633,7 +630,7 @@ Latest completion:
 | 6b   | ✅ Complete | Artifact discriminator cleanup | No |
 | 7a   | ✅ Complete | Canonical prop evaluation join | No |
 | 7b   | ✅ Complete | Prop walk-forward backfill | Yes (prop) |
-| 7c   | Planned | Artifact-loading prop CLI commands | No |
+| 7c   | ✅ Complete | Artifact-loading prop CLI commands | No |
 | 8    | Pending  | Elo engine unification | Parity test |
 | 9    | Pending  | Task-discriminated metadata | No |
 | 10   | Pending  | Trainable Protocol decision | No |
