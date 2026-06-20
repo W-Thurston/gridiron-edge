@@ -90,6 +90,79 @@ ALL_STAGES: list[str] = [
     "build-features",
 ]
 
+# ===========================================================================
+# STAGE DEPENDENCY CHECKING
+# ===========================================================================
+
+# Map of (stage → file path tuple relative to repo root). The first path
+# is the stage's input; the second is the stage's output. A warning is
+# logged when the input is newer than the output, indicating the stage
+# is operating on a result that's already stale relative to its source.
+# Only the most common dependencies are tracked here — fetch-* stages
+# have no checkable upstream within the pipeline itself.
+_STAGE_DEPENDENCIES: dict[str, tuple[str, str]] = {
+    "clean-games": (
+        "data/raw/games.parquet",
+        "data/cleaned/games.csv",
+    ),
+    "clean-upcoming": (
+        "data/raw/schedule_upcoming.parquet",
+        "data/cleaned/schedule_upcoming.csv",
+    ),
+}
+
+
+def _check_stage_staleness(
+    *,
+    active: set[str],
+) -> None:
+    """Warn when a downstream stage will operate on stale upstream data.
+
+    If a downstream stage (e.g. ``clean-games``) is active and the
+    upstream input file is newer than the existing output file, log a
+    warning. Does not refuse to run — the user may have legitimate
+    reasons for re-cleaning.
+
+    Args:
+        active: The set of stages that will run.
+    """
+    import logging
+    from pathlib import Path
+
+    from gridiron_edge.core.settings import get_settings
+
+    repo_root: Path = get_settings().repo_root
+    logger = logging.getLogger(__name__)
+
+    for stage in active:
+        if stage not in _STAGE_DEPENDENCIES:
+            continue
+        rel_input, rel_output = _STAGE_DEPENDENCIES[stage]
+        input_path: Path = repo_root / rel_input
+        output_path: Path = repo_root / rel_output
+
+        if not input_path.exists():
+            # No upstream input → no check possible. The stage may
+            # produce its first run; downstream code will surface
+            # errors if input is genuinely required.
+            continue
+        if not output_path.exists():
+            # First run — nothing to compare against.
+            continue
+
+        input_mtime: float = input_path.stat().st_mtime
+        output_mtime: float = output_path.stat().st_mtime
+        if input_mtime > output_mtime:
+            logger.warning(
+                "Stage %r will run on upstream data older than its current "
+                "output (%s newer than %s). Consider running upstream "
+                "fetch stages first to refresh.",
+                stage,
+                rel_input,
+                rel_output,
+            )
+
+
 _STAGES_STR: str = ", ".join(ALL_STAGES)
 _SKIP_HELP: str = f"Stage(s) to skip. Repeatable. Valid stages: {_STAGES_STR}."
 _ONLY_HELP: str = (
@@ -116,6 +189,8 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
     from pathlib import Path
 
     from gridiron_edge.core.console import step
+
+    _check_stage_staleness(active=active)
 
     def runs(stage: str) -> bool:
         return stage in active

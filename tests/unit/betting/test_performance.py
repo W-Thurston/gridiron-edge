@@ -361,6 +361,8 @@ class TestSummary:
             "n_clv_bets",
             "mean_ev_at_bet",
             "n_model_bets",
+            "ev_vs_actual_gap",
+            "calibration_health",
             "current_streak",
             "current_streak_type",
             "longest_win_streak",
@@ -379,3 +381,52 @@ class TestSummary:
         r = roi(bets)
         assert s["wins"] == int(rec.iloc[0]["wins"])
         assert s["total_pnl"] == pytest.approx(float(r.iloc[0]["total_pnl"]))
+
+
+class TestCalibrationHealth:
+    """Verify calibration_health classification (performance/H1)."""
+
+    def test_unknown_when_no_model_bets(self) -> None:
+        from gridiron_edge.betting.performance import summary
+
+        empty = pd.DataFrame(columns=_BET_COLUMNS)
+        result = summary(empty)
+        assert result["calibration_health"] == "unknown"
+
+    def test_healthy_when_gap_within_tolerance(self) -> None:
+        from gridiron_edge.betting.performance import summary
+
+        # Build settled model bets where actual roi ~ claimed ev.
+        bets = _make_bets(
+            _make_bet("won", 105, stake=100, model_ev=0.05),
+            _make_bet("won", 105, stake=100, model_ev=0.05),
+        )
+        result = summary(bets)
+        # actual roi per bet: 1.05 → mean 1.05
+        # mean_ev_at_bet = 0.05
+        # gap = 1.05 - 0.05 = 1.0  (model massively underpredicted)
+        # That's a strongly positive gap, which is healthy.
+        assert result["calibration_health"] == "healthy"
+
+    def test_degraded_when_actual_underperforms_claimed_ev(self) -> None:
+        from gridiron_edge.betting.performance import summary
+
+        # Model claimed +10% EV but every bet lost.
+        bets = _make_bets(
+            _make_bet("lost", -100, stake=100, model_ev=0.10),
+            _make_bet("lost", -100, stake=100, model_ev=0.10),
+        )
+        result = summary(bets)
+        # actual roi per bet: -1.0
+        # gap = -1.0 - 0.10 = -1.10
+        # Well below tolerance → degraded.
+        assert result["calibration_health"] == "degraded"
+
+    def test_ev_vs_actual_gap_exposed_in_summary(self) -> None:
+        from gridiron_edge.betting.performance import summary
+
+        bets = _make_bets(
+            _make_bet("won", 100, stake=100, model_ev=0.05),
+        )
+        result = summary(bets)
+        assert "ev_vs_actual_gap" in result

@@ -220,6 +220,44 @@ def _empty_ev() -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
+# Calibration health
+# ---------------------------------------------------------------------------
+
+# When the absolute EV-vs-actual gap is at or below this magnitude, the
+# model is considered well-calibrated. Half a percent of ROI is real
+# signal; less is noise. See ``performance/H1`` from audit_2026_06_18.md.
+_CALIBRATION_GAP_TOLERANCE: float = 0.005
+
+
+def _calibration_health(
+    *,
+    gap: float,
+    n_model_bets: int,
+) -> str:
+    """Classify EV-vs-actual-roi gap into a health signal.
+
+    Args:
+        gap: The signed gap (actual_roi - mean_ev_at_bet) from
+            :func:`ev_analysis`.
+        n_model_bets: Number of bets with model EV populated.
+
+    Returns:
+        One of ``"healthy"``, ``"degraded"``, or ``"unknown"``.
+
+        - ``"unknown"``: no model bets, or the gap is NaN.
+        - ``"degraded"``: the model claimed positive EV that did not
+          materialize, by more than the tolerance.
+        - ``"healthy"``: the gap is within tolerance (or positive, i.e.
+          actual exceeded the claimed EV).
+    """
+    if n_model_bets == 0 or math.isnan(gap):
+        return "unknown"
+    if gap < -_CALIBRATION_GAP_TOLERANCE:
+        return "degraded"
+    return "healthy"
+
+
+# ---------------------------------------------------------------------------
 # Streak analysis
 # ---------------------------------------------------------------------------
 
@@ -334,6 +372,11 @@ def summary(bets: pd.DataFrame) -> dict[str, Any]:
     # EV
     result["mean_ev_at_bet"] = ev["mean_ev_at_bet"]
     result["n_model_bets"] = ev["n_model_bets"]
+    result["ev_vs_actual_gap"] = ev["ev_vs_actual_gap"]
+    result["calibration_health"] = _calibration_health(
+        gap=ev["ev_vs_actual_gap"],
+        n_model_bets=int(ev["n_model_bets"]),
+    )
 
     # Streaks
     result["current_streak"] = streaks["current_streak"]
