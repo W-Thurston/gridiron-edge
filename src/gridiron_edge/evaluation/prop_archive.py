@@ -4,8 +4,9 @@
 Persists enriched prop predictions to a parquet log for historical
 tracking, CLV analysis, and model comparison over time.
 
-Deduplicates on (game_id, player_id, stat_type, model_version) so
-re-running predictions for the same player-game replaces the old row.
+Deduplicates on (game_id, player_id, stat_type, model_name, model_type)
+so re-running predictions for the same player-game and algorithm replaces
+the old row without collapsing different algorithms together.
 
 Usage::
 
@@ -38,7 +39,8 @@ _DEDUP_KEYS: Final[list[str]] = [
     "game_id",
     "player_id",
     "stat_type",
-    "model_version",
+    "model_name",
+    "model_type",
 ]
 
 # Archive schema — columns in canonical order
@@ -53,7 +55,8 @@ _ARCHIVE_COLUMNS: Final[list[str]] = [
     "position",
     "team",
     "stat_type",
-    "model_version",
+    "model_name",
+    "model_type",
     "predicted_mean",
     "predicted_std",
     "lo_90",
@@ -79,11 +82,12 @@ def archive_prop_predictions(
     *,
     repo: Path | None = None,
     is_backfilled: bool = False,
-    model_version: str = "v1",
+    model_name: str,
+    model_type: str,
 ) -> Path:
     """Append prop predictions to the archive.
 
-    Adds metadata columns (predicted_at, is_backfilled, model_version),
+    Adds metadata columns (predicted_at, is_backfilled, model_name, model_type),
     deduplicates against existing archive on the dedup key, and writes
     the merged result.
 
@@ -93,7 +97,10 @@ def archive_prop_predictions(
         repo: Repository root override.
         is_backfilled: Whether these predictions are historical backfill
             (True) or live predictions (False).
-        model_version: Model version tag for dedup and tracking.
+        model_name: Prop model family name (e.g. "qb_pass_yards").
+        model_type: Algorithm identifier
+            (e.g. "elasticnet", "random_forest", "xgboost").
+
 
     Returns:
         Path to the written archive file.
@@ -112,8 +119,8 @@ def archive_prop_predictions(
     # Add metadata
     result["predicted_at"] = datetime.now(UTC).isoformat()
     result["is_backfilled"] = is_backfilled
-    if "model_version" not in result.columns:
-        result["model_version"] = model_version
+    result["model_name"] = model_name
+    result["model_type"] = model_type
 
     # Ensure all archive columns exist (fill missing with NaN)
     for col in _ARCHIVE_COLUMNS:
@@ -178,6 +185,11 @@ def load_prop_archive(
 
     df: DataFrame = pd.read_parquet(path)
     logger.info("Loaded prop archive: %d rows", len(df))
+
+    for col in _ARCHIVE_COLUMNS:
+        if col not in df.columns:
+            df[col] = pd.NA
+    df = df.loc[:, _ARCHIVE_COLUMNS]
 
     if stat_type is not None:
         df = df.loc[df["stat_type"] == stat_type, :]

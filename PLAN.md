@@ -605,6 +605,14 @@ cleanup as files are touched.
 #### Status
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
+Latest completion:
+- Unit 5 completed (2026-06-20).
+- Introduced Model / GameModel / PropModel architecture.
+- Added ModelRegistry and removed props registry bypass.
+- Migrated prop archive identity from model_version to
+  model_name + model_type.
+- Prop archive now uniquely tracks algorithm variants and no
+  longer collapses all models into a shared v1 identity.
 
 #### Unit summary
 
@@ -615,9 +623,9 @@ See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 | 1c   | ✅ Complete | rolling/H1, partial cli_props/C2 + M3 | No (numerical equivalence verified) |
 | 2    | ✅ Complete  | walk-forward backfill | No |
 | 3    | ✅ Complete  | diagnostics, store, models, predictor | No |
-| 4    | Pending  | travel perf, Elo drift | Yes (Elo) |
-| 5    | Pending  | Predictor Registry unification | No |
-| 6    | Pending  | WS2 migration completion | No |
+| 4    | ✅ Complete  | travel perf, Elo drift | Yes (Elo) |
+| 5    | ✅ Complete | Predictor Registry unification + prop archive identity migration | No |
+| 6    | Planned | Remaining WS2 migration work (ledger + artifact identity) | No |
 | 7    | Pending  | Prop integration spine (reduced scope) | Yes (prop) |
 | 8    | Pending  | Elo engine unification | Parity test |
 | 9    | Pending  | Task-discriminated metadata | No |

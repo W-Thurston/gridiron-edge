@@ -366,19 +366,35 @@ def backfill_cmd(
         "-m",
         help="Prop model family to backfill, e.g. qb_pass_yards.",
     ),
+    model_type: str = typer.Option(
+        "elasticnet",
+        "--model-type",
+        "-t",
+        help="Algorithm type: elasticnet, random_forest, xgboost",
+    ),
 ) -> None:
     """Backfill historical predictions to the archive."""
     from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
 
-    typer.echo(f"\n🏈 Backfilling {model}...\n")
-
-    enriched, _rmse = _train_and_enrich(model)
-
-    path: Path = archive_prop_predictions(
-        enriched,
-        is_backfilled=True,
-        model_version="v1",
+    mt = PropModelType(model_type)
+    console.header(
+        "props backfill",
+        subtitle=f"{model} · {mt}",
     )
+
+    with step(f"Train {model} ({mt})") as s:
+        enriched, rmse = _train_and_enrich(model, model_type=mt)
+        s.set_rows(len(enriched))
+        s.set_detail(f"RMSE={rmse:.1f}")
+
+    with step("Archive predictions") as s:
+        path: Path = archive_prop_predictions(
+            enriched,
+            is_backfilled=True,
+            model_name=model,
+            model_type=mt.value,
+        )
+        s.set_rows(len(enriched))
 
     typer.echo(f"  Archived {len(enriched):,} predictions → {path}")
 
@@ -399,17 +415,27 @@ def projections_cmd(
     ),
 ) -> None:
     """Display prop projections table."""
+    subtitle: str = "all models" if model == "all" else model
+
+    console.header(
+        "props projections",
+        subtitle=subtitle,
+    )
+
     models: list[str] = _all_prop_models() if model == "all" else [model]
 
     all_enriched: list[DataFrame] = []
+
     for m in models:
-        typer.echo(f"  Training {m}...")
-        try:
-            enriched, _ = _train_and_enrich(m)
-            all_enriched.append(enriched)
-        except Exception as e:
-            typer.echo(f"  ⚠️  {m} failed: {e}")
-            continue
+        with step(f"Train {m}") as s:
+            try:
+                enriched, rmse = _train_and_enrich(m)
+                s.set_rows(len(enriched))
+                s.set_detail(f"RMSE={rmse:.1f}")
+                all_enriched.append(enriched)
+            except Exception as e:
+                typer.echo(f"  ⚠️  {m} failed: {e}")
+                continue
 
     if not all_enriched:
         typer.echo("No models produced results.")
@@ -453,6 +479,6 @@ def projections_cmd(
     # pyrefly: ignore [no-matching-overload]
     display = display.rename(columns={k: v for k, v in rename_map.items() if k in display.columns})
 
-    typer.echo(f"\n🏈 Prop Projections (top {top})\n")
+    typer.echo()
     typer.echo(display.to_string(index=False))
-    typer.echo(f"\n  Total: {len(combined):,} projections across {len(models)} models")
+    console.summary()

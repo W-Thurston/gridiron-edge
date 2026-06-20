@@ -41,6 +41,7 @@ import datetime
 import logging
 from logging import Logger
 from pathlib import Path
+from typing import Final
 
 import pandas as pd
 from pandas import DataFrame
@@ -75,10 +76,14 @@ _ARCHIVE_COLUMNS: list[str] = [
     "confidence_tier",
 ]
 
-# Deduplication key — one prediction per game per (model_name, model_type) per run.
+# Deduplication key — one prediction per game per (model_name, model_type).
 # A later run with the same pair for the same game overwrites the earlier one,
-# so predictions are always the most recent for that pair.
-_DEDUP_KEY: list[str] = ["game_id", "model_name", "model_type"]
+# so predictions are always the most recent for that model/game pair.
+_DEDUP_KEY: Final[list[str]] = [
+    "game_id",
+    "model_name",
+    "model_type",
+]
 
 
 def _archive_path(repo: Path | None = None) -> Path:
