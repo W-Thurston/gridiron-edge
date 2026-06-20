@@ -1,28 +1,24 @@
-# src/gridiron_edge/models/base.py
+"""Base types for the model layer.
 
-"""Base types for the prediction model layer.
+The model layer is organized around domain models:
 
-Defines two protocols:
+``Model``
+    Minimal root protocol. A model has a ``spec`` describing its identity.
 
-``Predictor``
-    All prediction models must satisfy this. Implements
-    ``predict_historical`` and ``predict_upcoming``. Elo models implement
-    only this -- they have no training step.
+``GameModel``
+    A model that can generate game-level predictions from historical games
+    or upcoming schedules.
+
+``PropModel``
+    A model family for player props. Prop models currently expose training
+    through ``PropTrainer`` and will gain richer prediction APIs as the prop
+    integration spine matures.
 
 ``Trainable``
-    Optional extension for models with an explicit training step (logistic
-    regression, neural networks, XGBoost). Adds ``train()`` and
-    ``is_trained()``. The CLI checks ``isinstance(predictor, Trainable)``
-    to decide whether ``gridiron models train`` applies.
+    Optional capability protocol for models with an explicit training step.
 
-Both use structural subtyping via Protocol -- no explicit inheritance needed.
-A class is a valid ``Predictor`` or ``Trainable`` if it has the right
-methods, regardless of what it inherits from.
-
-Adding a new model requires only:
-  1. Implementing the appropriate protocol(s)
-  2. Registering with ``PredictorRegistry``
-  3. Zero changes to evaluation, archiving, or CLI infrastructure
+Model discovery is handled by ``ModelRegistry``. The old Predictor naming is
+kept as a backward-compatible alias during the migration.
 """
 
 from __future__ import annotations
@@ -39,18 +35,16 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class PredictorSpec:
-    """Metadata describing a predictor's identity.
+class ModelSpec:
+    """Metadata describing a model's registry identity.
 
     Attributes:
-        name: Unique string key used to register and look up this predictor.
-            Should follow the convention ``{model_type}_v{version}``,
-            e.g. ``"elo_v2"``, ``"logistic"``, ``"random_forest"``.
-        description: Human-readable description shown in CLI help and
-            evaluation output.
-        trainable: Whether this predictor has an explicit training step.
-            ``False`` for Elo models (no artifact needed), ``True`` for
-            ML models. Used by the ``gridiron models list`` command.
+        name: Unique registry key. Game model keys use the composite
+            ``{model_name}_{model_type}`` convention, e.g.
+            ``"win_prob_random_forest"``. Prop model family keys use the
+            prop stat name, e.g. ``"qb_pass_yards"``.
+        description: Human-readable description shown in CLI output.
+        trainable: Whether this model has an explicit training step.
     """
 
     name: str
@@ -59,22 +53,15 @@ class PredictorSpec:
 
 
 @runtime_checkable
-class Predictor(Protocol):
-    """Protocol defining the interface all prediction models must satisfy.
+class Model(Protocol):
+    """Minimal root protocol for any registered model."""
 
-    Any class with a ``spec`` attribute and ``predict_historical`` /
-    ``predict_upcoming`` methods matching these signatures is a valid
-    ``Predictor`` without explicit inheritance.
+    spec: ModelSpec
 
-    For models with a training step (logistic regression, neural networks),
-    ``predict_historical`` should load a pre-trained artifact. The training
-    step itself is invoked separately via ``gridiron models train``.
 
-    Attributes:
-        spec: A ``PredictorSpec`` describing the predictor's identity.
-    """
-
-    spec: PredictorSpec
+@runtime_checkable
+class GameModel(Model, Protocol):
+    """Protocol for game-level prediction models."""
 
     def predict_historical(
         self,
@@ -82,16 +69,7 @@ class Predictor(Protocol):
         *,
         repo: Path | None = None,
     ) -> pd.DataFrame:
-        """Generate predictions for all historical games.
-
-        Args:
-            games: Canonical games DataFrame (``NFL_wk_by_wk_cleaned.csv``).
-                Contains completed games only.
-            repo: Repository root path.
-
-        Returns:
-            DataFrame in prediction archive schema. One row per game.
-        """
+        """Generate predictions for historical games."""
         ...
 
     def predict_upcoming(
@@ -100,30 +78,26 @@ class Predictor(Protocol):
         *,
         repo: Path | None = None,
     ) -> pd.DataFrame:
-        """Generate predictions for upcoming (unplayed) games.
-
-        Args:
-            schedule: Canonical upcoming schedule DataFrame.
-            repo: Repository root path.
-
-        Returns:
-            DataFrame compatible with ``build_predictions_df()`` output.
-        """
+        """Generate predictions for upcoming games."""
         ...
 
 
 @runtime_checkable
-class Trainable(Protocol):
-    """Optional protocol for models with an explicit training step.
+class PropModel(Model, Protocol):
+    """Protocol for prop model families.
 
-    Implemented by ML models (logistic regression, XGBoost, neural networks).
-    Not implemented by Elo models -- they compute predictions analytically.
-
-    The CLI checks ``isinstance(predictor, Trainable)`` to determine
-    whether ``gridiron models train`` applies to a given model version.
+    Prop models currently train through the PropTrainer interface. This
+    protocol intentionally stays light because prop historical/upcoming
+    prediction APIs are still evolving as the prop integration spine is
+    built out.
     """
 
-    spec: PredictorSpec
+
+@runtime_checkable
+class Trainable(Protocol):
+    """Optional capability protocol for models with an explicit training step."""
+
+    spec: ModelSpec
 
     def train(
         self,
@@ -131,32 +105,21 @@ class Trainable(Protocol):
         *,
         repo: Path | None = None,
     ) -> BaseModelMetadata:
-        """Train the model and save the artifact to the store.
-
-        Implementations should:
-          1. Validate feature matrix via ``load_modeling_file``
-          2. Split into training and holdout sets
-          3. Fit the model on training data
-          4. Score on holdout set (Brier score)
-          5. Save artifact via ``ArtifactStore.save``
-          6. Return populated ``BaseModelMetadata``
-
-        Args:
-            df: Full feature matrix from ``load_modeling_file()``.
-            repo: Repository root path.
-
-        Returns:
-            ``BaseModelMetadata`` describing the trained artifact.
-        """
+        """Train the model and save the artifact."""
         ...
 
     def is_trained(self, *, repo: Path | None = None) -> bool:
-        """Return whether a trained artifact exists for this model version.
-
-        Args:
-            repo: Repository root path.
-
-        Returns:
-            ``True`` if a trained artifact exists and can be loaded.
-        """
+        """Return whether a trained artifact exists."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible aliases
+# ---------------------------------------------------------------------------
+
+# Keep old names during the migration. Existing game-side code can continue
+# importing Predictor / PredictorSpec while new code shifts to Model /
+# ModelSpec. Remove these aliases in a later cleanup pass once all imports
+# are migrated.
+PredictorSpec = ModelSpec
+Predictor = GameModel

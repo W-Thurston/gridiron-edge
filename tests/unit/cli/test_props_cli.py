@@ -64,3 +64,24 @@ class TestDataPrepSharing:
         from gridiron_edge.cli.props import _train_and_enrich
 
         assert callable(_train_and_enrich)
+
+
+class TestPropsRegistry:
+    def test_all_prop_models_registered(self) -> None:
+        from gridiron_edge.cli.props import _all_prop_models
+
+        assert _all_prop_models() == [
+            "qb_pass_yards",
+            "qb_rush_yards",
+            "rb_rush_yards",
+            "te_rec_yards",
+            "wr_rec_yards",
+        ]
+
+    def test_get_trainer_returns_registered_trainer(self) -> None:
+        from gridiron_edge.cli.props import _get_trainer
+        from gridiron_edge.models.prop_prediction.base import PropTrainer
+
+        trainer = _get_trainer("qb_pass_yards")
+        assert isinstance(trainer, PropTrainer)
+        assert trainer.spec.name == "qb_pass_yards"

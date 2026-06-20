@@ -291,7 +291,11 @@ def models_train(
     # ── Resolve model ──────────────────────────────────────────────
     with step("Resolve model") as s:
         try:
-            predictor: Predictor = PredictorRegistry.get(registry_key)()
+            from typing import cast
+
+            from gridiron_edge.models.base import GameModel
+
+            predictor = cast(GameModel, PredictorRegistry.get(registry_key)())
         except KeyError as exc:
             raise typer.BadParameter(
                 f"'{registry_key}' is not a registered predictor. "
@@ -356,11 +360,13 @@ def models_list() -> None:
     Examples:
       gridiron models list
     """
+    from typing import cast
+
     import pandas as pd
 
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
-    from gridiron_edge.models.base import Trainable
+    from gridiron_edge.models.base import GameModel, Trainable
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
     from gridiron_edge.models.registry import PredictorRegistry
@@ -370,7 +376,7 @@ def models_list() -> None:
 
     rows: list[dict[str, str]] = []
     for key in PredictorRegistry.names():
-        predictor: Predictor = PredictorRegistry.get(key)()
+        predictor = cast(GameModel, PredictorRegistry.get(key)())
         is_trainable: bool = isinstance(predictor, Trainable)
         kind: Literal["analytic", "trainable"] = "trainable" if is_trainable else "analytic"
 

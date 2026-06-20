@@ -3,17 +3,17 @@
 """Game prediction model registry entry point.
 
 This module is the single import that callers use to ensure all game
-prediction models are registered with ``PredictorRegistry``. It contains:
+prediction models are registered with ``ModelRegistry``. It contains:
 
 - The :class:`GamesPredictor` base class (Predictor + Trainable protocols).
-- Five composite-key subclasses registered with ``PredictorRegistry``:
+- Five composite-key subclasses registered with ``ModelRegistry``:
     * ``"win_prob_logistic"`` / ``"win_prob_random_forest"`` / ``"win_prob_xgboost"``
     * ``"total_random_forest"`` / ``"total_xgboost"``
 - The :func:`build_game_predictions` helper used internally by
   classification predict_historical to assemble game-level rows.
 
 All game-side training and prediction flows through :class:`GamesTrainer`
-and this module's :class:`GamesPredictor`. ``PredictorRegistry`` keys use
+and this module's :class:`GamesPredictor`. ``ModelRegistry`` keys use
 the composite ``{model_name}_{model_type}`` convention (e.g.
 ``"win_prob_random_forest"``).
 """
@@ -35,7 +35,7 @@ from gridiron_edge.datasets.loaders import load_modeling_file
 from gridiron_edge.features.pipeline import FEATURES
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
-from gridiron_edge.models.base import PredictorSpec
+from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION
 from gridiron_edge.models.game_prediction.base import (
     GameModelMetadata,
@@ -46,7 +46,7 @@ from gridiron_edge.models.game_prediction.base import (
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.game_prediction.total import TotalTrainer
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
-from gridiron_edge.models.registry import PredictorRegistry
+from gridiron_edge.models.registry import ModelRegistry
 
 if TYPE_CHECKING:
     from pandas import DataFrame, Series
@@ -190,7 +190,7 @@ class GamesPredictor:
 
     Each composite ``(model_name, model_type)`` pair has a thin subclass
     that sets ``model_name``, ``model_type``, and ``spec`` at class scope
-    and is registered with :class:`PredictorRegistry`. All logic lives
+    and is registered with :class:`ModelRegistry`. All logic lives
     here — subclasses are spec-only.
 
     The class implements both :class:`Predictor` (via ``predict_historical``
@@ -206,7 +206,7 @@ class GamesPredictor:
     # Set by subclasses.
     model_name: ClassVar[str] = ""
     model_type: ClassVar[str] = ""
-    spec: ClassVar[PredictorSpec]
+    spec: ClassVar[ModelSpec]
 
     #: Which total model to attach to win_prob predictions. Subclasses for
     #: ``win_prob`` predictors can override; total predictors ignore this.
@@ -572,13 +572,13 @@ class GamesPredictor:
 # ---------------------------------------------------------------------------
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class WinProbLogisticPredictor(GamesPredictor):
     """Win probability — logistic regression."""
 
     model_name = "win_prob"
     model_type = "logistic"
-    spec = PredictorSpec(
+    spec = ModelSpec(
         name="win_prob_logistic",
         description=(
             "Win probability — logistic regression (combined features, TimeSeriesSplit CV)."
@@ -587,13 +587,13 @@ class WinProbLogisticPredictor(GamesPredictor):
     )
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class WinProbRandomForestPredictor(GamesPredictor):
     """Win probability — Random Forest with isotonic calibration."""
 
     model_name = "win_prob"
     model_type = "random_forest"
-    spec = PredictorSpec(
+    spec = ModelSpec(
         name="win_prob_random_forest",
         description=(
             "Win probability — Random Forest (expanded features, "
@@ -603,13 +603,13 @@ class WinProbRandomForestPredictor(GamesPredictor):
     )
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class WinProbXGBoostPredictor(GamesPredictor):
     """Win probability — XGBoost with conditional isotonic calibration."""
 
     model_name = "win_prob"
     model_type = "xgboost"
-    spec = PredictorSpec(
+    spec = ModelSpec(
         name="win_prob_xgboost",
         description=(
             "Win probability — XGBoost (expanded features, "
@@ -619,13 +619,13 @@ class WinProbXGBoostPredictor(GamesPredictor):
     )
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class TotalRandomForestPredictor(GamesPredictor):
     """Total points — Random Forest regression."""
 
     model_name = "total"
     model_type = "random_forest"
-    spec = PredictorSpec(
+    spec = ModelSpec(
         name="total_random_forest",
         description=(
             "Total points — Random Forest regression (expanded features, randomized HP search)."
@@ -634,13 +634,13 @@ class TotalRandomForestPredictor(GamesPredictor):
     )
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class TotalXGBoostPredictor(GamesPredictor):
     """Total points — XGBoost regression."""
 
     model_name = "total"
     model_type = "xgboost"
-    spec = PredictorSpec(
+    spec = ModelSpec(
         name="total_xgboost",
         description=(
             "Total points — XGBoost regression (expanded features, randomized HP search)."

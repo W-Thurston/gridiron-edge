@@ -48,7 +48,6 @@ from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.datasets.loaders import load_modeling_file
 from gridiron_edge.evaluation.archive import load_prediction_log, write_archive_rows
-from gridiron_edge.models.base import Predictor
 from gridiron_edge.models.game_prediction.base import GameModelType, GamesTrainer
 
 logger: Logger = logging.getLogger(__name__)
@@ -95,12 +94,16 @@ def _backfill_current_model(
     Used for analytic models (elo) where state is built chronologically
     and the current artifact produces honest historical predictions.
     """
+    from typing import cast
+
+    from gridiron_edge.models.base import GameModel
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
     from gridiron_edge.models.registry import PredictorRegistry
 
     registry_key: str = f"{model_name}_{model_type}"
-    predictor: Predictor = PredictorRegistry.get(registry_key)()
+
+    predictor = cast(GameModel, PredictorRegistry.get(registry_key)())
 
     games_raw: DataFrame = loaders.load_games(repo)
     games: DataFrame = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()

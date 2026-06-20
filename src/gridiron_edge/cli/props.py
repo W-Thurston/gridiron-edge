@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import Final
 
 from numpy import ndarray
 from pandas import DataFrame, Series
@@ -33,29 +32,51 @@ props_app = typer.Typer(help="Player prop projections.", no_args_is_help=True)
 # Trainer registry — maps model name to trainer class
 # ---------------------------------------------------------------------------
 
-_TRAINER_MAP: Final[dict[str, str]] = {
-    "qb_pass_yards": "gridiron_edge.models.prop_prediction.qb_pass_yards.QBPassYardsTrainer",
-    "qb_rush_yards": "gridiron_edge.models.prop_prediction.qb_rush_yards.QBRushYardsTrainer",
-    "rb_rush_yards": "gridiron_edge.models.prop_prediction.rb_rush_yards.RBRushYardsTrainer",
-    "wr_rec_yards": "gridiron_edge.models.prop_prediction.wr_rec_yards.WRRecYardsTrainer",
-    "te_rec_yards": "gridiron_edge.models.prop_prediction.te_rec_yards.TERecYardsTrainer",
-}
 
-_ALL_MODELS: Final[list[str]] = list(_TRAINER_MAP.keys())
+def _ensure_prop_models_registered() -> None:
+    """Import prop model modules so ModelRegistry is populated."""
+    import gridiron_edge.models.prop_prediction.qb_pass_yards
+    import gridiron_edge.models.prop_prediction.qb_rush_yards
+    import gridiron_edge.models.prop_prediction.rb_rush_yards
+    import gridiron_edge.models.prop_prediction.te_rec_yards
+    import gridiron_edge.models.prop_prediction.wr_rec_yards  # noqa: F401
+
+
+def _all_prop_models() -> list[str]:
+    """Return registered prop model family names."""
+    from gridiron_edge.models.registry import ModelRegistry
+
+    _ensure_prop_models_registered()
+
+    names: list[str] = []
+    for key, model_cls in ModelRegistry.all().items():
+        instance = model_cls()
+        if isinstance(instance, PropTrainer):
+            names.append(key)
+
+    return sorted(names)
 
 
 def _get_trainer(model_name: str) -> PropTrainer:
-    """Lazy-import and instantiate a trainer by model name."""
-    if model_name not in _TRAINER_MAP:
-        typer.echo(f"Unknown model: {model_name}. Available: {_ALL_MODELS}")
+    """Instantiate a registered prop trainer by model family name."""
+    from gridiron_edge.models.registry import ModelRegistry
+
+    _ensure_prop_models_registered()
+
+    try:
+        model_cls = ModelRegistry.get(model_name)
+    except KeyError as exc:
+        available = _all_prop_models()
+        typer.echo(f"Unknown model: {model_name}. Available: {available}")
+        raise typer.Exit(code=1) from exc
+
+    trainer = model_cls()
+    if not isinstance(trainer, PropTrainer):
+        available = _all_prop_models()
+        typer.echo(f"Registered model is not a prop trainer: {model_name}. Available: {available}")
         raise typer.Exit(code=1)
 
-    import importlib
-
-    module_path, class_name = _TRAINER_MAP[model_name].rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
-    return cls()
+    return trainer
 
 
 def _prepare_holdout_data(
@@ -181,7 +202,7 @@ def evaluate_cmd(
         ...,
         "--model",
         "-m",
-        help=f"Model to evaluate. Options: {_ALL_MODELS}",
+        help="Prop model family to evaluate, e.g. qb_pass_yards.",
     ),
     model_type: str = typer.Option(
         "elasticnet",
@@ -236,7 +257,7 @@ def champion_cmd(
         "all",
         "--model",
         "-m",
-        help=f"Model to run champion selection on. 'all' runs all. Options: {_ALL_MODELS}",
+        help="Model to run champion selection on, e.g. qb_pass_yards. 'all' runs all.",
     ),
 ) -> None:
     """Train all model types for a stat family and select champion.
@@ -257,7 +278,7 @@ def champion_cmd(
     )
     from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
 
-    models: list[str] = _ALL_MODELS if model == "all" else [model]
+    models: list[str] = _all_prop_models() if model == "all" else [model]
     model_types: list[PropModelType] = list(PropModelType)
 
     for m in models:
@@ -343,7 +364,7 @@ def backfill_cmd(
         ...,
         "--model",
         "-m",
-        help=f"Model to backfill. Options: {_ALL_MODELS}",
+        help="Prop model family to backfill, e.g. qb_pass_yards.",
     ),
 ) -> None:
     """Backfill historical predictions to the archive."""
@@ -368,7 +389,7 @@ def projections_cmd(
         "all",
         "--model",
         "-m",
-        help=f"Model to project. 'all' runs all models. Options: {_ALL_MODELS}",
+        help="Prop model family to project, e.g. qb_pass_yards. 'all' runs all models",
     ),
     top: int = typer.Option(
         20,
@@ -378,7 +399,7 @@ def projections_cmd(
     ),
 ) -> None:
     """Display prop projections table."""
-    models: list[str] = _ALL_MODELS if model == "all" else [model]
+    models: list[str] = _all_prop_models() if model == "all" else [model]
 
     all_enriched: list[DataFrame] = []
     for m in models:

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from gridiron_edge.models.prop_prediction.base import PropModelSpec, PropTrainer
+from gridiron_edge.models.registry import ModelRegistry
 
 
+@ModelRegistry.register
 class QBPassYardsTrainer(PropTrainer):
     """QB passing yards prop model."""
 
