@@ -32,12 +32,19 @@ def _make_meta(
     model_name: str = "win_prob",
     model_type: str = "test_model",
 ) -> GameModelMetadata:
-    """Build a GameModelMetadata with classification metrics as first-class fields.
+    """Build a GameModelMetadata using the post-Unit-9 metrics dict.
 
-    All metrics are set as first-class fields on :class:`GameModelMetadata`
-    (post-Workstream 2 D3). Optional kwargs default to NaN so callers can
-    omit individual metrics to test the missing-data code paths.
+    Optional kwargs default to NaN so callers can omit individual metrics
+    to test missing-data code paths. The comparator gates treat NaN as
+    "metric not recorded".
     """
+    metrics: dict[str, float] = {
+        "brier": brier,
+        "ece": ece if ece is not None else float("nan"),
+        "auc": auc if auc is not None else float("nan"),
+        "log_loss": log_loss if log_loss is not None else float("nan"),
+        "accuracy": accuracy if accuracy is not None else float("nan"),
+    }
     return GameModelMetadata(
         model_name=model_name,
         model_type=model_type,
@@ -49,11 +56,7 @@ def _make_meta(
         feature_columns=["f1", "f2"],
         n_train_rows=10,
         n_holdout_rows=2,
-        holdout_brier=brier,
-        holdout_ece=ece if ece is not None else float("nan"),
-        holdout_auc=auc if auc is not None else float("nan"),
-        holdout_log_loss=log_loss if log_loss is not None else float("nan"),
-        holdout_accuracy=accuracy if accuracy is not None else float("nan"),
+        metrics=metrics,
     )
 
 

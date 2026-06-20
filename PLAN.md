@@ -606,16 +606,17 @@ cleanup as files are touched.
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 Latest completion:
-- Unit 8 completed (2026-06-20).
-- Replaced the structurally duplicated Elo simulators
-  in ratings/elo/table.py and evaluation/tune.py with a
-  single canonical simulator at ratings/elo/simulator.py.
-- Removed the latent divisor inconsistency in the state
-  table builder.
-- Parameterized the playoff simulator's divisor.
-- Existing numba parity tests continue to pin
-  Python-vs-numba behaviour.
-
+- Unit 9 completed (2026-06-20).
+- Collapsed eleven NaN-filled holdout metric fields across
+  GameModelMetadata and PropModelMetadata into a single
+  task-discriminated `metrics: dict[str, float]` on
+  BaseModelMetadata.
+- Schema version bumped to 3; legacy artifacts migrate
+  silently on read.
+- gridiron models list / info now display task-appropriate
+  metrics.
+- Champion/challenger comparator and prop CLI both consume
+  the new dict surface.
 #### Unit summary
 
 | Unit | Status | Findings closed | Re-baseline? |
@@ -633,7 +634,7 @@ Latest completion:
 | 7b   | ✅ Complete | Prop walk-forward backfill | Yes (prop) |
 | 7c   | ✅ Complete | Artifact-loading prop CLI commands | No |
 | 8    | ✅ Complete | Elo engine unification | No (parity test in place) |
-| 9    | Pending  | Task-discriminated metadata | No |
+| 9    | ✅ Complete | Task-discriminated metadata | No |
 | 10   | Pending  | Trainable Protocol decision | No |
 | 11   | Pending  | Tier 3 surgical | Per fix |
 | Tier 4 | Ongoing | Documentation, dead code, naming | No |

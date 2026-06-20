@@ -284,10 +284,10 @@ class TestGameModelMetadataContract:
             trained_at="2026-06-18T00:00:00",
             n_train_rows=100,
             n_holdout_rows=20,
-            holdout_brier=0.22,
+            metrics={"brier": 0.22},
         )
         assert meta.task == "classification"
-        assert meta.holdout_brier == pytest.approx(0.22)
+        assert meta.metrics["brier"] == pytest.approx(0.22)
 
     def test_regression_construction(self) -> None:
         meta = GameModelMetadata(
@@ -297,12 +297,12 @@ class TestGameModelMetadataContract:
             trained_at="2026-06-18T00:00:00",
             n_train_rows=100,
             n_holdout_rows=20,
-            holdout_mae=8.2,
-            holdout_rmse=10.5,
-            holdout_r2=0.31,
+            metrics={"mae": 8.2, "rmse": 10.5, "r2": 0.31},
         )
         assert meta.task == "regression"
-        assert meta.holdout_mae == pytest.approx(8.2)
+        assert meta.metrics["mae"] == pytest.approx(8.2)
+        assert meta.metrics["rmse"] == pytest.approx(10.5)
+        assert meta.metrics["r2"] == pytest.approx(0.31)
 
 
 # ---------------------------------------------------------------------------

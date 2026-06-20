@@ -13,8 +13,6 @@ Covers:
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from gridiron_edge.models.artifact import BaseModelMetadata
@@ -48,7 +46,7 @@ class TestBaseModelMetadata:
             task="classification",
             trained_at="2026-06-18T00:00:00+00:00",
         )
-        assert meta.schema_version == 2
+        assert meta.schema_version == 3
         assert meta.training_seasons == []
         assert meta.holdout_seasons == []
         assert meta.parameters == {}
@@ -113,22 +111,18 @@ class TestGameModelMetadata:
             model_type="random_forest",
             task="classification",
             trained_at="2026-06-18T00:00:00+00:00",
-            holdout_brier=0.220,
-            holdout_ece=0.018,
-            holdout_auc=0.762,
-            holdout_log_loss=0.628,
-            holdout_accuracy=0.681,
+            metrics={
+                "brier": 0.220,
+                "ece": 0.018,
+                "auc": 0.762,
+                "log_loss": 0.628,
+                "accuracy": 0.681,
+            },
         )
-        # Classification metrics populated
-        assert meta.holdout_brier == pytest.approx(0.220)
-        assert meta.holdout_ece == pytest.approx(0.018)
-        assert meta.holdout_auc == pytest.approx(0.762)
-        assert meta.holdout_log_loss == pytest.approx(0.628)
-        assert meta.holdout_accuracy == pytest.approx(0.681)
-        # Regression metrics remain NaN
-        assert math.isnan(meta.holdout_mae)
-        assert math.isnan(meta.holdout_rmse)
-        assert math.isnan(meta.holdout_r2)
+
+        assert meta.metrics["brier"] == pytest.approx(0.220)
+        assert meta.metrics["accuracy"] == pytest.approx(0.681)
+        assert "mae" not in meta.metrics
 
     def test_regression_construction(self) -> None:
         meta = GameModelMetadata(
@@ -136,39 +130,20 @@ class TestGameModelMetadata:
             model_type="xgboost",
             task="regression",
             trained_at="2026-06-18T00:00:00+00:00",
-            holdout_mae=8.2,
-            holdout_rmse=10.5,
-            holdout_r2=0.31,
+            metrics={"mae": 8.2, "rmse": 10.5, "r2": 0.31},
         )
-        # Regression metrics populated
-        assert meta.holdout_mae == pytest.approx(8.2)
-        assert meta.holdout_rmse == pytest.approx(10.5)
-        assert meta.holdout_r2 == pytest.approx(0.31)
-        # Classification metrics remain NaN
-        assert math.isnan(meta.holdout_brier)
-        assert math.isnan(meta.holdout_ece)
-        assert math.isnan(meta.holdout_auc)
-        assert math.isnan(meta.holdout_log_loss)
-        assert math.isnan(meta.holdout_accuracy)
+        assert meta.metrics["mae"] == pytest.approx(8.2)
+        assert meta.metrics["r2"] == pytest.approx(0.31)
+        assert "brier" not in meta.metrics
 
-    def test_default_metrics_are_nan(self) -> None:
+    def test_default_metrics_dict_is_empty(self) -> None:
         meta = GameModelMetadata(
             model_name="win_prob",
             model_type="xgboost",
             task="classification",
             trained_at="2026-06-18T00:00:00+00:00",
         )
-        for field_name in (
-            "holdout_brier",
-            "holdout_ece",
-            "holdout_auc",
-            "holdout_log_loss",
-            "holdout_accuracy",
-            "holdout_mae",
-            "holdout_rmse",
-            "holdout_r2",
-        ):
-            assert math.isnan(getattr(meta, field_name)), field_name
+        assert meta.metrics == {}
 
 
 # ---------------------------------------------------------------------------
@@ -186,9 +161,7 @@ class TestPropModelMetadata:
             task="regression",
             trained_at="2026-06-18T00:00:00+00:00",
             target_col="passing_yards",
-            holdout_mae=58.0,
-            holdout_rmse=72.6,
-            holdout_r2=0.071,
+            metrics={"mae": 58.0, "rmse": 72.6, "r2": 0.071},
         )
         assert isinstance(meta, BaseModelMetadata)
 
@@ -199,9 +172,7 @@ class TestPropModelMetadata:
             task="regression",
             trained_at="2026-06-18T00:00:00+00:00",
             target_col="passing_yards",
-            holdout_mae=58.0,
-            holdout_rmse=72.6,
-            holdout_r2=0.071,
+            metrics={"mae": 58.0, "rmse": 72.6, "r2": 0.071},
             training_seasons=["1999-2000", "2000-2001"],
             holdout_seasons=["2023-2024"],
             parameters={"alpha": 0.1, "l1_ratio": 0.5},
@@ -209,21 +180,19 @@ class TestPropModelMetadata:
             n_train_rows=5706,
             n_holdout_rows=1367,
         )
-        assert meta.model_name == "qb_pass_yards"
         assert meta.target_col == "passing_yards"
-        assert meta.holdout_mae == pytest.approx(58.0)
-        assert meta.holdout_rmse == pytest.approx(72.6)
-        assert meta.holdout_r2 == pytest.approx(0.071)
-        assert meta.n_train_rows == 5706
-        assert meta.n_holdout_rows == 1367
+        assert meta.metrics["mae"] == pytest.approx(58.0)
+        assert meta.metrics["rmse"] == pytest.approx(72.6)
+        assert meta.metrics["r2"] == pytest.approx(0.071)
 
-    def test_required_prop_fields_enforced(self) -> None:
-        """Missing target_col / holdout metrics should raise."""
+    def test_required_target_col_enforced(self) -> None:
+        """Missing target_col should raise."""
         with pytest.raises(TypeError):
             PropModelMetadata(  # type: ignore[call-arg]
                 model_name="qb_pass_yards",
                 model_type="elasticnet",
                 task="regression",
                 trained_at="2026-06-18T00:00:00+00:00",
-                # Missing target_col, holdout_mae, holdout_rmse, holdout_r2
+                metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
+                # Missing target_col
             )

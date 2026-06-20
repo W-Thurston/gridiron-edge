@@ -233,6 +233,53 @@ def _train_challenger_into_candidate(
     return challenger_meta
 
 
+_PRIMARY_METRIC_BY_TASK: dict[str, str] = {
+    "classification": "brier",
+    "regression": "mae",
+}
+
+_METRIC_LABELS: dict[str, str] = {
+    "brier": "Holdout Brier",
+    "ece": "ECE",
+    "auc": "AUC",
+    "log_loss": "Log Loss",
+    "accuracy": "Accuracy",
+    "mae": "Holdout MAE",
+    "rmse": "Holdout RMSE",
+    "r2": "Holdout R²",
+}
+
+_METRIC_ORDER_BY_TASK: dict[str, list[str]] = {
+    "classification": ["brier", "ece", "auc", "log_loss", "accuracy"],
+    "regression": ["mae", "rmse", "r2"],
+}
+
+
+def _primary_metric_for(meta: BaseModelMetadata) -> tuple[str, str]:
+    """Return (display label, formatted value) for a model's primary metric."""
+    key = _PRIMARY_METRIC_BY_TASK.get(meta.task)
+    if key is None:
+        return ("—", "-")
+    value = meta.metrics.get(key)
+    if value is None:
+        return (_METRIC_LABELS[key], "(not recorded)")
+    return (_METRIC_LABELS[key], f"{value:.5f}")
+
+
+def _metric_block_for(meta: BaseModelMetadata) -> list[tuple[str, str]]:
+    """Build (label, value) rows for the metric block in ``models info``."""
+    order = _METRIC_ORDER_BY_TASK.get(meta.task, [])
+    rows: list[tuple[str, str]] = []
+    for key in order:
+        value = meta.metrics.get(key)
+        label = _METRIC_LABELS[key]
+        if value is None:
+            rows.append((label, "(not recorded)"))
+        else:
+            rows.append((label, f"{value:.5f}"))
+    return rows
+
+
 @models_app.command("train")
 def models_train(
     model_name: str = typer.Argument(
@@ -353,8 +400,8 @@ def models_list() -> None:
     r"""List all registered models and their training status.
 
     Shows the ``(model_name, model_type)`` pair for each registry
-    entry. Every key is composite so the pair is derived by matching
-    the key against the known model_name prefixes.
+    entry along with a task-appropriate primary metric. Classification
+    models show Brier; regression models show MAE.
 
     \b
     Examples:
@@ -382,13 +429,14 @@ def models_list() -> None:
 
         pair: tuple[str, str] | None = _split_composite_key(key)
 
+        primary_label: str = "—"
+        primary_value: str = "-"
+        trained_at: str = "(not trained)" if is_trainable else "(no artifact)"
+
         if is_trainable and pair is not None and store.is_trained(*pair):
-            meta: BaseModelMetadata = store.read_metadata(*pair)
-            trained_at: str = meta.trained_at
-            brier: str = f"{meta.holdout_brier:.5f}"  # type: ignore[attr-defined]
-        else:
-            trained_at = "(not trained)" if is_trainable else "(no artifact)"
-            brier = "-"
+            meta = store.read_metadata(*pair)
+            trained_at = meta.trained_at
+            primary_label, primary_value = _primary_metric_for(meta)
 
         model_name_disp: str = pair[0] if pair else "—"
         model_type_disp: str = pair[1] if pair else "—"
@@ -400,7 +448,8 @@ def models_list() -> None:
                 "registry_key": key,
                 "kind": kind,
                 "trained_at": trained_at,
-                "holdout_brier": brier,
+                "primary_metric": primary_label,
+                "primary_value": primary_value,
             }
         )
 
@@ -415,12 +464,16 @@ def models_info(
 ) -> None:
     r"""Print detailed metadata for a trained model artifact.
 
+    Displays task-appropriate metrics. Classification models report
+    Brier, ECE, AUC, log loss, and accuracy. Regression models report
+    MAE, RMSE, and R².
+
     \b
     Examples:
       gridiron models info win_prob random_forest
+      gridiron models info total xgboost
     """
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.champion import extract_classification_metrics
     from gridiron_edge.models.artifact import ArtifactStore
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
@@ -430,8 +483,6 @@ def models_info(
     store = ArtifactStore(repo)
     registry_key: str = f"{model_name}_{model_type}"
 
-    # Validate the pair is a registered key (gives a clean error message
-    # before falling through to a generic FileNotFoundError from the store).
     try:
         PredictorRegistry.get(registry_key)
     except KeyError as exc:
@@ -447,29 +498,16 @@ def models_info(
         )
         raise typer.Exit(code=1)
 
-    meta: BaseModelMetadata = store.read_metadata(model_name, model_type)
-    # pyrefly: ignore [bad-argument-type]
-    metrics: dict[str, float] = extract_classification_metrics(meta)
+    meta = store.read_metadata(model_name, model_type)
 
     typer.echo(f"Model:           {meta.model_name} / {meta.model_type}")
     typer.echo(f"Task:            {meta.task}")
     typer.echo(f"Description:     {meta.notes or '(none)'}")
     typer.echo(f"Trained at:      {meta.trained_at}")
     typer.echo(f"Schema version:  {meta.schema_version}")
-    typer.echo(f"Holdout Brier:   {meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
 
-    # Show all metrics if available
-    from math import isnan
-
-    for label, key in [
-        ("ECE", "ece"),
-        ("AUC", "auc"),
-        ("Log Loss", "log_loss"),
-        ("Accuracy", "accuracy"),
-    ]:
-        val: float = metrics[key]
-        val_str: str = f"{val:.5f}" if not isnan(val) else "(not recorded)"
-        typer.echo(f"{label + ':':17s}{val_str}")
+    for label, value in _metric_block_for(meta):
+        typer.echo(f"{label + ':':17s}{value}")
 
     if meta.training_seasons:
         head: str = ", ".join(meta.training_seasons[:3])

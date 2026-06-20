@@ -9,7 +9,6 @@ metadata-subclass discrimination on read.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-import math
 from pathlib import Path
 
 import pytest
@@ -38,11 +37,13 @@ def _make_game_meta(
         feature_columns=["HOME_FIELD", "TEAM_A_ELO"],
         n_train_rows=5000,
         n_holdout_rows=500,
-        holdout_brier=0.220,
-        holdout_ece=0.018,
-        holdout_auc=0.762,
-        holdout_log_loss=0.628,
-        holdout_accuracy=0.681,
+        metrics={
+            "brier": 0.220,
+            "ece": 0.018,
+            "auc": 0.762,
+            "log_loss": 0.628,
+            "accuracy": 0.681,
+        },
     )
 
 
@@ -62,9 +63,11 @@ def _make_prop_meta(
         n_train_rows=5706,
         n_holdout_rows=1367,
         target_col="passing_yards",
-        holdout_mae=58.0,
-        holdout_rmse=72.6,
-        holdout_r2=0.071,
+        metrics={
+            "mae": 58.0,
+            "rmse": 72.6,
+            "r2": 0.071,
+        },
     )
 
 
@@ -125,9 +128,9 @@ class TestSaveLoadGame:
         assert out.model_name == "win_prob"
         assert out.model_type == "random_forest"
         assert out.task == "classification"
-        assert out.holdout_brier == pytest.approx(0.220)
+        assert out.metrics["brier"] == pytest.approx(0.220)
         # Regression-side metrics default to NaN
-        assert math.isnan(out.holdout_mae)
+        assert "mae" not in out.metrics
 
     def test_is_trained_true_after_save(self, tmp_path: Path) -> None:
         store = ArtifactStore(tmp_path)
@@ -179,7 +182,7 @@ class TestSaveLoadProp:
         assert isinstance(out, PropModelMetadata)
         assert out.model_name == "qb_pass_yards"
         assert out.target_col == "passing_yards"
-        assert out.holdout_mae == pytest.approx(58.0)
+        assert out.metrics["mae"] == pytest.approx(58.0)
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +329,12 @@ class TestBackwardCompatNoKind:
         (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
 
         store = ArtifactStore(tmp_path)
-        out = store.read_metadata("qb_pass_yards", "elasticnet")
+        out: BaseModelMetadata = store.read_metadata("qb_pass_yards", "elasticnet")
         assert isinstance(out, PropModelMetadata)
         assert out.target_col == "passing_yards"
+        # Legacy holdout fields migrated into metrics. Zeros from the legacy
+        # fixture survive (only NaNs are dropped).
+        assert out.metrics.get("mae") == pytest.approx(0.0)
 
     def test_legacy_game_metadata_defaults_to_game(self, tmp_path: Path) -> None:
         import json
@@ -353,5 +359,83 @@ class TestBackwardCompatNoKind:
         (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
 
         store = ArtifactStore(tmp_path)
-        out = store.read_metadata("win_prob", "random_forest")
+        out: BaseModelMetadata = store.read_metadata("win_prob", "random_forest")
         assert isinstance(out, GameModelMetadata)
+        assert out.metrics.get("brier") == pytest.approx(0.5)
+
+
+class TestLegacyMetricMigration:
+    """Pre-Unit-9 metadata fields should fold into the metrics dict."""
+
+    def test_legacy_classification_fields_migrate(self, tmp_path: Path) -> None:
+        import json
+
+        artifact_dir = tmp_path / "data" / "models" / "win_prob" / "logistic"
+        artifact_dir.mkdir(parents=True)
+        legacy = {
+            "model_name": "win_prob",
+            "model_type": "logistic",
+            "task": "classification",
+            "trained_at": "2025-01-01T00:00:00",
+            "schema_version": 2,
+            "kind": "game",
+            "training_seasons": [],
+            "holdout_seasons": [],
+            "parameters": {},
+            "feature_columns": [],
+            "n_train_rows": 0,
+            "n_holdout_rows": 0,
+            "notes": "",
+            "holdout_brier": 0.22,
+            "holdout_ece": 0.02,
+            "holdout_auc": 0.76,
+            "holdout_log_loss": 0.63,
+            "holdout_accuracy": 0.68,
+        }
+        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        store = ArtifactStore(tmp_path)
+        out = store.read_metadata("win_prob", "logistic")
+
+        assert out.metrics["brier"] == pytest.approx(0.22)
+        assert out.metrics["accuracy"] == pytest.approx(0.68)
+        # Legacy fields no longer present on the dataclass.
+        assert not hasattr(out, "holdout_brier")
+
+    def test_legacy_nan_metrics_are_dropped(self, tmp_path: Path) -> None:
+        import json
+
+        artifact_dir = tmp_path / "data" / "models" / "total" / "xgboost"
+        artifact_dir.mkdir(parents=True)
+        legacy = {
+            "model_name": "total",
+            "model_type": "xgboost",
+            "task": "regression",
+            "trained_at": "2025-01-01T00:00:00",
+            "schema_version": 2,
+            "kind": "game",
+            "training_seasons": [],
+            "holdout_seasons": [],
+            "parameters": {},
+            "feature_columns": [],
+            "n_train_rows": 0,
+            "n_holdout_rows": 0,
+            "notes": "",
+            # Classification metrics that should be ignored because the
+            # task is regression and they're NaN.
+            "holdout_brier": float("nan"),
+            "holdout_ece": float("nan"),
+            "holdout_auc": float("nan"),
+            "holdout_log_loss": float("nan"),
+            "holdout_accuracy": float("nan"),
+            "holdout_mae": 8.2,
+            "holdout_rmse": 10.5,
+            "holdout_r2": 0.31,
+        }
+        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        store = ArtifactStore(tmp_path)
+        out = store.read_metadata("total", "xgboost")
+
+        assert out.metrics["mae"] == pytest.approx(8.2)
+        assert "brier" not in out.metrics

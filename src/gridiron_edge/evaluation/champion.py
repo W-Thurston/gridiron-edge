@@ -115,10 +115,10 @@ class ClassificationComparisonResult:
 def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
     """Pull a standardised metric dict from GameModelMetadata.
 
-    All metrics are first-class fields on :class:`GameModelMetadata`
-    (populated by ``GamesTrainer._build_classification_metadata``). Fields
-    default to NaN when not populated, so the returned dict surfaces
-    NaN for any metric that wasn't recorded at training time.
+    Reads the classification metrics from the ``metrics`` dict on
+    :class:`BaseModelMetadata` (Unit 9). Any metric not recorded at
+    training time surfaces as NaN so the comparator gates can treat
+    them uniformly.
 
     Args:
         meta: Trained model metadata.
@@ -128,11 +128,11 @@ def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
         ``accuracy``.
     """
     return {
-        "brier": meta.holdout_brier,
-        "ece": meta.holdout_ece,
-        "auc": meta.holdout_auc,
-        "log_loss": meta.holdout_log_loss,
-        "accuracy": meta.holdout_accuracy,
+        "brier": meta.metrics.get("brier", float("nan")),
+        "ece": meta.metrics.get("ece", float("nan")),
+        "auc": meta.metrics.get("auc", float("nan")),
+        "log_loss": meta.metrics.get("log_loss", float("nan")),
+        "accuracy": meta.metrics.get("accuracy", float("nan")),
     }
 
 

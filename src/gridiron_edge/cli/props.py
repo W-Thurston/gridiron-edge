@@ -186,8 +186,10 @@ def _train_and_enrich(
     """
     trainer, holdout_df, usable = _prepare_holdout_data(model_name)
     meta: PropModelMetadata = trainer.train(model_type=model_type)
-    enriched = _enrich_predictions_for_holdout(trainer, holdout_df, usable, meta.holdout_rmse)
-    return enriched, meta.holdout_rmse
+    enriched = _enrich_predictions_for_holdout(
+        trainer, holdout_df, usable, meta.metrics.get("rmse", float("nan"))
+    )
+    return enriched, meta.metrics.get("rmse", float("nan"))
 
 
 def _walk_forward_predict_for_season(
@@ -233,16 +235,16 @@ def _walk_forward_predict_for_season(
     season_df = season_df.dropna(subset=[*usable, target])
 
     if season_df.empty:
-        return DataFrame(), meta.holdout_rmse
+        return DataFrame(), meta.metrics.get("rmse", float("nan"))
 
     enriched: DataFrame = _enrich_predictions_for_holdout(
         trainer,
         season_df,
         usable,
-        meta.holdout_rmse,
+        meta.metrics.get("rmse", float("nan")),
     )
 
-    return enriched, meta.holdout_rmse
+    return enriched, meta.metrics.get("rmse", float("nan"))
 
 
 # ---------------------------------------------------------------------------

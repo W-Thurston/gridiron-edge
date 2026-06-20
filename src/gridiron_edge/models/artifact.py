@@ -93,7 +93,12 @@ class BaseModelMetadata:
 
     Both :class:`gridiron_edge.models.game_prediction.base.GameModelMetadata`
     and :class:`gridiron_edge.models.prop_prediction.base.PropModelMetadata`
-    inherit from this class. Subclasses add task-specific holdout metrics.
+    inherit from this class. Subclasses add task-specific identity fields
+    (e.g. ``target_col`` for props) but no longer carry their own
+    holdout-metric fields — those live in :attr:`metrics`.
+
+    Construction is keyword-only (``kw_only=True``) so subclasses can add
+    required fields without dataclass field-ordering errors.
 
     Field naming convention (Workstream 2):
         - ``model_name``: model purpose (e.g. ``"win_prob"``, ``"total"``,
@@ -102,15 +107,22 @@ class BaseModelMetadata:
           ``"logistic"``, ``"elasticnet"``).
         - ``task``: ``"classification"`` or ``"regression"``.
 
-    Construction is keyword-only (``kw_only=True``) so subclasses can add
-    required fields without dataclass field-ordering errors.
+    The :attr:`metrics` dict carries task-appropriate holdout metrics:
+
+    classification:
+        ``brier``, ``ece``, ``auc``, ``log_loss``, ``accuracy``
+
+    regression:
+        ``mae``, ``rmse``, ``r2``
+
+    Display surfaces dispatch on :attr:`task` to select the right keys.
     """
 
     model_name: str
     model_type: str
     task: str
     trained_at: str
-    schema_version: int = 2
+    schema_version: int = 3
     kind: str = "game"
     training_seasons: list[str] = field(default_factory=list)
     holdout_seasons: list[str] = field(default_factory=list)
@@ -119,6 +131,7 @@ class BaseModelMetadata:
     n_train_rows: int = 0
     n_holdout_rows: int = 0
     notes: str = ""
+    metrics: dict[str, float] = field(default_factory=dict)
 
 
 def _read_metadata_subclass(data: dict[str, Any]) -> BaseModelMetadata:
@@ -128,11 +141,20 @@ def _read_metadata_subclass(data: dict[str, Any]) -> BaseModelMetadata:
     artifacts written before Unit 6b stored no ``kind`` field; fall back
     to detecting prop metadata by the presence of ``target_col``.
 
+    Backward-compat also handles the Unit 9 metric migration: artifacts
+    written before Unit 9 stored each holdout metric as a top-level
+    field (``holdout_brier``, ``holdout_mae``, etc.). On read those
+    legacy fields are folded into the :attr:`BaseModelMetadata.metrics`
+    dict and the original keys are stripped so the dataclass constructor
+    does not see them.
+
     Both branches strip unknown keys defensively so additions to the
     *other* subclass do not crash on this load.
     """
     from gridiron_edge.models.game_prediction.base import GameModelMetadata
     from gridiron_edge.models.prop_prediction.base import PropModelMetadata
+
+    data = _migrate_legacy_metrics(dict(data))
 
     kind: str | None = data.get("kind")
     if kind == "prop":
@@ -145,6 +167,56 @@ def _read_metadata_subclass(data: dict[str, Any]) -> BaseModelMetadata:
     known: set[str] = {f.name for f in fields(cls)}
     filtered: dict[str, Any] = {k: v for k, v in data.items() if k in known}
     return cls(**filtered)
+
+
+_LEGACY_CLASSIFICATION_METRICS: dict[str, str] = {
+    "holdout_brier": "brier",
+    "holdout_ece": "ece",
+    "holdout_auc": "auc",
+    "holdout_log_loss": "log_loss",
+    "holdout_accuracy": "accuracy",
+}
+
+_LEGACY_REGRESSION_METRICS: dict[str, str] = {
+    "holdout_mae": "mae",
+    "holdout_rmse": "rmse",
+    "holdout_r2": "r2",
+}
+
+
+def _migrate_legacy_metrics(data: dict[str, Any]) -> dict[str, Any]:
+    """Fold legacy top-level metric fields into the new metrics dict.
+
+    Pre-Unit-9 artifacts persisted each metric as its own top-level
+    field. This helper drains those legacy keys into a single
+    ``metrics`` dict so the dataclass constructor only receives the new
+    schema.
+
+    NaN metrics from the legacy schema are dropped. The new schema does
+    not store NaNs — absence means "not recorded".
+    """
+    import math
+
+    metrics: dict[str, float] = dict(data.get("metrics", {}))
+    legacy_keys: set[str] = set(_LEGACY_CLASSIFICATION_METRICS) | set(_LEGACY_REGRESSION_METRICS)
+
+    for legacy_key in list(legacy_keys):
+        if legacy_key not in data:
+            continue
+        value = data.pop(legacy_key)
+        if value is None:
+            continue
+        if isinstance(value, float) and math.isnan(value):
+            continue
+        new_key = _LEGACY_CLASSIFICATION_METRICS.get(legacy_key) or _LEGACY_REGRESSION_METRICS.get(
+            legacy_key
+        )
+        if new_key is not None and new_key not in metrics:
+            metrics[new_key] = float(value)
+
+    if metrics:
+        data["metrics"] = metrics
+    return data
 
 
 class ArtifactStore:

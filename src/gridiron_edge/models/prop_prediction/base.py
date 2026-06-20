@@ -81,23 +81,12 @@ class PropModelSpec:
 class PropModelMetadata(BaseModelMetadata):
     """Metadata recorded alongside a trained prop model artifact.
 
-    Inherits the shared metadata fields from :class:`BaseModelMetadata`
-    (model_name, model_type, task, trained_at, schema_version,
-    training_seasons, holdout_seasons, parameters, feature_columns,
-    n_train_rows, n_holdout_rows, notes). Adds prop-specific fields below.
-
-    Attributes:
-        target_col: Target column name (e.g. ``"passing_yards"``).
-        holdout_mae: MAE on holdout set (primary metric).
-        holdout_rmse: RMSE on holdout set.
-        holdout_r2: R² on holdout set.
+    Adds the prop-only ``target_col`` field. Holdout metrics live in
+    :attr:`BaseModelMetadata.metrics`.
     """
 
     kind: str = "prop"
     target_col: str
-    holdout_mae: float
-    holdout_rmse: float
-    holdout_r2: float
 
 
 @dataclass
@@ -589,14 +578,14 @@ class PropTrainer(ABC):
 
         # Evaluate on holdout
         y_pred: ndarray = self._predict(x_hold)
-        metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
+        evaluator_metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
 
         logger.info(
             "%s holdout: MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
             self.spec.name,
-            metrics["mae"],
-            metrics["rmse"],
-            metrics["r2"],
+            evaluator_metrics["mae"],
+            evaluator_metrics["rmse"],
+            evaluator_metrics["r2"],
             len(y_hold),
         )
 
@@ -606,15 +595,17 @@ class PropTrainer(ABC):
             task="regression",
             trained_at=datetime.now(UTC).isoformat(),
             target_col=self.spec.target_col,
-            holdout_mae=metrics["mae"],
-            holdout_rmse=metrics["rmse"],
-            holdout_r2=metrics["r2"],
             training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
             holdout_seasons=[f"{y}-{y + 1}" for y in sorted(hold_df["season"].unique().tolist())],
             parameters=params,
             feature_columns=available_features,
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
+            metrics={
+                "mae": evaluator_metrics["mae"],
+                "rmse": evaluator_metrics["rmse"],
+                "r2": evaluator_metrics["r2"],
+            },
         )
 
     def train_through(
@@ -716,15 +707,15 @@ class PropTrainer(ABC):
         params: dict[str, Any] = self._fit(x_train, y_train, model_type=model_type)
 
         y_pred: ndarray = self._predict(x_hold)
-        metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
+        evaluator_metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
 
         logger.info(
             "%s walk-forward holdout (cutoff=%d): MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
             self.spec.name,
             cutoff_season,
-            metrics["mae"],
-            metrics["rmse"],
-            metrics["r2"],
+            evaluator_metrics["mae"],
+            evaluator_metrics["rmse"],
+            evaluator_metrics["r2"],
             len(y_hold),
         )
 
@@ -734,15 +725,17 @@ class PropTrainer(ABC):
             task="regression",
             trained_at=datetime.now(UTC).isoformat(),
             target_col=self.spec.target_col,
-            holdout_mae=metrics["mae"],
-            holdout_rmse=metrics["rmse"],
-            holdout_r2=metrics["r2"],
             training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
-            holdout_seasons=[f"{cutoff_season}-{cutoff_season + 1}"],
+            holdout_seasons=[f"{y}-{y + 1}" for y in sorted(hold_df["season"].unique().tolist())],
             parameters=params,
             feature_columns=available_features,
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
+            metrics={
+                "mae": evaluator_metrics["mae"],
+                "rmse": evaluator_metrics["rmse"],
+                "r2": evaluator_metrics["r2"],
+            },
         )
 
     def train_and_save(

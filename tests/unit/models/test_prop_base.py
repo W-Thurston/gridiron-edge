@@ -28,14 +28,21 @@ from gridiron_edge.models.prop_prediction.base import (
 
 class TestPropModelSpec:
     def test_required_fields(self) -> None:
-        spec = PropModelSpec(
-            name="qb_pass_yards",
+        meta = PropModelMetadata(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+            task="regression",
+            trained_at="2024-01-01T00:00:00Z",
             target_col="passing_yards",
-            position_filter=["QB"],
+            metrics={"mae": 25.0, "rmse": 32.0, "r2": 0.45},
         )
-        assert spec.name == "qb_pass_yards"
-        assert spec.target_col == "passing_yards"
-        assert spec.position_filter == ["QB"]
+        assert meta.model_name == "qb_pass_yards"
+        assert meta.model_type == "elasticnet"
+        assert meta.task == "regression"
+        assert meta.target_col == "passing_yards"
+        assert meta.metrics["mae"] == pytest.approx(25.0)
+        assert meta.metrics["rmse"] == pytest.approx(32.0)
+        assert meta.metrics["r2"] == pytest.approx(0.45)
 
     def test_description_defaults_empty(self) -> None:
         spec = PropModelSpec(
@@ -63,17 +70,15 @@ class TestPropModelMetadata:
             task="regression",
             trained_at="2024-01-01T00:00:00Z",
             target_col="passing_yards",
-            holdout_mae=25.0,
-            holdout_rmse=32.0,
-            holdout_r2=0.45,
+            metrics={"mae": 25.0, "rmse": 32.0, "r2": 0.45},
         )
         assert meta.model_name == "qb_pass_yards"
         assert meta.model_type == "elasticnet"
         assert meta.task == "regression"
         assert meta.target_col == "passing_yards"
-        assert meta.holdout_mae == 25.0
-        assert meta.holdout_rmse == 32.0
-        assert meta.holdout_r2 == 0.45
+        assert meta.metrics["mae"] == pytest.approx(25.0)
+        assert meta.metrics["rmse"] == pytest.approx(32.0)
+        assert meta.metrics["r2"] == pytest.approx(0.45)
 
     def test_defaults(self) -> None:
         meta = PropModelMetadata(
@@ -82,12 +87,10 @@ class TestPropModelMetadata:
             task="regression",
             trained_at="now",
             target_col="col",
-            holdout_mae=0.0,
-            holdout_rmse=0.0,
-            holdout_r2=0.0,
+            metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
         )
         # Inherited BaseModelMetadata defaults
-        assert meta.schema_version == 2
+        assert meta.schema_version == 3
         assert meta.training_seasons == []
         assert meta.holdout_seasons == []
         assert meta.parameters == {}
@@ -97,15 +100,13 @@ class TestPropModelMetadata:
         assert meta.notes == ""
 
     def test_model_type_required(self) -> None:
-        """model_type and task are now required kwargs (Workstream 2)."""
+        """model_type and task are required kwargs (Workstream 2)."""
         with pytest.raises(TypeError):
             PropModelMetadata(  # type: ignore[call-arg]
                 model_name="test",
                 trained_at="now",
                 target_col="col",
-                holdout_mae=0.0,
-                holdout_rmse=0.0,
-                holdout_r2=0.0,
+                metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
                 task="regression",
             )
         with pytest.raises(TypeError):
@@ -113,9 +114,7 @@ class TestPropModelMetadata:
                 model_name="test",
                 trained_at="now",
                 target_col="col",
-                holdout_mae=0.0,
-                holdout_rmse=0.0,
-                holdout_r2=0.0,
+                metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
                 model_type="elasticnet",
             )
 
@@ -126,9 +125,7 @@ class TestPropModelMetadata:
             task="regression",
             trained_at="now",
             target_col="col",
-            holdout_mae=0.0,
-            holdout_rmse=0.0,
-            holdout_r2=0.0,
+            metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
         )
         assert meta.model_type == "random_forest"
         assert meta.task == "regression"
@@ -384,9 +381,7 @@ def test_train_and_save_persists_artifact(tmp_path: Path) -> None:
         task="regression",
         trained_at="2026-06-20T00:00:00",
         target_col=trainer.spec.target_col,
-        holdout_mae=0.0,
-        holdout_rmse=0.0,
-        holdout_r2=0.0,
+        metrics={"mae": 0.0, "rmse": 0.0, "r2": 0.0},
     )
 
     # Monkey-patch `train` to skip the heavy path and exercise only

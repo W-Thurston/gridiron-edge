@@ -64,25 +64,12 @@ logger: Logger = logging.getLogger(__name__)
 class GameModelMetadata(BaseModelMetadata):
     """Metadata recorded alongside a trained game model artifact.
 
-    Inherits the shared metadata fields from :class:`BaseModelMetadata`.
-
-    Classification metrics are populated when ``task="classification"``
-    (used by ``win_prob``); regression metrics are populated when
-    ``task="regression"`` (used by ``total``). Unused metrics remain NaN.
+    Inherits all shared metadata fields from :class:`BaseModelMetadata`.
+    Task-specific holdout metrics now live in
+    :attr:`BaseModelMetadata.metrics` rather than as separate fields.
     """
 
     kind: str = "game"
-
-    # Classification metrics (NaN for regression)
-    holdout_brier: float = float("nan")
-    holdout_ece: float = float("nan")
-    holdout_auc: float = float("nan")
-    holdout_log_loss: float = float("nan")
-    holdout_accuracy: float = float("nan")
-    # Regression metrics (NaN for classification)
-    holdout_mae: float = float("nan")
-    holdout_rmse: float = float("nan")
-    holdout_r2: float = float("nan")
 
 
 # ---------------------------------------------------------------------------
@@ -914,11 +901,13 @@ class GamesTrainer(ABC):
             feature_columns=feature_names,
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
-            holdout_brier=round(holdout_brier, 6),
-            holdout_ece=round(holdout_ece, 6),
-            holdout_auc=round(holdout_auc, 6),
-            holdout_log_loss=round(holdout_log_loss, 6),
-            holdout_accuracy=round(holdout_accuracy, 6),
+            metrics={
+                "brier": round(holdout_brier, 6),
+                "ece": round(holdout_ece, 6),
+                "auc": round(holdout_auc, 6),
+                "log_loss": round(holdout_log_loss, 6),
+                "accuracy": round(holdout_accuracy, 6),
+            },
         )
 
     def _build_regression_metadata(
@@ -978,7 +967,9 @@ class GamesTrainer(ABC):
             feature_columns=feature_names,
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
-            holdout_mae=round(hold_mae, 6),
-            holdout_rmse=round(hold_rmse, 6),
-            holdout_r2=round(hold_r2, 6),
+            metrics={
+                "mae": round(hold_mae, 6),
+                "rmse": round(hold_rmse, 6),
+                "r2": round(hold_r2, 6),
+            },
         )
