@@ -651,6 +651,8 @@ def _print_confidence_section(
     divider: LiteralString,
 ) -> None:
     """Print section 2: confidence-stratified Brier with overconfidence flag."""
+    from gridiron_edge.evaluation.report import find_high_confidence_warning
+
     typer.echo(f"\n{divider}")
     typer.echo(f"[2] Confidence-Stratified Brier — {target_key}")
     if season:
@@ -658,27 +660,17 @@ def _print_confidence_section(
     typer.echo(divider)
     typer.echo(df_tiers.to_string(index=False))
 
-    high_conf: DataFrame = df_tiers.loc[df_tiers["predicted_avg"] >= 0.75, :]
-    if high_conf.empty:
-        typer.echo("\n  —  No high-confidence predictions (≥75%) in this dataset.")
+    flag = find_high_confidence_warning(df_tiers)
+    if flag is None:
+        typer.echo("\n  ✓  High-confidence tiers well-calibrated.")
         return
 
-    worst_gap: float = float(high_conf["calibration_gap"].abs().max())
-    if worst_gap >= 0.03:
-        worst_row: DataFrame | Series = high_conf.loc[
-            high_conf["calibration_gap"].abs().idxmax(), :
-        ]
-        direction_word: str = (
-            "overconfident" if worst_row["calibration_gap"] > 0 else "underconfident"
-        )
-        typer.echo(
-            f"\n  ⚠  High-confidence tier '{worst_row['confidence_tier']}': "
-            f"model predicts {worst_row['predicted_avg']:.0%} avg, "
-            f"teams win {worst_row['actual_win_rate']:.0%} — "
-            f"gap {worst_row['calibration_gap']:+.3f} ({direction_word})"
-        )
-    else:
-        typer.echo("\n  ✓  High-confidence tiers well-calibrated.")
+    typer.echo(
+        f"\n  ⚠  High-confidence tier '{flag.confidence_tier}': "
+        f"model predicts {flag.predicted_avg:.0%} avg, "
+        f"teams win {flag.actual_win_rate:.0%} — "
+        f"gap {flag.calibration_gap:+.3f} ({flag.direction})"
+    )
 
 
 def _print_stability_section(
@@ -688,21 +680,21 @@ def _print_stability_section(
     divider: LiteralString,
 ) -> None:
     """Print section 3: season-over-season Brier with drift flag."""
+    from gridiron_edge.evaluation.report import find_season_drift_warning
+
     typer.echo(f"\n{divider}")
     typer.echo(f"[3] Season-over-Season Brier — {target_key}")
     typer.echo(divider)
     typer.echo(df_seasons.to_string(index=False))
 
-    warn_seasons: DataFrame = df_seasons.loc[df_seasons["trend"] == "⚠", :]
-    if warn_seasons.empty:
+    flag = find_season_drift_warning(df_seasons)
+    if flag is None:
         typer.echo("\n  ✓  Performance stable across all seasons.")
         return
 
-    # pyrefly: ignore [no-matching-overload]
-    worst_s: Series = warn_seasons.sort_values("delta_vs_mean", ascending=False).iloc[0]
     typer.echo(
-        f"\n  ⚠  Possible drift: '{worst_s['season']}' is "
-        f"{worst_s['delta_vs_mean']:+.5f} vs mean — monitor next season."
+        f"\n  ⚠  Possible drift: '{flag.season}' is "
+        f"{flag.delta_vs_mean:+.5f} vs mean — monitor next season."
     )
 
 
@@ -715,6 +707,11 @@ def _print_misses_section(
     divider: LiteralString,
 ) -> None:
     """Print section 4: top-N misses with heuristic pattern summary."""
+    from gridiron_edge.evaluation.report import (
+        find_early_season_miss_pattern,
+        find_overconfidence_miss_pattern,
+    )
+
     typer.echo(f"\n{divider}")
     typer.echo(f"[4] Top {top_misses} Misses — {target_key}")
     if season:
@@ -722,20 +719,20 @@ def _print_misses_section(
     typer.echo(divider)
     typer.echo(df_misses.to_string(index=False))
 
-    early_mask: Series[bool] = df_misses["week"] <= 3
-    n_early: int = early_mask.sum()
-    if n_early >= 3:
+    early_flag = find_early_season_miss_pattern(df_misses, top_misses)
+    if early_flag is not None:
         typer.echo(
-            f"\n  ⚠  {n_early}/{top_misses} worst misses in weeks 1-3 "
+            f"\n  ⚠  {early_flag.n_early}/{early_flag.top_misses} worst "
+            f"misses in weeks 1-3 "
             f"(early-season EPA instability is a likely contributor)."
         )
 
-    loss_misses: DataFrame = df_misses.loc[df_misses["actual_result"] == "LOSS", :]
-    n_losses: int = len(loss_misses)
-    if n_losses >= top_misses // 2:
+    overconf_flag = find_overconfidence_miss_pattern(df_misses, top_misses)
+    if overconf_flag is not None:
         typer.echo(
-            f"\n  ⚠  {n_losses}/{top_misses} worst misses were losses for the "
-            f"predicted favorite — overconfidence pattern."
+            f"\n  ⚠  {overconf_flag.n_losses}/{overconf_flag.top_misses} "
+            f"worst misses were losses for the predicted favorite — "
+            f"overconfidence pattern."
         )
 
     typer.echo("")
