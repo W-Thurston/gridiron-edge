@@ -25,12 +25,15 @@ from datetime import UTC, datetime
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
+
+if TYPE_CHECKING:
+    pass
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -197,3 +200,136 @@ def load_prop_archive(
         df = df.loc[df["season"] == season, :]
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# Canonical prop evaluation join
+# ---------------------------------------------------------------------------
+
+
+def build_prop_evaluation_df(
+    *,
+    model_name: str,
+    model_type: str,
+    season: int | None = None,
+    repo: Path | None = None,
+    actuals_df: DataFrame | None = None,
+) -> DataFrame:
+    """Join archived prop predictions to player game actuals.
+
+    Returns a DataFrame containing one row per player-game prediction
+    matched against its actual stat outcome. This is the canonical
+    surface for prop evaluation, champion comparison, and CLV-style
+    archive analytics.
+
+    Predictions are filtered to a specific ``(model_name, model_type)``
+    pair (per the Unit 5b prop archive identity migration). Actuals are
+    obtained either from ``actuals_df`` (preferred for tests and reuse)
+    or by building features via ``build_prop_features`` (default for
+    normal CLI usage).
+
+    Args:
+        model_name: Prop family name (e.g. ``"qb_pass_yards"``).
+        model_type: Algorithm identifier
+            (e.g. ``"elasticnet"``, ``"random_forest"``).
+        season: Optional season filter applied to the archive load.
+        repo: Repository root override.
+        actuals_df: Optional pre-built actuals DataFrame. Must include
+            ``game_id``, ``player_id``, and the trainer's
+            ``spec.target_col``. When ``None``, ``build_prop_features``
+            is called using the trainer's ``position_filter``.
+
+    Returns:
+        DataFrame with one row per matched prediction. The actual stat
+        column is renamed to ``actual`` so downstream evaluators stay
+        decoupled from per-stat column naming.
+
+    Raises:
+        KeyError: If ``model_name`` is not a registered prop model.
+        ValueError: If the resolved actuals DataFrame is missing
+            required columns.
+    """
+    # Local import to avoid CLI/registry import cycles at module load.
+    from typing import cast
+
+    from gridiron_edge.models.prop_prediction.base import PropTrainer
+    from gridiron_edge.models.registry import ModelRegistry
+
+    # Step 1: Resolve the trainer + target column.
+    model_cls = ModelRegistry.get(model_name)
+
+    trainer = cast(PropTrainer, model_cls())
+    if not isinstance(trainer, PropTrainer):
+        msg = (
+            f"Registered model {model_name!r} is not a PropTrainer; "
+            f"cannot build prop evaluation join."
+        )
+        raise ValueError(msg)
+
+    target_col: str = trainer.spec.target_col
+
+    # Step 2: Load predictions from the archive (Unit 5b composite identity).
+    predictions: DataFrame = load_prop_archive(
+        repo=repo,
+        stat_type=model_name,
+        season=season,
+    )
+    if predictions.empty:
+        return _empty_evaluation_df()
+
+    predictions = predictions.loc[
+        (predictions["model_name"] == model_name) & (predictions["model_type"] == model_type),
+        :,
+    ]
+    if predictions.empty:
+        return _empty_evaluation_df()
+
+    # Step 3: Resolve actuals.
+    if actuals_df is None:
+        from gridiron_edge.features.player.builder import build_prop_features
+
+        actuals_df = build_prop_features(
+            position_filter=trainer.spec.position_filter,
+            repo=repo,
+        )
+
+    required: set[str] = {"game_id", "player_id", target_col}
+    missing: list[str] = sorted(required - set(actuals_df.columns))
+    if missing:
+        msg = f"actuals_df is missing required columns for {model_name!r}: {missing}"
+        raise ValueError(msg)
+
+    actuals: DataFrame = actuals_df.dropna(subset=[target_col]).loc[
+        :,
+        ["game_id", "player_id", target_col],
+    ]
+
+    # Step 4: Inner join. Evaluation only makes sense where both sides exist.
+    merged: DataFrame = predictions.merge(
+        actuals,
+        on=["game_id", "player_id"],
+        how="inner",
+    )
+    if merged.empty:
+        return _empty_evaluation_df()
+
+    # Step 5: Normalize the actual column name.
+    merged = merged.rename(columns={target_col: "actual"})
+
+    # Step 6: Stable sort for deterministic downstream behavior.
+    sort_cols: list[str] = [
+        c for c in ("season", "week", "game_id", "player_id") if c in merged.columns
+    ]
+    if sort_cols:
+        merged = merged.sort_values(sort_cols).reset_index(drop=True)
+
+    return merged
+
+
+def _empty_evaluation_df() -> DataFrame:
+    """Schema-consistent empty result for the evaluation join."""
+    columns: list[str] = [
+        *_ARCHIVE_COLUMNS,
+        "actual",
+    ]
+    return DataFrame(columns=columns)

@@ -325,3 +325,216 @@ class TestLoadPropArchive:
         loaded: DataFrame = load_prop_archive(repo=tmp_path)
         assert len(loaded) == 3
         assert loaded["predicted_mean"].tolist() == df["predicted_mean"].tolist()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for build_prop_evaluation_df tests
+# ---------------------------------------------------------------------------
+
+
+def _make_actuals(n: int = 3) -> DataFrame:
+    """Synthetic actuals DataFrame matching the canonical join contract."""
+    return DataFrame(
+        {
+            "game_id": [f"2024_{i:02d}_LV_KC" for i in range(1, n + 1)],
+            "player_id": ["QB1_KC"] * n,
+            "passing_yards": [275.0 + i * 5 for i in range(n)],
+        }
+    )
+
+
+def _ensure_prop_models_registered() -> None:
+    """Import prop trainers so ModelRegistry knows about them in tests."""
+    import gridiron_edge.models.prop_prediction.qb_pass_yards  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# build_prop_evaluation_df
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPropEvaluationDf:
+    """Canonical archive → actuals join surface."""
+
+    def test_returns_empty_when_archive_missing(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import build_prop_evaluation_df
+
+        _ensure_prop_models_registered()
+
+        result = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+            repo=tmp_path,
+        )
+        assert result.empty
+        assert "actual" in result.columns
+
+    def test_returns_empty_when_no_predictions_match_identity(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import (
+            archive_prop_predictions,
+            build_prop_evaluation_df,
+        )
+
+        _ensure_prop_models_registered()
+
+        df = _make_predictions(n=1)
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="random_forest",
+        )
+
+        result = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",  # different algorithm
+            repo=tmp_path,
+            actuals_df=_make_actuals(),
+        )
+        assert result.empty
+
+    def test_inner_join_against_provided_actuals(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import (
+            archive_prop_predictions,
+            build_prop_evaluation_df,
+        )
+
+        _ensure_prop_models_registered()
+
+        # Archive 3 predictions
+        df = _make_predictions(n=3)
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        # Provide actuals for 2 of those game_ids
+        actuals = _make_actuals(n=2)
+        result = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+            repo=tmp_path,
+            actuals_df=actuals,
+        )
+
+        assert len(result) == 2
+        assert "actual" in result.columns
+        # Identity must round-trip.
+        assert (result["model_name"] == "qb_pass_yards").all()
+        assert (result["model_type"] == "elasticnet").all()
+
+    def test_actual_column_normalized_regardless_of_stat(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import (
+            archive_prop_predictions,
+            build_prop_evaluation_df,
+        )
+
+        _ensure_prop_models_registered()
+
+        df = _make_predictions(n=1)
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        result = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+            repo=tmp_path,
+            actuals_df=_make_actuals(n=1),
+        )
+        assert "actual" in result.columns
+        # The raw stat column should be gone after normalization.
+        assert "passing_yards" not in result.columns
+
+    def test_filters_strictly_by_model_identity(self, tmp_path: Path) -> None:
+        """Predictions from a different algorithm must be ignored."""
+        from gridiron_edge.evaluation.prop_archive import (
+            archive_prop_predictions,
+            build_prop_evaluation_df,
+        )
+
+        _ensure_prop_models_registered()
+
+        df_en = _make_predictions(n=1)
+        archive_prop_predictions(
+            df_en,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        df_rf = _make_predictions(n=1)
+        archive_prop_predictions(
+            df_rf,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="random_forest",
+        )
+
+        out_en = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+            repo=tmp_path,
+            actuals_df=_make_actuals(n=1),
+        )
+        if not out_en.empty:
+            assert (out_en["model_type"] == "elasticnet").all()
+
+        out_rf = build_prop_evaluation_df(
+            model_name="qb_pass_yards",
+            model_type="random_forest",
+            repo=tmp_path,
+            actuals_df=_make_actuals(n=1),
+        )
+        if not out_rf.empty:
+            assert (out_rf["model_type"] == "random_forest").all()
+
+    def test_raises_when_actuals_missing_target_col(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import (
+            archive_prop_predictions,
+            build_prop_evaluation_df,
+        )
+
+        _ensure_prop_models_registered()
+
+        df = _make_predictions(n=1)
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        bad_actuals = DataFrame(
+            {
+                "game_id": ["2024_01_LV_KC"],
+                "player_id": ["QB1_KC"],
+                # missing passing_yards
+            }
+        )
+
+        with pytest.raises(ValueError, match="missing required columns"):
+            build_prop_evaluation_df(
+                model_name="qb_pass_yards",
+                model_type="elasticnet",
+                repo=tmp_path,
+                actuals_df=bad_actuals,
+            )
+
+    def test_unknown_model_raises_key_error(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.prop_archive import build_prop_evaluation_df
+
+        _ensure_prop_models_registered()
+
+        with pytest.raises(KeyError):
+            build_prop_evaluation_df(
+                model_name="not_a_real_model",
+                model_type="elasticnet",
+                repo=tmp_path,
+                actuals_df=_make_actuals(),
+            )
