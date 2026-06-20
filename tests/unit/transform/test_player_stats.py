@@ -61,3 +61,105 @@ class TestNormalizeTeamCodes:
         df = pd.DataFrame({"team": pd.Series(dtype=str), "opponent_team": pd.Series(dtype=str)})
         result = _normalize_team_codes(df)
         assert len(result) == 0
+
+
+class TestJoinGameIdOpponentDisambiguation:
+    """Verify (season, week, team, opponent_team) join semantics (player_stats/C1)."""
+
+    def test_basic_home_join(self) -> None:
+        from gridiron_edge.transform.clean.player_stats import _join_game_id
+
+        df = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "team": ["KC"],
+                "opponent_team": ["BUF"],
+            }
+        )
+        schedule = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "home_team": ["KC"],
+                "away_team": ["BUF"],
+                "game_id": ["2024_01_BUF_KC"],
+            }
+        )
+
+        result = _join_game_id(df, schedule)
+        assert result["game_id"].iloc[0] == "2024_01_BUF_KC"
+
+    def test_basic_away_join(self) -> None:
+        from gridiron_edge.transform.clean.player_stats import _join_game_id
+
+        df = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "team": ["BUF"],
+                "opponent_team": ["KC"],
+            }
+        )
+        schedule = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "home_team": ["KC"],
+                "away_team": ["BUF"],
+                "game_id": ["2024_01_BUF_KC"],
+            }
+        )
+
+        result = _join_game_id(df, schedule)
+        assert result["game_id"].iloc[0] == "2024_01_BUF_KC"
+
+    def test_postseason_disambiguation(self) -> None:
+        """Two different week-19 games must resolve to distinct game_ids."""
+        from gridiron_edge.transform.clean.player_stats import _join_game_id
+
+        df = pd.DataFrame(
+            {
+                "season": [2024, 2024],
+                "week": [19, 19],
+                "team": ["KC", "BUF"],
+                "opponent_team": ["LAC", "MIA"],
+            }
+        )
+        schedule = pd.DataFrame(
+            {
+                "season": [2024, 2024],
+                "week": [19, 19],
+                "home_team": ["KC", "MIA"],
+                "away_team": ["LAC", "BUF"],
+                "game_id": ["2024_19_LAC_KC", "2024_19_BUF_MIA"],
+            }
+        )
+
+        result = _join_game_id(df, schedule)
+        assert result.loc[result["team"] == "KC", "game_id"].iloc[0] == "2024_19_LAC_KC"
+        assert result.loc[result["team"] == "BUF", "game_id"].iloc[0] == "2024_19_BUF_MIA"
+
+    def test_no_match_yields_null(self) -> None:
+        from gridiron_edge.transform.clean.player_stats import _join_game_id
+
+        df = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "team": ["KC"],
+                "opponent_team": ["BUF"],
+            }
+        )
+        schedule = pd.DataFrame(
+            {
+                "season": [2024],
+                "week": [1],
+                "home_team": ["LAR"],
+                "away_team": ["SF"],
+                "game_id": ["2024_01_SF_LAR"],
+            }
+        )
+
+        result = _join_game_id(df, schedule)
+        assert pd.isna(result["game_id"].iloc[0])

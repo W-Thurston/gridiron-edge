@@ -82,30 +82,35 @@ def _join_game_id(df: DataFrame, schedule: DataFrame) -> DataFrame:
     Player stats have (season, week, team, opponent_team) but not a
     reliable game_id. We join against the schedule twice — once assuming
     the player's team is home, once assuming away — then coalesce.
+
+    The opponent_team is included in the join key so postseason weeks
+    (where multiple games may share a week label across different
+    matchups in the same season) cannot accidentally pair a player with
+    the wrong game. See ``player_stats/C1``.
     """
     # Drop the unreliable game_id from player stats if present
     if "game_id" in df.columns:
         df = df.drop(columns=["game_id"])
 
-    # Join as home team
+    # Join as home team (player's team is home, opponent is away).
     # pyrefly: ignore [bad-assignment]
     home_join: DataFrame = df.merge(
         schedule.rename(columns={"game_id": "_gid_home"}),
-        left_on=["season", "week", "team"],
-        right_on=["season", "week", "home_team"],
+        left_on=["season", "week", "team", "opponent_team"],
+        right_on=["season", "week", "home_team", "away_team"],
         how="left",
     )[["_gid_home"]]
 
-    # Join as away team
+    # Join as away team (player's team is away, opponent is home).
     # pyrefly: ignore [bad-assignment]
     away_join: DataFrame = df.merge(
         schedule.rename(columns={"game_id": "_gid_away"}),
-        left_on=["season", "week", "team"],
-        right_on=["season", "week", "away_team"],
+        left_on=["season", "week", "team", "opponent_team"],
+        right_on=["season", "week", "away_team", "home_team"],
         how="left",
     )[["_gid_away"]]
 
-    df["game_id"] = home_join["_gid_home"].fillna(away_join["_gid_away"])
+    df["game_id"] = home_join["_gid_home"].combine_first(away_join["_gid_away"])
 
     matched: int = df["game_id"].notna().sum()
     total: int = len(df)

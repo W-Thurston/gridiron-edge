@@ -11,6 +11,25 @@ Key features produced:
 - ``opp_{stat}_allowed_L{window}`` — rolling avg of what the defense allows
 - ``opp_{stat}_rank_L{window}`` — rank (1=toughest, 32=most generous)
 
+Position-filter semantics (matchup/C1):
+    ``_MATCHUP_STATS`` filters players into strict position buckets when
+    aggregating what each defense allows. WR receiving yards are tracked
+    separately from TE receiving yards, even though both positions can
+    catch passes. This is deliberate: defenses see WR sets and TE sets
+    differently (slot/perimeter vs in-line/H-back), so a defense that
+    is generous against TEs is not necessarily generous against WRs.
+
+    Edge cases not modeled here:
+        - A WR who lines up in the slot in a hybrid offense and a TE who
+          splits wide on the same play. The position label drives the
+          bucket, not the snap alignment.
+        - Multi-position players. A player listed as RB who occasionally
+          takes WR snaps still counts toward RB rushing allowances only.
+
+    A future workstream could replace the strict position filter with
+    snap-alignment data once that's ingested. Until then, the current
+    semantics produce stable, interpretable matchup features.
+
 Usage::
 
     from gridiron_edge.features.player.matchup import build_matchup_features

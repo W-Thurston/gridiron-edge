@@ -201,12 +201,15 @@ class VenueHFAFeature:
             .rename(columns={"sum": "home_wins", "count": "home_games_as_winner"})
         )
 
-        # Home team losses: LOSER is the home team (WIN_OR_TIE from winner's
-        # perspective = 1.0 for wins, 0.5 for ties — so the loser's credit
-        # is 1 - WIN_OR_TIE for each row)
-        home_games["LOSER_CREDIT"] = 1.0 - home_games["WIN_OR_TIE"]
+        # Home team losses: LOSER is the home team in standard home games
+        # (WIN_OR_TIE=1.0 means home team won; WIN_OR_TIE=0.5 (a tie) is
+        # excluded because by the WINNER/LOSER convention ties record the
+        # away team as LOSER, which would incorrectly credit a home game to
+        # the visiting franchise (venue_hfa/H1).
+        non_tie_home_games: pd.DataFrame = home_games.loc[home_games["WIN_OR_TIE"] == 1.0, :]
+        non_tie_home_games = non_tie_home_games.assign(LOSER_CREDIT=0.0)
         loser_home: pd.DataFrame = (
-            home_games.groupby("LOSER")["LOSER_CREDIT"]
+            non_tie_home_games.groupby("LOSER")["LOSER_CREDIT"]
             .agg(["sum", "count"])
             .rename(columns={"sum": "home_wins_as_loser", "count": "home_games_as_loser"})
         )
