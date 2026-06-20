@@ -234,3 +234,23 @@ class TestBuildEvaluationDfJoin:
         if len(finite_probs) > 0:
             assert (finite_probs >= 0.0).all()
             assert (finite_probs <= 1.0).all()
+
+
+# ---------------------------------------------------------------------------
+# Test 5: Integration tests for walk-forward backfill.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_walk_forward_smoke_logistic(tmp_path: Path) -> None:
+    """Smoke test: walk-forward backfill completes without error for logistic.
+
+    Uses a small season range to keep runtime manageable.
+    """
+    # This test requires a full modeling file fixture; it lives as a slow
+    # integration test rather than a unit test because of the data dependency.
+    # Skip gracefully if the test repo doesn't have a modeling file.
+    pytest.skip(
+        "Walk-forward smoke test requires fixture modeling data; "
+        "implement when fixture infrastructure is available."
+    )

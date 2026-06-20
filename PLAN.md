@@ -54,15 +54,21 @@ This is the single highest-impact improvement available.
 
 **ROADMAP ref:** W4 extension.
 
-### Current Baseline (ElasticNet only)
+## W4 Holdout Baselines (post-Unit-1)
 
-| Model | Train | Holdout | MAE | RMSE | R² | Nonzero |
-|-------|-------|---------|-----|------|----|---------|
-| qb_pass_yards | 5,706 | 1,367 | 58.0 | 72.6 | 0.071 | 37/128 |
-| qb_rush_yards | 1,434 | 468 | 16.4 | 20.2 | 0.090 | 52/128 |
-| rb_rush_yards | 10,023 | 2,001 | 25.0 | 32.3 | 0.168 | 16/124 |
-| wr_rec_yards | 23,831 | 4,535 | 25.1 | 32.9 | 0.203 | 55/120 |
-| te_rec_yards | 10,087 | 2,052 | 18.3 | 24.2 | 0.188 | 58/120 |
+Re-baselined 2026-06-19 with TimeSeriesSplit inner CV. Numbers below are
+from the canonical training holdout (PropTrainer.train() output, not the
+champion_cmd evaluate_prop_model display). Pre-Unit-1 baselines retained
+in commit history for reference; the new fix produces near-identical
+numbers per D2 in DECISIONS.md.
+
+| Stat | ElasticNet MAE | RF MAE | XGB MAE | ElasticNet R² | Champion |
+|------|----------------|--------|---------|---------------|----------|
+| qb_pass_yards | 58.1 | 58.3 | 58.0 | 0.071 | elasticnet |
+| qb_rush_yards | 16.4 | 16.5 | 16.4 | 0.099 | elasticnet (no model passed R²>0 gate) |
+| rb_rush_yards | 25.0 | 25.0 | 24.9 | 0.168 | elasticnet |
+| wr_rec_yards | 25.1 | 25.0 | 25.1 | 0.206 | random_forest |
+| te_rec_yards | 18.3 | 18.3 | 18.3 | 0.187 | random_forest |
 
 ### Locked Decisions
 
@@ -580,6 +586,52 @@ Two-part review session:
    test isolation, missing negative tests, coverage ratchet assessment.
 
 Detailed plan created when workstreams 1–3 complete.
+
+### Audit Remediation
+Tracks the systematic remediation of findings from
+`audit_2026_06_18.md`. Per-unit progress, files touched, and
+re-baseline outcomes are maintained in `AUDIT_REMEDIATION.md`.
+Architectural decisions made during remediation are documented in
+`DECISIONS.md`.
+
+**Approach:** Path B — parallel tracks. Track 1 (Units 1-4)
+addresses leakage and user-visible bugs sequentially. Track 2
+(Unit 5) runs in parallel after Unit 1 completes and unifies the
+Predictor Registry. Tier 2 sequential work (Units 6-10) follows
+once both tracks close. Tier 3 surgical fixes (Unit 11) wrap up
+the high-and-medium severity items. Tier 4 hygiene is ambient
+cleanup as files are touched.
+
+#### Status
+
+See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
+
+#### Unit summary
+
+| Unit | Status | Findings closed | Re-baseline? |
+|------|--------|-----------------|--------------|
+| 1    | ✅ Complete | prop_base/C1, C2 | Yes (prop) |
+| 1b   | ✅ Complete | game_base/H1, H2 | No (below noise floor) |
+| 1c   | ✅ Complete | rolling/H1, partial cli_props/C2 + M3 | No (numerical equivalence verified) |
+| 2    | ✅ Complete  | walk-forward backfill | No |
+| 3    | ✅ Complete  | diagnostics, store, models, predictor | No |
+| 4    | Pending  | travel perf, Elo drift | Yes (Elo) |
+| 5    | Pending  | Predictor Registry unification | No |
+| 6    | Pending  | WS2 migration completion | No |
+| 7    | Pending  | Prop integration spine (reduced scope) | Yes (prop) |
+| 8    | Pending  | Elo engine unification | Parity test |
+| 9    | Pending  | Task-discriminated metadata | No |
+| 10   | Pending  | Trainable Protocol decision | No |
+| 11   | Pending  | Tier 3 surgical | Per fix |
+| Tier 4 | Ongoing | Documentation, dead code, naming | No |
+
+#### Completion criteria
+
+Workstream 5 is complete when:
+- All units (1-11) are marked complete in `AUDIT_REMEDIATION.md`
+- Tier 4 is reduced to ambient background cleanup
+- `audit_2026_06_18.md` is annotated with closure status per finding
+- `AUDIT_REMEDIATION.md` is archived to `code_reviews/`
 
 ### Workstream 5: Scenario / "What If" Engine (W4.5)
 

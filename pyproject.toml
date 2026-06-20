@@ -100,7 +100,10 @@ exclude_lines = [
 target-version = "py312"
 line-length = 100
 src = ["src"]
-extend-exclude = ["scripts/"]
+extend-exclude = [
+    "scripts/",
+    "skills/"
+]
 
 [tool.ruff.lint]
 select = [
@@ -199,5 +202,6 @@ docstring-code-format = true
 project-includes = ["src"]
 python-version = "3.12"
 project-excludes = [
-    "scripts/**"
+    "scripts/**",
+    "skills/**"
 ]

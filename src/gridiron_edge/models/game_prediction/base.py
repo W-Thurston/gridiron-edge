@@ -43,6 +43,7 @@ from sklearn.model_selection import TimeSeriesSplit
 from tqdm import tqdm
 
 from gridiron_edge.models.artifact import BaseModelMetadata
+from gridiron_edge.models.game_prediction._epa_window import WindowData
 
 if TYPE_CHECKING:
     # pyrefly: ignore [missing-import]
@@ -405,6 +406,66 @@ def _apply_params(model: BaseEstimator, params: dict[str, Any]) -> None:
         model.set_params(**params)
 
 
+def _filter_for_walk_forward(
+    x_train_orig: pd.DataFrame,
+    y_train_orig: Series,
+    x_hold_orig: pd.DataFrame,
+    y_hold_orig: Series,
+    train_through_season: str,
+    *,
+    df_reference: pd.DataFrame,
+) -> tuple[pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
+    """Re-split train+holdout for walk-forward backfill.
+
+    The original (x_train_orig, x_hold_orig) split used HOLDOUT_SEASONS.
+    For walk-forward, we re-split: training uses seasons strictly before
+    ``train_through_season`` (from either original train or holdout pool),
+    and the new holdout is the single season immediately after
+    ``train_through_season``.
+
+    Args:
+        x_train_orig: Original training feature matrix from the standard
+            HOLDOUT_SEASONS split.
+        y_train_orig: Original training target vector aligned with
+            ``x_train_orig``.
+        x_hold_orig: Original holdout feature matrix from the standard
+            HOLDOUT_SEASONS split.
+        y_hold_orig: Original holdout target vector aligned with
+            ``x_hold_orig``.
+        train_through_season: Season label like ``"2014-2015"``. Training
+            uses everything before this; new holdout is the next season.
+        df_reference: Original DataFrame with YEAR column used for lookups.
+
+    Returns:
+        Tuple of (x_train, y_train, x_hold, y_hold, train_seasons,
+        hold_seasons).
+    """
+    # Combine into full feature matrix and target.
+    x_full = pd.concat([x_train_orig, x_hold_orig])
+    y_full = pd.concat([y_train_orig, y_hold_orig])
+
+    # Look up YEAR for each row
+    year_series = df_reference.loc[x_full.index, "YEAR"]
+    train_through_start = int(train_through_season.split("-")[0])
+    next_season_start = train_through_start + 1
+    next_season_label = f"{next_season_start}-{next_season_start + 1}"
+
+    # Use first 4 chars of YEAR ("2014-2015" -> "2014") for comparison
+    year_start = year_series.astype(str).str[:4].astype(int)
+    train_mask = year_start <= train_through_start
+    hold_mask = year_series == next_season_label
+
+    x_train = x_full.loc[train_mask]
+    y_train = y_full.loc[train_mask]
+    x_hold = x_full.loc[hold_mask]
+    y_hold = y_full.loc[hold_mask]
+
+    train_seasons = sorted(year_series.loc[train_mask].unique().tolist())
+    hold_seasons = sorted(year_series.loc[hold_mask].unique().tolist())
+
+    return x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons
+
+
 class GamesTrainer(ABC):
     """Base class for game model trainers.
 
@@ -429,6 +490,8 @@ class GamesTrainer(ABC):
         *,
         model_type: GameModelType,
         repo: Path | None = None,
+        train_through_season: str | None = None,
+        persist: bool = True,
     ) -> GameModelMetadata:
         """Full training pipeline: prepare data, HP search, fit, evaluate, save.
 
@@ -437,6 +500,15 @@ class GamesTrainer(ABC):
             model_type: Algorithm to use. Must be a key of
                 ``self.spec.feature_set``.
             repo: Repository root override.
+            train_through_season: If set (e.g. ``"2014-2015"``), training
+                data is filtered to seasons strictly before this label.
+                Holdout becomes the single season immediately after
+                ``train_through_season``. Used for walk-forward backfill.
+                When ``None``, the default HOLDOUT_SEASONS split applies.
+            persist: If ``True`` (default), save the trained artifact to
+                ``ArtifactStore``. Pass ``False`` for walk-forward
+                intermediates that should be discarded after producing
+                their season's predictions.
 
         Returns:
             ``GameModelMetadata`` with task-appropriate holdout metrics
@@ -510,6 +582,14 @@ class GamesTrainer(ABC):
             scaler=self._scaler,
             overwrite=True,
         )
+
+        if persist:
+            ArtifactStore(resolved_repo).save(
+                metadata=metadata,
+                model_obj=self._model,
+                scaler=self._scaler,
+                overwrite=True,
+            )
         return metadata
 
     def _run_hp_search(
@@ -519,6 +599,7 @@ class GamesTrainer(ABC):
         model_type: GameModelType,
         feature_fn: Callable,
         repo: Path,
+        train_through_season: str | None = None,
     ) -> _SearchResult:
         """Run randomized hyperparameter search; refit best on full training set.
 
@@ -528,8 +609,6 @@ class GamesTrainer(ABC):
         """
         # pyrefly: ignore [missing-import]
         from sklearn.model_selection import TimeSeriesSplit
-
-        from gridiron_edge.models.game_prediction._epa_window import WindowData
 
         spec: GameModelSpec = self.spec
         grid: list[dict[str, Any]] = _get_param_grid(model_type, spec.task)
@@ -569,6 +648,7 @@ class GamesTrainer(ABC):
                 window_cache=window_cache,
                 feature_fn=feature_fn,
                 repo=repo,
+                train_through_season=train_through_season,
             )
 
             score: float = self._cv_score(
@@ -633,6 +713,7 @@ class GamesTrainer(ABC):
         window_cache: dict[int, Any],
         feature_fn: Callable,
         repo: Path,
+        train_through_season: str | None = None,
     ) -> tuple[pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
         """Resolve train/holdout split for a given EPA window.
 
@@ -647,19 +728,31 @@ class GamesTrainer(ABC):
                 _get_cached_window_data,
             )
 
-            wd = _get_cached_window_data(window_cache, window, df, feature_fn, repo)
-            return (
-                wd.x_train,
-                wd.y_train,
-                wd.x_holdout,
-                wd.y_holdout,
-                wd.train_seasons,
-                wd.holdout_seasons,
+            wd: WindowData = _get_cached_window_data(window_cache, window, df, feature_fn, repo)
+            x_train, y_train = wd.x_train, wd.y_train
+            x_hold, y_hold = wd.x_holdout, wd.y_holdout
+            train_seasons, hold_seasons = wd.train_seasons, wd.holdout_seasons
+
+        else:
+            from gridiron_edge.models.game_prediction.total import _prepare_total_data
+
+            x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons = _prepare_total_data(
+                repo
             )
 
-        from gridiron_edge.models.game_prediction.total import _prepare_total_data
+        if train_through_season is not None:
+            x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons = (
+                _filter_for_walk_forward(
+                    x_train,
+                    y_train,
+                    x_hold,
+                    y_hold,
+                    train_through_season=train_through_season,
+                    df_reference=df,
+                )
+            )
 
-        return _prepare_total_data(repo)
+        return x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons
 
     def _cv_score(
         self,

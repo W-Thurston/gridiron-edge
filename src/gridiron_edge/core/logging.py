@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import warnings
 
 
 def setup_logging(*, verbose: bool = False) -> logging.Logger:
@@ -34,5 +35,12 @@ def setup_logging(*, verbose: bool = False) -> logging.Logger:
     # Silence noisy third-party loggers even in verbose mode
     for noisy in ("scrapy", "twisted", "urllib3", "filelock"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    try:
+        from sklearn.exceptions import ConvergenceWarning
+
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    except ImportError:
+        pass
 
     return logging.getLogger("gridiron")

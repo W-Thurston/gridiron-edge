@@ -185,33 +185,64 @@ def evaluate_backfill(
         "elo",
         help="Model algorithm (e.g. 'random_forest', 'xgboost', 'logistic', 'elo').",
     ),
+    mode: str = typer.Option(
+        "auto",
+        help=(
+            "Backfill mode: 'walk-forward' (retrain per season — for ML models), "
+            "'current-model' (use existing artifact — for analytic models like elo), "
+            "or 'auto' (default per model)."
+        ),
+    ),
     overwrite: bool = typer.Option(
         False,
         "--overwrite/--no-overwrite",
         help="Re-archive all games even if already present.",
     ),
+    start_season: str | None = typer.Option(
+        None,
+        help="First season to predict (walk-forward only), e.g. '2000-2001'.",
+    ),
+    end_season: str | None = typer.Option(
+        None,
+        help="Last season to predict (walk-forward only), e.g. '2024-2025'.",
+    ),
 ) -> None:
-    r"""Archive predictions for all historical games in one pass.
+    r"""Archive predictions for all historical games.
 
-    Loads games and the trained predictor once and generates predictions
-    for every game in the dataset. Use this to populate the archive before
-    running evaluate summary or calibration.
+    By default, ML models (win_prob_logistic, win_prob_random_forest,
+    win_prob_xgboost, total_random_forest, total_xgboost) use walk-forward
+    backfill: for each season N, the model is retrained on data through
+    N-1, then used to predict season N. Intermediate models are discarded.
+
+    Analytic models (win_prob_elo) default to current-model backfill since
+    Elo state is built chronologically and the current artifact produces
+    honest historical predictions.
 
     \b
     Examples:
+      gridiron evaluate backfill --model-name win_prob --model-type random_forest
       gridiron evaluate backfill --model-name win_prob --model-type elo
       gridiron evaluate backfill --model-name win_prob --model-type random_forest --overwrite
+      gridiron evaluate backfill --model-name win_prob --model-type random_forest \
+        --start-season 2010-2011
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.backfill import backfill_model
 
-    console.header("evaluate backfill", subtitle=f"model={model_name}_{model_type}")
+    resolved_mode: str | None = None if mode == "auto" else mode
+    subtitle_parts: list[str] = [f"model={model_name}_{model_type}"]
+    if resolved_mode is not None:
+        subtitle_parts.append(f"mode={resolved_mode}")
+    console.header("evaluate backfill", subtitle="  ".join(subtitle_parts))
 
     with step("Generate + archive historical predictions") as s:
         n: int = backfill_model(
             model_name=model_name,
             model_type=model_type,
+            mode=resolved_mode,  # type: ignore[arg-type]
             overwrite=overwrite,
+            start_season=start_season,
+            end_season=end_season,
         )
         s.set_detail(f"{n:,} predictions archived")
 
