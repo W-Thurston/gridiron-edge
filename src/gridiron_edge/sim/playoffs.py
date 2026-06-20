@@ -1018,9 +1018,14 @@ def seed_conference(
 
 
 @njit(cache=True)
-def _simulate_one_game(team_a: int, team_b: int, elo: np.ndarray) -> int:
+def _simulate_one_game(
+    team_a: int,
+    team_b: int,
+    elo: np.ndarray,
+    divisor: float,
+) -> int:
     """Simulate single playoff game using Elo ratings."""
-    p_a = 1.0 / (1.0 + 10.0 ** ((float(elo[team_b]) - float(elo[team_a])) / 480.0))
+    p_a = 1.0 / (1.0 + 10.0 ** ((float(elo[team_b]) - float(elo[team_a])) / divisor))
     return team_a if np.random.random() < p_a else team_b
 
 
@@ -1041,6 +1046,7 @@ def simulate_playoffs(
     div_id: np.ndarray,
     base_seed: int,
     fixed_playoff_winners: np.ndarray,
+    divisor: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Simulate playoffs for all regular season simulations.
 
@@ -1133,17 +1139,17 @@ def simulate_playoffs(
             t1, t2 = int(seeds[1]), int(seeds[6])
             w1: int = _fixed_winner(ROUND_WC, t1, t2)
             if w1 < 0:
-                w1 = _simulate_one_game(t1, t2, elo_arr)
+                w1 = _simulate_one_game(t1, t2, elo_arr, divisor)
 
             t1, t2 = int(seeds[2]), int(seeds[5])
             w2: int = _fixed_winner(ROUND_WC, t1, t2)
             if w2 < 0:
-                w2 = _simulate_one_game(t1, t2, elo_arr)
+                w2 = _simulate_one_game(t1, t2, elo_arr, divisor)
 
             t1, t2 = int(seeds[3]), int(seeds[4])
             w3: int = _fixed_winner(ROUND_WC, t1, t2)
             if w3 < 0:
-                w3 = _simulate_one_game(t1, t2, elo_arr)
+                w3 = _simulate_one_game(t1, t2, elo_arr, divisor)
 
             po[w1, ROUND_WC] += 1
             po[w2, ROUND_WC] += 1
@@ -1178,12 +1184,12 @@ def simulate_playoffs(
             t1, t2 = s1, low_team
             d1: int = _fixed_winner(ROUND_DIV, t1, t2)
             if d1 < 0:
-                d1 = _simulate_one_game(t1, t2, elo_arr)
+                d1 = _simulate_one_game(t1, t2, elo_arr, divisor)
 
             t1, t2 = int(r[0]), int(r[1])
             d2: int = _fixed_winner(ROUND_DIV, t1, t2)
             if d2 < 0:
-                d2 = _simulate_one_game(t1, t2, elo_arr)
+                d2 = _simulate_one_game(t1, t2, elo_arr, divisor)
 
             po[d1, ROUND_DIV] += 1
             po[d2, ROUND_DIV] += 1
@@ -1195,12 +1201,12 @@ def simulate_playoffs(
         t1, t2 = afc_div[0], afc_div[1]
         afc_champ: int = _fixed_winner(ROUND_CONF, t1, t2)
         if afc_champ < 0:
-            afc_champ = _simulate_one_game(t1, t2, elo)
+            afc_champ = _simulate_one_game(t1, t2, elo, divisor)
 
         t1, t2 = nfc_div[0], nfc_div[1]
         nfc_champ: int = _fixed_winner(ROUND_CONF, t1, t2)
         if nfc_champ < 0:
-            nfc_champ = _simulate_one_game(t1, t2, elo)
+            nfc_champ = _simulate_one_game(t1, t2, elo, divisor)
 
         po[afc_champ, ROUND_CONF] += 1
         po[nfc_champ, ROUND_CONF] += 1
@@ -1208,7 +1214,7 @@ def simulate_playoffs(
         t1, t2 = afc_champ, nfc_champ
         sb_winner: int = _fixed_winner(ROUND_SB, t1, t2)
         if sb_winner < 0:
-            sb_winner = _simulate_one_game(t1, t2, elo)
+            sb_winner = _simulate_one_game(t1, t2, elo, divisor)
         po[sb_winner, ROUND_SB] += 1
 
     return po, make_playoffs, bye_counts

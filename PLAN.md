@@ -606,14 +606,15 @@ cleanup as files are touched.
 
 See `AUDIT_REMEDIATION.md` for current unit and re-baseline log.
 Latest completion:
-- Unit 7c completed (2026-06-20).
-- Prop CLI commands are now archive- or artifact-driven
-  instead of retraining inside each invocation.
-- Introduced PropTrainer.train_and_save.
-- Restored friendly Unknown-model CLI errors broken by
-  the Unit 5a registry unification.
-- Prop integration spine is complete; the prop CLI now
-  mirrors the game CLI architecture.
+- Unit 8 completed (2026-06-20).
+- Replaced the structurally duplicated Elo simulators
+  in ratings/elo/table.py and evaluation/tune.py with a
+  single canonical simulator at ratings/elo/simulator.py.
+- Removed the latent divisor inconsistency in the state
+  table builder.
+- Parameterized the playoff simulator's divisor.
+- Existing numba parity tests continue to pin
+  Python-vs-numba behaviour.
 
 #### Unit summary
 
@@ -631,7 +632,7 @@ Latest completion:
 | 7a   | ✅ Complete | Canonical prop evaluation join | No |
 | 7b   | ✅ Complete | Prop walk-forward backfill | Yes (prop) |
 | 7c   | ✅ Complete | Artifact-loading prop CLI commands | No |
-| 8    | Pending  | Elo engine unification | Parity test |
+| 8    | ✅ Complete | Elo engine unification | No (parity test in place) |
 | 9    | Pending  | Task-discriminated metadata | No |
 | 10   | Pending  | Trainable Protocol decision | No |
 | 11   | Pending  | Tier 3 surgical | Per fix |

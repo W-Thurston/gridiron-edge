@@ -671,8 +671,9 @@ def run_full_simulation(
             end_elo_by_sim,
             conf_id,
             div_id,
-            int(config.base_seed),
+            config.base_seed,
             fixed_playoff_winners,
+            divisor=config.divisor,
         )
 
     with _log_phase("Build output dataframes"):

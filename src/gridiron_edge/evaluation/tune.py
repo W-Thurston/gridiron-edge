@@ -32,12 +32,10 @@ from typing import Final
 import pandas as pd
 from tqdm import tqdm
 
-from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.core.constants import EXPANSION_TEAMS as _EXPANSION_START
 from gridiron_edge.core.constants import HOLDOUT_SEASONS
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders
-from gridiron_edge.ratings.elo.core import elo_win_probability as _elo_win_probability
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -143,19 +141,18 @@ def _k_for_week(
     k_week18: float,
     k_post: float,
 ) -> float:
-    """Return the K-factor for the given week number."""
-    if week in _WEEKS_EARLY:
-        return k_early
-    if week in _WEEKS_MID:
-        return k_mid
-    if week in _WEEK_18:
-        return k_week18
-    if week in _WEEKS_POST:
-        return k_post
-    return k_mid
+    """Backwards-compatible alias for the canonical simulator's K-zone helper.
+
+    Kept so existing tests against the tuner's zone-based K logic continue
+    to import a stable callable. Delegates to
+    :func:`gridiron_edge.ratings.elo.simulator._k_for_week`.
+    """
+    from gridiron_edge.ratings.elo.simulator import _k_for_week as _canonical
+
+    return _canonical(week, k_early, k_mid, k_week18, k_post)
 
 
-def _simulate_and_score(  # noqa: PLR0912, PLR0915
+def _simulate_and_score(
     games: pd.DataFrame,
     sorted_years: list[str],
     teams_by_year: dict[str, set[str]],
@@ -170,132 +167,34 @@ def _simulate_and_score(  # noqa: PLR0912, PLR0915
     initial_elo: float = _INITIAL_ELO,
     expansion_elo: float = _EXPANSION_ELO,
 ) -> tuple[list[float], list[float], list[str], list[str]]:
-    """Run the full Elo simulation and return per-game predictions.
+    """Tuner-shaped view over :func:`simulate_elo_history`.
 
-    Accepts zone-based K parameters. For a flat-K simulation, pass the
-    same value for k_early, k_mid, k_week18, and k_post.
-
-    Args:
-        games: Canonical games DataFrame.
-        sorted_years: Chronologically ordered season labels.
-        teams_by_year: Season label to set of active team names.
-        expansion_start: Team name to first active season.
-        k_early: K-factor for weeks 1-4.
-        k_mid: K-factor for weeks 5-17.
-        k_week18: K-factor for week 18.
-        k_post: K-factor for weeks 19-22.
-        divisor: Win-probability divisor.
-        regress_frac: Offseason regression fraction.
-        initial_elo: Starting Elo for all teams in year 0, week 1.
-        expansion_elo: Starting Elo for expansion teams.
-
-    Returns:
-        Tuple of (away_probs, away_outcomes, seasons, game_ids).
+    Kept as the public callable consumed by ``models/elo/predictor.py``
+    and the grid-search loops below. The actual Elo simulation is
+    delegated to the canonical simulator.
     """
-    elo: dict[tuple[str, str, int], float] = {}
+    from gridiron_edge.ratings.elo.simulator import simulate_elo_history
 
-    first_year = sorted_years[0]
-    for team in teams_by_year.get(first_year, set()):
-        elo[(team, first_year, 1)] = initial_elo
-
-    games_idx = games.groupby(["YEAR", "WEEK_NUM"])
-
-    away_probs: list[float] = []
-    away_outcomes: list[float] = []
-    game_seasons: list[str] = []
-    game_ids: list[str] = []
-
-    for yr_idx, curr_year in enumerate(sorted_years):
-        next_year = sorted_years[yr_idx + 1] if yr_idx < len(sorted_years) - 1 else None
-        teams_this_season = teams_by_year.get(curr_year, set())
-
-        try:
-            season_games = games.loc[games["YEAR"] == curr_year]
-        except KeyError:
-            continue
-
-        weeks_with_games = sorted(season_games["WEEK_NUM"].unique().tolist())
-        if not weeks_with_games:
-            continue
-        max_week = max(weeks_with_games)
-
-        for wk in range(1, max_week + 1):
-            k = _k_for_week(wk, k_early, k_mid, k_week18, k_post)
-
-            try:
-                week_df = games_idx.get_group((curr_year, wk))
-            except KeyError:
-                week_df = pd.DataFrame()
-
-            for _, row in week_df.iterrows():
-                winner = str(row["WINNER"])
-                loser = str(row["LOSER"])
-                win_or_tie = float(row["WIN_OR_TIE"])
-
-                w_elo = elo.get((winner, curr_year, wk), initial_elo)
-                l_elo = elo.get((loser, curr_year, wk), initial_elo)
-
-                away_team = winner if row["GAME_LOCATION"] == _AWAY_WIN_LOCATION else loser
-                away_elo = w_elo if away_team == winner else l_elo
-                home_elo = l_elo if away_team == winner else w_elo
-
-                if wk in _VALID_WEEKS:
-                    away_prob, _ = _elo_win_probability(away_elo, home_elo, divisor=divisor)
-                    if win_or_tie == 0.5:
-                        outcome = 0.5
-                    elif away_team == winner:
-                        outcome = 1.0
-                    else:
-                        outcome = 0.0
-
-                    away_probs.append(away_prob)
-                    away_outcomes.append(outcome)
-                    game_seasons.append(curr_year)
-                    game_ids.append(str(row.get("GAME_ID", "")))
-
-                p_win, _ = _elo_win_probability(w_elo, l_elo, divisor=divisor)
-                score_w = win_or_tie
-                delta = k * (score_w - p_win)
-                new_w = w_elo + delta
-                new_l = l_elo - delta
-
-                is_last_week = wk == max_week
-                if is_last_week and next_year is not None:
-                    elo[(winner, next_year, 1)] = new_w
-                    elo[(loser, next_year, 1)] = new_l
-                else:
-                    elo[(winner, curr_year, wk + 1)] = new_w
-                    elo[(loser, curr_year, wk + 1)] = new_l
-
-            all_teams_this_year = teams_by_year.get(curr_year, set())
-            is_last_week = wk == max_week
-
-            for team in all_teams_this_year:
-                curr_key = (team, curr_year, wk)
-                if is_last_week and next_year is not None:
-                    next_key = (team, next_year, 1)
-                    if next_key not in elo:
-                        elo[next_key] = elo.get(curr_key, initial_elo)
-                elif not is_last_week:
-                    next_key = (team, curr_year, wk + 1)
-                    if next_key not in elo:
-                        elo[next_key] = elo.get(curr_key, initial_elo)
-
-        if next_year is not None:
-            returning = teams_this_season & teams_by_year.get(next_year, set())
-            next_elos = [elo.get((t, next_year, 1), initial_elo) for t in returning]
-            if next_elos:
-                season_mean = sum(next_elos) / len(next_elos)
-                for team in returning:
-                    key = (team, next_year, 1)
-                    current = elo.get(key, initial_elo)
-                    elo[key] = season_mean * regress_frac + current * (1.0 - regress_frac)
-
-            for team, start in expansion_start.items():
-                if start == next_year:
-                    elo[(team, next_year, 1)] = expansion_elo
-
-    return away_probs, away_outcomes, game_seasons, game_ids
+    result = simulate_elo_history(
+        games,
+        sorted_years,
+        teams_by_year,
+        expansion_start,
+        k_early=k_early,
+        k_mid=k_mid,
+        k_week18=k_week18,
+        k_post=k_post,
+        divisor=divisor,
+        regress_frac=regress_frac,
+        initial_elo=initial_elo,
+        expansion_elo=expansion_elo,
+    )
+    return (
+        result.away_probs,
+        result.away_outcomes,
+        result.game_seasons,
+        result.game_ids,
+    )
 
 
 # ---------------------------------------------------------------------------
