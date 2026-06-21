@@ -1,5 +1,3 @@
-# src/gridiron_edge/features/team/record.py
-
 """Season win/loss record and current streak features.
 
 Captures team momentum and form signals that Elo absorbs only slowly.
@@ -25,25 +23,30 @@ Design notes:
       NFL standings convention. They reset both win and loss streaks to 0.
     - Week 1 games have no prior history: WINS=0, LOSSES=0, WIN_PCT=NaN,
       WIN_STREAK=0, LOSS_STREAK=0. _prepare_data excludes NaN rows, so
-      week 1 is withheld from training via WIN_PCT. Alternatively, impute
-      WIN_PCT=0.5 for week 1 if you want those rows included — a design
-      choice tracked in the backlog.
+      week 1 is withheld from training via WIN_PCT.
     - WIN_STREAK and LOSS_STREAK are two separate non-negative columns
-      rather than a single signed streak. This lets the model split on
-      WIN_STREAK > 3 independently of LOSS_STREAK > 2 without sign
-      conflation — cleaner for tree-based models.
+      rather than a single signed streak.
     - Neutral-site games (GAME_LOCATION == "N") are included in record
       computation because they affect standings equally.
     - Postseason games from prior seasons are excluded — features are
       reset each season (grouped by YEAR).
+
+Implementation note (record/H1, record/H2):
+    Counts are computed via cumsum + shift (vectorized over all teams).
+    Streaks are computed via the standard "streak break / group / count"
+    pattern: identify rows where the result type changes, take cumsum to
+    label streak groups, then cumcount within each group. The result is
+    shifted by one row per team-season so the value reflects the streak
+    entering the current game.
 """
 
 from __future__ import annotations
 
 import logging
 from logging import Logger
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final
 
+import numpy as np
 import pandas as pd
 from pandas import DataFrame
 
@@ -66,6 +69,15 @@ _PRODUCES: Final[list[str]] = [
     "TEAM_B_WIN_PCT",
     "TEAM_B_WIN_STREAK",
     "TEAM_B_LOSS_STREAK",
+]
+
+# Columns produced by _build_record_table for join-side use.
+_STAT_COLS: Final[list[str]] = [
+    "WINS",
+    "LOSSES",
+    "WIN_PCT",
+    "WIN_STREAK",
+    "LOSS_STREAK",
 ]
 
 
@@ -92,54 +104,69 @@ class RecordFeature:
             Input DataFrame with 10 record/streak columns appended.
         """
         games: pd.DataFrame = datasets.games()
-        record_map: dict[tuple[str, str, int], dict[str, float]] = _build_record_map(games)
+        record_table: DataFrame = _build_record_table(games)
 
         df = df.copy()
-        for prefix, team_col in [("TEAM_A", "TEAM_A"), ("TEAM_B", "TEAM_B")]:
-            for stat in ["WINS", "LOSSES", "WIN_PCT", "WIN_STREAK", "LOSS_STREAK"]:
-                col: str = f"{prefix}_{stat}"
-                df[col] = df.apply(
-                    lambda row, tc=team_col, s=stat: record_map.get(
-                        (row[tc], row["YEAR"], int(row["WEEK_NUM"])), {}
-                    ).get(s, float("nan") if s == "WIN_PCT" else 0),
-                    axis=1,
-                )
+        df["WEEK_NUM"] = df["WEEK_NUM"].astype(int)
+
+        if record_table.empty:
+            # No completed games to learn from — produce default values.
+            for col in _PRODUCES:
+                if col.endswith("_WIN_PCT"):
+                    df[col] = float("nan")
+                else:
+                    df[col] = 0
+            return df
+
+        # Vectorized join for both team perspectives. Two merges replace
+        # 10 row-wise apply() calls (record/H1).
+        for prefix, team_col in (("TEAM_A", "TEAM_A"), ("TEAM_B", "TEAM_B")):
+            renamed: DataFrame = record_table.rename(
+                columns={
+                    "TEAM": team_col,
+                    **{c: f"{prefix}_{c}" for c in _STAT_COLS},
+                }
+            )
+            df = df.merge(
+                renamed,
+                how="left",
+                on=[team_col, "YEAR", "WEEK_NUM"],
+            )
+
+        # Fill defaults for unmatched rows (week 1 entries / new teams /
+        # rows that fall outside the completed-games window).
+        for col in _PRODUCES:
+            if col.endswith("_WIN_PCT"):
+                # WIN_PCT NaN is the documented signal for "no prior games".
+                continue
+            df[col] = df[col].fillna(0)
 
         return df
 
 
 # ---------------------------------------------------------------------------
-# Record computation
+# Record computation (vectorized)
 # ---------------------------------------------------------------------------
 
 
-def _build_record_map(
-    games: pd.DataFrame,
-) -> dict[tuple[str, str, int], dict[str, float]]:
-    """Build a lookup: (team, year, week) → record stats entering that week.
+def _build_record_table(games: pd.DataFrame) -> pd.DataFrame:
+    """Build a vectorized record lookup table.
 
-    For each team/season/week combination, computes the team's record
-    (wins, losses, win_pct, win_streak, loss_streak) based solely on
-    completed games in the same season with WEEK_NUM < current week.
+    Returns a DataFrame with one row per (TEAM, YEAR, WEEK_NUM) that
+    captures the team's record *entering* that week. Empty DataFrame
+    when input is empty or missing required columns.
 
-    Args:
-        games: Canonical games DataFrame with WINNER, LOSER, YEAR,
-            WEEK_NUM, and WIN_OR_TIE columns.
-
-    Returns:
-        Dict mapping (team, year, week_num) to a dict of stat values.
-        Week 1 entries have zeros for all counts and NaN for WIN_PCT.
+    Columns:
+        TEAM, YEAR, WEEK_NUM, WINS, LOSSES, WIN_PCT, WIN_STREAK, LOSS_STREAK
     """
     required: set[str] = {"WINNER", "LOSER", "YEAR", "WEEK_NUM", "WIN_OR_TIE"}
     if games.empty or not required.issubset(games.columns):
-        return {}
+        return pd.DataFrame(columns=["TEAM", "YEAR", "WEEK_NUM", *_STAT_COLS])
 
-    # Work only with completed games (WIN_OR_TIE is non-null)
     completed: DataFrame = games.loc[games["WIN_OR_TIE"].notna(), :].copy()
     completed["WEEK_NUM"] = completed["WEEK_NUM"].astype(int)
 
-    # Build a long-form table: one row per team per game
-    # Each row: team, year, week, result (1=win, 0.5=tie, 0=loss)
+    # Long format: one row per team per game with the team's result.
     winner_rows = completed.loc[:, ["WINNER", "YEAR", "WEEK_NUM", "WIN_OR_TIE"]].rename(
         columns={"WINNER": "TEAM", "WIN_OR_TIE": "RESULT"}
     )
@@ -147,54 +174,81 @@ def _build_record_map(
     loser_rows["RESULT"] = 1.0 - loser_rows["WIN_OR_TIE"]
     loser_rows = loser_rows.rename(columns={"LOSER": "TEAM"}).drop(columns=["WIN_OR_TIE"])
 
-    long = pd.concat([winner_rows, loser_rows], ignore_index=True)
+    long: DataFrame = pd.concat([winner_rows, loser_rows], ignore_index=True)
     long = long.sort_values(["TEAM", "YEAR", "WEEK_NUM"], ignore_index=True)
 
-    record_map: dict[tuple[str, str, int], dict[str, float]] = {}
+    # ── Count outcomes (record/H2) ────────────────────────────────────
+    # Vectorized via cumsum + shift. shift(1) ensures the value at each
+    # game reflects the team's record *entering* that game, not after it.
+    long["IS_WIN"] = (long["RESULT"] >= 1.0).astype(int)
+    long["IS_LOSS"] = (long["RESULT"] <= 0.0).astype(int)
+    long["IS_TIE"] = (long["RESULT"] == 0.5).astype(int)
 
-    for (team, year), group in long.groupby(["TEAM", "YEAR"], sort=False):
-        sorted_group = group.sort_values("WEEK_NUM")
-        results: list[float] = sorted_group["RESULT"].tolist()
-        weeks: list[int] = sorted_group["WEEK_NUM"].tolist()
+    grouped = long.groupby(["TEAM", "YEAR"], sort=False)
 
-        # For each game week, compute record from all prior games this season
-        for i, week in enumerate(weeks):
-            prior: list[float] = results[:i]  # games before this week only
+    cumulative_wins = (
+        grouped["IS_WIN"].cumsum().groupby([long["TEAM"], long["YEAR"]]).shift(1).fillna(0)
+    )
+    cumulative_losses = (
+        grouped["IS_LOSS"].cumsum().groupby([long["TEAM"], long["YEAR"]]).shift(1).fillna(0)
+    )
+    cumulative_ties = (
+        grouped["IS_TIE"].cumsum().groupby([long["TEAM"], long["YEAR"]]).shift(1).fillna(0)
+    )
 
-            wins: Literal[0] | float = sum(r for r in prior if r >= 1.0)
-            losses: Literal[0] | float = sum(1 - r for r in prior if r <= 0.0)
-            # Ties: result == 0.5 — count 0.5 toward wins and losses
-            ties_contrib: Literal[0] | float = sum(0.5 for r in prior if r == 0.5)
-            wins += ties_contrib
-            losses += ties_contrib
+    # NFL convention: each tie counts as 0.5 W and 0.5 L.
+    long["WINS"] = cumulative_wins.astype(float) + 0.5 * cumulative_ties.astype(float)
+    long["LOSSES"] = cumulative_losses.astype(float) + 0.5 * cumulative_ties.astype(float)
 
-            n_played: int = len(prior)
-            win_pct: float = wins / n_played if n_played > 0 else float("nan")
+    n_played = cumulative_wins + cumulative_losses + cumulative_ties
+    long["WIN_PCT"] = np.where(
+        n_played > 0,
+        long["WINS"] / n_played.replace(0, np.nan),
+        np.nan,
+    )
 
-            # Streak: count consecutive wins/losses from the most recent game
-            win_streak = 0
-            loss_streak = 0
-            for r in reversed(prior):
-                if r >= 1.0:
-                    if loss_streak == 0:
-                        win_streak += 1
-                    else:
-                        break
-                elif r <= 0.0:
-                    if win_streak == 0:
-                        loss_streak += 1
-                    else:
-                        break
-                else:
-                    # Tie — resets both streaks
-                    break
+    # ── Streaks (record/H2) ───────────────────────────────────────────
+    # Approach: label each row with a "streak type" (win / loss / tie),
+    # detect streak boundaries (where the type changes), assign streak
+    # group IDs via cumsum, then cumcount within each group. shift(1)
+    # by team-season produces the streak entering the current game.
+    long["STREAK_TYPE"] = np.where(
+        long["IS_WIN"] == 1,
+        "W",
+        np.where(long["IS_LOSS"] == 1, "L", "T"),
+    )
 
-            record_map[(str(team), str(year), week)] = {
-                "WINS": wins,
-                "LOSSES": losses,
-                "WIN_PCT": win_pct,
-                "WIN_STREAK": float(win_streak),
-                "LOSS_STREAK": float(loss_streak),
-            }
+    # A streak break occurs whenever the streak type changes OR the
+    # team-season changes (first game of a new team-season is always
+    # a fresh streak).
+    prev_streak_type = grouped["STREAK_TYPE"].shift(1)
+    same_team_season = long["TEAM"].eq(long["TEAM"].shift(1)) & long["YEAR"].eq(
+        long["YEAR"].shift(1)
+    )
+    streak_break = (long["STREAK_TYPE"] != prev_streak_type) | (~same_team_season)
+    long["STREAK_GROUP"] = streak_break.cumsum()
 
-    return record_map
+    # cumcount within each streak group; the value at row i is the
+    # streak length *including* the current game's result.
+    long["STREAK_LEN_AFTER"] = long.groupby("STREAK_GROUP").cumcount() + 1
+
+    # Shift by 1 within team-season so the value reflects the streak
+    # entering the current game (the same shift we used for counts).
+    long["STREAK_LEN_BEFORE"] = grouped["STREAK_LEN_AFTER"].shift(1).fillna(0).astype(int)
+    long["STREAK_TYPE_BEFORE"] = grouped["STREAK_TYPE"].shift(1)
+
+    # Split into separate WIN_STREAK and LOSS_STREAK columns.
+    # Ties reset both streaks to 0 (matching the original behavior).
+    long["WIN_STREAK"] = np.where(
+        long["STREAK_TYPE_BEFORE"] == "W",
+        long["STREAK_LEN_BEFORE"],
+        0,
+    ).astype(int)
+    long["LOSS_STREAK"] = np.where(
+        long["STREAK_TYPE_BEFORE"] == "L",
+        long["STREAK_LEN_BEFORE"],
+        0,
+    ).astype(int)
+
+    # Return only the columns needed for the join.
+    return long.loc[:, ["TEAM", "YEAR", "WEEK_NUM", *_STAT_COLS]].reset_index(drop=True)
