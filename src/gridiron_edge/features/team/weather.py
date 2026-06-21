@@ -177,13 +177,10 @@ class WeatherFeature:
         games = datasets.games()
 
         # -- IS_DOME from ROOF column (always available) -------------------
+        # Vectorized via .isin() instead of per-row apply (weather/M2).
         roof = games[["GAME_ID", "ROOF"]].copy()
-        roof["IS_DOME"] = (
-            roof["ROOF"]
-            .str.lower()
-            .str.strip()
-            .apply(lambda r: 1 if r in {v.lower() for v in _DOME_ROOF_VALUES} else 0)
-        )
+        _dome_lower: frozenset[str] = frozenset(v.lower() for v in _DOME_ROOF_VALUES)
+        roof["IS_DOME"] = roof["ROOF"].str.lower().str.strip().isin(_dome_lower).astype(int)
         dome_lookup = roof[["GAME_ID", "IS_DOME"]].drop_duplicates("GAME_ID")
 
         # -- Weather columns from weather_enriched (optional) --------------

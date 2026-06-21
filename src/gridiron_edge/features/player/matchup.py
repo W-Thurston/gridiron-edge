@@ -96,7 +96,10 @@ def _compute_def_allowed_per_game(player_logs: DataFrame) -> DataFrame:
             logger.debug("Skipping %s — column not in data", stat_col)
             continue
 
-        filtered = player_logs[player_logs["position"].isin(positions)]
+        # Explicit copy() after boolean filtering to avoid potential
+        # SettingWithCopyWarning if downstream code ever mutates `filtered`
+        # (matchup/H1). Defensive even if no current call site mutates.
+        filtered = player_logs[player_logs["position"].isin(positions)].copy()
         agg = (
             filtered.groupby(["opponent_team", "season", "week"])[stat_col]
             .sum()

@@ -136,23 +136,27 @@ class RestFeature:
             .reset_index(drop=True)
         )
 
-        # Compute days since previous game per team (shift within team group)
+        # Compute days since previous game per team (shift within team group).
+        # Vectorized via datetime arithmetic; pandas handles NaT propagation
+        # naturally so we don't need a per-row pd.notna check (rest/H1).
         team_games["_PREV_DATE"] = team_games.groupby("TEAM")["_DATE"].shift(1)
-        team_games["_DAYS_REST"] = team_games.apply(
-            lambda r: (
-                (r["_DATE"] - r["_PREV_DATE"]).days
-                if pd.notna(r["_PREV_DATE"]) and pd.notna(r["_DATE"])
-                else float("nan")
-            ),
-            axis=1,
-        )
+        _date = pd.to_datetime(team_games["_DATE"], errors="coerce")
+        _prev = pd.to_datetime(team_games["_PREV_DATE"], errors="coerce")
+        team_games["_DAYS_REST"] = (_date - _prev).dt.days.astype(float)
 
-        # Derive binary flags
-        team_games["_SHORT_WEEK"] = team_games["_DAYS_REST"].apply(
-            lambda x: int(x < _SHORT_WEEK_THRESHOLD) if pd.notna(x) else float("nan")
+        # Derive binary flags. Comparisons return False for NaN, so we mask
+        # explicitly to preserve NaN semantics from the source column.
+        _rest = team_games["_DAYS_REST"]
+        _rest_present = _rest.notna()
+        team_games["_SHORT_WEEK"] = (
+            (_rest < _SHORT_WEEK_THRESHOLD)
+            .where(_rest_present, other=float("nan"))
+            .astype("float64")
         )
-        team_games["_POST_BYE"] = team_games["_DAYS_REST"].apply(
-            lambda x: int(x >= _BYE_WEEK_THRESHOLD) if pd.notna(x) else float("nan")
+        team_games["_POST_BYE"] = (
+            (_rest >= _BYE_WEEK_THRESHOLD)
+            .where(_rest_present, other=float("nan"))
+            .astype("float64")
         )
 
         rest_lookup = team_games[

@@ -121,6 +121,24 @@ def signed_amount(txn_type: str, amount: float) -> float:
     return -amount
 
 
+def _signed_amount_series(
+    txn_types: pd.Series,
+    amounts: pd.Series,
+) -> pd.Series:
+    """Vectorized version of ``signed_amount`` for a Series of transactions.
+
+    Mirrors the scalar logic: inflows return positive, outflows return
+    negative. Used by ``current_balance`` and ``balance_history`` to
+    avoid row-wise apply (bankroll/H1).
+    """
+    import numpy as np
+
+    return pd.Series(
+        np.where(txn_types.isin(_INFLOWS), amounts, -amounts),
+        index=txn_types.index,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internal append helper
 # ---------------------------------------------------------------------------
@@ -317,8 +335,8 @@ def current_balance(*, repo: Path | None = None) -> float:
     df: DataFrame = _read_txn_log(repo)
     if df.empty:
         return 0.0
-    signs = df.apply(lambda r: signed_amount(r["txn_type"], r["amount"]), axis=1)
-    return signs.sum()
+    signs = _signed_amount_series(df["txn_type"], df["amount"])
+    return float(signs.sum())
 
 
 def balance_history(*, repo: Path | None = None) -> pd.DataFrame:
@@ -334,10 +352,7 @@ def balance_history(*, repo: Path | None = None) -> pd.DataFrame:
             columns=["timestamp", "txn_type", "amount", "signed_amount", "running_balance"],
         )
     df = df.sort_values("timestamp").reset_index(drop=True)
-    df["signed_amount"] = df.apply(
-        lambda r: signed_amount(r["txn_type"], r["amount"]),
-        axis=1,
-    )
+    df["signed_amount"] = _signed_amount_series(df["txn_type"], df["amount"])
     df["running_balance"] = df["signed_amount"].cumsum()
     return df.loc[:, ["timestamp", "txn_type", "amount", "signed_amount", "running_balance"]]
 

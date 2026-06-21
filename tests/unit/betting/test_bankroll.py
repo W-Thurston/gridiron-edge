@@ -238,3 +238,50 @@ class TestLoadTransactions:
         df = load_transactions(txn_type="deposit", repo=tmp_path)
         assert len(df) == 2
         assert all(df["txn_type"] == "deposit")
+
+
+# ---------------------------------------------------------------------------
+# TestSignedAmountSeries (bankroll/H1 — vectorization)
+# ---------------------------------------------------------------------------
+
+
+class TestSignedAmountSeries:
+    """Verify the vectorized helper matches the scalar signed_amount semantics."""
+
+    def test_inflows_positive_outflows_negative(self) -> None:
+        import pandas as pd
+
+        from gridiron_edge.betting.bankroll import _signed_amount_series
+
+        types = pd.Series(["deposit", "withdraw", "bet_placed", "bet_settled"])
+        amounts = pd.Series([100.0, 50.0, 25.0, 75.0])
+        signs = _signed_amount_series(types, amounts)
+        assert list(signs) == [100.0, -50.0, -25.0, 75.0]
+
+    def test_preserves_index(self) -> None:
+        import pandas as pd
+
+        from gridiron_edge.betting.bankroll import _signed_amount_series
+
+        types = pd.Series(["deposit", "withdraw"], index=[5, 9])
+        amounts = pd.Series([100.0, 50.0], index=[5, 9])
+        signs = _signed_amount_series(types, amounts)
+        assert list(signs.index) == [5, 9]
+
+    def test_matches_scalar_signed_amount(self) -> None:
+        """Equivalence check: the Series helper produces the same per-row
+        result as the scalar signed_amount function."""
+        import pandas as pd
+
+        from gridiron_edge.betting.bankroll import (
+            _signed_amount_series,
+            signed_amount,
+        )
+
+        types = pd.Series(["deposit", "withdraw", "bet_placed", "bet_settled"])
+        amounts = pd.Series([100.0, 50.0, 25.0, 75.0])
+
+        vectorized = _signed_amount_series(types, amounts)
+        scalar = [signed_amount(t, a) for t, a in zip(types, amounts, strict=True)]
+
+        assert list(vectorized) == scalar
