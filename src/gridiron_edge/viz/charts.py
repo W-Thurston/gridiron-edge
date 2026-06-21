@@ -38,6 +38,34 @@ from gridiron_edge.sim._types import (
 logger = logging.getLogger(__name__)
 
 
+def _format_records(
+    wins: np.ndarray,
+    losses: np.ndarray,
+    ties: np.ndarray,
+) -> list[str]:
+    """Format per-team W-L or W-L-T record strings.
+
+    Vectorized via numpy. Replaces per-team Python loops in
+    ``build_viz_table_df`` (charts/H1).
+
+    Args:
+        wins: Per-team win counts.
+        losses: Per-team loss counts.
+        ties: Per-team tie counts. A 0 produces W-L; non-zero produces W-L-T.
+
+    Returns:
+        List of formatted record strings, one per team.
+    """
+    wins_i: np.ndarray = wins.astype(int)
+    losses_i: np.ndarray = losses.astype(int)
+    ties_i: np.ndarray = ties.astype(int)
+
+    wl = np.char.add(np.char.add(wins_i.astype(str), "-"), losses_i.astype(str))
+    wlt = np.char.add(np.char.add(wl, "-"), ties_i.astype(str))
+
+    return np.where(ties_i == 0, wl, wlt).tolist()
+
+
 def build_viz_table_df(
     results: SimulationResults,
     *,
@@ -126,20 +154,16 @@ def build_viz_table_df(
     rank_change = np.nan_to_num(elo_vals - elo_last_vals, nan=0.0)
 
     # --- Current / projected record strings ---
-    w_base = np.zeros(N_TEAMS, dtype=int)
-    l_base = np.zeros(N_TEAMS, dtype=int)
-    t_base = np.zeros(N_TEAMS, dtype=int)
+    # Vectorized derivation: ties = pts_total_actual % 2, wins =
+    # (pts_total_actual - ties) // 2, losses = gp_played - wins - ties
+    # (charts/H1). All operations are elementwise over the team axis.
+    pts_actual_int = pts_total_actual.astype(int)
+    gp_played_int = gp_played_actual.astype(int)
+    t_base = pts_actual_int % 2
+    w_base = (pts_actual_int - t_base) // 2
+    l_base = gp_played_int - w_base - t_base
 
-    for i in range(N_TEAMS):
-        ties = int(pts_total_actual[i]) % 2
-        wins = (int(pts_total_actual[i]) - ties) // 2
-        losses = int(gp_played_actual[i]) - wins - ties
-        w_base[i], l_base[i], t_base[i] = wins, losses, ties
-
-    current_record = [
-        f"{w_base[i]}-{l_base[i]}" if t_base[i] == 0 else f"{w_base[i]}-{l_base[i]}-{t_base[i]}"
-        for i in range(N_TEAMS)
-    ]
+    current_record = _format_records(w_base, l_base, t_base)
 
     if final_actual_week >= N_WEEKS_REG:
         projected = current_record
@@ -155,12 +179,7 @@ def build_viz_table_df(
         wins_rounded = np.clip(wins_rounded, w_base, w_base + remaining)
         losses_proj = games_total - wins_rounded - ties_proj
 
-        projected = [
-            f"{int(wins_rounded[i])}-{int(losses_proj[i])}"
-            if int(ties_proj[i]) == 0
-            else f"{int(wins_rounded[i])}-{int(losses_proj[i])}-{int(ties_proj[i])}"
-            for i in range(N_TEAMS)
-        ]
+        projected = _format_records(wins_rounded, losses_proj, ties_proj)
 
     # --- Logos ---
     flag_paths = list(logo_dir.glob("*.png"))

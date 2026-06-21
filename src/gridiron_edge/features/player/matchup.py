@@ -153,16 +153,28 @@ def _rank_defenses(def_rolling: DataFrame, *, window: int) -> DataFrame:
 
     Rank 1 = fewest yards/points allowed (toughest defense).
     Rank 32 = most yards/points allowed (most generous).
+
+    Vectorized via a single groupby().rank() over all roll_cols at once,
+    replacing the per-column loop (matchup/H2).
     """
     roll_cols = [c for c in def_rolling.columns if f"_L{window}" in c]
+    if not roll_cols:
+        return def_rolling
 
-    for col in roll_cols:
-        rank_col = col.replace(f"_L{window}", f"_rank_L{window}")
-        def_rolling[rank_col] = def_rolling.groupby(["season", "week"])[col].rank(
-            method="min", ascending=True, na_option="bottom"
-        )
+    # Single groupby; rank all columns at once. Each column in the result
+    # corresponds to the same-named source column with rank semantics applied.
+    ranks = def_rolling.groupby(["season", "week"])[roll_cols].rank(
+        method="min",
+        ascending=True,
+        na_option="bottom",
+    )
 
-    return def_rolling
+    rename_map: dict[str, str] = {
+        col: col.replace(f"_L{window}", f"_rank_L{window}") for col in roll_cols
+    }
+    # pyrefly: ignore [no-matching-overload]
+    ranks = ranks.rename(columns=rename_map)
+    return pd.concat([def_rolling, ranks], axis=1)
 
 
 def build_matchup_features(
