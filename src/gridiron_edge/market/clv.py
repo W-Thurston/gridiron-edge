@@ -234,7 +234,10 @@ def build_clv_report(
     """Augment an edge report with CLV columns.
 
     For each row in the edge report, finds the opening and closing odds
-    from the ledger and computes the appropriate CLV metric.
+    from the ledger and computes the appropriate CLV metric. Vectorized
+    per market_type (spread and total are fully vectorized; moneyline
+    uses a small per-row de-vigging step inside its subset). See
+    ``clv/M1``.
 
     Parameters
     ----------
@@ -265,23 +268,45 @@ def build_clv_report(
     opening_wide: DataFrame = _pivot_and_suffix(opening_long, "open")
     closing_wide: DataFrame = _pivot_and_suffix(closing_long, "close")
 
-    result = edge_report_df.copy()
-    result = result.merge(opening_wide, on="game_id", how="left")
-    result = result.merge(closing_wide, on="game_id", how="left")
+    merged = edge_report_df.copy()
+    merged = merged.merge(opening_wide, on="game_id", how="left")
+    merged = merged.merge(closing_wide, on="game_id", how="left")
 
-    opening_vals: list[float] = []
-    closing_vals: list[float] = []
-    clv_vals: list[float] = []
+    # Dispatch by market_type. Each handler returns a DataFrame with
+    # opening_value, closing_value, clv columns appended. Rows whose
+    # market_type is unrecognized fall through to the NaN bucket.
+    handlers = {
+        "moneyline": _vectorized_ml_clv,
+        "spread": _vectorized_spread_clv,
+        "total": _vectorized_total_clv,
+    }
 
-    for _, row in result.iterrows():
-        o_val, c_val, clv_val = _compute_row_clv(row)
-        opening_vals.append(o_val)
-        closing_vals.append(c_val)
-        clv_vals.append(clv_val)
+    parts: list[pd.DataFrame] = []
+    known_mask = pd.Series(False, index=merged.index)
+    for market_type, handler in handlers.items():
+        mask = merged["market_type"] == market_type
+        known_mask = known_mask | mask
+        if mask.any():
+            parts.append(handler(merged.loc[mask, :]))
 
-    result["opening_value"] = opening_vals
-    result["closing_value"] = closing_vals
-    result["clv"] = clv_vals
+    # Unknown market_type rows (or rows where market_type is NaN) get
+    # NaN CLV columns to match the original fallback semantics.
+    unknown = merged.loc[~known_mask, :].copy()
+    if not unknown.empty:
+        unknown["opening_value"] = float("nan")
+        unknown["closing_value"] = float("nan")
+        unknown["clv"] = float("nan")
+        parts.append(unknown)
+
+    result = (
+        pd.concat(parts, axis=0).sort_index()
+        if parts
+        else merged.assign(
+            opening_value=float("nan"),
+            closing_value=float("nan"),
+            clv=float("nan"),
+        )
+    )
 
     # Drop the intermediate wide columns to keep output clean.
     drop_cols: list[str] = [
@@ -425,3 +450,158 @@ def _isnan(val: object) -> bool:
         return np.isnan(val)
     except (TypeError, ValueError):
         return False
+
+
+# ---------------------------------------------------------------------------
+# Vectorized CLV computation (clv/M1)
+# ---------------------------------------------------------------------------
+#
+# These helpers process whole DataFrames per market_type in one pass,
+# replacing the row-by-row iterrows() path used by the original
+# build_clv_report. The per-market scalar helpers above remain the
+# public scalar API; these are internal to the report builder.
+
+
+def _vectorized_ml_clv(group: pd.DataFrame) -> pd.DataFrame:
+    """Compute moneyline CLV for a group of edge-report rows.
+
+    Vectorized counterpart to ``_ml_clv``. Returns the input DataFrame
+    with ``opening_value``, ``closing_value``, and ``clv`` columns
+    appended. NaN inputs propagate to NaN outputs.
+
+    Notes:
+    -----
+    The ``no_vig`` helper is per-row scalar (takes two ints, returns a
+    pair). We call it via a row-wise apply over the subset because the
+    moneyline conversion involves a non-linear de-vigging step that is
+    not natively vectorized in ``market.odds_math``. The hot path for
+    CLV reports is spread + total (point-based), where the entire
+    computation is vectorized below. Moneyline rows are typically a
+    small minority and the apply over a subset is acceptable.
+    """
+    out = group.copy()
+    nan = float("nan")
+
+    required = ["ml_home_open", "ml_away_open", "ml_home_close", "ml_away_close"]
+    has_all = (
+        # pyrefly: ignore [bad-argument-type]
+        out[required].notna().all(axis=1)
+        if all(c in out.columns for c in required)
+        else pd.Series(False, index=out.index)
+    )
+
+    if not has_all.any():
+        out["opening_value"] = nan
+        out["closing_value"] = nan
+        out["clv"] = nan
+        return out
+
+    valid = out.loc[has_all, :]
+
+    # The no_vig() helper is scalar-pair-in, pair-out. Apply per row
+    # within this subset; outside callers see only the aggregated result.
+    open_pairs = valid.apply(
+        lambda r: no_vig(int(r["ml_home_open"]), int(r["ml_away_open"])),
+        axis=1,
+    )
+    close_pairs = valid.apply(
+        lambda r: no_vig(int(r["ml_home_close"]), int(r["ml_away_close"])),
+        axis=1,
+    )
+
+    open_home = open_pairs.map(lambda p: p[0])
+    open_away = open_pairs.map(lambda p: p[1])
+    close_home = close_pairs.map(lambda p: p[0])
+    close_away = close_pairs.map(lambda p: p[1])
+
+    is_home = valid["side"].astype(str) == "home"
+    open_prob = open_home.where(is_home, open_away)
+    close_prob = close_home.where(is_home, close_away)
+
+    # closing_line_value scalar formula, vectorized; guard against zero
+    # denominators.
+    clv_vals = (close_prob - open_prob) / open_prob.replace(0.0, float("nan"))
+
+    out["opening_value"] = nan
+    out["closing_value"] = nan
+    out["clv"] = nan
+    out.loc[has_all, "opening_value"] = open_prob.values
+    out.loc[has_all, "closing_value"] = close_prob.values
+    out.loc[has_all, "clv"] = clv_vals.values
+
+    return out
+
+
+def _vectorized_spread_clv(group: pd.DataFrame) -> pd.DataFrame:
+    """Compute spread CLV for a group of edge-report rows.
+
+    Vectorized counterpart to ``_spread_row_clv``. NaN inputs propagate.
+    """
+    out = group.copy()
+    nan = float("nan")
+
+    open_col = "spread_line_home_open"
+    close_col = "spread_line_home_close"
+    if open_col not in out.columns or close_col not in out.columns:
+        out["opening_value"] = nan
+        out["closing_value"] = nan
+        out["clv"] = nan
+        return out
+
+    # pyrefly: ignore [bad-assignment]
+    spread_open: Series = pd.to_numeric(out[open_col], errors="coerce")
+    # pyrefly: ignore [bad-assignment]
+    spread_close: Series = pd.to_numeric(out[close_col], errors="coerce")
+    # pyrefly: ignore [bad-assignment]
+    side: Series[str] = out["side"].astype(str)
+
+    # Vectorized form of:
+    #   side == "home" -> bet_spread - close_spread
+    #   else            -> close_spread - bet_spread
+    home_clv: Series = spread_open - spread_close
+    away_clv: Series = spread_close - spread_open
+    clv_vals: Series = home_clv.where(side == "home", away_clv)
+
+    has_both: Series[bool] = spread_open.notna() & spread_close.notna()
+    out["opening_value"] = spread_open.where(has_both, nan)
+    out["closing_value"] = spread_close.where(has_both, nan)
+    out["clv"] = clv_vals.where(has_both, nan)
+
+    return out
+
+
+def _vectorized_total_clv(group: pd.DataFrame) -> pd.DataFrame:
+    """Compute total CLV for a group of edge-report rows.
+
+    Vectorized counterpart to ``_total_row_clv``. NaN inputs propagate.
+    """
+    out = group.copy()
+    nan = float("nan")
+
+    open_col = "total_line_open"
+    close_col = "total_line_close"
+    if open_col not in out.columns or close_col not in out.columns:
+        out["opening_value"] = nan
+        out["closing_value"] = nan
+        out["clv"] = nan
+        return out
+
+    # pyrefly: ignore [bad-assignment]
+    total_open: Series = pd.to_numeric(out[open_col], errors="coerce")
+    # pyrefly: ignore [bad-assignment]
+    total_close: Series = pd.to_numeric(out[close_col], errors="coerce")
+    side: Series = out["side"].astype(str)
+
+    # Vectorized form of:
+    #   side == "over"  -> close - bet
+    #   side == "under" -> bet - close
+    over_clv: Series = total_close - total_open
+    under_clv: Series = total_open - total_close
+    clv_vals: Series = over_clv.where(side == "over", under_clv)
+
+    has_both: Series[bool] = total_open.notna() & total_close.notna()
+    out["opening_value"] = total_open.where(has_both, nan)
+    out["closing_value"] = total_close.where(has_both, nan)
+    out["clv"] = clv_vals.where(has_both, nan)
+
+    return out

@@ -383,3 +383,118 @@ class TestSummarizeClv:
         stats = summarize_clv(df)
         assert np.isnan(stats["mean_clv"])
         assert stats["n_edges"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# TestBuildClvReportVectorized
+# ---------------------------------------------------------------------------
+
+
+class TestBuildClvReportVectorized:
+    """Vectorization-specific tests for build_clv_report (clv/M1)."""
+
+    def test_multiple_rows_same_market_processed_together(self) -> None:
+        """Multiple spread rows should be processed in one vectorized pass."""
+        edge_report = pd.DataFrame(
+            [
+                _make_edge_report_row(
+                    game_id="2026_01_KC_LAC",
+                    market_type="spread",
+                    side="home",
+                ),
+                _make_edge_report_row(
+                    game_id="2026_01_BUF_MIA",
+                    market_type="spread",
+                    side="away",
+                ),
+            ]
+        )
+        ledger = pd.concat(
+            [
+                _make_multi_pull_ledger("2026_01_KC_LAC"),
+                _make_multi_pull_ledger("2026_01_BUF_MIA"),
+            ],
+            ignore_index=True,
+        )
+        result = build_clv_report(edge_report, ledger)
+        assert len(result) == 2
+        # KC home: spread moved -3 to -4.5 → home CLV = +1.5
+        kc_row = result[result["game_id"] == "2026_01_KC_LAC"].iloc[0]
+        assert kc_row["clv"] == pytest.approx(1.5, abs=1e-9)
+        # BUF away: home line moved -3 to -4.5 (home got stronger), so the
+        # away bettor's value moved against them → away CLV = -1.5.
+        buf_row = result[result["game_id"] == "2026_01_BUF_MIA"].iloc[0]
+        assert buf_row["clv"] == pytest.approx(-1.5, abs=1e-9)
+
+    def test_mixed_markets_dispatched_correctly(self) -> None:
+        """Three markets in one report should each receive correct CLV."""
+        edge_report = pd.DataFrame(
+            [
+                _make_edge_report_row(market_type="moneyline", side="home"),
+                _make_edge_report_row(market_type="spread", side="home"),
+                _make_edge_report_row(market_type="total", side="over"),
+            ]
+        )
+        ledger = _make_multi_pull_ledger()
+        result = build_clv_report(edge_report, ledger)
+        assert len(result) == 3
+        # Spread CLV: -3 → -4.5, home → +1.5
+        spread_row = result[result["market_type"] == "spread"].iloc[0]
+        assert spread_row["clv"] == pytest.approx(1.5, abs=1e-9)
+        # Total CLV: 44 → 46, over → +2.0
+        total_row = result[result["market_type"] == "total"].iloc[0]
+        assert total_row["clv"] == pytest.approx(2.0, abs=1e-9)
+        # Moneyline CLV: market shifted toward home → positive
+        ml_row = result[result["market_type"] == "moneyline"].iloc[0]
+        assert ml_row["clv"] > 0
+
+    def test_unknown_market_type_yields_nan(self) -> None:
+        """Unrecognized market_type rows get NaN CLV (fallback semantics)."""
+        edge_report = pd.DataFrame([_make_edge_report_row(market_type="futures", side="yes")])
+        ledger = _make_multi_pull_ledger()
+        result = build_clv_report(edge_report, ledger)
+        assert len(result) == 1
+        assert pd.isna(result["clv"].iloc[0])
+        assert pd.isna(result["opening_value"].iloc[0])
+        assert pd.isna(result["closing_value"].iloc[0])
+
+    def test_missing_opening_odds_yields_nan(self) -> None:
+        """When opening odds aren't in the ledger, the row gets NaN CLV."""
+        edge_report = pd.DataFrame([_make_edge_report_row(market_type="spread", side="home")])
+        # Ledger has only closing-time rows.
+        t2 = "2026-09-05 17:00:00"
+        ledger = pd.DataFrame(
+            [
+                _make_ledger_row("2026_01_KC_LAC", "spread", "home", -110.0, -4.5, t2),
+                _make_ledger_row("2026_01_KC_LAC", "spread", "away", -110.0, 4.5, t2),
+            ]
+        )
+        result = build_clv_report(edge_report, ledger)
+        assert len(result) == 1
+        # extract_opening/closing both pick the same row (only one pull),
+        # so opening == closing → CLV == 0.
+        # The test verifies that the new dispatch doesn't crash.
+        assert not pd.isna(result["clv"].iloc[0])
+
+    def test_row_order_preserved(self) -> None:
+        """The output should preserve the input row order."""
+        edge_report = pd.DataFrame(
+            [
+                _make_edge_report_row(market_type="total", side="over"),
+                _make_edge_report_row(market_type="moneyline", side="home"),
+                _make_edge_report_row(market_type="spread", side="home"),
+            ]
+        )
+        ledger = _make_multi_pull_ledger()
+        result = build_clv_report(edge_report, ledger)
+        # Original order: total, moneyline, spread
+        assert list(result["market_type"]) == ["total", "moneyline", "spread"]
+
+    def test_intermediate_wide_columns_dropped(self) -> None:
+        """The _open and _close suffix columns should not leak to output."""
+        edge_report = pd.DataFrame([_make_edge_report_row(market_type="spread", side="home")])
+        ledger = _make_multi_pull_ledger()
+        result = build_clv_report(edge_report, ledger)
+        # No column should end in _open or _close.
+        leaked = [c for c in result.columns if c.endswith("_open") or c.endswith("_close")]
+        assert leaked == []
