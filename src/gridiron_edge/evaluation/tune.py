@@ -1,17 +1,15 @@
-# src/gridiron_edge/evaluation/tune.py
-
-"""Elo parameter grid search - elo_v2 (flat K) and elo_v3 (zone-based K).
+"""Elo parameter grid search — flat K and zone-K variants.
 
 Finds the combination of parameters that minimises Brier score on a
 held-out set of seasons. Two search modes are supported:
 
-  elo_v2 (flat K):
+  flat_k (one K-factor for every week):
     Parameters: k, divisor, regress_frac
     100 combinations (5 x 5 x 4)
 
-  elo_v3 (zone-based K):
+  zone_k (K varies by week zone):
     Parameters: k_early, k_mid, k_week18, k_post, divisor, regress_frac
-    K varies by week zone - early season, mid season, week 18, postseason.
+    K varies by week zone — early season, mid season, week 18, postseason.
 
 The search engine uses a dict-based Elo simulation (~50x faster than the
 production DataFrame-based table builder) that replicates the exact same
@@ -30,6 +28,8 @@ import time
 from typing import Final
 
 import pandas as pd
+
+# pyrefly: ignore [untyped-import]
 from tqdm import tqdm
 
 from gridiron_edge.core.constants import EXPANSION_TEAMS as _EXPANSION_START
@@ -47,7 +47,7 @@ logger: Logger = logging.getLogger(__name__)
 # Update HOLDOUT_SEASONS in core/constants.py at the start of each new season.
 
 # ---------------------------------------------------------------------------
-# elo_v2 grid (flat K)
+# Flat K grid (one K-factor for every week)
 # ---------------------------------------------------------------------------
 
 K_VALUES: Final[list[float]] = [15.0, 20.0, 25.0, 32.0, 40.0]
@@ -55,7 +55,7 @@ DIVISOR_VALUES: Final[list[float]] = [350.0, 400.0, 450.0, 480.0, 550.0]
 REGRESS_VALUES: Final[list[float]] = [0.2, 0.33, 0.4, 0.5]
 
 # ---------------------------------------------------------------------------
-# elo_v3 grid (zone-based K) — comprehensive
+# Zone K grid (K varies by week zone) — comprehensive
 # ---------------------------------------------------------------------------
 
 # All four K zones use the same symmetric range — no prior assumptions about
@@ -65,14 +65,14 @@ REGRESS_VALUES: Final[list[float]] = [0.2, 0.33, 0.4, 0.5]
 #
 # Grid size: 6^3 * 7 * 7 * 6 = 63,504 combinations ~ 7.9h at 0.45s each.
 # Divisor extends down to 280 and up to 520 to ensure the optimum is not
-# at a boundary — elo_v2 found 350 winning with the previous floor at 350.
+# at a boundary — flat K found 350 winning with the previous floor at 350.
 # Regress extends down to 0.1 to test near-zero regression.
 K_EARLY_VALUES: Final[list[float]] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
 K_MID_VALUES: Final[list[float]] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
 K_WEEK18_VALUES: Final[list[float]] = [0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0]
 K_POST_VALUES: Final[list[float]] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
-DIVISOR_VALUES_V3: Final[list[float]] = [280.0, 320.0, 360.0, 400.0, 440.0, 480.0, 520.0]
-REGRESS_VALUES_V3: Final[list[float]] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+DIVISOR_VALUES_ZONE_K: Final[list[float]] = [280.0, 320.0, 360.0, 400.0, 440.0, 480.0, 520.0]
+REGRESS_VALUES_ZONE_K: Final[list[float]] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
 
 # Week zone boundaries
 _WEEKS_EARLY: Final[frozenset[int]] = frozenset(range(1, 5))
@@ -98,7 +98,7 @@ _EXPANSION_ELO: Final[float] = 1300.0
 
 @dataclass(frozen=True)
 class TuneResult:
-    """Result for a single elo_v2 flat-K parameter combination."""
+    """Result for a single flat-K parameter combination."""
 
     k: float
     divisor: float
@@ -112,8 +112,8 @@ class TuneResult:
 
 
 @dataclass(frozen=True)
-class TuneResultV3:
-    """Result for a single elo_v3 zone-based K parameter combination."""
+class TuneResultZoneK:
+    """Result for a single zone-K parameter combination."""
 
     k_early: float
     k_mid: float
@@ -249,11 +249,12 @@ def _prepare_games(games: pd.DataFrame) -> tuple[pd.DataFrame, list[str], dict[s
         yr_df = df.loc[df["YEAR"] == year]
         teams_by_year[year] = set(yr_df["WINNER"].tolist()) | set(yr_df["LOSER"].tolist())
 
+    # pyrefly: ignore [bad-return]
     return df, sorted_years, teams_by_year
 
 
 # ---------------------------------------------------------------------------
-# elo_v2 grid search (flat K)
+# Flat K grid search
 # ---------------------------------------------------------------------------
 
 
@@ -266,7 +267,7 @@ def run_grid_search(
     holdout_seasons: frozenset[str] | None = None,
     save_path: Path | None = None,
 ) -> pd.DataFrame:
-    """Run the elo_v2 flat-K parameter grid search.
+    """Run the flat-K parameter grid search.
 
     Args:
         repo: Repository root. Defaults to ``repo_root()``.
@@ -292,12 +293,12 @@ def run_grid_search(
 
     grid = list(itertools.product(ks, divs, regs))
     n_total = len(grid)
-    logger.info("elo_v2 grid search: %d combinations  holdout=%s", n_total, sorted(holdout))
+    logger.info("flat-K grid search: %d combinations  holdout=%s", n_total, sorted(holdout))
 
     results: list[TuneResult] = []
     best_so_far = float("inf")
 
-    bar = tqdm(grid, desc="elo_v2 tune", unit="combo", ncols=80)
+    bar = tqdm(grid, desc="flat-K tune", unit="combo", ncols=80)
     for k, divisor, regress_frac in bar:
         t0 = time.perf_counter()
 
@@ -345,7 +346,7 @@ def run_grid_search(
     )
     best = df_results.iloc[0]
     logger.info(
-        "Best elo_v2: k=%.0f  divisor=%.0f  regress=%.2f  holdout=%.5f  gap=%.5f",
+        "Best flat-K: k=%.0f  divisor=%.0f  regress=%.2f  holdout=%.5f  gap=%.5f",
         best["k"],
         best["divisor"],
         best["regress_frac"],
@@ -355,16 +356,16 @@ def run_grid_search(
     if save_path is not None:
         save_path.parent.mkdir(parents=True, exist_ok=True)
         df_results.to_parquet(save_path, index=False)
-        logger.info("elo_v2 results saved to %s", save_path)
+        logger.info("flat-K results saved to %s", save_path)
     return df_results
 
 
 # ---------------------------------------------------------------------------
-# elo_v3 grid search (zone-based K)
+# Zone K grid search
 # ---------------------------------------------------------------------------
 
 
-def run_grid_search_v3(
+def run_grid_search_zone_k(
     *,
     repo: Path | None = None,
     k_early_values: list[float] | None = None,
@@ -376,7 +377,7 @@ def run_grid_search_v3(
     holdout_seasons: frozenset[str] | None = None,
     save_path: Path | None = None,
 ) -> pd.DataFrame:
-    """Run the elo_v3 zone-based K parameter grid search.
+    """Run the zone-K parameter grid search.
 
     Searches all combinations of four zone K-factors alongside divisor and
     regression fraction. Full search is 4 x 3 x 4 x 4 x 6 x 4 = 4,608
@@ -389,14 +390,14 @@ def run_grid_search_v3(
         k_mid_values: K for weeks 5-17. Defaults to ``K_MID_VALUES``.
         k_week18_values: K for week 18. Defaults to ``K_WEEK18_VALUES``.
         k_post_values: K for weeks 19-22. Defaults to ``K_POST_VALUES``.
-        divisor_values: Divisor values. Defaults to ``DIVISOR_VALUES_V3``.
-        regress_values: Regression fractions. Defaults to ``REGRESS_VALUES_V3``.
+        divisor_values: Divisor values. Defaults to ``DIVISOR_VALUES_ZONE_K``.
+        regress_values: Regression fractions. Defaults to ``REGRESS_VALUES_ZONE_K``.
         holdout_seasons: Seasons held out. Defaults to ``HOLDOUT_SEASONS``.
         save_path: If provided, write the full results DataFrame to this
             path as Parquet after the search completes.
 
     Returns:
-        DataFrame of ``TuneResultV3`` rows sorted by ``holdout_brier`` ascending.
+        DataFrame of ``TuneResultZoneK`` rows sorted by ``holdout_brier`` ascending.
     """
     resolved_repo = repo or repo_root()
     games_raw = loaders.load_games(resolved_repo)
@@ -406,18 +407,18 @@ def run_grid_search_v3(
     km_vals = k_mid_values or K_MID_VALUES
     kw_vals = k_week18_values or K_WEEK18_VALUES
     kp_vals = k_post_values or K_POST_VALUES
-    divs = divisor_values or DIVISOR_VALUES_V3
-    regs = regress_values or REGRESS_VALUES_V3
+    divs = divisor_values or DIVISOR_VALUES_ZONE_K
+    regs = regress_values or REGRESS_VALUES_ZONE_K
     holdout = holdout_seasons or HOLDOUT_SEASONS
 
     grid = list(itertools.product(ke_vals, km_vals, kw_vals, kp_vals, divs, regs))
     n_total = len(grid)
-    logger.info("elo_v3 grid search: %d combinations  holdout=%s", n_total, sorted(holdout))
+    logger.info("zone-K grid search: %d combinations  holdout=%s", n_total, sorted(holdout))
 
-    results: list[TuneResultV3] = []
+    results: list[TuneResultZoneK] = []
     best_so_far = float("inf")
 
-    bar = tqdm(grid, desc="elo_v3 tune", unit="combo", ncols=80)
+    bar = tqdm(grid, desc="zone-K tune", unit="combo", ncols=80)
     for k_early, k_mid, k_week18, k_post, divisor, regress_frac in bar:
         t0 = time.perf_counter()
 
@@ -447,7 +448,7 @@ def run_grid_search_v3(
         bar.set_postfix(best=f"{best_so_far:.5f}", refresh=False)
 
         results.append(
-            TuneResultV3(
+            TuneResultZoneK(
                 k_early=k_early,
                 k_mid=k_mid,
                 k_week18=k_week18,
@@ -468,7 +469,7 @@ def run_grid_search_v3(
     )
     best = df_results.iloc[0]
     logger.info(
-        "Best elo_v3: k_early=%.0f k_mid=%.0f k_w18=%.0f k_post=%.0f "
+        "Best zone-K: k_early=%.0f k_mid=%.0f k_w18=%.0f k_post=%.0f "
         "divisor=%.0f regress=%.2f  holdout=%.5f  gap=%.5f",
         best["k_early"],
         best["k_mid"],
@@ -482,7 +483,7 @@ def run_grid_search_v3(
     if save_path is not None:
         save_path.parent.mkdir(parents=True, exist_ok=True)
         df_results.to_parquet(save_path, index=False)
-        logger.info("elo_v3 results saved to %s", save_path)
+        logger.info("zone-K results saved to %s", save_path)
     return df_results
 
 
@@ -492,7 +493,7 @@ def run_grid_search_v3(
 
 
 def best_params(results: pd.DataFrame) -> dict[str, float]:
-    """Extract best flat-K parameters from elo_v2 grid search results.
+    """Extract best flat-K parameters from grid search results.
 
     Args:
         results: Output of ``run_grid_search()``.
@@ -508,11 +509,11 @@ def best_params(results: pd.DataFrame) -> dict[str, float]:
     }
 
 
-def best_params_v3(results: pd.DataFrame) -> dict[str, float]:
-    """Extract best zone-based K parameters from elo_v3 grid search results.
+def best_params_zone_k(results: pd.DataFrame) -> dict[str, float]:
+    """Extract best zone-K parameters from grid search results.
 
     Args:
-        results: Output of ``run_grid_search_v3()``.
+        results: Output of ``run_grid_search_zone_k()``.
 
     Returns:
         Dict with keys ``k_early``, ``k_mid``, ``k_week18``, ``k_post``,

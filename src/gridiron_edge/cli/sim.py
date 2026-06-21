@@ -13,10 +13,10 @@ def sim_run(
     *,
     n_sims: int = typer.Option(10_000, help="Number of Monte Carlo simulations."),
     # UPDATE: set this to the tuned K optimum after running 'gridiron evaluate tune elo'.
-    # elo_v2 grid search found K=20 winning; verify after each season's re-tune.
+    # flat-K grid search found K=20 winning; verify after each season's re-tune.
     k_factor: float = typer.Option(20.0, help="Elo K-factor."),
     # UPDATE: set this to the tuned divisor after running 'gridiron evaluate tune elo'.
-    # elo_v2 found 350 winning; elo_v1 default is 480.
+    # flat-K found 350 winning; Elo's original default is 480.
     divisor: float = typer.Option(480.0, help="Elo win-probability divisor."),
     p_tie: float = typer.Option(0.01, help="Probability of a tie game."),
     seed: int = typer.Option(1337, help="Base random seed."),

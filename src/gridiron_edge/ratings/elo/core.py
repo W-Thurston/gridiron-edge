@@ -8,7 +8,7 @@
 
 #: Default Elo divisor. The classic Elo system uses 400; we use 480 to
 #: reduce the sensitivity of win-probability to large rating gaps, which
-#: better reflects parity in the NFL. Tuned variants (elo_v2, elo_v3) use
+#: better reflects parity in the NFL. The flat-K and zone-K tuning use
 #: different divisors — pass ``divisor`` explicitly to override.
 DEFAULT_ELO_DIVISOR: float = 480.0
 

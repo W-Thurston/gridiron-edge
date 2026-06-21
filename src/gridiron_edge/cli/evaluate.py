@@ -252,18 +252,15 @@ def evaluate_backfill(
 @evaluate_app.command("tune")
 def evaluate_tune(
     *,
-    v3: bool = typer.Option(
+    zone_k: bool = typer.Option(
         False,
-        "--v3/--no-v3",
-        help="Run zone-based K search (elo_v3) instead of flat-K search (elo_v2).",
+        "--zone-k/--no-zone-k",
+        help="Run zone-K search (one K-factor per week zone) instead of flat-K search.",
     ),
     apply: bool = typer.Option(
         False,
         "--apply/--no-apply",
-        help=(
-            "After the search, backfill the best parameters as elo_v2 or elo_v3 "
-            "into the prediction archive."
-        ),
+        help=("After the search, backfill the best parameters into the prediction archive."),
     ),
     top: int = typer.Option(10, help="Number of top results to display."),
     save: bool = typer.Option(
@@ -294,7 +291,7 @@ def evaluate_tune(
     from gridiron_edge.core.console import console, step
     from gridiron_edge.evaluation.tune import (
         DIVISOR_VALUES,
-        DIVISOR_VALUES_V3,
+        DIVISOR_VALUES_ZONE_K,
         HOLDOUT_SEASONS,
         K_EARLY_VALUES,
         K_MID_VALUES,
@@ -302,38 +299,38 @@ def evaluate_tune(
         K_VALUES,
         K_WEEK18_VALUES,
         REGRESS_VALUES,
-        REGRESS_VALUES_V3,
+        REGRESS_VALUES_ZONE_K,
         best_params,
-        best_params_v3,
+        best_params_zone_k,
         run_grid_search,
-        run_grid_search_v3,
+        run_grid_search_zone_k,
     )
 
-    if v3:
+    if zone_k:
         n_combos: int = (
             len(K_EARLY_VALUES)
             * len(K_MID_VALUES)
             * len(K_WEEK18_VALUES)
             * len(K_POST_VALUES)
-            * len(DIVISOR_VALUES_V3)
-            * len(REGRESS_VALUES_V3)
+            * len(DIVISOR_VALUES_ZONE_K)
+            * len(REGRESS_VALUES_ZONE_K)
         )
-        subtitle: str = f"elo_v3  {n_combos} combinations  holdout={sorted(HOLDOUT_SEASONS)}"
+        subtitle: str = f"zone-K  {n_combos} combinations  holdout={sorted(HOLDOUT_SEASONS)}"
     else:
         n_combos = len(K_VALUES) * len(DIVISOR_VALUES) * len(REGRESS_VALUES)
-        subtitle = f"elo_v2  {n_combos} combinations  holdout={sorted(HOLDOUT_SEASONS)}"
+        subtitle = f"flat-K  {n_combos} combinations  holdout={sorted(HOLDOUT_SEASONS)}"
     console.header("evaluate tune", subtitle=subtitle)
 
     with step(f"Run grid search ({n_combos} combinations)") as s:
         from gridiron_edge.core.settings import get_settings
 
         _out_dir: Path = get_settings().data_output / "tune"
-        _fname: Literal["elo_v2_tune_results.parquet", "elo_v3_tune_results.parquet"] = (
-            "elo_v3_tune_results.parquet" if v3 else "elo_v2_tune_results.parquet"
+        _fname: Literal["flat_k_tune_results.parquet", "zone_k_tune_results.parquet"] = (
+            "zone_k_tune_results.parquet" if zone_k else "flat_k_tune_results.parquet"
         )
         _save: Path | None = _out_dir / _fname if save else None
         results: DataFrame = (
-            run_grid_search_v3(save_path=_save) if v3 else run_grid_search(save_path=_save)
+            run_grid_search_zone_k(save_path=_save) if zone_k else run_grid_search(save_path=_save)
         )
         best_holdout = results.iloc[0]["holdout_brier"]
         s.set_detail(f"best holdout Brier: {best_holdout:.5f}")
@@ -344,10 +341,10 @@ def evaluate_tune(
     typer.echo(results.head(top).to_string(index=False, float_format=lambda x: f"{x:.5f}"))
 
     if apply:
-        if v3:
-            params: dict[str, float] = best_params_v3(results)
+        if zone_k:
+            params: dict[str, float] = best_params_zone_k(results)
             typer.echo(
-                f"Applying best elo_v3 params: "
+                f"Applying best zone-K params: "
                 f"k_early={params['k_early']:.0f}  k_mid={params['k_mid']:.0f}  "
                 f"k_week18={params['k_week18']:.0f}  k_post={params['k_post']:.0f}  "
                 f"divisor={params['divisor']:.0f}  regress={params['regress_frac']:.2f}"
@@ -367,7 +364,7 @@ def evaluate_tune(
             div_val: float = params["divisor"]
             reg_val: float = params["regress_frac"]
             typer.echo(
-                f"Applying best elo_v2 params: "
+                f"Applying best flat-K params: "
                 f"k={k_val:.0f}  divisor={div_val:.0f}  regress={reg_val:.2f}"
             )
             with step("Backfill predictions") as s:

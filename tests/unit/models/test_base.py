@@ -14,23 +14,23 @@ from gridiron_edge.models.base import Predictor, PredictorSpec, Trainable
 
 class TestPredictorSpec:
     def test_is_frozen(self) -> None:
-        spec = PredictorSpec(name="test_v1", description="A test predictor")
+        spec = PredictorSpec(name="test_a", description="A test predictor")
         with pytest.raises(dataclasses.FrozenInstanceError):
             spec.name = "changed"  # type: ignore[misc]
 
     def test_name_and_description(self) -> None:
-        spec = PredictorSpec(name="elo_v1", description="Elo ratings v1")
-        assert spec.name == "elo_v1"
-        assert spec.description == "Elo ratings v1"
+        spec = PredictorSpec(name="test_a", description="Test predictor A")
+        assert spec.name == "test_a"
+        assert spec.description == "Test predictor A"
 
     def test_equality(self) -> None:
-        a = PredictorSpec(name="elo_v1", description="Elo v1")
-        b = PredictorSpec(name="elo_v1", description="Elo v1")
+        a = PredictorSpec(name="test_a", description="Spec A")
+        b = PredictorSpec(name="test_a", description="Spec A")
         assert a == b
 
     def test_inequality(self) -> None:
-        a = PredictorSpec(name="elo_v1", description="Elo v1")
-        b = PredictorSpec(name="elo_v2", description="Elo v2")
+        a = PredictorSpec(name="test_a", description="Spec A")
+        b = PredictorSpec(name="test_b", description="Spec B")
         assert a != b
 
 
@@ -39,7 +39,7 @@ class TestPredictorProtocol:
         """Predictor should be a runtime-checkable Protocol."""
 
         class DummyPredictor:
-            spec = PredictorSpec(name="dummy_v1", description="Dummy")
+            spec = PredictorSpec(name="dummy", description="Dummy")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
@@ -52,7 +52,7 @@ class TestPredictorProtocol:
 
     def test_class_without_predict_fails_check(self) -> None:
         class NotAPredictor:
-            spec = PredictorSpec(name="bad_v1", description="Missing methods")
+            spec = PredictorSpec(name="bad", description="Missing methods")
 
         assert not isinstance(NotAPredictor(), Predictor)
 
@@ -60,7 +60,7 @@ class TestPredictorProtocol:
 class TestTrainableProtocol:
     def test_runtime_checkable(self) -> None:
         class DummyTrainable:
-            spec = PredictorSpec(name="trainable_v1", description="Trainable dummy")
+            spec = PredictorSpec(name="trainable_dummy", description="Trainable dummy")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
@@ -76,7 +76,7 @@ class TestTrainableProtocol:
 
     def test_predictor_without_is_trained_is_not_trainable(self) -> None:
         class PredictorOnly:
-            spec = PredictorSpec(name="pred_v1", description="Predict only")
+            spec = PredictorSpec(name="predict_only", description="Predict only")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
