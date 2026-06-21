@@ -24,29 +24,53 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pandas import DataFrame
+
+# pyrefly: ignore [untyped-import]
 import requests
+
+# pyrefly: ignore [untyped-import]
 from requests.adapters import HTTPAdapter
 import timezonefinder
+
+# pyrefly: ignore [untyped-import]
+from tqdm import tqdm
 from urllib3.util.retry import Retry
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.metrics.travel.geo import to_decimal_degrees
 
+tqdm.pandas()  # Registers DataFrame.progress_apply
+
 logger = logging.getLogger(__name__)
 
 
-def _convert_12hour_to_24hour(time_12hour: str) -> str:
-    """Convert a 12-hour time string (e.g. ``"1:00PM"``) to 24-hour format.
+def _convert_12hour_to_24hour(time_str: str) -> str:
+    """Normalize a game time string to 24-hour ``HH:MM:SS`` format.
+
+    Accepts either 12-hour input (``"6:30PM"`` or ``"6:30 PM"``) or
+    24-hour input (``"18:30:00"`` or ``"18:30"``). The cleaned games
+    file stores times in 24-hour format with seconds, so the common
+    case is a pass-through.
 
     Args:
-        time_12hour: Time string in ``"%I:%M%p"`` format.
+        time_str: Game time string in any of the supported formats.
 
     Returns:
         Time string in ``"%H:%M:%S"`` format.
+
+    Raises:
+        ValueError: If the input does not match any known format.
     """
-    in_time: datetime = datetime.strptime(time_12hour, "%I:%M%p")
-    return datetime.strftime(in_time, "%H:%M:%S")
+    # Try common formats in order. If the string already matches HH:MM:SS
+    # we still parse-and-reformat it to validate it's well-formed.
+    for fmt in ("%H:%M:%S", "%H:%M", "%I:%M%p", "%I:%M %p", "%I:%M:%S%p", "%I:%M:%S %p"):
+        try:
+            in_time = datetime.strptime(time_str.strip(), fmt)
+            return datetime.strftime(in_time, "%H:%M:%S")
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized time format: {time_str!r}")
 
 
 def _enrich_row(

@@ -492,6 +492,20 @@ def models_info(
         ) from exc
 
     if not store.is_trained(model_name, model_type):
+        # Check whether this is an analytic model that doesn't persist artifacts
+        registry_key: str = f"{model_name}_{model_type}"
+        try:
+            predictor = PredictorRegistry.get(registry_key)()
+            if hasattr(predictor, "spec") and not getattr(predictor.spec, "trainable", True):
+                typer.echo(
+                    f"'{model_name} {model_type}' is an analytic model "
+                    f"without persisted training state. Use 'gridiron evaluate "
+                    f"summary --model-key {registry_key}' to see archive metrics."
+                )
+                raise typer.Exit(code=0)
+        except KeyError:
+            pass
+
         typer.echo(
             f"No trained artifact found for '{model_name} {model_type}'. "
             f"Run 'gridiron models train {model_name} {model_type}' first."

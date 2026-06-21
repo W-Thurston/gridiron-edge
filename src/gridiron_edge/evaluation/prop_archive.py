@@ -253,9 +253,19 @@ def build_prop_evaluation_df(
     from typing import cast
 
     from gridiron_edge.models.prop_prediction.base import PropTrainer
-    from gridiron_edge.models.registry import ModelRegistry
 
     # Step 1: Resolve the trainer + target column.
+    # Ensure prop trainer modules are imported so they register with
+    # ModelRegistry. Without this, ModelRegistry.get() fails with an
+    # empty registry when build_prop_evaluation_df is called from a
+    # context that hasn't already imported the prop modules.
+    import gridiron_edge.models.prop_prediction.qb_pass_yards
+    import gridiron_edge.models.prop_prediction.qb_rush_yards
+    import gridiron_edge.models.prop_prediction.rb_rush_yards
+    import gridiron_edge.models.prop_prediction.te_rec_yards
+    import gridiron_edge.models.prop_prediction.wr_rec_yards  # noqa: F401
+    from gridiron_edge.models.registry import ModelRegistry
+
     model_cls = ModelRegistry.get(model_name)
 
     trainer = cast(PropTrainer, model_cls())
