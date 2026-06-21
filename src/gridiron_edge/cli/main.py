@@ -21,6 +21,7 @@ from gridiron_edge.cli.features import features_app
 from gridiron_edge.cli.ingest import ingest_app
 from gridiron_edge.cli.models import models_app
 from gridiron_edge.cli.output import output_app
+from gridiron_edge.cli.post_week import post_week_cmd
 from gridiron_edge.cli.props import props_app
 from gridiron_edge.cli.ratings import ratings_app
 from gridiron_edge.cli.sim import sim_app
@@ -72,6 +73,7 @@ app.add_typer(edges_app, name="edges")
 app.add_typer(betting_app, name="bet")
 app.add_typer(props_app, name="props")
 app.command("weekly-predict")(weekly_predict_cmd)
+app.command("post-week")(post_week_cmd)
 
 
 # ===========================================================================
