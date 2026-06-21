@@ -1,5 +1,3 @@
-# src/gridiron_edge/datasets/registry.py
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -17,10 +15,17 @@ DatasetKey = Literal[
     "moneylines",
     "teams_long_short",
     "divisions",
+    "epa_by_game",
+    "player_game_logs",
     # ---- Derived modeling artifacts ----
     "modeling_base",
     "modeling_full",
-    # ---- Output Directories ----
+    # ---- Archive logs ----
+    "prediction_log",
+    "prop_prediction_log",
+    "bet_ledger",
+    "bankroll_txn",
+    # ---- Output directories ----
     "predictions_csv",
     "elo_rankings_csv",
 ]
@@ -51,12 +56,20 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "moneylines": DatasetSpec("data/cleaned/NFL_historical_moneylines.csv"),
     "teams_long_short": DatasetSpec("data/cleaned/NFL_long_to_short_name.csv"),
     "divisions": DatasetSpec("data/cleaned/NFL_conference_division.csv"),
+    "epa_by_game": DatasetSpec("data/cleaned/epa_by_game.parquet"),
+    "player_game_logs": DatasetSpec("data/cleaned/player_game_logs.parquet"),
     # ---- Ratings / state ----
     "elo_state": DatasetSpec("data/cleaned/NFL_Team_Elo.csv"),
     # ---- Derived modeling artifacts ----
     "modeling_base": DatasetSpec("data/modeling/base_modeling_file.parquet"),
     "modeling_full": DatasetSpec("data/modeling/modeling_file.parquet"),
-    "predictions_csv": DatasetSpec("data/output/predictions"),  # directory, not a single file
+    # ---- Archive logs ----
+    "prediction_log": DatasetSpec("data/output/predictions/predictions_log.parquet"),
+    "prop_prediction_log": DatasetSpec("data/output/props/prop_predictions_log.parquet"),
+    "bet_ledger": DatasetSpec("data/betting/bet_ledger.parquet"),
+    "bankroll_txn": DatasetSpec("data/betting/bankroll_txn.parquet"),
+    # ---- Output directories ----
+    "predictions_csv": DatasetSpec("data/output/predictions"),  # directory
     "elo_rankings_csv": DatasetSpec("data/output/rankings"),  # directory
 }
 
