@@ -1,5 +1,3 @@
-# src/gridiron_edge/features/team/schedule_strength.py
-
 """Strength of schedule and strength of victory features.
 
 Measures opponent quality to contextualise a team's record. A team's raw
@@ -41,6 +39,12 @@ Design notes:
       tiebreaker convention.
     - Postseason games are included in opponent Elo lookups but the
       features reset each season (YEAR grouping).
+
+Implementation note (schedule_strength/M1):
+    Cumulative averages computed via cumsum + cumcount + shift, vectorized
+    over all team-seasons. Opponent Elo is merged onto the long-format
+    team-game table in a single join, replacing the per-row dict lookup
+    plus four ``df.apply(axis=1)`` calls.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ import logging
 from logging import Logger
 from typing import TYPE_CHECKING, Final
 
+import numpy as np
 import pandas as pd
 from pandas import DataFrame
 
@@ -67,6 +72,8 @@ _PRODUCES: Final[list[str]] = [
     "TEAM_B_SOV",
 ]
 
+_STAT_COLS: Final[list[str]] = ["SOS", "SOV"]
+
 
 @FeatureRegistry.register("schedule_strength")
 class ScheduleStrengthFeature:
@@ -77,7 +84,11 @@ class ScheduleStrengthFeature:
     only results from prior games in the same season.
     """
 
-    spec = FeatureSpec(name="schedule_strength", produces=_PRODUCES, depends_on=("team_elo",))
+    spec = FeatureSpec(
+        name="schedule_strength",
+        produces=_PRODUCES,
+        depends_on=("team_elo",),
+    )
 
     def compute(self, *, df: pd.DataFrame, datasets: DatasetAccessor) -> pd.DataFrame:
         """Compute SOS and SOV features and join onto df.
@@ -93,42 +104,52 @@ class ScheduleStrengthFeature:
         """
         games: pd.DataFrame = datasets.games()
         elo: pd.DataFrame = datasets.elo_state()
-
-        sos_sov_map: dict[tuple[str, str, int], dict[str, float]] = _build_sos_sov_map(games, elo)
+        sos_sov_table: DataFrame = _build_sos_sov_table(games, elo)
 
         df = df.copy()
-        for prefix, team_col in [("TEAM_A", "TEAM_A"), ("TEAM_B", "TEAM_B")]:
-            for stat in ["SOS", "SOV"]:
-                col: str = f"{prefix}_{stat}"
-                df[col] = df.apply(
-                    lambda row, tc=team_col, s=stat: sos_sov_map.get(
-                        (row[tc], row["YEAR"], int(row["WEEK_NUM"])), {}
-                    ).get(s, float("nan")),
-                    axis=1,
-                )
+        df["WEEK_NUM"] = df["WEEK_NUM"].astype(int)
+
+        if sos_sov_table.empty:
+            for col in _PRODUCES:
+                df[col] = float("nan")
+            return df
+
+        # Two vectorized merges replace four df.apply() calls
+        # (schedule_strength/M1).
+        for prefix, team_col in (("TEAM_A", "TEAM_A"), ("TEAM_B", "TEAM_B")):
+            renamed: DataFrame = sos_sov_table.rename(
+                columns={
+                    "TEAM": team_col,
+                    **{c: f"{prefix}_{c}" for c in _STAT_COLS},
+                }
+            )
+            df = df.merge(
+                renamed,
+                how="left",
+                on=[team_col, "YEAR", "WEEK_NUM"],
+            )
 
         return df
 
 
 # ---------------------------------------------------------------------------
-# SOS / SOV computation
+# SOS / SOV computation (vectorized)
 # ---------------------------------------------------------------------------
 
 
-def _build_sos_sov_map(
+def _build_sos_sov_table(
     games: pd.DataFrame,
     elo: pd.DataFrame,
-) -> dict[tuple[str, str, int], dict[str, float]]:
-    """Build a lookup: (team, year, week) → {SOS, SOV} entering that week.
+) -> pd.DataFrame:
+    """Build a vectorized SOS/SOV lookup table.
 
-    Args:
-        games: Canonical games DataFrame with WINNER, LOSER, YEAR,
-            WEEK_NUM, WIN_OR_TIE columns.
-        elo: Elo state table with NFL_TEAM, NFL_YEAR, NFL_WEEK, ELO columns.
+    Returns a DataFrame with one row per (TEAM, YEAR, WEEK_NUM) capturing
+    the team's strength of schedule and strength of victory *entering*
+    that week. Empty DataFrame when input is empty or missing required
+    columns.
 
-    Returns:
-        Dict mapping (team, year, week_num) to {"SOS": float, "SOV": float}.
-        SOS or SOV are NaN when there are no applicable prior games.
+    Columns:
+        TEAM, YEAR, WEEK_NUM, SOS, SOV
     """
     required_games: set[str] = {"WINNER", "LOSER", "YEAR", "WEEK_NUM", "WIN_OR_TIE"}
     required_elo: set[str] = {"NFL_TEAM", "NFL_YEAR", "NFL_WEEK", "ELO"}
@@ -138,63 +159,84 @@ def _build_sos_sov_map(
         or not required_games.issubset(games.columns)
         or not required_elo.issubset(elo.columns)
     ):
-        return {}
+        return pd.DataFrame(columns=["TEAM", "YEAR", "WEEK_NUM", *_STAT_COLS])
 
     completed: DataFrame = games.loc[games["WIN_OR_TIE"].notna(), :].copy()
     completed["WEEK_NUM"] = completed["WEEK_NUM"].astype(int)
 
-    # Build long-form: one row per team per game with opponent name and result
-    # Winner perspective: opponent = LOSER, result = WIN_OR_TIE (1.0 or 0.5)
+    # Long format: one row per team per game with opponent and result.
     winner_rows = completed.loc[:, ["WINNER", "LOSER", "YEAR", "WEEK_NUM", "WIN_OR_TIE"]].rename(
         columns={"WINNER": "TEAM", "LOSER": "OPPONENT", "WIN_OR_TIE": "RESULT"}
     )
-    # Loser perspective: opponent = WINNER, result = 1 - WIN_OR_TIE
     loser_rows = completed.loc[:, ["LOSER", "WINNER", "YEAR", "WEEK_NUM", "WIN_OR_TIE"]].copy()
     loser_rows["RESULT"] = 1.0 - loser_rows["WIN_OR_TIE"]
     loser_rows = loser_rows.rename(columns={"LOSER": "TEAM", "WINNER": "OPPONENT"}).drop(
         columns=["WIN_OR_TIE"]
     )
 
-    long = pd.concat([winner_rows, loser_rows], ignore_index=True)
+    long: DataFrame = pd.concat([winner_rows, loser_rows], ignore_index=True)
+
+    # Merge opponent's pre-game Elo onto the long table.
+    # Replaces the dict-based row-by-row lookup (schedule_strength/M1).
+    elo_for_join: DataFrame = elo.loc[:, ["NFL_TEAM", "NFL_YEAR", "NFL_WEEK", "ELO"]].rename(
+        columns={
+            "NFL_TEAM": "OPPONENT",
+            "NFL_YEAR": "YEAR",
+            "NFL_WEEK": "WEEK_NUM",
+            "ELO": "OPP_ELO",
+        }
+    )
+    elo_for_join["WEEK_NUM"] = elo_for_join["WEEK_NUM"].astype(int)
+    elo_for_join["OPPONENT"] = elo_for_join["OPPONENT"].astype(str)
+
+    long["OPPONENT"] = long["OPPONENT"].astype(str)
+    long = long.merge(
+        elo_for_join,
+        how="left",
+        on=["OPPONENT", "YEAR", "WEEK_NUM"],
+    )
+
+    # Sort by team-season-week so cumsum/shift work chronologically.
     long = long.sort_values(["TEAM", "YEAR", "WEEK_NUM"], ignore_index=True)
 
-    # Build Elo lookup: (team, year, week) → pre-game Elo
-    elo_lookup: dict[tuple[str, str, int], float] = {
-        (str(row["NFL_TEAM"]), str(row["NFL_YEAR"]), int(row["NFL_WEEK"])): float(row["ELO"])
-        for _, row in elo.iterrows()
-    }
+    # Build numerator/denominator components for SOS and SOV.
+    # OPP_ELO is NaN when the opponent's Elo for that week isn't in the
+    # state table; those games are excluded from both averages.
+    has_opp_elo: pd.Series = long["OPP_ELO"].notna()
+    is_win: pd.Series = long["RESULT"] >= 1.0
 
-    sos_sov_map: dict[tuple[str, str, int], dict[str, float]] = {}
+    long["_OPP_ELO_FOR_SOS"] = long["OPP_ELO"].where(has_opp_elo, 0.0)
+    long["_SOS_DENOM_INC"] = has_opp_elo.astype(int)
 
-    for (team, year), group in long.groupby(["TEAM", "YEAR"], sort=False):
-        sorted_group = group.sort_values("WEEK_NUM").reset_index(drop=True)
-        weeks: list[int] = sorted_group["WEEK_NUM"].tolist()
-        opponents: list[str] = sorted_group["OPPONENT"].astype(str).tolist()
-        results: list[float] = sorted_group["RESULT"].tolist()
+    win_with_elo: pd.Series = has_opp_elo & is_win
+    long["_OPP_ELO_FOR_SOV"] = long["OPP_ELO"].where(win_with_elo, 0.0)
+    long["_SOV_DENOM_INC"] = win_with_elo.astype(int)
 
-        for i, week in enumerate(weeks):
-            # Only games prior to this week in the same season
-            prior_opps: list[str] = opponents[:i]
-            prior_results: list[float] = results[:i]
-            prior_weeks: list[int] = weeks[:i]
+    grouped = long.groupby(["TEAM", "YEAR"], sort=False)
 
-            opp_elos: list[float] = []
-            win_elos: list[float] = []
+    # Cumulative sums then shift(1) — "entering this game" semantics.
+    sos_num = (
+        grouped["_OPP_ELO_FOR_SOS"]
+        .cumsum()
+        .groupby([long["TEAM"], long["YEAR"]])
+        .shift(1)
+        .fillna(0.0)
+    )
+    sos_den = (
+        grouped["_SOS_DENOM_INC"].cumsum().groupby([long["TEAM"], long["YEAR"]]).shift(1).fillna(0)
+    )
+    sov_num = (
+        grouped["_OPP_ELO_FOR_SOV"]
+        .cumsum()
+        .groupby([long["TEAM"], long["YEAR"]])
+        .shift(1)
+        .fillna(0.0)
+    )
+    sov_den = (
+        grouped["_SOV_DENOM_INC"].cumsum().groupby([long["TEAM"], long["YEAR"]]).shift(1).fillna(0)
+    )
 
-            for j, opp in enumerate(prior_opps):
-                opp_week: int = prior_weeks[j]
-                opp_elo: float = elo_lookup.get((opp, str(year), opp_week), float("nan"))
-                if not pd.isna(opp_elo):
-                    opp_elos.append(opp_elo)
-                    if prior_results[j] >= 1.0:  # outright win only for SOV
-                        win_elos.append(opp_elo)
+    long["SOS"] = np.where(sos_den > 0, sos_num / sos_den.replace(0, np.nan), np.nan)
+    long["SOV"] = np.where(sov_den > 0, sov_num / sov_den.replace(0, np.nan), np.nan)
 
-            sos: float = sum(opp_elos) / len(opp_elos) if opp_elos else float("nan")
-            sov: float = sum(win_elos) / len(win_elos) if win_elos else float("nan")
-
-            sos_sov_map[(str(team), str(year), week)] = {
-                "SOS": sos,
-                "SOV": sov,
-            }
-
-    return sos_sov_map
+    return long.loc[:, ["TEAM", "YEAR", "WEEK_NUM", *_STAT_COLS]].reset_index(drop=True)
