@@ -82,9 +82,9 @@ def _model_color(model_key: str) -> str:
 def _model_key(eval_df: pd.DataFrame) -> str:
     """Build composite model key from eval_df's canonical schema.
 
-    The prediction archive uses (model_name, model_type) per WS2's composite
-    key migration. This helper assembles the key for display labels and
-    output paths.
+    The prediction archive uses (model_name, model_type) as the composite
+    identity. This helper assembles the key for display labels and output
+    paths.
 
     Args:
         eval_df: Evaluation DataFrame from build_evaluation_df.

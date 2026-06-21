@@ -8,8 +8,9 @@ Two modes:
   season N, retrain the model on data strictly through season N-1 using
   fixed hyperparameters from the current spec, then predict season N.
   Intermediate models are discarded after their predictions are written.
-  Honest with respect to model weights; mild HP-leakage accepted per
-  ``DECISIONS.md`` D1.
+  Honest with respect to model weights; mild HP-leakage is an accepted
+  tradeoff against the substantially longer runtime of also walk-forward
+  searching hyperparameters per season.
 
 - **Current-model** (default for analytic models like elo): use the
   currently-trained predictor for all historical games. Honest for
@@ -254,8 +255,8 @@ def _backfill_walk_forward(
     """Walk-forward retraining: for each season N, train on data through N-1, then predict season N.
 
     Each iteration retrains the model with ``train_through_season=N-1``
-    using fixed hyperparameters from the current spec (per D1). The
-    intermediate model is discarded after writing its season-N predictions.
+    using fixed hyperparameters from the current spec. The intermediate
+    model is discarded after writing its season-N predictions.
 
     Args:
         model_name: Model purpose (e.g. ``"win_prob"``).
@@ -395,7 +396,7 @@ def backfill_model(
     """Archive predictions for all historical games.
 
     Dispatches to walk-forward retraining (the right default for trained
-    ML models per D1) or current-model prediction (the right default for
+    ML models) or current-model prediction (the right default for
     analytic models like Elo). Override with ``mode`` if needed.
 
     Args:

@@ -2,14 +2,14 @@
 
 """Champion/challenger model comparison and promotion logic.
 
-Classification (existing):
+Classification:
     ClassificationPromotionGates           Gate thresholds (Brier/ECE/AUC)
     ClassificationComparisonResult         Comparison outcome
     extract_classification_metrics         Pull metrics from GameModelMetadata
     compare_classification_models          Run classification gates
     format_classification_comparison       Human-readable classification report
 
-Regression (new):
+Regression:
     RegressionPromotionGates               Gate thresholds (R²/Coverage)
     RegressionModelResult                  Standardised regression metrics
     RegressionComparisonResult             Comparison outcome
@@ -17,11 +17,11 @@ Regression (new):
     select_prop_champion                   Pick best model from multiple results
     format_regression_comparison           Human-readable regression report
 
-Workstream 2 D3 status:
-    ECE/AUC/log_loss/accuracy are now first-class fields on
-    :class:`GameModelMetadata` (set by ``GamesTrainer._build_classification_metadata``).
-    ``extract_classification_metrics`` reads them directly off the
-    metadata object. The legacy ``_PARAM_KEYS`` mapping is gone.
+Metric storage:
+    Classification metrics (ECE, AUC, log_loss, accuracy) live on the
+    ``metrics`` dict on :class:`BaseModelMetadata`, populated by
+    ``GamesTrainer._build_classification_metadata``.
+    ``extract_classification_metrics`` reads from that dict.
 
 Usage::
 
