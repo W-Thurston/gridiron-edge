@@ -48,6 +48,8 @@ import numpy as np
 from pandas import DataFrame, Series
 from scipy.stats import norm  # type: ignore[import-untyped]
 
+from gridiron_edge.core.enums import ConfidenceTier, Lean
+
 # ---------------------------------------------------------------------------
 # Default thresholds — consistent with game model post-processing
 # ---------------------------------------------------------------------------
@@ -151,15 +153,16 @@ def derive_lean(
 
     Args:
         p_over: Probability of exceeding the line.
-        over_threshold: P(over) above this → "Over" (default 0.55).
-        under_threshold: P(over) below this → "Under" (default 0.45).
+        over_threshold: P(over) above this → :data:`Lean.OVER` (default 0.55).
+        under_threshold: P(over) below this → :data:`Lean.UNDER` (default 0.45).
 
     Returns:
-        Series of string labels.
+        Series of :class:`Lean` string values (each member's ``.value`` is the
+        underlying string label for backward compat with archived data).
     """
-    lean = Series("No Edge", index=p_over.index, dtype="object")
-    lean = lean.where(~(p_over > over_threshold), "Over")
-    lean = lean.where(~(p_over < under_threshold), "Under")
+    lean = Series(Lean.NO_EDGE.value, index=p_over.index, dtype="object")
+    lean = lean.where(~(p_over > over_threshold), Lean.OVER.value)
+    lean = lean.where(~(p_over < under_threshold), Lean.UNDER.value)
     lean = lean.where(p_over.notna(), np.nan)
     return lean
 
@@ -172,20 +175,24 @@ def derive_confidence_tier(
     """Classify prediction confidence as High, Moderate, or Low.
 
     Based on ``|p_over - 0.5|`` — how far the probability is from a
-    coin flip.  Consistent with game model confidence tiers.
+    coin flip. Consistent with game model confidence tiers.
 
     Args:
         p_over: Probability of exceeding the line.
-        high_distance: Distance threshold for "High" (default 0.15).
-        moderate_distance: Distance threshold for "Moderate" (default 0.08).
+        high_distance: Distance threshold for :data:`ConfidenceTier.HIGH`
+            (default 0.15).
+        moderate_distance: Distance threshold for
+            :data:`ConfidenceTier.MODERATE` (default 0.08).
 
     Returns:
-        Series of string labels.
+        Series of :class:`ConfidenceTier` string values (each member's
+        ``.value`` is the underlying string label for backward compat
+        with archived data).
     """
     distance: Series = (p_over - 0.5).abs()
-    tier = Series("Low", index=p_over.index, dtype="object")
-    tier = tier.where(~(distance > moderate_distance), "Moderate")
-    tier = tier.where(~(distance > high_distance), "High")
+    tier = Series(ConfidenceTier.LOW.value, index=p_over.index, dtype="object")
+    tier = tier.where(~(distance > moderate_distance), ConfidenceTier.MODERATE.value)
+    tier = tier.where(~(distance > high_distance), ConfidenceTier.HIGH.value)
     tier = tier.where(p_over.notna(), np.nan)
     return tier
 

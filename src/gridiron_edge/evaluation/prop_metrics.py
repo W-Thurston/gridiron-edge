@@ -35,6 +35,8 @@ import numpy as np
 from numpy import dtype, float64, ndarray
 from pandas import Series
 
+from gridiron_edge.core.enums import ConfidenceTier, Lean
+
 logger: Logger = logging.getLogger(__name__)
 
 
@@ -409,17 +411,17 @@ def compute_hit_rate(
     # Push (actual == line) — excluded from both hit and miss
 
     # Over leans
-    over_mask = lean_f == "Over"
+    over_mask = lean_f == Lean.OVER.value
     over_total = int(over_mask.sum())
     over_hits: int = int((over_mask & went_over).sum()) if over_total > 0 else 0
 
     # Under leans
-    under_mask = lean_f == "Under"
+    under_mask = lean_f == Lean.UNDER.value
     under_total = int(under_mask.sum())
     under_hits: int = int((under_mask & went_under).sum()) if under_total > 0 else 0
 
     # No Edge
-    no_edge_count = int((lean_f == "No Edge").sum())
+    no_edge_count = int((lean_f == Lean.NO_EDGE.value).sum())
 
     # Overall (Over + Under leans only)
     overall_total: int = over_total + under_total
@@ -469,7 +471,8 @@ def compute_tier_analysis(
     has_market: bool = line is not None and lean is not None and p_over is not None
 
     tiers: list[TierBreakdown] = []
-    for tier_name in ["High", "Moderate", "Low"]:
+    for tier in (ConfidenceTier.HIGH, ConfidenceTier.MODERATE, ConfidenceTier.LOW):
+        tier_name: str = tier.value
         tier_mask = tier_f == tier_name
         count = int(tier_mask.sum())
 
@@ -495,10 +498,10 @@ def compute_tier_analysis(
             assert line is not None and lean is not None
             line_f = line[mask][tier_mask]
             lean_f = lean[mask][tier_mask]
-            leans_with_opinion = lean_f.isin(["Over", "Under"])
+            leans_with_opinion = lean_f.isin([Lean.OVER.value, Lean.UNDER.value])
             if leans_with_opinion.any():
-                over_hit = (lean_f == "Over") & (tier_actual > line_f)
-                under_hit = (lean_f == "Under") & (tier_actual < line_f)
+                over_hit = (lean_f == Lean.OVER.value) & (tier_actual > line_f)
+                under_hit = (lean_f == Lean.UNDER.value) & (tier_actual < line_f)
                 hits = int((over_hit | under_hit).sum())
                 total = int(leans_with_opinion.sum())
                 hit_rate: float = hits / total if total > 0 else float("nan")

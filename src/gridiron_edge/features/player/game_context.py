@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.core.enums import DOME_LIKE_ROOFS
 from gridiron_edge.core.settings import get_settings
 
 logger: Logger = logging.getLogger(__name__)
@@ -99,8 +100,12 @@ _FULL_NAME_TO_ABBREV: Final[dict[str, str]] = {
     "Washington Football Team": "WAS",
 }
 
-# ROOF values that indicate dome-like conditions.
-_DOME_ROOFS: Final[set[str]] = {"dome", "closed"}
+# ROOF values that indicate the game was actually played in dome-like
+# conditions (closed stadium, regardless of whether it has a permanent
+# roof or a retractable one). Used as a player prop feature.
+# See :data:`gridiron_edge.core.enums.DOME_LIKE_ROOFS` for the
+# canonical semantic grouping.
+_DOME_ROOFS: Final[frozenset[str]] = frozenset(r.value for r in DOME_LIKE_ROOFS)
 
 
 def _normalize_abbrev(s: Series) -> Series:

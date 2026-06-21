@@ -76,14 +76,19 @@ from typing import TYPE_CHECKING, Final
 import numpy as np
 import pandas as pd
 
+from gridiron_edge.core.enums import COVERED_STADIUMS
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
 
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
 
-# ROOF values that indicate a covered playing surface
-_DOME_ROOF_VALUES: Final[frozenset[str]] = frozenset({"dome", "retractable"})
+# ROOF values that indicate a covered playing surface (stadium has
+# a roof at all, regardless of whether it's open on game day). Used
+# to override OWM weather data with controlled-environment defaults.
+# See :data:`gridiron_edge.core.enums.COVERED_STADIUMS` for the
+# canonical semantic grouping.
+_DOME_ROOF_VALUES: Final[frozenset[str]] = frozenset(r.value for r in COVERED_STADIUMS)
 
 # OWM WEATHER_MAIN values that indicate precipitation
 _PRECIP_WEATHER_MAINS: Final[frozenset[str]] = frozenset(
