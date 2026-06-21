@@ -1,0 +1,359 @@
+"""Composite command: weekly-predict.
+
+Generates predictions for the upcoming week by composing data refresh,
+odds fetch, prediction generation, output rendering, and edge report
+into a single workflow. Mirrors the operational checklist in HANDOFF.md
+steps 1-4.
+
+Usage::
+
+    gridiron weekly-predict --week 1 --season 2026-2027
+    gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
+    gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+# pyrefly: ignore [missing-import]
+import typer
+
+from gridiron_edge.cli._composites import (
+    CompositeStage,
+    StageResult,
+    render_composite_summary,
+    resolve_active_stages,
+    run_composite,
+)
+
+# ---------------------------------------------------------------------------
+# Stage functions
+# ---------------------------------------------------------------------------
+
+
+def _stage_ensure_data_fresh(ctx: dict[str, Any]) -> StageResult:
+    """Refresh underlying data via the weekly run-data-pipeline path.
+
+    Skips fetch-weather and fetch-odds within run-data-pipeline because
+    those are handled separately (fetch-odds as its own composite stage;
+    fetch-weather is generally out-of-band).
+    """
+    from gridiron_edge.cli.main import ALL_STAGES, _run_pipeline_stages
+
+    active = set(ALL_STAGES) - {"fetch-weather", "fetch-odds"}
+
+    _run_pipeline_stages(
+        active=active,
+        all_years=False,
+        resolved_season=ctx.get("resolved_season_int", 0) or 0,
+        upcoming_target=ctx.get("upcoming_target", 0) or 0,
+        season=ctx.get("season_int"),
+        season_year=ctx.get("season"),
+        owm_api_key=None,
+        fit_elo_all_years=False,
+    )
+    return StageResult(success=True, detail="data refreshed")
+
+
+def _stage_fetch_odds(ctx: dict[str, Any]) -> StageResult:
+    """Fetch current DraftKings odds. Soft-fails on network errors."""
+    from gridiron_edge.ingest.odds import fetch_dk_odds
+
+    fetch_dk_odds()
+    return StageResult(success=True, detail="DK odds refreshed")
+
+
+def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
+    """Generate predictions for the upcoming week.
+
+    Delegates to the existing output predictions command's underlying
+    function. Writes to the prediction archive as a side effect.
+    """
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.archive import append_to_prediction_log
+    from gridiron_edge.viz.predictions import build_predictions_df
+
+    year: str = ctx["season"]
+    week: int = ctx["week"]
+    repo: Path = get_settings().repo_root
+
+    df = build_predictions_df(year=year, week=week, repo=repo)
+    if df.empty:
+        return StageResult(
+            success=False,
+            detail="no predictions produced (check schedule + Elo state)",
+        )
+
+    archive_path = append_to_prediction_log(
+        df,
+        model_name="win_prob",
+        model_type="elo",
+        season=year,
+        week=week,
+    )
+
+    # Stash the DataFrame in context so render-outputs can use it
+    # without rebuilding.
+    ctx["predictions_df"] = df
+
+    return StageResult(
+        success=True,
+        detail=f"{len(df)} predictions archived",
+        rows=len(df),
+        artifacts=[archive_path],
+    )
+
+
+def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
+    """Render predictions to PNG + HTML."""
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.viz.predictions import (
+        build_predictions_df,
+        render_predictions_html,
+        render_predictions_image,
+    )
+
+    year: str = ctx["season"]
+    week: int = ctx["week"]
+    repo: Path = get_settings().repo_root
+
+    # Prefer the context-cached DataFrame from predict-week, else rebuild.
+    df = ctx.get("predictions_df")
+    if df is None:
+        df = build_predictions_df(year=year, week=week, repo=repo)
+        if df.empty:
+            return StageResult(
+                success=False,
+                detail="no predictions to render",
+            )
+
+    artifacts: list[Path] = []
+
+    png_path = render_predictions_image(df, year=year, week=week, repo=repo)
+    artifacts.append(png_path)
+
+    html_path = render_predictions_html(df, year=year, week=week, repo=repo)
+    artifacts.append(html_path)
+
+    return StageResult(
+        success=True,
+        detail=f"rendered {len(artifacts)} outputs",
+        artifacts=artifacts,
+    )
+
+
+def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
+    """Generate edge report against current odds.
+
+    Soft-fails when no odds are available (fetch-odds failed earlier).
+    """
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.archive import load_prediction_log
+    from gridiron_edge.ingest.odds.store import load_current_odds
+    from gridiron_edge.market.recommendations import (
+        build_edge_report,
+        rank_edges,
+    )
+    from gridiron_edge.models.game_prediction.post_process import (
+        get_margin_std,
+        get_total_std,
+    )
+
+    year: str = ctx["season"]
+    week: int = ctx["week"]
+    model_type: str = ctx.get("model_type", "random_forest")
+    repo: Path = get_settings().repo_root
+
+    predictions = load_prediction_log(
+        season=year,
+        week=week,
+        model_name="win_prob",
+        model_type=model_type,
+    )
+    if predictions.empty:
+        return StageResult(
+            success=False,
+            detail=f"no predictions for win_prob/{model_type} week {week}",
+        )
+
+    odds = load_current_odds()
+    if odds is None or odds.empty:
+        return StageResult(
+            success=False,
+            detail="no current DK odds — fetch-odds did not produce data",
+        )
+
+    margin_std = get_margin_std("win_prob", model_type)
+    total_std = get_total_std("total", model_type, default=13.0)
+
+    edge_report = build_edge_report(
+        predictions,
+        odds,
+        margin_std=margin_std,
+        total_std=total_std,
+        bankroll=ctx.get("bankroll", 1000.0),
+        kelly_multiplier=0.25,
+    )
+
+    if edge_report.empty:
+        return StageResult(
+            success=True,
+            detail="no edges (predictions did not match any odds)",
+        )
+
+    ranked = rank_edges(edge_report, min_ev=0.0)
+
+    out_dir = repo / "data" / "output" / "edges"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"edges_{year}_wk{week:02d}.csv"
+    ranked.to_csv(out_path, index=False)
+
+    return StageResult(
+        success=True,
+        detail=f"{len(ranked)} edges (top EV {ranked['ev'].max():.1%})",
+        rows=len(ranked),
+        artifacts=[out_path],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage list
+# ---------------------------------------------------------------------------
+
+
+def _build_stages() -> list[CompositeStage]:
+    """Define the stages for weekly-predict.
+
+    Order matters: each stage's depends_on points to stages earlier in
+    the list. fetch-odds and predict-week are independent (predictions
+    don't need odds), but generate-edges depends on both.
+    """
+    return [
+        CompositeStage(
+            name="ensure-data-fresh",
+            description="Ensure data is fresh",
+            func=_stage_ensure_data_fresh,
+        ),
+        CompositeStage(
+            name="fetch-odds",
+            description="Fetch current DraftKings odds",
+            func=_stage_fetch_odds,
+            soft_fail=True,
+        ),
+        CompositeStage(
+            name="predict-week",
+            description="Generate predictions for upcoming week",
+            func=_stage_predict_week,
+            depends_on=("ensure-data-fresh",),
+        ),
+        CompositeStage(
+            name="render-outputs",
+            description="Render predictions PNG + HTML",
+            func=_stage_render_outputs,
+            depends_on=("predict-week",),
+        ),
+        CompositeStage(
+            name="generate-edges",
+            description="Generate edge report against current odds",
+            func=_stage_generate_edges,
+            depends_on=("predict-week", "fetch-odds"),
+            soft_fail=True,
+        ),
+    ]
+
+
+_ALL_STAGES: list[str] = [s.name for s in _build_stages()]
+_STAGES_STR: str = ", ".join(_ALL_STAGES)
+_SKIP_HELP: str = f"Stage(s) to skip. Repeatable. Valid: {_STAGES_STR}."
+_ONLY_HELP: str = f"Run only these stage(s). Repeatable. Valid: {_STAGES_STR}."
+
+
+# ---------------------------------------------------------------------------
+# CLI command
+# ---------------------------------------------------------------------------
+
+
+def weekly_predict_cmd(
+    *,
+    week: int = typer.Option(..., help="NFL week number to predict."),
+    season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
+    model_type: str = typer.Option(
+        "random_forest",
+        help=(
+            "Win-probability model algorithm to use for edges. "
+            "One of: random_forest, xgboost, logistic, elo."
+        ),
+    ),
+    bankroll: float = typer.Option(
+        1000.0,
+        help="Bankroll for Kelly stake sizing in the edge report.",
+    ),
+    skip: list[str] = typer.Option(  # noqa: B008
+        [],
+        "--skip",
+        help=_SKIP_HELP,
+    ),
+    only: list[str] = typer.Option(  # noqa: B008
+        [],
+        "--only",
+        help=_ONLY_HELP,
+    ),
+) -> None:
+    r"""Generate predictions and edge report for the upcoming week.
+
+    Composes five stages: data refresh, odds fetch, prediction, output
+    rendering, edge report. Odds fetch and edge report soft-fail
+    individually — the rest of the workflow continues even when the
+    external odds service is unavailable.
+
+    \b
+    Examples:
+      gridiron weekly-predict --week 1 --season 2026-2027
+      gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
+      gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
+    """
+    from gridiron_edge.core.console import console
+
+    stages = _build_stages()
+    active = resolve_active_stages(
+        all_stages=_ALL_STAGES,
+        skip=skip,
+        only=only,
+    )
+
+    # Derive integer season for run-data-pipeline downstream.
+    try:
+        season_int = int(season.split("-")[0])
+    except (ValueError, IndexError) as exc:
+        raise typer.BadParameter(
+            f"Could not parse season '{season}'. Expected format: 'YYYY-YYYY+1' (e.g. '2026-2027')."
+        ) from exc
+
+    context: dict[str, Any] = {
+        "week": week,
+        "season": season,
+        "season_int": season_int,
+        "resolved_season_int": season_int,
+        "upcoming_target": season_int,
+        "model_type": model_type,
+        "bankroll": bankroll,
+    }
+
+    console.header(
+        "weekly-predict",
+        subtitle=f"week {week} · {season} · model={model_type}",
+    )
+
+    summary = run_composite(
+        name="weekly-predict",
+        stages=stages,
+        active=active,
+        context=context,
+    )
+
+    render_composite_summary(summary)
+
+    if not summary.overall_success:
+        raise typer.Exit(code=1)
