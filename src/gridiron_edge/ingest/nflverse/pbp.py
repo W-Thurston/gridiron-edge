@@ -87,9 +87,6 @@ _KEEP_COLUMNS: Final[list[str]] = [
     "yardline_100",
 ]
 
-# Minimum season where nflfastR EPA model is reliable
-_EPA_RELIABLE_FROM: Final[int] = 2006
-
 
 def _pbp_dir(repo: Path) -> Path:
     """Return the PBP raw storage directory, creating it if needed."""
