@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 def archive_repo(tmp_path: Path) -> Path:
     """Empty repo with the predictions directory pre-created.
 
-    Function-scoped because each test wants a fresh archive — sharing state
+    Function-scoped because each test wants a fresh archive - sharing state
     across tests would obscure dedup behavior.
     """
     (tmp_path / "data" / "output" / "predictions").mkdir(parents=True)
@@ -110,7 +110,7 @@ class TestArchiveRoundTrip:
         # Sort by game_id to handle order changes during parquet round-trip
         log_sorted = log.sort_values("game_id").reset_index(drop=True)
 
-        # The archive uses lowercase column names — verify those values
+        # The archive uses lowercase column names - verify those values
         assert log_sorted["away_win_prob"].tolist() == pytest.approx([0.42, 0.61, 0.27])
         assert log_sorted["home_win_prob"].tolist() == pytest.approx([0.58, 0.39, 0.73])
 
@@ -137,7 +137,7 @@ class TestArchiveDedup:
             repo=archive_repo,
         )
 
-        # Write 2: same games, same model — should replace, not duplicate
+        # Write 2: same games, same model - should replace, not duplicate
         predictions_updated = make_predictions(n=3)
         predictions_updated["AWAY_WIN_PROB"] = 0.99
         predictions_updated["HOME_WIN_PROB"] = 0.01

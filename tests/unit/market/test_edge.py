@@ -1,5 +1,5 @@
 # tests/unit/market/test_edge.py
-"""Unit tests for edge.py — expected value, edge detection, and classification."""
+"""Unit tests for edge.py - expected value, edge detection, and classification."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 # tests/unit/ingest/test_odds_store.py
-"""Tests for gridiron_edge.ingest.odds.store — wide_to_long, ledger, snapshot."""
+"""Tests for gridiron_edge.ingest.odds.store - wide_to_long, ledger, snapshot."""
 
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ class TestAppendToOddsLedger:
         df: DataFrame = _make_long_odds(n=2)
         path1: Path = append_to_odds_ledger(df, repo=tmp_path)
 
-        # Append empty — should be a no-op
+        # Append empty - should be a no-op
         empty = pd.DataFrame(columns=df.columns)
         path2: Path = append_to_odds_ledger(empty, repo=tmp_path)
 

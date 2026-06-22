@@ -207,7 +207,7 @@ class TestTimezoneShift:
         """A team playing at its own home stadium should have zero timezone shift."""
         from gridiron_edge.features.team.travel import TravelFeature
 
-        # KC hosts at Arrowhead — no timezone change for KC
+        # KC hosts at Arrowhead - no timezone change for KC
         games = _make_games(game_location="NULL_VALUE", stadium="Arrowhead Stadium")
         stadiums = _make_stadiums()
         df = pd.DataFrame([_make_modeling_row(home_field=1)])

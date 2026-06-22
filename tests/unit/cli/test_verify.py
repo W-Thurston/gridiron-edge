@@ -194,7 +194,7 @@ class TestBaselineComparisonStage:
                     "",
                     "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
                     "|---|---|---|---|---|---|---|",
-                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | — | — | — |",
+                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | - | - | - |",
                 ]
             )
         )
@@ -264,7 +264,7 @@ class TestBaselineComparisonStage:
                     "",
                     "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
                     "|---|---|---|---|---|---|---|",
-                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | — | — | — |",
+                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | - | - | - |",
                 ]
             )
         )

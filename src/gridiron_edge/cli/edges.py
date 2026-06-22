@@ -65,7 +65,7 @@ def report(
     from gridiron_edge.market.recommendations import build_edge_report, rank_edges
     from gridiron_edge.models.game_prediction.post_process import get_margin_std
 
-    console.header(f"Edge Report — {season} Week {week}")
+    console.header(f"Edge Report - {season} Week {week}")
 
     # ── Load predictions ──────────────────────────────────────────────
     with step("Loading predictions"):

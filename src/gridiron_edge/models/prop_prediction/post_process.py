@@ -14,10 +14,10 @@ Design decisions (2026-06-10):
   or quantile regression later.
 - Lean thresholds (0.55/0.45) and confidence tiers (distance-based
   0.15/0.08) are consistent with game model post-processing.
-- lo_90 clipped at 0 — negative stat projections are theoretically
+- lo_90 clipped at 0 - negative stat projections are theoretically
   possible but not actionable for display or betting.
 - Line input is optional.  When no line is provided, P(over), lean,
-  and confidence_tier are NaN — MAE and calibration can still be
+  and confidence_tier are NaN - MAE and calibration can still be
   evaluated without market data.
 
 Target std column mapping:
@@ -51,7 +51,7 @@ from scipy.stats import norm  # type: ignore[import-untyped]
 from gridiron_edge.core.enums import ConfidenceTier, Lean
 
 # ---------------------------------------------------------------------------
-# Default thresholds — consistent with game model post-processing
+# Default thresholds - consistent with game model post-processing
 # ---------------------------------------------------------------------------
 
 DEFAULT_OVER_THRESHOLD: Final[float] = 0.55
@@ -80,7 +80,7 @@ def compute_predicted_std(
     Formula: ``sqrt(model_rmse² + player_rolling_std²)``
 
     When ``player_rolling_std`` is NaN (early-season, insufficient
-    games), defaults to ``model_rmse`` alone — a conservative estimate
+    games), defaults to ``model_rmse`` alone - a conservative estimate
     that produces wider prediction intervals.
 
     Args:
@@ -104,7 +104,7 @@ def compute_prediction_interval(
     """Compute symmetric prediction interval bounds.
 
     Uses the normal distribution z-score for the given confidence level.
-    Lower bound is clipped at 0 — negative stat projections are not
+    Lower bound is clipped at 0 - negative stat projections are not
     actionable for display or betting.
 
     Args:
@@ -174,7 +174,7 @@ def derive_confidence_tier(
 ) -> Series:
     """Classify prediction confidence as High, Moderate, or Low.
 
-    Based on ``|p_over - 0.5|`` — how far the probability is from a
+    Based on ``|p_over - 0.5|`` - how far the probability is from a
     coin flip. Consistent with game model confidence tiers.
 
     Args:

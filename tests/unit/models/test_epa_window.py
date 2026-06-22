@@ -171,7 +171,7 @@ class TestRebuildFeaturesWithWindow:
     def test_window_4_returns_df_unchanged(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
     ) -> None:
-        """Window=4 is the fast path — should return identical DataFrame."""
+        """Window=4 is the fast path - should return identical DataFrame."""
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=4, repo=mini_repo
         )
@@ -231,7 +231,7 @@ class TestRebuildFeaturesWithWindow:
         ]
         if len(week1_first_season) > 0:
             assert week1_first_season["TEAM_A_OFF_EPA_PER_PLAY"].isna().all(), (
-                "First-season week-1 rows should have NaN EPA — rolling window requires prior games"
+                "First-season week-1 rows should have NaN EPA - rolling window requires prior games"
             )
 
     def test_empty_epa_returns_df_unchanged(

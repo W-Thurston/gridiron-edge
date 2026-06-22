@@ -28,7 +28,7 @@ import gridiron_edge.features.team.travel
 import gridiron_edge.features.team.venue_hfa
 import gridiron_edge.features.team.weather  # noqa: F401
 
-# Feature order matters — dependencies between features:
+# Feature order matters - dependencies between features:
 # - home_field before travel (travel reads HOME_FIELD)
 # - travel before venue_hfa (venue_hfa reads IS_NEUTRAL_SITE)
 # - team_elo before schedule_strength (SOS/SOV join on elo_state)
@@ -49,7 +49,7 @@ FEATURES: Final[list[str]] = [
 ]
 
 # Validate that the ordering above satisfies all depends_on constraints.
-# This runs at import time — a mis-ordering raises ValueError immediately
+# This runs at import time - a mis-ordering raises ValueError immediately
 # rather than silently producing wrong features during training.
 validate_ordering(FEATURES)
 

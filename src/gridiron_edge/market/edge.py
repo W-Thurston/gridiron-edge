@@ -1,7 +1,7 @@
 # src/gridiron_edge/market/edge.py
 """Edge (expected value) calculations for game-level betting markets.
 
-Pure scalar functions — no I/O, no pandas, no data dependencies.  Every
+Pure scalar functions - no I/O, no pandas, no data dependencies.  Every
 function operates on values already produced by other parts of the
 pipeline and returns the edge / EV / Kelly information needed to make a
 betting decision.
@@ -53,7 +53,7 @@ class MoneylineEdge:
     Attributes:
     ----------
     side : str
-        ``"home"`` or ``"away"`` — the side with positive EV.
+        ``"home"`` or ``"away"`` - the side with positive EV.
     model_prob : float
         Model's estimated win probability for *side*.
     market_prob : float
@@ -81,7 +81,7 @@ class SpreadEdge:
     Attributes:
     ----------
     side : str
-        ``"home"`` or ``"away"`` — the side to cover.
+        ``"home"`` or ``"away"`` - the side to cover.
     model_spread : float
         Model's derived point spread (negative = home favored).
     market_spread : float
@@ -146,7 +146,7 @@ class TotalEdge:
 # Constants
 # ---------------------------------------------------------------------------
 
-# EV thresholds for edge classification.  Starting values — can be tuned
+# EV thresholds for edge classification.  Starting values - can be tuned
 # empirically after historical validation in Phase E.
 _STRONG_THRESHOLD: Final[float] = 0.05
 _MODERATE_THRESHOLD: Final[float] = 0.02

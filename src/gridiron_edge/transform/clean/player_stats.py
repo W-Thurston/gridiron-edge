@@ -73,8 +73,8 @@ def _join_game_id(df: DataFrame, schedule: DataFrame) -> DataFrame:
     """Join game_id from schedule onto player stats.
 
     Player stats have (season, week, team, opponent_team) but not a
-    reliable game_id. We join against the schedule twice — once assuming
-    the player's team is home, once assuming away — then coalesce.
+    reliable game_id. We join against the schedule twice - once assuming
+    the player's team is home, once assuming away - then coalesce.
 
     The opponent_team is included in the join key so postseason weeks
     (where multiple games may share a week label across different
@@ -141,7 +141,7 @@ def clean_player_stats(
 
     # 2. Normalize team codes
     df = _normalize_team_codes(df)
-    # Drop rows with missing team/opponent — can't join to schedule without them
+    # Drop rows with missing team/opponent - can't join to schedule without them
     n_before: int = len(df)
     df = df.dropna(subset=["team", "opponent_team"])
     n_dropped: int = n_before - len(df)
@@ -156,14 +156,14 @@ def clean_player_stats(
         logger.warning("Dropped %d row(s) with null game_id after schedule join", n_null_gid)
         df = df.dropna(subset=["game_id"])
 
-    # 3b. Remove rows with duplicate (player_id, game_id) — these indicate
+    # 3b. Remove rows with duplicate (player_id, game_id) - these indicate
     # schedule join mismatches where different games got the same game_id.
     # Drop ALL copies (keep=False) since the game_id is wrong for both.
     dupe_mask = df.duplicated(subset=["player_id", "game_id"], keep=False)
     n_dupes = dupe_mask.sum()
     if n_dupes:
         logger.warning(
-            "Dropped %d row(s) with duplicate (player_id, game_id) — schedule join mismatch",
+            "Dropped %d row(s) with duplicate (player_id, game_id) - schedule join mismatch",
             n_dupes,
         )
         df = df.loc[~dupe_mask, :]

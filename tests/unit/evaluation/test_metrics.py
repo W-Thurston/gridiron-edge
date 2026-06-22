@@ -243,7 +243,7 @@ class TestBrierBySeason:
 
         assert len(result) == 1
         assert result.iloc[0]["delta_vs_mean"] == pytest.approx(0.0, abs=1e-6)
-        # Single season — no meaningful trend signal, should be "~"
+        # Single season - no meaningful trend signal, should be "~"
         assert result.iloc[0]["trend"] == "~"
 
 

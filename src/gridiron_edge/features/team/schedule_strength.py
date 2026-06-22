@@ -2,7 +2,7 @@
 
 Measures opponent quality to contextualise a team's record. A team's raw
 win-loss record does not distinguish between a schedule of weak opponents
-and one of strong opponents — these features provide that context.
+and one of strong opponents - these features provide that context.
 
 Both features use opponent Elo as the quality proxy. Elo is already
 computed, trusted, and captures opponent strength in a single number
@@ -23,7 +23,7 @@ Produces (per team, computed from completed games prior to each matchup):
 
 Design notes:
     - "Pre-game Elo" means the opponent's Elo *entering* the game they
-      played against this team — not the opponent's current Elo. This
+      played against this team - not the opponent's current Elo. This
       avoids future leakage: an opponent that improved dramatically after
       the game does not retroactively make that game look harder.
     - The Elo state table (datasets.elo_state()) provides pre-game Elo
@@ -34,7 +34,7 @@ Design notes:
     - Teams with wins but no losses (e.g. 4-0) still get a valid SOS
       (average of all 4 opponents' Elos) and SOV (average of those same
       4 opponents, since all games were wins).
-    - Ties (WIN_OR_TIE == 0.5) are excluded from SOV — only outright
+    - Ties (WIN_OR_TIE == 0.5) are excluded from SOV - only outright
       wins count toward strength of victory, consistent with NFL
       tiebreaker convention.
     - Postseason games are included in opponent Elo lookups but the
@@ -214,7 +214,7 @@ def _build_sos_sov_table(
 
     grouped = long.groupby(["TEAM", "YEAR"], sort=False)
 
-    # Cumulative sums then shift(1) — "entering this game" semantics.
+    # Cumulative sums then shift(1) - "entering this game" semantics.
     sos_num = (
         grouped["_OPP_ELO_FOR_SOS"]
         .cumsum()

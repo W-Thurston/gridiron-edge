@@ -1,6 +1,6 @@
 # tests/unit/models/test_artifact.py
 
-"""Tests for gridiron_edge.models.artifact — ArtifactStore.
+"""Tests for gridiron_edge.models.artifact - ArtifactStore.
 
 Covers the (model_name, model_type) API and nested path scheme, plus the
 metadata-subclass discrimination on read.
@@ -92,7 +92,7 @@ class TestArtifactStoreInit:
 
 
 # ---------------------------------------------------------------------------
-# Save / load round-trip — game
+# Save / load round-trip - game
 # ---------------------------------------------------------------------------
 
 
@@ -139,7 +139,7 @@ class TestSaveLoadGame:
 
 
 # ---------------------------------------------------------------------------
-# Save / load round-trip — prop (with scaler)
+# Save / load round-trip - prop (with scaler)
 # ---------------------------------------------------------------------------
 
 

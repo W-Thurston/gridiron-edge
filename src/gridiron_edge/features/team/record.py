@@ -2,7 +2,7 @@
 
 Captures team momentum and form signals that Elo absorbs only slowly.
 A team's win percentage and current streak encode information about
-recent trajectory that aggregate Elo ratings smooth over — a 6-2 team
+recent trajectory that aggregate Elo ratings smooth over - a 6-2 team
 on a 4-game winning streak is meaningfully different from a 6-2 team
 that has lost its last 2 games.
 
@@ -18,7 +18,7 @@ Produces (per team, computed from completed games prior to each matchup):
 
 Design notes:
     - All features are computed from games *prior to* the current matchup.
-      The current game is never included in any aggregate — no leakage.
+      The current game is never included in any aggregate - no leakage.
     - Ties (WIN_OR_TIE == 0.5) count as 0.5 wins and 0.5 losses, matching
       NFL standings convention. They reset both win and loss streaks to 0.
     - Week 1 games have no prior history: WINS=0, LOSSES=0, WIN_PCT=NaN,
@@ -28,7 +28,7 @@ Design notes:
       rather than a single signed streak.
     - Neutral-site games (GAME_LOCATION == "N") are included in record
       computation because they affect standings equally.
-    - Postseason games from prior seasons are excluded — features are
+    - Postseason games from prior seasons are excluded - features are
       reset each season (grouped by YEAR).
 
 Implementation note (record/H1, record/H2):
@@ -110,7 +110,7 @@ class RecordFeature:
         df["WEEK_NUM"] = df["WEEK_NUM"].astype(int)
 
         if record_table.empty:
-            # No completed games to learn from — produce default values.
+            # No completed games to learn from - produce default values.
             for col in _PRODUCES:
                 if col.endswith("_WIN_PCT"):
                     df[col] = float("nan")

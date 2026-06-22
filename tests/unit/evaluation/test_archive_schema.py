@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_archive_schema.py
-"""Tests for archive schema extension — backward compat + enrichment columns."""
+"""Tests for archive schema extension - backward compat + enrichment columns."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ class TestArchiveSchemaExtension:
         )
         # model_spread is not in the base mapping so it gets NaN default
         # (build_archive_rows constructs its own dict, doesn't pass through
-        # input enrichment columns). This is expected — enrichment happens
+        # input enrichment columns). This is expected - enrichment happens
         # at predict time, not at archive time.
         assert set(_ARCHIVE_COLUMNS) == set(rows.columns)
 

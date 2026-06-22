@@ -2,19 +2,19 @@
 
 """Numba-optimized simulation kernels and schedule analysis.
 
-All @njit functions in this module are intentionally self-contained —
+All @njit functions in this module are intentionally self-contained -
 numba cannot call regular Python functions at JIT compile time, so the
 Elo formula is duplicated here from ratings/elo/core.py. If the Elo
 formula changes, update BOTH this module AND ratings/elo/core.py.
 
 Public functions (non-numba):
-    precompute_game_counts   — Precompute per-team game count arrays.
+    precompute_game_counts   - Precompute per-team game count arrays.
 
 Numba kernels (not for direct external use):
-    _elo_win_prob            — Win probability from two Elo ratings.
-    _elo_update              — Update two Elo ratings after a game.
-    apply_actuals_to_matrices — Accumulate completed game results.
-    simulate_remaining_regular_season — Monte Carlo regular season sim.
+    _elo_win_prob            - Win probability from two Elo ratings.
+    _elo_update              - Update two Elo ratings after a game.
+    apply_actuals_to_matrices - Accumulate completed game results.
+    simulate_remaining_regular_season - Monte Carlo regular season sim.
 """
 
 from __future__ import annotations

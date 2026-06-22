@@ -8,12 +8,12 @@ window sizes as a hyperparameter during training.
 
 Public API
 ----------
-_EPA_RAW_COLS       list[str]       — EPA column names from epa_by_game.parquet
-_EPA_COL_MAP        dict[str, str]  — lowercase → uppercase EPA column mapping
-_EPA_WINDOW_OPTIONS list[int]       — window sizes searched during tuning
-WindowData          NamedTuple      — cached train/holdout split per window
-_rebuild_features_with_window       — recompute EPA features with given window
-_get_cached_window_data             — retrieve/populate per-window cache entry
+_EPA_RAW_COLS       list[str]       - EPA column names from epa_by_game.parquet
+_EPA_COL_MAP        dict[str, str]  - lowercase → uppercase EPA column mapping
+_EPA_WINDOW_OPTIONS list[int]       - window sizes searched during tuning
+WindowData          NamedTuple      - cached train/holdout split per window
+_rebuild_features_with_window       - recompute EPA features with given window
+_get_cached_window_data             - retrieve/populate per-window cache entry
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ logger: Logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # EPA column names as they appear in epa_by_game.parquet (lowercase).
-# Derived from the feature module — do not enumerate independently.
+# Derived from the feature module - do not enumerate independently.
 _EPA_RAW_COLS: Final[list[str]] = list(_EPA_COLS_RAW)
 
 # Mapping from epa_by_game column name → modeling file column suffix.
@@ -111,7 +111,7 @@ def _rebuild_features_with_window(
 
     epa_raw: pd.DataFrame = load_epa_by_game(repo)
     if epa_raw.empty:
-        logger.warning("epa_by_game.parquet not found — returning df unchanged")
+        logger.warning("epa_by_game.parquet not found - returning df unchanged")
         return df
 
     epa_sorted: pd.DataFrame = epa_raw.sort_values(["season", "week", "team"]).copy()

@@ -1,5 +1,5 @@
 # src/gridiron_edge/cli/main.py
-"""Gridiron Edge CLI — main entrypoint.
+"""Gridiron Edge CLI - main entrypoint.
 
 Assembles the top-level Typer app from sub-module apps and registers
 the run-data-pipeline command. All sub-apps are lazy-loaded via their
@@ -106,7 +106,7 @@ ALL_STAGES: list[str] = [
 # is the stage's input; the second is the stage's output. A warning is
 # logged when the input is newer than the output, indicating the stage
 # is operating on a result that's already stale relative to its source.
-# Only the most common dependencies are tracked here — fetch-* stages
+# Only the most common dependencies are tracked here - fetch-* stages
 # have no checkable upstream within the pipeline itself.
 _STAGE_DEPENDENCIES: dict[str, tuple[str, str]] = {
     "clean-games": (
@@ -128,7 +128,7 @@ def _check_stage_staleness(
 
     If a downstream stage (e.g. ``clean-games``) is active and the
     upstream input file is newer than the existing output file, log a
-    warning. Does not refuse to run — the user may have legitimate
+    warning. Does not refuse to run - the user may have legitimate
     reasons for re-cleaning.
 
     Args:
@@ -155,7 +155,7 @@ def _check_stage_staleness(
             # errors if input is genuinely required.
             continue
         if not output_path.exists():
-            # First run — nothing to compare against.
+            # First run - nothing to compare against.
             continue
 
         input_mtime: float = input_path.stat().st_mtime
@@ -326,24 +326,24 @@ def run_data_pipeline(
     r"""Run a full end-to-end data pipeline with per-stage control.
 
     \b
-    Scenario 1 — weekly refresh (most common, no flags needed):
+    Scenario 1 - weekly refresh (most common, no flags needed):
       gridiron run-data-pipeline
 
     \b
-    Scenario 2 — specific season:
+    Scenario 2 - specific season:
       gridiron run-data-pipeline --season 2025
 
     \b
-    Scenario 3 — full history rebuild:
+    Scenario 3 - full history rebuild:
       gridiron run-data-pipeline --all-years --upcoming-season 2026 \
         --only build-elo --fit-elo-all-years
 
     \b
-    Scenario 4 — skip weather and odds:
+    Scenario 4 - skip weather and odds:
       gridiron run-data-pipeline --skip fetch-weather --skip fetch-odds
 
     \b
-    Scenario 5 — features only:
+    Scenario 5 - features only:
       gridiron run-data-pipeline --only build-features
     """
     from gridiron_edge.core.console import console

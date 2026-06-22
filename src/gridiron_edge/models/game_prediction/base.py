@@ -16,7 +16,7 @@ Public API:
     _n_iter_for         iteration count for randomized HP search
 
 The trainer infrastructure (GameModelType, GameModelSpec, GamesTrainer)
-operates as the single training surface for game-side models — both
+operates as the single training surface for game-side models - both
 classification (win_prob) and regression (total) tasks dispatch from
 here.
 """
@@ -330,7 +330,7 @@ def _n_iter_for(model_type: GameModelType, task: str) -> int:
 
     if task == "classification":
         if model_type == GameModelType.LOGISTIC:
-            # Whole grid is just epa_window — sample all of it.
+            # Whole grid is just epa_window - sample all of it.
             return len(_EPA_WINDOW_OPTIONS)
         if model_type == GameModelType.RANDOM_FOREST:
             return _N_ITER_RF_CLF
@@ -458,7 +458,7 @@ def _filter_for_walk_forward(
 class GamesTrainer(ABC):
     """Base class for game model trainers.
 
-    Subclasses implement only ``spec`` — all training logic lives here.
+    Subclasses implement only ``spec`` - all training logic lives here.
     The factory pattern (``_create_model`` / ``_get_param_grid``) handles
     Logistic, RandomForest, and XGBoost transparently across both
     classification (win_prob) and regression (total) tasks.
@@ -843,7 +843,7 @@ class GamesTrainer(ABC):
         calibration_applied: bool = False
         if model_type == GameModelType.XGBOOST and holdout_ece > _ECE_CALIBRATION_THRESHOLD:
             logger.info(
-                "%s/%s: ECE=%.4f > %.3f — applying isotonic calibration",
+                "%s/%s: ECE=%.4f > %.3f - applying isotonic calibration",
                 spec.name,
                 model_type.value,
                 holdout_ece,

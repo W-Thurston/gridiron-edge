@@ -1,6 +1,6 @@
-# Gridiron Edge — Handoff
+# Gridiron Edge - Handoff
 
-How everything works right now. Assumes you know what the project does — see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [TIER_4_BACKLOG.md](TIER_4_BACKLOG.md) for ambient hygiene items addressed opportunistically.
+How everything works right now. Assumes you know what the project does - see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [TIER_4_BACKLOG.md](TIER_4_BACKLOG.md) for ambient hygiene items addressed opportunistically.
 
 ---
 
@@ -13,39 +13,39 @@ How everything works right now. Assumes you know what the project does — see [
 | Weather ingest | `gridiron_edge.ingest.weather.openweather` (OpenWeatherMap) |
 | Odds ingest + ledger | `gridiron_edge.ingest.odds` (DraftKings → Parquet) |
 | Transform | `gridiron_edge.transform.clean` |
-| Shared constants | `gridiron_edge.core.constants` — single source for `HOME_GAME_LOCATION`, `AWAY_WIN_LOCATION`, `HOLDOUT_SEASONS`, `EXPANSION_TEAMS` |
-| Feature column definitions | `gridiron_edge.models.game_prediction._columns` — pure-data leaf, no pandas |
-| Feature engineering functions | `gridiron_edge.models.game_prediction._features` — `FEATURE_SETS`, `_prepare_data`, `_is_trained` |
-| EPA window hyperparameter infra | `gridiron_edge.models.game_prediction._epa_window` — `WindowData`, `_rebuild_features_with_window` |
+| Shared constants | `gridiron_edge.core.constants` - single source for `HOME_GAME_LOCATION`, `AWAY_WIN_LOCATION`, `HOLDOUT_SEASONS`, `EXPANSION_TEAMS` |
+| Feature column definitions | `gridiron_edge.models.game_prediction._columns` - pure-data leaf, no pandas |
+| Feature engineering functions | `gridiron_edge.models.game_prediction._features` - `FEATURE_SETS`, `_prepare_data`, `_is_trained` |
+| EPA window hyperparameter infra | `gridiron_edge.models.game_prediction._epa_window` - `WindowData`, `_rebuild_features_with_window` |
 | Feature pipeline + dep validation | `gridiron_edge.features.pipeline` (schema v3) + `features.registry.validate_ordering()` |
-| Elo ratings | `gridiron_edge.ratings.elo` — `core.elo_win_probability(divisor=)`, `EloTableConfig(divisor=)` |
-| Simulation types + config | `gridiron_edge.sim._types` — `SimulationConfig(divisor=)`, `SimPaths`, `TeamIndex`, `SimulationResults` |
-| Simulation engine (numba) | `gridiron_edge.sim._engine` — Elo kernels, record accumulation, Monte Carlo |
-| Simulation orchestration | `gridiron_edge.sim.season` — data loading, output builders, `run_full_simulation` |
+| Elo ratings | `gridiron_edge.ratings.elo` - `core.elo_win_probability(divisor=)`, `EloTableConfig(divisor=)` |
+| Simulation types + config | `gridiron_edge.sim._types` - `SimulationConfig(divisor=)`, `SimPaths`, `TeamIndex`, `SimulationResults` |
+| Simulation engine (numba) | `gridiron_edge.sim._engine` - Elo kernels, record accumulation, Monte Carlo |
+| Simulation orchestration | `gridiron_edge.sim.season` - data loading, output builders, `run_full_simulation` |
 | Visualisation | `gridiron_edge.viz` |
-| Evaluation | `gridiron_edge.evaluation` — `archive`, `metrics`, `select`, `backfill`, `tune`, `champion` |
-| Models | `gridiron_edge.models` — Predictor + Trainable protocols, ArtifactStore |
-| CLI | `gridiron_edge.cli` — `main.py` stage-list pipeline, sub-apps per domain |
-| Market math | `gridiron_edge.market` — `odds_math`, `kelly`, `edge`, `recommendations`, `clv` |
-| Post-processing enrichment | `gridiron_edge.models.game_prediction.post_process` — spread, bands, tier, scores |
-| Prediction pipeline | `gridiron_edge.models.game_prediction.pipeline` — composable predict → enrich orchestrator |
-| Total points model | `gridiron_edge.models.game_prediction.total` — RF regressor, shares feature set with win models |
-| Edge calculation | `gridiron_edge.market.edge` — pure scalar EV, cover-prob, edge detection (ML/spread/total). Frozen dataclasses. |
-| Edge recommendations | `gridiron_edge.market.recommendations` — joins predictions ↔ odds, builds 18-column edge report, ranks by EV |
-| Closing Line Value | `gridiron_edge.market.clv` — probability-based and point-based CLV, opening/closing odds extraction, CLV report |
-| Edge CLI | `gridiron_edge.cli.edges` — gridiron edges report (weekly), gridiron edges clv (historical CLV) |
-| Bet ledger | `gridiron_edge.betting.ledger` — append-only Parquet bet log with PnL and CLV on settlement |
-| Bankroll management | `gridiron_edge.betting.bankroll` — transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
-| Performance analytics | `gridiron_edge.betting.performance` — pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
-| Betting CLI | `gridiron_edge.cli.betting` — 8 commands: log, settle, list, summary, balance, export, deposit, with |
+| Evaluation | `gridiron_edge.evaluation` - `archive`, `metrics`, `select`, `backfill`, `tune`, `champion` |
+| Models | `gridiron_edge.models` - Predictor + Trainable protocols, ArtifactStore |
+| CLI | `gridiron_edge.cli` - `main.py` stage-list pipeline, sub-apps per domain |
+| Market math | `gridiron_edge.market` - `odds_math`, `kelly`, `edge`, `recommendations`, `clv` |
+| Post-processing enrichment | `gridiron_edge.models.game_prediction.post_process` - spread, bands, tier, scores |
+| Prediction pipeline | `gridiron_edge.models.game_prediction.pipeline` - composable predict → enrich orchestrator |
+| Total points model | `gridiron_edge.models.game_prediction.total` - RF regressor, shares feature set with win models |
+| Edge calculation | `gridiron_edge.market.edge` - pure scalar EV, cover-prob, edge detection (ML/spread/total). Frozen dataclasses. |
+| Edge recommendations | `gridiron_edge.market.recommendations` - joins predictions ↔ odds, builds 18-column edge report, ranks by EV |
+| Closing Line Value | `gridiron_edge.market.clv` - probability-based and point-based CLV, opening/closing odds extraction, CLV report |
+| Edge CLI | `gridiron_edge.cli.edges` - gridiron edges report (weekly), gridiron edges clv (historical CLV) |
+| Bet ledger | `gridiron_edge.betting.ledger` - append-only Parquet bet log with PnL and CLV on settlement |
+| Bankroll management | `gridiron_edge.betting.bankroll` - transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
+| Performance analytics | `gridiron_edge.betting.performance` - pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
+| Betting CLI | `gridiron_edge.cli.betting` - 8 commands: log, settle, list, summary, balance, export, deposit, with |
 | Player stats ingest | `gridiron_edge.ingest.nflverse` (nflreadpy player game logs, 1999–2024) |
 | Player stats cleaning | `gridiron_edge.transform.clean.player_stats` |
-| Player feature engineering | `gridiron_edge.features.player` — rolling, matchup, usage, game_context, builder, _columns |
-| Prop model training | `gridiron_edge.models.prop_prediction` — base (PropTrainer), qb_pass_yards, qb_rush_yards, rb_rush_yards, wr_rec_yards, te_rec_yards |
-| Prop post-processing | `gridiron_edge.models.prop_prediction.post_process` — predicted_std, intervals, P(over), lean, confidence tiers |
-| Prop evaluation metrics | `gridiron_edge.evaluation.prop_metrics` — accuracy, bias, coverage, calibration, hit rate, by-tier |
-| Prop prediction archive | `gridiron_edge.evaluation.prop_archive` — append-only Parquet, 4-key dedup |
-| Prop CLI | `gridiron_edge.cli.props` — evaluate, projections, backfill |
+| Player feature engineering | `gridiron_edge.features.player` - rolling, matchup, usage, game_context, builder, _columns |
+| Prop model training | `gridiron_edge.models.prop_prediction` - base (PropTrainer), qb_pass_yards, qb_rush_yards, rb_rush_yards, wr_rec_yards, te_rec_yards |
+| Prop post-processing | `gridiron_edge.models.prop_prediction.post_process` - predicted_std, intervals, P(over), lean, confidence tiers |
+| Prop evaluation metrics | `gridiron_edge.evaluation.prop_metrics` - accuracy, bias, coverage, calibration, hit rate, by-tier |
+| Prop prediction archive | `gridiron_edge.evaluation.prop_archive` - append-only Parquet, 4-key dedup |
+| Prop CLI | `gridiron_edge.cli.props` - evaluate, projections, backfill |
 
 ---
 
@@ -67,7 +67,7 @@ How everything works right now. Assumes you know what the project does — see [
 | `src/gridiron_edge/sim/` | Monte Carlo season + playoff simulation |
 | `src/gridiron_edge/viz/` | Predictions image/HTML, playoff table, rankings CSV |
 | `src/gridiron_edge/cli/` | Typer app + sub-commands |
-| `data/` | Generated at runtime — not committed |
+| `data/` | Generated at runtime - not committed |
 | `data/models/{version}/` | Trained model artifacts (joblib + metadata JSON) |
 
 **Data layout:**
@@ -137,7 +137,7 @@ This pattern was validated by the EPA feature expansion (22 metrics, 107 total f
 
 ### `GAME_LOCATION` schema
 
-Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). The old PFR-era `"NULL_VALUE"` sentinel was retired. Missing data fields (GAMETIME, STADIUM, ROOF, SURFACE) use `""`.
+Three values only - `"H"` (home win), `"@"` (away win), `"N"` (neutral site). The old PFR-era `"NULL_VALUE"` sentinel was retired. Missing data fields (GAMETIME, STADIUM, ROOF, SURFACE) use `""`.
 
 ### Elo divisor is parameterised end-to-end
 
@@ -149,7 +149,7 @@ See `evaluation/tune.py` for the underlying parameter search.
 
 ### Feature dependency validation
 
-`FeatureSpec.depends_on` declares ordering constraints. `validate_ordering()` is called at pipeline import time — a mis-ordering raises `ValueError` immediately rather than silently producing wrong columns at training time.
+`FeatureSpec.depends_on` declares ordering constraints. `validate_ordering()` is called at pipeline import time - a mis-ordering raises `ValueError` immediately rather than silently producing wrong columns at training time.
 
 ### Prediction archive `is_backfilled`
 
@@ -174,7 +174,7 @@ This ensures new columns are physically present in stored parquet files.
 The market package is layered: `odds_math.py` and `kelly.py` are pure-math
 leaves (no pandas, no I/O). `edge.py` adds scipy.stats.norm for probit
 cover probabilities but remains scalar-only. `recommendations.py` and
-`clv.py` use pandas for data joins but take DataFrames as arguments — no
+`clv.py` use pandas for data joins but take DataFrames as arguments - no
 file I/O. `cli/edges.py` is the thin CLI wiring that loads data and calls
 the library. CLV reuses `pivot_odds_to_wide` from recommendations via
 `_pivot_and_suffix()` to stay DRY.
@@ -182,17 +182,17 @@ the library. CLV reuses `pivot_odds_to_wide` from recommendations via
 ### sim/season.py decomposition
 
 `sim/` is split into three files with a clean dependency hierarchy:
-- `_types.py` — pure data, no I/O (constants, dataclasses)
-- `_engine.py` — numba kernels (imports from `_types` only)
-- `season.py` — orchestration (imports from both)
+- `_types.py` - pure data, no I/O (constants, dataclasses)
+- `_engine.py` - numba kernels (imports from `_types` only)
+- `season.py` - orchestration (imports from both)
 
-Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` — if the formula changes, update both.
+Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` - if the formula changes, update both.
 
 ### Post-processing enrichment is a separate step, not inside models
 
 All derived outputs (spread, bands, tier, projected scores) are computed in
 `post_process.py` after the model produces `home_win_prob`.  This keeps models
-clean and composable — any model that outputs a win probability gets the full
+clean and composable - any model that outputs a win probability gets the full
 enrichment for free via `enrich_predictions()`.
 
 ### Prediction pipeline is composable
@@ -206,7 +206,7 @@ call, not rewriting the pipeline.  `_predict_historical_tree()` and
 
 The total model (`total.py`) trains a `RandomForestRegressor` on the same
 107-feature set but targets `actual_total` instead of `RESULT`.  It is NOT
-registered in `PredictorRegistry` — it feeds into `enrich_predictions()` via
+registered in `PredictorRegistry` - it feeds into `enrich_predictions()` via
 the pipeline rather than operating as an independent predictor.
 
 ### VEGAS_LINE sign convention
@@ -219,7 +219,7 @@ to `model_spread`.
 ### Archive schema is soft-versioned
 
 The prediction archive (`predictions_log.parquet`) uses NaN fill for columns
-missing from older archives.  No schema version column — `load_prediction_log()`
+missing from older archives.  No schema version column - `load_prediction_log()`
 adds missing columns on load.  String columns (e.g. `confidence_tier`) get
 empty string instead of NaN.
 
@@ -267,7 +267,7 @@ player std is NaN (early season), defaults to model RMSE alone (conservative).
 
 #### Game context features do not use shift(1)
 
-Spread, total, dome, rest are known pre-game — they are legitimate
+Spread, total, dome, rest are known pre-game - they are legitimate
 predictors at prediction time, unlike rolling stats which would cause
 lookahead if not shifted.
 
@@ -279,7 +279,7 @@ automatically includes it in the prop model feature set.
 
 #### Prop archive dedup key
 
-`(game_id, player_id, stat_type, model_name, model_type)` — last write wins.
+`(game_id, player_id, stat_type, model_name, model_type)` - last write wins.
 Same append-only pattern as the game prediction archive. The composite
 identity allows distinct algorithm variants (elasticnet / random_forest /
 xgboost) of the same stat family to coexist in the archive without
@@ -349,13 +349,13 @@ soft-fail semantics, and consolidated summary rendering.
 
 Each composite accepts `--skip` and `--only` for stage filtering
 (mutually exclusive). External-service stages (`fetch-odds`,
-`generate-edges`, `smoke-pipeline`) are soft-fail by default — the
+`generate-edges`, `smoke-pipeline`) are soft-fail by default - the
 rest of the workflow continues even when they fail. `verify --strict`
 converts soft-failures into hard ones for CI use.
 
 Stage functions are defined inside each composite file (e.g.,
 `cli/weekly_predict.py`). Stages share state across the composite via
-a context dict — `predict-week` writes the predictions DataFrame to
+a context dict - `predict-week` writes the predictions DataFrame to
 context, and `render-outputs` consumes it without rebuilding.
 
 #### Data Pipeline (`gridiron run-data-pipeline`)
@@ -693,7 +693,7 @@ No manual migration scripts are needed; the load functions handle these
 schema transitions automatically.
 
 ```bash
-#### Prop model evaluation (reads from archive — no retrain)
+#### Prop model evaluation (reads from archive - no retrain)
 uv run gridiron props evaluate --model qb_pass_yards --model-type elasticnet
 
 #### Prop projections (requires saved artifact)
@@ -711,7 +711,7 @@ champion read from the prop prediction archive instead of retraining
 inside every command. backfill does honest walk-forward (per-season
 training through the cutoff). projections requires a trained artifact
 written via PropTrainer.train_and_save (not yet exposed as a CLI command
-— see TIER_4_BACKLOG.md).
+- see TIER_4_BACKLOG.md).
 
 ---
 
@@ -719,18 +719,18 @@ written via PropTrainer.train_and_save (not yet exposed as a CLI command
 
 | File | Contents |
 |------|----------|
-| `data/cleaned/NFL_wk_by_wk_cleaned.csv` | Canonical historical games — `GAME_LOCATION` = `"H"/"@"/"N"` |
+| `data/cleaned/NFL_wk_by_wk_cleaned.csv` | Canonical historical games - `GAME_LOCATION` = `"H"/"@"/"N"` |
 | `data/cleaned/NFL_upcoming_schedule_cleaned.csv` | Canonical upcoming schedule |
 | `data/cleaned/NFL_Team_Elo.csv` | Elo ratings state table |
 | `data/modeling/base_modeling_file.parquet` | Base modeling rows (pre-features) |
 | `data/modeling/modeling_file.parquet` | Full feature matrix |
-| `data/cleaned/NFL_stadium_reference.csv` | Stadium geo reference — add new venues here for weather coverage |
-| `data/output/predictions/predictions_log.parquet` | Prediction archive — `is_backfilled` flags historical vs live |
+| `data/cleaned/NFL_stadium_reference.csv` | Stadium geo reference - add new venues here for weather coverage |
+| `data/output/predictions/predictions_log.parquet` | Prediction archive - `is_backfilled` flags historical vs live |
 | `data/odds/dk_odds_log.parquet` | Full DK odds history (long format) |
 | `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot for viz |
 | `data/raw/player_stats/player_stats_{season}.parquet` | Per-season player game logs from nflreadpy |
 | `data/cleaned/player_game_logs.parquet` | Cleaned player stats (138K rows, deduped) |
-| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive — dedup on (game_id, player_id, stat_type, model_name, model_type) |
+| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive - dedup on (game_id, player_id, stat_type, model_name, model_type) |
 
 ---
 
@@ -743,7 +743,7 @@ written via PropTrainer.train_and_save (not yet exposed as a CLI command
 | Composite shared infrastructure | `cli/_composites.py` |
 | Shared constants | `core/constants.py` |
 | Feature pipeline + ordering | `features/pipeline.py` |
-| Feature dependency validation | `features/registry.py` — `validate_ordering()` |
+| Feature dependency validation | `features/registry.py` - `validate_ordering()` |
 | Feature column definitions | `models/game_prediction/_columns.py` |
 | Feature engineering functions | `models/game_prediction/_features.py` |
 | Market math | `market/odds_math.py`, `market/kelly.py`, `market/edge.py`, `market/recommendations.py`, `market/clv.py` |
@@ -761,7 +761,7 @@ written via PropTrainer.train_and_save (not yet exposed as a CLI command
 | Post-processing (spread, bands, tier) | `models/game_prediction/post_process.py` |
 | Prediction pipeline orchestrator | `models/game_prediction/pipeline.py` |
 | Total points model | `models/game_prediction/total.py` |
-| Prediction archive schema | `evaluation/archive.py` — `_ARCHIVE_COLUMNS` |
+| Prediction archive schema | `evaluation/archive.py` - `_ARCHIVE_COLUMNS` |
 | Player feature pipeline | `features/player/builder.py`, `features/player/_columns.py` |
 | Player rolling features | `features/player/rolling.py` |
 | Player matchup features | `features/player/matchup.py` |
@@ -812,13 +812,13 @@ Three-tier test pyramid with auto-applied pytest markers:
 
 Additional markers: `@pytest.mark.slow` (excluded by default), `@pytest.mark.network` (real API calls).
 
-**Markers are auto-applied by directory** — no `@pytest.mark.unit` decorators needed. Root `conftest.py` tags tests via `pytest_collection_modifyitems`.
+**Markers are auto-applied by directory** - no `@pytest.mark.unit` decorators needed. Root `conftest.py` tags tests via `pytest_collection_modifyitems`.
 
 **Shared fixtures:**
 
-* `tests/fixtures/dataframes.py` — 9 DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, etc.)
-* `tests/fixtures/repos.py` — composable `MiniRepoBuilder` for integration/e2e tests
-* `tests/fixtures/dk_payload_fixture.py` — DraftKings API response fixture
+* `tests/fixtures/dataframes.py` - 9 DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, etc.)
+* `tests/fixtures/repos.py` - composable `MiniRepoBuilder` for integration/e2e tests
+* `tests/fixtures/dk_payload_fixture.py` - DraftKings API response fixture
 
 **Running tests:**
 
@@ -830,8 +830,8 @@ uv run pytest --cov --cov-report=term-missing  # with coverage report
 
 **Deferred test areas** (to be added with their respective workstreams):
 
-* Numba sim kernels (`test_engine.py`, `test_playoffs.py`) — defer to sim workstream
-* DK API mocking (`test_draftkings.py` full) — defer to odds workstream
+* Numba sim kernels (`test_engine.py`, `test_playoffs.py`) - defer to sim workstream
+* DK API mocking (`test_draftkings.py` full) - defer to odds workstream
 
 ---
 
@@ -880,7 +880,7 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 
 ## Operational checklist (weekly, during season)
 
-### Thursday/Sunday — game day prep
+### Thursday/Sunday - game day prep
 
 The composite command wraps the common case:
 
@@ -890,7 +890,7 @@ uv run gridiron weekly-predict --week N --season YYYY-YYYY+1
 
 This runs: data refresh, odds fetch, predictions, rendering, and edge report in one command. `fetch-odds` and `generate-edges` soft-fail individually so a DK outage doesn't block the rest.
 
-### Monday — after games complete
+### Monday - after games complete
 
 ```bash
 uv run gridiron post-week --week N --season YYYY-YYYY+1
@@ -922,10 +922,10 @@ uv run gridiron props projections --model qb_pass_yards --model-type elasticnet
 If you need to run the underlying stages individually (e.g., for
 debugging or composite-skip scenarios), the equivalent sequence is:
 
-1. `uv run gridiron run-data-pipeline` — refresh data + features
-2. `uv run gridiron ingest dk-odds` — pull current week odds
-3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N` — generate predictions
-4. `uv run gridiron edges report --week N --season YYYY-YYYY+1` — generate edge report
-5. `uv run gridiron sim run` — Monte Carlo simulation
-6. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N` — write rank changes
-7. `uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest` — archive predictions
+1. `uv run gridiron run-data-pipeline` - refresh data + features
+2. `uv run gridiron ingest dk-odds` - pull current week odds
+3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N` - generate predictions
+4. `uv run gridiron edges report --week N --season YYYY-YYYY+1` - generate edge report
+5. `uv run gridiron sim run` - Monte Carlo simulation
+6. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N` - write rank changes
+7. `uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest` - archive predictions

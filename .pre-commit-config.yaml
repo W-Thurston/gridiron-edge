@@ -35,7 +35,7 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Unit tests only (runs on commit — fast)
+      # Unit tests only (runs on commit - fast)
       - id: pytest-unit
         name: pytest unit tests
         entry: bash -c 'uv run pytest -m "unit and not slow" --no-header -q || test $? -eq 5'
@@ -44,7 +44,7 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # Integration + E2E tests (runs on push only — slower)
+      # Integration + E2E tests (runs on push only - slower)
       - id: pytest-integration
         name: pytest integration + e2e tests
         entry: bash -c 'uv run pytest -m "(integration or e2e) and not slow" --no-header -q || test $? -eq 5'

@@ -3,7 +3,7 @@
 """Divisional game flag feature.
 
 Marks whether a matchup is between two teams in the same NFL division.
-Divisional games are historically tighter contests — teams know each other
+Divisional games are historically tighter contests - teams know each other
 well, play twice per season, and the stakes (division standings) are higher
 than neutral-conference matchups.
 
@@ -74,7 +74,7 @@ class DivisionalFeature:
         games: pd.DataFrame = datasets.games()
 
         if "DIV_GAME" not in games.columns:
-            # Games CSV predates the DIV_GAME column — fill with NaN so
+            # Games CSV predates the DIV_GAME column - fill with NaN so
             # _prepare_data excludes these rows rather than training on zeros.
             df = df.copy()
             df["IS_DIV_GAME"] = float("nan")

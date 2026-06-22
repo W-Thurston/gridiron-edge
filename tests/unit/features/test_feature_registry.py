@@ -1,5 +1,5 @@
 # tests/unit/features/test_feature_registry.py
-"""Tests for gridiron_edge.features.registry — FeatureRegistry and helpers."""
+"""Tests for gridiron_edge.features.registry - FeatureRegistry and helpers."""
 
 from __future__ import annotations
 
@@ -65,11 +65,11 @@ class TestFeatureRegistryGet:
 
 class TestValidateOrdering:
     def test_valid_ordering_passes(self) -> None:
-        # home_field has no deps, rest has no deps — any order is fine
+        # home_field has no deps, rest has no deps - any order is fine
         validate_ordering(["home_field", "rest"])  # should not raise
 
     def test_invalid_ordering_raises(self) -> None:
-        # schedule_strength depends on elo — putting it before elo should fail
+        # schedule_strength depends on elo - putting it before elo should fail
         with pytest.raises((ValueError, KeyError)):
             validate_ordering(["schedule_strength", "elo"])
 

@@ -12,7 +12,7 @@ The hyperparameter grids are minimized via
 :func:`patch_minimal_param_grid` so each test runs in single-digit
 seconds rather than minutes.
 
-Marked ``@pytest.mark.slow`` — runs on PR but not on every commit.
+Marked ``@pytest.mark.slow`` - runs on PR but not on every commit.
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ def _fit_load_predict_classification(
     assert metadata.holdout_brier > 0.0
     assert metadata.holdout_brier < 0.50  # sanity bound on synthetic data
 
-    # Now run the predict path — this is where the scaler bug surfaced.
+    # Now run the predict path - this is where the scaler bug surfaced.
     # Fresh predictor instance to confirm we're loading from disk, not
     # using in-memory state from training.
     fresh_predictor = type(predictor)()
@@ -201,9 +201,9 @@ class TestWinProbLogistic:
 
         store = ArtifactStore(games_repo)
         scaler = store.load_scaler(predictor.model_name, predictor.model_type)
-        # If the scaler doesn't get persisted, the load-side bug returns —
+        # If the scaler doesn't get persisted, the load-side bug returns -
         # this catches a regression in the artifact persistence layer.
-        assert scaler is not None, "scaler artifact missing — load_scaler returned None"
+        assert scaler is not None, "scaler artifact missing - load_scaler returned None"
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +284,7 @@ class TestWinProbElo:
 
     Elo doesn't fit (it's analytic). The test verifies that the predictor
     correctly reads Elo state and produces reasonable predictions. Catches
-    regressions in the Elo migration path — e.g., if the predictor's load
+    regressions in the Elo migration path - e.g., if the predictor's load
     path stops reading the Elo state table correctly.
     """
 

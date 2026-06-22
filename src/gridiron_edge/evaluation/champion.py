@@ -274,7 +274,7 @@ def compare_regression_models(
     # Gate 1: R² > min_r2
     r2_pass: bool = challenger.r2 > gates.min_r2
 
-    # Gate 2 & 3: Coverage within [min, max] — skip if NaN
+    # Gate 2 & 3: Coverage within [min, max] - skip if NaN
     if isnan(challenger.coverage):
         coverage_low_pass: bool = True
         coverage_high_pass: bool = True
@@ -468,7 +468,7 @@ def format_classification_comparison(result: ClassificationComparisonResult) -> 
     verdict: Literal["✅ PROMOTE", "❌ REJECT"] = (
         "✅ PROMOTE" if result.should_promote else "❌ REJECT"
     )
-    lines.append(f"  VERDICT: {verdict} — {result.reason}")
+    lines.append(f"  VERDICT: {verdict} - {result.reason}")
     lines.append("")
     return "\n".join(lines)
 
@@ -526,7 +526,7 @@ def format_regression_comparison(result: RegressionComparisonResult) -> str:
 
     lines.append("")
     verdict: str = "✅ PROMOTE" if result.should_promote else "❌ REJECT"
-    lines.append(f"  VERDICT: {verdict} — {result.reason}")
+    lines.append(f"  VERDICT: {verdict} - {result.reason}")
     lines.append("")
 
     return "\n".join(lines)

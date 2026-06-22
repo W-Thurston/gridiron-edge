@@ -184,7 +184,7 @@ def plot_calibration_curve(
 
     ax.set_xlabel("Mean predicted probability", fontsize=11)
     ax.set_ylabel("Actual win rate", fontsize=11)
-    ax.set_title(f"Calibration Curve — {model}", fontsize=13, fontweight="bold")
+    ax.set_title(f"Calibration Curve - {model}", fontsize=13, fontweight="bold")
     ax.legend(fontsize=9)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -249,7 +249,7 @@ def plot_confidence_distribution(
 
     ax.set_xlabel("Predicted away-win probability", fontsize=11)
     ax.set_ylabel("Number of games", fontsize=11)
-    ax.set_title(f"Confidence Distribution — {model}", fontsize=13, fontweight="bold")
+    ax.set_title(f"Confidence Distribution - {model}", fontsize=13, fontweight="bold")
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3, axis="y")
 
@@ -312,7 +312,7 @@ def plot_roc_curve(
 
     ax.set_xlabel("False positive rate", fontsize=11)
     ax.set_ylabel("True positive rate", fontsize=11)
-    ax.set_title(f"ROC Curve — {model}", fontsize=13, fontweight="bold")
+    ax.set_title(f"ROC Curve - {model}", fontsize=13, fontweight="bold")
     ax.legend(fontsize=9, loc="lower right")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -330,7 +330,7 @@ def plot_brier_decomposition(
     """Bar chart of Brier score decomposition: reliability, resolution, uncertainty.
 
     Reliability (lower is better): calibration error component.
-    Resolution (higher is better): sharpness — how much predictions deviate
+    Resolution (higher is better): sharpness - how much predictions deviate
         from base rate.
     Uncertainty: inherent unpredictability. Fixed for the dataset.
 
@@ -370,7 +370,7 @@ def plot_brier_decomposition(
 
     ax.set_ylabel("Value", fontsize=11)
     ax.set_title(
-        f"Brier Score Decomposition — {model}\n"
+        f"Brier Score Decomposition - {model}\n"
         f"BS = Reliability - Resolution + Uncertainty = {decomp['brier_score']:.5f}",
         fontsize=12,
         fontweight="bold",
@@ -450,7 +450,7 @@ def plot_feature_importance(
         ax.axvline(0, color="black", linewidth=0.8)
         ax.set_xlabel("Coefficient (positive = helps away team win)", fontsize=10)
         ax.set_title(
-            f"Logistic Regression Coefficients — {display}",
+            f"Logistic Regression Coefficients - {display}",
             fontsize=12,
             fontweight="bold",
         )
@@ -463,7 +463,7 @@ def plot_feature_importance(
         )
         ax.set_xlabel("Feature importance (gain)", fontsize=10)
         ax.set_title(
-            f"Feature Importance — {display}",
+            f"Feature Importance - {display}",
             fontsize=12,
             fontweight="bold",
         )
@@ -494,7 +494,7 @@ def _unwrap_estimator(artifact: object) -> object | None:
         else:
             # Last step is conventionally the estimator
             inner = artifact.steps[-1][1]
-        # Recurse — the inner could itself be CalibratedClassifierCV
+        # Recurse - the inner could itself be CalibratedClassifierCV
         return _unwrap_estimator(inner)
 
     # CalibratedClassifierCV: unwrap to the underlying estimator. After
@@ -578,7 +578,7 @@ def plot_performance_by_context(
 
     fig, axes = plt.subplots(1, 3, figsize=_FIGSIZE_GRID)
     fig.suptitle(
-        f"Performance by Context — {model}",
+        f"Performance by Context - {model}",
         fontsize=13,
         fontweight="bold",
         y=1.01,

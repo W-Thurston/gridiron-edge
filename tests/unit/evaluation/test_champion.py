@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_champion.py
-"""Tests for gridiron_edge.evaluation.champion — promotion gate logic."""
+"""Tests for gridiron_edge.evaluation.champion - promotion gate logic."""
 
 from __future__ import annotations
 

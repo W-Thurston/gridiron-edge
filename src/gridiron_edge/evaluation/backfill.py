@@ -363,7 +363,7 @@ def _build_regression_predictions(
     work = df.copy()
     work["_total"] = preds
 
-    # One row per game — keep the away-team perspective.
+    # One row per game - keep the away-team perspective.
     # pyrefly: ignore [no-matching-overload]
     away = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
 

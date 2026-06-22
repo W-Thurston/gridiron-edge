@@ -185,7 +185,7 @@ class Console:
         elapsed: str = f"{result.elapsed:5.1f}s"
 
         if result.skipped:
-            print(f"  {_DIM}{_ARROW} {label}  {elapsed}  —{_RESET}")
+            print(f"  {_DIM}{_ARROW} {label}  {elapsed}  -{_RESET}")
         elif result.ok:
             print(f"  {_GREEN}{_TICK}{_RESET} {label}  {_DIM}{elapsed}{_RESET}")
         else:

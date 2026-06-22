@@ -2,7 +2,7 @@
 
 """Simulation constants, configuration dataclasses, and data containers.
 
-This module is a pure-data leaf — no I/O, no pandas operations, no numba.
+This module is a pure-data leaf - no I/O, no pandas operations, no numba.
 Any module in the sim package that needs to know the shape of the data
 (e.g. N_TEAMS, SimulationConfig, TeamIndex) imports from here.
 """
@@ -40,7 +40,7 @@ AWAY_WIN: Final[np.int8] = np.int8(0)
 HOME_WIN: Final[np.int8] = np.int8(1)
 TIE: Final[np.int8] = np.int8(2)
 
-# Playoff round indices — duplicated in playoffs.py (numba constraint).
+# Playoff round indices - duplicated in playoffs.py (numba constraint).
 # season.py asserts these stay in sync at import time.
 ROUND_WC: Final[int] = 0
 ROUND_DIV: Final[int] = 1
@@ -194,17 +194,17 @@ class SimulationResults:
     """Aggregated results from regular season + playoff simulations."""
 
     # Playoff simulation outputs
-    pts_total_by_sim: np.ndarray  # shape (n_sims, 32) — standings points per sim
-    po_win_counts: np.ndarray  # shape (32, 4) — playoff round wins
-    make_playoffs_counts: np.ndarray  # shape (32,) — playoff appearances
-    bye_counts: np.ndarray  # shape (32,) — first-round byes
-    reg_win_counts: np.ndarray  # shape (32, 18) — win count per team per week
+    pts_total_by_sim: np.ndarray  # shape (n_sims, 32) - standings points per sim
+    po_win_counts: np.ndarray  # shape (32, 4) - playoff round wins
+    make_playoffs_counts: np.ndarray  # shape (32,) - playoff appearances
+    bye_counts: np.ndarray  # shape (32,) - first-round byes
+    reg_win_counts: np.ndarray  # shape (32, 18) - win count per team per week
 
-    # Actuals through final_actual_week — needed by build_viz_table_df
-    pts_total_actual: np.ndarray  # shape (32,) — actual standings points
-    gp_played_actual: np.ndarray  # shape (32,) — games played
-    gp_total: np.ndarray  # shape (32,) — total scheduled games
-    div_id: np.ndarray  # shape (32,) — division id per team
+    # Actuals through final_actual_week - needed by build_viz_table_df
+    pts_total_actual: np.ndarray  # shape (32,) - actual standings points
+    gp_played_actual: np.ndarray  # shape (32,) - games played
+    gp_total: np.ndarray  # shape (32,) - total scheduled games
+    div_id: np.ndarray  # shape (32,) - division id per team
 
 
 # ============================================================================
@@ -215,7 +215,7 @@ class SimulationResults:
 @contextmanager
 def _log_phase(name: str) -> Iterator[None]:
     """Log a phase banner + elapsed time."""
-    logger.info("—" * 72)
+    logger.info("-" * 72)
     logger.info("%s...", name)
     t0 = time.perf_counter()
     try:

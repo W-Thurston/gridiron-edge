@@ -2,21 +2,21 @@
 
 """Feature column definitions and data structures for game-prediction models.
 
-Pure-data leaf — no I/O, no pandas operations, no training logic.
+Pure-data leaf - no I/O, no pandas operations, no training logic.
 Any module that needs to know column names or the FeatureSet contract
 imports from here without pulling in sklearn or training infrastructure.
 
 Public API
 ----------
-_SCHEMA_VERSION     int          — modeling file schema version (from manifest)
-_EPA_SUFFIXES       list[str]    — ordered EPA metric suffixes (derived from epa.py)
-_RAW_FEATURES       list[str]    — raw feature column names
-_DIFF_FEATURES      list[str]    — differential feature column names
-_COMBINED_FEATURES  list[str]    — combined feature column names
-_GAME_FEATURES      list[str]    — game-level feature names
-_TEAM_FEATURES      list[str]    — per-team feature names
-_EXPANDED_FEATURES  list[str]    — combined + feature names
-FeatureSet          dataclass    — named bundle of (feature_fn, feature_names)
+_SCHEMA_VERSION     int          - modeling file schema version (from manifest)
+_EPA_SUFFIXES       list[str]    - ordered EPA metric suffixes (derived from epa.py)
+_RAW_FEATURES       list[str]    - raw feature column names
+_DIFF_FEATURES      list[str]    - differential feature column names
+_COMBINED_FEATURES  list[str]    - combined feature column names
+_GAME_FEATURES      list[str]    - game-level feature names
+_TEAM_FEATURES      list[str]    - per-team feature names
+_EXPANDED_FEATURES  list[str]    - combined + feature names
+FeatureSet          dataclass    - named bundle of (feature_fn, feature_names)
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
-# Schema version — single source of truth in features.manifest.
+# Schema version - single source of truth in features.manifest.
 from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION as _CURRENT
 
-# EPA metric names — single source of truth in features.team.epa.
+# EPA metric names - single source of truth in features.team.epa.
 from gridiron_edge.features.team.epa import EPA_COLS as _EPA_COLS_RAW
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ _SCHEMA_VERSION: Final[int] = _CURRENT
 # Feature column definitions
 # ---------------------------------------------------------------------------
 
-# EPA metric suffixes in uppercase — derived from the feature module's
+# EPA metric suffixes in uppercase - derived from the feature module's
 # canonical list so additions to EPA_COLS propagate here automatically.
 _EPA_SUFFIXES: Final[list[str]] = [c.upper() for c in _EPA_COLS_RAW]
 
@@ -80,7 +80,7 @@ _GAME_FEATURES: Final[list[str]] = [
     "WEEK_NUM",
 ]
 
-# Per-team features (asymmetric — TEAM_A and TEAM_B values differ)
+# Per-team features (asymmetric - TEAM_A and TEAM_B values differ)
 _TEAM_FEATURES: Final[list[str]] = [
     "TEAM_A_DAYS_REST",
     "TEAM_B_DAYS_REST",

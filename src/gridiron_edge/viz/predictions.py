@@ -11,7 +11,7 @@ Migrated from ``notebooks/exploratory/Weekly_Prediction_Visualisation.ipynb``.
 Improvements over the notebook:
 - Logo paths keyed by full long team name (no splitting/mapping needed).
 - Time-separator rows built explicitly rather than the index > 15 trick.
-- DK odds are optional — if no snapshot exists the underdog box is skipped.
+- DK odds are optional - if no snapshot exists the underdog box is skipped.
 - Output paths derived from ``get_settings()`` rather than hardcoded.
 - Both PNG and static HTML outputs are written in one call.
 """
@@ -42,7 +42,7 @@ from gridiron_edge.ratings.elo.core import elo_win_probability
 logger: Logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Team colour palette — one primary colour per franchise (last name keyed).
+# Team colour palette - one primary colour per franchise (last name keyed).
 # ---------------------------------------------------------------------------
 
 TEAM_COLORS: dict[str, str] = {
@@ -99,7 +99,7 @@ def _gradient_image(
 
     Args:
         ax: Target matplotlib Axes.
-        direction: Gradient direction — 0 = vertical, 1 = horizontal.
+        direction: Gradient direction - 0 = vertical, 1 = horizontal.
         cmap_range: Fraction (cmin, cmax) of the colormap to use.
         **kwargs: Forwarded to ``Axes.imshow()``.
     """
@@ -296,7 +296,7 @@ def build_predictions_df(
     """Build the raw predictions DataFrame for a given week.
 
     Merges Elo ratings onto the upcoming schedule and computes win
-    probabilities. This DataFrame is the canonical prediction output —
+    probabilities. This DataFrame is the canonical prediction output -
     it is written to CSV and also used as input to the visualisation.
 
     Args:
@@ -357,7 +357,7 @@ def build_predictions_df(
 
     if df_schedule.empty:
         logger.warning(
-            "Elo data missing for %s week %d — schedule has games but Elo state "
+            "Elo data missing for %s week %d - schedule has games but Elo state "
             "does not yet cover this week. Run `gridiron ratings elo fit` first.",
             year,
             week,
@@ -536,7 +536,7 @@ def render_predictions_image(
         va="center",
     )
 
-    # Away Team header — x coords derived from column width proportions,
+    # Away Team header - x coords derived from column width proportions,
     # y coord derived from cell position so it tracks row height correctly.
     header_y = top.cells[2].y - 1
     header_h = top.cells[2].height
@@ -601,7 +601,7 @@ def render_predictions_image(
         home_color: str = TEAM_COLORS.get(home_long, "#333333")
 
         if away_prob > home_prob:
-            # Away team wins — gradient from left
+            # Away team wins - gradient from left
             cur_ax = row.cells[3].ax
             lx = row.cells[1].x
             by = row.cells[3].y
@@ -635,7 +635,7 @@ def render_predictions_image(
                     )
                     cur_ax.add_patch(rect)
         else:
-            # Home team wins — gradient from right
+            # Home team wins - gradient from right
             cur_ax = row.cells[5].ax
             lx = row.cells[4].x
             by = row.cells[4].y
@@ -698,7 +698,7 @@ def render_predictions_html(
     ``data/output/predictions/{year[:4]}/week_{week:02d}_predictions.html``.
 
     Inline CSS uses team colours for the predicted-winner row background.
-    No external dependencies — the file is shareable as-is.
+    No external dependencies - the file is shareable as-is.
 
     Args:
         df_schedule: DataFrame from ``build_predictions_df()``.
@@ -799,7 +799,7 @@ def render_predictions_html(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NFL Week {week} Predictions — {escape(year)}</title>
+<title>NFL Week {week} Predictions - {escape(year)}</title>
 <style>
   body {{ background: #1a1a1a; color: #eee; font-family: 'Segoe UI', Arial, sans-serif;
           display: flex; justify-content: center; padding: 2rem; }}

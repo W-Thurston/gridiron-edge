@@ -1,5 +1,5 @@
 # tests/e2e/test_prediction_pipeline.py
-"""E2E: features pipeline — fit elo → build model inputs → verify output."""
+"""E2E: features pipeline - fit elo → build model inputs → verify output."""
 
 from __future__ import annotations
 

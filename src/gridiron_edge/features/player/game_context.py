@@ -5,17 +5,17 @@ Joins game-level data (spread, total, roof, date) from the cleaned games
 dataset to player game logs and derives team-perspective features.
 
 These features are all **known pre-game** (Vegas lines are set before
-kickoff), so no shift(1) is needed — they are legitimate predictors at
+kickoff), so no shift(1) is needed - they are legitimate predictors at
 prediction time.
 
 Features produced:
-- is_home         — binary: player's team is the home team
-- game_spread     — spread from the player's team perspective
+- is_home         - binary: player's team is the home team
+- game_spread     - spread from the player's team perspective
                     (negative = favored, positive = underdog)
-- over_under      — total points line
-- implied_team_total — (over_under - game_spread) / 2
-- is_dome         — binary: game played under dome/closed roof
-- rest_days       — calendar days since the team's previous game
+- over_under      - total points line
+- implied_team_total - (over_under - game_spread) / 2
+- is_dome         - binary: game played under dome/closed roof
+- rest_days       - calendar days since the team's previous game
 
 Usage::
 
@@ -215,7 +215,7 @@ def _derive_dome(df: DataFrame) -> DataFrame:
 def _derive_rest_days(df: DataFrame) -> DataFrame:
     """Compute calendar days since the team's previous game.
 
-    Crosses season boundaries intentionally — a team's first game of a
+    Crosses season boundaries intentionally - a team's first game of a
     new season shows ~200 days rest (meaningful signal for the model).
     Week 1 of the earliest season in the data will be NaN.
     """

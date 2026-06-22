@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_select.py
-"""Tests for gridiron_edge.evaluation.select — collect_model_metrics, rank_models."""
+"""Tests for gridiron_edge.evaluation.select - collect_model_metrics, rank_models."""
 
 from __future__ import annotations
 

@@ -303,7 +303,7 @@ def _render_bet_table(df) -> None:  # noqa: ANN001
     for _, row in df.iterrows():
         bet_id_short: str = str(row["bet_id"])[:8]
         pnl_str: str = (
-            f"${row['pnl']:.2f}" if row.get("pnl") is not None and str(row["pnl"]) != "nan" else "—"
+            f"${row['pnl']:.2f}" if row.get("pnl") is not None and str(row["pnl"]) != "nan" else "-"
         )
         typer.echo(
             f"  {bet_id_short:8s}  {row['game_id']!s:18s}  "
@@ -321,7 +321,7 @@ def _render_summary(stats: dict) -> None:
     typer.echo(f"  Record:  {stats['wins']}W - {stats['losses']}L - {stats['pushes']}P")
 
     wp = stats["win_pct"]
-    wp_str: str = f"{wp:.1%}" if not math.isnan(wp) else "—"
+    wp_str: str = f"{wp:.1%}" if not math.isnan(wp) else "-"
     typer.echo(f"  Win %:   {wp_str}")
 
     typer.echo(f"  Staked:  ${stats['total_staked']:.2f}")
@@ -331,27 +331,27 @@ def _render_summary(stats: dict) -> None:
     typer.echo(f"  PnL:     {pnl_sign}${pnl:.2f}")
 
     roi_val = stats["roi_pct"]
-    roi_str: str = f"{roi_val:+.1f}%" if not math.isnan(roi_val) else "—"
+    roi_str: str = f"{roi_val:+.1f}%" if not math.isnan(roi_val) else "-"
     typer.echo(f"  ROI:     {roi_str}")
 
     clv = stats["mean_clv"]
-    clv_str: str = f"{clv:+.4f}" if not math.isnan(clv) else "—"
+    clv_str: str = f"{clv:+.4f}" if not math.isnan(clv) else "-"
     typer.echo(f"  CLV:     {clv_str} (n={stats['n_clv_bets']})")
 
     ev_gap = stats["ev_vs_actual_gap"]
-    ev_gap_str: str = f"{ev_gap:+.4f}" if not math.isnan(ev_gap) else "—"
+    ev_gap_str: str = f"{ev_gap:+.4f}" if not math.isnan(ev_gap) else "-"
     typer.echo(f"  EV gap:  {ev_gap_str} (n={stats['n_model_bets']})")
 
     health: str = stats["calibration_health"]
     health_indicator: str = {
         "healthy": "✓",
         "degraded": "⚠",
-        "unknown": "—",
-    }.get(health, "—")
+        "unknown": "-",
+    }.get(health, "-")
     typer.echo(f"  Health:  {health_indicator} {health}")
 
     streak = stats["current_streak"]
     s_type = stats["current_streak_type"]
-    streak_str: str = f"{abs(streak)}{s_type}" if s_type else "—"
+    streak_str: str = f"{abs(streak)}{s_type}" if s_type else "-"
     typer.echo(f"  Streak:  {streak_str}")
     typer.echo(f"  Best:    {stats['longest_win_streak']}W  Worst: {stats['longest_loss_streak']}L")

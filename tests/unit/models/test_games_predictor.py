@@ -319,7 +319,7 @@ class TestModelTypeEnumRoundtrip:
 
 
 class TestBuildGamePredictions:
-    """Tests for ``build_game_predictions()`` — assembles archive rows.
+    """Tests for ``build_game_predictions()`` - assembles archive rows.
 
     The function lives at module scope in ``predictor.py`` (not a method
     of ``GamesPredictor``) because it's a pure data-shape helper used by

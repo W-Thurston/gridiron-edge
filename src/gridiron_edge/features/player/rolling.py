@@ -4,7 +4,7 @@
 
 Computes rolling mean and standard deviation over configurable windows
 (default L3 and L6 games) for key stat columns. All rolling computations
-use ``shift(1)`` to prevent lookahead leakage — a player's rolling stats
+use ``shift(1)`` to prevent lookahead leakage - a player's rolling stats
 for week N reflect only games through week N-1.
 
 Rolling windows operate on game count (not week number), so bye weeks
@@ -188,7 +188,7 @@ def build_player_rolling_features(
 
     logger.info("Loaded %d player-game rows for rolling features", len(df))
 
-    # Filter to skill positions — rolling features are only meaningful
+    # Filter to skill positions - rolling features are only meaningful
     # for players who accumulate stats regularly
     skill_df: DataFrame = df.loc[df["is_skill"], :].copy()
     logger.info("Filtered to %d skill-position rows", len(skill_df))

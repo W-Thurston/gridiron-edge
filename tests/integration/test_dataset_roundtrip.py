@@ -22,7 +22,7 @@ from gridiron_edge.datasets.writers import write_csv, write_parquet
 
 
 class TestCsvRoundtrip:
-    """Write and read back CSV datasets — verify schema and data integrity."""
+    """Write and read back CSV datasets - verify schema and data integrity."""
 
     @pytest.mark.parametrize(
         ("key", "factory"),

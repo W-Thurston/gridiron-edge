@@ -1,5 +1,5 @@
 # tests/unit/models/test_base.py
-"""Tests for gridiron_edge.models.base — PredictorSpec, Predictor, Trainable protocols."""
+"""Tests for gridiron_edge.models.base - PredictorSpec, Predictor, Trainable protocols."""
 
 from __future__ import annotations
 

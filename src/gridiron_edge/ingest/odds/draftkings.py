@@ -299,8 +299,8 @@ def _extract_game_lines(payload: dict) -> pd.DataFrame:  # noqa: PLR0912
 def _event_rows_to_team_rows(df_events: pd.DataFrame) -> pd.DataFrame:
     """Pivot per-event odds rows into a per-team long-form DataFrame.
 
-    Each event produces two rows — one for the home team and one for
-    the away team — with all relevant odds fields attached.
+    Each event produces two rows - one for the home team and one for
+    the away team - with all relevant odds fields attached.
 
     Args:
         df_events: Per-event lines DataFrame from ``_extract_game_lines``.

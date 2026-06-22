@@ -75,7 +75,7 @@ class TestConstants:
 
 class TestComputeRolling:
     def test_no_lookahead_week1(self) -> None:
-        """Week 1 rolling stats must be NaN — no prior games exist."""
+        """Week 1 rolling stats must be NaN - no prior games exist."""
         df = _make_player_season(n_weeks=5)
         result = _compute_rolling(df, windows=[3])
 

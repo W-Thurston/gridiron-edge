@@ -1,6 +1,6 @@
 # src/gridiron_edge/features/manifest.py
 
-"""Feature set manifest — records which features produced the modeling file.
+"""Feature set manifest - records which features produced the modeling file.
 
 Written alongside ``modeling_file.csv`` every time ``build_model_inputs``
 runs. Consumed by any code that loads the feature matrix to train or

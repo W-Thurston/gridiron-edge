@@ -1,5 +1,5 @@
 # tests/unit/features/test_base.py
-"""Tests for gridiron_edge.features.base — FeatureSpec and Feature protocol."""
+"""Tests for gridiron_edge.features.base - FeatureSpec and Feature protocol."""
 
 from __future__ import annotations
 
@@ -53,6 +53,6 @@ class TestFeatureProtocol:
                 df["DUMMY_COL"] = 1
                 return df
 
-        # Protocol structural check — if this doesn't raise, it satisfies the protocol
+        # Protocol structural check - if this doesn't raise, it satisfies the protocol
         dummy: Feature = DummyFeature()  # type: ignore[assignment]
         assert dummy.spec.name == "dummy"

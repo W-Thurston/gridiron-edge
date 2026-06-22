@@ -2,7 +2,7 @@
 
 """NFL Season Monte Carlo Simulation package.
 
-Public API — import from here rather than from submodules directly.
+Public API - import from here rather than from submodules directly.
 """
 
 from gridiron_edge.sim._types import (

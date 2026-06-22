@@ -8,9 +8,9 @@ pipeline (rolling stats + matchup features) but have their own training,
 evaluation, and prediction interfaces.
 
 Architecture:
-    - ``PropModelSpec`` — metadata describing a prop model
-    - ``PropModelResult`` — standardized prediction output
-    - ``PropTrainer`` — base class for training prop models
+    - ``PropModelSpec`` - metadata describing a prop model
+    - ``PropModelResult`` - standardized prediction output
+    - ``PropTrainer`` - base class for training prop models
     - Evaluation uses MAE/RMSE/R² instead of Brier/AUC/ECE
 
 Adding a new prop model:
@@ -125,7 +125,7 @@ def evaluate_props(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Minimum attempts filter — prevents modeling garbage-time / low-usage games
+# Minimum attempts filter - prevents modeling garbage-time / low-usage games
 # ---------------------------------------------------------------------------
 
 _MIN_ATTEMPTS: Final[dict[str, tuple[str, int]]] = {
@@ -219,7 +219,7 @@ def _get_param_grid(model_type: PropModelType) -> list[dict[str, Any]]:
 class PropTrainer(ABC):
     """Base class for prop model trainers.
 
-    Subclasses implement only ``spec`` — all training and prediction
+    Subclasses implement only ``spec`` - all training and prediction
     logic lives here. The factory pattern (``_create_model``) handles
     ElasticNet, RandomForest, and XGBoost transparently.
     """
@@ -237,7 +237,7 @@ class PropTrainer(ABC):
         """Return the prop feature column list.
 
         Built programmatically from component modules via PROP_FEATURE_COLS.
-        ElasticNet handles feature selection — no manual per-model curation
+        ElasticNet handles feature selection - no manual per-model curation
         needed. Subclasses may override if they have a reason to diverge.
         """
         return list(PROP_FEATURE_COLS)
@@ -477,7 +477,7 @@ class PropTrainer(ABC):
         )
         available_features = usable_features
 
-        # HOLDOUT_SEASONS split — consistent with game models
+        # HOLDOUT_SEASONS split - consistent with game models
         train_mask: Series = ~features_df["season"].isin(holdout_ints)
         hold_mask: Series = features_df["season"].isin(holdout_ints)
 

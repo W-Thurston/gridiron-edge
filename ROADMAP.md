@@ -1,4 +1,4 @@
-# Gridiron Edge — ROADMAP
+# Gridiron Edge - ROADMAP
 ## Long-Term Strategic Direction
 
 ---
@@ -42,10 +42,10 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Evaluation | ✅ Excellent | Brier, log loss, AUC, ECE, calibration, decomposition, confidence tiers, drift, heuristic warnings |
 | Prediction archive | ✅ Solid | Append-only, composite identity, walk-forward backfill semantics |
 | Monte Carlo simulation | ✅ Advanced | Season + playoffs, numba-optimized, divisor parameterized |
-| Market math | ✅ Complete | odds_math, kelly, edge — pure functions, no data deps |
-| Edge engine | ✅ Complete | edge, recommendations, clv — moneyline/spread/total edges, Kelly sizing, CLV analysis |
+| Market math | ✅ Complete | odds_math, kelly, edge - pure functions, no data deps |
+| Edge engine | ✅ Complete | edge, recommendations, clv - moneyline/spread/total edges, Kelly sizing, CLV analysis |
 | Edge CLI | ✅ Complete | `gridiron edges report`, `gridiron edges clv` |
-| Bet tracking | ✅ Complete | ledger.py, bankroll.py, performance.py — composite identity, decoupled bankroll |
+| Bet tracking | ✅ Complete | ledger.py, bankroll.py, performance.py - composite identity, decoupled bankroll |
 | Betting CLI | ✅ Complete | 8 commands with calibration_health surfacing |
 | Code quality | ✅ Excellent | Ruff, pyrefly, three-tier test pyramid, pre-commit + pre-push hooks |
 | Testing infrastructure | ✅ Complete | 500+ tests, auto-markers, shared fixtures, MiniRepoBuilder |
@@ -74,7 +74,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 
 ### Known Blockers
 
-None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1. DraftKings API 403 (bot detection) is an active operational concern tracked in TIER_4_BACKLOG.md but does not block any workstream — the historical odds ledger and game_id resolver work independently.
+None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1. DraftKings API 403 (bot detection) is an active operational concern tracked in TIER_4_BACKLOG.md but does not block any workstream - the historical odds ledger and game_id resolver work independently.
 
 ---
 
@@ -99,7 +99,7 @@ The platform is built for personal use first (you + friends), with architecture 
 
 ## 3. Prioritization Principles
 
-Since this project is worked on in spare time with no fixed timelines, prioritization is driven by **value density** — what gives the most gain for the effort invested.
+Since this project is worked on in spare time with no fixed timelines, prioritization is driven by **value density** - what gives the most gain for the effort invested.
 
 1. **Unblock before build.** If a trivial fix unblocks a major workstream, do it first.
 2. **Complete the prediction → edge loop first.** ✅ Achieved (M1). A model that can't be compared to the market can't help you bet.
@@ -117,27 +117,27 @@ Each workstream is a **major capability area** that can be broken into smaller t
 
 ### Completed Workstreams
 
-#### W1: Quick Wins & Unblocking — ✅ COMPLETE
+#### W1: Quick Wins & Unblocking - ✅ COMPLETE
 
 Fixed DK unicode minus bug, built game_id resolver, validated end-to-end odds joins. See CHANGELOG.md for details.
 
-#### W2: Richer Game Model Outputs — ✅ COMPLETE
+#### W2: Richer Game Model Outputs - ✅ COMPLETE
 
 Spread derivation (probit + per-model sigma calibration), total points model (total_rf_v1), projected scores, 90% uncertainty bands, confidence tiers. Isotonic recalibration evaluated and rejected (rf_v3 already well-calibrated). See CHANGELOG.md for details.
 
-#### W3: Market Intelligence Foundation — ✅ COMPLETE
+#### W3: Market Intelligence Foundation - ✅ COMPLETE
 
 Pure-math market package: odds_math.py (conversions, no-vig, hold), kelly.py (fractional Kelly staking). Power devig via bisection, no scipy dependency. See CHANGELOG.md for details.
 
-#### W5: Edge Engine — ✅ COMPLETE
+#### W5: Edge Engine - ✅ COMPLETE
 
 Edge calculation (moneyline, spread, total), recommendations builder, CLV analysis, CLI commands (`gridiron edges report`, `gridiron edges clv`). 94 tests. See CHANGELOG.md for details.
 
-#### W6: Portfolio & Bet Tracking — ✅ COMPLETE
+#### W6: Portfolio & Bet Tracking - ✅ COMPLETE
 
 Bet ledger, bankroll management (decoupled), performance analytics (record, ROI, CLV, EV, streaks), 8 CLI commands. 86 tests. Full round-trip validated. See CHANGELOG.md for details.
 
-#### W3.5: Audit Remediation — ✅ COMPLETE
+#### W3.5: Audit Remediation - ✅ COMPLETE
 
 Closed ~100 findings from `audit_2026_06_18.md` across 11 audit units, plus 4 cross-cutting patterns (vectorization, polish, enums, registry completion). Major outcomes:
 
@@ -152,24 +152,24 @@ See `AUDIT_REMEDIATION.md` for unit-by-unit closure detail and `DECISIONS.md` D1
 
 ### Future Workstreams
 
-#### W4.1: Composite CLI Workflows — 🟡 PLANNED (next focus)
+#### W4.1: Composite CLI Workflows - 🟡 PLANNED (next focus)
 
 **Goal:** Build comprehensive composite commands that group related single-purpose CLI commands into logical workflows. Mirror the pattern from `run-data-pipeline` (which already composes 9 stages).
 
 **Why it matters:** The single-purpose commands are well-designed primitives. But the user has to know how to compose them to accomplish a full task. A weekly bettor shouldn't need to memorize the 13-step Sunday workflow. Composite commands document and enforce these workflows.
 
 **Initial candidate workflows:**
-1. **`weekly-predict`** — Refresh data, predict, render, generate edge report
-2. **`full-retrain`** — Walk-forward backfill all (model_name, model_type) pairs
-3. **`prop-weekly`** — Refresh prop features, project, archive, summary
-4. **`audit-and-baseline`** — Quality gates + full pytest + Brier baseline report
+1. **`weekly-predict`** - Refresh data, predict, render, generate edge report
+2. **`full-retrain`** - Walk-forward backfill all (model_name, model_type) pairs
+3. **`prop-weekly`** - Refresh prop features, project, archive, summary
+4. **`audit-and-baseline`** - Quality gates + full pytest + Brier baseline report
 
 Each composite should accept `--skip-stage` / `--only-stage` flags following the `run-data-pipeline` pattern. Detailed design session pending.
 
 **Dependencies:** None. Unblocked.
 **Unlocks:** Cleaner game-day operations, easier onboarding, fewer "did I forget a step?" mistakes.
 
-##### W4: Player Data & First Prop Models — ✅ MOSTLY COMPLETE
+##### W4: Player Data & First Prop Models - ✅ MOSTLY COMPLETE
 
 **Goal:** Establish the player-level data layer and build the first player prop projection models.
 
@@ -177,18 +177,18 @@ Each composite should accept `--skip-stage` / `--only-stage` flags following the
 
 **What was built:**
 
-Phase A — Player data foundation:
+Phase A - Player data foundation:
 - Player game logs ingested via nflreadpy (1999–2024, 138K rows)
 - Player stats cleaned and stored as Parquet
 - 4 player feature modules at features/player/:
-  - rolling.py — L3/L6 rolling mean + std for 23 stat columns (~46 features)
-  - matchup.py — 28 opponent defensive features (14 stats × L6 avg + rank)
-  - usage.py — 6 usage share features (target/carry/touch × L3/L6)
-  - game_context.py — 6 game context features (spread, total, dome, home, rest, implied team total)
-- builder.py — unified entry point, single parquet load, chains all 4 builders
-- _columns.py — PROP_FEATURE_COLS built programmatically from component modules
+  - rolling.py - L3/L6 rolling mean + std for 23 stat columns (~46 features)
+  - matchup.py - 28 opponent defensive features (14 stats × L6 avg + rank)
+  - usage.py - 6 usage share features (target/carry/touch × L3/L6)
+  - game_context.py - 6 game context features (spread, total, dome, home, rest, implied team total)
+- builder.py - unified entry point, single parquet load, chains all 4 builders
+- _columns.py - PROP_FEATURE_COLS built programmatically from component modules
 
-Phase B — Prop models:
+Phase B - Prop models:
 - 5 stat families: QB pass yards, QB rush yards, RB rush yards, WR rec yards, TE rec yards
 - PropTrainer base class with HOLDOUT_SEASONS split, position-aware NaN handling
 - ElasticNet with StandardScaler and grid search over alpha/l1_ratio
@@ -208,7 +208,7 @@ Phase B — Prop models:
 
 **Goal:** Ingest odds from multiple sportsbooks and build line-comparison tooling.
 
-**Why it matters:** Betting at the best available price is one of the simplest, most reliable ways to improve long-term ROI. It requires no model improvement — just market awareness.
+**Why it matters:** Betting at the best available price is one of the simplest, most reliable ways to improve long-term ROI. It requires no model improvement - just market awareness.
 
 **Key deliverables:**
 - Select odds data source (see Section 5.2)
@@ -237,14 +237,14 @@ Phase B — Prop models:
 - Create api/ package at src/gridiron_edge/api/
 - Choose framework: **FastAPI** (recommended: lightweight, async, good docs, type-safe)
 - Core endpoints:
-  - GET /games?week=12 — list games with model forecasts and edges
-  - GET /games/{game_id} — game detail with fair values, team comparison
-  - GET /edges?week=12 — ranked edge table
-  - GET /teams — power rankings
-  - GET /props?week=12 — top prop edges (when W4 is ready)
-  - GET /lines?week=12&market=spread — cross-book line comparison (when W7 is ready)
-  - GET /portfolio/summary — bankroll + performance
-  - POST /bets — log a bet
+  - GET /games?week=12 - list games with model forecasts and edges
+  - GET /games/{game_id} - game detail with fair values, team comparison
+  - GET /edges?week=12 - ranked edge table
+  - GET /teams - power rankings
+  - GET /props?week=12 - top prop edges (when W4 is ready)
+  - GET /lines?week=12&market=spread - cross-book line comparison (when W7 is ready)
+  - GET /portfolio/summary - bankroll + performance
+  - POST /bets - log a bet
 - Data source: read from Parquet/CSV files initially. Swap to DB later if needed.
 - CORS configuration for frontend access
 
@@ -289,7 +289,7 @@ Phase B — Prop models:
 **Dependencies:** W5 ✅, W7, W8.
 **This is the most complex and least urgent workstream.** It should not be started until W7 and W8 are solid.
 
-#### ~~W11: Live Prediction Pipeline~~ — NOT NEEDED
+#### ~~W11: Live Prediction Pipeline~~ - NOT NEEDED
 
 The live prediction pipeline already exists. `gridiron output predictions` calls
 `predict_upcoming()` on all registered models and archives results to
@@ -302,12 +302,12 @@ operational checklist for the full sequence.
 
 **Goal:** Combine elo, logistic, random forest, and XGBoost predictions into a weighted ensemble for better overall accuracy.
 
-**Why it matters:** Individual models have different strengths — Elo captures long-term team quality, logistic models are well-calibrated, tree models capture non-linear interactions. A well-tuned ensemble should beat any individual model on Brier score and AUC.
+**Why it matters:** Individual models have different strengths - Elo captures long-term team quality, logistic models are well-calibrated, tree models capture non-linear interactions. A well-tuned ensemble should beat any individual model on Brier score and AUC.
 
 **Key deliverables:**
 - Ensemble weighting strategy: evaluate Brier-score-weighted averaging, stacking (logistic meta-learner), and simple rank averaging
 - Register ensemble predictor alongside individual models via PredictorRegistry
-- Evaluation: compare ensemble vs rf_v3 (current best) on holdout data — must improve Brier by ≥0.002 to ship
+- Evaluation: compare ensemble vs rf_v3 (current best) on holdout data - must improve Brier by ≥0.002 to ship
 - Wire ensemble into prediction pipeline + edge report as default model
 - Update archive schema if needed (model_version = "ensemble_v1")
 
@@ -444,10 +444,10 @@ Track)  Shopping)    ▼
 
 **Current position:** W1–W6 and W3.5 complete. The architectural foundation is settled. Four independent paths forward, ordered by current priority:
 
-- **W4.1 (Composite CLI Workflows)** — unblocked, immediate priority. Pure ergonomics, no architectural risk.
-- **W12 (Model Ensemble)** — unblocked, improves all downstream predictions.
-- **W8 (API)** — unblocked, enables frontend (M5).
-- **W7 (Multi-Book Odds)** — unblocked but lower priority. Requires odds source decision (§5.2).
+- **W4.1 (Composite CLI Workflows)** - unblocked, immediate priority. Pure ergonomics, no architectural risk.
+- **W12 (Model Ensemble)** - unblocked, improves all downstream predictions.
+- **W8 (API)** - unblocked, enables frontend (M5).
+- **W7 (Multi-Book Odds)** - unblocked but lower priority. Requires odds source decision (§5.2).
 
 W4 (Player Data & Props) is also complete; remaining items there are walk-forward backfill completeness and DK prop odds ingest.
 
@@ -480,7 +480,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 | 2026-06-10 | **W4 mostly complete. M3 achieved.** Player data pipeline, 5 prop models (ElasticNet), post-processing enrichment, evaluation metrics, archive, CLI. See CHANGELOG.md for full detail. |
 | 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. W11 removed (already exists). M1.5 achieved. XGBoost is auto-selected champion (Brier 0.218). |
 | 2026-06-03 | **v2 refresh.** Updated §1 (current state), marked W1–W6 complete in §4, added W11 (Live Prediction Pipeline) and W12 (Model Ensemble), updated §5.4 project structure to match built modules, redrew §6 dependency graph, marked M1/M2 achieved in §7, added M1.5 milestone. Reconciled with PLAN.md numbering. |
-| 2026-05-30 | Initial version — created from prototype review + gap analysis vs. existing gridiron_edge codebase. |
+| 2026-05-30 | Initial version - created from prototype review + gap analysis vs. existing gridiron_edge codebase. |
 
 
 ***

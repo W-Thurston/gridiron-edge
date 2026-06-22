@@ -183,7 +183,7 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
     if odds is None or odds.empty:
         return StageResult(
             success=False,
-            detail="no current DK odds — fetch-odds did not produce data",
+            detail="no current DK odds - fetch-odds did not produce data",
         )
 
     margin_std = get_margin_std("win_prob", model_type)
@@ -325,7 +325,7 @@ def weekly_predict_cmd(
 
     Composes five stages: data refresh, odds fetch, prediction, output
     rendering, edge report. Odds fetch and edge report soft-fail
-    individually — the rest of the workflow continues even when the
+    individually - the rest of the workflow continues even when the
     external odds service is unavailable.
 
     \b

@@ -4,7 +4,7 @@
 
 Transforms raw PBP data into a compact game-level table with one row
 per team per game. This is the intermediate artifact that EPA features
-read from — much faster to load than raw PBP (~500KB vs ~540MB).
+read from - much faster to load than raw PBP (~500KB vs ~540MB).
 
 Output schema (``epa_by_game.parquet``)::
 
@@ -12,7 +12,7 @@ Output schema (``epa_by_game.parquet``)::
     season              int     2025
     week                int     1-22
     team                str     "PHI"  (short code, matches nflverse)
-    is_offense          int     1 (always — one row per team as offense)
+    is_offense          int     1 (always - one row per team as offense)
     off_epa_per_play    float   Offensive EPA/play (pass + rush)
     off_pass_epa        float   Offensive passing EPA/play
     off_rush_epa        float   Offensive rushing EPA/play
@@ -45,7 +45,7 @@ Note on EPA reliability: nflfastR EPA model is reliable from 2006 onward.
 Seasons before 2006 will have NaN EPA values and are handled gracefully.
 
 Temporal integrity: this module aggregates completed plays only. It does
-not produce future-looking values — rolling window computation happens
+not produce future-looking values - rolling window computation happens
 in the feature layer (``features/team/epa.py``).
 """
 
@@ -275,7 +275,7 @@ def aggregate_epa(
     pbp: DataFrame = load_pbp(seasons=seasons, repo=resolved_repo, columns=columns_needed)
 
     if pbp.empty:
-        logger.warning("No PBP data found — run 'gridiron ingest pbp' first.")
+        logger.warning("No PBP data found - run 'gridiron ingest pbp' first.")
         out_path: Path = resolved_repo / "data" / "cleaned" / "epa_by_game.parquet"
         return out_path
 
@@ -311,7 +311,7 @@ def aggregate_epa(
 
     result = result.sort_values(["season", "week", "team"]).reset_index(drop=True)
 
-    # Write to cleaned/ — incremental updates merge with existing
+    # Write to cleaned/ - incremental updates merge with existing
     out_path = resolved_repo / "data" / "cleaned" / "epa_by_game.parquet"
 
     if seasons is not None and out_path.exists():

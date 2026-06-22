@@ -228,7 +228,7 @@ def _merge_elo_predictions(
 
 
 # ---------------------------------------------------------------------------
-# WinProbEloPredictor — composite key "win_prob_elo"
+# WinProbEloPredictor - composite key "win_prob_elo"
 # ---------------------------------------------------------------------------
 
 
@@ -246,7 +246,7 @@ class WinProbEloPredictor:
 
     spec: ClassVar[PredictorSpec] = PredictorSpec(
         name="win_prob_elo",
-        description="Elo ratings — production defaults (K=20, div=480, regress=0.33).",
+        description="Elo ratings - production defaults (K=20, div=480, regress=0.33).",
     )
 
     # Production parameter constants.

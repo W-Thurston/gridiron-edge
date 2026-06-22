@@ -1,7 +1,7 @@
 """Market intelligence utilities for Gridiron Edge.
 
 Pure-math helpers for odds conversion, no-vig debiasing, and Kelly staking.
-No data dependencies — every function is a leaf.
+No data dependencies - every function is a leaf.
 """
 
 from .clv import build_clv_report as build_clv_report

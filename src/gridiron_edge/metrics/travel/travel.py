@@ -4,7 +4,7 @@
 
 Computes per-game travel distance and timezone shift for TEAM_A.
 The fast path vectorises distance using the haversine formula and caches
-timezone lookups by unique coordinate pair — reducing the full-history
+timezone lookups by unique coordinate pair - reducing the full-history
 build from ~60s to under 1s.
 """
 

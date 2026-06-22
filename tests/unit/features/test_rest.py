@@ -117,7 +117,7 @@ class TestDaysRestComputation:
     def test_cross_season_boundary_not_carried(self) -> None:
         """Rest days should not bleed across season boundaries for a team."""
 
-        # Same team, different seasons — week 1 of new season should be NaN
+        # Same team, different seasons - week 1 of new season should be NaN
         games: DataFrame = _make_games(
             [
                 {
@@ -150,7 +150,7 @@ class TestDaysRestComputation:
         )
         result: DataFrame = RestFeature().compute(df=df, datasets=_make_accessor(games))
 
-        # Week 1 of a new season — prior game is in a different season.
+        # Week 1 of a new season - prior game is in a different season.
         # Days since last game is > 200 days (offseason gap), not a short week.
         # The feature computes raw day difference regardless of season boundary,
         # so this will be a large positive number, not NaN.
@@ -222,7 +222,7 @@ class TestShortWeekFlag:
                     "LOSER": "Baltimore Ravens",
                     "WEEK_NUM": 2,
                     "GAME_DATE": "2024-09-12",
-                },  # Thursday — 4 days later
+                },  # Thursday - 4 days later
             ]
         )
         df = pd.DataFrame(
@@ -279,7 +279,7 @@ class TestShortWeekFlag:
                     "LOSER": "Baltimore Ravens",
                     "WEEK_NUM": 2,
                     "GAME_DATE": "2024-09-14",
-                },  # Saturday — 6 days later
+                },  # Saturday - 6 days later
             ]
         )
         df = pd.DataFrame(

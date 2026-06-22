@@ -23,12 +23,12 @@ produce an "is_dome"-style flag from the ``ROOF`` column:
   {"dome", "retractable"}``. Used to determine whether to override
   OWM weather data with controlled-environment defaults. For this use
   case, the question is "does this stadium have a roof that can keep
-  weather out at all?" — so retractable counts, even when the roof
+  weather out at all?" - so retractable counts, even when the roof
   is open. The new alias is :data:`COVERED_STADIUMS`.
 
 - ``features/player/game_context.py``: previously ``_DOME_ROOFS =
   {"dome", "closed"}``. Used as a player prop feature. For this use
-  case, the question is "was the game actually played indoors?" — so
+  case, the question is "was the game actually played indoors?" - so
   closed-roof games count, but retractable-open games do not. The
   new alias is :data:`DOME_LIKE_ROOFS`.
 

@@ -161,7 +161,7 @@ class TestEvaluateProps:
         assert metrics["r2"] < 0.0
 
     def test_single_value(self) -> None:
-        """Single observation — R² should be 0 (ss_tot = 0)."""
+        """Single observation - R² should be 0 (ss_tot = 0)."""
         metrics: dict[str, float] = evaluate_props(np.array([100.0]), np.array([110.0]))
         assert metrics["mae"] == pytest.approx(10.0)
         assert metrics["r2"] == pytest.approx(0.0)

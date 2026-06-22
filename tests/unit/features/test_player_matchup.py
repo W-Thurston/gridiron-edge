@@ -162,7 +162,7 @@ class TestComputeDefAllowedPerGame:
         assert "rush_yards_allowed" in allowed_cols
 
     def test_groups_by_defense(self) -> None:
-        """Each row should be one (team, season, week) — the defensive team."""
+        """Each row should be one (team, season, week) - the defensive team."""
         logs = _make_player_logs(n_weeks=3)
         result = _compute_def_allowed_per_game(logs)
 

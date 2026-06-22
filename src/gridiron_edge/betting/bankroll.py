@@ -1,5 +1,5 @@
 # src/gridiron_edge/betting/bankroll.py
-"""Bankroll transaction log — tracks every dollar in and out.
+"""Bankroll transaction log - tracks every dollar in and out.
 
 Decoupled from the bet ledger. The CLI layer orchestrates calls to both
 ``ledger.py`` and ``bankroll.py`` so that bet placement deducts stake
@@ -236,7 +236,7 @@ def withdraw(
 ) -> str:
     """Record a withdrawal (money removed from bankroll).
 
-    Does **not** check whether the balance would go negative — that is
+    Does **not** check whether the balance would go negative - that is
     a CLI-layer concern, not a library concern.
 
     Args:

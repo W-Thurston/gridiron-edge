@@ -2,7 +2,7 @@
 
 """Shared test helpers for integration and end-to-end tests.
 
-Three named helpers, organized by what they do — not where they're used.
+Three named helpers, organized by what they do - not where they're used.
 Tests import from this module instead of duplicating context-manager and
 assertion patterns across multiple test files.
 
@@ -52,7 +52,7 @@ def patch_minimal_param_grid(
 
     Args:
         grid_size: Number of parameter combinations to keep. Defaults to 1
-            (fastest possible — single fit per CV fold per model).
+            (fastest possible - single fit per CV fold per model).
         min_cv_train_rows: Minimum fold size required before the trainer
             considers the fold valid. Defaults to 10 (small enough to
             accept synthetic test data, large enough to avoid degenerate
@@ -161,7 +161,7 @@ def assert_predictions_reasonable(
                 msg = (
                     f"{name}: classification probs too dispersed "
                     f"(std={std:.4f} > 0.30). Model may be slamming "
-                    f"predictions to corners — check if scaler was applied "
+                    f"predictions to corners - check if scaler was applied "
                     f"at predict time."
                 )
                 raise AssertionError(msg)
@@ -188,7 +188,7 @@ def assert_archive_schema_valid(df: DataFrame) -> None:
     """Assert a DataFrame conforms to the prediction-archive schema.
 
     Used in archive round-trip tests to catch schema drift. The check
-    is column-presence-based — extra columns are allowed (downstream code
+    is column-presence-based - extra columns are allowed (downstream code
     handles them), but required columns must be present and have the
     expected dtypes for the identity fields.
 
@@ -208,7 +208,7 @@ def assert_archive_schema_valid(df: DataFrame) -> None:
         )
         raise AssertionError(msg)
 
-    # Identity field type checks — these are the dedup key fields.
+    # Identity field type checks - these are the dedup key fields.
     if not pd.api.types.is_string_dtype(df["model_name"]) and df["model_name"].dtype != "object":
         msg = f"model_name column has unexpected dtype: {df['model_name'].dtype}"
         raise AssertionError(msg)

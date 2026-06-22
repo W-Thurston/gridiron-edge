@@ -8,7 +8,7 @@ reference the functions defined in this module.
 
 Public API
 ----------
-FEATURE_SETS        dict[str, FeatureSet]   — registry of named feature sets
+FEATURE_SETS        dict[str, FeatureSet]   - registry of named feature sets
 _make_diff_features         DataFrame -> DataFrame (24 cols)
 _make_raw_features          DataFrame -> DataFrame (47 cols)
 _make_combined_features     DataFrame -> DataFrame (70 cols)
@@ -102,7 +102,7 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     Extends _make_combined_features with the 35 columns:
     game-level features (IS_DIV_GAME, weather, venue) and per-team
     features (rest, travel, franchise HFA). Game-level features are
-    identical for both team perspectives in a row — the model learns
+    identical for both team perspectives in a row - the model learns
     their influence on win probability directly.
 
     Missing columns (e.g. WIND_SPEED_MPH for dome games not yet backfilled)

@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_diagnostics.py
-"""Smoke tests for gridiron_edge.evaluation.diagnostics — plot functions produce PNGs."""
+"""Smoke tests for gridiron_edge.evaluation.diagnostics - plot functions produce PNGs."""
 
 from __future__ import annotations
 

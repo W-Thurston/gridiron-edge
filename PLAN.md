@@ -1,4 +1,4 @@
-# Gridiron Edge — Development Plan
+# Gridiron Edge - Development Plan
 
 > **Purpose:** single source of truth for *what to build next* and *why*.
 > Updated at the start and close of every workstream.
@@ -16,7 +16,7 @@
 
 | Tag | Meaning |
 |-----|---------|
-| Done | Done — details in CHANGELOG.md |
+| Done | Done - details in CHANGELOG.md |
 | In progress | In progress |
 | Planned | Planned / blocked |
 | Deferred | Deferred |
@@ -56,7 +56,7 @@ The first four workstreams (W1 through W3.5) closed substantial architectural an
 
 ---
 
-## Current Focus: Workstream 5 — Deep Code Review + Test Suite Review
+## Current Focus: Workstream 5 - Deep Code Review + Test Suite Review
 
 **Goal:** Two-part review session covering:
 

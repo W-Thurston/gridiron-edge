@@ -118,7 +118,7 @@ def test_write_archive_rows_deduplication(tmp_path: pytest.FixtureValue) -> None
     write_archive_rows(rows_v2, repo=tmp_path)
 
     log = load_prediction_log(repo=tmp_path)
-    assert len(log) == 2  # not 4 — deduped
+    assert len(log) == 2  # not 4 - deduped
     assert (log["away_win_prob"] == 0.60).all()  # latest wins
 
 
@@ -152,7 +152,7 @@ def test_write_archive_rows_accumulates_different_model_types(
 def test_write_archive_rows_accumulates_different_model_names(
     tmp_path: pytest.FixtureValue,
 ) -> None:
-    """Different model_name values accumulate independently — e.g. win_prob vs total."""
+    """Different model_name values accumulate independently - e.g. win_prob vs total."""
     rows_wp = build_archive_rows(
         _make_predictions(n=2),
         model_name="win_prob",

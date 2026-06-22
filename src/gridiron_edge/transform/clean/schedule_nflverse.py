@@ -65,7 +65,7 @@ def _check_stadium_coverage(
     ) - {""}
 
     if not schedule_stadiums:
-        logger.debug("No stadium names found in upcoming schedule — skipping coverage check.")
+        logger.debug("No stadium names found in upcoming schedule - skipping coverage check.")
         return
 
     reference_stadiums: set[str] = set(
@@ -76,7 +76,7 @@ def _check_stadium_coverage(
 
     if not missing:
         logger.info(
-            "Stadium coverage check passed — all %d upcoming stadiums are in the reference.",
+            "Stadium coverage check passed - all %d upcoming stadiums are in the reference.",
             len(schedule_stadiums),
         )
         return
@@ -93,7 +93,7 @@ def _check_stadium_coverage(
         games_at.setdefault(stadium, []).append(matchup)
 
     logger.warning(
-        "Stadium coverage check FAILED for season %s — "
+        "Stadium coverage check FAILED for season %s - "
         "%d stadium(s) in the upcoming schedule have no entry in NFL_stadium_reference.csv. "
         "Weather ingest will skip these games until coordinates are added.",
         season_label,
@@ -158,7 +158,7 @@ def clean_nflverse_upcoming(
     df = df.loc[df["result"].isna(), :].copy()
 
     if df.empty:
-        logger.info("No upcoming games found in %s — season may be complete.", raw_path)
+        logger.info("No upcoming games found in %s - season may be complete.", raw_path)
         out_path: Path = dataset_path(resolved_repo, "schedule_upcoming")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         # Write empty CSV with correct column headers so downstream readers
@@ -193,7 +193,7 @@ def clean_nflverse_upcoming(
         _check_stadium_coverage(df, stadiums_df, season_lbl)
     else:
         logger.warning(
-            "Stadium reference file not found at %s — skipping coverage check.",
+            "Stadium reference file not found at %s - skipping coverage check.",
             stadiums_path,
         )
 

@@ -4,7 +4,7 @@
 
 Computes pre-game rolling EPA statistics for TEAM_A and TEAM_B using
 the previous N games as the rolling window. The window size is a
-tunable parameter — see ``evaluate tune --epa`` for the
+tunable parameter - see ``evaluate tune --epa`` for the
 grid search that identifies the optimal window.
 
 Rolling window design:
@@ -13,7 +13,7 @@ Rolling window design:
       1. Weeks 1 through W-1 of season Y (current season, prior weeks)
       2. If N > W-1, the tail of season Y-1 fills the remaining slots
 
-    This ensures strict temporal integrity — no future information leaks
+    This ensures strict temporal integrity - no future information leaks
     into the feature values.
 
 Features produced (per team, for both TEAM_A and TEAM_B):
@@ -49,13 +49,13 @@ from gridiron_edge.features.registry import FeatureRegistry
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
 
-# Default rolling window — will be tuned in evaluation.
+# Default rolling window - will be tuned in evaluation.
 # 4 games is a reasonable NFL default: enough to reduce noise,
 # short enough to capture current-season form.
 DEFAULT_ROLLING_WINDOW: Final[int] = 4
 
 # EPA columns from epa_by_game.parquet that we roll over.
-# This is the single source of truth for EPA metric names — both the model
+# This is the single source of truth for EPA metric names - both the model
 # layer (_shared.py) and tree tuning (tree.py) derive their column lists
 # from this constant rather than maintaining independent copies.
 EPA_COLS: Final[list[str]] = [
@@ -193,7 +193,7 @@ def _join_team_epa(
             the team column identified by ``prefix`` (``"TEAM_A"`` or ``"TEAM_B"``).
         rolled: Rolling EPA DataFrame from ``_build_rolling_epa`` with
             columns ``season``, ``week``, ``team``, and ``rolling_*`` columns.
-        prefix: Column prefix — either ``"TEAM_A"`` or ``"TEAM_B"``.
+        prefix: Column prefix - either ``"TEAM_A"`` or ``"TEAM_B"``.
 
     Returns:
         Input DataFrame with ``{prefix}_{EPA_COL}`` columns appended.
@@ -254,7 +254,7 @@ class TeamEpaFeature:
             df: Modeling DataFrame with ``TEAM_A``, ``TEAM_B``,
                 ``YEAR``, ``WEEK_NUM`` columns. ``YEAR`` is the
                 canonical season label (e.g. ``"2025-2026"``).
-            datasets: Accessor providing ``epa_by_game()`` — the
+            datasets: Accessor providing ``epa_by_game()`` - the
                 pre-aggregated game-level EPA table.
 
         Returns:
@@ -265,7 +265,7 @@ class TeamEpaFeature:
         epa_raw: DataFrame = datasets.epa_by_game()
 
         if epa_raw.empty:
-            # No EPA data available — add NaN columns and return.
+            # No EPA data available - add NaN columns and return.
             # Use assign() to avoid mutating the caller's DataFrame.
             return df.assign(**{col: float("nan") for col in _TEAM_A_COLS + _TEAM_B_COLS})
 

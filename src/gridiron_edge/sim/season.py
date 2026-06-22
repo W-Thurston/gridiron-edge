@@ -1,6 +1,6 @@
 # src/gridiron_edge/sim/season.py
 
-"""NFL Season Monte Carlo Simulation — data loading, output formatting, and orchestration.
+"""NFL Season Monte Carlo Simulation - data loading, output formatting, and orchestration.
 
 Simulation flow:
     1. Load historical results, schedules, and Elo ratings
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 logger: Logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Sync assertions — verify playoffs.py constants match _types.py at import time.
+# Sync assertions - verify playoffs.py constants match _types.py at import time.
 # playoffs.py duplicates these because numba @njit cannot import from siblings.
 # ---------------------------------------------------------------------------
 assert _playoffs_mod.N_TEAMS == N_TEAMS, (
@@ -545,7 +545,7 @@ def run_full_simulation(
 
         if df_schedule.empty:
             raise FileNotFoundError(
-                "Upcoming schedule is empty — run 'gridiron ingest upcoming' first "
+                "Upcoming schedule is empty - run 'gridiron ingest upcoming' first "
                 "to fetch the schedule before simulating."
             )
 

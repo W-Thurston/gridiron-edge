@@ -94,7 +94,7 @@ class TestBackfillWritesArchive:
             repo=trained_repo,
         )
 
-        assert n_written > 0, "backfill_model returned 0 — no rows archived"
+        assert n_written > 0, "backfill_model returned 0 - no rows archived"
 
         log: pd.DataFrame = load_prediction_log(repo=trained_repo)
         assert not log.empty
@@ -136,7 +136,7 @@ class TestBackfillOverwrite:
     """Verify --overwrite semantics replace prior archive rows."""
 
     def test_overwrite_replaces_rows(self, trained_repo: Path) -> None:
-        # First backfill — establishes baseline
+        # First backfill - establishes baseline
         backfill_model(
             model_name="win_prob",
             model_type="logistic",
@@ -146,7 +146,7 @@ class TestBackfillOverwrite:
         first_count: int = len(first_log)
         first_predicted_at: pd.Timestamp = first_log["predicted_at"].iloc[0]
 
-        # Second backfill with --overwrite — should replace, not duplicate
+        # Second backfill with --overwrite - should replace, not duplicate
         backfill_model(
             model_name="win_prob",
             model_type="logistic",
@@ -172,7 +172,7 @@ class TestBackfillIdempotent:
     """Verify backfill without --overwrite is a no-op when archive is current."""
 
     def test_no_op_when_already_archived(self, trained_repo: Path) -> None:
-        # First backfill — establishes baseline
+        # First backfill - establishes baseline
         backfill_model(
             model_name="win_prob",
             model_type="logistic",
@@ -181,7 +181,7 @@ class TestBackfillIdempotent:
         first_log: pd.DataFrame = load_prediction_log(repo=trained_repo)
         first_count: int = len(first_log)
 
-        # Second backfill without --overwrite — should write 0 new rows
+        # Second backfill without --overwrite - should write 0 new rows
         n_written: int = backfill_model(
             model_name="win_prob",
             model_type="logistic",

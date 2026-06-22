@@ -1,12 +1,12 @@
 # src/gridiron_edge/market/recommendations.py
-"""Edge report builder — join model predictions with market odds.
+"""Edge report builder - join model predictions with market odds.
 
 Takes enriched prediction DataFrames and long-format odds DataFrames,
 pivots odds to a per-game wide format, computes edges across moneyline,
 spread, and total markets, and produces a ranked edge report.
 
 Unlike ``odds_math.py``, ``kelly.py``, and ``edge.py``, this module
-**does** use pandas — it orchestrates the data joins that connect model
+**does** use pandas - it orchestrates the data joins that connect model
 outputs to market prices.  Callers are responsible for loading the data
 (via ``load_prediction_log`` or the model enrichment pipeline); this
 module operates on DataFrames passed as arguments.
@@ -171,7 +171,7 @@ def join_predictions_to_odds(
     predictions_df : pd.DataFrame
         Enriched predictions (must include ``game_id``).
     odds_df : pd.DataFrame
-        Odds DataFrame — either long-format or already wide.
+        Odds DataFrame - either long-format or already wide.
 
     Returns:
     -------
@@ -311,7 +311,7 @@ def build_edge_report(
         enrichment pipeline). Must contain ``model_name`` and
         ``model_type`` columns; ``model_key`` is derived in the output.
     odds_df : pd.DataFrame
-        Odds data — long or wide format.
+        Odds data - long or wide format.
     margin_std : float
         Spread residual std for spread cover probability.
     total_std : float

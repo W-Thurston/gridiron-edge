@@ -381,7 +381,7 @@ def _parse_metric_cell(value: str) -> float | None:
     otherwise non-numeric cells.
     """
     cleaned = value.strip()
-    if cleaned in {"", "—", "-", "— no artifact —"}:
+    if cleaned in {"", "-", "- no artifact -"}:
         return None
     try:
         return float(cleaned)
@@ -432,7 +432,7 @@ def _parse_baseline_report(path: Path) -> dict[str, dict[str, float | None]]:
 def _format_metric_value(value: float | None, decimals: int) -> str:
     """Format a metric value or em dash when missing."""
     if value is None:
-        return "—"
+        return "-"
     return f"{value:.{decimals}f}"
 
 
@@ -494,7 +494,7 @@ def _append_current_metrics_table(
         metrics = current_metrics[pair.composite_key]
 
         if all(value is None for value in metrics.values()):
-            lines.append(f"| {pair.composite_key} | — no artifact — |")
+            lines.append(f"| {pair.composite_key} | - no artifact - |")
             continue
 
         lines.append(
@@ -553,7 +553,7 @@ def _format_metric_delta(
 ) -> str:
     """Format signed metric delta as current - previous."""
     if current is None or previous is None:
-        return "—"
+        return "-"
     delta = current - previous
     return f"{delta:+.{decimals}f}"
 
@@ -562,8 +562,8 @@ def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     """Write a markdown report comparing new baselines to prior values.
 
     Reads each trained artifact's metadata ``metrics`` dict, writes the
-    current metric table, and — when a previous full-retrain report
-    exists — writes a delta table comparing current metrics against the
+    current metric table, and - when a previous full-retrain report
+    exists - writes a delta table comparing current metrics against the
     previous report.
     """
     repo = get_settings().repo_root
@@ -793,7 +793,7 @@ def full_retrain_cmd(
     r"""Heavy full-retrain workflow: all data, all models, all calibrations.
 
     Composes five stages over the full historical archive. Designed
-    as a weekend batch job — runtime is hours.
+    as a weekend batch job - runtime is hours.
 
     \b
     Examples:

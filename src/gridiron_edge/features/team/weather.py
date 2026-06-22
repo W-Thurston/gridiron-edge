@@ -3,14 +3,14 @@
 """Weather and venue features.
 
 Produces game-level environmental context that affects play style and
-outcomes — particularly suppression of passing EPA in wind and cold.
+outcomes - particularly suppression of passing EPA in wind and cold.
 All features are game-level (not team-specific), so the same value
 appears in both TEAM_A and TEAM_B rows for a given game.
 
 Produces:
     IS_DOME            int    1 if game played in a domed or retractable-roof
                               stadium, 0 otherwise.  Source: ROOF column.
-                              Always populated — no OWM data required.
+                              Always populated - no OWM data required.
     WIND_SPEED_MPH     float  Wind speed at kickoff in mph.
                               0.0 for dome games (controlled environment).
                               NaN if OWM data unavailable for outdoor games.
@@ -108,7 +108,7 @@ _DOME_HUMIDITY_PCT: Final[float] = 50.0
 # Standard controlled visibility for dome stadiums (meters)
 _DOME_VISIBILITY_M: Final[float] = 10000.0
 
-# Standard controlled feels-like for dome stadiums (degF) — same as temp
+# Standard controlled feels-like for dome stadiums (degF) - same as temp
 _DOME_FEELS_LIKE_F: Final[float] = 72.0
 
 # OWM WEATHER_MAIN values that indicate snow

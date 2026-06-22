@@ -4,7 +4,7 @@
 
 Downloads per-season PBP Parquet files from nflverse and stores them
 permanently under ``data/raw/pbp/``. At ~20MB per season the full history
-(1999-present) is ~540MB — small enough to keep permanently rather than
+(1999-present) is ~540MB - small enough to keep permanently rather than
 re-fetching on demand.
 
 Each season's file is written once when complete and never overwritten,
@@ -50,7 +50,7 @@ from gridiron_edge.core.settings import current_nfl_season, get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
-# Columns we actually need — dropping the rest reduces file size ~70%
+# Columns we actually need - dropping the rest reduces file size ~70%
 # and speeds up downstream reads significantly.
 _KEEP_COLUMNS: Final[list[str]] = [
     "game_id",
@@ -159,7 +159,7 @@ def fetch_pbp(
         complete: bool = _is_season_complete(season)
 
         if path.exists() and complete and not force:
-            logger.debug("PBP %d already cached — skipping.", season)
+            logger.debug("PBP %d already cached - skipping.", season)
             continue
 
         logger.info("Fetching PBP data for season %d...", season)

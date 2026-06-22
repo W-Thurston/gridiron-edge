@@ -1,5 +1,5 @@
 # tests/unit/transform/test_nflverse_common.py
-"""Tests for gridiron_edge.transform.clean._nflverse_common — shared helpers."""
+"""Tests for gridiron_edge.transform.clean._nflverse_common - shared helpers."""
 
 from __future__ import annotations
 

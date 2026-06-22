@@ -1,5 +1,5 @@
 # tests/unit/features/test_epa.py
-"""Tests for gridiron_edge.features.team.epa — TeamEpaFeature."""
+"""Tests for gridiron_edge.features.team.epa - TeamEpaFeature."""
 
 from __future__ import annotations
 

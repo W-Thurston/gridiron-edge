@@ -1,5 +1,5 @@
 # tests/unit/models/test_total.py
-"""Unit tests for total.py — total points model and projected scores."""
+"""Unit tests for total.py - total points model and projected scores."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 # tests/unit/metrics/test_travel_metrics.py
-"""Tests for gridiron_edge.metrics.travel.travel — haversine and travel computation."""
+"""Tests for gridiron_edge.metrics.travel.travel - haversine and travel computation."""
 
 from __future__ import annotations
 

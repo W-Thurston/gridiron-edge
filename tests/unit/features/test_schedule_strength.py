@@ -1,5 +1,5 @@
 # tests/unit/features/test_schedule_strength.py
-"""Tests for gridiron_edge.features.team.schedule_strength — ScheduleStrengthFeature."""
+"""Tests for gridiron_edge.features.team.schedule_strength - ScheduleStrengthFeature."""
 
 from __future__ import annotations
 

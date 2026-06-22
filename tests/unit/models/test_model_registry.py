@@ -1,5 +1,5 @@
 # tests/unit/models/test_model_registry.py
-"""Tests for gridiron_edge.models.registry — PredictorRegistry."""
+"""Tests for gridiron_edge.models.registry - PredictorRegistry."""
 
 from __future__ import annotations
 

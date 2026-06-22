@@ -1,5 +1,5 @@
 # tests/unit/features/test_record.py
-"""Tests for gridiron_edge.features.team.record — RecordFeature."""
+"""Tests for gridiron_edge.features.team.record - RecordFeature."""
 
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ class TestBuildRecordTable:
         assert kc_wk4["LOSS_STREAK"].iloc[0] == 0
 
     def test_loss_breaks_win_streak(self) -> None:
-        """KC wins then loses — entering week 3, WIN_STREAK=0 LOSS_STREAK=1."""
+        """KC wins then loses - entering week 3, WIN_STREAK=0 LOSS_STREAK=1."""
         games = make_games(
             [
                 {

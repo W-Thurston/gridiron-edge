@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_backfill.py
-"""Tests for gridiron_edge.evaluation.backfill — walk-forward dispatch and helpers."""
+"""Tests for gridiron_edge.evaluation.backfill - walk-forward dispatch and helpers."""
 
 from __future__ import annotations
 

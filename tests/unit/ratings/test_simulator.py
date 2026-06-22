@@ -1,4 +1,4 @@
-"""Tests for ratings.elo.simulator — canonical Elo history simulator."""
+"""Tests for ratings.elo.simulator - canonical Elo history simulator."""
 
 from __future__ import annotations
 

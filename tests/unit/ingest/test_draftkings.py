@@ -1,5 +1,5 @@
 # tests/unit/ingest/test_draftkings.py
-"""Tests for gridiron_edge.ingest.odds.draftkings — DK API parsing."""
+"""Tests for gridiron_edge.ingest.odds.draftkings - DK API parsing."""
 
 from __future__ import annotations
 

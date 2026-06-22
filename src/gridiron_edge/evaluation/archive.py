@@ -1,6 +1,6 @@
 # src/gridiron_edge/evaluation/archive.py
 
-"""Prediction archive — append-only log of all model predictions.
+"""Prediction archive - append-only log of all model predictions.
 
 Every call to ``gridiron output predictions`` appends to this log so that
 predictions can be compared against actual outcomes, evaluated for
@@ -76,7 +76,7 @@ _ARCHIVE_COLUMNS: list[str] = [
     "confidence_tier",
 ]
 
-# Deduplication key — one prediction per game per (model_name, model_type).
+# Deduplication key - one prediction per game per (model_name, model_type).
 # A later run with the same pair for the same game overwrites the earlier one,
 # so predictions are always the most recent for that model/game pair.
 _DEDUP_KEY: Final[list[str]] = [
@@ -114,7 +114,7 @@ def build_archive_rows(
     """Convert a predictions DataFrame into archive-schema rows.
 
     Args:
-        df_predictions: Output of ``build_predictions_df()`` — contains
+        df_predictions: Output of ``build_predictions_df()`` - contains
             ``GAME_ID``, ``GAME_DATE``, ``AWAY_TEAM``, ``HOME_TEAM``,
             ``AWAY_TEAM_ELO``, ``HOME_TEAM_ELO``, ``AWAY_WIN_PROB``,
             ``HOME_WIN_PROB``.
@@ -150,7 +150,7 @@ def build_archive_rows(
         }
     )
 
-    # Enrichment columns — filled by enrich_predictions() at prediction
+    # Enrichment columns - filled by enrich_predictions() at prediction
     # time. Default to NaN / empty for backward compatibility with callers
     # that don't enrich before archiving.
     for col in _ARCHIVE_COLUMNS:
@@ -169,7 +169,7 @@ def write_archive_rows(
 
     Low-level function used by both ``append_to_prediction_log`` (single
     week) and bulk backfill operations. Deduplicates on
-    ``(game_id, model_name, model_type)`` — the most recently written row
+    ``(game_id, model_name, model_type)`` - the most recently written row
     wins.
 
     Args:
@@ -237,7 +237,7 @@ def append_to_prediction_log(
         Absolute path to the archive file.
     """
     if df_predictions.empty:
-        logger.warning("Prediction archive: empty DataFrame — nothing written.")
+        logger.warning("Prediction archive: empty DataFrame - nothing written.")
         return _archive_path(repo)
 
     new_rows: DataFrame = build_archive_rows(

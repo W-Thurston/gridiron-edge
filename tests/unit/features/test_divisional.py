@@ -1,5 +1,5 @@
 # tests/unit/features/test_divisional.py
-"""Tests for gridiron_edge.features.team.divisional — DivisionalFeature."""
+"""Tests for gridiron_edge.features.team.divisional - DivisionalFeature."""
 
 from __future__ import annotations
 

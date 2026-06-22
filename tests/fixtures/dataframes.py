@@ -498,7 +498,7 @@ def make_games_modeling_df(
     enough rows to run a small HP search without crashing.
 
     Args:
-        seasons: Season years to generate. Use the "YYYY" format —
+        seasons: Season years to generate. Use the "YYYY" format -
             converted to "YYYY-YYYY" for the YEAR column.
         games_per_season: Games per season. Each game produces TWO rows
             (TEAM_A and TEAM_B perspectives) to match the real schema.
@@ -798,7 +798,7 @@ def make_modeling_manifest(
             match ``CURRENT_SCHEMA_VERSION`` from the feature manifest
             module for the tests to pass validation.
         columns: Column list to record in the manifest. If None, an
-            empty list is recorded — the load path uses the manifest
+            empty list is recorded - the load path uses the manifest
             primarily for version validation, not column validation.
 
     Returns:

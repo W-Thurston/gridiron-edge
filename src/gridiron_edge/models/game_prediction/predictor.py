@@ -55,7 +55,7 @@ logger: Logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Trainer dispatch — maps model_name → GamesTrainer subclass
+# Trainer dispatch - maps model_name → GamesTrainer subclass
 # ---------------------------------------------------------------------------
 
 
@@ -81,7 +81,7 @@ def get_known_model_names() -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# build_game_predictions — internal helper for assembling archive rows
+# build_game_predictions - internal helper for assembling archive rows
 # ---------------------------------------------------------------------------
 
 
@@ -103,7 +103,7 @@ def build_game_predictions(
     For standard games (one team has HOME_FIELD=1, the other HOME_FIELD=0),
     the HOME_FIELD=0 row is kept and labeled as the away perspective.
 
-    For neutral-site games (both rows have HOME_FIELD=0 — e.g. London,
+    For neutral-site games (both rows have HOME_FIELD=0 - e.g. London,
     Mexico City), there is no canonical away/home distinction. We pick
     the row whose TEAM_A name is alphabetically first, then label that
     team as "away" purely for archive-schema compatibility. The actual
@@ -191,7 +191,7 @@ class GamesPredictor:
     Each composite ``(model_name, model_type)`` pair has a thin subclass
     that sets ``model_name``, ``model_type``, and ``spec`` at class scope
     and is registered with :class:`ModelRegistry`. All logic lives
-    here — subclasses are spec-only.
+    here - subclasses are spec-only.
 
     The class implements both :class:`Predictor` (via ``predict_historical``
     / ``predict_upcoming``) and :class:`Trainable` (via ``train`` /
@@ -229,7 +229,7 @@ class GamesPredictor:
         """Return ``"classification"`` or ``"regression"`` for this predictor."""
         return self._game_model_spec().task
 
-    def _feature_fn(self):  # noqa: ANN202 — return type is a Callable
+    def _feature_fn(self):  # noqa: ANN202 - return type is a Callable
         """Return the feature engineering function for this model_type."""
         gm_spec: GameModelSpec = self._game_model_spec()
         return gm_spec.feature_set[GameModelType(self.model_type)].feature_fn
@@ -274,7 +274,7 @@ class GamesPredictor:
         """Generate predictions for all historical games.
 
         Args:
-            games: Canonical games DataFrame (unused — the modeling file
+            games: Canonical games DataFrame (unused - the modeling file
                 is loaded internally). Kept for :class:`Predictor`
                 protocol compatibility.
             repo: Repository root path.
@@ -345,7 +345,7 @@ class GamesPredictor:
         x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
         probs = pipeline.predict_proba(x_feat_arr)[:, 1]
 
-        # Attach totals via the configured total model. Best-effort —
+        # Attach totals via the configured total model. Best-effort -
         # totals are silently omitted if the total model isn't trained.
         totals: Series | None = self._maybe_predict_totals(df_valid, repo=repo)
 
@@ -530,7 +530,7 @@ class GamesPredictor:
             - This predictor is itself a total predictor (no recursion).
             - The configured total model artifact is not trained.
 
-        Best-effort — any other failure is logged at DEBUG and treated
+        Best-effort - any other failure is logged at DEBUG and treated
         as ``None`` so callers can attach totals optionally.
         """
         if self.model_name == "total":
@@ -542,7 +542,7 @@ class GamesPredictor:
 
         if not store.is_trained(total_model_name, total_model_type):
             logger.debug(
-                "_maybe_predict_totals: (%s, %s) not trained — totals omitted.",
+                "_maybe_predict_totals: (%s, %s) not trained - totals omitted.",
                 total_model_name,
                 total_model_type,
             )
@@ -574,14 +574,14 @@ class GamesPredictor:
 
 @ModelRegistry.register
 class WinProbLogisticPredictor(GamesPredictor):
-    """Win probability — logistic regression."""
+    """Win probability - logistic regression."""
 
     model_name = "win_prob"
     model_type = "logistic"
     spec = ModelSpec(
         name="win_prob_logistic",
         description=(
-            "Win probability — logistic regression (combined features, TimeSeriesSplit CV)."
+            "Win probability - logistic regression (combined features, TimeSeriesSplit CV)."
         ),
         trainable=True,
     )
@@ -589,14 +589,14 @@ class WinProbLogisticPredictor(GamesPredictor):
 
 @ModelRegistry.register
 class WinProbRandomForestPredictor(GamesPredictor):
-    """Win probability — Random Forest with isotonic calibration."""
+    """Win probability - Random Forest with isotonic calibration."""
 
     model_name = "win_prob"
     model_type = "random_forest"
     spec = ModelSpec(
         name="win_prob_random_forest",
         description=(
-            "Win probability — Random Forest (expanded features, "
+            "Win probability - Random Forest (expanded features, "
             "isotonic calibration, TimeSeriesSplit CV)."
         ),
         trainable=True,
@@ -605,14 +605,14 @@ class WinProbRandomForestPredictor(GamesPredictor):
 
 @ModelRegistry.register
 class WinProbXGBoostPredictor(GamesPredictor):
-    """Win probability — XGBoost with conditional isotonic calibration."""
+    """Win probability - XGBoost with conditional isotonic calibration."""
 
     model_name = "win_prob"
     model_type = "xgboost"
     spec = ModelSpec(
         name="win_prob_xgboost",
         description=(
-            "Win probability — XGBoost (expanded features, "
+            "Win probability - XGBoost (expanded features, "
             "conditional isotonic calibration, TimeSeriesSplit CV)."
         ),
         trainable=True,
@@ -621,14 +621,14 @@ class WinProbXGBoostPredictor(GamesPredictor):
 
 @ModelRegistry.register
 class TotalRandomForestPredictor(GamesPredictor):
-    """Total points — Random Forest regression."""
+    """Total points - Random Forest regression."""
 
     model_name = "total"
     model_type = "random_forest"
     spec = ModelSpec(
         name="total_random_forest",
         description=(
-            "Total points — Random Forest regression (expanded features, randomized HP search)."
+            "Total points - Random Forest regression (expanded features, randomized HP search)."
         ),
         trainable=True,
     )
@@ -636,14 +636,14 @@ class TotalRandomForestPredictor(GamesPredictor):
 
 @ModelRegistry.register
 class TotalXGBoostPredictor(GamesPredictor):
-    """Total points — XGBoost regression."""
+    """Total points - XGBoost regression."""
 
     model_name = "total"
     model_type = "xgboost"
     spec = ModelSpec(
         name="total_xgboost",
         description=(
-            "Total points — XGBoost regression (expanded features, randomized HP search)."
+            "Total points - XGBoost regression (expanded features, randomized HP search)."
         ),
         trainable=True,
     )

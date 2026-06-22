@@ -128,9 +128,9 @@ def no_vig(
     method : {"power", "additive"}, default "power"
         Debiasing method.
 
-        * ``"additive"`` — simple rescaling (divide each raw probability by
+        * ``"additive"`` - simple rescaling (divide each raw probability by
           their sum).
-        * ``"power"`` — multiplicative / power method.  Finds exponent *k*
+        * ``"power"`` - multiplicative / power method.  Finds exponent *k*
           such that ``raw_a ** k + raw_b ** k == 1``.  More accurate for
           skewed lines.
 
@@ -181,7 +181,7 @@ def _power_devig(
     """
     total: float = raw_a + raw_b
 
-    # Already fair — nothing to solve.
+    # Already fair - nothing to solve.
     if abs(total - 1.0) < tol:
         return raw_a, raw_b
 

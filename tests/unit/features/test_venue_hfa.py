@@ -1,5 +1,5 @@
 # tests/unit/features/test_venue_hfa.py
-"""Tests for gridiron_edge.features.team.venue_hfa — VenueHFAFeature."""
+"""Tests for gridiron_edge.features.team.venue_hfa - VenueHFAFeature."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ class TestVenueHFACompute:
     def test_insufficient_games_returns_zero(self) -> None:
         """Teams with fewer than _MIN_HOME_GAMES get 0.0."""
 
-        # Only 5 home games — below threshold of 20
+        # Only 5 home games - below threshold of 20
         games = make_games(self._build_home_games("KC", 4, 1))
         df = make_modeling_rows(
             [

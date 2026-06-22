@@ -60,7 +60,7 @@ class TestCliSubcommandDiscovery:
 
 
 # ---------------------------------------------------------------------------
-# Workflow smoke tests — exercise the CLI surfaces end-to-end
+# Workflow smoke tests - exercise the CLI surfaces end-to-end
 # ---------------------------------------------------------------------------
 
 
@@ -137,7 +137,7 @@ class TestEvaluateSelectModelSmoke:
             os.chdir(old_cwd)
 
         # When no models have archived predictions, the command exits with
-        # code 1 and a clear message. Both are acceptable signals here —
+        # code 1 and a clear message. Both are acceptable signals here -
         # the test verifies the command runs end-to-end without crashing.
         assert result.exit_code in (0, 1)
         # If exiting cleanly, should mention either "No models" or a table

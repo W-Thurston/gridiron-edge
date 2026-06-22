@@ -36,13 +36,13 @@ Canonical games schema (NFL_wk_by_wk_cleaned.csv):
     WINNER              str     "Philadelphia Eagles"  (long name)
     GAME_LOCATION       str     "H" (home) | "@" (away) | "N" (neutral)
     LOSER               str     "Green Bay Packers"    (long name)
-    BOXSCORE_LINK       str     ""  (deprecated — set to empty string)
+    BOXSCORE_LINK       str     ""  (deprecated - set to empty string)
     PTS_WINNER          int     20
     PTS_LOSER           int     17
-    YARDS_WINNER        int     0   (not available from schedules — set to 0)
-    TURNOVERS_WINNER    int     0   (not available from schedules — set to 0)
-    YARDS_LOSER         int     0   (not available from schedules — set to 0)
-    TURNOVERS_LOSER     int     0   (not available from schedules — set to 0)
+    YARDS_WINNER        int     0   (not available from schedules - set to 0)
+    TURNOVERS_WINNER    int     0   (not available from schedules - set to 0)
+    YARDS_LOSER         int     0   (not available from schedules - set to 0)
+    TURNOVERS_LOSER     int     0   (not available from schedules - set to 0)
     YEAR                str     "2025-2026"
     STADIUM             str     "Lambeau Field"
     ROOF                str     "outdoors"
@@ -98,7 +98,7 @@ def clean_nflverse_games(
     season and postseason games, maps to the canonical WINNER/LOSER schema,
     and writes to ``data/cleaned/NFL_wk_by_wk_cleaned.csv``.
 
-    Unplayed games (``result = NaN``) are excluded — they belong in the
+    Unplayed games (``result = NaN``) are excluded - they belong in the
     upcoming schedule, not the historical games dataset.
 
     Args:
@@ -131,7 +131,7 @@ def clean_nflverse_games(
     logger.info("Processing %d completed games", len(df))
 
     if df.empty:
-        logger.info("No completed games found in raw file — season may not have started.")
+        logger.info("No completed games found in raw file - season may not have started.")
         out_path: Path = dataset_path(resolved_repo, "games")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         empty = pd.DataFrame(
@@ -227,7 +227,7 @@ def clean_nflverse_games(
     df["GAMETIME"] = df["gametime"].apply(gametime_to_hhmmss)
 
     # --- GAME_ID: use nflverse alt_game_id if available, else game_id ---
-    # nflverse game_id format: "2025_01_PHI_GB" — already matches our convention
+    # nflverse game_id format: "2025_01_PHI_GB" - already matches our convention
     df["GAME_ID"] = df["game_id"].astype(str)
 
     # --- VEGAS_LINE / FAVORITED ---
@@ -263,7 +263,7 @@ def clean_nflverse_games(
             "WINNER": df["WINNER"],
             "GAME_LOCATION": df["GAME_LOCATION"],
             "LOSER": df["LOSER"],
-            "BOXSCORE_LINK": "",  # deprecated — not available from nflverse schedules
+            "BOXSCORE_LINK": "",  # deprecated - not available from nflverse schedules
             "PTS_WINNER": df["PTS_WINNER"],
             "PTS_LOSER": df["PTS_LOSER"],
             "YARDS_WINNER": 0,  # not in schedules; set to 0 (unused downstream)

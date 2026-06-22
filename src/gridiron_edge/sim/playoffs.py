@@ -14,7 +14,7 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Constants (duplicated from season.py to keep this module self-contained
-# for numba — numba cannot import from sibling modules at JIT time)
+# for numba - numba cannot import from sibling modules at JIT time)
 # season.py asserts these stay in sync at import time.
 # ---------------------------------------------------------------------------
 

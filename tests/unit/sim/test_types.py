@@ -1,5 +1,5 @@
 # tests/unit/sim/test_types.py
-"""Tests for gridiron_edge.sim._types — constants and dataclasses."""
+"""Tests for gridiron_edge.sim._types - constants and dataclasses."""
 
 from __future__ import annotations
 

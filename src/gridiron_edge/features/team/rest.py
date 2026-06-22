@@ -4,10 +4,10 @@
 
 Computes preparation-time features for each team in a matchup.  These
 capture fatigue and scheduling effects that EPA rolling averages cannot
-reflect — EPA measures what happened in past games, not the physical and
+reflect - EPA measures what happened in past games, not the physical and
 logistical state each team enters the next game with.
 
-Produces (symmetric — computed for TEAM_A perspective in each row):
+Produces (symmetric - computed for TEAM_A perspective in each row):
 
     TEAM_A_DAYS_REST    int     Days since TEAM_A's last game.
                                 Typical: 6-7 (standard week).
@@ -50,7 +50,7 @@ Design notes:
     - Games are ordered by (YEAR, WEEK_NUM) within each team's history.
       This is correct because the canonical games CSV stores week numbers
       as integers within the season, and seasons are string-labelled
-      (e.g. "2025-2026") — sorting on YEAR then WEEK_NUM gives the right
+      (e.g. "2025-2026") - sorting on YEAR then WEEK_NUM gives the right
       chronological order.
 """
 
@@ -120,7 +120,7 @@ class RestFeature:
         needed: list[str] = ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM", "GAME_DATE"]
         g = games.loc[:, needed].copy()
 
-        # Parse date — store as date (not datetime) for day-diff arithmetic
+        # Parse date - store as date (not datetime) for day-diff arithmetic
         # pyrefly: ignore [missing-attribute]
         g["_DATE"] = pd.to_datetime(g["GAME_DATE"], format="%Y-%m-%d", errors="coerce").dt.date
 

@@ -73,7 +73,7 @@ def elo_evaluate() -> None:
     with step("Join predictions to outcomes") as s:
         df_eval = build_evaluation_df(model_name="win_prob", model_type="elo")
         if df_eval.empty:
-            s.set_detail("no data — run 'gridiron evaluate backfill' first")
+            s.set_detail("no data - run 'gridiron evaluate backfill' first")
         else:
             s.set_detail(f"{len(df_eval)} games")
 

@@ -25,7 +25,7 @@ AWAY_WIN_LOCATION: str = "@"
 # Holdout seasons
 # ---------------------------------------------------------------------------
 
-# Seasons reserved for model evaluation — excluded from training.
+# Seasons reserved for model evaluation - excluded from training.
 # UPDATE: add the new season label here at the start of each season so that
 # new games are held out of training and reserved for live evaluation.
 # Both the model layer (_shared.py) and the Elo tuner (tune.py) import this.

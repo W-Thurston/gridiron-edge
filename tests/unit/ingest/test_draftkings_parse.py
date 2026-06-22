@@ -1,5 +1,5 @@
 # tests/unit/ingest/test_draftkings_parse.py
-"""Tests for gridiron_edge.ingest.odds.draftkings — odds normalization."""
+"""Tests for gridiron_edge.ingest.odds.draftkings - odds normalization."""
 
 from __future__ import annotations
 

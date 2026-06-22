@@ -77,8 +77,8 @@ Tests follow a three-tier pyramid (unit → integration → e2e) with pytest mar
 Pre-commit hooks run unit tests on every commit; pre-push runs integration + e2e.
 
 ### Documentation
-- [HANDOFF.md](HANDOFF.md) — how everything works, architecture, operational reference
-- [PLAN.md](PLAN.md) — active roadmap and backlog
-- [CHANGELOG.md](CHANGELOG.md) — what has been built and when
-- [FEATURES.md](FEATURES.md) — comprehensive feature catalog across all domains
-- [ROADMAP.md](ROADMAP.md) — long-term strategic direction
+- [HANDOFF.md](HANDOFF.md) - how everything works, architecture, operational reference
+- [PLAN.md](PLAN.md) - active roadmap and backlog
+- [CHANGELOG.md](CHANGELOG.md) - what has been built and when
+- [FEATURES.md](FEATURES.md) - comprehensive feature catalog across all domains
+- [ROADMAP.md](ROADMAP.md) - long-term strategic direction

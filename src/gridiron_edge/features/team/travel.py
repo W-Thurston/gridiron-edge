@@ -50,7 +50,7 @@ Design notes:
       (conventionally advantageous for evening/night games); NY to LA is
       westward (circadian cost).  See Recht et al. (1995) for the
       original sports-circadian literature.
-    - IS_NEUTRAL_SITE is independent of travel — a London game has
+    - IS_NEUTRAL_SITE is independent of travel - a London game has
       IS_NEUTRAL_SITE=1 for both teams, but TEAM_A_KM_TRAVELED may be
       small (east-coast team) or large (west-coast team).
 """
@@ -233,7 +233,7 @@ class TravelFeature:
         base["TEAM_B_KM_TRAVELED"] = km_b
         base["_TEAM_B_TZ_TRAVELED"] = tz_b
 
-        # Drop the temporary home coord columns — only keep the feature outputs
+        # Drop the temporary home coord columns - only keep the feature outputs
         drop_cols = [
             c
             for c in ["_LAT_B_HOME", "_LON_B_HOME", "_ALT_B_HOME", "_STADIUM_B_HOME"]

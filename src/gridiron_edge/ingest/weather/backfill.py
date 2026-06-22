@@ -4,7 +4,7 @@
 
 Fetches weather conditions at kickoff time for every completed NFL game
 not already present in the weather_enriched dataset.  Designed to be run
-repeatedly until all historical gaps are filled — safe to interrupt and
+repeatedly until all historical gaps are filled - safe to interrupt and
 resume because it skips GAME_IDs already present in the output file.
 
 Usage (via CLI):
@@ -72,7 +72,7 @@ from gridiron_edge.metrics.travel.geo import to_decimal_degrees
 
 logger: Logger = logging.getLogger(__name__)
 
-# Seconds to sleep between API calls — keeps well within OWM rate limits
+# Seconds to sleep between API calls - keeps well within OWM rate limits
 _CALL_SLEEP_S: Final[float] = 0.15
 
 # OWM One Call 3.0 timemachine endpoint
@@ -116,7 +116,7 @@ def backfill_weather(
 
     Loads the canonical games file, resolves stadium coordinates, identifies
     which GAME_IDs are already in weather_enriched.csv, and fetches the
-    remainder from OWM.  Safe to run multiple times — already-fetched games
+    remainder from OWM.  Safe to run multiple times - already-fetched games
     are skipped automatically so this only fetches genuinely missing data.
 
     Args:
@@ -154,7 +154,7 @@ def backfill_weather(
             logger.warning("No completed games found for season %s", season_year)
             return 0, 0
 
-    # Merge stadium coordinates — join on YEAR + STADIUM name
+    # Merge stadium coordinates - join on YEAR + STADIUM name
     # The stadium reference uses HOME_TEAM + YEAR to assign stadiums;
     # the games file already has the STADIUM name directly, so we join
     # by (YEAR, STADIUM) to get lat/lon.
@@ -187,7 +187,7 @@ def backfill_weather(
     )
 
     if dry_run:
-        logger.info("DRY RUN — no API calls will be made.")
+        logger.info("DRY RUN - no API calls will be made.")
         seasons: Series[int] = pending["YEAR"].value_counts().sort_index()
         for season, count in seasons.items():
             logger.info("  %s: %d games", season, count)
@@ -202,10 +202,10 @@ def backfill_weather(
         return 0, 0
 
     if pending.empty:
-        logger.info("Nothing to fetch — all games already have weather data.")
+        logger.info("Nothing to fetch - all games already have weather data.")
         return 0, 0
 
-    # Apply daily call cap — truncate pending to the first N games
+    # Apply daily call cap - truncate pending to the first N games
     if max_calls is not None and len(pending) > max_calls:
         logger.info(
             "Capping this run at %d calls (%d games remain after). Run again tomorrow to continue.",
@@ -342,7 +342,7 @@ def _run_fetch_loop(
     if failed_rows:
         _append_to_failed_file(failed_rows, failed_path)
         logger.warning(
-            "%d games failed — see %s for details",
+            "%d games failed - see %s for details",
             len(failed_rows),
             failed_path,
         )
@@ -427,7 +427,7 @@ def _fetch_one_game(
         status: Literal["unknown"] | int = (
             e.response.status_code if e.response is not None else "unknown"
         )
-        logger.warning("HTTP %s for game %s — skipping", status, game_id)
+        logger.warning("HTTP %s for game %s - skipping", status, game_id)
         return None
     except (KeyError, IndexError) as e:
         logger.warning("Malformed OWM response for game %s: %s", game_id, e)

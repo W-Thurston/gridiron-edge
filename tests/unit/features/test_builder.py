@@ -203,7 +203,7 @@ class TestBuildPropFeatures:
             assert col in result.columns
 
     def test_nan_handling_deferred_to_trainer(self, tmp_path: Path) -> None:
-        """Builder should NOT drop NaN — trainer handles it with position context."""
+        """Builder should NOT drop NaN - trainer handles it with position context."""
         _setup_data(tmp_path)
         result = build_prop_features(position_filter=["QB"], repo=tmp_path)
         # Builder returns all rows; some NaN is expected in cross-position features

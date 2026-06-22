@@ -1,5 +1,5 @@
 # tests/unit/ingest/test_game_id.py
-"""Tests for gridiron_edge.ingest.odds._game_id — DK game_id resolution."""
+"""Tests for gridiron_edge.ingest.odds._game_id - DK game_id resolution."""
 
 from __future__ import annotations
 

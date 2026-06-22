@@ -408,7 +408,7 @@ def compute_hit_rate(
 
     went_over = actual_f > line_f
     went_under = actual_f < line_f
-    # Push (actual == line) — excluded from both hit and miss
+    # Push (actual == line) - excluded from both hit and miss
 
     # Over leans
     over_mask = lean_f == Lean.OVER.value
@@ -455,7 +455,7 @@ def compute_tier_analysis(
     Args:
         actual: Observed stat values.
         predicted: Model point predictions.
-        line: Betting lines (optional — hit rate NaN without lines).
+        line: Betting lines (optional - hit rate NaN without lines).
         lean: Model lean predictions (optional).
         confidence_tier: Confidence tier labels.
         p_over: Predicted P(over) (optional).
@@ -572,22 +572,22 @@ def evaluate_prop_model(
     accuracy: AccuracyMetrics = compute_accuracy(actual, predicted_mean)
     bias: BiasMetrics = compute_bias(actual, predicted_mean)
 
-    # Coverage — requires prediction intervals
+    # Coverage - requires prediction intervals
     coverage: CoverageMetrics | None = None
     if lo_90 is not None and hi_90 is not None:
         coverage = compute_coverage(actual, lo_90, hi_90, nominal=coverage_nominal)
 
-    # Calibration — requires lines and p_over
+    # Calibration - requires lines and p_over
     calibration: CalibrationMetrics | None = None
     if line is not None and p_over is not None:
         calibration = compute_calibration(actual, line, p_over)
 
-    # Hit rate — requires lines and lean
+    # Hit rate - requires lines and lean
     hit_rate: HitRateMetrics | None = None
     if line is not None and lean is not None:
         hit_rate = compute_hit_rate(actual, line, lean)
 
-    # Tier analysis — requires confidence_tier
+    # Tier analysis - requires confidence_tier
     tier_analysis: TierMetrics | None = None
     if confidence_tier is not None:
         tier_analysis = compute_tier_analysis(

@@ -1,5 +1,5 @@
 # tests/unit/metrics/test_geo.py
-"""Tests for gridiron_edge.metrics.travel.geo — coordinate and distance helpers."""
+"""Tests for gridiron_edge.metrics.travel.geo - coordinate and distance helpers."""
 
 from __future__ import annotations
 

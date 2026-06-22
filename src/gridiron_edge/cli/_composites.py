@@ -7,12 +7,12 @@ and summary rendering. The pattern mirrors ``run-data-pipeline`` from
 
 This module provides:
 
-- ``CompositeStage`` — declarative definition of one stage.
-- ``StageResult`` — return value from a stage function.
-- ``CompositeSummary`` — accounting of a full composite execution.
-- ``run_composite`` — the orchestrator.
-- ``render_composite_summary`` — final console summary.
-- ``resolve_active_stages`` — flag handling helper.
+- ``CompositeStage`` - declarative definition of one stage.
+- ``StageResult`` - return value from a stage function.
+- ``CompositeSummary`` - accounting of a full composite execution.
+- ``run_composite`` - the orchestrator.
+- ``render_composite_summary`` - final console summary.
+- ``resolve_active_stages`` - flag handling helper.
 
 Composite command authors define a list of ``CompositeStage`` plus
 the per-stage functions, then call ``run_composite``. The orchestrator

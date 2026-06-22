@@ -186,7 +186,7 @@ class TestRollingShares:
     """Verify shifted rolling mean computations."""
 
     def test_no_lookahead_week1(self) -> None:
-        """Week 1 rolling usage shares must be NaN — no prior games."""
+        """Week 1 rolling usage shares must be NaN - no prior games."""
         df = _make_multi_week(n_weeks=5)
         df = _compute_per_game_shares(df)
         result = _rolling_shares(df, windows=[3])

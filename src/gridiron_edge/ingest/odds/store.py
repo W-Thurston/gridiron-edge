@@ -1,14 +1,14 @@
 # src/gridiron_edge/ingest/odds/store.py
 
-"""Odds storage utilities — append-only ledger and current snapshot.
+"""Odds storage utilities - append-only ledger and current snapshot.
 
 All odds are stored in long format (one row per market/side/game/pull),
 which makes multi-sportsbook comparison and time-series line movement
 analysis straightforward.
 
 Storage layout:
-    data/odds/dk_odds_log.parquet    — full historical ledger (all pulls)
-    data/odds/dk_odds_current.parquet — latest pull only (for viz)
+    data/odds/dk_odds_log.parquet    - full historical ledger (all pulls)
+    data/odds/dk_odds_current.parquet - latest pull only (for viz)
 
 Schema (dk_odds_log):
     fetched_at      datetime64[ns]  UTC timestamp of the pull
@@ -40,7 +40,7 @@ from gridiron_edge.core.settings import get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
-# Column order for the ledger — enforced on every write.
+# Column order for the ledger - enforced on every write.
 _LEDGER_COLUMNS: list[str] = [
     "fetched_at",
     "sportsbook",
@@ -129,7 +129,7 @@ def wide_to_long(
         canonical_game_id = home_row.get("game_id")
         if canonical_game_id is None or pd.isna(canonical_game_id):
             logger.warning(
-                "wide_to_long: skipping event_id=%s — game_id resolution failed "
+                "wide_to_long: skipping event_id=%s - game_id resolution failed "
                 "for home='%s' away='%s'",
                 event_id,
                 home_row.get("team"),

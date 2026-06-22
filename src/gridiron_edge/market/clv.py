@@ -3,7 +3,7 @@
 
 CLV measures whether the market moved toward or away from your position
 between bet placement and game close.  Consistently positive CLV is the
-gold-standard validation that a model is finding real edges — not just
+gold-standard validation that a model is finding real edges - not just
 getting lucky.
 
 Pure scalar helpers (no I/O):

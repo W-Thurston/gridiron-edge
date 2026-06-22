@@ -1,5 +1,5 @@
 # tests/unit/cli/test_models.py
-"""Unit tests for cli/models.py — promotion decision and path handling."""
+"""Unit tests for cli/models.py - promotion decision and path handling."""
 
 from __future__ import annotations
 

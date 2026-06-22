@@ -1,5 +1,5 @@
 # tests/unit/models/test_post_process.py
-"""Unit tests for post_process.py — spread, recalibration, bands, and enrichment."""
+"""Unit tests for post_process.py - spread, recalibration, bands, and enrichment."""
 
 from __future__ import annotations
 
@@ -978,7 +978,7 @@ class TestEnrichBands:
 
 
 class TestGetTotalStd:
-    """Tests for get_total_std() — artifact-driven total RMSE lookup."""
+    """Tests for get_total_std() - artifact-driven total RMSE lookup."""
 
     def test_returns_rmse_when_artifact_present(self, tmp_path: Path) -> None:
         from gridiron_edge.models.artifact import ArtifactStore

@@ -170,7 +170,7 @@ class TestBaselineReportStage:
                 [
                     "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
                     "|---|---|---|---|---|---|---|",
-                    "| win_prob_logistic | 0.2215 | 0.0150 | 0.6800 | — | — | — |",
+                    "| win_prob_logistic | 0.2215 | 0.0150 | 0.6800 | - | - | - |",
                 ]
             )
         )
@@ -372,8 +372,8 @@ class TestBaselineReportDiffHelpers:
                     "",
                     "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
                     "|---|---|---|---|---|---|---|",
-                    "| win_prob_logistic | 0.2215 | 0.0153 | 0.6822 | — | — | — |",
-                    "| total_random_forest | — | — | — | 10.24 | 13.12 | 0.056 |",
+                    "| win_prob_logistic | 0.2215 | 0.0153 | 0.6822 | - | - | - |",
+                    "| total_random_forest | - | - | - | 10.24 | 13.12 | 0.056 |",
                 ]
             )
         )
@@ -398,7 +398,7 @@ class TestBaselineReportDiffHelpers:
                 [
                     "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
                     "|---|---|---|---|---|---|---|",
-                    "| win_prob_elo | — no artifact — |",
+                    "| win_prob_elo | - no artifact - |",
                 ]
             )
         )
@@ -412,8 +412,8 @@ class TestBaselineReportDiffHelpers:
         from gridiron_edge.cli.full_retrain import _format_metric_delta
 
         assert _format_metric_delta(current=0.2200, previous=0.2210, decimals=4) == "-0.0010"
-        assert _format_metric_delta(current=None, previous=0.2210, decimals=4) == "—"
-        assert _format_metric_delta(current=0.2200, previous=None, decimals=4) == "—"
+        assert _format_metric_delta(current=None, previous=0.2210, decimals=4) == "-"
+        assert _format_metric_delta(current=0.2200, previous=None, decimals=4) == "-"
 
     def test_find_previous_baseline_report_returns_latest(
         self,

@@ -1,4 +1,4 @@
-"""Elo parameter grid search — flat K and zone-K variants.
+"""Elo parameter grid search - flat K and zone-K variants.
 
 Finds the combination of parameters that minimises Brier score on a
 held-out set of seasons. Two search modes are supported:
@@ -9,7 +9,7 @@ held-out set of seasons. Two search modes are supported:
 
   zone_k (K varies by week zone):
     Parameters: k_early, k_mid, k_week18, k_post, divisor, regress_frac
-    K varies by week zone — early season, mid season, week 18, postseason.
+    K varies by week zone - early season, mid season, week 18, postseason.
 
 The search engine uses a dict-based Elo simulation (~50x faster than the
 production DataFrame-based table builder) that replicates the exact same
@@ -43,7 +43,7 @@ logger: Logger = logging.getLogger(__name__)
 # Holdout split
 # ---------------------------------------------------------------------------
 
-# Imported from core.constants — single source of truth shared with _shared.py.
+# Imported from core.constants - single source of truth shared with _shared.py.
 # Update HOLDOUT_SEASONS in core/constants.py at the start of each new season.
 
 # ---------------------------------------------------------------------------
@@ -55,17 +55,17 @@ DIVISOR_VALUES: Final[list[float]] = [350.0, 400.0, 450.0, 480.0, 550.0]
 REGRESS_VALUES: Final[list[float]] = [0.2, 0.33, 0.4, 0.5]
 
 # ---------------------------------------------------------------------------
-# Zone K grid (K varies by week zone) — comprehensive
+# Zone K grid (K varies by week zone) - comprehensive
 # ---------------------------------------------------------------------------
 
-# All four K zones use the same symmetric range — no prior assumptions about
+# All four K zones use the same symmetric range - no prior assumptions about
 # which zones should be higher or lower. The data determines the direction.
 # k_week18 extends down to 0 since near-zero K is theoretically sound for
 # a structurally noisy week (starter rest, locked seedings).
 #
 # Grid size: 6^3 * 7 * 7 * 6 = 63,504 combinations ~ 7.9h at 0.45s each.
 # Divisor extends down to 280 and up to 520 to ensure the optimum is not
-# at a boundary — flat K found 350 winning with the previous floor at 350.
+# at a boundary - flat K found 350 winning with the previous floor at 350.
 # Regress extends down to 0.1 to test near-zero regression.
 K_EARLY_VALUES: Final[list[float]] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
 K_MID_VALUES: Final[list[float]] = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]

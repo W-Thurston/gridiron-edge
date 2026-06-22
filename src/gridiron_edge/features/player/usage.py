@@ -3,13 +3,13 @@
 
 Computes team-level totals per game, derives each player's share of
 targets, carries, and touches, then applies rolling windows.  All rolling
-computations use shift(1) to prevent lookahead leakage — a player's
+computations use shift(1) to prevent lookahead leakage - a player's
 usage share for week N reflects only games through week N-1.
 
 Features produced (per window W):
-- usage_target_share_LW  — player targets / team total targets
-- usage_carry_share_LW   — player carries / team total carries
-- usage_touch_share_LW   — player touches / team total touches
+- usage_target_share_LW  - player targets / team total targets
+- usage_carry_share_LW   - player carries / team total carries
+- usage_touch_share_LW   - player touches / team total touches
 
 Usage::
 
@@ -32,10 +32,10 @@ from gridiron_edge.core.settings import get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
-# Default rolling windows — consistent with rolling.py
+# Default rolling windows - consistent with rolling.py
 DEFAULT_WINDOWS: Final[list[int]] = [3, 6]
 
-# Per-game share columns (intermediate — dropped before return)
+# Per-game share columns (intermediate - dropped before return)
 _SHARE_COLS: Final[list[str]] = [
     "usage_target_share",
     "usage_carry_share",
@@ -153,7 +153,7 @@ def build_usage_features(
     df = _compute_per_game_shares(df)
     df = _rolling_shares(df, windows=windows, cross_season=cross_season)
 
-    # Drop intermediate per-game share columns — only rolling features are
+    # Drop intermediate per-game share columns - only rolling features are
     # safe as model inputs (per-game shares contain current-game info).
     df = df.drop(columns=_SHARE_COLS)
 

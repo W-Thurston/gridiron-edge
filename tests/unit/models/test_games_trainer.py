@@ -268,7 +268,7 @@ class TestTrainSpecValidation:
 
 
 # ---------------------------------------------------------------------------
-# GameModelMetadata smoke (also covered by test_metadata.py — included
+# GameModelMetadata smoke (also covered by test_metadata.py - included
 # here to confirm the GamesTrainer-facing metadata contract is reachable).
 # ---------------------------------------------------------------------------
 

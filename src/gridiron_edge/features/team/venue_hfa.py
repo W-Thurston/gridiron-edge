@@ -5,11 +5,11 @@
 Measures how much better (or worse) each NFL franchise performs at home
 relative to the league average, expressed as a signed win-rate differential.
 This captures persistent crowd noise, travel burden on visitors, and
-altitude effects that are tied to a franchise's fanbase and home market —
+altitude effects that are tied to a franchise's fanbase and home market -
 effects that Elo ratings absorb only slowly and EPA rolling averages
 cannot capture at all.
 
-Produces (symmetric — one value per team perspective per row):
+Produces (symmetric - one value per team perspective per row):
 
     TEAM_A_FRANCHISE_HFA    float   TEAM_A's historical home win rate minus
                                     the league-average home win rate.
@@ -24,7 +24,7 @@ Produces (symmetric — one value per team perspective per row):
 Implementation
 --------------
 The coefficient is computed dynamically from the canonical games CSV at
-pipeline run time — no external data or manual lookup table required.
+pipeline run time - no external data or manual lookup table required.
 
 For each franchise (long team name), we compute:
 
@@ -32,7 +32,7 @@ For each franchise (long team name), we compute:
 
 where a "home win" is any completed game where the team was the home side
 and won (GAME_LOCATION == "H" and WINNER == team).  Neutral-site
-games (GAME_LOCATION == "N") are excluded — they carry no home crowd signal.
+games (GAME_LOCATION == "N") are excluded - they carry no home crowd signal.
 
 The coefficient is then:
 
@@ -48,7 +48,7 @@ Stadium continuity
 This feature operates at the franchise level, not the stadium level.
 When a team moves to a new stadium, the coefficient immediately reflects
 the full franchise history rather than resetting to zero.  This is a
-deliberate simplification — it avoids stadium-continuity date tracking
+deliberate simplification - it avoids stadium-continuity date tracking
 and is the correct prior (the fanbase moves with the team).
 
 A more sophisticated stadium-level version that estimates separate
@@ -64,7 +64,7 @@ Design notes:
       home crowd advantage.  This is handled via IS_NEUTRAL_SITE if
       present, falling back to the GAME_LOCATION column.
     - The computation uses all historical data in the games CSV, including
-      seasons before the modeling window.  This is correct — we want the
+      seasons before the modeling window.  This is correct - we want the
       most stable estimate of franchise HFA, not a short rolling window.
     - Temporal leakage note: technically, using future seasons' home
       results to estimate a franchise's HFA for early-season rows is mild
@@ -184,7 +184,7 @@ class VenueHFAFeature:
         if home_games.empty:
             return {}
 
-        # Ties count as 0.5 wins; losses as 0 — WIN_OR_TIE encodes this
+        # Ties count as 0.5 wins; losses as 0 - WIN_OR_TIE encodes this
         # from the WINNER's perspective.  In a home game where WINNER is
         # the home team: WIN_OR_TIE=1 (win) or 0.5 (tie).
         # In a home game where WINNER is the away team (GAME_LOCATION="@"):
@@ -240,7 +240,7 @@ class VenueHFAFeature:
         league_avg: float = float(stats["home_wins"].sum() / max(int(stats["home_games"].sum()), 1))
         logger.debug("venue_hfa: league average home win rate = %.4f", league_avg)
 
-        # Build final coefficient map — below threshold → 0.0 differential
+        # Build final coefficient map - below threshold → 0.0 differential
         stats["hfa_coeff"] = stats["home_win_rate"] - league_avg
         stats.loc[stats["home_games"] < _MIN_HOME_GAMES, "hfa_coeff"] = 0.0
 

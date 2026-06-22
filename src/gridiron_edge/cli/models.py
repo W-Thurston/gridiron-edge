@@ -2,7 +2,7 @@
 """CLI commands for model training and champion/challenger management.
 
 Workstream 2 user surface:
-    All commands that touch a specific model take two positional args —
+    All commands that touch a specific model take two positional args -
     ``model_name`` (purpose, e.g. ``"win_prob"``) and ``model_type``
     (algorithm, e.g. ``"random_forest"``). This matches the ``ArtifactStore``
     storage scheme at ``data/models/{model_name}/{model_type}/`` and the
@@ -17,7 +17,7 @@ Registry key resolution:
     All ``PredictorRegistry`` keys are composite, so resolution is a
     pure ``f"{model_name}_{model_type}"`` concatenation. Any pair that
     isn't a registered key surfaces as a ``KeyError`` from
-    ``PredictorRegistry.get`` — clear and loud.
+    ``PredictorRegistry.get`` - clear and loud.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _split_composite_key(key: str) -> tuple[str, str] | None:
     Matches the key against the known model_name prefixes returned by
     :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`.
     Returns ``None`` if the key doesn't match any known prefix (so
-    ``models list`` can display ``—`` instead of crashing).
+    ``models list`` can display ``-`` instead of crashing).
 
     Args:
         key: Composite registry key (e.g. ``"win_prob_random_forest"``).
@@ -92,7 +92,7 @@ def _apply_promotion_decision(
     The promote step is atomic at the filesystem level: ``shutil.rmtree``
     of the old champion happens immediately before ``shutil.move`` of the
     candidate. There's no window during which the champion directory is
-    missing while the candidate is also not in place — except for the
+    missing while the candidate is also not in place - except for the
     transition itself, which is bounded to a single ``move`` call. If
     that fails mid-stream, the user has both an old-champion-deleted
     state and a candidate dir, and recovery is to re-run training.
@@ -118,7 +118,7 @@ def _apply_promotion_decision(
     )
 
     if champion_meta is None:
-        # No existing champion — just move candidate into place.
+        # No existing champion - just move candidate into place.
         if champion_dir.exists():
             shutil.rmtree(champion_dir)
         shutil.move(str(candidate_dir), str(champion_dir))
@@ -259,7 +259,7 @@ def _primary_metric_for(meta: BaseModelMetadata) -> tuple[str, str]:
     """Return (display label, formatted value) for a model's primary metric."""
     key = _PRIMARY_METRIC_BY_TASK.get(meta.task)
     if key is None:
-        return ("—", "-")
+        return ("-", "-")
     value = meta.metrics.get(key)
     if value is None:
         return (_METRIC_LABELS[key], "(not recorded)")
@@ -429,7 +429,7 @@ def models_list() -> None:
 
         pair: tuple[str, str] | None = _split_composite_key(key)
 
-        primary_label: str = "—"
+        primary_label: str = "-"
         primary_value: str = "-"
         trained_at: str = "(not trained)" if is_trainable else "(no artifact)"
 
@@ -438,8 +438,8 @@ def models_list() -> None:
             trained_at = meta.trained_at
             primary_label, primary_value = _primary_metric_for(meta)
 
-        model_name_disp: str = pair[0] if pair else "—"
-        model_type_disp: str = pair[1] if pair else "—"
+        model_name_disp: str = pair[0] if pair else "-"
+        model_type_disp: str = pair[1] if pair else "-"
 
         rows.append(
             {

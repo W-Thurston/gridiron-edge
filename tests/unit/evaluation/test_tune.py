@@ -1,5 +1,5 @@
 # tests/unit/evaluation/test_tune.py
-"""Tests for gridiron_edge.evaluation.tune — grid constants, helpers, and tiny grid search."""
+"""Tests for gridiron_edge.evaluation.tune - grid constants, helpers, and tiny grid search."""
 
 from __future__ import annotations
 

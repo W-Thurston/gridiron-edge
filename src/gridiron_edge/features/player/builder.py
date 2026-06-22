@@ -1,5 +1,5 @@
 # src/gridiron_edge/features/player/builder.py
-"""Unified prop feature builder — single entry point for training-ready data.
+"""Unified prop feature builder - single entry point for training-ready data.
 
 Orchestrates all player feature modules (rolling, matchup, usage, game
 context) into a single DataFrame suitable for prop model training.

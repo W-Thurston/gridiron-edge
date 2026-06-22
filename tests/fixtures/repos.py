@@ -11,7 +11,7 @@ Usage::
 
     def test_pipeline(tmp_path):
         repo = MiniRepoBuilder(tmp_path).with_games().with_stadiums().with_elo_state().build()
-        # repo is a Path — use it as the repo= argument
+        # repo is a Path - use it as the repo= argument
 """
 
 from __future__ import annotations

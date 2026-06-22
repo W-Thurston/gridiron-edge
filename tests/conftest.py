@@ -1,5 +1,5 @@
 # tests/conftest.py
-"""Root conftest — shared configuration, fixtures, and auto-markers.
+"""Root conftest - shared configuration, fixtures, and auto-markers.
 
 Markers are applied automatically based on the test file's directory:
   tests/unit/       → @pytest.mark.unit

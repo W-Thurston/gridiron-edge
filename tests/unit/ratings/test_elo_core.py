@@ -1,4 +1,4 @@
-"""Tests for gridiron_edge.ratings.elo.core — update_elo zero-sum and parity."""
+"""Tests for gridiron_edge.ratings.elo.core - update_elo zero-sum and parity."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ class TestPythonNumbaParity:
 
     The numba implementation in sim/_engine.py duplicates the formula
     because @njit can't import. This test pins them to agree to floating-
-    point precision — if either drifts, this test breaks the build.
+    point precision - if either drifts, this test breaks the build.
 
     See audit_2026_06_18.md engine/C1.
     """

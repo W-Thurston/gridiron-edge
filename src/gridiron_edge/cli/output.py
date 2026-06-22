@@ -41,7 +41,7 @@ def output_predictions(
     with step("Build predictions dataframe") as s:
         df = build_predictions_df(year=year, week=week)
         if df.empty:
-            s.set_detail("no data — check schedule and Elo state")
+            s.set_detail("no data - check schedule and Elo state")
         else:
             s.set_detail(f"{len(df)} games")
 

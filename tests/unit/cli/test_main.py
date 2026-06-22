@@ -93,7 +93,7 @@ class TestStageStalenessCheck:
     ) -> None:
         from gridiron_edge.cli.main import _check_stage_staleness
 
-        # Empty data dir — first run scenario.
+        # Empty data dir - first run scenario.
         from gridiron_edge.core import settings as settings_mod
 
         class FakeSettings:

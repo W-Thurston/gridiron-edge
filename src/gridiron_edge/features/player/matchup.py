@@ -8,8 +8,8 @@ how generous/tough their opponent's defense has been against their
 position recently.
 
 Key features produced:
-- ``opp_{stat}_allowed_L{window}`` — rolling avg of what the defense allows
-- ``opp_{stat}_rank_L{window}`` — rank (1=toughest, 32=most generous)
+- ``opp_{stat}_allowed_L{window}`` - rolling avg of what the defense allows
+- ``opp_{stat}_rank_L{window}`` - rank (1=toughest, 32=most generous)
 
 Position-filter semantics (matchup/C1):
     ``_MATCHUP_STATS`` filters players into strict position buckets when
@@ -93,7 +93,7 @@ def _compute_def_allowed_per_game(player_logs: DataFrame) -> DataFrame:
 
     for positions, stat_col, output_name in _MATCHUP_STATS:
         if stat_col not in player_logs.columns:
-            logger.debug("Skipping %s — column not in data", stat_col)
+            logger.debug("Skipping %s - column not in data", stat_col)
             continue
 
         # Explicit copy() after boolean filtering to avoid potential
@@ -128,7 +128,7 @@ def _rolling_def_allowed(
 ) -> DataFrame:
     """Compute shifted rolling averages of defensive allowances.
 
-    Uses shift(1) to prevent lookahead — a team's defensive profile
+    Uses shift(1) to prevent lookahead - a team's defensive profile
     for week N reflects only games through week N-1.
 
     Also computes per-week rankings (1=toughest, 32=most generous)
@@ -222,7 +222,7 @@ def build_matchup_features(
         len([c for c in def_allowed.columns if c.endswith("_allowed")]),
     )
 
-    # Step 2: Rolling averages (shifted — no lookahead)
+    # Step 2: Rolling averages (shifted - no lookahead)
     def_rolling: DataFrame = _rolling_def_allowed(def_allowed, window=resolved_window)
 
     # Step 3: Rank defenses

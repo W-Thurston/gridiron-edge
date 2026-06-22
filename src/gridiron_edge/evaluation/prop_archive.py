@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 logger: Logger = logging.getLogger(__name__)
 
-# Deduplication key — last write wins for same player-game-stat-model
+# Deduplication key - last write wins for same player-game-stat-model
 _DEDUP_KEYS: Final[list[str]] = [
     "game_id",
     "player_id",
@@ -46,7 +46,7 @@ _DEDUP_KEYS: Final[list[str]] = [
     "model_type",
 ]
 
-# Archive schema — columns in canonical order
+# Archive schema - columns in canonical order
 _ARCHIVE_COLUMNS: Final[list[str]] = [
     "predicted_at",
     "is_backfilled",

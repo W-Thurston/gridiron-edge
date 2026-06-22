@@ -60,7 +60,7 @@ class TestCalibrationDisplay:
         stats = _make_stats(ev_gap=float("nan"))
         _render_summary(stats)
         captured = capsys.readouterr()
-        assert "EV gap:  —" in captured.out
+        assert "EV gap:  -" in captured.out
 
     def test_renders_healthy_with_check(self, capsys: pytest.CaptureFixture) -> None:
         stats = _make_stats(ev_gap=0.001, health="healthy", n_model_bets=5)
@@ -78,7 +78,7 @@ class TestCalibrationDisplay:
         stats = _make_stats(health="unknown", n_model_bets=0)
         _render_summary(stats)
         captured = capsys.readouterr()
-        assert "Health:  — unknown" in captured.out
+        assert "Health:  - unknown" in captured.out
 
     def test_negative_ev_gap_shows_sign(self, capsys: pytest.CaptureFixture) -> None:
         stats = _make_stats(ev_gap=-0.015, health="degraded", n_model_bets=10)

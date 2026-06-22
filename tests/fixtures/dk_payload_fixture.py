@@ -242,7 +242,7 @@ if __name__ == "__main__":
     )
 
     print("=" * 60)
-    print("DK Odds Pipeline Test — 2026 Week 1 (fixture)")
+    print("DK Odds Pipeline Test - 2026 Week 1 (fixture)")
     print("=" * 60)
 
     print("\n[1/4] Parsing fixture through collector...")

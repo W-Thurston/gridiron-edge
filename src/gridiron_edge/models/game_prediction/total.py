@@ -7,7 +7,7 @@ instead of ``RESULT``. The model is trained via :class:`TotalTrainer`
 and served at predict time through :class:`GamesPredictor` (registered
 under composite key ``"total_random_forest"`` and ``"total_xgboost"``).
 
-This is a supporting model — total predictions feed into win_prob
+This is a supporting model - total predictions feed into win_prob
 :meth:`GamesPredictor._maybe_predict_totals` to attach ``model_total``
 to game-level predictions.
 
@@ -74,7 +74,7 @@ def _prepare_total_data(
 
     Called by :meth:`GamesTrainer._prepare_window` when ``spec.task ==
     "regression"`` (the regression branch always uses the standard
-    4-game EPA window — total models don't tune ``epa_window``).
+    4-game EPA window - total models don't tune ``epa_window``).
 
     Returns:
         Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, holdout_seasons).
@@ -137,14 +137,14 @@ def _prepare_total_data(
 
 
 # ---------------------------------------------------------------------------
-# TotalTrainer — spec-only subclass of GamesTrainer
+# TotalTrainer - spec-only subclass of GamesTrainer
 # ---------------------------------------------------------------------------
 
 
 class TotalTrainer(GamesTrainer):
     """Train total-points regressors (random_forest / xgboost).
 
-    Logistic is excluded — it is not a regression estimator. Attempting
+    Logistic is excluded - it is not a regression estimator. Attempting
     ``TotalTrainer().train(df, model_type=GameModelType.LOGISTIC)`` raises
     ``ValueError`` via the spec validation in :meth:`GamesTrainer.train`.
     """
@@ -160,5 +160,5 @@ class TotalTrainer(GamesTrainer):
                 GameModelType.RANDOM_FOREST: FEATURE_SETS["expanded"],
                 GameModelType.XGBOOST: FEATURE_SETS["expanded"],
             },
-            description="Game total points — regression.",
+            description="Game total points - regression.",
         )

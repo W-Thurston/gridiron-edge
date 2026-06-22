@@ -241,7 +241,7 @@ class TestLoadTransactions:
 
 
 # ---------------------------------------------------------------------------
-# TestSignedAmountSeries (bankroll/H1 — vectorization)
+# TestSignedAmountSeries (bankroll/H1 - vectorization)
 # ---------------------------------------------------------------------------
 
 

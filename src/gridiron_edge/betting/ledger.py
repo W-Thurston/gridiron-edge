@@ -281,7 +281,7 @@ def settle_bet(
 
     Args:
         bet_id: UUID of the bet to settle.
-        result: Settlement result — ``"won"``, ``"lost"``, or ``"push"``.
+        result: Settlement result - ``"won"``, ``"lost"``, or ``"push"``.
         repo: Repository root override.
         odds_ledger: Optional long-format odds DataFrame for CLV lookup.
 
@@ -371,10 +371,10 @@ def load_bets(
     if book is not None:
         df = df.loc[df["book"] == book, :]
     if season is not None:
-        # game_id format: YYYY_WW_AWAY_HOME — season year is first 4 chars
+        # game_id format: YYYY_WW_AWAY_HOME - season year is first 4 chars
         df = df.loc[df["game_id"].str.startswith(season[:4]), :]
     if week is not None:
-        # game_id format: YYYY_WW_AWAY_HOME — week is chars 5:7
+        # game_id format: YYYY_WW_AWAY_HOME - week is chars 5:7
         week_str: str = f"{week:02d}"
         df = df.loc[df["game_id"].str[5:7] == week_str, :]
 

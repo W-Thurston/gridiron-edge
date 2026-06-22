@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pandas import DataFrame, Series
 
 # ---------------------------------------------------------------------------
-# Thresholds — kept at module scope for discoverability.
+# Thresholds - kept at module scope for discoverability.
 # ---------------------------------------------------------------------------
 
 #: Confidence threshold above which we look for overconfidence

@@ -1,8 +1,8 @@
 # src/gridiron_edge/betting/performance.py
-"""Betting performance analytics — pure DataFrame-in, results-out.
+"""Betting performance analytics - pure DataFrame-in, results-out.
 
 All functions accept a bets DataFrame (from ``load_bets()``) and return
-dicts or DataFrames.  No file I/O — the caller is responsible for loading
+dicts or DataFrames.  No file I/O - the caller is responsible for loading
 the ledger.
 
 Public API::
@@ -56,7 +56,7 @@ def record(
     Returns:
         DataFrame with columns ``wins``, ``losses``, ``pushes``, ``total``,
         ``win_pct``.  One row per group (or one row if *split_by* is None).
-        ``win_pct`` is ``wins / (wins + losses)`` — pushes are excluded from
+        ``win_pct`` is ``wins / (wins + losses)`` - pushes are excluded from
         the denominator.
     """
     settled: DataFrame = _settled(bets)

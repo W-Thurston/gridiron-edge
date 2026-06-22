@@ -8,10 +8,10 @@ game-prediction models should import this package (or any sub-module)
 before calling PredictorRegistry.names().
 
 Sub-modules:
-    _columns.py  — feature column definitions
-    _features.py — feature engineering + training helpers
-    logistic  — logistic (champion)
-    tree      — random_forest, xgboost (champions)
+    _columns.py  - feature column definitions
+    _features.py - feature engineering + training helpers
+    logistic  - logistic (champion)
+    tree      - random_forest, xgboost (champions)
 
 The old monolithic predictor.py is superseded by this package.  The
 import path ``gridiron_edge.models.game_prediction.predictor`` is kept

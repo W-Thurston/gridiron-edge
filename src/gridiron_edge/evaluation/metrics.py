@@ -173,14 +173,14 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
         BS = Reliability - Resolution + Uncertainty
 
     where:
-        Reliability  — calibration error (lower is better).  Mean squared
+        Reliability  - calibration error (lower is better).  Mean squared
                        gap between the model's predicted probabilities and
                        the observed win rate within each forecast bin.
-        Resolution   — sharpness (higher is better).  Mean squared deviation
+        Resolution   - sharpness (higher is better).  Mean squared deviation
                        of each bin's observed win rate from the overall base
                        rate.  A model that spreads predictions wide and is
                        right about that spread has high resolution.
-        Uncertainty  — irreducible noise, ``base_rate * (1 - base_rate)``.
+        Uncertainty  - irreducible noise, ``base_rate * (1 - base_rate)``.
                        Fixed for a given dataset; not affected by the model.
 
     The identity ``BS ≈ Reliability - Resolution + Uncertainty`` holds
@@ -188,7 +188,7 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
     bin).  For continuous probability outputs the within-bin variance
     introduces a small approximation error (typically < 0.002) that
     decreases with more bins.  This is expected and documented in the
-    literature — the decomposition is a diagnostic, not an accounting identity.
+    literature - the decomposition is a diagnostic, not an accounting identity.
 
     Args:
         p: Predicted probabilities (floats in [0, 1]).
@@ -321,7 +321,7 @@ def summarise(df: DataFrame, *, group_by: str = "season") -> DataFrame:
 
     Args:
         df: Evaluation DataFrame from ``build_evaluation_df``.
-        group_by: Column to group by — one of ``"season"``, ``"week"``,
+        group_by: Column to group by - one of ``"season"``, ``"week"``,
             ``"model_name"``, or ``"model_type"``.
 
     Returns:
@@ -407,7 +407,7 @@ def brier_by_confidence_tier(
 
     Groups games by the model's predicted win probability and reports accuracy
     within each confidence band.  High-confidence tiers with a large calibration
-    gap indicate overconfidence — the primary betting danger signal.
+    gap indicate overconfidence - the primary betting danger signal.
 
     The ``predicted_avg`` column shows what the model actually predicted on
     average within the tier (not the tier midpoint), making it useful for
@@ -416,7 +416,7 @@ def brier_by_confidence_tier(
     Args:
         df: Evaluation DataFrame from ``build_evaluation_df``.
         tiers: List of ``(lo, hi)`` half-open intervals defining confidence
-            bands.  Defaults to ``DEFAULT_CONFIDENCE_TIERS`` — four bands:
+            bands.  Defaults to ``DEFAULT_CONFIDENCE_TIERS`` - four bands:
             50-60 %, 60-70 %, 70-80 %, 80-100 %.
 
     Returns:
@@ -480,7 +480,7 @@ def brier_by_confidence_tier(
 def brier_by_season(df: DataFrame) -> DataFrame:
     """Compute per-season Brier score with delta vs overall mean.
 
-    Useful for detecting concept drift — a model whose Brier score is
+    Useful for detecting concept drift - a model whose Brier score is
     increasing season-over-season may be degrading relative to a shifting
     NFL environment.
 
@@ -538,8 +538,8 @@ def brier_by_season(df: DataFrame) -> DataFrame:
 def biggest_misses(df: DataFrame, *, n: int = 10) -> DataFrame:
     """Surface the N games where the model was most wrong.
 
-    Ranks games by the magnitude of the model's error — ``|predicted_prob -
-    outcome|`` — where outcome is 1 if the predicted team won, 0 if they lost.
+    Ranks games by the magnitude of the model's error - ``|predicted_prob -
+    outcome|`` - where outcome is 1 if the predicted team won, 0 if they lost.
     A game predicted at 85 % where the favorite lost has an error of 0.85.
 
     The ``predicted_team`` and ``actual_result`` columns make the output

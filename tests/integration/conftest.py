@@ -26,7 +26,7 @@ def mini_repo_with_elo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def mini_repo_full(tmp_path: Path) -> Path:
-    """Repo with all datasets populated — for pipeline-wide tests."""
+    """Repo with all datasets populated - for pipeline-wide tests."""
     return (
         MiniRepoBuilder(tmp_path)
         .with_games()

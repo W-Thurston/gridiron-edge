@@ -95,7 +95,7 @@ class BaseModelMetadata:
     and :class:`gridiron_edge.models.prop_prediction.base.PropModelMetadata`
     inherit from this class. Subclasses add task-specific identity fields
     (e.g. ``target_col`` for props) but no longer carry their own
-    holdout-metric fields — those live in :attr:`metrics`.
+    holdout-metric fields - those live in :attr:`metrics`.
 
     Construction is keyword-only (``kw_only=True``) so subclasses can add
     required fields without dataclass field-ordering errors.
@@ -193,7 +193,7 @@ def _migrate_legacy_metrics(data: dict[str, Any]) -> dict[str, Any]:
     schema.
 
     NaN metrics from the legacy schema are dropped. The new schema does
-    not store NaNs — absence means "not recorded".
+    not store NaNs - absence means "not recorded".
     """
     import math
 

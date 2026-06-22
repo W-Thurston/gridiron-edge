@@ -1,16 +1,16 @@
 # src/gridiron_edge/models/game_prediction/win_prob.py
 
-"""WinProbTrainer — game-winner classification spec subclass.
+"""WinProbTrainer - game-winner classification spec subclass.
 
 Spec-only subclass of :class:`GamesTrainer`. All training, evaluation,
 and persistence logic lives in :class:`GamesTrainer`. This module declares
 which feature sets and target column define the ``win_prob`` family.
 
 Logistic uses the combined feature set; tree-based models use the expanded
-feature set — matches the existing trainer behavior.
+feature set - matches the existing trainer behavior.
 
-The trainer contributes only the spec; all training behavior — feature
-selection, HP search, fit, eval — lives in the :class:`GamesTrainer`
+The trainer contributes only the spec; all training behavior - feature
+selection, HP search, fit, eval - lives in the :class:`GamesTrainer`
 base class.
 """
 
@@ -39,5 +39,5 @@ class WinProbTrainer(GamesTrainer):
                 GameModelType.RANDOM_FOREST: FEATURE_SETS["expanded"],
                 GameModelType.XGBOOST: FEATURE_SETS["expanded"],
             },
-            description="Game winner probability — multi-algorithm classifier.",
+            description="Game winner probability - multi-algorithm classifier.",
         )

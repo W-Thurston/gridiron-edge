@@ -38,7 +38,7 @@ import pytest
 
 pytestmark = pytest.mark.skip(
     reason=(
-        "Prop e2e fit-load-predict tests deferred — needs fixture work "
+        "Prop e2e fit-load-predict tests deferred - needs fixture work "
         "across the full build_prop_features pipeline. See module docstring."
     )
 )

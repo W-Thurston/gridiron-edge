@@ -1,5 +1,5 @@
 # tests/unit/market/test_clv.py
-"""Unit tests for clv.py — closing line value analysis."""
+"""Unit tests for clv.py - closing line value analysis."""
 
 from __future__ import annotations
 

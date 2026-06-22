@@ -1,5 +1,5 @@
 # tests/unit/market/test_recommendations.py
-"""Unit tests for recommendations.py — odds pivot, join, edge report, ranking."""
+"""Unit tests for recommendations.py - odds pivot, join, edge report, ranking."""
 
 from __future__ import annotations
 

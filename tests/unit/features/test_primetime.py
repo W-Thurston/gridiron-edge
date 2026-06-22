@@ -1,5 +1,5 @@
 # tests/unit/features/test_primetime.py
-"""Tests for gridiron_edge.features.team.primetime — PrimetimeFeature."""
+"""Tests for gridiron_edge.features.team.primetime - PrimetimeFeature."""
 
 from __future__ import annotations
 

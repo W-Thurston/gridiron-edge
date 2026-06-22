@@ -235,7 +235,7 @@ def render_playoff_table(
     """Render the plottable playoff probability table to an image file.
 
     Args:
-        df: DataFrame from build_viz_table_df() — indexed by logo path,
+        df: DataFrame from build_viz_table_df() - indexed by logo path,
             sorted by Elo descending.
         output_path: Where to write the PNG.
     """

@@ -180,7 +180,7 @@ def fetch_weather(*, season_year: str, owm_api_key: str, repo: Path | None = Non
     week_mask = (df["YEAR"] == season_year) & (df["WEEK_NUM"] == latest_week)
     temp_df = temp_df.iloc[df.loc[week_mask, :].index, :]
 
-    # Idempotency check — skip if all games for this week are already enriched
+    # Idempotency check - skip if all games for this week are already enriched
     weather_path = dataset_path(resolved_repo, "weather_enriched")
     if weather_path.exists():
         existing: DataFrame = pd.read_csv(weather_path, usecols=["GAME_ID"])
@@ -188,7 +188,7 @@ def fetch_weather(*, season_year: str, owm_api_key: str, repo: Path | None = Non
         target_game_ids: set[str] = set(temp_df["GAME_ID"].astype(str))
         if target_game_ids.issubset(already_fetched):
             logger.info(
-                "Weather already exists for all %d games in %s week %d — skipping API calls.",
+                "Weather already exists for all %d games in %s week %d - skipping API calls.",
                 len(temp_df),
                 season_year,
                 latest_week,
@@ -197,7 +197,7 @@ def fetch_weather(*, season_year: str, owm_api_key: str, repo: Path | None = Non
         # Only fetch games not yet in the enriched file
         temp_df = temp_df.loc[~temp_df["GAME_ID"].astype(str).isin(already_fetched)].copy()
         logger.info(
-            "%d of %d games in %s week %d already have weather — fetching %d new.",
+            "%d of %d games in %s week %d already have weather - fetching %d new.",
             len(target_game_ids) - len(temp_df),
             len(target_game_ids),
             season_year,
