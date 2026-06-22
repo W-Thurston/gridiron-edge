@@ -1,9 +1,13 @@
+# tests/unit/cli/test_verify.py
+
 """Tests for the verify composite command."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from gridiron_edge.cli._composites import StageResult
 from gridiron_edge.cli.verify import (
@@ -165,7 +169,146 @@ class TestBaselineComparisonStage:
         ctx = {"repo_root": tmp_path}
         result = _stage_baseline_comparison(ctx)
         assert result.success
-        assert "full-retrain-2026-06-21.md" in result.detail
+        assert result.success
+        assert report_path in result.artifacts
+
+    def test_detects_metric_drift(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """baseline-comparison should surface metric drift."""
+
+        from dataclasses import dataclass
+
+        from gridiron_edge.cli.verify import _stage_baseline_comparison
+
+        reports_dir: Path = tmp_path / "data" / "output" / "reports"
+        reports_dir.mkdir(parents=True)
+
+        report_path: Path = reports_dir / "full-retrain-2026-06-21-120000.md"
+        report_path.write_text(
+            "\n".join(
+                [
+                    "# Full Retrain Baseline Report",
+                    "",
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | — | — | — |",
+                ]
+            )
+        )
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo_root: Path) -> None:
+                self.repo_root = repo_root
+
+            def is_trained(
+                self,
+                model_name: str,
+                model_type: str,
+            ) -> bool:
+                return True
+
+            def read_metadata(
+                self,
+                model_name: str,
+                model_type: str,
+            ) -> FakeMeta:
+                return FakeMeta(
+                    metrics={
+                        "brier": 0.2300,  # drifted
+                        "ece": 0.0100,
+                        "auc": 0.7000,
+                    }
+                )
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.verify.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        ctx: dict[str, Path] = {"repo_root": tmp_path}
+
+        result: StageResult = _stage_baseline_comparison(ctx)
+
+        assert result.success
+        assert "differ from baseline" in result.detail
+        assert result.warnings
+        assert "win_prob_logistic:brier" in result.warnings[0]
+        assert report_path in result.artifacts
+
+    def test_detects_matching_baseline(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """baseline-comparison should report matches when metrics agree."""
+
+        from dataclasses import dataclass
+
+        from gridiron_edge.cli.verify import _stage_baseline_comparison
+
+        reports_dir: Path = tmp_path / "data" / "output" / "reports"
+        reports_dir.mkdir(parents=True)
+
+        report_path: Path = reports_dir / "full-retrain-2026-06-21-120000.md"
+        report_path.write_text(
+            "\n".join(
+                [
+                    "# Full Retrain Baseline Report",
+                    "",
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_logistic | 0.2200 | 0.0100 | 0.7000 | — | — | — |",
+                ]
+            )
+        )
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo_root: Path) -> None:
+                self.repo_root = repo_root
+
+            def is_trained(
+                self,
+                model_name: str,
+                model_type: str,
+            ) -> bool:
+                return True
+
+            def read_metadata(
+                self,
+                model_name: str,
+                model_type: str,
+            ) -> FakeMeta:
+                return FakeMeta(
+                    metrics={
+                        "brier": 0.2200,
+                        "ece": 0.0100,
+                        "auc": 0.7000,
+                    }
+                )
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.verify.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        ctx: dict[str, Path] = {"repo_root": tmp_path}
+
+        result: StageResult = _stage_baseline_comparison(ctx)
+
+        assert result.success
+        assert "match baseline" in result.detail
+        assert result.artifacts
         assert report_path in result.artifacts
 
 

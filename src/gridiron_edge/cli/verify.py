@@ -1,3 +1,5 @@
+# src/gridiron_edge/cli/verify.py
+
 """Composite command: verify.
 
 Verification workflow: quality gates, tests, smoke-test pipeline.
@@ -34,6 +36,7 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.models.artifact import ArtifactStore, BaseModelMetadata
 
 # ---------------------------------------------------------------------------
 # Subprocess runner
@@ -224,8 +227,13 @@ def _stage_baseline_comparison(ctx: dict[str, Any]) -> StageResult:
 
     Soft-fails when no prior report exists (first run).
     """
+    from gridiron_edge.cli.full_retrain import (
+        _find_previous_baseline_report,
+        _parse_baseline_report,
+    )
+
     repo_root: Path = ctx["repo_root"]
-    report_dir = repo_root / "data" / "output" / "reports"
+    report_dir: Path = repo_root / "data" / "output" / "reports"
 
     if not report_dir.exists():
         return StageResult(
@@ -233,18 +241,62 @@ def _stage_baseline_comparison(ctx: dict[str, Any]) -> StageResult:
             detail="no full-retrain report directory found",
         )
 
-    reports = sorted(report_dir.glob("full-retrain-*.md"))
-    if not reports:
+    latest: Path | None = _find_previous_baseline_report(report_dir)
+
+    if latest is None:
         return StageResult(
             success=False,
             detail="no full-retrain reports to compare against",
         )
 
-    latest = reports[-1]
+    report_metrics: dict[str, dict[str, float | None]] = _parse_baseline_report(latest)
+
+    store = ArtifactStore(repo_root)
+
+    drifted: list[str] = []
+    checked = 0
+
+    for pair_key, baseline_metrics in report_metrics.items():
+        parts: list[str] = pair_key.split("_")
+
+        if len(parts) < 2:
+            continue
+
+        model_name: str = "_".join(parts[:-1])
+        model_type: str = parts[-1]
+
+        if not store.is_trained(model_name, model_type):
+            continue
+
+        meta: BaseModelMetadata = store.read_metadata(model_name, model_type)
+
+        checked += 1
+
+        for metric_name, baseline_value in baseline_metrics.items():
+            if baseline_value is None:
+                continue
+
+            current_value: float | None = meta.metrics.get(metric_name)
+            if current_value is None:
+                continue
+
+            tolerance = 1e-6
+
+            if abs(current_value - baseline_value) > tolerance:
+                drifted.append(f"{pair_key}:{metric_name}")
+                break
+
+    if drifted:
+        return StageResult(
+            success=True,
+            detail=f"{len(drifted)} model(s) differ from baseline",
+            warnings=drifted[:5],
+            artifacts=[latest],
+        )
 
     return StageResult(
         success=True,
-        detail=f"baseline comparison anchor: {latest.name}",
+        detail=f"{checked} model(s) match baseline",
         artifacts=[latest],
     )
 
