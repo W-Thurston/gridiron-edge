@@ -1,3 +1,5 @@
+# src/gridiron_edge/cli/full_retrain.py
+
 """Composite command: full-retrain.
 
 Heavy "fresh start" workflow for the start of a new season or after
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -42,6 +45,7 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.models.artifact import ArtifactStore
 
 # ---------------------------------------------------------------------------
 # Model pair catalog
@@ -348,11 +352,213 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+_METRIC_SPECS: list[tuple[str, str, int]] = [
+    ("brier", "Brier", 4),
+    ("ece", "ECE", 4),
+    ("auc", "AUC", 4),
+    ("mae", "MAE", 2),
+    ("rmse", "RMSE", 2),
+    ("r2", "R²", 3),
+]
+
+
+def _find_previous_baseline_report(out_dir: Path) -> Path | None:
+    """Return the most recent full-retrain report, if one exists."""
+    reports = sorted(out_dir.glob("full-retrain-*.md"))
+    return reports[-1] if reports else None
+
+
+def _parse_metric_cell(value: str) -> float | None:
+    """Parse a metric table cell from a baseline report.
+
+    Returns None for em dash, missing values, no-artifact markers, or
+    otherwise non-numeric cells.
+    """
+    cleaned = value.strip()
+    if cleaned in {"", "—", "-", "— no artifact —"}:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _parse_baseline_report(path: Path) -> dict[str, dict[str, float | None]]:
+    """Parse game-model metric rows from a full-retrain markdown report.
+
+    Expected table shape:
+
+        | Pair | Brier | ECE | AUC | MAE | RMSE | R² |
+        |---|---|---|---|---|---|---|
+        | win_prob_logistic | 0.2215 | 0.0153 | ... |
+
+    Rows with missing artifacts are kept with all metric values as None.
+    """
+    rows: dict[str, dict[str, float | None]] = {}
+
+    for line in path.read_text().splitlines():
+        if not line.startswith("| "):
+            continue
+        if line.startswith("| Pair ") or line.startswith("|---"):
+            continue
+
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not cells:
+            continue
+
+        pair = cells[0]
+        if pair in {"Pair", ""}:
+            continue
+
+        metrics: dict[str, float | None] = {key: None for key, _, _ in _METRIC_SPECS}
+
+        # Normal metric row has 7 cells. A no-artifact row may have
+        # fewer cells; keep it with None metrics.
+        metric_cells = cells[1:]
+        for (key, _, _), cell in zip(_METRIC_SPECS, metric_cells, strict=False):
+            metrics[key] = _parse_metric_cell(cell)
+
+        rows[pair] = metrics
+
+    return rows
+
+
+def _format_metric_value(value: float | None, decimals: int) -> str:
+    """Format a metric value or em dash when missing."""
+    if value is None:
+        return "—"
+    return f"{value:.{decimals}f}"
+
+
+def _build_current_metrics(
+    *,
+    pairs: list[ModelPair],
+    store: ArtifactStore,
+) -> dict[str, dict[str, float | None]]:
+    """Build current metric snapshot keyed by composite model key."""
+    current_metrics: dict[str, dict[str, float | None]] = {}
+
+    for pair in pairs:
+        metrics_for_pair: dict[str, float | None] = {key: None for key, _, _ in _METRIC_SPECS}
+
+        if store.is_trained(pair.model_name, pair.model_type):
+            meta = store.read_metadata(pair.model_name, pair.model_type)
+            for key, _, _ in _METRIC_SPECS:
+                metrics_for_pair[key] = meta.metrics.get(key)
+
+        current_metrics[pair.composite_key] = metrics_for_pair
+
+    return current_metrics
+
+
+def _build_delta_row(
+    *,
+    pair_key: str,
+    current: dict[str, float | None],
+    previous: dict[str, float | None],
+) -> str:
+    """Build one markdown delta row."""
+    values: list[str] = [pair_key]
+
+    for key, _, decimals in _METRIC_SPECS:
+        values.append(
+            _format_metric_delta(
+                current=current.get(key),
+                previous=previous.get(key),
+                decimals=decimals,
+            )
+        )
+
+    return "| " + " | ".join(values) + " |"
+
+
+def _append_current_metrics_table(
+    *,
+    lines: list[str],
+    pairs: list[ModelPair],
+    current_metrics: dict[str, dict[str, float | None]],
+) -> None:
+    """Append current metrics table to report lines."""
+    lines.append("## Game Models")
+    lines.append("")
+    lines.append("| Pair | Brier | ECE | AUC | MAE | RMSE | R² |")
+    lines.append("|---|---|---|---|---|---|---|")
+
+    for pair in pairs:
+        metrics = current_metrics[pair.composite_key]
+
+        if all(value is None for value in metrics.values()):
+            lines.append(f"| {pair.composite_key} | — no artifact — |")
+            continue
+
+        lines.append(
+            f"| {pair.composite_key} | "
+            f"{_format_metric_value(metrics['brier'], 4)} | "
+            f"{_format_metric_value(metrics['ece'], 4)} | "
+            f"{_format_metric_value(metrics['auc'], 4)} | "
+            f"{_format_metric_value(metrics['mae'], 2)} | "
+            f"{_format_metric_value(metrics['rmse'], 2)} | "
+            f"{_format_metric_value(metrics['r2'], 3)} |"
+        )
+
+
+def _append_delta_table(
+    *,
+    lines: list[str],
+    pairs: list[ModelPair],
+    current_metrics: dict[str, dict[str, float | None]],
+    previous_metrics: dict[str, dict[str, float | None]],
+    previous_report: Path | None,
+) -> None:
+    """Append delta-vs-previous table to report lines."""
+    lines.append("")
+    lines.append("## Delta vs Previous Report")
+    lines.append("")
+
+    if previous_report is None:
+        lines.append("No previous report found; delta table omitted.")
+        return
+
+    lines.append(
+        "Deltas are current minus previous. Negative is better for "
+        "Brier, ECE, MAE, and RMSE. Positive is better for AUC and R²."
+    )
+    lines.append("")
+    lines.append("| Pair | Δ Brier | Δ ECE | Δ AUC | Δ MAE | Δ RMSE | Δ R² |")
+    lines.append("|---|---|---|---|---|---|---|")
+
+    for pair in pairs:
+        key = pair.composite_key
+
+        lines.append(
+            _build_delta_row(
+                pair_key=key,
+                current=current_metrics.get(key, {}),
+                previous=previous_metrics.get(key, {}),
+            )
+        )
+
+
+def _format_metric_delta(
+    *,
+    current: float | None,
+    previous: float | None,
+    decimals: int,
+) -> str:
+    """Format signed metric delta as current - previous."""
+    if current is None or previous is None:
+        return "—"
+    delta = current - previous
+    return f"{delta:+.{decimals}f}"
+
+
 def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     """Write a markdown report comparing new baselines to prior values.
 
-    Reads each trained artifact's metadata `metrics` dict and compares
-    against a snapshot (if available) from the previous full-retrain.
+    Reads each trained artifact's metadata ``metrics`` dict, writes the
+    current metric table, and — when a previous full-retrain report
+    exists — writes a delta table comparing current metrics against the
+    previous report.
     """
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
@@ -366,56 +572,63 @@ def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
 
     out_dir = repo / "data" / "output" / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"full-retrain-{datetime.now().strftime('%Y-%m-%d')}.md"
+
+    previous_report = _find_previous_baseline_report(out_dir)
+    previous_metrics: dict[str, dict[str, float | None]] = {}
+    if previous_report is not None:
+        previous_metrics = _parse_baseline_report(previous_report)
+
+    timestamp = datetime.now()
+    out_path = out_dir / f"full-retrain-{timestamp.strftime('%Y-%m-%d-%H%M%S')}.md"
+
+    current_metrics: dict[str, dict[str, float | None]] = _build_current_metrics(
+        pairs=pairs,
+        store=store,
+    )
 
     lines: list[str] = []
     lines.append("# Full Retrain Baseline Report")
     lines.append("")
-    lines.append(f"Generated: {datetime.now().isoformat()}")
+    lines.append(f"Generated: {timestamp.isoformat()}")
     lines.append("")
-    lines.append("## Game Models")
+    if previous_report is None:
+        lines.append("Previous report: none found")
+    else:
+        lines.append(f"Previous report: `{previous_report.name}`")
     lines.append("")
-    lines.append("| Pair | Brier | ECE | AUC | MAE | RMSE | R² |")
-    lines.append("|---|---|---|---|---|---|---|")
 
-    def _fmt(metrics_dict: dict[str, float], key: str, decimals: int = 4) -> str:
-        """Format a metric value or return em-dash if missing."""
-        val = metrics_dict.get(key)
-        if val is None:
-            return "—"
-        return f"{val:.{decimals}f}"
+    _append_current_metrics_table(
+        lines=lines,
+        pairs=pairs,
+        current_metrics=current_metrics,
+    )
 
-    for pair in pairs:
-        if not store.is_trained(pair.model_name, pair.model_type):
-            lines.append(f"| {pair.composite_key} | — no artifact — |")
-            continue
-
-        meta = store.read_metadata(pair.model_name, pair.model_type)
-        metrics = meta.metrics
-
-        lines.append(
-            f"| {pair.composite_key} | "
-            f"{_fmt(metrics, 'brier')} | "
-            f"{_fmt(metrics, 'ece')} | "
-            f"{_fmt(metrics, 'auc')} | "
-            f"{_fmt(metrics, 'mae', 2)} | "
-            f"{_fmt(metrics, 'rmse', 2)} | "
-            f"{_fmt(metrics, 'r2', 3)} |"
-        )
+    _append_delta_table(
+        lines=lines,
+        pairs=pairs,
+        current_metrics=current_metrics,
+        previous_metrics=previous_metrics,
+        previous_report=previous_report,
+    )
 
     lines.append("")
     lines.append("## Notes")
     lines.append("")
     lines.append(
-        "Baselines reflect post-walk-forward archive. Sigma and "
-        "margin_std values refreshed in-memory; persistence pending."
+        "Baselines reflect the current trained artifact metadata. "
+        "Sigma and margin_std values are refreshed in-memory by the "
+        "refresh-calibrations stage; persistence remains a future refactor."
     )
 
     out_path.write_text("\n".join(lines))
 
+    detail = f"baseline report written ({len(pairs)} pairs)"
+    if previous_report is not None:
+        detail += f" vs {previous_report.name}"
+
     return StageResult(
         success=True,
-        detail=f"baseline report written ({len(pairs)} pairs)",
+        detail=detail,
         artifacts=[out_path],
     )
 

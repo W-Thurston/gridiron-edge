@@ -1,7 +1,10 @@
+# test/unit/cli/test_full_retrain.py
+
 """Tests for the full-retrain composite command."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -146,6 +149,70 @@ class TestBaselineReportStage:
         assert result.success
         assert "no pairs to report" in result.detail
 
+    def test_writes_delta_section_when_previous_report_exists(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dataclasses import dataclass
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_baseline_report,
+        )
+
+        reports_dir: Path = tmp_path / "data" / "output" / "reports"
+        reports_dir.mkdir(parents=True)
+
+        previous: Path = reports_dir / "full-retrain-2026-06-21-120000.md"
+        previous.write_text(
+            "\n".join(
+                [
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_logistic | 0.2215 | 0.0150 | 0.6800 | — | — | — |",
+                ]
+            )
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo: Path) -> None:
+                self.repo = repo
+
+            def is_trained(self, model_name: str, model_type: str) -> bool:
+                return True
+
+            def read_metadata(self, model_name: str, model_type: str) -> FakeMeta:
+                return FakeMeta(metrics={"brier": 0.2200, "ece": 0.0140, "auc": 0.6900})
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.artifact.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        result: StageResult = _stage_baseline_report(
+            {"game_pairs": [ModelPair("win_prob", "logistic")]}
+        )
+
+        assert result.success
+        assert result.artifacts
+        report_text: str = result.artifacts[0].read_text()
+
+        assert "## Delta vs Previous Report" in report_text
+        assert "| win_prob_logistic | -0.0015 | -0.0010 | +0.0100 |" in report_text
+
 
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
@@ -214,3 +281,74 @@ class TestCommandInvocation:
             assert result.exit_code == 0, result.output
             # Backfill-prop-models should not have been called.
             mock_props.assert_not_called()
+
+
+class TestBaselineReportDiffHelpers:
+    """Tests for full-retrain baseline report parsing and delta formatting."""
+
+    def test_parse_baseline_report_reads_metric_rows(self, tmp_path: Path) -> None:
+        from gridiron_edge.cli.full_retrain import _parse_baseline_report
+
+        report = tmp_path / "full-retrain-2026-06-21-120000.md"
+        report.write_text(
+            "\n".join(
+                [
+                    "# Full Retrain Baseline Report",
+                    "",
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_logistic | 0.2215 | 0.0153 | 0.6822 | — | — | — |",
+                    "| total_random_forest | — | — | — | 10.24 | 13.12 | 0.056 |",
+                ]
+            )
+        )
+
+        parsed = _parse_baseline_report(report)
+
+        assert parsed["win_prob_logistic"]["brier"] == 0.2215
+        assert parsed["win_prob_logistic"]["ece"] == 0.0153
+        assert parsed["win_prob_logistic"]["mae"] is None
+        assert parsed["total_random_forest"]["mae"] == 10.24
+        assert parsed["total_random_forest"]["r2"] == 0.056
+
+    def test_parse_baseline_report_keeps_no_artifact_rows(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.cli.full_retrain import _parse_baseline_report
+
+        report = tmp_path / "full-retrain-2026-06-21-120000.md"
+        report.write_text(
+            "\n".join(
+                [
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_elo | — no artifact — |",
+                ]
+            )
+        )
+
+        parsed = _parse_baseline_report(report)
+
+        assert "win_prob_elo" in parsed
+        assert all(value is None for value in parsed["win_prob_elo"].values())
+
+    def test_format_metric_delta_requires_both_values(self) -> None:
+        from gridiron_edge.cli.full_retrain import _format_metric_delta
+
+        assert _format_metric_delta(current=0.2200, previous=0.2210, decimals=4) == "-0.0010"
+        assert _format_metric_delta(current=None, previous=0.2210, decimals=4) == "—"
+        assert _format_metric_delta(current=0.2200, previous=None, decimals=4) == "—"
+
+    def test_find_previous_baseline_report_returns_latest(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.cli.full_retrain import _find_previous_baseline_report
+
+        older: Path = tmp_path / "full-retrain-2026-06-21-120000.md"
+        newer: Path = tmp_path / "full-retrain-2026-06-21-130000.md"
+        older.write_text("older")
+        newer.write_text("newer")
+
+        assert _find_previous_baseline_report(tmp_path) == newer
