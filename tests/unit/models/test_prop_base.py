@@ -16,11 +16,9 @@ import pytest
 from gridiron_edge.models.prop_prediction.base import (
     _CV_FOLDS,
     _MIN_ATTEMPTS,
-    UNIVERSAL_FEATURE_COLS,
     PropModelMetadata,
     PropModelSpec,
     PropModelType,
-    PropPrediction,
     PropTrainer,
     evaluate_props,
 )
@@ -131,32 +129,6 @@ class TestPropModelMetadata:
         assert meta.task == "regression"
 
 
-class TestPropPrediction:
-    def test_fields(self) -> None:
-        pred = PropPrediction(
-            player_id="00-001",
-            player_name="P.Mahomes",
-            game_id="2024_01_BAL_KC",
-            season=2024,
-            week=1,
-            predicted=275.0,
-            actual=291.0,
-        )
-        assert pred.predicted == 275.0
-        assert pred.actual == 291.0
-
-    def test_actual_defaults_none(self) -> None:
-        pred = PropPrediction(
-            player_id="00-001",
-            player_name="P.Mahomes",
-            game_id="2024_01_BAL_KC",
-            season=2024,
-            week=1,
-            predicted=275.0,
-        )
-        assert pred.actual is None
-
-
 class TestEvaluateProps:
     def test_perfect_prediction(self) -> None:
         y: ndarray = np.array([100.0, 200.0, 300.0])
@@ -210,33 +182,6 @@ class TestMinAttempts:
         col, min_val = _MIN_ATTEMPTS["receiving_yards"]
         assert col == "targets"
         assert min_val == 2
-
-
-class TestUniversalFeatures:
-    def test_count(self) -> None:
-        # UNIVERSAL_FEATURE_COLS is the legacy list (rolling + matchup only).
-        # PROP_FEATURE_COLS (from _columns.py) is the full set including
-        # usage and game context. Both are valid; this tests the legacy list.
-        assert len(UNIVERSAL_FEATURE_COLS) >= 100
-
-    def test_has_rolling(self) -> None:
-        rolling: list[str] = [c for c in UNIVERSAL_FEATURE_COLS if "_L3_" in c or "_L6_" in c]
-        assert len(rolling) == 92
-
-    def test_has_matchup(self) -> None:
-        matchup: list[str] = [
-            c for c in UNIVERSAL_FEATURE_COLS if c.startswith("opp_") and "allowed" in c
-        ]
-        assert len(matchup) == 28
-
-    def test_has_context(self) -> None:
-        assert "implied_team_total" in UNIVERSAL_FEATURE_COLS
-        assert "spread_line" in UNIVERSAL_FEATURE_COLS
-        assert "is_home" in UNIVERSAL_FEATURE_COLS
-        assert "roof_dome" in UNIVERSAL_FEATURE_COLS
-        assert "TEMP_F" in UNIVERSAL_FEATURE_COLS
-        assert "WIND_SPEED_MPH" in UNIVERSAL_FEATURE_COLS
-        assert "rest_days" in UNIVERSAL_FEATURE_COLS
 
 
 class _StubTrainer(PropTrainer):

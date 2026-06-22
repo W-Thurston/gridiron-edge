@@ -93,29 +93,6 @@ class PropModelMetadata(BaseModelMetadata):
     target_col: str
 
 
-@dataclass
-class PropPrediction:
-    """A single prop prediction for a player-game.
-
-    Attributes:
-        player_id: nflverse player ID.
-        player_name: Display name.
-        game_id: nflverse game ID.
-        season: Season year.
-        week: Week number.
-        predicted: Model's point estimate.
-        actual: Actual value (None for upcoming games).
-    """
-
-    player_id: str
-    player_name: str
-    game_id: str
-    season: int
-    week: int
-    predicted: float
-    actual: float | None = None
-
-
 # ---------------------------------------------------------------------------
 # Evaluation helpers
 # ---------------------------------------------------------------------------
@@ -160,54 +137,6 @@ _MIN_ATTEMPTS: Final[dict[str, tuple[str, int]]] = {
 # Number of TimeSeriesSplit folds for inner CV during HP search.
 # Matches the GamesTrainer convention (also _CV_FOLDS = 5).
 _CV_FOLDS: Final[int] = 5
-
-# ---------------------------------------------------------------------------
-# Universal feature columns — shared by all prop models.
-# Built programmatically so they stay in sync with rolling + matchup modules.
-# ElasticNet handles feature selection; no manual per-model curation needed.
-# ---------------------------------------------------------------------------
-
-
-def _build_universal_features() -> list[str]:
-    """Build the universal feature column list from rolling + matchup + context."""
-    from gridiron_edge.features.player.matchup import _MATCHUP_STATS
-    from gridiron_edge.features.player.rolling import DEFAULT_WINDOWS, ROLLING_STAT_COLS
-
-    cols: list[str] = []
-
-    # Rolling features: {stat}_L{WIND_SPEED_MPHow}_{agg}
-    for stat in ROLLING_STAT_COLS:
-        for w in DEFAULT_WINDOWS:
-            cols.append(f"{stat}_L{w}_mean")
-            cols.append(f"{stat}_L{w}_std")
-
-    # Matchup features: opp_{name}_allowed_L6 + rank
-    for _, _, name in _MATCHUP_STATS:
-        cols.append(f"opp_{name}_allowed_L6")
-        cols.append(f"opp_{name}_allowed_rank_L6")
-
-    # Game context features
-    cols.extend(
-        [
-            "implied_team_total",
-            "spread_line",
-            "OVER_UNDER",
-            "is_home",
-            "roof_dome",
-            "surface_turf",
-            "TEMP_F",
-            "WIND_SPEED_MPH",
-            "rest_days",
-            "opp_rest_days",
-            "rest_diff",
-            "DIV_GAME",
-        ]
-    )
-
-    return cols
-
-
-UNIVERSAL_FEATURE_COLS: Final[list[str]] = _build_universal_features()
 
 # ---------------------------------------------------------------------------
 # Model factory + hyperparameter grids
