@@ -37,7 +37,7 @@ from gridiron_edge.models.game_prediction._columns import (
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
     _RAW_FEATURES,
-    _TEAM_FEATURES_V2,
+    _TEAM_FEATURES,
     FeatureSet,
 )
 
@@ -115,7 +115,7 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with 63 expanded features.
     """
     base: DataFrame = _make_combined_features(df)
-    extended_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES_V2 if c in df.columns]
+    extended_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES if c in df.columns]
     extended: DataFrame = df.loc[:, extended_cols].copy()
     return pd.concat([base, extended], axis=1)
 

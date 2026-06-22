@@ -9,13 +9,13 @@ imports from here without pulling in sklearn or training infrastructure.
 Public API
 ----------
 _SCHEMA_VERSION     int          — modeling file schema version (from manifest)
-_EPA_SUFFIXES       list[str]    — (22) ordered EPA metric suffixes (derived from epa.py)
-_RAW_FEATURES       list[str]    — (47) raw feature column names
-_DIFF_FEATURES      list[str]    — (24) differential feature column names
-_COMBINED_FEATURES  list[str]    — (70) combined feature column names
-_GAME_FEATURES      list[str]    — (9) game-level feature names
-_TEAM_FEATURES_V2   list[str]    — (28) per-team feature names
-_EXPANDED_FEATURES  list[str]    — (107) combined + feature names
+_EPA_SUFFIXES       list[str]    — ordered EPA metric suffixes (derived from epa.py)
+_RAW_FEATURES       list[str]    — raw feature column names
+_DIFF_FEATURES      list[str]    — differential feature column names
+_COMBINED_FEATURES  list[str]    — combined feature column names
+_GAME_FEATURES      list[str]    — game-level feature names
+_TEAM_FEATURES      list[str]    — per-team feature names
+_EXPANDED_FEATURES  list[str]    — combined + feature names
 FeatureSet          dataclass    — named bundle of (feature_fn, feature_names)
 """
 
@@ -45,22 +45,22 @@ _SCHEMA_VERSION: Final[int] = _CURRENT
 # canonical list so additions to EPA_COLS propagate here automatically.
 _EPA_SUFFIXES: Final[list[str]] = [c.upper() for c in _EPA_COLS_RAW]
 
-# Raw feature columns (19 total)
+# Raw feature columns
 _RAW_FEATURES: Final[list[str]] = (
     ["HOME_FIELD", "TEAM_A_ELO", "TEAM_B_ELO"]
     + [f"TEAM_A_{s}" for s in _EPA_SUFFIXES]
     + [f"TEAM_B_{s}" for s in _EPA_SUFFIXES]
 )
 
-# Differential feature names (10 total)
+# Differential feature names
 _DIFF_FEATURES: Final[list[str]] = ["HOME_FIELD", "ELO_DIFF"] + [f"{s}_DIFF" for s in _EPA_SUFFIXES]
 
-# Combined feature names (28 total)
+# Combined feature names
 _COMBINED_FEATURES: Final[list[str]] = _DIFF_FEATURES + [
     c for c in _RAW_FEATURES if c != "HOME_FIELD"
 ]
 
-# new feature columns — added to schema v3
+# new feature columns
 # Game-level features (same value for both team perspectives in a row)
 _GAME_FEATURES: Final[list[str]] = [
     "IS_DIV_GAME",
@@ -81,7 +81,7 @@ _GAME_FEATURES: Final[list[str]] = [
 ]
 
 # Per-team features (asymmetric — TEAM_A and TEAM_B values differ)
-_TEAM_FEATURES_V2: Final[list[str]] = [
+_TEAM_FEATURES: Final[list[str]] = [
     "TEAM_A_DAYS_REST",
     "TEAM_B_DAYS_REST",
     "TEAM_A_SHORT_WEEK",
@@ -112,8 +112,8 @@ _TEAM_FEATURES_V2: Final[list[str]] = [
     "TEAM_B_SOV",
 ]
 
-# Expanded feature set (34 combined + 37 = 71 total)
-_EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES_V2
+# Expanded feature set
+_EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES
 
 
 # ---------------------------------------------------------------------------
