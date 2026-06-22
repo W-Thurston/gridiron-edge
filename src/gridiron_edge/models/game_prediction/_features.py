@@ -109,7 +109,7 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     produce NaN rows which _prepare_data excludes from training automatically.
 
     Args:
-        df: Modeling DataFrame with all schema v3 feature columns.
+        df: Modeling DataFrame with all feature columns required by the current modeling schema.
 
     Returns:
         DataFrame with 63 expanded features.

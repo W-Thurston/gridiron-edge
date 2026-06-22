@@ -26,7 +26,7 @@ Position-filter semantics (matchup/C1):
         - Multi-position players. A player listed as RB who occasionally
           takes WR snaps still counts toward RB rushing allowances only.
 
-    A future workstream could replace the strict position filter with
+    A future enhancement could replace the strict position filter with
     snap-alignment data once that's ingested. Until then, the current
     semantics produce stable, interpretable matchup features.
 
