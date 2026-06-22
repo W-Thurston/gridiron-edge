@@ -45,3 +45,19 @@ EXPANSION_TEAMS: dict[str, str] = {
     "Baltimore Ravens": "1996-1997",
     "Houston Texans": "2002-2003",
 }
+
+# ---------------------------------------------------------------------------
+# Historical team code normalization
+# ---------------------------------------------------------------------------
+
+# Maps relocated/renamed team abbreviations to their current short codes.
+# nflverse and PFR use era-appropriate abbreviations (OAK for pre-2020
+# Raiders, SD for pre-2017 Chargers, STL for pre-2016 Rams, JAC pre-2013
+# Jaguars). This map normalizes them to current short codes for joins
+# against current team-keyed data.
+TEAM_CODE_NORMALIZATION: dict[str, str] = {
+    "OAK": "LV",
+    "SD": "LAC",
+    "STL": "LA",
+    "JAC": "JAX",
+}

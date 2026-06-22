@@ -63,3 +63,31 @@ class TestExpansionTeams:
         pattern: Pattern[str] = re.compile(r"^\d{4}-\d{4}$")
         for team, season in EXPANSION_TEAMS.items():
             assert pattern.match(season), f"{team}: bad season format {season!r}"
+
+
+class TestTeamCodeNormalization:
+    def test_is_dict(self) -> None:
+        from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION
+
+        assert isinstance(TEAM_CODE_NORMALIZATION, dict)
+
+    def test_known_relocations(self) -> None:
+        from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION
+
+        assert TEAM_CODE_NORMALIZATION["OAK"] == "LV"
+        assert TEAM_CODE_NORMALIZATION["SD"] == "LAC"
+        assert TEAM_CODE_NORMALIZATION["STL"] == "LA"
+        assert TEAM_CODE_NORMALIZATION["JAC"] == "JAX"
+
+    def test_keys_and_values_are_short_codes(self) -> None:
+        from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION
+
+        for old, new in TEAM_CODE_NORMALIZATION.items():
+            assert 2 <= len(old) <= 3
+            assert 2 <= len(new) <= 3
+
+    def test_no_self_mappings(self) -> None:
+        from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION
+
+        for old, new in TEAM_CODE_NORMALIZATION.items():
+            assert old != new

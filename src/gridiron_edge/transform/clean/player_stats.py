@@ -25,19 +25,12 @@ import nflreadpy as nfl
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION as _TEAM_CODE_MAP
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.ingest.nflverse.player_stats import load_player_stats
 
 logger: Logger = logging.getLogger(__name__)
 
-# Historical team code normalization: relocated/renamed franchises.
-# Maps old abbreviation → current abbreviation.
-_TEAM_CODE_MAP: Final[dict[str, str]] = {
-    "OAK": "LV",
-    "SD": "LAC",
-    "STL": "LA",
-    "JAC": "JAX",
-}
 
 # Skill positions used for prop models.
 _SKILL_POSITIONS: Final[set[str]] = {"QB", "RB", "WR", "TE", "FB"}

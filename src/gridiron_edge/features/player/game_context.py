@@ -35,22 +35,12 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.core.constants import TEAM_CODE_NORMALIZATION as _TEAM_CODE_MAP
 from gridiron_edge.core.enums import DOME_LIKE_ROOFS
 from gridiron_edge.core.settings import get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Team code normalization (historical → current)
-# Duplicated from transform/clean/player_stats.py to avoid cross-module deps.
-# ---------------------------------------------------------------------------
-
-_TEAM_CODE_MAP: Final[dict[str, str]] = {
-    "OAK": "LV",
-    "SD": "LAC",
-    "STL": "LA",
-    "JAC": "JAX",
-}
 
 # ---------------------------------------------------------------------------
 # Full team name → abbreviation mapping
