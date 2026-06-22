@@ -3,6 +3,76 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-06-22 — Workstream 5: Tier 4 Cleanup Sweep
+
+### Summary
+
+Multi-session opportunistic cleanup that closed 30 items from the Tier 4 backlog and surfaced two real bugs that were promoted to fixes during the sweep. The Tier 4 backlog is retired; remaining items moved to PLAN.md as workstream candidates.
+
+### Highlights
+
+**CLI ergonomics (4 items):**
+- `bet summary` now renders `calibration_health` and `ev_vs_actual_gap` from the existing summary dict
+- `models info win_prob elo` now directs analytic-model users to `evaluate summary` instead of suggesting training
+- `props train-and-save` exposed as a CLI command to produce persisted artifacts for projections
+- CLI season-label inconsistency resolved — `props backfill` now accepts both `2023` and `"2023-2024"` formats
+
+**Composite commands (5 items):**
+- `weekly-predict` renders top-edge preview from ranked edge report
+- `full-retrain` generates timestamped baseline reports with delta-vs-previous tables
+- `verify` baseline-comparison now actually compares metrics against the latest full-retrain
+- `verify` composite-key parser correctly handles multi-token model types (e.g., `random_forest`)
+- `full-retrain` calibration values persist to disk at `data/output/calibration/game_model_calibration.json`
+- `post-week` drift threshold extracted to a named constant
+
+**Dead code removal (5 items):**
+- `_shared.py` re-export shim
+- `_game_location` helper (logic was inlined into the cleaner code path)
+- `_EPA_RELIABLE_FROM` constant
+- `UNIVERSAL_FEATURE_COLS` and the related test fixtures
+- `PropPrediction` dataclass (vestigial pre-DataFrame design)
+- `max_mae_tolerance` field in `RegressionPromotionGates` (defined but never enforced)
+
+**Documentation drift (3 items):**
+- Stale `WS2` / `D1` / `D3` workstream markers removed from production source
+- Schema version comments referencing v2/v3 replaced with version-neutral language
+- Phase markers like `(existing)` / `(new)` audit complete; surviving instances refer to runtime state, not project history
+- HTML escaping added to `viz/predictions.py::render_predictions_html`
+
+**Architecture (4 items):**
+- `_TEAM_CODE_MAP` historical abbreviation mapping consolidated into `core/constants.py::TEAM_CODE_NORMALIZATION`
+- `run-data-pipeline` retained as a data-layer primitive (intentionally not refactored to composite form)
+- `repos.py::with_epa_by_game` routed through the shared `_write()` helper for registry consistency
+- Inline imports in composite CLI files: lightweight imports moved to module top, heavy imports (matplotlib, sklearn-touching, prediction pipeline, prop registry) kept inline for fast `gridiron --help` startup
+
+**Type safety and error handling (2 items):**
+- Exception narrowing in viz/predictions.py (GAMETIME parsing), ingest/odds/draftkings.py (float coercion), cli/betting.py (odds ledger load). Broad catches retained where defensive
+- `# pyrefly: ignore` and `Any` annotation audit complete. Most existing suppressions are legitimate workarounds for known stub limitations; further type work deferred
+
+### Real bugs surfaced and fixed
+
+**XGBoost recalibration Pipeline feature-name warning:** The `CalibratedClassifierCV` Pipeline in the XGBoost post-training calibration branch was fitted on a DataFrame and predicted on `.values` arrays, producing sklearn `UserWarning` at every predict call. Fix: fit and predict on `.values` arrays consistently with the rest of the codebase.
+
+**Modeling file stale-data preservation:** Investigation of a row-count discrepancy between feature sets revealed that the incremental build mode of `build_model_inputs()` was silently preserving stale weather data for ~12,000 historical rows. Weather data was missing for 1999-2010 seasons in the modeling file despite the weather source data being complete and the WeatherFeature implementation being correct. Root cause: incremental builds only recomputed features for new GAME_IDs, leaving older rows with values from whenever they were first computed. Fix: added `data_version` field to the modeling manifest; pipeline detects mismatch and forces a full rebuild with a warning. Convention documented for future bug fixes.
+
+### What this enables
+
+- Tree-based game models can now train on the rebuilt modeling file with 9,920 training rows (up from 5,705, a 74% increase), thanks to historical weather data now being available
+- Future feature implementation bug fixes will trigger automatic full rebuilds via `data_version` bumps, preventing silent stale data
+- The composite CLI workflows produce richer terminal output (top edges in weekly-predict, drift health in post-week, baseline diffs in full-retrain, real metric comparison in verify)
+- Disk-backed calibration values persist across `full-retrain` runs
+
+### What's deferred to future workstreams
+
+- **Testing infrastructure** (5 items): props e2e tests, composite commands e2e tests, weather ingest integration test, registry cold-start scenarios, performance baselines
+- **Real bug** (1 item): Walk-forward backfill produces no valid pipeline for single-season windows with expanded feature sets
+- **Investigation** (1 item): `CalibratedClassifierCV` shuffle=False → TimeSeriesSplit comparison
+- **Operational** (4 items): DraftKings 403, stadium coverage data entry, calibration refresh after next full-retrain, `verify --strict` CI gate
+
+### Files retired
+
+- `TIER_4_BACKLOG.md` — replaced by PLAN.md's "Future Workstream Candidates" section
+
 ## 2026-06-18 - Workstream 2: Game Model Refactor
 
 ### Added

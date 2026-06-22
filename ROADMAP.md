@@ -12,7 +12,6 @@
 | **CHANGELOG.md** | What's been completed. Items move here from PLAN.md when finished. | When work is completed. |
 | **HANDOFF.md** | How things work right now. Architecture, conventions, commands, gotchas. | When the system changes meaningfully. |
 | **DECISIONS.md** | Append-only log of architectural decisions made during workstreams. | When an architectural choice is locked. |
-| **TIER_4_BACKLOG.md** | Ambient hygiene items handled opportunistically as files are touched. | When new items surface or items close. |
 | **README.md** | Public-facing project overview. | When HANDOFF.md changes significantly. |
 
 **Workflow:** ROADMAP tells you *what to work on next*. PLAN tells you *how to do it*. CHANGELOG proves *what's done*. HANDOFF explains *how it all works*.
@@ -29,7 +28,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 |---|---|---|
 | Data ingestion (nflverse) | ✅ Solid | Games, schedule, PBP, rosters |
 | Data ingestion (weather) | ✅ Solid | OpenWeatherMap, idempotent |
-| Data ingestion (odds) | ✅ Partial | DraftKings only; 403 bot detection is an active concern (TIER_4_BACKLOG) |
+| Data ingestion (odds) | ✅ Partial | DraftKings only; 403 bot detection is an active concern (see PLAN.md) |
 | Transform / clean layer | ✅ Solid | nflverse → canonical mappers |
 | Dataset registry + I/O | ✅ Solid | Complete registry (20 keys), typed access, manifest validation |
 | Feature engineering | ✅ Excellent (22 EPA + 107 total) | Elo, EPA, rest, travel, weather, venue, SoS, record, divisional, efficiency, situational |
@@ -62,7 +61,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 
 | Area | Status | Impact |
 |---|---|---|
-| Composite CLI workflows | 🟡 Planned (next) | Single-purpose CLI commands work; no logical-grouping commands like `weekly-predict` |
+| Composite CLI workflows | ✅ Done (W4.1) | Four composite commands ship: weekly-predict, post-week, full-retrain, verify. |
 | Live prediction pipeline | ✅ Exists | `gridiron output predictions` → `edges report` → `bet log` is the working game-day workflow |
 | Model ensemble | ❌ Not started | Using individual models only, no weighted combination |
 | Multi-book odds ingestion | ❌ Not started | Can't compare books, can't shop lines |
@@ -74,7 +73,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 
 ### Known Blockers
 
-None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1. DraftKings API 403 (bot detection) is an active operational concern tracked in TIER_4_BACKLOG.md but does not block any workstream - the historical odds ledger and game_id resolver work independently.
+None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1. DraftKings API 403 (bot detection) is an active operational concern tracked in PLAN.md but does not block any workstream - the historical odds ledger and game_id resolver work independently.
 
 ---
 
@@ -476,6 +475,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 
 | Date | Change |
 |---|---|
+| 2026-06-22 | **Workstream 5 (Tier 4 cleanup) complete.** 30 ambient hygiene items closed across CLI ergonomics, dead code, documentation, calibration persistence, and pipeline correctness. Two real bugs fixed. Remaining items reclassified as workstream candidates. TIER_4_BACKLOG.md retired; tracking moved to PLAN.md. |
 | 2026-06-21 | **Audit remediation (W3.5) complete.** ~100 findings closed across 11 audit units, 4 cross-cutting patterns. Architectural foundation substantially cleaner: identity unification, canonical Elo simulator, task-discriminated metadata, vectorized data flows, archive-driven prop CLI, completed dataset registry. New workstream W4.1 (Composite CLI Workflows) added as the next focus. M1.6 milestone added. |
 | 2026-06-10 | **W4 mostly complete. M3 achieved.** Player data pipeline, 5 prop models (ElasticNet), post-processing enrichment, evaluation metrics, archive, CLI. See CHANGELOG.md for full detail. |
 | 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. W11 removed (already exists). M1.5 achieved. XGBoost is auto-selected champion (Brier 0.218). |

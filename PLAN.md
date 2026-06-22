@@ -10,7 +10,6 @@
 | **HANDOFF.md** | How the system works today (architecture, workflows, operations) |
 | **ROADMAP.md** | Long-term strategic direction, workstream inventory, architecture decisions |
 | **DECISIONS.md** | Architectural decisions made during workstreams |
-| **TIER_4_BACKLOG.md** | Ambient hygiene items handled opportunistically as files are touched |
 
 #### Status key
 
@@ -33,7 +32,7 @@
 | 3.5 | Audit Remediation (Units 1-11) | Done |
 | 4 | Composite CLI Workflows | Done |
 | 5 | Deep Code Review + Test Suite Review | Done |
-| 6 | Scenario / "What If" Engine (W4.5) | Planned |
+| 6 | Scenario / "What If" Engine (W4.5) | Planned (next) |
 | 7 | API & Frontend (W8 + W9) | Planned |
 | 8 | All External Odds (DK props, historical, line shopping) | Planned |
 | 9 | Evaluate remaining work | Planned |
@@ -53,23 +52,65 @@ The first four workstreams (W1 through W3.5) closed substantial architectural an
 | W3: Integration & E2E Tests | 2026-06-20 | Three-tier test pyramid with auto-applied pytest markers. Shared fixtures, `MiniRepoBuilder` for integration repos. 500+ tests total. Game-side fit-load-predict integration tests; prop-side deferred. |
 | W3.5: Audit Remediation (Units 1-11) | 2026-06-21 | Closed ~100 findings from `audit_2026_06_18.md` across 11 units plus 4 cross-cutting patterns. Architectural cleanup: canonical Elo simulator, identity unification, task-discriminated metadata, enforced trainability contracts, vectorized data pipelines, dataset registry completion. See `AUDIT_REMEDIATION.md` and `DECISIONS.md` (D1–D12) for full detail. |
 | W4: Composite CLI Workflows | 2026-06-21 | Four composite commands wrap existing single-purpose commands into complete workflows. `weekly-predict` for game-day prep, `post-week` for archive + drift detection, `full-retrain` for season-start refresh, `verify` for pre-commit quality checks. Shared infrastructure (`cli/_composites.py`) provides stage abstraction, dependency validation, soft-fail semantics, and consolidated summary rendering. |
+| W5: Deep Code Review + Test Suite Review (Tier 4 sweep) | 2026-06-22 | Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergonomics, composite commands, dead code, documentation drift, exception narrowing, type cleanup, HTML escaping, season-label consistency, name mapping consolidation, calibration persistence, pipeline correctness, and incremental-build staleness detection. The review surfaced two real bugs (XGBoost recalibration Pipeline feature-name warning and modeling-file stale-data preservation) and added the pipeline staleness detector to prevent the latter from recurring. Three items reclassified as future workstream candidates rather than ambient hygiene. |
 
 ---
 
-## Current Focus: Workstream 5 - Deep Code Review + Test Suite Review
+---
 
-**Goal:** Two-part review session covering:
+## Future Workstream Candidates (from former Tier 4 backlog)
 
-1. **Code review:** Pattern consistency across game + prop models, CLI output formatting parity, naming conventions, dead code, import hygiene, docstring completeness.
-2. **Test suite review:** Edge case coverage audit, fixture quality, test isolation, missing negative tests, coverage ratchet assessment, props integration test gap from WS3.
+Items identified during the Workstream 5 cleanup that are real work but don't fit "opportunistic ambient cleanup." These need scoping and prioritization before they become active workstreams.
 
-**Status:** Planning. The first pass should consume the items in `TIER_4_BACKLOG.md` that involve files we'd naturally touch during the review.
+### Testing Infrastructure
 
-**Pre-work:**
-- Refresh `TIER_4_BACKLOG.md` since several items there are about file-level concerns we'd be reviewing anyway.
-- Decide on scope: full audit (multiple sessions) vs targeted (one session).
+| Item | Notes |
+|---|---|
+| Props e2e fit-load-predict tests | Deferred from WS3. Needs prop fixture design study before implementation. |
+| Composite commands don't have e2e tests | Unit tests cover stage definitions and orchestration with mocks; e2e tests against real data would surface integration issues earlier. |
+| Weather ingest happy-path integration test | Pre-existing bugs went undetected because there was no end-to-end test of the ingest pipeline. |
+| Registry cold-start scenarios | Test additions for `build_prop_evaluation_df` integration in conditions where the registry is empty at call time. |
+| Performance baselines for tests | May need pytest-benchmark pass if runtime grows or regressions become a concern. |
 
-Detailed plan to follow.
+### Real Bugs Surfaced During Tier 4 Cleanup
+
+| Item | File | Notes |
+|---|---|---|
+| Walk-forward backfill produces no valid pipeline for single-season windows with expanded feature sets | `models/game_prediction/base.py::_run_hp_search` (root cause) and `evaluation/backfill.py::_walk_forward_one_season` (calling site) | Single-season walk-forward fails because filtered training data falls below MIN_CV_TRAIN_ROWS for expanded feature sets. Also surfaced: `_run_hp_search` does not forward `train_through_season` to `_prepare_window`. Fix needs choice between (A) lower threshold for walk-forward, (B) fill expanded-feature NaN with neutral values, or (C) force walk-forward to use combined feature set. |
+
+### Investigations
+
+| Item | Notes |
+|---|---|
+| `CalibratedClassifierCV` uses `StratifiedKFold(shuffle=False)` | Not strictly time-ordered. Investigate `TimeSeriesSplit` switch and measure impact on calibration quality. May require backfill run for comparison. |
+
+### Operational
+
+| Item | Notes |
+|---|---|
+| DraftKings odds endpoint returns 403 | Bot detection has gotten more aggressive. Investigate headers, cookies, paid API alternatives. `weekly-predict` soft-fails gracefully when this happens. |
+| Weather: missing stadium entries for 2026-2027 international games | 12 stadiums need lat/lon/altitude in `NFL_stadium_reference.csv`. Listed in HANDOFF.md. Data entry task. |
+| Model calibration values pre-date current modeling file | `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` hardcoded fallbacks were calibrated against older modeling file. The `full-retrain` composite now persists current values to disk via the calibration registry; the next full-retrain run will supersede the hardcoded fallbacks. |
+| `verify --strict` not exercised in CI | Once a real CI surface exists, `gridiron verify --strict` should be the gate. |
+
+---
+
+---
+
+## Current Focus: Workstream 6 - Scenario / "What If" Engine (W4.5)
+
+**Goal:** Build a scenario engine that lets a user ask "what if Mahomes is out?" or "what if KC is +120 instead of -110?" and see the propagated effects on predictions, edges, and recommended bets.
+
+**Status:** Planning. See ROADMAP.md W4.5 for the original scope. The architectural foundation needed for this (composite identity, archive-driven CLI, prop integration spine) is now in place after Workstreams 3.5 and 4.
+
+**Initial design questions:**
+- Should scenarios be persisted or ephemeral?
+- How granular should player impact be (binary out vs. snap percentage)?
+- Should the CLI surface a single `gridiron scenario` command or a sub-app?
+
+Detailed plan to follow when work begins.
+
+---
 
 ---
 
@@ -119,6 +160,7 @@ Best done after model architecture is stable (achieved post-WS2).
 
 | Date | Change |
 |------|--------|
+| 2026-06-22 | **Workstream 5 (Tier 4 cleanup sweep) closed.** 30 backlog items closed across CLI ergonomics, composite commands, dead code, documentation drift, exception narrowing, type cleanup, HTML escaping, season-label consistency, name mapping consolidation, calibration persistence, pipeline correctness, and incremental-build staleness detection. Two real bugs surfaced and fixed. Remaining open items reclassified as workstream candidates and moved to PLAN.md sections (Testing Infrastructure, Real Bugs, Investigations, Operational). TIER_4_BACKLOG.md retired. Workstream 6 (Scenario Engine) becomes the next planned focus. |
 | 2026-06-21 | **Workstream 4 (Composite CLI Workflows) closed.** Four composite commands (`weekly-predict`, `post-week`, `full-retrain`, `verify`) wrap related single-purpose commands into complete workflows. Shared infrastructure handles stage abstraction, dependency validation, soft-fail semantics, and summary rendering. Workstream 5 (Deep Code Review + Test Suite Review) is the next planned focus. |
 | 2026-06-21 | **Audit remediation complete (Workstream 3.5).** All 11 audit units closed. ~100 findings closed across architectural, correctness, performance, and stylistic dimensions. Composite CLI workflows (Workstream 4) added as the next focused workstream. Document restructured to reflect current focus rather than completed history. |
 | 2026-06-19 | **Workstream 2 closed.** Game model refactor complete. Workstream 3 (Integration & E2E Tests) becomes active. |
