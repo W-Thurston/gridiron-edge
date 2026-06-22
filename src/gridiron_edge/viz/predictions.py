@@ -18,6 +18,7 @@ Improvements over the notebook:
 
 from __future__ import annotations
 
+from html import escape
 import logging
 from logging import Logger
 from pathlib import Path
@@ -735,7 +736,7 @@ def render_predictions_html(
         game_time: str = f"{row['GAME_DAY_OF_WEEK']} {time_12hr}"
         if game_time != prev_time:
             prev_time: str = game_time
-            rows_html.append(f'<tr class="time-sep"><td colspan="5">{game_time}</td></tr>')
+            rows_html.append(f'<tr class="time-sep"><td colspan="5">{escape(game_time)}</td></tr>')
 
         away = str(row["AWAY_TEAM"])
         home = str(row["HOME_TEAM"])
@@ -776,13 +777,21 @@ def render_predictions_html(
             dog_style if home_is_dk_dog else ""
         )
 
+        away_label = escape(away.split(" ")[-1])
+        home_label = escape(home.split(" ")[-1])
+        game_time_label = escape(game_time)
+        away_pct_label = escape(away_pct)
+        home_pct_label = escape(home_pct)
+
         rows_html.append(f"""
         <tr style="{row_style}">
-            <td style="text-align:right; font-weight:bold; {away_style} {away_dog}">{away_pct}</td>
-            <td style="text-align:right; font-weight:bold; {away_style}">{away.split(" ")[-1]}</td>
-            <td style="text-align:center; color:#aaa; font-size:0.85em;">{game_time}</td>
-            <td style="text-align:left; font-weight:bold; {home_style}">{home.split(" ")[-1]}</td>
-            <td style="text-align:left; font-weight:bold; {home_style} {home_dog}">{home_pct}</td>
+            <td style="text-align:right; font-weight:bold; {away_style}
+            {away_dog}">{away_pct_label}</td>
+            <td style="text-align:right; font-weight:bold; {away_style}">{away_label}</td>
+            <td style="text-align:center; color:#aaa; font-size:0.85em;">{game_time_label}</td>
+            <td style="text-align:left; font-weight:bold; {home_style}">{home_label}</td>
+            <td style="text-align:left; font-weight:bold; {home_style}
+            {home_dog}">{home_pct_label}</td>
         </tr>""")
 
     html: str = f"""<!DOCTYPE html>
@@ -790,7 +799,7 @@ def render_predictions_html(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NFL Week {week} Predictions — {year}</title>
+<title>NFL Week {week} Predictions — {escape(year)}</title>
 <style>
   body {{ background: #1a1a1a; color: #eee; font-family: 'Segoe UI', Arial, sans-serif;
           display: flex; justify-content: center; padding: 2rem; }}
@@ -809,7 +818,7 @@ def render_predictions_html(
 </head>
 <body>
 <div>
-  <h1>NFL Week {week} Predictions &mdash; {year}</h1>
+  <h1>NFL Week {week} Predictions &mdash; {escape(year)}</h1>
   <p class="legend">
     Elo win probability &nbsp;|&nbsp;
     <span class="dk-legend">DK Underdog</span>
