@@ -232,10 +232,6 @@ class TestFormatComparison:
 # RegressionPromotionGates
 # ---------------------------------------------------------------------------
 class TestRegressionPromotionGatesDefaults:
-    def test_default_max_mae_tolerance(self) -> None:
-        g = RegressionPromotionGates()
-        assert g.max_mae_tolerance == 0.0
-
     def test_default_min_r2(self) -> None:
         g = RegressionPromotionGates()
         assert g.min_r2 == 0.0

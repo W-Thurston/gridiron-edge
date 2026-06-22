@@ -74,15 +74,11 @@ class RegressionPromotionGates:
     """Gate thresholds for regression model promotion decisions.
 
     Attributes:
-        max_mae_tolerance: Maximum MAE the model may have.
-            Default 0.0 means "any finite MAE passes" — the primary
-            comparison is *relative* (lowest MAE wins), not absolute.
         min_r2: Minimum holdout R² to pass. Must beat mean baseline.
         min_coverage: Lower bound for 90% prediction interval coverage.
         max_coverage: Upper bound for 90% prediction interval coverage.
     """
 
-    max_mae_tolerance: float = 0.0
     min_r2: float = 0.0
     min_coverage: float = 0.85
     max_coverage: float = 0.97
