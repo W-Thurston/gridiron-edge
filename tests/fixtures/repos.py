@@ -119,13 +119,11 @@ class MiniRepoBuilder:
         return self._write("elo_state", df if df is not None else make_elo_state())
 
     def with_epa_by_game(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
-        """Add an EPA-by-game dataset.  Uses factory defaults if *df* is None."""
-        epa = df if df is not None else make_epa_by_game()
-        # EPA is always Parquet
-        path = self._root / "data" / "cleaned" / "epa_by_game.parquet"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        epa.to_parquet(path, index=False)
-        return self
+        """Add an EPA-by-game dataset. Uses factory defaults if *df* is None."""
+        return self._write(
+            "epa_by_game",
+            df if df is not None else make_epa_by_game(),
+        )
 
     def with_weather(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
         """Add a weather-enriched dataset.  Uses factory defaults if *df* is None."""
