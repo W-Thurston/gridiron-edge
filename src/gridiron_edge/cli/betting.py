@@ -99,7 +99,7 @@ def settle_cmd(
             from gridiron_edge.ingest.odds.store import load_odds_ledger
 
             odds_ledger = load_odds_ledger()
-        except Exception:
+        except (FileNotFoundError, OSError):
             odds_ledger = None
 
     try:

@@ -215,7 +215,7 @@ def _build_predictions_df(
             suffix: Literal["AM", "PM"] = "AM" if hour < 12 else "PM"
             hour12: int = hour % 12 or 12
             return f"{row['GAME_DAY_OF_WEEK'][:3]}\n{hour12}:{minute:02d} {suffix}"
-        except Exception:
+        except (ValueError, IndexError, KeyError):
             return f"{row['GAME_DAY_OF_WEEK'][:3]}\n{row['GAMETIME']}"
 
     df["GAME_TIME"] = df.apply(_to_12hr, axis=1)
@@ -731,7 +731,7 @@ def render_predictions_html(
             suffix: Literal["AM", "PM"] = "AM" if hour < 12 else "PM"
             hour12: int = hour % 12 or 12
             time_12hr: str = f"{hour12}:{minute:02d} {suffix}"
-        except Exception:
+        except (ValueError, IndexError, KeyError):
             time_12hr = row["GAMETIME"]
         game_time: str = f"{row['GAME_DAY_OF_WEEK']} {time_12hr}"
         if game_time != prev_time:

@@ -143,7 +143,7 @@ def _norm_point(sel: dict) -> float | str | None:
         if sel.get(k) is not None:
             try:
                 return float(sel[k])
-            except Exception:
+            except (ValueError, TypeError):
                 return sel[k]
     return None
 
