@@ -338,6 +338,18 @@ def _render_summary(stats: dict) -> None:
     clv_str: str = f"{clv:+.4f}" if not math.isnan(clv) else "—"
     typer.echo(f"  CLV:     {clv_str} (n={stats['n_clv_bets']})")
 
+    ev_gap = stats["ev_vs_actual_gap"]
+    ev_gap_str: str = f"{ev_gap:+.4f}" if not math.isnan(ev_gap) else "—"
+    typer.echo(f"  EV gap:  {ev_gap_str} (n={stats['n_model_bets']})")
+
+    health: str = stats["calibration_health"]
+    health_indicator: str = {
+        "healthy": "✓",
+        "degraded": "⚠",
+        "unknown": "—",
+    }.get(health, "—")
+    typer.echo(f"  Health:  {health_indicator} {health}")
+
     streak = stats["current_streak"]
     s_type = stats["current_streak_type"]
     streak_str: str = f"{abs(streak)}{s_type}" if s_type else "—"
