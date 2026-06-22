@@ -45,6 +45,12 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.core.console import console
+from gridiron_edge.core.settings import get_settings
+from gridiron_edge.datasets import loaders
+from gridiron_edge.evaluation.archive import load_prediction_log
+from gridiron_edge.evaluation.backfill import backfill_model
+from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
 from gridiron_edge.models.artifact import ArtifactStore
 
 # ---------------------------------------------------------------------------
@@ -116,8 +122,6 @@ def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
     delegates to backfill_model for each. Each pair runs to completion
     before the next starts.
     """
-    from gridiron_edge.evaluation.backfill import backfill_model
-
     pairs: list[ModelPair] = ctx["game_pairs"]
     if not pairs:
         return StageResult(success=True, detail="no game pairs requested")
@@ -148,9 +152,6 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
     Iterates over (stat_family, algorithm) pairs and calls the prop
     backfill function. This is the longest stage by far.
     """
-    from gridiron_edge.evaluation.prop_archive import (
-        archive_prop_predictions,
-    )
     from gridiron_edge.models.prop_prediction.base import PropModelType
     from gridiron_edge.models.registry import ModelRegistry
 
@@ -250,9 +251,6 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
     current process, and persists values to the disk-backed calibration
     registry consumed by post-processing.
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.datasets import loaders
-    from gridiron_edge.evaluation.archive import load_prediction_log
     from gridiron_edge.models.game_prediction.post_process import (
         _MODEL_MARGIN_STDS,
         calibrate_spread_sigma,
@@ -568,9 +566,6 @@ def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     exists — writes a delta table comparing current metrics against the
     previous report.
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.models.artifact import ArtifactStore
-
     repo = get_settings().repo_root
     store = ArtifactStore(repo)
 
@@ -807,8 +802,6 @@ def full_retrain_cmd(
       gridiron full-retrain --game-models win_prob_random_forest
       gridiron full-retrain --only refresh-calibrations
     """
-    from gridiron_edge.core.console import console
-
     # Resolve --skip-prop-backfill into the standard skip list.
     effective_skip = list(skip)
     if skip_prop_backfill and "backfill-prop-models" not in effective_skip:

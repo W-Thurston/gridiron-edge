@@ -40,7 +40,7 @@ class TestStageList:
 class TestBackfillPredictionsStage:
     """Cover the backfill-predictions stage's expected paths."""
 
-    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    @patch("gridiron_edge.cli.post_week.backfill_model")
     def test_returns_idempotent_message_when_nothing_to_archive(
         self, mock_backfill: MagicMock
     ) -> None:
@@ -60,7 +60,7 @@ class TestBackfillPredictionsStage:
         assert "already archived" in result.detail
         assert result.rows is None
 
-    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    @patch("gridiron_edge.cli.post_week.backfill_model")
     def test_reports_archive_count_on_success(self, mock_backfill: MagicMock) -> None:
         from gridiron_edge.cli.post_week import (
             _stage_backfill_predictions,
@@ -82,7 +82,7 @@ class TestBackfillPredictionsStage:
 class TestEvaluateSummaryStage:
     """Cover the evaluate-summary stage's expected paths."""
 
-    @patch("gridiron_edge.evaluation.metrics.build_evaluation_df")
+    @patch("gridiron_edge.cli.post_week.build_evaluation_df")
     def test_returns_no_data_when_archive_empty(self, mock_build: MagicMock) -> None:
         import pandas as pd
 
@@ -100,8 +100,8 @@ class TestEvaluateSummaryStage:
         assert result.success
         assert "no evaluated games" in result.detail
 
-    @patch("gridiron_edge.evaluation.metrics.summarise")
-    @patch("gridiron_edge.evaluation.metrics.build_evaluation_df")
+    @patch("gridiron_edge.cli.post_week.summarise")
+    @patch("gridiron_edge.cli.post_week.build_evaluation_df")
     def test_warns_on_brier_drift(self, mock_build: MagicMock, mock_summarise: MagicMock) -> None:
         import pandas as pd
 
@@ -130,8 +130,8 @@ class TestEvaluateSummaryStage:
         assert len(result.warnings) == 1
         assert "worse" in result.warnings[0]
 
-    @patch("gridiron_edge.evaluation.metrics.summarise")
-    @patch("gridiron_edge.evaluation.metrics.build_evaluation_df")
+    @patch("gridiron_edge.cli.post_week.summarise")
+    @patch("gridiron_edge.cli.post_week.build_evaluation_df")
     def test_no_warning_when_week_in_line_with_season(
         self, mock_build: MagicMock, mock_summarise: MagicMock
     ) -> None:

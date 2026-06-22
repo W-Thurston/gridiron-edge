@@ -102,7 +102,7 @@ class TestBackfillGameModelsStage:
         assert result.success
         assert "no game pairs requested" in result.detail
 
-    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    @patch("gridiron_edge.cli.full_retrain.backfill_model")
     def test_iterates_over_pairs(self, mock_backfill: MagicMock) -> None:
         from gridiron_edge.cli.full_retrain import (
             _stage_backfill_game_models,
@@ -194,11 +194,11 @@ class TestBaselineReportStage:
                 return FakeMeta(metrics={"brier": 0.2200, "ece": 0.0140, "auc": 0.6900})
 
         monkeypatch.setattr(
-            "gridiron_edge.core.settings.get_settings",
+            "gridiron_edge.cli.full_retrain.get_settings",
             lambda: FakeSettings(repo_root=tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.models.artifact.ArtifactStore",
+            "gridiron_edge.cli.full_retrain.ArtifactStore",
             FakeArtifactStore,
         )
 
@@ -255,11 +255,11 @@ class TestBaselineReportStage:
         )
 
         monkeypatch.setattr(
-            "gridiron_edge.core.settings.get_settings",
+            "gridiron_edge.cli.full_retrain.get_settings",
             lambda: FakeSettings(repo_root=tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
+            "gridiron_edge.cli.full_retrain.load_prediction_log",
             lambda **_: archive,
         )
         monkeypatch.setattr(

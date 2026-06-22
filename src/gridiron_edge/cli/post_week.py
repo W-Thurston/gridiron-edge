@@ -27,6 +27,9 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.core.console import console
+from gridiron_edge.evaluation.backfill import backfill_model
+from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -76,8 +79,6 @@ def _stage_backfill_predictions(ctx: dict[str, Any]) -> StageResult:
     Uses backfill_model with start/end season set to the requested
     season so only the most-recent season is touched.
     """
-    from gridiron_edge.evaluation.backfill import backfill_model
-
     model_name: str = ctx["model_name"]
     model_type: str = ctx["model_type"]
     season: str = ctx["season"]
@@ -111,8 +112,6 @@ def _stage_evaluate_summary(ctx: dict[str, Any]) -> StageResult:
     Brier/accuracy for the season. Surfaces drift signals if the
     current week's Brier deviates from the season mean.
     """
-    from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
-
     model_name: str = ctx["model_name"]
     model_type: str = ctx["model_type"]
     season: str = ctx["season"]
@@ -244,8 +243,6 @@ def post_week_cmd(
       gridiron post-week --week 1 --season 2025-2026 --model-type xgboost
       gridiron post-week --only backfill-predictions --week 1 --season 2025-2026
     """
-    from gridiron_edge.core.console import console
-
     stages = _build_stages()
     active = resolve_active_stages(
         all_stages=_ALL_STAGES,

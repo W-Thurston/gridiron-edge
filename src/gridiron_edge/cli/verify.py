@@ -36,6 +36,8 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.core.console import console
+from gridiron_edge.core.settings import get_settings
 from gridiron_edge.models.artifact import ArtifactStore, BaseModelMetadata
 
 # ---------------------------------------------------------------------------
@@ -468,9 +470,6 @@ def verify_cmd(
       gridiron verify --very-thorough
       gridiron verify --only quality-gates --only unit-tests
     """
-    from gridiron_edge.core.console import console
-    from gridiron_edge.core.settings import get_settings
-
     stages = _build_stages(fast=fast, very_thorough=very_thorough)
     active_names = [s.name for s in stages]
 

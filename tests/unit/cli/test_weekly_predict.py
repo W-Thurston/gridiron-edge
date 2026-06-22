@@ -57,7 +57,7 @@ class TestPredictWeekStage:
     """Cover the predict-week stage's expected paths."""
 
     @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    @patch("gridiron_edge.evaluation.archive.append_to_prediction_log")
+    @patch("gridiron_edge.cli.weekly_predict.append_to_prediction_log")
     def test_returns_failure_on_empty_predictions(
         self,
         mock_append: MagicMock,
@@ -76,7 +76,7 @@ class TestPredictWeekStage:
         mock_append.assert_not_called()
 
     @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    @patch("gridiron_edge.evaluation.archive.append_to_prediction_log")
+    @patch("gridiron_edge.cli.weekly_predict.append_to_prediction_log")
     def test_archives_and_caches_df_on_success(
         self,
         mock_append: MagicMock,
@@ -103,7 +103,7 @@ class TestPredictWeekStage:
 class TestGenerateEdgesStage:
     """Cover the soft-failure paths in generate-edges."""
 
-    @patch("gridiron_edge.evaluation.archive.load_prediction_log")
+    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
     def test_failure_when_no_predictions(self, mock_load: MagicMock) -> None:
         import pandas as pd
 
@@ -120,8 +120,8 @@ class TestGenerateEdgesStage:
         assert not result.success
         assert "no predictions" in result.detail
 
-    @patch("gridiron_edge.evaluation.archive.load_prediction_log")
-    @patch("gridiron_edge.ingest.odds.store.load_current_odds")
+    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
+    @patch("gridiron_edge.cli.weekly_predict.load_current_odds")
     def test_failure_when_no_odds(self, mock_odds: MagicMock, mock_load: MagicMock) -> None:
         import pandas as pd
 
@@ -143,8 +143,8 @@ class TestGenerateEdgesStage:
     @patch("gridiron_edge.market.recommendations.build_edge_report")
     @patch("gridiron_edge.models.game_prediction.post_process.get_total_std")
     @patch("gridiron_edge.models.game_prediction.post_process.get_margin_std")
-    @patch("gridiron_edge.ingest.odds.store.load_current_odds")
-    @patch("gridiron_edge.evaluation.archive.load_prediction_log")
+    @patch("gridiron_edge.cli.weekly_predict.load_current_odds")
+    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
     def test_stashes_top_edge_preview_in_context(
         self,
         mock_predictions: MagicMock,

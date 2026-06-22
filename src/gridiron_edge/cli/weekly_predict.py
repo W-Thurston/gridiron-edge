@@ -31,6 +31,11 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+from gridiron_edge.core.console import console
+from gridiron_edge.core.settings import get_settings
+from gridiron_edge.evaluation.archive import append_to_prediction_log, load_prediction_log
+from gridiron_edge.ingest.odds import fetch_dk_odds
+from gridiron_edge.ingest.odds.store import load_current_odds
 
 # ---------------------------------------------------------------------------
 # Stage functions
@@ -63,8 +68,6 @@ def _stage_ensure_data_fresh(ctx: dict[str, Any]) -> StageResult:
 
 def _stage_fetch_odds(ctx: dict[str, Any]) -> StageResult:
     """Fetch current DraftKings odds. Soft-fails on network errors."""
-    from gridiron_edge.ingest.odds import fetch_dk_odds
-
     fetch_dk_odds()
     return StageResult(success=True, detail="DK odds refreshed")
 
@@ -75,8 +78,6 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     Delegates to the existing output predictions command's underlying
     function. Writes to the prediction archive as a side effect.
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.archive import append_to_prediction_log
     from gridiron_edge.viz.predictions import build_predictions_df
 
     year: str = ctx["season"]
@@ -112,7 +113,6 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
 
 def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     """Render predictions to PNG + HTML."""
-    from gridiron_edge.core.settings import get_settings
     from gridiron_edge.viz.predictions import (
         build_predictions_df,
         render_predictions_html,
@@ -153,9 +153,6 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
 
     Soft-fails when no odds are available (fetch-odds failed earlier).
     """
-    from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.ingest.odds.store import load_current_odds
     from gridiron_edge.market.recommendations import (
         build_edge_report,
         rank_edges,
@@ -337,8 +334,6 @@ def weekly_predict_cmd(
       gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
       gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
     """
-    from gridiron_edge.core.console import console
-
     stages = _build_stages()
     active = resolve_active_stages(
         all_stages=_ALL_STAGES,
