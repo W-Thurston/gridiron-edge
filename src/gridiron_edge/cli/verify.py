@@ -218,6 +218,39 @@ def _stage_smoke_pipeline(ctx: dict[str, Any]) -> StageResult:
     return StageResult(success=True, detail="fetch-games + clean-games OK")
 
 
+def _parse_composite_key(pair_key: str) -> tuple[str, str] | None:
+    """Parse a composite model key into (model_name, model_type).
+
+    Composite keys use:
+
+        {model_name}_{model_type}
+
+    where model_type may itself contain underscores
+    (e.g. random_forest).
+
+    Returns:
+        (model_name, model_type) if recognized, otherwise None.
+    """
+    known_model_types: tuple[str, ...] = (
+        "random_forest",
+        "xgboost",
+        "logistic",
+        "elasticnet",
+        "elo",
+    )
+
+    for model_type in known_model_types:
+        suffix: str = f"_{model_type}"
+
+        if pair_key.endswith(suffix):
+            model_name: str = pair_key.removesuffix(suffix)
+
+            if model_name:
+                return (model_name, model_type)
+
+    return None
+
+
 def _stage_baseline_comparison(ctx: dict[str, Any]) -> StageResult:
     """Compare current artifact metrics against the most recent full-retrain report.
 
@@ -257,13 +290,12 @@ def _stage_baseline_comparison(ctx: dict[str, Any]) -> StageResult:
     checked = 0
 
     for pair_key, baseline_metrics in report_metrics.items():
-        parts: list[str] = pair_key.split("_")
+        parsed: tuple[str, str] | None = _parse_composite_key(pair_key)
 
-        if len(parts) < 2:
+        if parsed is None:
             continue
 
-        model_name: str = "_".join(parts[:-1])
-        model_type: str = parts[-1]
+        model_name, model_type = parsed
 
         if not store.is_trained(model_name, model_type):
             continue

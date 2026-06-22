@@ -397,3 +397,36 @@ class TestCommandInvocation:
         result = runner.invoke(app, ["--fast", "--only", "e2e-tests"])
         assert result.exit_code != 0
         assert "Unknown stage" in result.output
+
+
+class TestParseCompositeKey:
+    """Tests for verify composite-key parsing."""
+
+    def test_random_forest(self) -> None:
+        from gridiron_edge.cli.verify import _parse_composite_key
+
+        assert _parse_composite_key("win_prob_random_forest") == (
+            "win_prob",
+            "random_forest",
+        )
+
+    def test_xgboost(self) -> None:
+        from gridiron_edge.cli.verify import _parse_composite_key
+
+        assert _parse_composite_key("total_xgboost") == (
+            "total",
+            "xgboost",
+        )
+
+    def test_elasticnet(self) -> None:
+        from gridiron_edge.cli.verify import _parse_composite_key
+
+        assert _parse_composite_key("qb_pass_yards_elasticnet") == (
+            "qb_pass_yards",
+            "elasticnet",
+        )
+
+    def test_unknown_returns_none(self) -> None:
+        from gridiron_edge.cli.verify import _parse_composite_key
+
+        assert _parse_composite_key("not_a_real_model") is None
