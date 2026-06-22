@@ -598,6 +598,60 @@ def backfill_cmd(
     console.summary()
 
 
+@props_app.command("train-and-save")
+def train_and_save_cmd(
+    model: str = typer.Option(
+        ...,
+        "--model",
+        "-m",
+        help="Prop model family to train, e.g. qb_pass_yards.",
+    ),
+    model_type: str = typer.Option(
+        "elasticnet",
+        "--model-type",
+        "-t",
+        help="Algorithm type: elasticnet, random_forest, xgboost",
+    ),
+) -> None:
+    """Train a prop model on the standard HOLDOUT_SEASONS split and persist the artifact.
+
+    Produces a trained artifact at
+    ``data/models/{model}/{model_type}/`` that ``props projections``
+    can load without retraining. Use this when you need a stable,
+    persisted model for upcoming-week predictions.
+
+    For honest historical predictions across many seasons, use
+    ``props backfill`` instead (walk-forward, no artifact saved).
+    """
+    mt = PropModelType(model_type)
+    console.header("props train-and-save", subtitle=f"{model} · {mt}")
+
+    trainer: PropTrainer = _get_trainer(model)
+
+    with step(f"Train {model} ({mt})") as s:
+        meta: PropModelMetadata = trainer.train_and_save(model_type=mt)
+        mae: float = meta.metrics.get("mae", float("nan"))
+        rmse: float = meta.metrics.get("rmse", float("nan"))
+        r2: float = meta.metrics.get("r2", float("nan"))
+        s.set_detail(f"MAE={mae:.1f}  RMSE={rmse:.1f}  R²={r2:.3f}")
+
+    typer.echo("")
+    typer.echo(f"  Model:     {meta.model_name} / {meta.model_type}")
+    typer.echo(f"  Trained:   {meta.trained_at}")
+    typer.echo(f"  N train:   {meta.n_train_rows:,}")
+    typer.echo(f"  N holdout: {meta.n_holdout_rows:,}")
+    typer.echo(f"  MAE:       {mae:.1f}")
+    typer.echo(f"  RMSE:      {rmse:.1f}")
+    typer.echo(f"  R²:        {r2:.3f}")
+    typer.echo("")
+    typer.echo(
+        f"  Artifact written. Use 'props projections --model {model} "
+        f"--model-type {model_type}' to use it."
+    )
+
+    console.summary()
+
+
 def _project_for_model(
     *,
     model_name: str,

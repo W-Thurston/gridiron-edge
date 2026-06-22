@@ -1,4 +1,4 @@
-# tests/unit/cli/test_props_cli.py
+# tests/unit/cli/test_props.py
 
 """Unit tests for props CLI commands."""
 
@@ -280,3 +280,88 @@ class TestProjectionsArtifactDriven:
 
         assert result.exit_code != 0
         assert "No projections produced" in result.stdout
+
+
+class TestTrainAndSave:
+    """`gridiron props train-and-save` must call train_and_save and report metrics."""
+
+    def test_help_shows_command(self) -> None:
+        result = runner.invoke(props_app, ["--help"])
+        assert result.exit_code == 0
+        assert "train-and-save" in result.output
+
+    def test_help_shows_flags(self) -> None:
+        result = runner.invoke(props_app, ["train-and-save", "--help"])
+        assert result.exit_code == 0
+        assert "--model" in result.output
+        assert "--model-type" in result.output
+
+    def test_unknown_model_exits_error(self) -> None:
+        result = runner.invoke(
+            props_app,
+            ["train-and-save", "--model", "fake_model"],
+        )
+        assert result.exit_code != 0
+        assert "Unknown model" in result.output
+
+    def test_invalid_model_type_exits_error(self) -> None:
+        result = runner.invoke(
+            props_app,
+            [
+                "train-and-save",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "bad_type",
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_successful_train_displays_metrics(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When trainer.train_and_save returns a PropModelMetadata,
+        the command must display its core metrics."""
+        from gridiron_edge.models.prop_prediction.base import (
+            PropModelMetadata,
+            PropModelType,
+        )
+
+        fake_meta = PropModelMetadata(
+            model_name="qb_pass_yards",
+            model_type=PropModelType.ELASTICNET.value,
+            task="regression",
+            trained_at="2026-06-22T12:00:00",
+            target_col="passing_yards",
+            n_train_rows=5000,
+            n_holdout_rows=500,
+            metrics={"mae": 60.5, "rmse": 75.2, "r2": 0.085},
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.models.prop_prediction.base.PropTrainer.train_and_save",
+            lambda self, *, model_type: fake_meta,
+        )
+
+        result = runner.invoke(
+            props_app,
+            [
+                "train-and-save",
+                "--model",
+                "qb_pass_yards",
+                "--model-type",
+                "elasticnet",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "qb_pass_yards" in result.output
+        assert "elasticnet" in result.output
+        assert "MAE" in result.output
+        assert "60.5" in result.output
+        assert "75.2" in result.output
+        assert "0.085" in result.output
+        # The "next step" hint should appear.
+        assert "props projections" in result.output
