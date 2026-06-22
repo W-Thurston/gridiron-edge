@@ -88,26 +88,6 @@ from gridiron_edge.transform.clean._nflverse_common import (
 logger: Logger = logging.getLogger(__name__)
 
 
-def _game_location(location: str | float) -> str:
-    """Map nflverse location field to PFR GAME_LOCATION convention.
-
-    Args:
-        location: nflverse location string (``"Home"`` or ``"Neutral"``).
-
-    Returns:
-        ``"H"`` for a standard home game, ``"N"`` for neutral site.
-        Away games are represented by the winner/loser orientation in the
-        canonical schema (GAME_LOCATION = ``"@"`` when the winner is the
-        away team) and are handled separately in the winner derivation logic.
-    """
-    if pd.isna(location):
-        return "H"
-    loc: str = str(location).strip()
-    if loc == "Neutral":
-        return "N"
-    return "H"
-
-
 def clean_nflverse_games(
     *,
     repo: Path | None = None,

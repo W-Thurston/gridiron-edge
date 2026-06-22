@@ -8,7 +8,8 @@ game-prediction models should import this package (or any sub-module)
 before calling PredictorRegistry.names().
 
 Sub-modules:
-    _shared   — shared feature engineering and training infrastructure
+    _columns.py  — feature column definitions
+    _features.py — feature engineering + training helpers
     logistic  — logistic (champion)
     tree      — random_forest, xgboost (champions)
 
