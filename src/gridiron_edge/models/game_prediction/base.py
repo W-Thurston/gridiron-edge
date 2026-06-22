@@ -870,7 +870,11 @@ class GamesTrainer(ABC):
                         ),
                     ]
                 )
-                cal_pipeline.fit(x_train, y_train)
+                # Fit on .values so the Pipeline (and the wrapped CalibratedClassifierCV)
+                # never sees feature names. This keeps all sklearn artifacts in the
+                # codebase consistent: they accept numpy arrays at predict time without
+                # warnings about missing feature names.
+                cal_pipeline.fit(x_train.values, y_train)
                 self._model = cal_pipeline
                 self._scaler = None
             else:
@@ -878,7 +882,10 @@ class GamesTrainer(ABC):
                 cal.fit(x_train_arr, y_train)
                 self._model = cal
 
-            hold_probs = pd.Series(self._model.predict_proba(x_hold)[:, 1], index=x_hold.index)
+            # Predict on .values to maintain feature-name-free convention end-to-end.
+            hold_probs = pd.Series(
+                self._model.predict_proba(x_hold.values)[:, 1], index=x_hold.index
+            )
             holdout_brier = brier_score(hold_probs, y_hold.astype(float))
             holdout_ece = expected_calibration_error(hold_probs, y_hold.astype(float))
             calibration_applied = True

@@ -2,7 +2,7 @@
 """CLI commands for model evaluation.
 
 Workstream 2 convention:
-    Model identity uses the composite ``model_key`` — ``f"{model_name}_{model_type}"``
+    Model identity uses the composite ``model_key`` - ``f"{model_name}_{model_type}"``
     matching the ``PredictorRegistry`` keys (e.g. ``"win_prob_random_forest"``,
     ``"total_xgboost"``). The ``backfill`` command takes ``--model-name`` +
     ``--model-type`` as separate options since it calls into ``backfill_model``
@@ -109,7 +109,7 @@ def evaluate_summary(
             season=season,
         )
         if df_eval.empty:
-            s.set_detail("no evaluated games — run 'output predictions' first")
+            s.set_detail("no evaluated games - run 'output predictions' first")
         else:
             s.set_detail(f"{len(df_eval)} games")
 
@@ -160,7 +160,7 @@ def evaluate_calibration(
             season=season,
         )
         if df_eval.empty:
-            s.set_detail("no evaluated games — run 'output predictions' first")
+            s.set_detail("no evaluated games - run 'output predictions' first")
         else:
             s.set_detail(f"{len(df_eval)} games")
 
@@ -188,8 +188,8 @@ def evaluate_backfill(
     mode: str = typer.Option(
         "auto",
         help=(
-            "Backfill mode: 'walk-forward' (retrain per season — for ML models), "
-            "'current-model' (use existing artifact — for analytic models like elo), "
+            "Backfill mode: 'walk-forward' (retrain per season - for ML models), "
+            "'current-model' (use existing artifact - for analytic models like elo), "
             "or 'auto' (default per model)."
         ),
     ),
@@ -268,7 +268,7 @@ def evaluate_tune(
         "--save/--no-save",
         help=(
             "Save full results to data/output/tune/ as Parquet. "
-            "Recommended for long runs — protects against terminal loss."
+            "Recommended for long runs - protects against terminal loss."
         ),
     ),
 ) -> None:
@@ -432,17 +432,17 @@ def evaluate_diagnostics(
     # Single-model diagnostics
     if model_key != "all":
         name_filter, type_filter = _split_composite_key(model_key)
-        with step(f"Load predictions — {model_key}") as s:
+        with step(f"Load predictions - {model_key}") as s:
             df_eval: DataFrame = build_evaluation_df(
                 model_name=name_filter,
                 model_type=type_filter,
             )
             if df_eval.empty:
-                s.set_detail("no data — run evaluate backfill first")
+                s.set_detail("no data - run evaluate backfill first")
                 raise typer.Exit(1)
             s.set_detail(f"{len(df_eval):,} games")
 
-        with step(f"Generate single-model plots — {model_key}") as s:
+        with step(f"Generate single-model plots - {model_key}") as s:
             paths: list[Path] = plot_single_model(df_eval, repo=repo)
             s.set_detail(f"{len(paths)} plots")
             for p in paths:
@@ -456,7 +456,7 @@ def evaluate_diagnostics(
 
         all_keys: list[str] = PredictorRegistry.names()
 
-        with step("Load predictions — all models") as s:
+        with step("Load predictions - all models") as s:
             eval_dfs: dict = {}
             for key in all_keys:
                 nm, ty = _split_composite_key(key)
@@ -497,10 +497,10 @@ def evaluate_select_model(
     r"""Rank all registered models and recommend the best for production use.
 
     Evaluates every model with archived predictions against four criteria:
-        Brier score   (lower is better)  — overall prediction accuracy
-        ECE           (lower is better)  — calibration quality
-        ROC-AUC       (higher is better) — ranking quality
-        Accuracy      (higher is better) — fraction of winners correctly called
+        Brier score   (lower is better)  - overall prediction accuracy
+        ECE           (lower is better)  - calibration quality
+        ROC-AUC       (higher is better) - ranking quality
+        Accuracy      (higher is better) - fraction of winners correctly called
 
     Each model is ranked on each criterion and the ranks are summed to
     produce a composite score. The model with the lowest composite rank
@@ -554,7 +554,7 @@ def evaluate_select_model(
         df[rank_col] = df[criterion].rank(ascending=ascending, method="min").astype(int)
         rank_cols.append(rank_col)
 
-    # pyrefly: ignore [bad-argument-type]
+    # pyrefly: ignore [bad-argument-type]  # DataFrame.sum(axis=1) - overload degrades to Series.sum
     df["composite_rank"] = df[rank_cols].sum(axis=1)
     df: DataFrame = df.sort_values(
         ["composite_rank", criteria_list[0]],
@@ -651,7 +651,7 @@ def _print_confidence_section(
     from gridiron_edge.evaluation.report import find_high_confidence_warning
 
     typer.echo(f"\n{divider}")
-    typer.echo(f"[2] Confidence-Stratified Brier — {target_key}")
+    typer.echo(f"[2] Confidence-Stratified Brier - {target_key}")
     if season:
         typer.echo(f"    season filter: {season}")
     typer.echo(divider)
@@ -665,7 +665,7 @@ def _print_confidence_section(
     typer.echo(
         f"\n  ⚠  High-confidence tier '{flag.confidence_tier}': "
         f"model predicts {flag.predicted_avg:.0%} avg, "
-        f"teams win {flag.actual_win_rate:.0%} — "
+        f"teams win {flag.actual_win_rate:.0%} - "
         f"gap {flag.calibration_gap:+.3f} ({flag.direction})"
     )
 
@@ -680,7 +680,7 @@ def _print_stability_section(
     from gridiron_edge.evaluation.report import find_season_drift_warning
 
     typer.echo(f"\n{divider}")
-    typer.echo(f"[3] Season-over-Season Brier — {target_key}")
+    typer.echo(f"[3] Season-over-Season Brier - {target_key}")
     typer.echo(divider)
     typer.echo(df_seasons.to_string(index=False))
 
@@ -691,7 +691,7 @@ def _print_stability_section(
 
     typer.echo(
         f"\n  ⚠  Possible drift: '{flag.season}' is "
-        f"{flag.delta_vs_mean:+.5f} vs mean — monitor next season."
+        f"{flag.delta_vs_mean:+.5f} vs mean - monitor next season."
     )
 
 
@@ -710,7 +710,7 @@ def _print_misses_section(
     )
 
     typer.echo(f"\n{divider}")
-    typer.echo(f"[4] Top {top_misses} Misses — {target_key}")
+    typer.echo(f"[4] Top {top_misses} Misses - {target_key}")
     if season:
         typer.echo(f"    season filter: {season}")
     typer.echo(divider)
@@ -728,7 +728,7 @@ def _print_misses_section(
     if overconf_flag is not None:
         typer.echo(
             f"\n  ⚠  {overconf_flag.n_losses}/{overconf_flag.top_misses} "
-            f"worst misses were losses for the predicted favorite — "
+            f"worst misses were losses for the predicted favorite - "
             f"overconfidence pattern."
         )
 
@@ -807,7 +807,7 @@ def evaluate_report(
     console.header("evaluate report", subtitle=subtitle)
 
     # ── Rank all models ─────────────────────────────────────────────────────
-    with step("Compute metrics — all models") as s:
+    with step("Compute metrics - all models") as s:
         all_rows: list[dict] = _collect_model_metrics(PredictorRegistry.names(), repo=repo)
         s.set_detail(f"{len(all_rows)} models with archived predictions")
 

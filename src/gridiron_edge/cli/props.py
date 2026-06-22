@@ -28,7 +28,7 @@ logger: Logger = logging.getLogger(__name__)
 props_app = typer.Typer(help="Player prop projections.", no_args_is_help=True)
 
 # ---------------------------------------------------------------------------
-# Trainer registry — maps model name to trainer class
+# Trainer registry - maps model name to trainer class
 # ---------------------------------------------------------------------------
 
 
@@ -39,7 +39,7 @@ def _parse_season_arg(value: str | None) -> int | None:
         - None
         - "2023"
         - "2023-2024"
-        - 2023 (already an int — passed through)
+        - 2023 (already an int - passed through)
 
     Returns:
         The integer starting year for the requested season, or None.
@@ -478,7 +478,7 @@ def champion_cmd(
                     season=season,
                 )
                 if eval_df.empty:
-                    s.set_detail("no archive rows — skipping")
+                    s.set_detail("no archive rows - skipping")
                     continue
 
                 s.set_rows(len(eval_df))
@@ -849,7 +849,7 @@ def projections_cmd(
         "hi_90": "Hi90",
         "predicted_std": "Std",
     }
-    # pyrefly: ignore [no-matching-overload]
+    # pyrefly: ignore [no-matching-overload] # DataFrame.rename - overload degrades to Series.rename
     display = display.rename(columns={k: v for k, v in rename_map.items() if k in display.columns})
 
     typer.echo()
