@@ -35,8 +35,10 @@ from gridiron_edge.models.game_prediction.post_process import (
     get_margin_std,
     get_sigma,
     load_calibrator,
+    load_model_calibrations,
     register_sigma,
     save_calibrator,
+    save_model_calibration,
     spread_to_win_prob,
     win_prob_bands,
     win_prob_to_spread,
@@ -206,6 +208,85 @@ class TestGetSigma:
         assert get_sigma("win_prob", "random_forest") == 14.22
         assert get_sigma("win_prob", "xgboost") == 13.50
         assert get_sigma("win_prob", "logistic") == 15.01
+
+
+class TestCalibrationPersistence:
+    """Tests for disk-backed game model calibration persistence."""
+
+    def test_save_and_load_round_trip(self, tmp_path: Path) -> None:
+        path = save_model_calibration(
+            model_name="win_prob",
+            model_type="random_forest",
+            sigma=10.6252,
+            margin_std=13.54,
+            repo=tmp_path,
+        )
+
+        assert path.exists()
+
+        loaded = load_model_calibrations(tmp_path)
+        payload = loaded["win_prob_random_forest"]
+
+        assert payload["sigma"] == pytest.approx(10.6252)
+        assert payload["margin_std"] == pytest.approx(13.54)
+        assert "updated_at" in payload
+
+    def test_get_sigma_prefers_persisted_when_repo_supplied(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        save_model_calibration(
+            model_name="win_prob",
+            model_type="random_forest",
+            sigma=12.3456,
+            margin_std=14.0,
+            repo=tmp_path,
+        )
+
+        assert get_sigma(
+            "win_prob",
+            "random_forest",
+            repo=tmp_path,
+        ) == pytest.approx(12.3456)
+
+    def test_get_margin_std_prefers_persisted_when_repo_supplied(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        save_model_calibration(
+            model_name="win_prob",
+            model_type="random_forest",
+            sigma=12.0,
+            margin_std=15.4321,
+            repo=tmp_path,
+        )
+
+        assert get_margin_std(
+            "win_prob",
+            "random_forest",
+            repo=tmp_path,
+        ) == pytest.approx(15.4321)
+
+    def test_missing_registry_returns_empty_dict(self, tmp_path: Path) -> None:
+        assert load_model_calibrations(tmp_path) == {}
+
+    def test_missing_persisted_value_falls_back_to_memory_map(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        register_sigma("win_prob", "test_model", 14.22)
+        _MODEL_MARGIN_STDS[("win_prob", "test_model")] = 12.34
+
+        assert get_sigma(
+            "win_prob",
+            "test_model",
+            repo=tmp_path,
+        ) == pytest.approx(14.22)
+        assert get_margin_std(
+            "win_prob",
+            "test_model",
+            repo=tmp_path,
+        ) == pytest.approx(12.34)
 
 
 # ---------------------------------------------------------------------------

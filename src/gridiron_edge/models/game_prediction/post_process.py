@@ -52,6 +52,8 @@ Orchestrator:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+import json
 import logging
 from logging import Logger
 from pathlib import Path
@@ -95,17 +97,13 @@ _PROB_CEIL: Final[float] = 0.999
 _SIGMA_LO: Final[float] = 8.0
 _SIGMA_HI: Final[float] = 22.0
 
-# Per-model calibrated sigma values, keyed by (model_name, model_type).
-# When a pair is not found here, ``get_sigma`` falls back to
-# ``_NFL_DEFAULT_SIGMA``.
+# Per-model fallback sigma values, keyed by (model_name, model_type).
+# When a persisted calibration registry is available, ``get_sigma`` can
+# read from disk first. When no persisted value exists, this map provides
+# stable defaults before finally falling back to ``_NFL_DEFAULT_SIGMA``.
 #
-# Calibrated 2026-06-04 via ``calibrate_spread_sigma`` against the full
-# prediction archive after the TimeSeriesSplit champion retrain. The Elo
-# entry carries the legacy v2 calibration; re-run ``calibrate_spread_sigma``
-# after the next Elo backfill to refresh.
-#
-# TODO: Wire sigma calibration into the training harness so this map
-# is populated automatically when a new model is trained.
+# Persisted calibration values are refreshed by the
+# `gridiron full-retrain` refresh-calibrations stage.
 _MODEL_SIGMAS: dict[tuple[str, str], float] = {
     ("win_prob", "random_forest"): 10.6252,
     ("win_prob", "xgboost"): 11.4309,
@@ -120,12 +118,10 @@ _DEFAULT_Z: Final[float] = 1.645
 # standard deviation of (predicted_margin - actual_margin) residuals.
 _DEFAULT_MARGIN_STD: Final[float] = 13.45
 
-# Per-model margin std, keyed by (model_name, model_type). Derived from
-# sqrt(MSE) at optimal sigma during sigma calibration (2026-06-04). The
-# Elo entry carries the legacy v2 calibration; re-run after the next
-# Elo backfill to refresh.
-#
-# TODO: Wire margin_std computation into the training harness.
+# Per-model fallback margin std, keyed by (model_name, model_type).
+# Persisted calibration values refreshed by `gridiron full-retrain` are
+# preferred when a repo is supplied to ``get_margin_std``. This map is
+# the fallback before ``_DEFAULT_MARGIN_STD``.
 _MODEL_MARGIN_STDS: dict[tuple[str, str], float] = {
     ("win_prob", "random_forest"): 13.54,
     ("win_prob", "xgboost"): 13.34,
@@ -143,6 +139,15 @@ _TIER_MODERATE_PROB: Final[float] = 0.60
 # Calibrator artifact filename. Lives in the same directory as the model
 # artifact: ``data/models/{model_name}/{model_type}/calibrator.joblib``.
 _CALIBRATOR_FILENAME: Final[str] = "calibrator.joblib"
+
+# Disk-backed game model calibration registry. This stores archive-level
+# calibration values refreshed by `gridiron full-retrain`:
+#
+#   data/output/calibration/game_model_calibration.json
+#
+# The calibration values are keyed by composite model key
+# (`{model_name}_{model_type}`) and contain sigma + margin_std.
+_MODEL_CALIBRATION_FILENAME: Final[str] = "game_model_calibration.json"
 
 # Default number of most-recent seasons held out for calibrator validation.
 _DEFAULT_HOLDOUT_SEASONS: Final[int] = 2
@@ -290,24 +295,147 @@ def register_sigma(model_name: str, model_type: str, sigma: float) -> None:
     logger.info("register_sigma: (%s, %s) -> %.4f", model_name, model_type, sigma)
 
 
+def _model_calibration_path(repo: Path) -> Path:
+    """Return the disk-backed game model calibration registry path."""
+    return repo / "data" / "output" / "calibration" / _MODEL_CALIBRATION_FILENAME
+
+
+def _composite_key(model_name: str, model_type: str) -> str:
+    """Return canonical composite key for a model pair."""
+    return f"{model_name}_{model_type}"
+
+
+def load_model_calibrations(
+    repo: Path | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load persisted game model calibration values.
+
+    Args:
+        repo: Repository root. If None, uses settings repo root.
+
+    Returns:
+        Mapping from composite model key to calibration payload.
+        Missing file returns an empty dict.
+    """
+    if repo is None:
+        from gridiron_edge.core.settings import get_settings
+
+        repo = get_settings().repo_root
+
+    path = _model_calibration_path(repo)
+    if not path.exists():
+        return {}
+
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        return {}
+
+    return {str(key): value for key, value in raw.items() if isinstance(value, dict)}
+
+
+def save_model_calibration(
+    *,
+    model_name: str,
+    model_type: str,
+    sigma: float,
+    margin_std: float,
+    repo: Path | None = None,
+) -> Path:
+    """Persist game model calibration values for a model pair.
+
+    Calibration values are archive-level post-processing parameters,
+    not model training metadata. They are refreshed by the
+    ``full-retrain`` calibration stage and consumed by
+    ``get_sigma`` / ``get_margin_std``.
+
+    Args:
+        model_name: Model purpose, e.g. ``"win_prob"``.
+        model_type: Algorithm, e.g. ``"random_forest"``.
+        sigma: Calibrated probit spread sigma.
+        margin_std: Residual margin standard deviation.
+        repo: Repository root. If None, uses settings repo root.
+
+    Returns:
+        Path to the written calibration registry file.
+    """
+    if repo is None:
+        from gridiron_edge.core.settings import get_settings
+
+        repo = get_settings().repo_root
+
+    path: Path = _model_calibration_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    calibrations: dict[str, dict[str, Any]] = load_model_calibrations(repo)
+    calibrations[_composite_key(model_name, model_type)] = {
+        "sigma": round(sigma, 4),
+        "margin_std": round(margin_std, 4),
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+    path.write_text(json.dumps(calibrations, indent=2, sort_keys=True))
+
+    logger.info(
+        "save_model_calibration: (%s, %s) sigma=%.4f margin_std=%.4f -> %s",
+        model_name,
+        model_type,
+        sigma,
+        margin_std,
+        path,
+    )
+
+    return path
+
+
+def _lookup_persisted_calibration(
+    *,
+    model_name: str,
+    model_type: str,
+    repo: Path | None,
+) -> dict[str, Any] | None:
+    """Return persisted calibration payload for a model pair, if available."""
+    if repo is None:
+        return None
+
+    calibrations = load_model_calibrations(repo)
+    payload = calibrations.get(_composite_key(model_name, model_type))
+    return payload if isinstance(payload, dict) else None
+
+
 def get_sigma(
     model_name: str | None = None,
     model_type: str | None = None,
+    *,
+    repo: Path | None = None,
 ) -> float:
     """Look up the calibrated sigma for a (model_name, model_type) pair.
 
-    Falls back to ``_NFL_DEFAULT_SIGMA`` if the pair is not registered
-    or if either argument is ``None``.
+    Lookup order:
+    1. Persisted calibration registry when *repo* is supplied.
+    2. In-memory fallback map.
+    3. ``_NFL_DEFAULT_SIGMA``.
 
     Args:
         model_name: Model purpose, or ``None`` for the default.
         model_type: Model algorithm, or ``None`` for the default.
+        repo: Optional repository root for disk-backed calibration lookup.
 
     Returns:
         Sigma value (float).
     """
     if model_name is None or model_type is None:
         return _NFL_DEFAULT_SIGMA
+
+    persisted = _lookup_persisted_calibration(
+        model_name=model_name,
+        model_type=model_type,
+        repo=repo,
+    )
+    if persisted is not None:
+        sigma = persisted.get("sigma")
+        if isinstance(sigma, int | float):
+            return float(sigma)
+
     return _MODEL_SIGMAS.get((model_name, model_type), _NFL_DEFAULT_SIGMA)
 
 
@@ -556,14 +684,37 @@ def compute_margin_std(
 def get_margin_std(
     model_name: str | None = None,
     model_type: str | None = None,
+    *,
+    repo: Path | None = None,
 ) -> float:
-    """Look up the residual margin std for a (model_name, model_type) pair.
+    """Look up residual margin std for a (model_name, model_type) pair.
 
-    Falls back to ``_DEFAULT_MARGIN_STD`` if the pair is not registered
-    or if either argument is ``None``.
+    Lookup order:
+    1. Persisted calibration registry when *repo* is supplied.
+    2. In-memory fallback map.
+    3. ``_DEFAULT_MARGIN_STD``.
+
+    Args:
+        model_name: Model purpose, or ``None`` for the default.
+        model_type: Model algorithm, or ``None`` for the default.
+        repo: Optional repository root for disk-backed calibration lookup.
+
+    Returns:
+        Residual margin std.
     """
     if model_name is None or model_type is None:
         return _DEFAULT_MARGIN_STD
+
+    persisted: dict[str, Any] | None = _lookup_persisted_calibration(
+        model_name=model_name,
+        model_type=model_type,
+        repo=repo,
+    )
+    if persisted is not None:
+        margin_std: Any | None = persisted.get("margin_std")
+        if isinstance(margin_std, int | float):
+            return float(margin_std)
+
     return _MODEL_MARGIN_STDS.get((model_name, model_type), _DEFAULT_MARGIN_STD)
 
 
@@ -773,12 +924,12 @@ def enrich_predictions(
             )
 
     # --- Spread derivation ---
-    sigma: float = get_sigma(model_name, model_type)
+    sigma: float = get_sigma(model_name, model_type, repo=repo)
 
     out["model_spread"] = out[prob_col].apply(lambda p: win_prob_to_spread(p, sigma=sigma))
 
     # --- Uncertainty bands + confidence tier ---
-    ms: float = get_margin_std(model_name, model_type)
+    ms: float = get_margin_std(model_name, model_type, repo=repo)
     out["margin_std"] = ms
 
     def _bands(p: float) -> tuple[float, float]:

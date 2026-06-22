@@ -242,22 +242,23 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
-    """Recompute sigma + margin_std for each game model from the archive.
+    """Recompute and persist sigma + margin_std for each game model.
 
     Reads the newly-built game prediction archive for each
-    (model_name, model_type) pair, runs calibrate_spread_sigma, and
-    updates the in-memory _MODEL_SIGMAS / _MODEL_MARGIN_STDS dicts.
-
-    Note: these are in-memory updates. Persistence to disk would
-    require a separate refactor (the values are currently hardcoded
-    in post_process.py).
+    ``(model_name, model_type)`` pair, runs ``calibrate_spread_sigma``,
+    computes residual ``margin_std``, updates the in-memory maps for the
+    current process, and persists values to the disk-backed calibration
+    registry consumed by post-processing.
     """
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets import loaders
     from gridiron_edge.evaluation.archive import load_prediction_log
     from gridiron_edge.models.game_prediction.post_process import (
         _MODEL_MARGIN_STDS,
         calibrate_spread_sigma,
         compute_margin_std,
         register_sigma,
+        save_model_calibration,
     )
 
     pairs: list[ModelPair] = ctx["game_pairs"]
@@ -266,6 +267,8 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
 
     refreshed: list[str] = []
     skipped: list[str] = []
+
+    repo = get_settings().repo_root
 
     for pair in pairs:
         if pair.model_name != "win_prob":
@@ -282,10 +285,7 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
             continue
 
         # Compute margins from the archive against actuals.
-        from gridiron_edge.core.settings import get_settings
-        from gridiron_edge.datasets import loaders
-
-        games = loaders.load_games(get_settings().repo_root)
+        games = loaders.load_games(repo)
         merged = archive.merge(
             games[["GAME_ID", "WINNER", "LOSER", "WIN_OR_TIE"]],
             left_on="game_id",
@@ -336,6 +336,14 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
             sigma=sigma,
         )
         _MODEL_MARGIN_STDS[(pair.model_name, pair.model_type)] = margin_std
+
+        save_model_calibration(
+            model_name=pair.model_name,
+            model_type=pair.model_type,
+            sigma=sigma,
+            margin_std=margin_std,
+            repo=repo,
+        )
 
         refreshed.append(f"{pair.composite_key}: sigma={sigma:.2f} margin_std={margin_std:.2f}")
 
@@ -616,8 +624,9 @@ def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     lines.append("")
     lines.append(
         "Baselines reflect the current trained artifact metadata. "
-        "Sigma and margin_std values are refreshed in-memory by the "
-        "refresh-calibrations stage; persistence remains a future refactor."
+        "Sigma and margin_std values are refreshed by the "
+        "refresh-calibrations stage and persisted to "
+        "`data/output/calibration/game_model_calibration.json`."
     )
 
     out_path.write_text("\n".join(lines))

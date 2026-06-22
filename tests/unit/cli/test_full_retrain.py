@@ -213,6 +213,81 @@ class TestBaselineReportStage:
         assert "## Delta vs Previous Report" in report_text
         assert "| win_prob_logistic | -0.0015 | -0.0010 | +0.0100 |" in report_text
 
+    def test_refresh_calibrations_persists_values(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """refresh-calibrations should save sigma + margin_std to disk."""
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_refresh_calibrations,
+        )
+        from gridiron_edge.models.game_prediction.post_process import (
+            load_model_calibrations,
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        archive = pd.DataFrame(
+            {
+                "game_id": ["g1", "g2", "g3"],
+                "home_team": ["A", "B", "C"],
+                "home_win_prob": [0.60, 0.55, 0.70],
+            }
+        )
+
+        games = pd.DataFrame(
+            {
+                "GAME_ID": ["g1", "g2", "g3"],
+                "WINNER": ["A", "X", "C"],
+                "LOSER": ["X", "B", "Y"],
+                "WIN_OR_TIE": [1, 1, 1],
+                "PTS_WINNER": [24, 21, 30],
+                "PTS_LOSER": [17, 20, 14],
+            }
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.archive.load_prediction_log",
+            lambda **_: archive,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_games",
+            lambda repo: games,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.game_prediction.post_process.calibrate_spread_sigma",
+            lambda **_: 11.25,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.game_prediction.post_process.compute_margin_std",
+            lambda **_: 13.75,
+        )
+
+        result = _stage_refresh_calibrations(
+            {"game_pairs": [ModelPair("win_prob", "random_forest")]}
+        )
+
+        assert result.success
+
+        saved = load_model_calibrations(tmp_path)
+        payload = saved["win_prob_random_forest"]
+
+        assert payload["sigma"] == pytest.approx(11.25)
+        assert payload["margin_std"] == pytest.approx(13.75)
+        assert "updated_at" in payload
+
 
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
