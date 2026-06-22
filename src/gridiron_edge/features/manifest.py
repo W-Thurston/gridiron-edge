@@ -50,6 +50,21 @@ logger: Logger = logging.getLogger(__name__)
 # surface a clear error rather than silently producing wrong predictions.
 CURRENT_SCHEMA_VERSION: int = 4
 
+# Bump this whenever the IMPLEMENTATION of any feature changes such that
+# existing values on disk would differ from a fresh rebuild. This is the
+# "data freshness" signal. Distinguishes "still compatible with trained
+# models" (schema_version unchanged) from "old data is stale and incremental
+# builds should force a full rebuild" (data_version changed).
+#
+# Bump rules:
+#   - schema_version bump → data_version bump (column changes change values).
+#   - Bug fix to existing feature that changes values → bump data_version only.
+#   - Pure refactor / rename / comment fix → no bump needed.
+#
+# When this is bumped, the next incremental build will detect the mismatch
+# and force a full rebuild instead of preserving stale rows.
+CURRENT_DATA_VERSION: int = 1
+
 _MANIFEST_FILENAME: str = "modeling_file_manifest.json"
 
 
@@ -65,6 +80,7 @@ def write_manifest(
     feature_columns: list[str],
     modeling_dir: Path,
     schema_version: int = CURRENT_SCHEMA_VERSION,
+    data_version: int = CURRENT_DATA_VERSION,
 ) -> Path:
     """Write a feature set manifest alongside the modeling file.
 
@@ -80,12 +96,18 @@ def write_manifest(
         modeling_dir: Directory where the modeling CSV lives.
         schema_version: Integer schema version. Increment when the
             feature set or column schema changes.
+        data_version: Integer data freshness version. Increment when a
+            feature's implementation changes such that on-disk values
+            would differ from a fresh rebuild. Incremental builds compare
+            this against ``CURRENT_DATA_VERSION`` and force a full rebuild
+            on mismatch.
 
     Returns:
         Absolute path to the written manifest file.
     """
     manifest: dict[str, Any] = {
         "schema_version": schema_version,
+        "data_version": data_version,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
         "feature_names": feature_names,
         "feature_columns": feature_columns,
