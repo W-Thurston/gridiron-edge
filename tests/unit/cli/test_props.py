@@ -7,9 +7,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
-from gridiron_edge.cli.props import props_app
+from gridiron_edge.cli.props import _parse_season_arg, props_app
 
 runner = CliRunner()
 
@@ -365,3 +366,22 @@ class TestTrainAndSave:
         assert "0.085" in result.output
         # The "next step" hint should appear.
         assert "props projections" in result.output
+
+
+class TestSeasonArgParsing:
+    def test_accepts_int_string(self) -> None:
+        assert _parse_season_arg("2023") == 2023
+
+    def test_accepts_season_label(self) -> None:
+        assert _parse_season_arg("2023-2024") == 2023
+
+    def test_none_returns_none(self) -> None:
+        assert _parse_season_arg(None) is None
+
+    def test_rejects_noncontiguous_label(self) -> None:
+        with pytest.raises(typer.BadParameter):
+            _parse_season_arg("2023-2025")
+
+    def test_rejects_garbage(self) -> None:
+        with pytest.raises(typer.BadParameter):
+            _parse_season_arg("not-a-season")

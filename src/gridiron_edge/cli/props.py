@@ -32,6 +32,52 @@ props_app = typer.Typer(help="Player prop projections.", no_args_is_help=True)
 # ---------------------------------------------------------------------------
 
 
+def _parse_season_arg(value: str | None) -> int | None:
+    """Parse a CLI season argument that may be int-like or a season label.
+
+    Accepts:
+        - None
+        - "2023"
+        - "2023-2024"
+        - 2023 (already an int — passed through)
+
+    Returns:
+        The integer starting year for the requested season, or None.
+
+    Raises:
+        typer.BadParameter: If the value is malformed.
+    """
+    if value is None:
+        return None
+
+    text: str = value.strip()
+    if not text:
+        return None
+
+    # Plain integer form
+    if text.isdigit():
+        return int(text)
+
+    # Season-label form: "YYYY-YYYY+1"
+    if "-" in text:
+        head, _, tail = text.partition("-")
+        if head.isdigit() and tail.isdigit():
+            head_int = int(head)
+            tail_int = int(tail)
+            if tail_int == head_int + 1:
+                return head_int
+            raise typer.BadParameter(
+                f"Season label '{text}' is not contiguous. "
+                f"Expected 'YYYY-YYYY+1' (e.g. '2023-2024')."
+            )
+
+    raise typer.BadParameter(
+        f"Could not parse season '{text}'. "
+        f"Use either an integer (e.g. 2023) or a season label "
+        f"(e.g. '2023-2024')."
+    )
+
+
 def _ensure_prop_models_registered() -> None:
     """Import prop model modules so ModelRegistry is populated."""
     import gridiron_edge.models.prop_prediction.qb_pass_yards
@@ -503,17 +549,24 @@ def backfill_cmd(
         "-t",
         help="Algorithm type: elasticnet, random_forest, xgboost",
     ),
-    start_season: int | None = typer.Option(
+    start_season: str | None = typer.Option(
         None,
         "--start-season",
-        help="Earliest season to backfill (inclusive). Defaults to "
-        "the second-earliest season available so a prior training "
-        "window always exists.",
+        help=(
+            "Earliest season to backfill (inclusive). Accepts either an "
+            "integer (e.g. 2023) or a season label (e.g. '2023-2024'). "
+            "Defaults to the second-earliest season available so a "
+            "prior training window always exists."
+        ),
     ),
-    end_season: int | None = typer.Option(
+    end_season: str | None = typer.Option(
         None,
         "--end-season",
-        help="Latest season to backfill (inclusive). Defaults to the most recent season available.",
+        help=(
+            "Latest season to backfill (inclusive). Accepts either an "
+            "integer (e.g. 2024) or a season label (e.g. '2024-2025'). "
+            "Defaults to the most recent season available."
+        ),
     ),
 ) -> None:
     """Walk-forward backfill of prop predictions to the archive."""
@@ -538,6 +591,9 @@ def backfill_cmd(
         typer.echo("No feature data available; nothing to backfill.")
         raise typer.Exit(code=1)
 
+    parsed_start: int | None = _parse_season_arg(start_season)
+    parsed_end: int | None = _parse_season_arg(end_season)
+
     seasons_available: list[int] = sorted(
         int(s) for s in features_df["season"].dropna().unique().tolist()
     )
@@ -545,8 +601,8 @@ def backfill_cmd(
         typer.echo("Walk-forward backfill requires at least two seasons of feature data.")
         raise typer.Exit(code=1)
 
-    resolved_start: int = start_season if start_season is not None else seasons_available[1]
-    resolved_end: int = end_season if end_season is not None else seasons_available[-1]
+    resolved_start: int = parsed_start if parsed_start is not None else seasons_available[1]
+    resolved_end: int = parsed_end if parsed_end is not None else seasons_available[-1]
 
     if resolved_start <= seasons_available[0]:
         typer.echo(
