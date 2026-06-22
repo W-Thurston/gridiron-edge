@@ -8,9 +8,11 @@
 | Document | Purpose | Updated When |
 |---|---|---|
 | **ROADMAP.md** (this file) | High-level long-term direction. Where we're headed and why. Workstreams, dependencies, architecture decisions. | When strategic direction changes or a workstream is completed/added. |
-| **PLAN.md** | Short-term, nitty-gritty next steps. The current working checklist. Pick up from where you left off. | Every working session. |
+| **PLAN.md** | Short-term next steps. The current working checklist. | Every working session. |
 | **CHANGELOG.md** | What's been completed. Items move here from PLAN.md when finished. | When work is completed. |
 | **HANDOFF.md** | How things work right now. Architecture, conventions, commands, gotchas. | When the system changes meaningfully. |
+| **DECISIONS.md** | Append-only log of architectural decisions made during workstreams. | When an architectural choice is locked. |
+| **TIER_4_BACKLOG.md** | Ambient hygiene items handled opportunistically as files are touched. | When new items surface or items close. |
 | **README.md** | Public-facing project overview. | When HANDOFF.md changes significantly. |
 
 **Workflow:** ROADMAP tells you *what to work on next*. PLAN tells you *how to do it*. CHANGELOG proves *what's done*. HANDOFF explains *how it all works*.
@@ -27,43 +29,44 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 |---|---|---|
 | Data ingestion (nflverse) | ✅ Solid | Games, schedule, PBP, rosters |
 | Data ingestion (weather) | ✅ Solid | OpenWeatherMap, idempotent |
-| Data ingestion (odds) | ✅ Partial | DraftKings only; schema supports multi-book |
+| Data ingestion (odds) | ✅ Partial | DraftKings only; 403 bot detection is an active concern (TIER_4_BACKLOG) |
 | Transform / clean layer | ✅ Solid | nflverse → canonical mappers |
-| Dataset registry + I/O | ✅ Solid | Typed keys, Parquet/CSV, manifest validation |
-| Feature engineering | ✅ Excellent (22 EPA + 107 total) | Elo, EPA (22 metrics), rest, travel, weather, venue, SoS, record, divisional, efficiency splits, situational football |
-| Feature pipeline + validation | ✅ Solid | Dependency ordering, schema versioning (v4) |
-| Elo ratings | ✅ Solid | Parameterized, fit/predict/table |
-| Game prediction models | ✅ Solid (8 variants) | Logistic (4) + Tree (4: RF, XGB), variant factory pattern |
-| Post-processing enrichment | ✅ Complete (W2) | Spread, total, projected scores, uncertainty bands, confidence tiers |
-| Total points model | ✅ Complete (W2) | total_rf_v1 — MAE 10.27, competitive with Vegas (MAE 3.11 vs closing O/U) |
-| Evaluation | ✅ Excellent | Brier, log loss, AUC, ECE, calibration, decomposition, confidence tiers, drift |
-| Prediction archive | ✅ Solid | Append-only, dedup, backfill-aware, 8 enrichment columns (v2 schema) |
-| Monte Carlo simulation | ✅ Advanced | Season + playoffs, numba-optimized |
-| Market math (W3) | ✅ Complete | odds_math.py, kelly.py — pure functions, no data deps |
-| Edge engine (W5) | ✅ Complete | edge.py, recommendations.py, clv.py — moneyline/spread/total edges, Kelly sizing, CLV analysis |
-| Edge CLI (W5) | ✅ Complete | `gridiron edges report`, `gridiron edges clv` — ranked edge tables, CSV export |
-| Bet tracking (W6) | ✅ Complete | ledger.py, bankroll.py, performance.py — append-only Parquet, decoupled bankroll |
-| Betting CLI (W6) | ✅ Complete | 8 commands: log, settle, list, summary, balance, export, deposit, withdraw |
-| Code quality | ✅ Excellent | Ruff lint+format, pyrefly types, three-tier test pyramid, pre-commit + pre-push hooks |
+| Dataset registry + I/O | ✅ Solid | Complete registry (20 keys), typed access, manifest validation |
+| Feature engineering | ✅ Excellent (22 EPA + 107 total) | Elo, EPA, rest, travel, weather, venue, SoS, record, divisional, efficiency, situational |
+| Feature pipeline + validation | ✅ Solid | Dependency ordering, schema versioning |
+| Vectorized data flows | ✅ Solid (post-audit) | Per-row apply patterns eliminated; cumsum-based streaks, masked merges |
+| Elo ratings | ✅ Solid | Canonical simulator, parameterized divisor, fit/predict/table all share one source of truth |
+| Game prediction models | ✅ Solid | Logistic / RF / XGB / Elo composite-key registry; first-class metric fields |
+| Post-processing enrichment | ✅ Complete | Spread, total, projected scores, uncertainty bands, confidence tiers |
+| Total points model | ✅ Complete | MAE 10.24, competitive with Vegas closing O/U |
+| Evaluation | ✅ Excellent | Brier, log loss, AUC, ECE, calibration, decomposition, confidence tiers, drift, heuristic warnings |
+| Prediction archive | ✅ Solid | Append-only, composite identity, walk-forward backfill semantics |
+| Monte Carlo simulation | ✅ Advanced | Season + playoffs, numba-optimized, divisor parameterized |
+| Market math | ✅ Complete | odds_math, kelly, edge — pure functions, no data deps |
+| Edge engine | ✅ Complete | edge, recommendations, clv — moneyline/spread/total edges, Kelly sizing, CLV analysis |
+| Edge CLI | ✅ Complete | `gridiron edges report`, `gridiron edges clv` |
+| Bet tracking | ✅ Complete | ledger.py, bankroll.py, performance.py — composite identity, decoupled bankroll |
+| Betting CLI | ✅ Complete | 8 commands with calibration_health surfacing |
+| Code quality | ✅ Excellent | Ruff, pyrefly, three-tier test pyramid, pre-commit + pre-push hooks |
 | Testing infrastructure | ✅ Complete | 500+ tests, auto-markers, shared fixtures, MiniRepoBuilder |
 | Player data ingestion | ✅ Solid | nflreadpy player game logs (1999–2024), 138K rows, 42 cols per row |
 | Player feature engineering | ✅ Solid | Rolling stats (L3/L6), matchup (28 cols), usage (6 cols), game context (6 cols) |
-| Player prop models | ✅ Solid (5 models) | ElasticNet baselines: QB pass/rush, RB rush, WR rec, TE rec yards |
+| Player prop models | ✅ Solid (5 models) | ElasticNet + RF + XGB across 5 stat families with archive-driven champion selection |
 | Prop post-processing | ✅ Complete | predicted_std, 90% intervals, P(over), lean, confidence tiers |
-| Prop evaluation | ✅ Complete | Accuracy, bias, coverage, calibration, hit rate, by-tier analysis |
-| Prop archive | ✅ Complete | Append-only Parquet, 4-key dedup, backfill-aware |
-| Prop CLI | ✅ Complete | gridiron props evaluate, projections, backfill |
-| W1: Quick Wins & Unblocking | ✅ Done | Unicode minus fix, game_id resolver, odds join validated |
+| Prop evaluation | ✅ Complete | Archive-driven; no retraining inside evaluation surfaces |
+| Prop archive | ✅ Complete | Append-only Parquet, composite identity dedup, walk-forward semantics |
+| Prop CLI | ✅ Complete | All commands archive- or artifact-driven, no retraining at use time |
+| Audit remediation | ✅ Complete | Units 1-11 (~100 findings), 4 cross-cutting patterns, architectural cleanup |
 
 ### What's Missing
 
 | Area | Status | Impact |
 |---|---|---|
-| Live prediction pipeline | ❌ Not started | Can't generate predictions for upcoming games with current-week features |
+| Composite CLI workflows | 🟡 Planned (next) | Single-purpose CLI commands work; no logical-grouping commands like `weekly-predict` |
+| Live prediction pipeline | ✅ Exists | `gridiron output predictions` → `edges report` → `bet log` is the working game-day workflow |
 | Model ensemble | ❌ Not started | Using individual models only, no weighted combination |
 | Multi-book odds ingestion | ❌ Not started | Can't compare books, can't shop lines |
-| Player-level data & features | ✅ Complete (V1) | Player game logs, rolling/matchup/usage/context features, unified builder |
-| Player prop models | ✅ Complete (V1) | 5 ElasticNet baselines, post-processing, evaluation, archive, CLI |
+| Player prop walk-forward backfill | ✅ Available | Per-(stat, algorithm) walk-forward backfill works; full backfill is a long-running batch job |
 | API serving layer | ❌ Not started | Everything is CLI + file output |
 | Frontend | ❌ Not started | Prototype exists (Claude Design) but not wired |
 | Injury/news feed | ❌ Not started | No injury data, no impact modeling |
@@ -71,7 +74,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 
 ### Known Blockers
 
-None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1.
+None. All previously known blockers (DK unicode minus bug, game_id resolver) were resolved in W1. DraftKings API 403 (bot detection) is an active operational concern tracked in TIER_4_BACKLOG.md but does not block any workstream — the historical odds ledger and game_id resolver work independently.
 
 ---
 
@@ -134,7 +137,37 @@ Edge calculation (moneyline, spread, total), recommendations builder, CLV analys
 
 Bet ledger, bankroll management (decoupled), performance analytics (record, ROI, CLV, EV, streaks), 8 CLI commands. 86 tests. Full round-trip validated. See CHANGELOG.md for details.
 
+#### W3.5: Audit Remediation — ✅ COMPLETE
+
+Closed ~100 findings from `audit_2026_06_18.md` across 11 audit units, plus 4 cross-cutting patterns (vectorization, polish, enums, registry completion). Major outcomes:
+
+- **Identity unification:** `(model_name, model_type)` composite identity flows through every persistence layer (artifacts, archives, ledgers).
+- **Elo simulator:** Single canonical history simulator drives both the state table and the tuner. Numba parity preserved.
+- **Task-discriminated metadata:** Metrics live in a single dict on `BaseModelMetadata`. No more NaN-filled task-asymmetric fields.
+- **Vectorization:** All audit-flagged per-row apply patterns eliminated. ~10× speedup on the rolling features stage; meaningful improvements on record, schedule_strength, CLV.
+- **Trainable protocol:** Reduced to `spec + is_trained`. Registry enforces consistency between declarative `spec.trainable` and structural protocol satisfaction at registration time.
+- **CLI ergonomics:** Stage staleness warnings, calibration health flags, archive-driven prop CLI, full enum-based string constants.
+
+See `AUDIT_REMEDIATION.md` for unit-by-unit closure detail and `DECISIONS.md` D1–D12 for architectural decisions made.
+
 ### Future Workstreams
+
+#### W4.1: Composite CLI Workflows — 🟡 PLANNED (next focus)
+
+**Goal:** Build comprehensive composite commands that group related single-purpose CLI commands into logical workflows. Mirror the pattern from `run-data-pipeline` (which already composes 9 stages).
+
+**Why it matters:** The single-purpose commands are well-designed primitives. But the user has to know how to compose them to accomplish a full task. A weekly bettor shouldn't need to memorize the 13-step Sunday workflow. Composite commands document and enforce these workflows.
+
+**Initial candidate workflows:**
+1. **`weekly-predict`** — Refresh data, predict, render, generate edge report
+2. **`full-retrain`** — Walk-forward backfill all (model_name, model_type) pairs
+3. **`prop-weekly`** — Refresh prop features, project, archive, summary
+4. **`audit-and-baseline`** — Quality gates + full pytest + Brier baseline report
+
+Each composite should accept `--skip-stage` / `--only-stage` flags following the `run-data-pipeline` pattern. Detailed design session pending.
+
+**Dependencies:** None. Unblocked.
+**Unlocks:** Cleaner game-day operations, easier onboarding, fewer "did I forget a step?" mistakes.
 
 ##### W4: Player Data & First Prop Models — ✅ MOSTLY COMPLETE
 
@@ -371,6 +404,9 @@ The existing module structure is clean. Current and proposed packages:
 - `routes/`
 - `core/`               # ✅ existing
 - `cli/`                # ✅ existing
+- `core/enums.py`       # ✅ BUILT (Audit/Pattern 8): Lean, ConfidenceTier, RoofType, COVERED_STADIUMS, DOME_LIKE_ROOFS
+- `ratings/elo/simulator.py`  # ✅ BUILT (Audit/Unit 8): canonical Elo history simulator
+- `evaluation/report.py`      # ✅ BUILT (Audit/Commit B): heuristics extracted from CLI
 
 ---
 
@@ -406,12 +442,14 @@ Track)  Shopping)    ▼
   W12 (Ensemble) ──────── unblocked, independent
 
 
-**Current position:** W1–W6 complete. Three independent paths forward:
-- **W11 (Live Prediction Pipeline)** — unblocked, highest urgency (needed for Week 1)
-- **W12 (Model Ensemble)** — unblocked, improves all downstream predictions
-- **W8 (API)** — unblocked, enables frontend (M5)
+**Current position:** W1–W6 and W3.5 complete. The architectural foundation is settled. Four independent paths forward, ordered by current priority:
 
-W4 (Player Data & Props) and W7 (Multi-Book Odds) are also unblocked but lower priority per the prioritization principles.
+- **W4.1 (Composite CLI Workflows)** — unblocked, immediate priority. Pure ergonomics, no architectural risk.
+- **W12 (Model Ensemble)** — unblocked, improves all downstream predictions.
+- **W8 (API)** — unblocked, enables frontend (M5).
+- **W7 (Multi-Book Odds)** — unblocked but lower priority. Requires odds source decision (§5.2).
+
+W4 (Player Data & Props) is also complete; remaining items there are walk-forward backfill completeness and DK prop odds ingest.
 
 ---
 
@@ -424,6 +462,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 | **M1: First actionable edge report** | Run `gridiron edges report --week 12` and get a ranked list of game edges with EV, Kelly stake, and best available book. You'd trust it enough to bet. | W1 + W2 + W3 + W5 | ✅ **ACHIEVED** |
 | **M2: Know if the model makes money** | After a month of tracking bets, run `gridiron bet summary` and see your CLV, ROI, and record by confidence tier. | W6 | ✅ **ACHIEVED** |
 | **M1.5: Weekly game-day predictions** | Run `gridiron output predictions` on Thursday, then `gridiron edges report` to see fresh edges. | Existing pipeline | ✅ **ACHIEVED** (infrastructure exists) |
+| **M1.6: One-command weekly workflow** | Run `gridiron weekly-predict` to do the full Thursday/Sunday game-day prep in one command. | W4.1 | Planned (next) |
 | **M3: First prop edge** | Run gridiron props evaluate --model qb_pass_yards and get a full evaluation report with accuracy, bias, coverage metrics. | W4 + W5 | ✅ **ACHIEVED** |
 | **M4: Shop across 3+ books** | Run `gridiron lines --week 12` and see a cross-book comparison with best prices highlighted. | W7 | Planned |
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned |
@@ -437,6 +476,7 @@ These are not deadlines. They are recognizable moments where the system becomes 
 
 | Date | Change |
 |---|---|
+| 2026-06-21 | **Audit remediation (W3.5) complete.** ~100 findings closed across 11 audit units, 4 cross-cutting patterns. Architectural foundation substantially cleaner: identity unification, canonical Elo simulator, task-discriminated metadata, vectorized data flows, archive-driven prop CLI, completed dataset registry. New workstream W4.1 (Composite CLI Workflows) added as the next focus. M1.6 milestone added. |
 | 2026-06-10 | **W4 mostly complete. M3 achieved.** Player data pipeline, 5 prop models (ElasticNet), post-processing enrichment, evaluation metrics, archive, CLI. See CHANGELOG.md for full detail. |
 | 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. W11 removed (already exists). M1.5 achieved. XGBoost is auto-selected champion (Brier 0.218). |
 | 2026-06-03 | **v2 refresh.** Updated §1 (current state), marked W1–W6 complete in §4, added W11 (Live Prediction Pipeline) and W12 (Model Ensemble), updated §5.4 project structure to match built modules, redrew §6 dependency graph, marked M1/M2 achieved in §7, added M1.5 milestone. Reconciled with PLAN.md numbering. |

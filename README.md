@@ -13,6 +13,14 @@ uv run gridiron --help
 
 ## Weekly workflow (during season)
 
+The fastest way to run the full game-day prep is the composite command:
+
+```bash
+# Generate predictions, render outputs, and produce edge report in one command
+uv run gridiron weekly-predict --week 1 --season 2026-2027
+```
+Or run the individual stages manually:
+
 ```bash
 # Refresh data + rebuild features
 uv run gridiron run-data-pipeline

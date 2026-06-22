@@ -1,6 +1,6 @@
 # Gridiron Edge — Handoff
 
-How everything works right now. Assumes you know what the project does — see [README.md](README.md) for the one-paragraph version and [PLAN.md](PLAN.md) for what's coming next.
+How everything works right now. Assumes you know what the project does — see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [TIER_4_BACKLOG.md](TIER_4_BACKLOG.md) for ambient hygiene items addressed opportunistically.
 
 ---
 
@@ -133,7 +133,7 @@ The feature layer (`features/team/epa.py`) reads this dataset and applies rollin
 Everything else auto-propagates through:
 `_columns.py → feature sets → model inputs`
 
-This pattern was fully validated during Phase 20e (22 EPA metrics, 107 total features).
+This pattern was validated by the EPA feature expansion (22 metrics, 107 total features).
 
 ### `GAME_LOCATION` schema
 
@@ -141,7 +141,11 @@ Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). 
 
 ### Elo divisor is parameterised end-to-end
 
-`core.py` → `EloTableConfig` → `SimulationConfig` → `--divisor` CLI flag. The tuner (`evaluate tune elo`) finds the optimal divisor; set it consistently across table building and simulation. Default is 480 (classic NFL Elo). elo_v2 optimum is 350.
+`core.py` → `EloTableConfig` → `SimulationConfig` → `--divisor` CLI flag. The tuner (`evaluate tune`) finds the optimal divisor; set it consistently across table building and simulation. Default is 480 (classic NFL Elo). Tuner has two modes:
+- **flat-K** (default): one K-factor for all weeks. Empirical optimum around 350.
+- **zone-K** (`--zone-k`): K varies by week zone (early/mid/week18/postseason). Useful for handling structurally noisy weeks (e.g., week 18 starter rest).
+
+See `evaluation/tune.py` for the underlying parameter search.
 
 ### Feature dependency validation
 
@@ -153,7 +157,7 @@ Three values only — `"H"` (home win), `"@"` (away win), `"N"` (neutral site). 
 
 ### PBP ingest column expansion
 
-`sack` was added to `_KEEP_COLUMNS` during Phase 20e (Batch 3).
+`sack` was added to `_KEEP_COLUMNS` during the EPA feature expansion.
 
 When `_KEEP_COLUMNS` changes:
 - Existing PBP parquet files must be deleted
@@ -275,24 +279,31 @@ automatically includes it in the prop model feature set.
 
 #### Prop archive dedup key
 
-(game_id, player_id, stat_type, model_version) — last write wins.
-Same append-only pattern as the game prediction archive.
+`(game_id, player_id, stat_type, model_name, model_type)` — last write wins.
+Same append-only pattern as the game prediction archive. The composite
+identity allows distinct algorithm variants (elasticnet / random_forest /
+xgboost) of the same stat family to coexist in the archive without
+collision.
 
 #### Champion/challenger model promotion
 
-Models are registered as unversioned champions (random_forest, xgboost,
-logistic) rather than versioned variants (rf_v1, rf_v2, etc.).
-`gridiron models train <name>` auto-compares the newly trained model
-against the existing champion using three gates:
+Models are identified by composite `(model_name, model_type)` pairs (e.g.,
+`win_prob_random_forest`, `total_xgboost`). Each pair has at most one
+trained artifact at `data/models/{model_name}/{model_type}/`.
 
-1. **Brier** must improve by ≥ 0.002 (primary metric)
+`gridiron models train <model-name> <model-type>` auto-compares the newly
+trained challenger against the existing champion using three gates:
+
+1. **Brier** must improve by ≥ 0.002 (primary metric, classification only)
 2. **ECE** must not degrade by > 0.01 (calibration guardrail)
 3. **AUC** must not degrade by > 0.01 (discrimination guardrail)
 
 If all gates pass, the challenger is promoted. If any gate fails, the
-old champion is restored from backup. Use `--force` to override,
-`--no-promote` for dry-run comparison. Logic lives in
-`evaluation/champion.py`.
+old champion is restored. Use `--force` to override, `--no-promote` for
+dry-run comparison. Logic lives in `evaluation/champion.py`.
+
+Promotion semantics currently support classification models only.
+Regression model promotion is a future workstream (see TIER_4_BACKLOG.md).
 
 #### Temporal CV for model training
 
@@ -300,8 +311,12 @@ All model families use TimeSeriesSplit(n_splits=5) for cross-validation
 during hyperparameter search. Early folds with fewer than
 MIN_CV_TRAIN_ROWS (4000) rows are skipped to avoid undersized training
 sets biasing HP selection. The training data is sorted chronologically
-in `_prepare_data` before splitting. This replaced StratifiedKFold
-(shuffle=True) which had temporal leakage.
+in `_prepare_data` before splitting.
+
+This replaced StratifiedKFold(shuffle=True) which had temporal leakage.
+See `DECISIONS.md` D2 for the post-audit re-baseline that confirmed the
+structural fix is right even though the empirical metric impact was below
+predicted thresholds.
 
 ---
 
@@ -311,6 +326,37 @@ These trace how data moves through the system for each major operation.
 Use them to understand what happens when a command runs, where to add
 new functionality, and where to look when something breaks.
 
+
+### Workflows (End-to-End Data Flows)
+
+These trace how data moves through the system for each major operation.
+Use them to understand what happens when a command runs, where to add
+new functionality, and where to look when something breaks.
+
+#### Composite Commands
+
+Four top-level composite commands wrap related single-purpose commands
+into complete workflows. They share infrastructure in
+`cli/_composites.py` for stage abstraction, dependency validation,
+soft-fail semantics, and consolidated summary rendering.
+
+| Command | Stages | Use case |
+|---|---|---|
+| `weekly-predict` | ensure-data-fresh → fetch-odds → predict-week → render-outputs → generate-edges | Thursday/Sunday game-day prep |
+| `post-week` | refresh-data → backfill-predictions → evaluate-summary | After-Sunday archive + drift detection |
+| `full-retrain` | refresh-all-data → backfill-game-models → backfill-prop-models → refresh-calibrations → baseline-report | Season-start refresh (weekend job) |
+| `verify` | quality-gates → unit-tests → integration-tests → e2e-tests → smoke-pipeline → baseline-comparison | Pre-commit verification |
+
+Each composite accepts `--skip` and `--only` for stage filtering
+(mutually exclusive). External-service stages (`fetch-odds`,
+`generate-edges`, `smoke-pipeline`) are soft-fail by default — the
+rest of the workflow continues even when they fail. `verify --strict`
+converts soft-failures into hard ones for CI use.
+
+Stage functions are defined inside each composite file (e.g.,
+`cli/weekly_predict.py`). Stages share state across the composite via
+a context dict — `predict-week` writes the predictions DataFrame to
+context, and `render-outputs` consumes it without rebuilding.
 
 #### Data Pipeline (`gridiron run-data-pipeline`)
 
@@ -535,15 +581,57 @@ uv run gridiron run-data-pipeline \
   --season-year 2025-2026
 ```
 
- ~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix.
+\~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix.
+
+For a full retrain with walk-forward backfill of all model pairs plus recalibration (the proper season-start workflow), use the composite:
+
+```bash
+uv run gridiron full-retrain
+```
+
+Runtime is hours. Designed as a weekend batch job.
 
 ### Weekly refresh (during season)
+
+The fastest way is the composite command:
+
+```bash
+uv run gridiron weekly-predict --week 1 --season 2026-2027
+```
+
+Composes data refresh, odds fetch, prediction, output rendering, and
+edge report into one workflow.
+
+The underlying single-purpose command also works:
 
 ```bash
 uv run gridiron run-data-pipeline
 ```
 
-Runs all stages. Re-fetches current season games + upcoming schedule, incremental Elo fit, rebuilds features.
+Runs all stages. Re-fetches current season games + upcoming schedule,
+incremental Elo fit, rebuilds features.
+
+### Post-week archive (Monday)
+
+```bash
+uv run gridiron post-week --week 1 --season 2025-2026
+```
+
+Composes data refresh, prediction archive for the completed week, and
+a drift-detection summary that compares the week's Brier against the
+season mean.
+
+### Pre-commit verification
+
+```bash
+uv run gridiron verify
+```
+
+Runs ruff, pyrefly, unit tests, integration tests, e2e tests, a light
+data-pipeline smoke check, and a baseline comparison anchor. Use
+`--fast` for a quick check (skips e2e and smoke-pipeline). Use
+`--strict` for CI mode (converts soft-failures into hard ones).
+
 
 ### Stage control
 
@@ -581,35 +669,49 @@ uv run gridiron sim run [--n-sims 10000] [--divisor 350]
 ### Model training and evaluation
 
 ```bash
-uv run gridiron models train random_forest
-uv run gridiron models train xgboost --force
-uv run gridiron models train logistic --no-promote
-uv run gridiron evaluate backfill --model-version random_forest
-uv run gridiron evaluate backfill --model-version xgboost
+uv run gridiron models train win_prob random_forest
+uv run gridiron models train win_prob xgboost --force
+uv run gridiron models train win_prob logistic --no-promote
+uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest
+uv run gridiron evaluate backfill --model-name win_prob --model-type xgboost
 uv run gridiron evaluate select-model
 uv run gridiron evaluate report
 ```
 
-### Archive migration (one-time, pre-thermonuclear-review archives only)
+Models are now identified by composite (model_name, model_type) pairs.
+The --model-key flag on read-only commands (calibration, diagnostics, summary)
+accepts the composite key as a single string (e.g., win_prob_random_forest).
+The training and backfill commands accept the pair as separate arguments.
+
+### Archive migration
+
+The archive schema has evolved over time:
+- v1 → v2: added enrichment columns (spread, total, bands, tier). Backward compatible: missing columns get NaN on load.
+- v2 → v3: migrated `model_version` to `(model_name, model_type)` composite identity. Old archives with just `model_version` are silently dropped by load-time column projection.
+
+No manual migration scripts are needed; the load functions handle these
+schema transitions automatically.
 
 ```bash
-python -c "from gridiron_edge.evaluation.archive import migrate_archive; migrate_archive()"
+#### Prop model evaluation (reads from archive — no retrain)
+uv run gridiron props evaluate --model qb_pass_yards --model-type elasticnet
+
+#### Prop projections (requires saved artifact)
+uv run gridiron props projections --model qb_pass_yards --model-type elasticnet --top 20
+
+#### Prop walk-forward backfill (honest historical predictions)
+uv run gridiron props backfill --model qb_pass_yards --model-type elasticnet --start-season 2023 --end-season 2025
+
+#### Prop champion (uses archive, no retrain)
+uv run gridiron props champion --model qb_pass_yards
 ```
 
-Adds `is_backfilled` column to existing prediction archives. Idempotent.
-
-```bash
-#### Prop model evaluation
-uv run gridiron props evaluate --model qb_pass_yards
-uv run gridiron props evaluate --model rb_rush_yards
-
-#### Prop projections
-uv run gridiron props projections --model all --top 20
-uv run gridiron props projections --model qb_pass_yards --top 10
-
-#### Prop backfill
-uv run gridiron props backfill --model qb_pass_yards
-```
+The prop CLI is fully archive-driven post-Unit-7c. evaluate and
+champion read from the prop prediction archive instead of retraining
+inside every command. backfill does honest walk-forward (per-season
+training through the cutoff). projections requires a trained artifact
+written via PropTrainer.train_and_save (not yet exposed as a CLI command
+— see TIER_4_BACKLOG.md).
 
 ---
 
@@ -628,7 +730,7 @@ uv run gridiron props backfill --model qb_pass_yards
 | `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot for viz |
 | `data/raw/player_stats/player_stats_{season}.parquet` | Per-season player game logs from nflreadpy |
 | `data/cleaned/player_game_logs.parquet` | Cleaned player stats (138K rows, deduped) |
-| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive — dedup on (game_id, player_id, stat_type, model_version) |
+| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive — dedup on (game_id, player_id, stat_type, model_name, model_type) |
 
 ---
 
@@ -637,6 +739,8 @@ uv run gridiron props backfill --model qb_pass_yards
 | What | Where |
 |------|-------|
 | CLI entry + `run-data-pipeline` | `cli/main.py` |
+| Composite CLI commands | `cli/weekly_predict.py`, `cli/post_week.py`, `cli/full_retrain.py`, `cli/verify.py` |
+| Composite shared infrastructure | `cli/_composites.py` |
 | Shared constants | `core/constants.py` |
 | Feature pipeline + ordering | `features/pipeline.py` |
 | Feature dependency validation | `features/registry.py` — `validate_ordering()` |
@@ -649,7 +753,6 @@ uv run gridiron props backfill --model qb_pass_yards
 | Simulation types + config | `sim/_types.py` |
 | Simulation engine (numba) | `sim/_engine.py` |
 | Simulation orchestration | `sim/season.py` |
-| Prediction archive schema | `evaluation/archive.py` |
 | Model selection + reporting | `evaluation/select.py` |
 | Weather ingest (idempotent) | `ingest/weather/openweather.py` |
 | DK odds ingest | `ingest/odds/draftkings.py` |
@@ -681,11 +784,19 @@ All paths relative to `src/gridiron_edge/`.
 # Normal dev loop (runs on every commit via pre-commit hook)
 uv run ruff check . --fix && uvx pyrefly check && uv run pytest -m "unit and not slow"
 
+# Same gates via composite (also runs integration, e2e, smoke check):
+uv run gridiron verify
+
+# Quick check (skips e2e and smoke):
+uv run gridiron verify --fast
+
+# CI mode (converts soft-failures to hard failures):
+uv run gridiron verify --strict
 ```
 
 Pre-commit hooks enforce ruff + pyrefly + unit tests on every commit.
 Pre-push hooks add integration + e2e tests.
-Use uv run gridiron -v <command> for verbose output.
+Use `uv run gridiron -v <command>` for verbose output.
 
 ---
 
@@ -741,6 +852,8 @@ Each workstream is expected to bring its modules to 80%+ coverage.
 
 ## Known sharp edges
 
+> Many of these items are tracked in `TIER_4_BACKLOG.md` for opportunistic cleanup. The items below are the ones a new user is most likely to hit on day one.
+
 ### Missing stadium coordinates (2026-2027)
 
 12 new/renamed stadia for the 2026-2027 season are not yet in `NFL_stadium_reference.csv`. Weather ingest skips affected games. Add rows with columns `STADIUM`, `HOME_TEAM`, `YEAR`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`:
@@ -767,15 +880,52 @@ nflverse updates nightly after each game day. The cleanest weekly snapshot is Th
 
 ## Operational checklist (weekly, during season)
 
+### Thursday/Sunday — game day prep
+
+The composite command wraps the common case:
+
+```bash
+uv run gridiron weekly-predict --week N --season YYYY-YYYY+1
+```
+
+This runs: data refresh, odds fetch, predictions, rendering, and edge report in one command. `fetch-odds` and `generate-edges` soft-fail individually so a DK outage doesn't block the rest.
+
+### Monday — after games complete
+
+```bash
+uv run gridiron post-week --week N --season YYYY-YYYY+1
+```
+
+This runs: data refresh (includes Elo update), prediction archive for the completed week, and a drift-detection summary.
+
+### After bets are confirmed by the bookmaker
+
+```bash
+uv run gridiron bet log --game-id {ID} --market {TYPE} --side {SIDE} \
+    --odds {ODDS} --stake {AMT} --book {BOOK} \
+    --model-name win_prob --model-type random_forest
+
+uv run gridiron bet settle {BET_ID} {won|lost|push}
+uv run gridiron bet summary    # performance + calibration health
+uv run gridiron bet balance    # bankroll
+```
+
+### Optional: props
+
+```bash
+uv run gridiron props evaluate --model qb_pass_yards --model-type elasticnet
+uv run gridiron props projections --model qb_pass_yards --model-type elasticnet
+```
+
+### Manual fallback
+
+If you need to run the underlying stages individually (e.g., for
+debugging or composite-skip scenarios), the equivalent sequence is:
+
 1. `uv run gridiron run-data-pipeline` — refresh data + features
 2. `uv run gridiron ingest dk-odds` — pull current week odds
-3. `- uv run gridiron edges report --week N --season YYYY-YYYY+1 — generate edge report`
-4. `uv run gridiron sim run`
-5. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N`
-6. `uv run gridiron evaluate backfill --model-version random_forest`
-7. `gridiron bet log --game-id {ID} --market {TYPE} --side {SIDE} --odds {ODDS} --stake {AMT} --book {BOOK}`
-8. `gridiron bet settle {BET_ID} {won|lost|push}`
-9. `gridiron bet summary`
-10. `gridiron bet balance`
-11. `uv run gridiron props evaluate --model qb_pass_yards` — evaluate prop model
-12. `uv run gridiron props projections --model all` — generate prop projections
+3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N` — generate predictions
+4. `uv run gridiron edges report --week N --season YYYY-YYYY+1` — generate edge report
+5. `uv run gridiron sim run` — Monte Carlo simulation
+6. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N` — write rank changes
+7. `uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest` — archive predictions

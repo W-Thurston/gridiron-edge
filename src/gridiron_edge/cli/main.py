@@ -27,6 +27,7 @@ from gridiron_edge.cli.props import props_app
 from gridiron_edge.cli.ratings import ratings_app
 from gridiron_edge.cli.sim import sim_app
 from gridiron_edge.cli.transform import transform_app
+from gridiron_edge.cli.verify import verify_cmd
 from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
 from gridiron_edge.core.logging import setup_logging
 from gridiron_edge.core.settings import ensure_data_dirs
@@ -76,6 +77,7 @@ app.add_typer(props_app, name="props")
 app.command("weekly-predict")(weekly_predict_cmd)
 app.command("post-week")(post_week_cmd)
 app.command("full-retrain")(full_retrain_cmd)
+app.command("verify")(verify_cmd)
 
 
 # ===========================================================================
