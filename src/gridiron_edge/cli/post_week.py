@@ -1,3 +1,5 @@
+# src/gridiron_edge/cli/post_week.py
+
 """Composite command: post-week.
 
 After games complete, archive the week's predictions to the prediction
@@ -25,6 +27,19 @@ from gridiron_edge.cli._composites import (
     resolve_active_stages,
     run_composite,
 )
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+# Brier-score deviation from the current season average that triggers
+# a weekly drift warning in the post-week evaluation snapshot.
+#
+# This is intentionally a constant rather than a CLI option. There is
+# currently only one use case and one consumer; if additional drift
+# reporting surfaces emerge in the future this can be promoted into a
+# shared evaluation constant or configuration setting.
+_BRIER_DRIFT_WARNING_THRESHOLD: float = 0.02
 
 # ---------------------------------------------------------------------------
 # Stage functions
@@ -130,7 +145,7 @@ def _stage_evaluate_summary(ctx: dict[str, Any]) -> StageResult:
 
         detail_parts.append(f"week {week}: Brier {week_brier:.4f}, accuracy {row['accuracy']:.1%}")
 
-        if abs(delta) > 0.02:
+        if abs(delta) > _BRIER_DRIFT_WARNING_THRESHOLD:
             direction: Literal["better", "worse"] = "worse" if delta > 0 else "better"
             warnings.append(
                 f"Week {week} Brier ({week_brier:.4f}) is "
