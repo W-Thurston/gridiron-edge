@@ -1,3 +1,5 @@
+# src/gridiron_edge/cli/weekly_predict.py
+
 """Composite command: weekly-predict.
 
 Generates predictions for the upcoming week by composing data refresh,
@@ -16,6 +18,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
+from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
 import typer
@@ -204,6 +208,7 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
         )
 
     ranked = rank_edges(edge_report, min_ev=0.0)
+    ctx["top_edges_preview"] = ranked.head(5).reset_index(drop=True).copy()
 
     out_dir = repo / "data" / "output" / "edges"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -221,6 +226,24 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
 # ---------------------------------------------------------------------------
 # Stage list
 # ---------------------------------------------------------------------------
+
+
+def _render_edge_preview(ranked: DataFrame) -> None:
+    """Render a small console preview of the highest-EV edges."""
+    if ranked.empty:
+        return
+
+    typer.echo("")
+    typer.echo("Top edges")
+    typer.echo("-" * 60)
+
+    for _, row in ranked.iterrows():
+        matchup: str = f"{row['away_team']} @ {row['home_team']}"
+        market: str = f"{row['market_type']}:{row['side']}"
+
+        typer.echo(
+            f"{matchup:20s}  {market:16s}  EV {row['ev']:+.1%}  Stake ${row['kelly_stake']:.2f}"
+        )
 
 
 def _build_stages() -> list[CompositeStage]:
@@ -352,8 +375,11 @@ def weekly_predict_cmd(
         active=active,
         context=context,
     )
-
     render_composite_summary(summary)
+
+    top_edges = context.get("top_edges_preview")
+    if top_edges is not None and not top_edges.empty:
+        _render_edge_preview(top_edges)
 
     if not summary.overall_success:
         raise typer.Exit(code=1)

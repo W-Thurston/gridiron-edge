@@ -1,3 +1,5 @@
+# tests/unit/cli/test_weekly_predict.py
+
 """Tests for the weekly-predict composite command."""
 
 from __future__ import annotations
@@ -136,6 +138,71 @@ class TestGenerateEdgesStage:
         result = _stage_generate_edges(ctx)
         assert not result.success
         assert "no current DK odds" in result.detail
+
+    @patch("gridiron_edge.market.recommendations.rank_edges")
+    @patch("gridiron_edge.market.recommendations.build_edge_report")
+    @patch("gridiron_edge.models.game_prediction.post_process.get_total_std")
+    @patch("gridiron_edge.models.game_prediction.post_process.get_margin_std")
+    @patch("gridiron_edge.ingest.odds.store.load_current_odds")
+    @patch("gridiron_edge.evaluation.archive.load_prediction_log")
+    def test_stashes_top_edge_preview_in_context(
+        self,
+        mock_predictions: MagicMock,
+        mock_odds: MagicMock,
+        mock_margin_std: MagicMock,
+        mock_total_std: MagicMock,
+        mock_build_report: MagicMock,
+        mock_rank_edges: MagicMock,
+    ) -> None:
+        """weekly-predict should cache the top edge preview for display."""
+
+        import pandas as pd
+
+        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
+
+        mock_predictions.return_value = pd.DataFrame(
+            {
+                "game_id": ["g1"],
+                "away_win_prob": [0.55],
+            }
+        )
+
+        mock_odds.return_value = pd.DataFrame({"x": [1]})
+
+        mock_margin_std.return_value = 13.0
+        mock_total_std.return_value = 13.0
+
+        mock_build_report.return_value = pd.DataFrame({"ev": [0.04]})
+
+        ranked = pd.DataFrame(
+            {
+                "away_team": ["KC"],
+                "home_team": ["LAC"],
+                "market_type": ["spread"],
+                "side": ["home"],
+                "ev": [0.042],
+                "kelly_stake": [18.2],
+            }
+        )
+
+        mock_rank_edges.return_value = ranked
+
+        ctx: dict[str, object] = {
+            "week": 1,
+            "season": "2026-2027",
+            "model_type": "random_forest",
+        }
+
+        result = _stage_generate_edges(ctx)
+
+        assert result.success
+        assert "top_edges_preview" in ctx
+
+        preview = ctx["top_edges_preview"]
+        assert isinstance(preview, pd.DataFrame)
+        assert len(preview) == 1
+        assert preview.iloc[0]["away_team"] == "KC"
+        assert preview.iloc[0]["home_team"] == "LAC"
 
 
 class TestCommandInvocation:
