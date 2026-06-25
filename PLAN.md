@@ -1,158 +1,275 @@
-# Gridiron Edge - Development Plan
+# Gridiron Edge — Development Plan
 
-> **Purpose:** single source of truth for *what to build next* and *why*.
-> Updated at the start and close of every workstream.
+> **Purpose:** a directed view of what we are currently building. PLAN.md is a
+> working document, not a reference. It contains exactly one active workstream
+> at a time, broken into tiers, each with its own design block that grows
+> during the tier and collapses to a summary on completion.
+
+## Where to find other information
 
 | Document | Role |
 |----------|------|
-| **PLAN.md** (this file) | What is planned, what is active, what is deferred |
-| **CHANGELOG.md** | What was built and when (completed workstream details) |
+| **PLAN.md** (this file) | The active workstream and its in-flight design |
+| **ROADMAP.md** | Long-term strategic direction, workstream inventory, prioritization, known issues & backlog |
+| **CHANGELOG.md** | What was built and when (closed workstreams + tier summaries) |
 | **HANDOFF.md** | How the system works today (architecture, workflows, operations) |
-| **ROADMAP.md** | Long-term strategic direction, workstream inventory, architecture decisions |
 | **DECISIONS.md** | Architectural decisions made during workstreams |
 
-#### Status key
+## Status key
 
 | Tag | Meaning |
 |-----|---------|
-| Done | Done - details in CHANGELOG.md |
-| In progress | In progress |
-| Planned | Planned / blocked |
-| Deferred | Deferred |
+| Active | Currently being worked |
+| Designing | In design phase, not yet implementing |
+| Complete | Tier success criteria met (summary retained inline) |
+| Re-scoped | Tier success criteria invalidated; replaced or dropped |
+
+Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside the planning docs (PLAN, ROADMAP, DECISIONS, CHANGELOG) — never in source code, comments, or commit subjects.
 
 ---
 
-## High-Level Priority Order
+## Current Workstream: W8 — API Serving Layer
 
-| # | Workstream | Status |
-|---|-----------|--------|
-| 1 | Champion/Challenger for Props (RF + XGBoost) | Done |
-| 2 | Game Model Refactor (align to props pattern) | Done |
-| 3 | Integration & E2E Tests | Done |
-| 3.5 | Audit Remediation (Units 1-11) | Done |
-| 4 | Composite CLI Workflows | Done |
-| 5 | Deep Code Review + Test Suite Review | Done |
-| 6 | Scenario / "What If" Engine (W4.5) | Planned (next) |
-| 7 | API & Frontend (W8 + W9) | Planned |
-| 8 | All External Odds (DK props, historical, line shopping) | Planned |
-| 9 | Evaluate remaining work | Planned |
+### What we are building
 
-See `ROADMAP.md` for the full strategic context behind each workstream.
+A read-only REST API that exposes every analytics output Gridiron Edge produces, shaped to match the Gridiron Edge frontend prototype end-to-end. Every screen in the prototype gets the endpoints it needs; every field that the backend can populate today returns real data; every field the backend can't yet produce returns `null` accompanied by metadata describing why.
 
----
+The API is implemented as a FastAPI app with Pydantic v2 response models, mounted as a new `api/` package and served via `gridiron api serve`. Pydantic is confined to the `api/` boundary — domain code (models, evaluation, market, features) stays pandas/dataclass-shaped.
 
-## Completed Workstreams
+### Why we are building it
 
-The first four workstreams (W1 through W3.5) closed substantial architectural and remediation work. Full details for each in `CHANGELOG.md`.
+Three reinforcing reasons:
 
-| Workstream | Closed | Summary |
+1. **Verification surface.** The CLI surfaces outputs one-at-a-time. The frontend prototype puts ~19 screens worth of outputs side-by-side. Wiring the prototype to the API is the next quality-assurance step — every populated field gets verified by inspection, every placeholder field becomes a visible roadmap signal. The act of building this *is* the verification pass that the CLI cannot perform.
+2. **Frontend unblock.** W9 (Frontend) cannot start until there is an API to wire to. W8 is the gating dependency for M5 (friends can use it).
+3. **Roadmap discovery.** The placeholder fields the API ships will form a structured, observable inventory of "what's missing" that drives ROADMAP §9 (Known Issues & Backlog) prioritization. We learn what's worth building next by seeing what's empty in the UI.
+
+### Success criteria
+
+- Every endpoint in the prototype-driven inventory (Tier 1 + Tier 2 + Tier 3) returns a 200 response with a valid Pydantic-validated shape.
+- Every Tier 1 endpoint returns real data for ≥80% of its fields, with the remainder explicitly marked in `_meta.field_status`.
+- Every Tier 2 endpoint has a documented backend addition shipped or explicitly deferred with a Tier 2 → Tier 3 demotion.
+- Every Tier 3 endpoint returns `null` fields with structured `_meta.field_status` entries naming a blocker.
+- `gridiron api serve` starts the API and surfaces OpenAPI docs at `/docs`.
+- Test coverage: unit (response model shape + `_meta` correctness), integration (`MiniRepoBuilder`-backed), with e2e deferred to W9.
+- All quality gates pass (ruff, pyrefly, pytest).
+
+### Disconfirming evidence
+
+What would tell us this workstream is the wrong thing to build (or scoped wrong) before completion?
+
+- If during Tier 1 we discover that the dataset registry can't cheaply serve the shapes the prototype expects without significant new aggregation work, the "files-first" architecture decision may be wrong and we'd need to revisit ROADMAP §5.1 (file vs. database) before continuing.
+- If during Tier 2 the placeholder convention (`null` + `_meta.field_status`) proves too noisy in practice — frontend consumers find it hard to reason about, or `_meta` blocks balloon — we'd revisit the convention before committing the full surface.
+- If the prototype's expected shapes drift substantially during the workstream (you decide a screen should look fundamentally different), Tier 1 endpoints may need to be re-shaped rather than incrementally extended.
+
+### Locked architectural decisions
+
+| Decision | Choice | Rationale |
 |---|---|---|
-| W1: Champion/Challenger for Props | 2026-06-04 | Added RF + XGBoost as prop model types alongside ElasticNet, unified champion/challenger pattern across all prop models, generalized `evaluation/champion.py` for both classification and regression gates. |
-| W2: Game Model Refactor | 2026-06-19 | Refactored `models/game_prediction/` to mirror prop pattern. Composite-key registry, nested artifact paths, `GamesTrainer`/`GamesPredictor` unification, prediction archive schema migration from `model_version` to `(model_name, model_type)`. All 5 game models retrained; baselines improved or matched pre-WS2 targets. |
-| W3: Integration & E2E Tests | 2026-06-20 | Three-tier test pyramid with auto-applied pytest markers. Shared fixtures, `MiniRepoBuilder` for integration repos. 500+ tests total. Game-side fit-load-predict integration tests; prop-side deferred. |
-| W3.5: Audit Remediation (Units 1-11) | 2026-06-21 | Closed ~100 findings from `audit_2026_06_18.md` across 11 units plus 4 cross-cutting patterns. Architectural cleanup: canonical Elo simulator, identity unification, task-discriminated metadata, enforced trainability contracts, vectorized data pipelines, dataset registry completion. See `AUDIT_REMEDIATION.md` and `DECISIONS.md` (D1–D12) for full detail. |
-| W4: Composite CLI Workflows | 2026-06-21 | Four composite commands wrap existing single-purpose commands into complete workflows. `weekly-predict` for game-day prep, `post-week` for archive + drift detection, `full-retrain` for season-start refresh, `verify` for pre-commit quality checks. Shared infrastructure (`cli/_composites.py`) provides stage abstraction, dependency validation, soft-fail semantics, and consolidated summary rendering. |
-| W5: Deep Code Review + Test Suite Review (Tier 4 sweep) | 2026-06-22 | Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergonomics, composite commands, dead code, documentation drift, exception narrowing, type cleanup, HTML escaping, season-label consistency, name mapping consolidation, calibration persistence, pipeline correctness, and incremental-build staleness detection. The review surfaced two real bugs (XGBoost recalibration Pipeline feature-name warning and modeling-file stale-data preservation) and added the pipeline staleness detector to prevent the latter from recurring. Three items reclassified as future workstream candidates rather than ambient hygiene. |
+| Framework | **FastAPI** | Async, type-driven, free OpenAPI docs at `/docs`. |
+| Validation / response models | **Pydantic v2** | Native FastAPI integration. Heavy dep accepted, scoped to `api/` only. |
+| Pydantic scope | **API boundary only** | Domain code stays pandas/dataclass-shaped. Pydantic lives in `api/schemas/`. |
+| Data source | **Parquet/CSV via existing dataset registry** | No DB in W8. Revisit during W9 if hot paths or query complexity demand it (ROADMAP §5.1 trigger). |
+| Serve command | **`gridiron api serve`** | Consistent with rest of CLI surface; wraps `uvicorn`. |
+| Endpoint coverage | **Full prototype shape, no cuts** | Every screen gets the endpoints it needs. Unsupported data is field-level placeholders, not missing endpoints. |
+| Placeholder convention | **`null` + `_meta.field_status`** | Unpopulated fields return `null` with an entry in the response's `_meta.field_status` dict (`"pending"` for backend work; `{status, blocker, roadmap}` for upstream-workstream blockers). Revisit if noisy. |
+| Placeholder granularity | **Field-level** | One status per field. Section-level rollup deferred unless duplication becomes a problem. |
+
+### Open design questions (resolved during tier design, not at workstream start)
+
+1. Endpoint shape — flat vs. nested. `GET /games/{id}` returns full nested team + edge + prop data, or flat with separate `/games/{id}/edges` calls? Lean flat-and-separate.
+2. Caching layer. Registry-direct per request, or thin in-memory cache keyed on (dataset, modified-time)? Default: registry-direct. Likely first hit: percentile rankings for Compare and Game Detail.
+3. Pagination / filtering conventions. Query-param-based filtering is obvious; pagination probably unnecessary at NFL scale. Document the stance.
+4. Error model. Pydantic ValidationError → 422 is automatic. Project-level convention needed for domain errors (missing week, unknown model). HTTP codes + plain JSON vs. structured envelope.
 
 ---
 
+## Tiers
+
+### Tier 1 — Skeleton + Tier 3 stubs
+
+**Status:** Designed, ready for implementation
+
+#### What we are building
+
+The FastAPI app skeleton, the `_meta` envelope plumbing, and every Tier 3 endpoint returning its blocked-field shape. No backend wiring yet — pure schema work.
+
+#### Why
+
+Fastest path to a working API surface. Lets W9 frontend integration begin immediately against the full endpoint inventory, even though most Tier 1/2 endpoints will return mostly-null shapes at this point. Forces the placeholder convention into shape under real use before committing to it for populated endpoints.
+
+#### Success criteria
+
+- `gridiron api serve` starts a FastAPI app exposing the full endpoint inventory.
+- `_meta.field_status` envelope works end-to-end through a `BaseResponse` Pydantic model that all responses inherit.
+- All Tier 3 endpoints return 200 with a fully-null shape and a populated `_meta.field_status` block naming the upstream blocker.
+- OpenAPI docs at `/docs` render every endpoint with its full schema and group Tier 3 sub-resources under their own tags.
+- Unit tests cover `_meta` envelope construction and Tier 3 blocked-field shapes.
+- Integration test confirms every Tier 3 endpoint returns 200 with a non-empty `_meta.field_status` referencing a registered blocker slug.
+
+#### Disconfirming evidence
+
+- If the `_meta` envelope feels structurally wrong as soon as it has to carry real status entries — i.e., the developer ergonomics of constructing it are bad — revisit the placeholder convention before Tier 2.
+- If Pydantic v2 model composition doesn't cleanly support the `BaseResponse` + nested `_meta` pattern (e.g., generic list responses with frozen parents misbehave), revisit the validation library decision.
+- If the `Blocker` registry pattern proves awkward (e.g., we keep adding tuples), promote to an Enum or a registered-class pattern.
+
+#### How
+
+**Architecture: four-layer bottom-up build.**
+
+1. **`api/meta.py`** — `FieldStatus` discriminated union (`"pending"` literal or `BlockedStatus` object), `ResponseMeta` envelope with `with_pending` / `with_blocked` builder methods, `Blocker` registry of `(slug, roadmap_ref)` tuples matching ROADMAP §9.5.
+2. **`api/schemas/_base.py`** — `BaseResponse` Pydantic model (frozen, `extra="forbid"`) with optional `response_meta: ResponseMeta | None` aliased to `_meta` on the wire. `BaseListResponse[T]` generic for list-shaped endpoints carrying `items: list[T]` and `total: int | None`.
+3. **`api/app.py` + `api/deps.py`** — FastAPI app factory with per-domain OpenAPI tagging, permissive CORS for dev, dataset registry as a cached dependency. `cli/api.py` adds `gridiron api serve` wrapping uvicorn.
+4. **Tier 3 routes** — one file per blocker domain (per D16). Each file is small (~20-40 lines) and follows a uniform template: define the prototype-expected shape with all fields `Optional = None`, return a constructed response with `_meta.field_status` listing every null field's blocker.
+
+**Module layout:**
+
+```
+src/gridiron\_edge/api/
+├── app.py
+├── deps.py
+├── meta.py
+├── routes/
+│   ├── # Tier 1 — populated during Tier 2
+│   ├── weeks.py, games.py, edges.py, teams.py,
+│   ├── projections.py, props.py, portfolio.py,
+│   ├── compare.py, model.py
+│   │
+│   └── # Tier 3 — blocked, ships in Tier 1
+│       ├── lines.py            → MULTI\_BOOK (W7)
+│       ├── live.py             → LIVE\_STATE (W10)
+│       ├── news.py             → NEWS\_INGEST
+│       ├── injuries.py         → INJURY\_DATA (§5.3)
+│       ├── explain.py          → scenario\_engine (W4.5)
+│       ├── swing\_factors.py    → FEATURE\_ATTRIBUTION
+│       ├── comparables.py      → COMPARABLES
+│       ├── prop\_shop.py        → MULTI\_BOOK (W7)
+│       └── prop\_reasoning.py   → FEATURE\_ATTRIBUTION
+└── schemas/
+├── \_base.py     # BaseResponse, BaseListResponse\[T]
+└── <one file per route file>
+```
+
+**Locked design decisions** (full rationale in DECISIONS.md D16):
+
+- List endpoints surface blocked-list state through `_meta.field_status["items"]`, not a separate envelope field. Uniform with scalar/object field blocking.
+- Tier 3 sub-resource endpoints get their own route files grouped by blocker domain. When a blocker clears, the unblock work is a single-file diff.
+
+**Implementation order:**
+
+1. `api/meta.py` + unit tests for `FieldStatus`, `ResponseMeta`, `Blocker` registry.
+2. `api/schemas/_base.py` + unit tests for `BaseResponse`, `BaseListResponse[T]`, alias handling.
+3. `api/deps.py` + `api/app.py` (no routers yet) + `create_app()` smoke test.
+4. `cli/api.py` + `gridiron api serve --help` smoke test + wire into `cli/main.py`.
+5. Tier 3 schema files (one per route file).
+6. Tier 3 route files following the uniform template.
+7. Wire Tier 3 routes into `app.py`; walk `/docs`; confirm every endpoint renders with the right OpenAPI tag.
+8. Integration test using `TestClient` — assert every Tier 3 endpoint returns 200, has non-empty `_meta.field_status`, and references a `Blocker.*` slug.
+
+Quality gates after each step: `ruff check . --fix && uvx pyrefly check && uv run pytest -m "unit and not slow" -v`.
+
+#### Open questions deferred to Tier 2
+
+- Singular vs. plural list keys (currently `items: list[T]`; revisit if generic shape proves awkward).
+- `extra="forbid"` on `BaseResponse` (currently locked; revisit if early refactors make it painful).
+- Frozen `BaseResponse` + list field mutation semantics (Pydantic v2 doesn't auto-freeze nested lists; verify during Step 2 unit tests).
+
 ---
 
-## Future Workstream Candidates (from former Tier 4 backlog)
+### Tier 2 — Tier 1 endpoint wiring
 
-Items identified during the Workstream 5 cleanup that are real work but don't fit "opportunistic ambient cleanup." These need scoping and prioritization before they become active workstreams.
+**Status:** Designing
 
-### Testing Infrastructure
+#### What we are building
 
-| Item | Notes |
+The Tier 1 (direct-serialization) endpoints, each reading from the dataset registry and serializing through a Pydantic response model. This is the bulk of the populated surface area.
+
+#### Why
+
+This is where the API stops being a skeleton and starts being a verification surface. Every endpoint wired here returns real model output and exposes any field-level gaps that the data pipeline didn't anticipate. Each endpoint is independent — partial completion still ships a coherent API.
+
+#### Success criteria
+
+- All Tier 1 endpoints (per the inventory below) return real data for ≥80% of their fields.
+- Remaining fields are explicitly marked `pending` in `_meta.field_status`.
+- Integration tests against `MiniRepoBuilder` fixtures cover each endpoint's happy path.
+- No Pydantic imports outside `api/`.
+- Quality gates green.
+
+#### Disconfirming evidence
+
+- If serializing more than ~3 endpoints requires reaching across multiple domain modules in awkward ways, the dataset registry abstraction may be insufficient for API consumption and we'd revisit before wiring the rest.
+- If the response time for the heavier endpoints (Edges, Projections) is unacceptable on a single request, we pull caching forward from Tier 3.
+
+#### How
+
+High-level; expands during the design phase.
+
+Tier 1 endpoint inventory:
+
+```
+GET /weeks/current
+GET /games?season=\&week=
+GET /games/{game\_id}
+GET /games/{game\_id}/predictions
+GET /edges?season=\&week=\&market=
+GET /teams
+GET /teams/{abbr}
+GET /projections
+GET /props?season=\&week=\&position=\&stat=
+GET /props/{prop\_id}
+GET /portfolio/summary
+GET /portfolio/bets?status=
+GET /portfolio/curve?period=
+GET /portfolio/transactions
+GET /portfolio/splits?dimension=
+GET /model/performance?period=
+```
+
+Implementation order to be set during the design phase. Likely: portfolio first (simplest data shapes, exercises the envelope), then games, then teams, then projections, then props, then edges.
+
+---
+
+### Tier 3 — Tier 2 backend additions
+
+**Status:** Designing
+
+#### What we are building
+
+The small backend additions needed to populate fields that Tier 1 endpoints currently mark `pending`. Each addition is a discrete, well-scoped piece of work with a clear "field X on endpoint Y populates" success signal.
+
+#### Why
+
+These are the items where the prototype reveals a backend gap that isn't a workstream-sized blocker but isn't free either. Doing them inside W8 keeps the verification feedback loop tight — we see the field stop being null in the same workstream we noticed it was null.
+
+#### Success criteria
+
+- Each Tier 2 → populated transition is observable: a specific field on a specific endpoint moves from `null + _meta.pending` to a real value, with a test covering the transition.
+- Backend additions that prove larger than expected get demoted to ROADMAP §9 (Known Issues & Backlog) with explicit rationale, not silently dropped.
+- Quality gates green.
+
+#### Disconfirming evidence
+
+- If two or more Tier 3 items turn out to be hidden multi-day projects rather than focused additions, the scoping was wrong — pause and re-evaluate which items belong in W8 vs. later workstreams.
+- If the percentile-ranking computation pass (likely the biggest Tier 3 item) doesn't fit cleanly into the existing feature pipeline, that's a signal the API may need its own derived-data layer, which would be a meaningful architectural shift.
+
+#### How
+
+High-level; expands during the design phase.
+
+Tier 2 backend additions inventory (each populates fields on Tier 1 endpoints):
+
+| Addition | Populates |
 |---|---|
-| Props e2e fit-load-predict tests | Deferred from WS3. Needs prop fixture design study before implementation. |
-| Composite commands don't have e2e tests | Unit tests cover stage definitions and orchestration with mocks; e2e tests against real data would surface integration issues earlier. |
-| Weather ingest happy-path integration test | Pre-existing bugs went undetected because there was no end-to-end test of the ingest pipeline. |
-| Registry cold-start scenarios | Test additions for `build_prop_evaluation_df` integration in conditions where the registry is empty at call time. |
-| Performance baselines for tests | May need pytest-benchmark pass if runtime grows or regressions become a concern. |
+| Per-stat league-wide percentile ranking pass | Compare screen rank columns, Team Detail rank fields |
+| Off/def rating decomposition (currently composite-only) | Team Rankings off/def split |
+| Weekly Elo snapshot persistence | Team rating-history endpoint, projections week-over-week delta |
+| Opponent-allowed-by-position aggregation | Player vs Defense view, Player Prop matchup section |
+| Limited cohort splits (season, L4, home, away) per team | Game Detail split tabs, Compare splits |
+| Limited cohort splits (indoor/outdoor, favored/underdog) per prop | Player Prop situational splits |
+| Prior-week projection snapshot for delta | Projections 1-week change column |
 
-### Real Bugs Surfaced During Tier 4 Cleanup
-
-| Item | File | Notes |
-|---|---|---|
-| Walk-forward backfill produces no valid pipeline for single-season windows with expanded feature sets | `models/game_prediction/base.py::_run_hp_search` (root cause) and `evaluation/backfill.py::_walk_forward_one_season` (calling site) | Single-season walk-forward fails because filtered training data falls below MIN_CV_TRAIN_ROWS for expanded feature sets. Also surfaced: `_run_hp_search` does not forward `train_through_season` to `_prepare_window`. Fix needs choice between (A) lower threshold for walk-forward, (B) fill expanded-feature NaN with neutral values, or (C) force walk-forward to use combined feature set. |
-
-### Investigations
-
-| Item | Notes |
-|---|---|
-| `CalibratedClassifierCV` uses `StratifiedKFold(shuffle=False)` | Not strictly time-ordered. Investigate `TimeSeriesSplit` switch and measure impact on calibration quality. May require backfill run for comparison. |
-
-### Operational
-
-| Item | Notes |
-|---|---|
-| DraftKings odds endpoint returns 403 | Bot detection has gotten more aggressive. Investigate headers, cookies, paid API alternatives. `weekly-predict` soft-fails gracefully when this happens. |
-| Weather: missing stadium entries for 2026-2027 international games | 12 stadiums need lat/lon/altitude in `NFL_stadium_reference.csv`. Listed in HANDOFF.md. Data entry task. |
-| Model calibration values pre-date current modeling file | `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` hardcoded fallbacks were calibrated against older modeling file. The `full-retrain` composite now persists current values to disk via the calibration registry; the next full-retrain run will supersede the hardcoded fallbacks. |
-| `verify --strict` not exercised in CI | Once a real CI surface exists, `gridiron verify --strict` should be the gate. |
-
----
-
----
-
-## Current Focus: Workstream 6 - Scenario / "What If" Engine (W4.5)
-
-**Goal:** Build a scenario engine that lets a user ask "what if Mahomes is out?" or "what if KC is +120 instead of -110?" and see the propagated effects on predictions, edges, and recommended bets.
-
-**Status:** Planning. See ROADMAP.md W4.5 for the original scope. The architectural foundation needed for this (composite identity, archive-driven CLI, prop integration spine) is now in place after Workstreams 3.5 and 4.
-
-**Initial design questions:**
-- Should scenarios be persisted or ephemeral?
-- How granular should player impact be (binary out vs. snap percentage)?
-- Should the CLI surface a single `gridiron scenario` command or a sub-app?
-
-Detailed plan to follow when work begins.
-
----
-
----
-
-## Future Workstreams
-
-### Workstream 5: Deep Code Review + Test Suite Review
-
-Two-part review session:
-1. **Code review:** Pattern consistency across game + prop models, CLI output formatting parity, naming conventions, dead code, import hygiene, docstring completeness.
-2. **Test suite review:** Edge case coverage audit, fixture quality, test isolation, missing negative tests, coverage ratchet assessment, props integration test gap from WS3.
-
-Detailed plan created when Workstream 4 closes.
-
-### Workstream 6: Scenario / "What If" Engine (W4.5)
-
-See `ROADMAP.md` W4.5 for full description. Now unblocked by audit work and prop pipeline. Five phases: player impact quantification → team adjustment → usage redistribution → conditional re-forecasting → CLI interface.
-
-### Workstream 7: API & Frontend (W8 + W9)
-
-FastAPI serving layer + React/Next.js frontend consuming it. See `ROADMAP.md` W8/W9. Unblocked by current architectural state.
-
-### Workstream 8: All External Odds
-
-DraftKings prop odds ingest, historical odds data, multi-book line shopping. Requires odds source decision (`ROADMAP.md` §5.2).
-
-### Workstream 9: Evaluate Remaining Work
-
-Assessment of what's left: model ensemble (W12), real-time/live (W10), feature engineering backlog, NaN research, architectural debt.
-
----
-
-## NaN Research Backlog (Deferred)
-
-Current strategy: drop rows with NaN, with `# TODO(nan)` markers at each drop site. Future investigation items:
-
-- Bayesian shrinkage priors for early-season rolling stats
-- Seasonal carry-forward (use last season's final L6 as prior for week 1)
-- Multiple imputation for missing game context features
-- Missing-indicator pattern (add `feature_is_missing` binary columns)
-- Rookie cold-start with draft capital / combine data
-
-Best done after model architecture is stable (achieved post-WS2).
+Per-item design + decision on demotion to ROADMAP §9 happens during this tier's design phase.
 
 ---
 
@@ -160,8 +277,5 @@ Best done after model architecture is stable (achieved post-WS2).
 
 | Date | Change |
 |------|--------|
-| 2026-06-22 | **Workstream 5 (Tier 4 cleanup sweep) closed.** 30 backlog items closed across CLI ergonomics, composite commands, dead code, documentation drift, exception narrowing, type cleanup, HTML escaping, season-label consistency, name mapping consolidation, calibration persistence, pipeline correctness, and incremental-build staleness detection. Two real bugs surfaced and fixed. Remaining open items reclassified as workstream candidates and moved to PLAN.md sections (Testing Infrastructure, Real Bugs, Investigations, Operational). TIER_4_BACKLOG.md retired. Workstream 6 (Scenario Engine) becomes the next planned focus. |
-| 2026-06-21 | **Workstream 4 (Composite CLI Workflows) closed.** Four composite commands (`weekly-predict`, `post-week`, `full-retrain`, `verify`) wrap related single-purpose commands into complete workflows. Shared infrastructure handles stage abstraction, dependency validation, soft-fail semantics, and summary rendering. Workstream 5 (Deep Code Review + Test Suite Review) is the next planned focus. |
-| 2026-06-21 | **Audit remediation complete (Workstream 3.5).** All 11 audit units closed. ~100 findings closed across architectural, correctness, performance, and stylistic dimensions. Composite CLI workflows (Workstream 4) added as the next focused workstream. Document restructured to reflect current focus rather than completed history. |
-| 2026-06-19 | **Workstream 2 closed.** Game model refactor complete. Workstream 3 (Integration & E2E Tests) becomes active. |
-| 2026-06-10 | **Full rewrite.** Priority order locked: champion/challenger → game model refactor → integration tests → code review → scenario engine → API/frontend → external odds → evaluate. |
+| 2026-06-23 | W8 Tier 1 design phase complete. Inline "How" block expanded with four-layer architecture (meta → schemas/_base → app/deps → Tier 3 routes), module layout, locked decisions per D16, and 8-step implementation order. Ready for Step 1 (`api/meta.py`). |
+| 2026-06-23 | PLAN.md restructured to focus on the active workstream only. Migrated future workstream candidates, real-bugs backlog, investigations, and operational items to ROADMAP.md §9 (Known Issues & Backlog). Completed-workstream history moves to CHANGELOG.md responsibility. PLAN.md now contains exactly one active workstream at a time, broken into tiers, each with What / Why / Success / Disconfirming evidence / How blocks. W8 (API Serving Layer) set as active workstream with Tier 1 / 2 / 3 in Designing status. |
