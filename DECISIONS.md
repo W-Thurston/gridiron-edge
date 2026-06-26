@@ -7,6 +7,89 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+
+## D18. API serializers own `_meta.field_status` construction
+
+**Date:** 2026-06-27 (Tier 2 design phase, W8)
+**Workstream:** W8 (API Serving Layer)
+**Status:** Accepted
+
+### Decision
+
+In responses that mix populated and unpopulated fields, **the serializer constructs the `_meta.field_status` block**, not the route handler. The route is responsible only for invoking the loader, passing the result to the serializer, and returning the constructed response object.
+
+### Context
+
+D14 established the placeholder convention (`null` + `_meta.field_status`). D14 did not specify which layer is responsible for marking fields. Two options:
+
+1. **Route owns the `_meta` block.** Route knows which fields the serializer can produce and stamps the rest as pending or blocked.
+2. **Serializer owns the `_meta` block.** Serializer is the code that decides which fields it can populate, so it also decides what to mark pending.
+
+Option 2 wins because:
+
+- The serializer is the only code that knows what it can produce. Route-level marking duplicates that knowledge.
+- Routes stay thin (5–10 lines) and consistent across endpoints.
+- When a backend addition lands and the serializer can now populate a previously-pending field, only the serializer changes.
+
+### Consequences
+
+- Routes are uniformly small.
+- Serializer signatures consistently return the final response object, not a tuple of (data, metadata).
+- Tests for serializers check both the data fields and the `_meta.field_status` block; tests for routes are mostly reachability and dependency-injection.
+
+### Disconfirming evidence (when to revisit)
+
+- If a route ends up wanting to override field-status entries from the serializer (e.g., to mark something blocked at runtime that the serializer thought was populated), the abstraction has the wrong owner.
+
+### References
+
+- DECISIONS.md D14 (placeholder convention)
+- PLAN.md → Tier 2 design phase
+
+---
+
+## D17. API serialization pattern: per-endpoint hand-written serializers
+
+**Date:** 2026-06-27 (Tier 2 design phase, W8)
+**Workstream:** W8 (API Serving Layer)
+**Status:** Accepted
+
+### Decision
+
+API endpoints that translate domain data (DataFrames, dataclasses) into Pydantic response models use **hand-written serializer functions, one per endpoint**, living under `src/gridiron_edge/api/serializers/`. Each serializer is 5–15 lines and explicitly maps loader output fields to schema fields. No reflection, no column-mapping configuration, no shared serialization engine.
+
+### Context
+
+Three alternatives were considered:
+
+1. **Per-endpoint hand-written serializers.** Explicit, testable, no magic. More total lines of code.
+2. **`model_validate(row.to_dict())` reflection.** Less code; relies on column names exactly matching field names. Fragile when either side changes.
+3. **Shared `DataFrameSerializer` utility with per-endpoint mapping specs.** Hides translation logic in configuration; hard to debug when a mapping breaks.
+
+Option 1 wins because:
+
+- Each serializer is small enough that boilerplate is not painful.
+- Column renames in the data layer fail at a specific named function, not a hidden mapping spec.
+- Tier 2 is the first time the API layer touches the data layer; transparency now will pay off many times later.
+- The unit test for each serializer reads like a contract: input shape → output shape.
+
+### Consequences
+
+- ~9 serializer modules under `api/serializers/`, each with a small unit test file.
+- New columns in the data layer don't appear in API responses until a serializer explicitly maps them. (This is a feature: deliberate evolution, not silent leakage.)
+- Performance: serializers are pure functions; trivially cacheable if a hot path emerges.
+
+### Disconfirming evidence (when to revisit)
+
+- If two or more serializers end up being near-identical in structure (same field-mapping pattern repeated), a shared utility may genuinely be warranted.
+- If the count of serializer files grows past ~20 and most are mechanical, the boilerplate cost may have crossed the threshold where Option 3 wins.
+
+### References
+
+- PLAN.md → Tier 2 design phase
+
+---
+
 ## D16. API response envelope: uniform field-status, sub-resource routes per blocker
 
 **Date:** 2026-06-23 (Tier 1 design phase, W8)

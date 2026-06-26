@@ -184,6 +184,7 @@ def write_archive_rows(
     if path.exists():
         existing: DataFrame = pd.read_parquet(path)
         mask = existing.set_index(_DEDUP_KEY).index.isin(new_rows.set_index(_DEDUP_KEY).index)
+        # pyrefly: ignore [unsupported-operation]
         existing = existing.loc[~mask].copy()
         combined: DataFrame = pd.concat([existing, new_rows], ignore_index=True)
     else:

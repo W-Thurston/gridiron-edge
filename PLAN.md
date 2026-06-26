@@ -138,30 +138,93 @@ This is where the API stops being a skeleton and starts being a verification sur
 
 #### How
 
-High-level; expands during the design phase.
+**Architecture: thin loader layer + per-endpoint serializers + thin routes.**
 
-Tier 1 endpoint inventory:
+1. **`api/loaders.py`** — thin wrappers around the existing dataset loaders (`datasets/loaders.py`, `evaluation/archive.py`, `evaluation/prop_archive.py`, betting modules, etc.). Each wrapper takes `Settings` as input and returns a DataFrame or domain object. This is the single seam where caching gets added if a hot path emerges; routes never import from outside `api/` for data access.
+2. **`api/serializers/`** — one function per endpoint. Each takes loader output and returns the Pydantic response model from `api/schemas/`. Per D17, serializers are hand-written (5–15 lines each) rather than driven by a column-mapping engine. Per D18, the serializer owns the construction of `_meta.field_status` for fields it can and cannot populate.
+3. **`api/routes/` Tier 2 files** — small FastAPI handlers. Each pulls the loader through `api/deps.py` dependency injection, calls the serializer, returns the result. Routes are thin enough that most are 5–10 lines.
+
+**Module layout additions:**
 
 ```
-GET /weeks/current
-GET /games?season=\&week=
-GET /games/{game\_id}
-GET /games/{game\_id}/predictions
-GET /edges?season=\&week=\&market=
-GET /teams
-GET /teams/{abbr}
-GET /projections
-GET /props?season=\&week=\&position=\&stat=
-GET /props/{prop\_id}
-GET /portfolio/summary
-GET /portfolio/bets?status=
-GET /portfolio/curve?period=
-GET /portfolio/transactions
-GET /portfolio/splits?dimension=
-GET /model/performance?period=
+src/gridiron\_edge/api/
+├── loaders.py                      # NEW
+├── routes/
+│   ├── weeks.py                    # NEW
+│   ├── games.py                    # NEW
+│   ├── edges.py                    # NEW
+│   ├── teams.py                    # NEW
+│   ├── projections.py              # NEW
+│   ├── props.py                    # NEW
+│   ├── portfolio.py                # NEW
+│   ├── model.py                    # NEW
+│   └── compare.py                  # NEW
+├── schemas/
+│   ├── weeks.py                    # NEW
+│   ├── games.py                    # NEW
+│   ├── edges.py                    # NEW
+│   ├── teams.py                    # NEW
+│   ├── projections.py              # NEW
+│   ├── props.py                    # NEW
+│   ├── portfolio.py                # NEW
+│   ├── model\_performance.py        # NEW
+│   └── compare.py                  # NEW
+└── serializers/                    # NEW package
+├── **init**.py
+└── <one file per route file>
 ```
 
-Implementation order to be set during the design phase. Likely: portfolio first (simplest data shapes, exercises the envelope), then games, then teams, then projections, then props, then edges.
+Tests mirror this layout under `tests/unit/api/` (per-schema, per-serializer, per-loader) and `tests/integration/api/` (the existing `test_api_contract.py` extends to cover the new endpoints).
+
+**Locked design decisions** (full rationale in DECISIONS.md D17 and D18):
+
+- D17: per-endpoint hand-written serializers rather than reflection-driven mapping. Boilerplate is acceptable; transparency pays off when columns get renamed.
+- D18: serializers own `_meta.field_status` construction. Routes stay thin; pending-field knowledge lives with the code that has the most context.
+
+**Open design questions resolved during implementation:**
+
+1. Time-window semantics on `/portfolio/curve?period=` — calendar days or activity days? Decide during the portfolio step.
+2. Default behavior of `/games` and `/edges` without a `?week=` param — current week vs. full season. Decide during the games step.
+3. `/compare` percentile-rank caching — compute per-request or cache. Decide during the compare step based on measured response time.
+
+**Implementation order (eight steps, simplest-first):**
+
+| Step | Endpoints | Why this position |
+|---|---|---|
+| 1 | `/weeks/current`, all `/portfolio/*` | Smallest data shape, no model integration. Proves the loader-serializer-route pattern end-to-end. |
+| 2 | `/model/performance` | Reuses portfolio machinery for model-quality metrics. Small extension. |
+| 3 | `/teams`, `/teams/{abbr}` | Introduces the multi-source pattern (Elo + records + schedule). |
+| 4 | `/projections` | Single source (Monte Carlo CSV output). Tests CSV-shaped serialization. |
+| 5 | `/games`, `/games/{id}`, `/games/{id}/predictions` | Multi-source: predictions archive + schedule + edges. Composite identity flows through. |
+| 6 | `/edges` | Builds on Step 5 understanding. Per-week CSVs. |
+| 7 | `/props`, `/props/{prop_id}` | Parallel to games but reads from prop archive. |
+| 8 | `/compare/teams`, `/compare/player/{prop_id}` | Most novel aggregation (percentile ranks, opponent-allowed-by-position). May add backend computations. |
+
+Each step begins with a verification mini-block confirming loader signatures and column names against the actual codebase, then proceeds through schema → serializer (with unit tests) → loader wrapper (with unit tests) → route → integration test extension.
+
+**Quality gates per step:**
+
+```
+uv run ruff check . --fix && uvx pyrefly check && uv run pytest tests/unit/api tests/integration/api -v
+```
+
+Plus a live smoke test on each new endpoint, hand-spotted against the underlying dataset to confirm the serializer produces correct values. Hand-spotting is the actual verification work that Tier 2 exists to do — it's what makes the API a verification surface rather than just a new abstraction layer.
+
+**Pending placeholders we expect to surface** (informs ROADMAP §9.5 refinement during the tier):
+
+| Endpoint | Pending field | Reason | Resolution path |
+|---|---|---|---|
+| `/games/{id}` | `injuries` | No injury data source | Blocked on §5.3 |
+| `/games/{id}` | `swing_factors` | No feature attribution | Blocked on feature attribution |
+| `/games/{id}` | `storyline`, `network` | No game metadata source | Pending |
+| `/teams/{abbr}` | `off_rating`, `def_rating` | Composite-only rating today | Pending — may add in tier |
+| `/teams/{abbr}` | `splits.l4`, `splits.vs_winning` | No arbitrary cohort splits | Pending |
+| `/projections` | `week_over_week_delta` | No prior-week snapshot | Pending — may add in tier |
+| `/props/{id}` | `splits.indoor`, `splits.vs_top10_def` | No prop cohort splits | Pending |
+| `/compare/teams` | `percentile_ranks` | No league-wide percentile computation | Pending — should add in tier |
+| `/compare/player/{id}` | `defense_allowed_by_position` | No aggregation today | Pending — should add in tier |
+
+Fields marked "may add in tier" or "should add in tier" are candidates for backend additions during Tier 2. Each is decided per-step based on cost; items that prove larger than expected get demoted to ROADMAP §9 with explicit rationale.
 
 ---
 
@@ -212,6 +275,7 @@ Per-item design + decision on demotion to ROADMAP §9 happens during this tier's
 
 | Date | Change |
 |------|--------|
+| 2026-06-27 | Tier 2 design phase complete. Inline "How" block expanded with three-layer architecture (loaders → serializers → routes), 8-step implementation order, locked decisions D17 (per-endpoint serializers) and D18 (serializer-owned field_status), and the inventory of pending fields expected to surface during the tier. Ready for Step 1 (weeks + portfolio). |
 | 2026-06-27 | Tier 1 complete. Skeleton + blocked-endpoint stubs shipped: api/meta.py, api/schemas/_base.py, api/app.py + api/deps.py, cli/api.py, 9 route files, 9 schema files. 12 endpoints reachable via `gridiron api serve` with structurally valid null responses carrying registered blocker slugs. Integration tests lock round-trip parity and field_status completeness. Tier 2 (direct-serialization endpoints) now active. |
 | 2026-06-26 | Tier 1 wiring verified end-to-end. All 12 endpoints reachable via `gridiron api serve`; response shapes carry `_meta.field_status` with registered blocker slugs. |
 | 2026-06-23 | W8 Tier 1 design phase complete. Inline "How" block expanded with four-layer architecture (meta → schemas/_base → app/deps → Tier 3 routes), module layout, locked decisions per D16, and 8-step implementation order. Ready for Step 1 (`api/meta.py`). |
