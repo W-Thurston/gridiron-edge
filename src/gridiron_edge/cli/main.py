@@ -14,6 +14,7 @@ from typing import Annotated
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.cli.api import api_app
 from gridiron_edge.cli.betting import betting_app
 from gridiron_edge.cli.edges import edges_app
 from gridiron_edge.cli.evaluate import evaluate_app
@@ -78,6 +79,7 @@ app.command("weekly-predict")(weekly_predict_cmd)
 app.command("post-week")(post_week_cmd)
 app.command("full-retrain")(full_retrain_cmd)
 app.command("verify")(verify_cmd)
+app.add_typer(api_app, name="api")
 
 
 # ===========================================================================
