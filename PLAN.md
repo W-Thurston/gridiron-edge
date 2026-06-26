@@ -86,99 +86,34 @@ What would tell us this workstream is the wrong thing to build (or scoped wrong)
 
 ## Tiers
 
-### Tier 1 — Skeleton + Tier 3 stubs
+### Tier 1 — Skeleton + blocked-endpoint stubs
 
-**Status:** Designed, ready for implementation
+**Status:** Complete (2026-06-27)
 
-#### What we are building
+#### Summary
 
-The FastAPI app skeleton, the `_meta` envelope plumbing, and every Tier 3 endpoint returning its blocked-field shape. No backend wiring yet — pure schema work.
+Shipped the FastAPI app skeleton, the `_meta` envelope plumbing, and every blocked endpoint returning its null-shape response with structured `_meta.field_status` entries.
 
-#### Why
+Concretely:
 
-Fastest path to a working API surface. Lets W9 frontend integration begin immediately against the full endpoint inventory, even though most Tier 1/2 endpoints will return mostly-null shapes at this point. Forces the placeholder convention into shape under real use before committing to it for populated endpoints.
+- **`api/meta.py`** — `FieldStatus` discriminated union (`"pending"` literal or `BlockedStatus` object), `ResponseMeta` envelope with `with_pending`/`with_blocked` builders, `Blocker` registry of `(slug, roadmap)` tuples matching ROADMAP §9.5.
+- **`api/schemas/_base.py`** — `BaseResponse` (frozen, `extra="forbid"`) with `response_meta` aliased to `_meta` on the wire; `BaseListResponse[T]` generic for list-shaped endpoints.
+- **`api/app.py` + `api/deps.py`** — `create_app()` factory, OpenAPI tag inventory, dataset registry and settings dependencies, permissive dev CORS.
+- **`cli/api.py`** — `gridiron api serve` wrapping uvicorn.
+- **Nine route files** under `api/routes/`, each owning one blocker domain: `lines.py`, `live.py`, `news.py`, `injuries.py`, `explain.py`, `swing_factors.py`, `comparables.py`, `prop_shop.py`, `prop_reasoning.py`.
+- **Nine schema files** under `api/schemas/` describing the prototype-expected response shape for each route file.
 
-#### Success criteria
+Twelve endpoints currently return 200 with structurally valid null responses carrying registered blocker slugs. `/docs` groups endpoints by domain. Quality gates green; 175+ unit and integration tests.
 
-- `gridiron api serve` starts a FastAPI app exposing the full endpoint inventory.
-- `_meta.field_status` envelope works end-to-end through a `BaseResponse` Pydantic model that all responses inherit.
-- All Tier 3 endpoints return 200 with a fully-null shape and a populated `_meta.field_status` block naming the upstream blocker.
-- OpenAPI docs at `/docs` render every endpoint with its full schema and group Tier 3 sub-resources under their own tags.
-- Unit tests cover `_meta` envelope construction and Tier 3 blocked-field shapes.
-- Integration test confirms every Tier 3 endpoint returns 200 with a non-empty `_meta.field_status` referencing a registered blocker slug.
+One implementation friction worth noting for Tier 2: Pyrefly does not model Pydantic's `populate_by_name=True` runtime behavior, so route construction sites use `# pyrefly: ignore[unexpected-keyword]` when passing `response_meta=...`. This is the same "legitimate workaround for known stub limitations" pattern documented in W5.5. If we change the alias convention in Tier 2, the suppressions can be removed.
 
-#### Disconfirming evidence
-
-- If the `_meta` envelope feels structurally wrong as soon as it has to carry real status entries — i.e., the developer ergonomics of constructing it are bad — revisit the placeholder convention before Tier 2.
-- If Pydantic v2 model composition doesn't cleanly support the `BaseResponse` + nested `_meta` pattern (e.g., generic list responses with frozen parents misbehave), revisit the validation library decision.
-- If the `Blocker` registry pattern proves awkward (e.g., we keep adding tuples), promote to an Enum or a registered-class pattern.
-
-#### How
-
-**Architecture: four-layer bottom-up build.**
-
-1. **`api/meta.py`** — `FieldStatus` discriminated union (`"pending"` literal or `BlockedStatus` object), `ResponseMeta` envelope with `with_pending` / `with_blocked` builder methods, `Blocker` registry of `(slug, roadmap_ref)` tuples matching ROADMAP §9.5.
-2. **`api/schemas/_base.py`** — `BaseResponse` Pydantic model (frozen, `extra="forbid"`) with optional `response_meta: ResponseMeta | None` aliased to `_meta` on the wire. `BaseListResponse[T]` generic for list-shaped endpoints carrying `items: list[T]` and `total: int | None`.
-3. **`api/app.py` + `api/deps.py`** — FastAPI app factory with per-domain OpenAPI tagging, permissive CORS for dev, dataset registry as a cached dependency. `cli/api.py` adds `gridiron api serve` wrapping uvicorn.
-4. **Tier 3 routes** — one file per blocker domain (per D16). Each file is small (~20-40 lines) and follows a uniform template: define the prototype-expected shape with all fields `Optional = None`, return a constructed response with `_meta.field_status` listing every null field's blocker.
-
-**Module layout:**
-
-```
-src/gridiron\_edge/api/
-├── app.py
-├── deps.py
-├── meta.py
-├── routes/
-│   ├── # Tier 1 — populated during Tier 2
-│   ├── weeks.py, games.py, edges.py, teams.py,
-│   ├── projections.py, props.py, portfolio.py,
-│   ├── compare.py, model.py
-│   │
-│   └── # Tier 3 — blocked, ships in Tier 1
-│       ├── lines.py            → MULTI\_BOOK (W7)
-│       ├── live.py             → LIVE\_STATE (W10)
-│       ├── news.py             → NEWS\_INGEST
-│       ├── injuries.py         → INJURY\_DATA (§5.3)
-│       ├── explain.py          → scenario\_engine (W4.5)
-│       ├── swing\_factors.py    → FEATURE\_ATTRIBUTION
-│       ├── comparables.py      → COMPARABLES
-│       ├── prop\_shop.py        → MULTI\_BOOK (W7)
-│       └── prop\_reasoning.py   → FEATURE\_ATTRIBUTION
-└── schemas/
-├── \_base.py     # BaseResponse, BaseListResponse\[T]
-└── <one file per route file>
-```
-
-**Locked design decisions** (full rationale in DECISIONS.md D16):
-
-- List endpoints surface blocked-list state through `_meta.field_status["items"]`, not a separate envelope field. Uniform with scalar/object field blocking.
-- Tier 3 sub-resource endpoints get their own route files grouped by blocker domain. When a blocker clears, the unblock work is a single-file diff.
-
-**Implementation order:**
-
-1. `api/meta.py` + unit tests for `FieldStatus`, `ResponseMeta`, `Blocker` registry.
-2. `api/schemas/_base.py` + unit tests for `BaseResponse`, `BaseListResponse[T]`, alias handling.
-3. `api/deps.py` + `api/app.py` (no routers yet) + `create_app()` smoke test.
-4. `cli/api.py` + `gridiron api serve --help` smoke test + wire into `cli/main.py`.
-5. Tier 3 schema files (one per route file).
-6. Tier 3 route files following the uniform template.
-7. Wire Tier 3 routes into `app.py`; walk `/docs`; confirm every endpoint renders with the right OpenAPI tag.
-8. Integration test using `TestClient` — assert every Tier 3 endpoint returns 200, has non-empty `_meta.field_status`, and references a `Blocker.*` slug.
-
-Quality gates after each step: `ruff check . --fix && uvx pyrefly check && uv run pytest -m "unit and not slow" -v`.
-
-#### Open questions deferred to Tier 2
-
-- Singular vs. plural list keys (currently `items: list[T]`; revisit if generic shape proves awkward).
-- `extra="forbid"` on `BaseResponse` (currently locked; revisit if early refactors make it painful).
-- Frozen `BaseResponse` + list field mutation semantics (Pydantic v2 doesn't auto-freeze nested lists; verify during Step 2 unit tests).
+Tests in `tests/integration/api/test_api_contract.py` lock in two cross-cutting contracts: every response round-trips through its declared model, and every null field has a corresponding `_meta.field_status` entry (D14 enforced, not just convention).
 
 ---
 
-### Tier 2 — Tier 1 endpoint wiring
+### Tier 2 — Direct-serialization endpoints
 
-**Status:** Designing
+**Status:** Active
 
 #### What we are building
 
@@ -277,5 +212,7 @@ Per-item design + decision on demotion to ROADMAP §9 happens during this tier's
 
 | Date | Change |
 |------|--------|
+| 2026-06-27 | Tier 1 complete. Skeleton + blocked-endpoint stubs shipped: api/meta.py, api/schemas/_base.py, api/app.py + api/deps.py, cli/api.py, 9 route files, 9 schema files. 12 endpoints reachable via `gridiron api serve` with structurally valid null responses carrying registered blocker slugs. Integration tests lock round-trip parity and field_status completeness. Tier 2 (direct-serialization endpoints) now active. |
+| 2026-06-26 | Tier 1 wiring verified end-to-end. All 12 endpoints reachable via `gridiron api serve`; response shapes carry `_meta.field_status` with registered blocker slugs. |
 | 2026-06-23 | W8 Tier 1 design phase complete. Inline "How" block expanded with four-layer architecture (meta → schemas/_base → app/deps → Tier 3 routes), module layout, locked decisions per D16, and 8-step implementation order. Ready for Step 1 (`api/meta.py`). |
 | 2026-06-23 | PLAN.md restructured to focus on the active workstream only. Migrated future workstream candidates, real-bugs backlog, investigations, and operational items to ROADMAP.md §9 (Known Issues & Backlog). Completed-workstream history moves to CHANGELOG.md responsibility. PLAN.md now contains exactly one active workstream at a time, broken into tiers, each with What / Why / Success / Disconfirming evidence / How blocks. W8 (API Serving Layer) set as active workstream with Tier 1 / 2 / 3 in Designing status. |
