@@ -27,6 +27,8 @@ dependencies = [
     "scikit-learn>=1.4.0",
     "xgboost>=2.0.0",
     "nflreadpy>=0.1.5",
+    "fastapi>=0.138.1",
+    "httpx2>=2.5.0",
 ]
 
 [project.scripts]
