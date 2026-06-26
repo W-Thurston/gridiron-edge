@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # describe populated endpoints; Tier 3 tags describe blocked endpoints
 # whose unblock work is tracked in ROADMAP §9.5.
 _OPENAPI_TAGS: list[dict[str, str]] = [
-    # Tier 1 — populated during Tier 2.
+    # Populated endpoints.
     {"name": "weeks", "description": "Current week and season."},
     {"name": "games", "description": "Game list, detail, and predictions."},
     {"name": "edges", "description": "Model edges across markets."},
@@ -24,13 +24,19 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "portfolio", "description": "Bankroll, bets, performance."},
     {"name": "compare", "description": "Team vs team and player vs defense."},
     {"name": "model", "description": "Model performance metrics."},
-    # Tier 3 — blocked endpoints. Tags exist now so /docs groups them
-    # correctly even while the routes return placeholder shapes.
-    {"name": "lines", "description": "Multi-book line shopping. Blocked on W7."},
-    {"name": "live", "description": "Live game state. Blocked on W10."},
+    # Endpoints blocked on upstream gaps; tags exist now so /docs groups
+    # them correctly even while routes return placeholder shapes.
+    {
+        "name": "lines",
+        "description": "Multi-book line shopping. Blocked on multi-book odds ingest.",
+    },
+    {"name": "live", "description": "Live game state. Blocked on live state ingest."},
     {"name": "news", "description": "Injury and market news. Blocked on news ingest."},
     {"name": "injuries", "description": "Game injuries. Blocked on injury data source (§5.3)."},
-    {"name": "explain", "description": "Win-probability explainability. Blocked on W4.5."},
+    {
+        "name": "explain",
+        "description": "Win-probability explainability. Blocked on scenario engine.",
+    },
     {
         "name": "swing-factors",
         "description": "Per-game swing factors. Blocked on feature attribution.",
@@ -39,7 +45,10 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "comparables",
         "description": "Historical comparable games. Blocked on comparables retrieval.",
     },
-    {"name": "prop-shop", "description": "Per-prop multi-book shopping. Blocked on W7."},
+    {
+        "name": "prop-shop",
+        "description": "Per-prop multi-book shopping. Blocked on multi-book odds ingest.",
+    },
     {
         "name": "prop-reasoning",
         "description": "Per-prop model reasoning. Blocked on feature attribution.",
