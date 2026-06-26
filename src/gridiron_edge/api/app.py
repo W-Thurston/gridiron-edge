@@ -86,6 +86,28 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    from gridiron_edge.api.routes import (
+        comparables,
+        explain,
+        injuries,
+        lines,
+        live,
+        news,
+        prop_reasoning,
+        prop_shop,
+        swing_factors,
+    )
+
+    app.include_router(lines.router)
+    app.include_router(live.router)
+    app.include_router(news.router)
+    app.include_router(injuries.router)
+    app.include_router(explain.router)
+    app.include_router(swing_factors.router)
+    app.include_router(comparables.router)
+    app.include_router(prop_shop.router)
+    app.include_router(prop_reasoning.router)
+
     return app
 
 
