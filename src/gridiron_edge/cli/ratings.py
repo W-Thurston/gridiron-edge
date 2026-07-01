@@ -71,7 +71,11 @@ def elo_evaluate() -> None:
     console.header("ratings elo evaluate", subtitle="win_prob/elo")
 
     with step("Join predictions to outcomes") as s:
+        # Intentional: `ratings elo evaluate` is Elo-specific by design.
+        # The command's purpose is Elo prediction accuracy; using the
+        # current champion here would defeat the point.
         df_eval = build_evaluation_df(model_name="win_prob", model_type="elo")
+
         if df_eval.empty:
             s.set_detail("no data - run 'gridiron evaluate backfill' first")
         else:

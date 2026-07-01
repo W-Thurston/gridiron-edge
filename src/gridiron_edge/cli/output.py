@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 # pyrefly: ignore [missing-import]
 import typer
 
@@ -47,7 +49,10 @@ def output_predictions(
 
     if not df.empty:
         with step("Archive predictions") as s:
-            archive_path = append_to_prediction_log(
+            # Intentional: build_predictions_df() produces Elo-based
+            # predictions. The archive is tagged with the actual model
+            # that generated the row, not the current win_prob champion.
+            archive_path: Path = append_to_prediction_log(
                 df,
                 model_name="win_prob",
                 model_type="elo",

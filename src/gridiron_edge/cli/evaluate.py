@@ -178,6 +178,11 @@ def evaluate_calibration(
 @evaluate_app.command("backfill")
 def evaluate_backfill(
     *,
+    # Note: defaults are (win_prob, elo) as a historical convenience —
+    # Elo is the cheapest and always-available model. This is not a
+    # champion pick; users typically pass --model-name / --model-type
+    # explicitly. To backfill the current champion, first read it via
+    # `gridiron evaluate select-model` and pass the values explicitly.
     model_name: str = typer.Option(
         "win_prob",
         help="Model purpose (e.g. 'win_prob', 'total').",
@@ -353,6 +358,10 @@ def evaluate_tune(
             with step("Backfill predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
+                # Intentional: `evaluate tune` searches Elo hyperparameters
+                # (K, divisor, regression_frac). After the search, the newly
+                # tuned Elo model is backfilled to the archive. Not a
+                # champion decision — the model just got tuned.
                 n: int = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
@@ -371,6 +380,10 @@ def evaluate_tune(
             with step("Backfill predictions") as s:
                 from gridiron_edge.evaluation.backfill import backfill_model
 
+                # Intentional: `evaluate tune` searches Elo hyperparameters
+                # (K, divisor, regression_frac). After the search, the newly
+                # tuned Elo model is backfilled to the archive. Not a
+                # champion decision — the model just got tuned.
                 n = backfill_model(
                     model_name="win_prob",
                     model_type="elo",

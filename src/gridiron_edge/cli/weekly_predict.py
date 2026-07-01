@@ -86,14 +86,19 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     week: int = ctx["week"]
     repo: Path = get_settings().repo_root
 
-    df = build_predictions_df(year=year, week=week, repo=repo)
+    df: DataFrame = build_predictions_df(year=year, week=week, repo=repo)
     if df.empty:
         return StageResult(
             success=False,
             detail="no predictions produced (check schedule + Elo state)",
         )
 
-    archive_path = append_to_prediction_log(
+    # Intentional: build_predictions_df() produces Elo-based predictions
+    # (built from the Elo state table). The archive is tagged with the
+    # actual model that generated the row, not the current win_prob
+    # champion. Use `gridiron evaluate backfill --model-type <type>` to
+    # populate the archive with other model types.
+    archive_path: Path = append_to_prediction_log(
         df,
         model_name="win_prob",
         model_type="elo",
