@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from math import isnan
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +19,7 @@ from gridiron_edge.evaluation.champion import (
     extract_classification_metrics,
     format_classification_comparison,
     format_regression_comparison,
+    select_game_regression_champions,
     select_prop_champion,
 )
 from gridiron_edge.models.game_prediction.base import GameModelMetadata
@@ -75,6 +77,60 @@ def _make_regression(
         r2=r2,
         coverage=coverage,
     )
+
+
+def _save_regression_artifact(
+    repo: Path,
+    model_name: str,
+    model_type: str,
+    *,
+    metrics: dict[str, float],
+    trained_at: str = "2026-07-01T14:00:00",
+) -> None:
+    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.game_prediction.base import GameModelMetadata
+
+    meta = GameModelMetadata(
+        model_name=model_name,
+        model_type=model_type,
+        task="regression",
+        trained_at=trained_at,
+        metrics=metrics,
+    )
+    ArtifactStore(repo).save(
+        metadata=meta,
+        model_obj=_DummyModel(),
+        overwrite=True,
+    )
+
+
+def _save_classification_artifact(
+    repo: Path,
+    model_name: str,
+    model_type: str,
+    *,
+    metrics: dict[str, float],
+    trained_at: str = "2026-07-01T14:00:00",
+) -> None:
+    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.game_prediction.base import GameModelMetadata
+
+    meta = GameModelMetadata(
+        model_name=model_name,
+        model_type=model_type,
+        task="classification",
+        trained_at=trained_at,
+        metrics=metrics,
+    )
+    ArtifactStore(repo).save(
+        metadata=meta,
+        model_obj=_DummyModel(),
+        overwrite=True,
+    )
+
+
+class _DummyModel:
+    """Placeholder for artifact serialization. Never invoked."""
 
 
 # ---------------------------------------------------------------------------
@@ -406,3 +462,160 @@ class TestFormatRegressionComparison:
         assert result.should_promote is True
         text: str = format_classification_comparison(result)
         assert "PROMOTE" in text
+
+
+class TestSelectGameRegressionChampions:
+    def test_returns_lowest_mae_per_model_name(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "random_forest",
+            metrics={"mae": 10.5, "rmse": 13.1, "r2": 0.15},
+            trained_at="2026-07-01T14:00:00",
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+            trained_at="2026-07-01T14:05:00",
+        )
+
+        entries = select_game_regression_champions(
+            [("total", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+
+        assert set(entries.keys()) == {"total"}
+        assert entries["total"]["model_type"] == "xgboost"
+        assert entries["total"]["promoted_at"] == "2026-07-01T14:05:00"
+        assert entries["total"]["metrics"] == {"mae": 10.24, "rmse": 12.87, "r2": 0.18}
+
+    def test_tie_breaker_prefers_random_forest(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "random_forest",
+            metrics={"mae": 10.0, "rmse": 13.0, "r2": 0.15},
+            trained_at="rf_time",
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.0, "rmse": 12.5, "r2": 0.18},
+            trained_at="xgb_time",
+        )
+
+        entries = select_game_regression_champions(
+            [("total", "xgboost"), ("total", "random_forest")],
+            repo=tmp_path,
+        )
+        assert entries["total"]["model_type"] == "random_forest"
+
+    def test_skips_classification_artifacts(self, tmp_path):
+        # win_prob artifact is classification — should be ignored
+        _save_classification_artifact(
+            tmp_path,
+            "win_prob",
+            "random_forest",
+            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+        )
+
+        entries = select_game_regression_champions(
+            [("win_prob", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert set(entries.keys()) == {"total"}
+
+    def test_skips_untrained_artifacts(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+        )
+        # random_forest is in the pair list but not trained
+
+        entries = select_game_regression_champions(
+            [("total", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert entries["total"]["model_type"] == "xgboost"
+
+    def test_missing_mae_metric_skips_artifact(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "random_forest",
+            metrics={"rmse": 13.0, "r2": 0.15},  # no mae
+            trained_at="rf",
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+            trained_at="xgb",
+        )
+
+        entries = select_game_regression_champions(
+            [("total", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert entries["total"]["model_type"] == "xgboost"
+
+    def test_empty_pairs_returns_empty(self, tmp_path):
+        entries = select_game_regression_champions([], repo=tmp_path)
+        assert entries == {}
+
+    def test_no_trained_artifacts_returns_empty(self, tmp_path):
+        # No artifacts written
+        entries = select_game_regression_champions(
+            [("total", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert entries == {}
+
+    def test_metrics_narrowed_to_mae_rmse_r2(self, tmp_path):
+        # Even if metadata carries extra keys, the manifest entry only has mae/rmse/r2
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18, "extra_metric": 99.0},
+        )
+
+        entries = select_game_regression_champions(
+            [("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert entries["total"]["metrics"] == {"mae": 10.24, "rmse": 12.87, "r2": 0.18}
+
+    def test_handles_multiple_model_names(self, tmp_path):
+        # Hypothetical: two regression model_names (currently only "total",
+        # but this future-proofs for scoring, cover margin, etc.)
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "xgboost",
+            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "total",
+            "random_forest",
+            metrics={"mae": 10.5, "rmse": 13.1, "r2": 0.15},
+        )
+
+        entries = select_game_regression_champions(
+            [("total", "random_forest"), ("total", "xgboost")],
+            repo=tmp_path,
+        )
+        assert entries["total"]["model_type"] == "xgboost"

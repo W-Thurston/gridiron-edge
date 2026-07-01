@@ -40,7 +40,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isnan
-from typing import TYPE_CHECKING, Literal
+from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+)
 
 if TYPE_CHECKING:
     from gridiron_edge.models.game_prediction.base import GameModelMetadata
@@ -400,6 +405,94 @@ def select_prop_champion(
     summary: str = "\n".join(lines)
 
     return champion, summary
+
+
+def select_game_regression_champions(
+    pairs: list[tuple[str, str]],
+    *,
+    repo: Path,
+) -> dict[str, dict[str, Any]]:
+    """Select the champion model_type for each regression game model_name.
+
+    For each unique ``model_name`` in ``pairs`` whose trained artifacts
+    have ``task == "regression"``, reads ``GameModelMetadata`` from
+    :class:`ArtifactStore` for every trained ``model_type`` in the pair
+    list, picks the one with the lowest holdout MAE, and returns a
+    manifest entry.
+
+    Ties on MAE are broken by preferring ``random_forest`` over
+    ``xgboost`` (matches classification convention; see W13 Tier 2
+    design decisions). Ties are not expected in practice.
+
+    Args:
+        pairs: List of ``(model_name, model_type)`` pairs to consider.
+            Typically ``ctx["game_pairs"]`` from ``full-retrain``. Pairs
+            whose artifacts are missing or whose task is not regression
+            are silently skipped.
+        repo: Repository root.
+
+    Returns:
+        Mapping of ``model_name`` → manifest entry. Each entry has
+        ``model_type``, ``promoted_at`` (from ``trained_at``), and
+        ``metrics`` (``mae``, ``rmse``, ``r2``). Empty dict if no
+        regression pairs have trained artifacts.
+    """
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    store = ArtifactStore(repo)
+
+    # Group by model_name. Preserve pair-list order for deterministic
+    # tie-breaking when MAEs coincide.
+    by_model_name: dict[str, list[str]] = {}
+    for model_name, model_type in pairs:
+        by_model_name.setdefault(model_name, []).append(model_type)
+
+    entries: dict[str, dict[str, Any]] = {}
+
+    for model_name, model_types in by_model_name.items():
+        candidates: list[tuple[str, float, dict[str, float], str]] = []
+        for model_type in model_types:
+            if not store.is_trained(model_name, model_type):
+                continue
+            meta = store.read_metadata(model_name, model_type)
+            if meta.task != "regression":
+                continue
+            mae = meta.metrics.get("mae")
+            if mae is None:
+                continue
+            candidates.append((model_type, mae, dict(meta.metrics), meta.trained_at))
+
+        if not candidates:
+            continue
+
+        winner = _pick_regression_winner(candidates)
+        model_type, _mae, metrics, trained_at = winner
+        entries[model_name] = {
+            "model_type": model_type,
+            "promoted_at": trained_at,
+            "metrics": {key: metrics[key] for key in ("mae", "rmse", "r2") if key in metrics},
+        }
+
+    return entries
+
+
+def _pick_regression_winner(
+    candidates: list[tuple[str, float, dict[str, float], str]],
+) -> tuple[str, float, dict[str, float], str]:
+    """Pick lowest-MAE candidate; tie-break by preferring random_forest.
+
+    Candidates are (model_type, mae, metrics, trained_at) tuples.
+    """
+    min_mae = min(c[1] for c in candidates)
+    tied = [c for c in candidates if c[1] == min_mae]
+    if len(tied) == 1:
+        return tied[0]
+    # Tie-breaker: prefer random_forest, else preserve input order (already
+    # deterministic because the caller passed pairs in a defined order).
+    for c in tied:
+        if c[0] == "random_forest":
+            return c
+    return tied[0]
 
 
 # ---------------------------------------------------------------------------
