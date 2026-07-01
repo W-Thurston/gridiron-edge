@@ -222,6 +222,100 @@ class TestBaselineReportStage:
         assert "## Delta vs Previous Report" in report_text
         assert "| win_prob_logistic | -0.0015 | -0.0010 | +0.0100 |" in report_text
 
+    def test_delta_parse_ignores_champions_block(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A previous report containing a Current Champions block should still
+        have its Game Models metrics parsed correctly for the delta table."""
+        from dataclasses import dataclass
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_baseline_report,
+        )
+
+        reports_dir = tmp_path / "data" / "output" / "reports"
+        reports_dir.mkdir(parents=True)
+
+        previous = reports_dir / "full-retrain-2026-06-30-120000.md"
+        previous.write_text(
+            "\n".join(
+                [
+                    "# Full Retrain Baseline Report",
+                    "",
+                    "## Current Champions",
+                    "",
+                    "Manifest updated: 2026-06-30T00:00:00+00:00",
+                    "",
+                    "- **win_prob** → 🏆 `win_prob_random_forest` (promoted 2026-06-30T00:00:00)",
+                    "",
+                    "## Game Models",
+                    "",
+                    "| Pair | Brier | ECE | AUC | MAE | RMSE | R² |",
+                    "|---|---|---|---|---|---|---|",
+                    "| win_prob_random_forest | 0.2215 | 0.0150 | 0.6800 | - | - | - |",
+                ]
+            )
+        )
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "champions.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-01T14:00:00+00:00",
+                    "models": {
+                        "win_prob": {
+                            "model_type": "random_forest",
+                            "promoted_at": "2026-07-01T14:00:00",
+                            "source_run_id": "RUN_B",
+                            "metrics": {"brier": 0.2200, "ece": 0.0140, "auc": 0.6900},
+                        },
+                    },
+                }
+            )
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo: Path) -> None:
+                self.repo = repo
+
+            def is_trained(self, model_name: str, model_type: str) -> bool:
+                return True
+
+            def read_metadata(self, model_name: str, model_type: str) -> FakeMeta:
+                return FakeMeta(metrics={"brier": 0.2200, "ece": 0.0140, "auc": 0.6900})
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        result = _stage_baseline_report({"game_pairs": [ModelPair("win_prob", "random_forest")]})
+
+        assert result.success
+        report_text = result.artifacts[0].read_text()
+
+        # Delta table should still be present with correct numbers
+        assert "## Delta vs Previous Report" in report_text
+        assert "| win_prob_random_forest | -0.0015 | -0.0010 | +0.0100 |" in report_text
+
     def test_refresh_calibrations_persists_values(
         self,
         tmp_path: Path,
@@ -296,6 +390,126 @@ class TestBaselineReportStage:
         assert payload["sigma"] == pytest.approx(11.25)
         assert payload["margin_std"] == pytest.approx(13.75)
         assert "updated_at" in payload
+
+    def test_appends_champions_block_when_manifest_exists(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dataclasses import dataclass
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_baseline_report,
+        )
+
+        # Pre-populate manifest
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "source_run_id": "RUN_A",
+                    "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+                },
+                "qb_pass_yards": {
+                    "model_type": "elasticnet",
+                    "promoted_at": "2026-07-01T14:10:00",
+                    "source_run_id": "RUN_A",
+                    "metrics": {"mae": 63.4, "rmse": 80.6, "r2": 0.05, "coverage": 0.938},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo: Path) -> None:
+                self.repo = repo
+
+            def is_trained(self, model_name: str, model_type: str) -> bool:
+                return True
+
+            def read_metadata(self, model_name: str, model_type: str) -> FakeMeta:
+                return FakeMeta(metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721})
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        result = _stage_baseline_report({"game_pairs": [ModelPair("win_prob", "random_forest")]})
+
+        assert result.success
+        report_text = result.artifacts[0].read_text()
+
+        assert "## Current Champions" in report_text
+        assert "🏆 `win_prob_random_forest`" in report_text
+        assert "🏆 `qb_pass_yards_elasticnet`" in report_text
+        assert "2026-07-01T14:00:00" in report_text
+
+    def test_omits_champions_block_when_no_manifest(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dataclasses import dataclass
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_baseline_report,
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        @dataclass
+        class FakeMeta:
+            metrics: dict[str, float]
+
+        class FakeArtifactStore:
+            def __init__(self, repo: Path) -> None:
+                self.repo = repo
+
+            def is_trained(self, model_name: str, model_type: str) -> bool:
+                return True
+
+            def read_metadata(self, model_name: str, model_type: str) -> FakeMeta:
+                return FakeMeta(metrics={"brier": 0.213})
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.ArtifactStore",
+            FakeArtifactStore,
+        )
+
+        # No manifest written.
+        result = _stage_baseline_report({"game_pairs": [ModelPair("win_prob", "random_forest")]})
+
+        assert result.success
+        report_text = result.artifacts[0].read_text()
+        assert "## Current Champions" not in report_text
+        assert "## Game Models" in report_text  # normal report still generated
 
 
 class TestStagePromoteChampions:

@@ -749,6 +749,48 @@ def _format_metric_delta(
     return f"{delta:+.{decimals}f}"
 
 
+def _append_champions_block(
+    *,
+    lines: list[str],
+    repo: Path,
+) -> None:
+    """Append the current champions summary block to the report lines.
+
+    Reads the manifest via ``list_current_champions``. Silent no-op when
+    no manifest exists (cold-start report generation before manifest
+    was ever written). Uses a bullet list rather than a markdown table
+    so ``_parse_baseline_report`` (which looks for pipe-delimited rows)
+    ignores this block entirely.
+    """
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        read_manifest,
+    )
+
+    try:
+        manifest = read_manifest(repo=repo)
+    except ChampionNotFoundError:
+        return
+
+    models = manifest.get("models", {})
+    if not models:
+        return
+
+    lines.append("## Current Champions")
+    lines.append("")
+    lines.append(f"Manifest updated: {manifest.get('updated_at', 'unknown')}")
+    lines.append("")
+
+    for model_name in sorted(models.keys()):
+        entry = models[model_name]
+        model_type = entry.get("model_type", "?")
+        promoted_at = entry.get("promoted_at", "?")
+        composite_key = f"{model_name}_{model_type}"
+        lines.append(f"- **{model_name}** → 🏆 `{composite_key}` (promoted {promoted_at})")
+
+    lines.append("")
+
+
 def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     """Write a markdown report comparing new baselines to prior values.
 
@@ -790,6 +832,8 @@ def _stage_baseline_report(ctx: dict[str, Any]) -> StageResult:
     else:
         lines.append(f"Previous report: `{previous_report.name}`")
     lines.append("")
+
+    _append_champions_block(lines=lines, repo=repo)
 
     _append_current_metrics_table(
         lines=lines,
