@@ -441,6 +441,17 @@ def champion_cmd(
         "--season",
         help="Optional season filter (e.g. 2024).",
     ),
+    write_manifest: bool = typer.Option(
+        False,
+        "--write-manifest",
+        help=(
+            "After displaying per-family champions, persist all champion "
+            "decisions to the manifest at data/output/champions/champions.json. "
+            "Runs all three selectors (game classification, game regression, "
+            "prop) so the manifest reflects the full repo state. Preserves "
+            "entries for model families outside the current retrain scope."
+        ),
+    ),
 ) -> None:
     """Archive-driven champion selection.
 
@@ -448,6 +459,11 @@ def champion_cmd(
     and XGBoost archive performance and pick the lowest-MAE algorithm.
     Requires that ``gridiron props backfill`` has already populated
     the archive for the algorithms being compared.
+
+    Pass ``--write-manifest`` to also persist champion decisions to
+    ``data/output/champions/champions.json``. Runs the full selector
+    suite (game + prop) so the manifest reflects the entire repo state;
+    preserves entries for families outside the current backfill scope.
     """
     from gridiron_edge.evaluation.champion import (
         RegressionComparisonResult,
@@ -533,6 +549,12 @@ def champion_cmd(
 
     if len(models) > 1:
         typer.echo("  Champion selection complete across all stat families.\n")
+
+    if write_manifest:
+        from gridiron_edge.cli._composites import write_champion_manifest
+        from gridiron_edge.core.settings import get_settings
+
+        write_champion_manifest(get_settings().repo_root)
 
 
 @props_app.command("backfill")

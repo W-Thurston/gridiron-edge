@@ -345,3 +345,42 @@ def resolve_active_stages(
         )
 
     return set(only) if only else set(all_stages) - set(skip)
+
+
+def write_champion_manifest(repo: Path) -> None:
+    """Run all three champion selectors and persist the manifest.
+
+    Shared by ``evaluate select-model --write-manifest`` and
+    ``props champion --write-manifest``. Uses the full catalog
+    (:mod:`gridiron_edge.models.catalog`) so the manifest reflects
+    the entire repo state. Preservation semantics apply — families
+    outside the current backfill scope keep their prior manifest
+    entries verbatim.
+
+    Args:
+        repo: Repository root.
+
+    Side effects:
+        Writes ``data/output/champions/champions.json`` and echoes a
+        short summary to the console.
+    """
+    from gridiron_edge.core.console import step
+    from gridiron_edge.evaluation.champion import promote_champions
+    from gridiron_edge.models.catalog import (
+        GAME_MODEL_PAIRS,
+        PROP_STAT_FAMILIES,
+    )
+
+    with step("Persist champion manifest") as s:
+        promote_result = promote_champions(
+            game_pairs=list(GAME_MODEL_PAIRS),
+            prop_families=list(PROP_STAT_FAMILIES),
+            repo=repo,
+        )
+        fresh_summary = ", ".join(sorted(promote_result.fresh_entries.keys())) or "none"
+        s.set_detail(f"fresh: {fresh_summary}; preserved: {len(promote_result.preserved_entries)}")
+
+    typer.echo("")
+    typer.echo(f"Manifest written: {promote_result.manifest_path}")
+    for warning in promote_result.warnings:
+        typer.echo(f"  ⚠  {warning}")
