@@ -189,6 +189,23 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 **Unlocks:** W9 (Frontend), visual QA of full output set, M5 (with W9).
 **Architecture notes:** Start with FastAPI reading Parquet files. The "files vs. database" decision (§5.1) is deferred until W9 reveals concrete query patterns that are awkward in pandas.
 
+#### W13: Runtime Champion Resolution — 🟡 ACTIVE (paused W8 mid-tier)
+
+**Goal:** Provide a persistent, static-artifact source of truth for "current champion `(model_name, model_type)`" per `model_name`, so every downstream consumer — CLI, API, evaluation — can resolve the authoritative model without hard-coding or in-request computation.
+
+**Why it matters now:** Discovered during W8 Tier 2 Step 5 pre-planning. The API cannot serve `/games`, `/games/{id}`, `/edges`, or `/props/{id}` without knowing which model's output is authoritative. Averaging or ensembling would obscure model identity and pre-empt W12. Per D21, the champion decision must be a pre-computed static artifact, not a request-time computation. The composite-identity foundation from W3.6/W3.7 built the `(model_name, model_type)` key structure but never wired up a runtime authority.
+
+**Key deliverables:**
+- Static manifest artifact at `data/output/champions/champions.json` (path subject to design-phase confirmation) with schema `{model_name: {model_type, promoted_at, source_run_id, promotion_metrics?}}`.
+- `evaluation/champion_resolver.py` with `resolve_current_champion(model_name)` and helpers.
+- Manifest writer hooked into `full-retrain` composite command.
+- Explicit `gridiron evaluate promote-champion` command for manual overrides.
+- Refactor of hard-coded model picks in CLI (`cli/output.py` line 52-53 confirmed; audit for others).
+
+**Dependencies:** None. Fully unblocked. Leverages existing `evaluation/champion.py` comparison utilities.
+**Unlocks:** W8 Tier 2 Steps 5–7, unambiguous downstream consumption, and cleaner starting point for W12 (Model Ensemble — the ensemble starts by beating the current champion).
+**Note:** Discovered as a mid-tier scope elevation from W8. W8 pauses in Tier 2 at Step 4; resumes when W13 closes. See PLAN.md.
+
 ### Future Workstreams (ordered by current priority)
 
 #### W9: Frontend — 🟢 PLANNED (immediately after W8)
@@ -366,27 +383,32 @@ Track)            CLI)                │
 W5.5 ✅                              │
 (Deep Code Review)                   │
 │
-┌─── W8 (API) 🟡 ◄────┤
-│      │              │
-│      ▼              │
-│   W9 (Frontend) ────┤
-│                     │
-│                     │
-├─── W12 (Ensemble) ──┤
-│                     │
-├─── W7 (Multi-Book) ─┤
-│      │              │
-│      ▼              │
+┌─── W8 (API) ⏸ paused ◄─┐
+│      │                  │
+│      ▼                  │
+│   W9 (Frontend) ────────┤
+│                         │
+├─── W13 (Champion 🟡 active
+│     Resolution)         │
+│        │                │
+│        └── unblocks W8 Tier 2 Step 5+
+│                         │
+├─── W12 (Ensemble) ──────┤
+│                         │
+├─── W7 (Multi-Book) ─────┤
+│      │                  │
+│      ▼                  │
 └─── W10 (Real-Time / Live)
 
 ```
 
-**Current position:** All foundation workstreams complete. W8 (API Serving Layer) is the active workstream; PLAN.md carries its tier-by-tier design. The remaining workstreams are unblocked but deliberately ordered:
+**Current position:** W8 paused mid-Tier-2 pending W13. W13 (Runtime Champion Resolution) is the active workstream. Path forward:
 
-1. **W8 (API)** 🟡 active — prototype-driven, read-only, FastAPI + Pydantic v2.
-2. **W9 (Frontend)** — sequential after W8.
-3. After W9, pick between **W12 (Ensemble)**, **W4.5 (Scenario)** (pending §5.3), and **W7 (Multi-Book)** based on what the UI surfaces.
-4. **W10 (Real-Time)** — deferred until everything else stabilizes.
+1. **W13 (Champion Resolution)** 🟡 active — small workstream, discovered from W8 Step 5 pre-planning.
+2. **W8 (API)** ⏸ paused — resumes at Tier 2 Step 5 when W13 closes.
+3. **W9 (Frontend)** — sequential after W8.
+4. After W9, pick between **W12 (Ensemble)**, **W4.5 (Scenario)** (pending §5.3), and **W7 (Multi-Book)**.
+5. **W10 (Real-Time)** — deferred until everything else stabilizes.
 
 ---
 
@@ -466,6 +488,17 @@ Drives W8 Tier 2 work and post-W8 prioritization. These are gaps between what th
 | Live game state ingest | Live screen | Blocks on W10 |
 | WAR (Wins Above Replacement) per player | Team Detail top-players panel | Deferred — significant ML work, not currently prioritized |
 | Multi-book odds | Line shopping, Prop shop sub-resource, Arbitrage / Middle tools | Blocks on W7 |
+
+---
+
+### 9.6 D21 Deviations (compute-at-request-time)
+
+Per D21, the API layer is a serialization boundary — every response reads from a pre-computed static artifact. Endpoints that currently violate this by computing at request time are tracked here for refactor.
+
+| Item | Endpoint | Current behavior | Required refactor |
+|---|---|---|---|
+| `/model/performance` computes metrics at request time | `GET /model/performance` | Calls `build_evaluation_df` + `summarise` + scalar metric functions (Brier, log_loss, ECE, roc_auc, brier_decomposition) at request time. Real computation on the request path. | Add a batch job (post-retrain hook, or scheduled `evaluate write-summary` command) that computes the full summary and writes `data/output/evaluation/model_performance_summary.json`. Refactor the API endpoint to read that JSON and serialize. Opportunistic — expected during W8 Step 6 or in a mini-refactor after W13. |
+| Runtime champion resolution (superseded by W13) | Multiple — `cli/output.py` hard-codes `elo`; API had no path forward | Consumers hard-code specific `(model_name, model_type)` pairs, or (as attempted in W8 Step 5 pre-planning) would need to compare archived model outputs at request time. | **Being addressed by W13 (active workstream).** After W13 ships, `resolve_current_champion(model_name)` reads a persisted manifest. |
 
 ---
 

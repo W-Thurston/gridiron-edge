@@ -7,6 +7,55 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D21. API layer is a serialization boundary, not a compute boundary
+
+**Date:** 2026-07-01 (Tier 2, W8)
+**Workstream:** W8 (API Serving Layer)
+**Status:** Accepted
+
+### Decision
+
+Every endpoint serves pre-computed static artifacts. The API layer reads
+from disk, serializes through Pydantic, and returns. Any computation
+(model predictions, Monte Carlo simulations, ranking passes, champion
+selection, evaluation metrics, percentile ranks, cohort aggregations)
+happens upstream in ingest, training, or scheduled batch jobs, and the
+results are persisted as files. The API layer never computes.
+
+### Context
+
+The prototype-driven Tier 2 design initially treated some endpoints as
+"compute on request" — /model/performance calls build_evaluation_df +
+summarise at request time; the champion-model resolution question
+implied comparing archived model outputs at request time. Both are
+compute-on-request patterns.
+
+The correct architecture is: the retrain pipeline writes model outputs
+and champion manifests; the evaluation pipeline writes metric summaries;
+the sim pipeline writes projection CSVs; the ingest pipeline writes odds
+and predictions. The API reads all of these as static files.
+
+### Consequences
+
+- Response times are dominated by disk I/O and Pydantic overhead.
+  Millisecond-scale, deterministic.
+- Staleness is visible: every response can include the mtime of the
+  underlying artifact.
+- Missing artifacts surface as _meta.field_status entries pointing at
+  the batch job that should have produced them.
+- No hidden computation, no in-request model calls, no request-time
+  ranking.
+- Every new endpoint asks: "what static file does this read?" If the
+  answer is "we'd have to compute it," the answer is instead "add a
+  batch job to write it."
+- Some existing endpoints deviate from this and require refactoring:
+  /model/performance currently computes metrics at request time.
+
+### References
+
+- PLAN.md → W8 Tier 2 Step 5 pre-planning
+- DECISIONS.md D17-D20 (serializer + placeholder conventions)
+
 ## D20. Extended placeholder convention: `Unavailable` slugs for data limits
 
 **Date:** 2026-07-01 (Tier 2 Step 1, W8)
