@@ -570,6 +570,136 @@ def select_game_classification_champions(
     return entries
 
 
+def select_prop_champion_for_family(
+    family: str,
+    *,
+    repo: Path,
+    season: int | None = None,
+) -> dict[str, Any] | None:
+    """Select the champion algorithm for a single prop stat family.
+
+    Iterates the three prop algorithms (elasticnet, random_forest, xgboost),
+    builds :class:`RegressionModelResult` for each from the prop archive,
+    and calls :func:`select_prop_champion` to pick the winner using the
+    R²/coverage/MAE gates.
+
+    Args:
+        family: Prop stat family name (e.g. ``"qb_pass_yards"``).
+        repo: Repository root.
+        season: Optional season filter passed to
+            :func:`build_prop_evaluation_df`. ``None`` = all seasons.
+
+    Returns:
+        Manifest entry with ``model_type``, ``promoted_at``, and
+        ``metrics`` (``mae``, ``rmse``, ``r2``, ``coverage``), or
+        ``None`` if no algorithm has archive rows for this family
+        (cold-start case; caller decides what to do with it).
+
+    Notes:
+        ``promoted_at`` is sourced from ``ArtifactStore.read_metadata`` for
+        the winning algorithm. If the winning algorithm has no trained
+        artifact (archive rows exist from a prior training run whose
+        artifact was later discarded), ``promoted_at`` falls back to the
+        current UTC timestamp — the champion decision itself is what's
+        being persisted, and staleness of the underlying artifact is a
+        separate concern tracked via ``source_run_id``.
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.evaluation.prop_archive import build_prop_evaluation_df
+    from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
+    from gridiron_edge.models.artifact import ArtifactStore
+    from gridiron_edge.models.prop_prediction.base import PropModelType
+
+    results: list[RegressionModelResult] = []
+    for model_type in PropModelType:
+        try:
+            eval_df = build_prop_evaluation_df(
+                model_name=family,
+                model_type=model_type.value,
+                season=season,
+            )
+        except KeyError:
+            # Unregistered family — should not happen in normal use
+            # since callers pass registered families, but silently skip
+            # if it does.
+            continue
+
+        if eval_df.empty:
+            continue
+
+        report = evaluate_prop_model(
+            model_name=family,
+            actual=eval_df["actual"],
+            predicted_mean=eval_df["predicted_mean"],
+            predicted_std=eval_df.get("predicted_std"),
+            lo_90=eval_df.get("lo_90"),
+            hi_90=eval_df.get("hi_90"),
+        )
+        coverage: float = (
+            report.coverage.actual_coverage if report.coverage is not None else float("nan")
+        )
+        results.append(
+            RegressionModelResult(
+                model_type=str(model_type),
+                mae=report.accuracy.mae,
+                rmse=report.accuracy.rmse,
+                r2=report.accuracy.r2,
+                coverage=coverage,
+            )
+        )
+
+    if not results:
+        return None
+
+    champion, _summary = select_prop_champion(results)
+
+    # Source promoted_at from the winning artifact's trained_at when available.
+    store = ArtifactStore(repo)
+    if store.is_trained(family, champion.model_type):
+        promoted_at = store.read_metadata(family, champion.model_type).trained_at
+    else:
+        promoted_at = datetime.now(UTC).isoformat()
+
+    return {
+        "model_type": champion.model_type,
+        "promoted_at": promoted_at,
+        "metrics": {
+            "mae": champion.mae,
+            "rmse": champion.rmse,
+            "r2": champion.r2,
+            "coverage": champion.coverage,
+        },
+    }
+
+
+def select_prop_champions_all_families(
+    families: list[str],
+    *,
+    repo: Path,
+) -> dict[str, dict[str, Any]]:
+    """Select champions for every listed prop stat family.
+
+    Thin iterator over :func:`select_prop_champion_for_family`. Families
+    with no archive rows for any algorithm are silently skipped — the
+    resulting mapping only contains entries for families where at least
+    one algorithm produced predictions.
+
+    Args:
+        families: List of prop stat family names.
+        repo: Repository root.
+
+    Returns:
+        Mapping of ``family`` → manifest entry.
+    """
+    entries: dict[str, dict[str, Any]] = {}
+    for family in families:
+        entry = select_prop_champion_for_family(family, repo=repo)
+        if entry is not None:
+            entries[family] = entry
+    return entries
+
+
 def _model_type_from_composite_key(composite_key: str, model_name: str) -> str:
     """Strip the ``{model_name}_`` prefix from a composite key.
 

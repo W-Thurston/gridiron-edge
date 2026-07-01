@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from math import isnan
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -24,6 +25,8 @@ from gridiron_edge.evaluation.champion import (
     select_game_classification_champions,
     select_game_regression_champions,
     select_prop_champion,
+    select_prop_champion_for_family,
+    select_prop_champions_all_families,
 )
 from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
@@ -1013,3 +1016,283 @@ class TestSelectGameClassificationChampions:
         assert set(entries.keys()) == {"win_prob", "cover_prob"}
         assert entries["win_prob"]["model_type"] == "random_forest"
         assert entries["cover_prob"]["model_type"] == "xgboost"
+
+
+def _mock_prop_eval_report(mae: float, rmse: float, r2: float, coverage: float | None) -> object:
+    """Build a minimal PropEvalReport-shaped object for mocking."""
+    accuracy = SimpleNamespace(mae=mae, rmse=rmse, r2=r2)
+    coverage_obj = SimpleNamespace(actual_coverage=coverage) if coverage is not None else None
+    return SimpleNamespace(accuracy=accuracy, coverage=coverage_obj)
+
+
+def _mock_eval_df_rows(n: int = 10) -> pd.DataFrame:
+    """Build a minimal non-empty eval DataFrame for mocking."""
+    return pd.DataFrame(
+        {
+            "actual": [200.0] * n,
+            "predicted_mean": [210.0] * n,
+            "predicted_std": [40.0] * n,
+            "lo_90": [140.0] * n,
+            "hi_90": [280.0] * n,
+        }
+    )
+
+
+class TestSelectPropChampionForFamily:
+    def test_returns_lowest_mae_across_algorithms(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "qb_pass_yards",
+            "random_forest",
+            metrics={"mae": 62.0, "rmse": 78.0, "r2": 0.09},
+            trained_at="2026-07-01T14:05:00",
+        )
+
+        # Mock: three algorithms with different MAEs
+        def mock_build(*, model_name, model_type, season):
+            return _mock_eval_df_rows()
+
+        reports_by_type = {
+            "elasticnet": _mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938),
+            "random_forest": _mock_prop_eval_report(mae=61.2, rmse=78.1, r2=0.09, coverage=0.925),
+            "xgboost": _mock_prop_eval_report(mae=64.8, rmse=82.1, r2=0.04, coverage=0.920),
+        }
+        call_counter = {"n": 0}
+
+        def counted_mock_eval(**kwargs):
+            report = reports_by_type[["elasticnet", "random_forest", "xgboost"][call_counter["n"]]]
+            call_counter["n"] += 1
+            return report
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                side_effect=counted_mock_eval,
+            ),
+        ):
+            entry = select_prop_champion_for_family("qb_pass_yards", repo=tmp_path)
+
+        assert entry is not None
+        assert entry["model_type"] == "random_forest"
+        assert entry["promoted_at"] == "2026-07-01T14:05:00"
+        assert entry["metrics"]["mae"] == 61.2
+
+    def test_empty_archive_returns_none(self, tmp_path):
+        def mock_build(*, model_name, model_type, season):
+            return pd.DataFrame()  # empty for all algorithms
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+        ):
+            entry = select_prop_champion_for_family("qb_pass_yards", repo=tmp_path)
+
+        assert entry is None
+
+    def test_unregistered_family_returns_none(self, tmp_path):
+        def mock_build(*, model_name, model_type, season):
+            raise KeyError(f"unknown family: {model_name}")
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+        ):
+            entry = select_prop_champion_for_family("bogus_family", repo=tmp_path)
+
+        assert entry is None
+
+    def test_partial_archive_still_selects_champion(self, tmp_path):
+        """Only elasticnet has archive rows → it becomes champion by default."""
+        _save_regression_artifact(
+            tmp_path,
+            "qb_pass_yards",
+            "elasticnet",
+            metrics={"mae": 63.4, "rmse": 80.6, "r2": 0.05},
+            trained_at="en_time",
+        )
+
+        call_counter = {"n": 0}
+
+        def mock_build(*, model_name, model_type, season):
+            if model_type == "elasticnet":
+                return _mock_eval_df_rows()
+            return pd.DataFrame()
+
+        def counted_mock_eval(**kwargs):
+            call_counter["n"] += 1
+            return _mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938)
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                side_effect=counted_mock_eval,
+            ),
+        ):
+            entry = select_prop_champion_for_family("qb_pass_yards", repo=tmp_path)
+
+        assert entry is not None
+        assert entry["model_type"] == "elasticnet"
+        assert call_counter["n"] == 1  # only one algorithm evaluated
+
+    def test_promoted_at_falls_back_when_artifact_missing(self, tmp_path):
+        """Archive rows exist but the winning artifact was discarded → fallback timestamp."""
+        # No artifact saved for qb_pass_yards/random_forest.
+
+        call_counter = {"n": 0}
+        report_by_call = [
+            _mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938),  # elasticnet
+            _mock_prop_eval_report(mae=61.2, rmse=78.1, r2=0.09, coverage=0.925),  # random_forest
+            _mock_prop_eval_report(mae=64.8, rmse=82.1, r2=0.04, coverage=0.920),  # xgboost
+        ]
+
+        def mock_build(*, model_name, model_type, season):
+            return _mock_eval_df_rows()
+
+        def counted_mock_eval(**kwargs):
+            report = report_by_call[call_counter["n"]]
+            call_counter["n"] += 1
+            return report
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                side_effect=counted_mock_eval,
+            ),
+        ):
+            entry = select_prop_champion_for_family("qb_pass_yards", repo=tmp_path)
+
+        assert entry is not None
+        assert entry["model_type"] == "random_forest"
+        # Fallback: ISO-format string, roughly "now"
+        assert "T" in entry["promoted_at"]  # ISO format indicator
+        # Explicit: no artifact means we couldn't have read this from trained_at
+        from datetime import UTC, datetime
+
+        parsed = datetime.fromisoformat(entry["promoted_at"])
+        delta = abs((datetime.now(UTC) - parsed).total_seconds())
+        assert delta < 5  # generated within the last few seconds
+
+    def test_metrics_include_coverage(self, tmp_path):
+        _save_regression_artifact(
+            tmp_path,
+            "qb_pass_yards",
+            "elasticnet",
+            metrics={"mae": 63.4, "rmse": 80.6, "r2": 0.05},
+            trained_at="en_time",
+        )
+
+        def mock_build(*, model_name, model_type, season):
+            if model_type == "elasticnet":
+                return _mock_eval_df_rows()
+            return pd.DataFrame()
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                return_value=_mock_prop_eval_report(
+                    mae=63.4,
+                    rmse=80.6,
+                    r2=0.05,
+                    coverage=0.938,
+                ),
+            ),
+        ):
+            entry = select_prop_champion_for_family("qb_pass_yards", repo=tmp_path)
+
+        assert entry is not None
+        assert entry["metrics"]["coverage"] == 0.938
+
+
+class TestSelectPropChampionsAllFamilies:
+    def test_iterates_across_families(self, tmp_path):
+        # Both families have elasticnet artifact + archive rows.
+        _save_regression_artifact(
+            tmp_path,
+            "qb_pass_yards",
+            "elasticnet",
+            metrics={"mae": 63.4, "rmse": 80.6, "r2": 0.05},
+            trained_at="qb_time",
+        )
+        _save_regression_artifact(
+            tmp_path,
+            "rb_rush_yards",
+            "elasticnet",
+            metrics={"mae": 25.0, "rmse": 32.0, "r2": 0.17},
+            trained_at="rb_time",
+        )
+
+        def mock_build(*, model_name, model_type, season):
+            if model_type == "elasticnet":
+                return _mock_eval_df_rows()
+            return pd.DataFrame()
+
+        def mock_eval(*, model_name, **kwargs):
+            if model_name == "qb_pass_yards":
+                return _mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938)
+            return _mock_prop_eval_report(mae=25.0, rmse=32.0, r2=0.17, coverage=0.912)
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                side_effect=mock_eval,
+            ),
+        ):
+            entries = select_prop_champions_all_families(
+                ["qb_pass_yards", "rb_rush_yards"],
+                repo=tmp_path,
+            )
+
+        assert set(entries.keys()) == {"qb_pass_yards", "rb_rush_yards"}
+        assert entries["qb_pass_yards"]["model_type"] == "elasticnet"
+        assert entries["rb_rush_yards"]["model_type"] == "elasticnet"
+
+    def test_skips_families_with_no_archive_rows(self, tmp_path):
+        def mock_build(*, model_name, model_type, season):
+            if model_name == "qb_pass_yards" and model_type == "elasticnet":
+                return _mock_eval_df_rows()
+            return pd.DataFrame()
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+                side_effect=mock_build,
+            ),
+            patch(
+                "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+                return_value=_mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938),
+            ),
+        ):
+            entries = select_prop_champions_all_families(
+                ["qb_pass_yards", "rb_rush_yards"],
+                repo=tmp_path,
+            )
+
+        assert set(entries.keys()) == {"qb_pass_yards"}
+
+    def test_empty_families_list(self, tmp_path):
+        entries = select_prop_champions_all_families([], repo=tmp_path)
+        assert entries == {}
