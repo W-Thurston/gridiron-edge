@@ -101,3 +101,44 @@ def load_evaluation_df(
         season=season,
         repo=settings.repo_root,
     )
+
+
+def load_games_df(settings: Settings) -> pd.DataFrame:
+    """Return the cleaned historical games table."""
+    from gridiron_edge.datasets.loaders import load_games
+
+    return load_games(settings.repo_root)
+
+
+def load_elo_state_df(settings: Settings) -> pd.DataFrame:
+    """Return the full Elo history (team, season, week, ELO)."""
+    from gridiron_edge.datasets.loaders import load_elo_state
+
+    return load_elo_state(settings.repo_root)
+
+
+def load_team_name_map(settings: Settings) -> dict[str, str]:
+    """Return the long → short team name mapping as a dict.
+
+    Example: {"Baltimore Ravens": "BAL", "Kansas City Chiefs": "KC", ...}
+    """
+    from gridiron_edge.datasets.loaders import load_teams_long_short
+
+    df = load_teams_long_short(settings.repo_root)
+    return dict(zip(df["NFL_LONG_NAME"], df["NFL_SHORT_NAME"], strict=True))
+
+
+def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
+    """Resolve the current (season, week) from the games table.
+
+    Uses the latest completed game. Returns ("", 0) if games is empty.
+    """
+    from gridiron_edge.datasets.loaders import load_games
+
+    games = load_games(settings.repo_root)
+    if games.empty:
+        return ("", 0)
+
+    games_sorted = games.sort_values(["YEAR", "WEEK_NUM"])
+    latest = games_sorted.iloc[-1]
+    return (str(latest["YEAR"]), int(latest["WEEK_NUM"]))

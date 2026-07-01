@@ -43,6 +43,7 @@ from gridiron_edge.api.schemas.portfolio import (
 from gridiron_edge.api.schemas.prop_reasoning import PropReasoning
 from gridiron_edge.api.schemas.prop_shop import PropShop
 from gridiron_edge.api.schemas.swing_factors import GameSwingFactors
+from gridiron_edge.api.schemas.teams import TeamProfile, TeamRankingsList
 from gridiron_edge.api.schemas.weeks import CurrentWeek
 
 # Aliases for the parameterized list responses (avoids fragile inline generics).
@@ -79,6 +80,8 @@ ENDPOINTS: list[tuple[str, type]] = [
     ("/portfolio/transactions", _TransactionsList),
     ("/portfolio/splits", PortfolioSplits),
     ("/model/performance", ModelPerformance),
+    ("/teams", TeamRankingsList),
+    ("/teams/BAL", TeamProfile),  # BAL is a known abbreviation
 ]
 
 
