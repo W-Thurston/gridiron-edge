@@ -3,6 +3,74 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-01 — W13 Tier 3: CLI Consumer Refactor (W13 workstream complete)
+
+Four-step tier migrating CLI consumers to use the champion manifest
+via the ``--model-type auto`` sentinel pattern. Closes W13 as a
+workstream.
+
+### Shipped
+- ``cli/_composites.py::resolve_win_prob_model_type`` — helper for
+  the ``"auto"`` sentinel. Reads the manifest; passes explicit values
+  through; raises ``typer.BadParameter`` on missing manifest with an
+  actionable message.
+- ``cli/weekly_predict.py`` — ``--model-type`` default flipped from
+  ``"random_forest"`` to ``"auto"``. Resolution happens after
+  Typer/user-input validation.
+- ``cli/edges.py`` — both ``report`` and ``clv`` migrated with the
+  same pattern.
+- Intentional Elo callsites annotated with comments explaining why
+  they aren't migrated:
+  * ``cli/weekly_predict.py::_stage_predict_week`` (archives
+    ``build_predictions_df`` output, which is Elo-based).
+  * ``cli/output.py::output_predictions`` (same pattern).
+  * ``cli/evaluate.py::evaluate_tune`` — both ``--apply`` branches
+    (tune is Elo-specific by design).
+  * ``cli/evaluate.py::evaluate_backfill`` — CLI defaults are
+    historical convenience, not a champion pick.
+  * ``cli/ratings.py::elo_evaluate`` — Elo command by name.
+
+### Tests
+- ``tests/unit/cli/test_composite.py`` — added
+  ``TestResolveWinProbModelType`` (4 tests).
+- ``tests/unit/cli/test_weekly_predict.py`` — added
+  ``TestModelTypeResolution`` (3 tests). Existing
+  ``test_runs_all_stages_when_all_succeed`` updated to pass
+  ``--model-type random_forest`` explicitly.
+- ``tests/unit/cli/test_edges.py`` — new file with
+  ``TestReportModelTypeResolution`` and ``TestClvModelTypeResolution``
+  (3 tests each).
+- ``tests/integration/test_edges_cli.py`` — six existing tests
+  updated to pass ``--model-type random_forest`` explicitly.
+
+### Scope note
+
+The original W13 handoff paragraph identified "8 hard-coded
+callsites." Categorization during Tier 3 design revealed that only
+3 were user-facing CLI defaults that should resolve to the champion
+(``weekly_predict``, ``edges report``, ``edges clv``). The other 5
+were:
+
+- Provenance labels for Elo-based predictions (correct as-is).
+- Elo-specific by design (correct as-is).
+- Historical CLI convenience defaults (kept for backward compat;
+  users pass explicit values in practice).
+
+All 5 got explanatory comments instead of refactors.
+
+### W13 workstream summary (Tiers 1–3, all shipped 2026-07-01)
+
+- **Tier 1:** manifest schema + reader API (``champion_resolver.py``).
+- **Tier 2:** writer + full-retrain integration + manual-override
+  CLI flags (9 steps).
+- **Tier 3:** CLI consumer migration (4 steps).
+
+### Next
+W8 (API Serving Layer) resumes at Tier 2 Step 5. Runtime champion
+resolution now available for the ``/games``, ``/games/{id}``,
+``/games/{id}/predictions``, ``/edges``, and ``/props/{prop_id}``
+endpoints via ``resolve_current_champion``.
+
 ## 2026-07-01 — W13 Tier 2: Runtime Champion Manifest (Writer + Full-Retrain Integration)
 
 Nine-step tier closing out the writer half of Runtime Champion Resolution.

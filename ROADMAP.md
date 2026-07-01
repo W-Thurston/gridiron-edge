@@ -165,7 +165,7 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 
 ### Active Workstream
 
-#### W8: API Serving Layer — 🟡 ACTIVE (next focus)
+#### W8: API Serving Layer — 🟡 ACTIVE (Tier 2 Step 5 next; unblocked by W13 completion)
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
 
@@ -189,31 +189,35 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 **Unlocks:** W9 (Frontend), visual QA of full output set, M5 (with W9).
 **Architecture notes:** Start with FastAPI reading Parquet files. The "files vs. database" decision (§5.1) is deferred until W9 reveals concrete query patterns that are awkward in pandas.
 
-#### W13: Runtime Champion Resolution — 🟡 ACTIVE (Tier 3 in progress; W8 remains paused)
+#### W13: Runtime Champion Resolution — ✅ COMPLETE (2026-07-01)
 
 **Goal:** Provide a persistent, static-artifact source of truth for "current champion `(model_name, model_type)`" per `model_name`, so every downstream consumer — CLI, API, evaluation — can resolve the authoritative model without hard-coding or in-request computation.
 
 **Why it matters now:** Discovered during W8 Tier 2 Step 5 pre-planning. The API cannot serve `/games`, `/games/{id}`, `/edges`, or `/props/{id}` without knowing which model's output is authoritative. Averaging or ensembling would obscure model identity and pre-empt W12. Per D21, the champion decision must be a pre-computed static artifact, not a request-time computation. The composite-identity foundation from W3.6/W3.7 built the `(model_name, model_type)` key structure but never wired up a runtime authority.
 
-**Key deliverables (Tiers 1–2 shipped 2026-07-01):**
+**Delivered (2026-07-01):**
 - ✅ Static manifest artifact at data/output/champions/champions.json
   with per-model_name entries carrying model_type, promoted_at,
   source_run_id, and task-flexible metrics dict.
-- ✅ evaluation/champion_resolver.py with resolve_current_champion,
-  resolve_current_champion_with_metadata, list_current_champions,
-  read_manifest, write_manifest, and ChampionNotFoundError.
-- ✅ Three selectors in evaluation/champion.py: game classification
-  (wraps select.py), game regression (reads artifact metadata), and
-  prop (iterates PropModelType, reads archive).
-- ✅ Manifest writer hooked into full-retrain as the promote-champions
-  stage, between refresh-calibrations and baseline-report.
-- ✅ Manual-override flags: gridiron evaluate select-model
-  --write-manifest and gridiron props champion --write-manifest.
-- ✅ Baseline report annotates current champions above the metrics table.
+- ✅ evaluation/champion_resolver.py with the full read/write API.
+- ✅ Three selectors in evaluation/champion.py (game classification,
+  game regression, prop).
+- ✅ Manifest writer hooked into full-retrain as promote-champions
+  stage.
+- ✅ Manual-override flags: `gridiron evaluate select-model
+  --write-manifest` and `gridiron props champion --write-manifest`.
+- ✅ Baseline report annotates current champions.
 - ✅ Central catalog at gridiron_edge.models.catalog.
-- 🟡 Tier 3: refactor 8 hard-coded model picks in CLI consumers
-  (weekly_predict, output, edges, evaluate; ratings.py stays with a
-  comment).
+- ✅ CLI consumers migrated: `gridiron weekly-predict` and `gridiron
+  edges report/clv` accept `--model-type auto` (default), which reads
+  the champion manifest. Explicit values pass through verbatim.
+- ✅ Intentional Elo callsites annotated with explanatory comments
+  (weekly_predict._stage_predict_week, output.output_predictions,
+  evaluate.evaluate_tune, evaluate.evaluate_backfill,
+  ratings.elo_evaluate).
+
+**Unlocks:** W8 Tier 2 Step 5 (game endpoints in the API can now serve
+champion-only outputs per D21).
 
 **Dependencies:** None. Fully unblocked. Leverages existing `evaluation/champion.py` comparison utilities.
 **Unlocks:** W8 Tier 2 Steps 5–7, unambiguous downstream consumption, and cleaner starting point for W12 (Model Ensemble — the ensemble starts by beating the current champion).
@@ -511,7 +515,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 | Item | Endpoint | Current behavior | Required refactor |
 |---|---|---|---|
 | `/model/performance` computes metrics at request time | `GET /model/performance` | Calls `build_evaluation_df` + `summarise` + scalar metric functions (Brier, log_loss, ECE, roc_auc, brier_decomposition) at request time. Real computation on the request path. | Add a batch job (post-retrain hook, or scheduled `evaluate write-summary` command) that computes the full summary and writes `data/output/evaluation/model_performance_summary.json`. Refactor the API endpoint to read that JSON and serialize. Opportunistic — expected during W8 Step 6 or in a mini-refactor after W13. |
-| Runtime champion resolution (resolved by W13 Tiers 1–2) | Multiple — cli/output.py hard-codes elo; API had no path forward | Consumers hard-coded specific (model_name, model_type) pairs, or would need to compare archived model outputs at request time. | **Resolved.** W13 Tier 1 shipped the resolver; Tier 2 shipped the manifest writer + full-retrain integration. resolve_current_champion(model_name) reads from data/output/champions/champions.json. Tier 3 (in progress) migrates the 8 hard-coded CLI callsites to use the resolver. |
+| Runtime champion resolution (resolved by W13) | Multiple — cli/output.py hard-coded elo; API had no path forward | Consumers hard-coded specific (model_name, model_type) pairs, or would need to compare archived model outputs at request time. | **Resolved (W13 complete 2026-07-01).** Manifest at data/output/champions/champions.json; resolve_current_champion(model_name) reads from it. CLI consumers migrated to --model-type auto pattern. Elo-specific callsites (weekly_predict archive, output archive, evaluate tune, evaluate backfill defaults, ratings elo evaluate) are annotated as intentional. |
 
 ---
 
@@ -519,6 +523,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-01 | **W13 complete.** Runtime Champion Resolution shipped in full: manifest + resolver (Tier 1), full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3). §9.6 D21 Deviations row for runtime champion resolution updated to Resolved. W8 (API) unpauses at Tier 2 Step 5. |
 | 2026-07-01 | **W13 Tier 2 complete.** Manifest writer, three selectors, full-retrain promote-champions stage, baseline-report annotation, --write-manifest CLI flags on both game and prop sides. §9.6 D21 Deviations row updated to Resolved. Tier 3 (CLI consumer refactor) opens. |
 | 2026-06-23 | **Document restructure.** PLAN.md now scoped to the active workstream only; future workstream candidates, real-bugs backlog, investigations, and operational items migrated to new ROADMAP.md §9 Known Issues & Backlog. Added backend-gaps-surfaced-by-prototype subsection to §9 with W8 Tier 2 disposition per item. M4.5 reworded to reflect prototype-driven verification framing. Current-position callout updated to mark W8 active. |
 | 2026-06-23 | **Resync with PLAN.md.** Marked W4.1 (Composite CLI) and W5.5 (Deep Code Review / Tier 4 sweep) complete. M1.6 marked achieved. Set W8 (API) as active workstream with W9 (Frontend) sequential after. Added M4.5 milestone for visual output verification. Reordered future workstreams by current value-density: W8 → W9 → {W12, W4.5, W7} → W10. Added §5.3 as explicit blocker for W4.5. Updated §6 dependency graph and "Current position" callout. Added Principle 6.5 (frontend-as-verification-surface). Cleaned §1 to reflect composite CLI, calibration persistence, and pipeline staleness detection as shipped capabilities. |

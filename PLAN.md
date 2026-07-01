@@ -29,7 +29,7 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-## Current Workstream: W13 — Runtime Champion Resolution
+### Current Workstream: W8 — API Serving Layer
 
 ### What we are building
 
@@ -47,18 +47,14 @@ Three reasons:
 
 #### Success criteria
 - ✅ ``data/output/champions/champions.json`` exists after full-retrain
-  completes, with entries for every model_name that has ≥1 trained
-  model_type.
+  completes.
 - ✅ ``resolve_current_champion(model_name)`` returns the current
-  ``(model_name, model_type)`` pair from the manifest.
+  ``(model_name, model_type)`` pair.
 - ✅ Missing manifest or missing entry raises ``ChampionNotFoundError``;
   documented and caught in downstream consumers.
-- ✅ New full-retrain stage ``promote-champions`` runs the three
-  selectors in write mode.
-- 🟡 All 8 CLI hard-coded sites use ``resolve_current_champion()``
-  (Tier 3).
-- ✅ Existing tests pass; new tests cover the manifest read/write and
-  the resolver's error path.
+- ✅ ``promote-champions`` stage runs the three selectors in write mode.
+- ✅ CLI consumers use ``resolve_current_champion()`` via the
+  ``--model-type auto`` sentinel where appropriate.
 - ✅ All quality gates pass.
 
 ### Disconfirming evidence
@@ -134,16 +130,33 @@ untouched families in partial retrains; ``promote-champions`` depends
 only on ``refresh-calibrations`` (not on ``backfill-prop-models``) so
 ``--skip-prop-backfill`` continues to work.
 
-**Tier 3 — CLI consumer refactor.** 🟡 Active.
-Replace 8 hard-coded ``model_name="win_prob", model_type="elo"``
-callsites with ``resolve_current_champion("win_prob")`` calls in:
+**Tier 3 — CLI consumer refactor.** ✅ Complete (2026-07-01).
+Shipped in four steps:
 
-* ``cli/weekly_predict.py`` lines 96, 172
-* ``cli/output.py`` line 52
-* ``cli/edges.py`` lines 74, 161
-* ``cli/evaluate.py`` lines 356, 374
-* ``cli/ratings.py`` line 74 — confirm this stays as-is with a comment
-  (intentional elo usage for the ratings command)
+1. ``resolve_win_prob_model_type`` helper in ``cli/_composites.py``.
+   Honors the ``"auto"`` sentinel by reading the champion manifest;
+   passes through explicit values verbatim. Raises
+   ``typer.BadParameter`` with actionable message when manifest is
+   missing.
+2. ``cli/weekly_predict.py`` — ``--model-type`` default flipped from
+   ``"random_forest"`` to ``"auto"``. Resolution happens after
+   Typer/user-input validation so genuine input errors surface first.
+3. ``cli/edges.py`` — both ``report`` and ``clv`` commands migrated
+   with the same pattern. Existing integration tests updated to pass
+   ``--model-type random_forest`` explicitly.
+4. Annotations added to five intentional Elo callsites
+   (``weekly_predict._stage_predict_week``, ``output.output_predictions``,
+   ``evaluate.evaluate_tune`` both branches, ``evaluate.evaluate_backfill``
+   defaults, ``ratings.elo_evaluate``) explaining why they aren't
+   migrated to the resolver.
+
+Callsite recount: the original handoff paragraph's "8 hard-coded
+callsites" conflated three categories. Actual scope was 3 CLI-option
+default sites (weekly_predict, edges report, edges clv). The other 5
+sites are provenance labels or intentional Elo usage — comments added
+instead of refactors.
+
+**W13 Runtime Champion Resolution — COMPLETE.**
 
 Tier design block drafted at the start of the tier.
 
@@ -257,6 +270,7 @@ Unchanged from original design. Additions inventory:
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | **W13 Tier 3 complete. W13 workstream closed.** Four steps: resolve_win_prob_model_type helper, weekly_predict refactor, edges refactor (both report and clv), intentional-Elo annotations. Actual scope was 3 CLI-option default sites (not 8, per original handoff estimate); the other 5 sites were provenance labels or intentional Elo usage and got comments instead of refactors. W8 (API) unpauses; Tier 2 Step 5 (game endpoints) is now unblocked. |
 | 2026-07-01 | **W13 Tier 2 complete.** Nine steps shipped: manifest writer, three selectors, full-retrain integration, baseline-report annotation, two --write-manifest CLI flags, and the champion_cmd refactor. All champion decisions across CLI and stage surfaces share the same code path. Central catalog at gridiron_edge.models.catalog is now the single source of truth for model pairs and prop families. Tier 3 (CLI consumer refactor) begins. |
 | 2026-07-01 | W13 workstream definition locked. Scope: persist the champion decision that `evaluate select-model` and `select_prop_champion` already compute; expose via `resolve_current_champion(model_name)`; hook the write into `full-retrain` as a new stage; refactor 8 hard-coded CLI callsites. Three tiers: manifest+resolver, writer+integration, consumer refactor. Tier 1 verification to follow. |
 | 2026-07-01 | **W8 paused; W13 opened.** W8 Tier 2 Step 5 pre-planning discovered no runtime champion resolution for game models. Per D21 (API is a serialization boundary, not a compute boundary), the champion decision must be a static artifact. Elevated to W13 (Runtime Champion Resolution) as a new workstream. W8 pauses in Tier 2 at Step 4; resumes when W13 closes. Design phase for W13 to follow. |

@@ -305,6 +305,43 @@ dry-run comparison. Logic lives in `evaluation/champion.py`.
 Promotion semantics currently support classification models only.
 Regression model promotion is a future workstream (see TIER_4_BACKLOG.md).
 
+##### Runtime champion resolution (W13)
+
+The current champion for each ``model_name`` is persisted at
+``data/output/champions/champions.json`` after each ``full-retrain``.
+Consumers read via ``evaluation.champion_resolver.resolve_current_champion``
+rather than hard-coding a ``(model_name, model_type)`` pair.
+
+The manifest is written by:
+- The ``promote-champions`` stage of ``gridiron full-retrain``.
+- Optional ``--write-manifest`` flags on ``gridiron evaluate select-model``
+  and ``gridiron props champion``.
+
+CLI commands that operate on the ``win_prob`` model expose
+``--model-type auto`` as their default. The ``resolve_win_prob_model_type``
+helper in ``cli/_composites.py`` resolves ``"auto"`` against the manifest;
+explicit values pass through. Commands using this pattern:
+
+- ``gridiron weekly-predict``
+- ``gridiron edges report``
+- ``gridiron edges clv``
+
+Missing manifest raises ``ChampionNotFoundError`` (or ``typer.BadParameter``
+at the CLI boundary) with a message directing the user to
+``gridiron full-retrain`` or ``gridiron evaluate select-model --write-manifest``.
+
+Some CLI callsites intentionally hard-code ``model_type="elo"`` and are
+not migrated to the resolver:
+- ``weekly-predict``'s ``predict-week`` stage and ``output predictions``
+  archive Elo predictions with their true provenance label.
+- ``evaluate tune`` searches Elo hyperparameters and backfills the
+  tuned Elo model.
+- ``evaluate backfill`` defaults to ``elo`` as a historical convenience
+  (Elo is the cheapest and always-available model).
+- ``ratings elo evaluate`` is Elo-specific by name.
+
+These callsites carry inline comments explaining the intent.
+
 #### Temporal CV for model training
 
 All model families use TimeSeriesSplit(n_splits=5) for cross-validation
