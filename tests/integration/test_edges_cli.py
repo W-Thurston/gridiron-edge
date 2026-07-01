@@ -173,7 +173,7 @@ class TestReportCommand:
 
         result = runner.invoke(
             edges_app,
-            ["report", "--week", "1", "--season", "2026-2027"],
+            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
 
@@ -187,7 +187,7 @@ class TestReportCommand:
 
         result = runner.invoke(
             edges_app,
-            ["report", "--week", "1", "--season", "2026-2027"],
+            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
         assert "No predictions found" in result.output
@@ -202,7 +202,7 @@ class TestReportCommand:
 
         result = runner.invoke(
             edges_app,
-            ["report", "--week", "1", "--season", "2026-2027"],
+            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
         assert "No current odds" in result.output
@@ -226,7 +226,7 @@ class TestClvCommand:
 
         result = runner.invoke(
             edges_app,
-            ["clv", "--season", "2026-2027"],
+            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
 
@@ -240,7 +240,7 @@ class TestClvCommand:
 
         result = runner.invoke(
             edges_app,
-            ["clv", "--season", "2026-2027"],
+            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
         assert "No predictions found" in result.output
@@ -255,7 +255,7 @@ class TestClvCommand:
 
         result = runner.invoke(
             edges_app,
-            ["clv", "--season", "2026-2027"],
+            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
         assert "No odds ledger" in result.output

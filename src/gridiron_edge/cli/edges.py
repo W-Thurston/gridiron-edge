@@ -21,6 +21,7 @@ from pandas import DataFrame
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.cli._composites import resolve_win_prob_model_type
 from gridiron_edge.core.settings import Settings
 from gridiron_edge.models.game_prediction.post_process import get_total_std
 
@@ -46,9 +47,12 @@ def report(
     week: int = typer.Option(..., help="NFL week number."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
     model_type: str = typer.Option(
-        "random_forest",
+        "auto",
         help=(
-            "Win-probability model algorithm to use. One of: random_forest, xgboost, logistic, elo."
+            "Win-probability model algorithm to use. One of: random_forest, "
+            "xgboost, logistic, elo. Defaults to 'auto', which resolves to "
+            "the current champion from the manifest at "
+            "data/output/champions/champions.json."
         ),
     ),
     bankroll: float = typer.Option(1000.0, help="Current bankroll in dollars."),
@@ -65,7 +69,9 @@ def report(
     from gridiron_edge.market.recommendations import build_edge_report, rank_edges
     from gridiron_edge.models.game_prediction.post_process import get_margin_std
 
-    console.header(f"Edge Report - {season} Week {week}")
+    resolved_model_type = resolve_win_prob_model_type(model_type)
+
+    console.header(f"Edge Report - {season} Week {week}  ·  model={resolved_model_type}")
 
     # ── Load predictions ──────────────────────────────────────────────
     with step("Loading predictions"):
@@ -73,10 +79,12 @@ def report(
             season=season,
             week=week,
             model_name="win_prob",
-            model_type=model_type,
+            model_type=resolved_model_type,
         )
     if predictions.empty:
-        typer.echo(f"No predictions found for win_prob/{model_type} / {season} / week {week}.")
+        typer.echo(
+            f"No predictions found for win_prob/{resolved_model_type} / {season} / week {week}."
+        )
         raise typer.Exit()
 
     typer.echo(f"  {len(predictions)} prediction(s) loaded.")
@@ -91,10 +99,10 @@ def report(
     typer.echo(f"  {len(odds)} odds row(s) loaded.")
 
     # ── Build edge report ─────────────────────────────────────────────
-    margin_std: float = get_margin_std("win_prob", model_type)
+    margin_std: float = get_margin_std("win_prob", resolved_model_type)
     total_std: float = get_total_std(
         "total",
-        model_type,
+        resolved_model_type,
         default=_TOTAL_STD_FALLBACK,
     )
 
@@ -138,9 +146,12 @@ def report(
 def clv(
     season: str | None = typer.Option(None, help="Filter to NFL season label, e.g. '2026-2027'."),
     model_type: str = typer.Option(
-        "random_forest",
+        "auto",
         help=(
-            "Win-probability model algorithm to use. One of: random_forest, xgboost, logistic, elo."
+            "Win-probability model algorithm to use. One of: random_forest, "
+            "xgboost, logistic, elo. Defaults to 'auto', which resolves to "
+            "the current champion from the manifest at "
+            "data/output/champions/champions.json."
         ),
     ),
     min_ev: float = typer.Option(0.0, help="Minimum EV threshold for edges to include."),
@@ -153,17 +164,19 @@ def clv(
     from gridiron_edge.market.recommendations import build_edge_report, rank_edges
     from gridiron_edge.models.game_prediction.post_process import get_margin_std
 
-    console.header("Closing Line Value Analysis")
+    resolved_model_type = resolve_win_prob_model_type(model_type)
+
+    console.header(f"Closing Line Value Analysis  ·  model={resolved_model_type}")
 
     # ── Load data ─────────────────────────────────────────────────────
     with step("Loading predictions"):
         predictions: DataFrame = load_prediction_log(
             season=season,
             model_name="win_prob",
-            model_type=model_type,
+            model_type=resolved_model_type,
         )
     if predictions.empty:
-        typer.echo(f"No predictions found for win_prob/{model_type}.")
+        typer.echo(f"No predictions found for win_prob/{resolved_model_type}.")
         raise typer.Exit()
 
     typer.echo(f"  {len(predictions)} prediction(s) loaded.")
@@ -177,10 +190,10 @@ def clv(
     typer.echo(f"  {len(odds_ledger)} odds row(s) loaded.")
 
     # ── Build edge report for historical games ────────────────────────
-    margin_std: float = get_margin_std("win_prob", model_type)
+    margin_std: float = get_margin_std("win_prob", resolved_model_type)
     total_std: float = get_total_std(
         "total",
-        model_type,
+        resolved_model_type,
         default=_TOTAL_STD_FALLBACK,
     )
 
