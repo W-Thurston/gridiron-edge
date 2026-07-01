@@ -32,9 +32,21 @@ from gridiron_edge.api.schemas.injuries import GameInjuries
 from gridiron_edge.api.schemas.lines import LineDetail, LineRow
 from gridiron_edge.api.schemas.live import LiveGame, LiveGameSummary
 from gridiron_edge.api.schemas.news import NewsItem
+from gridiron_edge.api.schemas.portfolio import (
+    BankrollCurve,
+    BetRow,
+    PortfolioSplits,
+    PortfolioSummary,
+    TransactionRow,
+)
 from gridiron_edge.api.schemas.prop_reasoning import PropReasoning
 from gridiron_edge.api.schemas.prop_shop import PropShop
 from gridiron_edge.api.schemas.swing_factors import GameSwingFactors
+from gridiron_edge.api.schemas.weeks import CurrentWeek
+
+# Aliases for the parameterized list responses (avoids fragile inline generics).
+_BetsList = BaseListResponse[BetRow]
+_TransactionsList = BaseListResponse[TransactionRow]
 
 
 @pytest.fixture
@@ -59,6 +71,12 @@ ENDPOINTS: list[tuple[str, type]] = [
     ("/games/sf-bal/comparables", GameComparables),
     ("/props/lamar-rush/shop", PropShop),
     ("/props/lamar-rush/reasoning", PropReasoning),
+    ("/weeks/current", CurrentWeek),
+    ("/portfolio/summary", PortfolioSummary),
+    ("/portfolio/bets", _BetsList),
+    ("/portfolio/curve", BankrollCurve),
+    ("/portfolio/transactions", _TransactionsList),
+    ("/portfolio/splits", PortfolioSplits),
 ]
 
 
@@ -168,7 +186,8 @@ class TestFieldStatusCompleteness:
         _model_cls: type,
     ) -> None:
         body = client.get(path).json()
-        field_status: dict[str, Any] = body.get("_meta", {}).get("field_status", {})
+        meta = body.get("_meta") or {}
+        field_status: dict[str, Any] = meta.get("field_status", {})
 
         null_paths: set[str] = set(_iter_null_field_paths(body))
         documented_paths: set[str] = set(field_status.keys())
@@ -194,7 +213,8 @@ class TestFieldStatusCompleteness:
         handler (e.g., `with_blocked("injurys", ...)`).
         """
         body = client.get(path).json()
-        field_status: dict[str, Any] = body.get("_meta", {}).get("field_status", {})
+        meta = body.get("_meta") or {}
+        field_status: dict[str, Any] = meta.get("field_status", {})
 
         # Collect every top-level key in the response body plus a few
         # specific keys that appear inside nested structures we expect.

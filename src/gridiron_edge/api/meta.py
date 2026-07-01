@@ -121,3 +121,28 @@ class Blocker:
             for name, value in vars(cls).items()
             if not name.startswith("_") and isinstance(value, tuple) and len(value) == 2
         )
+
+
+class Unavailable:
+    """Slugs for fields that are null because the source data doesn't support them.
+
+    Distinct from `Blocker` (which points at an upstream workstream) and
+    from `"pending"` (which means backend work is in progress). Fields
+    marked with these slugs are null for a specific request because the
+    underlying data lacks what's needed — a state that may resolve
+    naturally as more bets accumulate, more CLV data lands, etc.
+    """
+
+    NO_CLV_DATA: tuple[str, str] = ("no_clv_data", "data")
+    NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
+    NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
+    PERIOD_NOT_REQUESTED = ("period_not_requested", "request")
+
+    @classmethod
+    def all_slugs(cls: type[Unavailable]) -> frozenset:
+        """Return every registered unavailable slug."""
+        return frozenset(
+            value[0]
+            for name, value in vars(cls).items()
+            if not name.startswith("_") and isinstance(value, tuple) and len(value) == 2
+        )

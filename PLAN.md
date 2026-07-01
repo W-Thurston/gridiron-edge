@@ -275,6 +275,7 @@ Per-item design + decision on demotion to ROADMAP §9 happens during this tier's
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | Tier 2 Step 1 complete: /weeks/current + /portfolio/{summary,bets,curve,transactions,splits}. Introduced api/loaders.py, api/serializers/ package. D19 records explicit repo_root threading; D20 extends placeholder convention with Unavailable slugs for data-limit and missing-query-param cases. |
 | 2026-06-27 | Tier 2 design phase complete. Inline "How" block expanded with three-layer architecture (loaders → serializers → routes), 8-step implementation order, locked decisions D17 (per-endpoint serializers) and D18 (serializer-owned field_status), and the inventory of pending fields expected to surface during the tier. Ready for Step 1 (weeks + portfolio). |
 | 2026-06-27 | Tier 1 complete. Skeleton + blocked-endpoint stubs shipped: api/meta.py, api/schemas/_base.py, api/app.py + api/deps.py, cli/api.py, 9 route files, 9 schema files. 12 endpoints reachable via `gridiron api serve` with structurally valid null responses carrying registered blocker slugs. Integration tests lock round-trip parity and field_status completeness. Tier 2 (direct-serialization endpoints) now active. |
 | 2026-06-26 | Tier 1 wiring verified end-to-end. All 12 endpoints reachable via `gridiron api serve`; response shapes carry `_meta.field_status` with registered blocker slugs. |

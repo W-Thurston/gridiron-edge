@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from gridiron_edge.api.app import create_app
-from gridiron_edge.api.meta import Blocker
+from gridiron_edge.api.meta import Blocker, Unavailable
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ class TestEveryBlockerSlugIsRegistered:
     """
 
     def test_all_slugs_are_registered(self, client: TestClient) -> None:
-        registered = Blocker.all_slugs()
+        registered = Blocker.all_slugs() | Unavailable.all_slugs()
         seen_slugs: set[str] = set()
 
         for _method, path, _blocker in ALL_ENDPOINTS:

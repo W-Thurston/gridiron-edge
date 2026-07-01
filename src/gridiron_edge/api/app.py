@@ -24,6 +24,8 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "portfolio", "description": "Bankroll, bets, performance."},
     {"name": "compare", "description": "Team vs team and player vs defense."},
     {"name": "model", "description": "Model performance metrics."},
+    {"name": "weeks", "description": "Current NFL season and week."},
+    {"name": "portfolio", "description": "Bankroll, bets, curve, transactions, splits."},
     # Endpoints blocked on upstream gaps; tags exist now so /docs groups
     # them correctly even while routes return placeholder shapes.
     {
@@ -93,11 +95,15 @@ def create_app() -> FastAPI:
         lines,
         live,
         news,
+        portfolio,
         prop_reasoning,
         prop_shop,
         swing_factors,
+        weeks,
     )
 
+    app.include_router(weeks.router)
+    app.include_router(portfolio.router)
     app.include_router(lines.router)
     app.include_router(live.router)
     app.include_router(news.router)

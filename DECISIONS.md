@@ -7,6 +7,72 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D20. Extended placeholder convention: `Unavailable` slugs for data limits
+
+**Date:** 2026-07-01 (Tier 2 Step 1, W8)
+**Workstream:** W8 (API Serving Layer)
+**Status:** Accepted (refines D14)
+
+### Decision
+
+The placeholder convention introduced in D14 distinguished two field states: populated, and null-with-`field_status`. Tier 2 endpoints surfaced a third: fields that are null because the specific request or dataset lacks what's needed to compute them, not because upstream workstream work is pending.
+
+Add an `Unavailable` slug family alongside `Blocker`:
+
+- `Blocker` — field is null because an upstream workstream is not yet built. Frontend renders a "coming soon" state.
+- `Unavailable` — field is null because the source data or request doesn't support it. Frontend can render a "not available for this request" state.
+- `"pending"` (from D14) — retained for cases where backend work is scheduled but not yet done. Distinct from Unavailable in that pending fields *will* eventually populate.
+
+`Unavailable` slugs use `roadmap` values that describe the nature of the gap: `"data"` for source-data limits, `"request"` for missing query parameters.
+
+### Consequences
+
+- Serializers construct `_meta.field_status` entries for both `Blocker` and `Unavailable` cases.
+- Completeness tests accept slugs from either registry.
+- Frontend can distinguish "not yet built" from "not applicable to this request" without changing the wire shape.
+- Every null in an API response continues to have a documented reason — D14 semantics preserved and extended.
+
+### References
+
+- DECISIONS.md D14 (original placeholder convention)
+- PLAN.md → Tier 2 Step 1
+
+## D19. API loaders thread `settings.repo_root` explicitly to domain loaders
+
+**Date:** 2026-06-27 (Tier 2 Step 1, W8)
+**Workstream:** W8 (API Serving Layer)
+**Status:** Accepted
+
+### Decision
+
+`api/loaders.py` wrapper functions **always pass `repo=settings.repo_root` explicitly** to the underlying domain loaders (`ledger.load_bets`, `bankroll.load_transactions`, `bankroll.balance_history`, `bankroll.current_balance`, etc.). API loaders do not rely on the domain loaders' default behavior of falling back to `get_settings().repo_root` internally.
+
+### Context
+
+Domain loaders in `betting/ledger.py` and `betting/bankroll.py` accept an optional `repo: Path | None = None` kwarg. When `None`, they call `get_settings()` themselves and use `repo_root` from that. This is convenient for CLI usage but hides which `Settings` a loader is using.
+
+The API layer already has `Settings` in hand (via FastAPI's `SettingsDep` dependency). Two options:
+
+1. Rely on the domain loader default (pass nothing, let it call `get_settings()` again).
+2. Pass `repo=settings.repo_root` explicitly.
+
+Option 2 wins because:
+
+- Tests can inject a stubbed `Settings` via FastAPI's dependency override, and the domain loader honors it. Option 1 would ignore the override and re-read the real `get_settings()`.
+- The API layer's `SettingsDep` becomes the single source of truth for path resolution; every request flows through it.
+- Avoids surprising behavior where two requests in the same process could see different `Settings` snapshots if `get_settings()` had different results at different times.
+
+### Consequences
+
+- Every `api/loaders.py` wrapper takes `Settings` as its first argument and passes `settings.repo_root` explicitly to the domain call.
+- Test fixtures for the API layer can point `Settings` at a `MiniRepoBuilder` temp directory and the domain loaders will read from there without further plumbing.
+- If a domain loader's signature changes to require `repo`, the API wrapper is the single file to update.
+
+### References
+
+- PLAN.md → Tier 2 Step 1
+- DECISIONS.md D18 (serializer scope)
+- `betting/ledger.py::load_bets`, `betting/bankroll.py::load_transactions`, `balance_history`, `current_balance`
 
 ## D18. API serializers own `_meta.field_status` construction
 
