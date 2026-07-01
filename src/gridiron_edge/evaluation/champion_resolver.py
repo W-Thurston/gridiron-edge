@@ -125,7 +125,7 @@ def write_manifest(
         stamped_entries[model_name] = {
             "model_type": entry["model_type"],
             "promoted_at": entry["promoted_at"],
-            "source_run_id": source_run_id,
+            "source_run_id": entry.get("source_run_id", source_run_id),
             "metrics": dict(entry.get("metrics", {})),
         }
 

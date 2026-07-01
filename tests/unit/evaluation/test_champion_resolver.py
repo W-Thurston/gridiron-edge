@@ -264,6 +264,27 @@ class TestWriteManifest:
         assert manifest["models"]["win_prob"]["source_run_id"] == "RUN_XYZ"
         assert manifest["models"]["qb_pass_yards"]["source_run_id"] == "RUN_XYZ"
 
+    def test_preserves_existing_source_run_id_when_present(self, tmp_path):
+        """Entries that already carry source_run_id keep it (preservation semantics)."""
+        entries = {
+            "win_prob": {  # fresh — no source_run_id
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:20:00",
+                "metrics": {"brier": 0.213},
+            },
+            "rb_rush_yards": {  # preserved — carries its own source_run_id
+                "model_type": "elasticnet",
+                "promoted_at": "2026-06-01T00:00:00",
+                "source_run_id": "OLD_RUN",
+                "metrics": {"mae": 25.0},
+            },
+        }
+        write_manifest(entries, source_run_id="NEW_RUN", repo=tmp_path)
+        manifest = read_manifest(repo=tmp_path)
+
+        assert manifest["models"]["win_prob"]["source_run_id"] == "NEW_RUN"
+        assert manifest["models"]["rb_rush_yards"]["source_run_id"] == "OLD_RUN"
+
     def test_updated_at_is_recent_utc(self, tmp_path):
         before = datetime.now(UTC)
         write_manifest({}, source_run_id="R", repo=tmp_path)

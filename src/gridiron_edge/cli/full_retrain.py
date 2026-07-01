@@ -23,6 +23,7 @@ Usage::
 
     # Only the calibration refresh and report
     gridiron full-retrain --only refresh-calibrations \
+        --only promote-champions \
         --only baseline-report
 """
 
@@ -113,6 +114,100 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
         fit_elo_all_years=True,
     )
     return StageResult(success=True, detail="full-history pipeline complete")
+
+
+def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
+    """Rank all model families and persist the champion manifest.
+
+    Runs three selectors (game classification, game regression, prop),
+    merges their results with any existing manifest entries for families
+    outside the current subset, and writes the combined manifest via
+    ``write_manifest``.
+
+    Subset semantics (per W13 Tier 2 design Q2):
+        - Ranking respects ``ctx["game_pairs"]`` and ``ctx["prop_pairs"]``.
+          If the CLI passed ``--game-models win_prob_random_forest``,
+          only that pair participates in win_prob's ranking.
+        - Existing manifest entries for families NOT touched by this run
+          are preserved verbatim. A partial retrain never shrinks the
+          manifest.
+        - Cold-start (no prior manifest): only families in the current
+          subset are written. This is the correct behavior — nothing to
+          preserve.
+    """
+    from gridiron_edge.evaluation.champion import (
+        select_game_classification_champions,
+        select_game_regression_champions,
+        select_prop_champions_all_families,
+    )
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        read_manifest,
+        write_manifest,
+    )
+
+    repo = get_settings().repo_root
+
+    game_pairs: list[ModelPair] = ctx["game_pairs"]
+    prop_pairs: list[tuple[str, str]] = ctx["prop_pairs"]
+
+    # Convert ModelPair objects to the (str, str) tuple shape the selectors expect.
+    game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
+
+    # Dedupe prop families from prop_pairs (which are (stat, algorithm) tuples).
+    prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
+
+    # Run all three selectors.
+    classification_entries = select_game_classification_champions(
+        game_pair_tuples,
+        repo=repo,
+    )
+    regression_entries = select_game_regression_champions(
+        game_pair_tuples,
+        repo=repo,
+    )
+    prop_entries = select_prop_champions_all_families(
+        prop_families,
+        repo=repo,
+    )
+
+    # Merge freshly-selected entries. No key collisions expected across
+    # selectors — each writes distinct model_names.
+    fresh_entries: dict[str, dict[str, Any]] = {
+        **classification_entries,
+        **regression_entries,
+        **prop_entries,
+    }
+
+    # Merge with existing manifest to preserve families outside this subset.
+    try:
+        existing = read_manifest(repo=repo)
+        existing_models: dict[str, dict[str, Any]] = existing.get("models", {})
+    except ChampionNotFoundError:
+        existing_models = {}
+
+    merged_entries: dict[str, dict[str, Any]] = {**existing_models, **fresh_entries}
+
+    # source_run_id derived from wall-clock at stage entry. Retrain-scope
+    # provenance; ties every entry written in this pass together.
+    source_run_id: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    manifest_path = write_manifest(
+        merged_entries,
+        source_run_id=source_run_id,
+        repo=repo,
+    )
+
+    # Summarize what happened.
+    fresh_count = len(fresh_entries)
+    preserved_count = len(set(existing_models) - set(fresh_entries))
+    detail = f"{fresh_count} fresh champion(s); {preserved_count} preserved from prior manifest"
+    return StageResult(
+        success=True,
+        detail=detail,
+        rows=len(merged_entries),
+        artifacts=[manifest_path],
+    )
 
 
 def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
@@ -355,6 +450,102 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
         success=True,
         detail=" · ".join(detail_parts) or "nothing to do",
         warnings=skipped[:5],  # surface up to 5 skip reasons
+    )
+
+
+def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
+    """Rank all model families and persist the champion manifest.
+
+    Runs three selectors (game classification, game regression, prop),
+    merges their results with any existing manifest entries for families
+    outside the current subset, and writes the combined manifest via
+    ``write_manifest``.
+
+    Subset semantics (per W13 Tier 2 design Q2):
+        - Ranking respects ``ctx["game_pairs"]`` and ``ctx["prop_pairs"]``.
+          If the CLI passed ``--game-models win_prob_random_forest``,
+          only that pair participates in win_prob's ranking.
+        - Existing manifest entries for families NOT touched by this run
+          are preserved verbatim. A partial retrain never shrinks the
+          manifest.
+        - Cold-start (no prior manifest): only families in the current
+          subset are written.
+    """
+    from gridiron_edge.evaluation.champion import (
+        select_game_classification_champions,
+        select_game_regression_champions,
+        select_prop_champions_all_families,
+    )
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        read_manifest,
+        write_manifest,
+    )
+
+    repo = get_settings().repo_root
+
+    game_pairs: list[ModelPair] = ctx["game_pairs"]
+    prop_pairs: list[tuple[str, str]] = ctx["prop_pairs"]
+
+    game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
+    prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
+
+    classification_entries = select_game_classification_champions(
+        game_pair_tuples,
+        repo=repo,
+    )
+    regression_entries = select_game_regression_champions(
+        game_pair_tuples,
+        repo=repo,
+    )
+    prop_entries = select_prop_champions_all_families(
+        prop_families,
+        repo=repo,
+    )
+
+    fresh_entries: dict[str, dict[str, Any]] = {
+        **classification_entries,
+        **regression_entries,
+        **prop_entries,
+    }
+
+    warnings: list[str] = []
+    if game_pair_tuples and not classification_entries and not regression_entries:
+        warnings.append(
+            "no game champions selected — check that game backfill "
+            "produced archive rows and artifacts"
+        )
+    if prop_families and not prop_entries:
+        warnings.append(
+            "no prop champions selected — check that prop backfill produced archive rows"
+        )
+
+    try:
+        existing = read_manifest(repo=repo)
+        existing_models: dict[str, dict[str, Any]] = existing.get("models", {})
+    except ChampionNotFoundError:
+        existing_models = {}
+
+    merged_entries: dict[str, dict[str, Any]] = {**existing_models, **fresh_entries}
+
+    source_run_id: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    manifest_path = write_manifest(
+        merged_entries,
+        source_run_id=source_run_id,
+        repo=repo,
+    )
+
+    fresh_count = len(fresh_entries)
+    preserved_count = len(set(existing_models) - set(fresh_entries))
+    detail = f"{fresh_count} fresh champion(s); {preserved_count} preserved from prior manifest"
+
+    return StageResult(
+        success=True,
+        detail=detail,
+        rows=len(merged_entries),
+        artifacts=[manifest_path],
+        warnings=warnings,
     )
 
 
@@ -674,10 +865,16 @@ def _build_stages() -> list:
             depends_on=("backfill-game-models",),
         ),
         CompositeStage(
+            name="promote-champions",
+            description="Rank families and persist champion manifest",
+            func=_stage_promote_champions,
+            depends_on=("refresh-calibrations",),
+        ),
+        CompositeStage(
             name="baseline-report",
             description="Write baseline comparison markdown",
             func=_stage_baseline_report,
-            depends_on=("backfill-game-models",),
+            depends_on=("promote-champions",),
         ),
     ]
 

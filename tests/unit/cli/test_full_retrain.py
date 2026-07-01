@@ -31,6 +31,7 @@ class TestStageList:
             "backfill-game-models",
             "backfill-prop-models",
             "refresh-calibrations",
+            "promote-champions",
             "baseline-report",
         ]
 
@@ -47,6 +48,14 @@ class TestStageList:
             assert not stage.soft_fail, (
                 f"Stage {stage.name!r} should not be soft-fail in full-retrain"
             )
+
+    def test_promote_champions_depends_on_calibrations(self) -> None:
+        stages = {s.name: s for s in _build_stages()}
+        assert set(stages["promote-champions"].depends_on) == {"refresh-calibrations"}
+
+    def test_baseline_report_depends_on_promote_champions(self) -> None:
+        stages = {s.name: s for s in _build_stages()}
+        assert set(stages["baseline-report"].depends_on) == {"promote-champions"}
 
 
 class TestPairResolution:
@@ -289,6 +298,320 @@ class TestBaselineReportStage:
         assert "updated_at" in payload
 
 
+class TestStagePromoteChampions:
+    """Cover the promote-champions stage."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def test_writes_manifest_with_fresh_champions(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        classification_result = {
+            "win_prob": {
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:00:00",
+                "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+            },
+        }
+        regression_result = {
+            "total": {
+                "model_type": "xgboost",
+                "promoted_at": "2026-07-01T14:05:00",
+                "metrics": {"mae": 10.24, "rmse": 12.87, "r2": 0.18},
+            },
+        }
+        prop_result = {
+            "qb_pass_yards": {
+                "model_type": "elasticnet",
+                "promoted_at": "2026-07-01T14:10:00",
+                "metrics": {"mae": 63.4, "rmse": 80.6, "r2": 0.05, "coverage": 0.938},
+            },
+        }
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: classification_result,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: regression_result,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: prop_result,
+        )
+
+        ctx = {
+            "game_pairs": [
+                ModelPair("win_prob", "random_forest"),
+                ModelPair("total", "xgboost"),
+            ],
+            "prop_pairs": [("qb_pass_yards", "elasticnet")],
+            "upcoming_season_int": None,
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+        assert "3 fresh champion(s)" in result.detail
+        assert result.rows == 3
+        assert len(result.artifacts) == 1
+
+        manifest_path = tmp_path / "data" / "output" / "champions" / "champions.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text())
+        assert set(manifest["models"].keys()) == {"win_prob", "total", "qb_pass_yards"}
+
+    def test_preserves_existing_entries_outside_subset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        prior_manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-06-01T00:00:00+00:00",
+            "models": {
+                "rb_rush_yards": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-06-01T00:00:00",
+                    "source_run_id": "OLD_RUN",
+                    "metrics": {"mae": 25.0, "rmse": 32.0, "r2": 0.17, "coverage": 0.91},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(prior_manifest))
+
+        classification_result = {
+            "win_prob": {
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:00:00",
+                "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+            },
+        }
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: classification_result,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        ctx = {
+            "game_pairs": [ModelPair("win_prob", "random_forest")],
+            "prop_pairs": [],
+            "upcoming_season_int": None,
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+        assert "1 preserved" in result.detail
+
+        manifest = json.loads((manifest_dir / "champions.json").read_text())
+        assert set(manifest["models"].keys()) == {"win_prob", "rb_rush_yards"}
+        assert manifest["models"]["rb_rush_yards"]["source_run_id"] == "OLD_RUN"
+        assert manifest["models"]["win_prob"]["source_run_id"] != "OLD_RUN"
+
+    def test_overwrites_existing_entry_when_in_subset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        prior_manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-06-01T00:00:00+00:00",
+            "models": {
+                "win_prob": {
+                    "model_type": "xgboost",
+                    "promoted_at": "2026-06-01T00:00:00",
+                    "source_run_id": "OLD_RUN",
+                    "metrics": {"brier": 0.25, "ece": 0.05, "auc": 0.70},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(prior_manifest))
+
+        classification_result = {
+            "win_prob": {
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:00:00",
+                "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+            },
+        }
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: classification_result,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        ctx = {
+            "game_pairs": [
+                ModelPair("win_prob", "random_forest"),
+                ModelPair("win_prob", "xgboost"),
+            ],
+            "prop_pairs": [],
+            "upcoming_season_int": None,
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+
+        manifest = json.loads((manifest_dir / "champions.json").read_text())
+        assert manifest["models"]["win_prob"]["model_type"] == "random_forest"
+        assert manifest["models"]["win_prob"]["source_run_id"] != "OLD_RUN"
+
+    def test_cold_start_writes_only_fresh_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        classification_result = {
+            "win_prob": {
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:00:00",
+                "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+            },
+        }
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: classification_result,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        ctx = {
+            "game_pairs": [ModelPair("win_prob", "random_forest")],
+            "prop_pairs": [],
+            "upcoming_season_int": None,
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+        assert "0 preserved" in result.detail
+
+        manifest_path = tmp_path / "data" / "output" / "champions" / "champions.json"
+        manifest = json.loads(manifest_path.read_text())
+        assert set(manifest["models"].keys()) == {"win_prob"}
+
+    def test_emits_warning_when_no_game_champions_selected(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        ctx = {
+            "game_pairs": [ModelPair("win_prob", "random_forest")],
+            "prop_pairs": [],
+            "upcoming_season_int": None,
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+        assert any("no game champions selected" in w for w in result.warnings)
+
+
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
 
@@ -296,10 +619,12 @@ class TestCommandInvocation:
     @patch("gridiron_edge.cli.full_retrain._stage_backfill_game_models")
     @patch("gridiron_edge.cli.full_retrain._stage_backfill_prop_models")
     @patch("gridiron_edge.cli.full_retrain._stage_refresh_calibrations")
+    @patch("gridiron_edge.cli.full_retrain._stage_promote_champions")
     @patch("gridiron_edge.cli.full_retrain._stage_baseline_report")
     def test_runs_all_stages_when_all_succeed(
         self,
         mock_report: MagicMock,
+        mock_promote: MagicMock,
         mock_calib: MagicMock,
         mock_props: MagicMock,
         mock_games: MagicMock,
@@ -315,6 +640,7 @@ class TestCommandInvocation:
             mock_games,
             mock_props,
             mock_calib,
+            mock_promote,
             mock_report,
         ]:
             m.return_value = StageResult(success=True, detail="ok")
@@ -337,6 +663,7 @@ class TestCommandInvocation:
             patch("gridiron_edge.cli.full_retrain._stage_backfill_game_models") as mock_games,
             patch("gridiron_edge.cli.full_retrain._stage_backfill_prop_models") as mock_props,
             patch("gridiron_edge.cli.full_retrain._stage_refresh_calibrations") as mock_calib,
+            patch("gridiron_edge.cli.full_retrain._stage_promote_champions") as mock_promote,
             patch("gridiron_edge.cli.full_retrain._stage_baseline_report") as mock_report,
         ):
             for m in [
@@ -344,6 +671,7 @@ class TestCommandInvocation:
                 mock_games,
                 mock_props,
                 mock_calib,
+                mock_promote,
                 mock_report,
             ]:
                 m.return_value = StageResult(success=True, detail="ok")
@@ -354,7 +682,6 @@ class TestCommandInvocation:
             runner = CliRunner()
             result = runner.invoke(app, ["--skip-prop-backfill"])
             assert result.exit_code == 0, result.output
-            # Backfill-prop-models should not have been called.
             mock_props.assert_not_called()
 
 
