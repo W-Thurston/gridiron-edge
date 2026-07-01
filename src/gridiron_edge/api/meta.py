@@ -141,6 +141,7 @@ class Unavailable:
     SINGLE_CLASS_OUTCOME: tuple[str, str] = ("single_class_outcome", "data")
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
     OFF_DEF_DECOMPOSITION: tuple[str, str] = ("off_def_decomposition", "data")
+    NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
 
     @classmethod
     def all_slugs(cls: type[Unavailable]) -> frozenset:

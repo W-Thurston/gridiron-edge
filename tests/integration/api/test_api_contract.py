@@ -40,6 +40,7 @@ from gridiron_edge.api.schemas.portfolio import (
     PortfolioSummary,
     TransactionRow,
 )
+from gridiron_edge.api.schemas.projections import ProjectionsList
 from gridiron_edge.api.schemas.prop_reasoning import PropReasoning
 from gridiron_edge.api.schemas.prop_shop import PropShop
 from gridiron_edge.api.schemas.swing_factors import GameSwingFactors
@@ -82,6 +83,7 @@ ENDPOINTS: list[tuple[str, type]] = [
     ("/model/performance", ModelPerformance),
     ("/teams", TeamRankingsList),
     ("/teams/BAL", TeamProfile),  # BAL is a known abbreviation
+    ("/projections", ProjectionsList),
 ]
 
 

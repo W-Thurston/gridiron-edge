@@ -57,6 +57,7 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "model", "description": "Model prediction quality and betting performance."},
     {"name": "teams", "description": "Power rankings and per-team profiles."},
+    {"name": "projections", "description": "Monte Carlo season and playoff projections."},
 ]
 
 
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
         model,
         news,
         portfolio,
+        projections,
         prop_reasoning,
         prop_shop,
         swing_factors,
@@ -114,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(model.router)
     app.include_router(news.router)
     app.include_router(portfolio.router)
+    app.include_router(projections.router)
     app.include_router(prop_reasoning.router)
     app.include_router(prop_shop.router)
     app.include_router(swing_factors.router)

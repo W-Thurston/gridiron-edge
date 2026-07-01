@@ -142,3 +142,25 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
     games_sorted = games.sort_values(["YEAR", "WEEK_NUM"])
     latest = games_sorted.iloc[-1]
     return (str(latest["YEAR"]), int(latest["WEEK_NUM"]))
+
+
+def load_projections_summary_df(
+    settings: Settings,
+) -> tuple[pd.DataFrame, str | None]:
+    """Load the projections summary CSV.
+
+    Returns:
+        Tuple of (dataframe, csv_mtime_iso). The mtime is the CSV file's
+        last-modified time as an ISO string, useful for staleness display.
+        Returns (empty_df, None) if the CSV doesn't exist.
+    """
+    from datetime import UTC, datetime
+
+    path = settings.repo_root / "data" / "output" / "temp" / "projections_summary.csv"
+
+    if not path.exists():
+        return pd.DataFrame(), None
+
+    df = pd.read_csv(path)
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+    return df, mtime
