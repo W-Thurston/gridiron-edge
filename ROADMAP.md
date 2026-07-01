@@ -421,12 +421,15 @@ Items that are not active workstreams but need tracking. Sources: surfaced durin
 | Registry cold-start scenarios | Test additions for `build_prop_evaluation_df` integration when registry is empty at call time. |
 | Performance baselines for tests | May need `pytest-benchmark` if runtime grows or regressions become a concern. |
 | API layer tests (W8) | Three-tier coverage: unit (response models, handlers with mocked datasets, `_meta` correctness), integration (`MiniRepoBuilder`-backed), e2e (deferred to W9). |
+| CLI test drift: `tests/e2e/test_cli_workflows.py::TestEvaluateSelectModelSmoke::test_empty_archive_exits_with_message` | Test asserts `False` on the empty-archive branch of `gridiron evaluate select-model`. Behavior or output of the command has changed without the test being updated. Likely accumulated drift during W4.1 / W5.5 CLI work. Low-impact fix; revisit when touching `cli/evaluate.py` next. |
+| CLI test drift: `tests/integration/test_betting_cli.py::TestLogCommand::test_log_with_model_context` | Test asserts against `gridiron bet log` behavior but receives `Usage: root log [OPTIONS]` — the command help, not the executed result. Indicates a Typer signature or argument-structure change without test update. Low-impact fix; revisit when touching `cli/betting.py` next. |
 
 ### 9.2 Real Bugs
 
 | Item | File | Notes |
 |---|---|---|
 | Walk-forward backfill produces no valid pipeline for single-season windows with expanded feature sets | `models/game_prediction/base.py::_run_hp_search` (root cause) and `evaluation/backfill.py::_walk_forward_one_season` (calling site) | Single-season walk-forward fails because filtered training data falls below `MIN_CV_TRAIN_ROWS` for expanded feature sets. Also: `_run_hp_search` does not forward `train_through_season` to `_prepare_window`. Fix options: (A) lower threshold for walk-forward, (B) fill expanded-feature NaN with neutral values, (C) force walk-forward to use combined feature set. **Soft-blocks W12 (clean Brier comparison).** |
+| `GameModelMetadata` constructor rejects keyword arguments used by `tests/integration/test_model_train_predict.py::TestArtifactRoundtrip` | `models/base.py::GameModelMetadata` (likely) and `tests/integration/test_model_train_predict.py` | Four artifact round-trip tests fail with `TypeError: GameModelMetadata.__init__() got an unexpected keyword argument ...`. Surfaced when running the full pre-push test suite during W8 Tier 1 close-out. Likely a refactor-vs-test drift introduced during W3.7 (Game Model Refactor, 2026-06-18) when `BaseModelMetadata` / `GameModelMetadata` / `PropModelMetadata` were split. Fix is either updating the test fixtures to match the current metadata constructor or restoring the dropped keyword for backward compatibility — decide based on whether the dropped keyword is intentionally gone. |
 
 ### 9.3 Investigations
 
