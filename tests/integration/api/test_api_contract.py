@@ -31,6 +31,7 @@ from gridiron_edge.api.schemas.explain import GameExplain
 from gridiron_edge.api.schemas.injuries import GameInjuries
 from gridiron_edge.api.schemas.lines import LineDetail, LineRow
 from gridiron_edge.api.schemas.live import LiveGame, LiveGameSummary
+from gridiron_edge.api.schemas.model_performance import ModelPerformance
 from gridiron_edge.api.schemas.news import NewsItem
 from gridiron_edge.api.schemas.portfolio import (
     BankrollCurve,
@@ -77,6 +78,7 @@ ENDPOINTS: list[tuple[str, type]] = [
     ("/portfolio/curve", BankrollCurve),
     ("/portfolio/transactions", _TransactionsList),
     ("/portfolio/splits", PortfolioSplits),
+    ("/model/performance", ModelPerformance),
 ]
 
 

@@ -14,6 +14,7 @@ never used from the API path.
 from __future__ import annotations
 
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.core.settings import Settings
 
@@ -82,3 +83,21 @@ def resolve_current_week(settings: Settings) -> tuple[int, int, str]:
 
     latest = schedule.sort_values(sort_cols).iloc[0]
     return (int(latest["season"]), int(latest["week"]), "schedule")
+
+
+def load_evaluation_df(
+    settings: Settings,
+    *,
+    model_name: str | None = None,
+    model_type: str | None = None,
+    season: str | None = None,
+) -> DataFrame:
+    """Return the evaluation DataFrame (predictions joined to outcomes)."""
+    from gridiron_edge.evaluation.metrics import build_evaluation_df
+
+    return build_evaluation_df(
+        model_name=model_name,
+        model_type=model_type,
+        season=season,
+        repo=settings.repo_root,
+    )

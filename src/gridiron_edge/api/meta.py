@@ -136,7 +136,9 @@ class Unavailable:
     NO_CLV_DATA: tuple[str, str] = ("no_clv_data", "data")
     NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
     NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
-    PERIOD_NOT_REQUESTED = ("period_not_requested", "request")
+    PERIOD_NOT_REQUESTED: tuple[str, str] = ("period_not_requested", "request")
+    NO_EVALUATION_DATA: tuple[str, str] = ("no_evaluation_data", "data")
+    SINGLE_CLASS_OUTCOME: tuple[str, str] = ("single_class_outcome", "data")
 
     @classmethod
     def all_slugs(cls: type[Unavailable]) -> frozenset:

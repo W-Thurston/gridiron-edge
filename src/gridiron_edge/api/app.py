@@ -55,6 +55,7 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "prop-reasoning",
         "description": "Per-prop model reasoning. Blocked on feature attribution.",
     },
+    {"name": "model", "description": "Model prediction quality and betting performance."},
 ]
 
 
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
         injuries,
         lines,
         live,
+        model,
         news,
         portfolio,
         prop_reasoning,
@@ -106,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(portfolio.router)
     app.include_router(lines.router)
     app.include_router(live.router)
+    app.include_router(model.router)
     app.include_router(news.router)
     app.include_router(injuries.router)
     app.include_router(explain.router)
