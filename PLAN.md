@@ -45,15 +45,21 @@ Three reasons:
 2. **Eight CLI callsites currently hard-code `("win_prob", "elo")`.** This is technical debt from before the composite-key infrastructure was complete. Now that `select-model` produces the real answer, consumers should read it.
 3. **W3.6/W3.7 built the composite-identity foundation but stopped short of persisting the model_name-level decision.** W13 finishes that job.
 
-### Success criteria
-
-- `data/output/champions/champions.json` exists after `full-retrain` completes, with entries for every `model_name` that has ≥1 trained `model_type`.
-- `resolve_current_champion(model_name)` returns the current `(model_name, model_type)` pair from the manifest.
-- Missing manifest or missing entry raises `ChampionNotFoundError`; documented and caught in downstream consumers.
-- New `full-retrain` stage `promote-champions` runs `select-model` and `select_prop_champion` in write mode.
-- All 8 CLI hard-coded sites use `resolve_current_champion()` (with any intentional exceptions like `ratings.py`'s elo-specific usage documented in code).
-- Existing tests pass; new tests cover the manifest read/write and the resolver's error path.
-- All quality gates pass.
+#### Success criteria
+- ✅ ``data/output/champions/champions.json`` exists after full-retrain
+  completes, with entries for every model_name that has ≥1 trained
+  model_type.
+- ✅ ``resolve_current_champion(model_name)`` returns the current
+  ``(model_name, model_type)`` pair from the manifest.
+- ✅ Missing manifest or missing entry raises ``ChampionNotFoundError``;
+  documented and caught in downstream consumers.
+- ✅ New full-retrain stage ``promote-champions`` runs the three
+  selectors in write mode.
+- 🟡 All 8 CLI hard-coded sites use ``resolve_current_champion()``
+  (Tier 3).
+- ✅ Existing tests pass; new tests cover the manifest read/write and
+  the resolver's error path.
+- ✅ All quality gates pass.
 
 ### Disconfirming evidence
 
@@ -83,13 +89,63 @@ Three reasons:
 
 ### Tiers
 
-**Tier 1 — Manifest schema + resolver API.** Define the JSON schema. Implement `evaluation/champion_resolver.py` with `resolve_current_champion(model_name)`, `read_manifest()`, and `ChampionNotFoundError`. Unit tests against a fixture manifest. No write path yet.
+**Tier 1 — Manifest schema + resolver API.** ✅ Complete (2026-07-01).
+Shipped ``champion_resolver.py`` with ``read_manifest``,
+``resolve_current_champion``, ``resolve_current_champion_with_metadata``,
+``list_current_champions``, and ``ChampionNotFoundError``. Manifest
+schema documented inline. Reader-only; writer path deferred to Tier 2.
 
-**Tier 2 — Manifest writer and full-retrain integration.** Extract ranking logic if needed. Extend `select-model` with `--write-manifest`. Do the same on the prop side. Add `_stage_promote_champions` to `full-retrain`. Tests for the write path and the new stage.
+**Tier 2 — Manifest writer and full-retrain integration.** ✅ Complete (2026-07-01).
+Shipped in nine steps:
 
-**Tier 3 — CLI consumer refactor.** Replace the 8 hard-coded `("win_prob", "elo")` pairs across `cli/weekly_predict.py`, `cli/output.py`, `cli/edges.py`, `cli/evaluate.py`, and confirm `cli/ratings.py`'s intentional exception. Update any tests that depended on the hard-coded pairs.
+1. ``write_manifest`` primitive with atomic writes and preservation
+   semantics for ``source_run_id`` (entries with existing ``source_run_id``
+   keep it; new entries get the caller's).
+2. ``select_game_regression_champions`` — reads ``ArtifactStore`` metadata,
+   picks lowest holdout MAE, tie-breaks to ``random_forest``.
+3. ``select_game_classification_champions`` — wraps ``collect_model_metrics``
+   + ``rank_models`` from ``evaluation/select.py`` on Brier/ECE/AUC.
+4. ``select_prop_champion_for_family`` and
+   ``select_prop_champions_all_families`` — build ``RegressionModelResult``
+   list from the prop archive, delegate to existing ``select_prop_champion``.
+5. ``_stage_promote_champions`` in ``cli/full_retrain.py`` between
+   ``refresh-calibrations`` and ``baseline-report``. Preserves prior
+   manifest entries for families outside the current subset.
+6. Baseline report annotates current champions above the metrics table.
+   Bullet-list format so the delta-table parser ignores it.
+7. ``evaluate select-model --write-manifest`` — manual override for the
+   game side. Uses the shared ``promote_champions`` pure function
+   extracted in this step.
+8. ``props champion --write-manifest`` — parity for the prop side.
+   Both flags call the shared ``write_champion_manifest`` helper in
+   ``cli/_composites.py``.
+9. ``champion_cmd`` refactored to use ``build_prop_champion_candidates``,
+   sharing evaluation logic with the manifest writer.
 
-Tier design blocks are drafted at the start of each tier.
+Central catalog at ``gridiron_edge.models.catalog`` is the single source
+of truth for ``GAME_MODEL_PAIRS``, ``PROP_STAT_FAMILIES``, and
+``PROP_ALGORITHMS``. Used by both ``full_retrain.py`` and the
+``--write-manifest`` CLI flags.
+
+Locked decisions: manifest at ``data/output/champions/champions.json``;
+selectors live in ``evaluation/champion.py``; game-regression ties
+broken by preferring ``random_forest``; subset semantics preserve
+untouched families in partial retrains; ``promote-champions`` depends
+only on ``refresh-calibrations`` (not on ``backfill-prop-models``) so
+``--skip-prop-backfill`` continues to work.
+
+**Tier 3 — CLI consumer refactor.** 🟡 Active.
+Replace 8 hard-coded ``model_name="win_prob", model_type="elo"``
+callsites with ``resolve_current_champion("win_prob")`` calls in:
+
+* ``cli/weekly_predict.py`` lines 96, 172
+* ``cli/output.py`` line 52
+* ``cli/edges.py`` lines 74, 161
+* ``cli/evaluate.py`` lines 356, 374
+* ``cli/ratings.py`` line 74 — confirm this stays as-is with a comment
+  (intentional elo usage for the ratings command)
+
+Tier design block drafted at the start of the tier.
 
 ---
 
@@ -201,6 +257,7 @@ Unchanged from original design. Additions inventory:
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | **W13 Tier 2 complete.** Nine steps shipped: manifest writer, three selectors, full-retrain integration, baseline-report annotation, two --write-manifest CLI flags, and the champion_cmd refactor. All champion decisions across CLI and stage surfaces share the same code path. Central catalog at gridiron_edge.models.catalog is now the single source of truth for model pairs and prop families. Tier 3 (CLI consumer refactor) begins. |
 | 2026-07-01 | W13 workstream definition locked. Scope: persist the champion decision that `evaluate select-model` and `select_prop_champion` already compute; expose via `resolve_current_champion(model_name)`; hook the write into `full-retrain` as a new stage; refactor 8 hard-coded CLI callsites. Three tiers: manifest+resolver, writer+integration, consumer refactor. Tier 1 verification to follow. |
 | 2026-07-01 | **W8 paused; W13 opened.** W8 Tier 2 Step 5 pre-planning discovered no runtime champion resolution for game models. Per D21 (API is a serialization boundary, not a compute boundary), the champion decision must be a static artifact. Elevated to W13 (Runtime Champion Resolution) as a new workstream. W8 pauses in Tier 2 at Step 4; resumes when W13 closes. Design phase for W13 to follow. |
 | 2026-07-01 | Tier 2 Step 4 complete: /projections. Reads Monte Carlo season/playoff projections CSV; returns 32-team ranking with staleness timestamp. One new Unavailable slug (NO_PROJECTIONS_DATA). Endpoints populated so far: 10. |

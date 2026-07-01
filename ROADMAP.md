@@ -189,18 +189,31 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 **Unlocks:** W9 (Frontend), visual QA of full output set, M5 (with W9).
 **Architecture notes:** Start with FastAPI reading Parquet files. The "files vs. database" decision (§5.1) is deferred until W9 reveals concrete query patterns that are awkward in pandas.
 
-#### W13: Runtime Champion Resolution — 🟡 ACTIVE (paused W8 mid-tier)
+#### W13: Runtime Champion Resolution — 🟡 ACTIVE (Tier 3 in progress; W8 remains paused)
 
 **Goal:** Provide a persistent, static-artifact source of truth for "current champion `(model_name, model_type)`" per `model_name`, so every downstream consumer — CLI, API, evaluation — can resolve the authoritative model without hard-coding or in-request computation.
 
 **Why it matters now:** Discovered during W8 Tier 2 Step 5 pre-planning. The API cannot serve `/games`, `/games/{id}`, `/edges`, or `/props/{id}` without knowing which model's output is authoritative. Averaging or ensembling would obscure model identity and pre-empt W12. Per D21, the champion decision must be a pre-computed static artifact, not a request-time computation. The composite-identity foundation from W3.6/W3.7 built the `(model_name, model_type)` key structure but never wired up a runtime authority.
 
-**Key deliverables:**
-- Static manifest artifact at `data/output/champions/champions.json` (path subject to design-phase confirmation) with schema `{model_name: {model_type, promoted_at, source_run_id, promotion_metrics?}}`.
-- `evaluation/champion_resolver.py` with `resolve_current_champion(model_name)` and helpers.
-- Manifest writer hooked into `full-retrain` composite command.
-- Explicit `gridiron evaluate promote-champion` command for manual overrides.
-- Refactor of hard-coded model picks in CLI (`cli/output.py` line 52-53 confirmed; audit for others).
+**Key deliverables (Tiers 1–2 shipped 2026-07-01):**
+- ✅ Static manifest artifact at data/output/champions/champions.json
+  with per-model_name entries carrying model_type, promoted_at,
+  source_run_id, and task-flexible metrics dict.
+- ✅ evaluation/champion_resolver.py with resolve_current_champion,
+  resolve_current_champion_with_metadata, list_current_champions,
+  read_manifest, write_manifest, and ChampionNotFoundError.
+- ✅ Three selectors in evaluation/champion.py: game classification
+  (wraps select.py), game regression (reads artifact metadata), and
+  prop (iterates PropModelType, reads archive).
+- ✅ Manifest writer hooked into full-retrain as the promote-champions
+  stage, between refresh-calibrations and baseline-report.
+- ✅ Manual-override flags: gridiron evaluate select-model
+  --write-manifest and gridiron props champion --write-manifest.
+- ✅ Baseline report annotates current champions above the metrics table.
+- ✅ Central catalog at gridiron_edge.models.catalog.
+- 🟡 Tier 3: refactor 8 hard-coded model picks in CLI consumers
+  (weekly_predict, output, edges, evaluate; ratings.py stays with a
+  comment).
 
 **Dependencies:** None. Fully unblocked. Leverages existing `evaluation/champion.py` comparison utilities.
 **Unlocks:** W8 Tier 2 Steps 5–7, unambiguous downstream consumption, and cleaner starting point for W12 (Model Ensemble — the ensemble starts by beating the current champion).
@@ -402,7 +415,7 @@ W5.5 ✅                              │
 
 ```
 
-**Current position:** W8 paused mid-Tier-2 pending W13. W13 (Runtime Champion Resolution) is the active workstream. Path forward:
+**Current position:** W13 Tier 3 (CLI consumer refactor) is active. Tiers 1–2 complete: manifest + resolver + writer + selectors + full-retrain integration + manual-override flags. W8 (API) remains paused; resumes at Tier 2 Step 5 when W13 Tier 3 closes. Path forward:
 
 1. **W13 (Champion Resolution)** 🟡 active — small workstream, discovered from W8 Step 5 pre-planning.
 2. **W8 (API)** ⏸ paused — resumes at Tier 2 Step 5 when W13 closes.
@@ -498,7 +511,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 | Item | Endpoint | Current behavior | Required refactor |
 |---|---|---|---|
 | `/model/performance` computes metrics at request time | `GET /model/performance` | Calls `build_evaluation_df` + `summarise` + scalar metric functions (Brier, log_loss, ECE, roc_auc, brier_decomposition) at request time. Real computation on the request path. | Add a batch job (post-retrain hook, or scheduled `evaluate write-summary` command) that computes the full summary and writes `data/output/evaluation/model_performance_summary.json`. Refactor the API endpoint to read that JSON and serialize. Opportunistic — expected during W8 Step 6 or in a mini-refactor after W13. |
-| Runtime champion resolution (superseded by W13) | Multiple — `cli/output.py` hard-codes `elo`; API had no path forward | Consumers hard-code specific `(model_name, model_type)` pairs, or (as attempted in W8 Step 5 pre-planning) would need to compare archived model outputs at request time. | **Being addressed by W13 (active workstream).** After W13 ships, `resolve_current_champion(model_name)` reads a persisted manifest. |
+| Runtime champion resolution (resolved by W13 Tiers 1–2) | Multiple — cli/output.py hard-codes elo; API had no path forward | Consumers hard-coded specific (model_name, model_type) pairs, or would need to compare archived model outputs at request time. | **Resolved.** W13 Tier 1 shipped the resolver; Tier 2 shipped the manifest writer + full-retrain integration. resolve_current_champion(model_name) reads from data/output/champions/champions.json. Tier 3 (in progress) migrates the 8 hard-coded CLI callsites to use the resolver. |
 
 ---
 
@@ -506,6 +519,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-01 | **W13 Tier 2 complete.** Manifest writer, three selectors, full-retrain promote-champions stage, baseline-report annotation, --write-manifest CLI flags on both game and prop sides. §9.6 D21 Deviations row updated to Resolved. Tier 3 (CLI consumer refactor) opens. |
 | 2026-06-23 | **Document restructure.** PLAN.md now scoped to the active workstream only; future workstream candidates, real-bugs backlog, investigations, and operational items migrated to new ROADMAP.md §9 Known Issues & Backlog. Added backend-gaps-surfaced-by-prototype subsection to §9 with W8 Tier 2 disposition per item. M4.5 reworded to reflect prototype-driven verification framing. Current-position callout updated to mark W8 active. |
 | 2026-06-23 | **Resync with PLAN.md.** Marked W4.1 (Composite CLI) and W5.5 (Deep Code Review / Tier 4 sweep) complete. M1.6 marked achieved. Set W8 (API) as active workstream with W9 (Frontend) sequential after. Added M4.5 milestone for visual output verification. Reordered future workstreams by current value-density: W8 → W9 → {W12, W4.5, W7} → W10. Added §5.3 as explicit blocker for W4.5. Updated §6 dependency graph and "Current position" callout. Added Principle 6.5 (frontend-as-verification-surface). Cleaned §1 to reflect composite CLI, calibration persistence, and pipeline staleness detection as shipped capabilities. |
 | 2026-06-22 | **Workstream 5 (Tier 4 cleanup) complete.** 30 ambient hygiene items closed. Two real bugs fixed. Remaining items reclassified as workstream candidates. TIER_4_BACKLOG.md retired. |

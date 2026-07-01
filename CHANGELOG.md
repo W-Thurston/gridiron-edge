@@ -3,6 +3,87 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-01 — W13 Tier 2: Runtime Champion Manifest (Writer + Full-Retrain Integration)
+
+Nine-step tier closing out the writer half of Runtime Champion Resolution.
+The static manifest at ``data/output/champions/champions.json`` is now
+populated by the ``promote-champions`` stage in ``full-retrain`` and by
+optional ``--write-manifest`` flags on ``evaluate select-model`` and
+``props champion``. All champion decisions across CLI and stage
+surfaces share the same code path.
+
+### Shipped
+- ``champion_resolver.write_manifest`` — atomic write via
+  ``os.replace``; preservation semantics for per-entry ``source_run_id``.
+- ``evaluation.champion.select_game_classification_champions`` —
+  wraps ``select.py``'s ``collect_model_metrics`` + ``rank_models``
+  on Brier / ECE / AUC.
+- ``evaluation.champion.select_game_regression_champions`` — reads
+  ``ArtifactStore`` metadata; picks lowest MAE; tie-breaks to
+  ``random_forest``.
+- ``evaluation.champion.select_prop_champion_for_family`` and
+  ``select_prop_champions_all_families`` — iterate ``PropModelType``,
+  build ``RegressionModelResult`` per algorithm from the prop archive,
+  delegate to existing ``select_prop_champion``.
+- ``evaluation.champion.build_prop_champion_candidates`` — shared
+  per-algorithm evaluation helper reused by the selector and by
+  ``props champion`` for terminal display.
+- ``evaluation.champion.promote_champions`` — pure function combining
+  the three selectors + manifest merge + write. Returns a
+  ``PromoteChampionsResult`` with fresh, preserved, and warning fields.
+- ``cli/full_retrain.py::_stage_promote_champions`` — thin adapter over
+  ``promote_champions``. Depends on ``refresh-calibrations`` only;
+  runtime order still places it after ``backfill-prop-models`` when
+  both are active. ``baseline-report`` re-wired to depend on
+  ``promote-champions``.
+- ``cli/full_retrain.py::_stage_baseline_report`` — appends a Current
+  Champions bullet-list block above the Game Models table. Format
+  chosen so the existing markdown-table delta parser ignores it.
+- ``cli/_composites.py::write_champion_manifest`` — shared helper for
+  the manual-override CLI flags.
+- ``cli/evaluate.py::evaluate_select_model`` — new ``--write-manifest``
+  flag. Runs the full catalog through ``promote_champions``.
+- ``cli/props.py::champion_cmd`` — new ``--write-manifest`` flag.
+  Refactored inline per-algorithm loop to use
+  ``build_prop_champion_candidates``.
+- ``models/catalog.py`` — new module. Single source of truth for
+  ``GAME_MODEL_PAIRS``, ``PROP_STAT_FAMILIES``, ``PROP_ALGORITHMS``.
+  Used by both ``full_retrain.py`` and the manual-override flags.
+
+### Decisions
+
+No new architectural decisions locked at the D-level; all decisions
+were within the Tier 2 design phase and are captured in PLAN.md's
+inline "How" block for the tier.
+
+### Tests
+
+- ``tests/unit/evaluation/test_champion_resolver.py`` — 8 tests for
+  ``write_manifest`` (schema, atomic write, preservation semantics,
+  roundtrip, empty writes, defensive copy).
+- ``tests/unit/evaluation/test_champion.py`` — added
+  ``TestSelectGameRegressionChampions`` (9 tests),
+  ``TestSelectGameClassificationChampions`` (9 tests),
+  ``TestSelectPropChampionForFamily`` (5 tests),
+  ``TestSelectPropChampionsAllFamilies`` (3 tests),
+  ``TestPromoteChampions`` (3 tests),
+  ``TestBuildPropChampionCandidates`` (3 tests).
+- ``tests/unit/cli/test_full_retrain.py`` — added
+  ``TestStagePromoteChampions`` (5 tests), extended ``TestStageList``
+  (2 new tests), extended ``TestBaselineReportStage`` (3 new tests),
+  updated ``TestCommandInvocation`` for the new stage.
+- ``tests/unit/cli/test_evaluate.py`` — new file with
+  ``TestSelectModelWriteManifestFlag`` (3 tests).
+- ``tests/unit/cli/test_props_champion_write_manifest.py`` — new file
+  with ``TestPropsChampionWriteManifestFlag`` (3 tests).
+
+### Next
+Tier 3: refactor the 8 hard-coded ``model_name="win_prob",
+model_type="elo"`` callsites across ``weekly_predict.py``, ``output.py``,
+``edges.py``, ``evaluate.py`` to use ``resolve_current_champion``.
+Confirm ``ratings.py``'s intentional Elo usage stays as-is with a
+comment.
+
 ## 2026-06-22 — Workstream 5: Tier 4 Cleanup Sweep
 
 ### Summary
