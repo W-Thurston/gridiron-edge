@@ -53,30 +53,22 @@ from gridiron_edge.evaluation.archive import load_prediction_log
 from gridiron_edge.evaluation.backfill import backfill_model
 from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
 from gridiron_edge.models.artifact import ArtifactStore
+from gridiron_edge.models.catalog import (
+    GAME_MODEL_PAIRS as _GAME_MODEL_PAIRS,
+)
+from gridiron_edge.models.catalog import (
+    PROP_ALGORITHMS as _PROP_ALGORITHMS,
+)
+from gridiron_edge.models.catalog import (
+    PROP_STAT_FAMILIES as _PROP_STAT_FAMILIES,
+)
 
 # ---------------------------------------------------------------------------
 # Model pair catalog
 # ---------------------------------------------------------------------------
 
 
-_GAME_MODEL_PAIRS: list[tuple[str, str]] = [
-    ("win_prob", "elo"),
-    ("win_prob", "logistic"),
-    ("win_prob", "random_forest"),
-    ("win_prob", "xgboost"),
-    ("total", "random_forest"),
-    ("total", "xgboost"),
-]
-
-_PROP_STAT_FAMILIES: list[str] = [
-    "qb_pass_yards",
-    "qb_rush_yards",
-    "rb_rush_yards",
-    "wr_rec_yards",
-    "te_rec_yards",
-]
-
-_PROP_ALGORITHMS: list[str] = ["elasticnet", "random_forest", "xgboost"]
+__all__: list[str] = ["_GAME_MODEL_PAIRS", "_PROP_ALGORITHMS", "_PROP_STAT_FAMILIES"]
 
 
 @dataclass(frozen=True)
@@ -119,94 +111,36 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
 def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
     """Rank all model families and persist the champion manifest.
 
-    Runs three selectors (game classification, game regression, prop),
-    merges their results with any existing manifest entries for families
-    outside the current subset, and writes the combined manifest via
-    ``write_manifest``.
-
-    Subset semantics (per W13 Tier 2 design Q2):
-        - Ranking respects ``ctx["game_pairs"]`` and ``ctx["prop_pairs"]``.
-          If the CLI passed ``--game-models win_prob_random_forest``,
-          only that pair participates in win_prob's ranking.
-        - Existing manifest entries for families NOT touched by this run
-          are preserved verbatim. A partial retrain never shrinks the
-          manifest.
-        - Cold-start (no prior manifest): only families in the current
-          subset are written. This is the correct behavior — nothing to
-          preserve.
+    Thin adapter over ``evaluation.champion.promote_champions``. See that
+    function for subset semantics.
     """
-    from gridiron_edge.evaluation.champion import (
-        select_game_classification_champions,
-        select_game_regression_champions,
-        select_prop_champions_all_families,
-    )
-    from gridiron_edge.evaluation.champion_resolver import (
-        ChampionNotFoundError,
-        read_manifest,
-        write_manifest,
-    )
+    from gridiron_edge.evaluation.champion import promote_champions
 
     repo = get_settings().repo_root
 
     game_pairs: list[ModelPair] = ctx["game_pairs"]
     prop_pairs: list[tuple[str, str]] = ctx["prop_pairs"]
 
-    # Convert ModelPair objects to the (str, str) tuple shape the selectors expect.
     game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
-
-    # Dedupe prop families from prop_pairs (which are (stat, algorithm) tuples).
     prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
 
-    # Run all three selectors.
-    classification_entries = select_game_classification_champions(
-        game_pair_tuples,
-        repo=repo,
-    )
-    regression_entries = select_game_regression_champions(
-        game_pair_tuples,
-        repo=repo,
-    )
-    prop_entries = select_prop_champions_all_families(
-        prop_families,
+    result = promote_champions(
+        game_pairs=game_pair_tuples,
+        prop_families=prop_families,
         repo=repo,
     )
 
-    # Merge freshly-selected entries. No key collisions expected across
-    # selectors — each writes distinct model_names.
-    fresh_entries: dict[str, dict[str, Any]] = {
-        **classification_entries,
-        **regression_entries,
-        **prop_entries,
-    }
-
-    # Merge with existing manifest to preserve families outside this subset.
-    try:
-        existing = read_manifest(repo=repo)
-        existing_models: dict[str, dict[str, Any]] = existing.get("models", {})
-    except ChampionNotFoundError:
-        existing_models = {}
-
-    merged_entries: dict[str, dict[str, Any]] = {**existing_models, **fresh_entries}
-
-    # source_run_id derived from wall-clock at stage entry. Retrain-scope
-    # provenance; ties every entry written in this pass together.
-    source_run_id: str = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    manifest_path = write_manifest(
-        merged_entries,
-        source_run_id=source_run_id,
-        repo=repo,
+    detail = (
+        f"{len(result.fresh_entries)} fresh champion(s); "
+        f"{len(result.preserved_entries)} preserved from prior manifest"
     )
 
-    # Summarize what happened.
-    fresh_count = len(fresh_entries)
-    preserved_count = len(set(existing_models) - set(fresh_entries))
-    detail = f"{fresh_count} fresh champion(s); {preserved_count} preserved from prior manifest"
     return StageResult(
         success=True,
         detail=detail,
-        rows=len(merged_entries),
-        artifacts=[manifest_path],
+        rows=result.total_count,
+        artifacts=[result.manifest_path],
+        warnings=result.warnings,
     )
 
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from math import isnan
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ import pytest
 from gridiron_edge.evaluation.champion import (
     ClassificationComparisonResult,
     ClassificationPromotionGates,
+    PromoteChampionsResult,
     RegressionComparisonResult,
     RegressionModelResult,
     RegressionPromotionGates,
@@ -22,6 +24,7 @@ from gridiron_edge.evaluation.champion import (
     extract_classification_metrics,
     format_classification_comparison,
     format_regression_comparison,
+    promote_champions,
     select_game_classification_champions,
     select_game_regression_champions,
     select_prop_champion,
@@ -1296,3 +1299,131 @@ class TestSelectPropChampionsAllFamilies:
     def test_empty_families_list(self, tmp_path):
         entries = select_prop_champions_all_families([], repo=tmp_path)
         assert entries == {}
+
+
+class TestPromoteChampions:
+    """Cover the promote_champions pure function extracted for Step 7."""
+
+    def test_returns_result_with_manifest_path(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        result = promote_champions(
+            game_pairs=[("win_prob", "random_forest")],
+            prop_families=[],
+            repo=tmp_path,
+        )
+
+        assert isinstance(result, PromoteChampionsResult)
+        assert result.manifest_path.exists()
+        assert set(result.fresh_entries.keys()) == {"win_prob"}
+        assert result.preserved_entries == {}
+        assert result.warnings == []
+
+        manifest = json.loads(result.manifest_path.read_text())
+        assert manifest["models"]["win_prob"]["model_type"] == "random_forest"
+
+    def test_uses_provided_source_run_id(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "x",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        result = promote_champions(
+            game_pairs=[("win_prob", "random_forest")],
+            prop_families=[],
+            repo=tmp_path,
+            source_run_id="MY_RUN",
+        )
+
+        manifest = json.loads(result.manifest_path.read_text())
+        assert manifest["models"]["win_prob"]["source_run_id"] == "MY_RUN"
+
+    def test_separates_fresh_and_preserved_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Pre-populate manifest with an entry that won't be touched.
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        prior_manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-06-01T00:00:00+00:00",
+            "models": {
+                "rb_rush_yards": {
+                    "model_type": "elasticnet",
+                    "promoted_at": "2026-06-01T00:00:00",
+                    "source_run_id": "OLD_RUN",
+                    "metrics": {"mae": 25.0},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(prior_manifest))
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions",
+            lambda pairs, *, repo: {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+
+        result = promote_champions(
+            game_pairs=[("win_prob", "random_forest")],
+            prop_families=[],
+            repo=tmp_path,
+        )
+
+        assert set(result.fresh_entries.keys()) == {"win_prob"}
+        assert set(result.preserved_entries.keys()) == {"rb_rush_yards"}
+        assert result.total_count == 2

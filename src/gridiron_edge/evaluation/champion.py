@@ -108,6 +108,31 @@ class ClassificationComparisonResult:
     reason: str
 
 
+@dataclass(frozen=True)
+class PromoteChampionsResult:
+    """Outcome of a manifest promotion run.
+
+    Attributes:
+        manifest_path: Path to the written manifest file.
+        fresh_entries: Newly-selected champion entries from this run.
+            Keyed by ``model_name``.
+        preserved_entries: Entries carried forward verbatim from a
+            prior manifest because their families were outside the
+            current subset. Keyed by ``model_name``.
+        warnings: Non-fatal warnings surfaced by the selectors.
+    """
+
+    manifest_path: Path
+    fresh_entries: dict[str, dict[str, Any]]
+    preserved_entries: dict[str, dict[str, Any]]
+    warnings: list[str]
+
+    @property
+    def total_count(self) -> int:
+        """Total number of entries in the merged manifest."""
+        return len(self.fresh_entries) + len(self.preserved_entries)
+
+
 # ---------------------------------------------------------------------------
 # Metric extraction
 # ---------------------------------------------------------------------------
@@ -698,6 +723,110 @@ def select_prop_champions_all_families(
         if entry is not None:
             entries[family] = entry
     return entries
+
+
+def promote_champions(
+    *,
+    game_pairs: list[tuple[str, str]],
+    prop_families: list[str],
+    repo: Path,
+    source_run_id: str | None = None,
+) -> PromoteChampionsResult:
+    """Run all three selectors, merge with existing manifest, and persist.
+
+    Reusable core logic for W13 Tier 2. Called by
+    ``cli/full_retrain.py::_stage_promote_champions`` (from
+    ``gridiron full-retrain``) and by CLI flags on ``evaluate select-model``
+    and ``props champion`` (manual overrides).
+
+    Subset semantics:
+        - Fresh selector output for the given ``game_pairs`` and
+          ``prop_families``.
+        - Existing manifest entries for families outside the current
+          subset are preserved verbatim (with their original
+          ``source_run_id`` — see ``champion_resolver.write_manifest``).
+        - Cold-start (no prior manifest): only fresh entries are written.
+
+    Args:
+        game_pairs: List of ``(model_name, model_type)`` pairs to rank
+            on the game side.
+        prop_families: List of prop stat family names to rank.
+        repo: Repository root.
+        source_run_id: Optional identifier for this run's writes.
+            Defaults to a wall-clock timestamp.
+
+    Returns:
+        :class:`PromoteChampionsResult` describing the manifest write.
+    """
+    from datetime import datetime
+
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        read_manifest,
+        write_manifest,
+    )
+
+    classification_entries = select_game_classification_champions(
+        game_pairs,
+        repo=repo,
+    )
+    regression_entries = select_game_regression_champions(
+        game_pairs,
+        repo=repo,
+    )
+    prop_entries = select_prop_champions_all_families(
+        prop_families,
+        repo=repo,
+    )
+
+    fresh_entries: dict[str, dict[str, Any]] = {
+        **classification_entries,
+        **regression_entries,
+        **prop_entries,
+    }
+
+    warnings: list[str] = []
+    if game_pairs and not classification_entries and not regression_entries:
+        warnings.append(
+            "no game champions selected — check that game backfill "
+            "produced archive rows and artifacts"
+        )
+    if prop_families and not prop_entries:
+        warnings.append(
+            "no prop champions selected — check that prop backfill produced archive rows"
+        )
+
+    try:
+        existing = read_manifest(repo=repo)
+        existing_models: dict[str, dict[str, Any]] = existing.get("models", {})
+    except ChampionNotFoundError:
+        existing_models = {}
+
+    preserved_entries: dict[str, dict[str, Any]] = {
+        model_name: entry
+        for model_name, entry in existing_models.items()
+        if model_name not in fresh_entries
+    }
+
+    merged_entries: dict[str, dict[str, Any]] = {
+        **preserved_entries,
+        **fresh_entries,
+    }
+
+    resolved_run_id: str = source_run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    manifest_path = write_manifest(
+        merged_entries,
+        source_run_id=resolved_run_id,
+        repo=repo,
+    )
+
+    return PromoteChampionsResult(
+        manifest_path=manifest_path,
+        fresh_entries=fresh_entries,
+        preserved_entries=preserved_entries,
+        warnings=warnings,
+    )
 
 
 def _model_type_from_composite_key(composite_key: str, model_name: str) -> str:

@@ -478,6 +478,34 @@ def evaluate_diagnostics(
     console.summary()
 
 
+def _write_champion_manifest_from_cli(repo: Path) -> None:
+    """Run all three selectors and persist the manifest.
+
+    Shared by ``evaluate select-model --write-manifest`` (Step 7) and
+    will be reused by ``props champion --write-manifest`` (Step 8).
+    """
+    from gridiron_edge.core.console import step
+    from gridiron_edge.evaluation.champion import promote_champions
+    from gridiron_edge.models.catalog import (
+        GAME_MODEL_PAIRS,
+        PROP_STAT_FAMILIES,
+    )
+
+    with step("Persist champion manifest") as s:
+        promote_result = promote_champions(
+            game_pairs=list(GAME_MODEL_PAIRS),
+            prop_families=list(PROP_STAT_FAMILIES),
+            repo=repo,
+        )
+        fresh_summary = ", ".join(sorted(promote_result.fresh_entries.keys())) or "none"
+        s.set_detail(f"fresh: {fresh_summary}; preserved: {len(promote_result.preserved_entries)}")
+
+    typer.echo("")
+    typer.echo(f"Manifest written: {promote_result.manifest_path}")
+    for warning in promote_result.warnings:
+        typer.echo(f"  ⚠  {warning}")
+
+
 @evaluate_app.command("select-model")
 def evaluate_select_model(
     *,
@@ -491,6 +519,17 @@ def evaluate_select_model(
             "Comma-separated ordered criteria for ranking. "
             "Options: brier, ece, auc, accuracy, log_loss. "
             "First criterion is primary tiebreaker."
+        ),
+    ),
+    write_manifest: bool = typer.Option(
+        False,
+        "--write-manifest",
+        help=(
+            "After ranking, persist champion decisions to the manifest at "
+            "data/output/champions/champions.json. Runs all three selectors "
+            "(game classification, game regression, prop) so the manifest "
+            "reflects the full repo state. Preserves entries for model "
+            "families outside the current retrain scope."
         ),
     ),
 ) -> None:
@@ -508,9 +547,11 @@ def evaluate_select_model(
 
     \b
     Examples:
-      gridiron evaluate select-model
-      gridiron evaluate select-model --criteria brier,ece,auc
-      gridiron evaluate select-model --top 3
+        gridiron evaluate select-model
+        gridiron evaluate select-model --criteria brier,ece,auc
+        gridiron evaluate select-model --top 3
+        gridiron evaluate select-model --write-manifest
+
     """
     import pandas as pd
 
@@ -603,6 +644,9 @@ def evaluate_select_model(
     )
 
     console.summary()
+
+    if write_manifest:
+        _write_champion_manifest_from_cli(repo)
 
 
 def _print_ranking_section(
