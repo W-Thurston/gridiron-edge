@@ -595,46 +595,40 @@ def select_game_classification_champions(
     return entries
 
 
-def select_prop_champion_for_family(
+def build_prop_champion_candidates(
     family: str,
     *,
     repo: Path,
     season: int | None = None,
-) -> dict[str, Any] | None:
-    """Select the champion algorithm for a single prop stat family.
+) -> list[RegressionModelResult]:
+    """Build ``RegressionModelResult`` for each trained prop algorithm.
 
-    Iterates the three prop algorithms (elasticnet, random_forest, xgboost),
-    builds :class:`RegressionModelResult` for each from the prop archive,
-    and calls :func:`select_prop_champion` to pick the winner using the
-    R²/coverage/MAE gates.
+    Iterates the three prop algorithms (elasticnet, random_forest,
+    xgboost), evaluates each against the prop archive, and returns
+    the per-algorithm results as a list. Callers pass this list to
+    :func:`select_prop_champion` for winner selection or format it
+    for terminal display.
+
+    Returns an empty list when no algorithm has archive rows for
+    this family (cold-start case).
 
     Args:
         family: Prop stat family name (e.g. ``"qb_pass_yards"``).
-        repo: Repository root.
+        repo: Repository root. Unused today (kept for signature
+            symmetry with the other selectors and future-proofing
+            against archive-path parameterization).
         season: Optional season filter passed to
             :func:`build_prop_evaluation_df`. ``None`` = all seasons.
 
     Returns:
-        Manifest entry with ``model_type``, ``promoted_at``, and
-        ``metrics`` (``mae``, ``rmse``, ``r2``, ``coverage``), or
-        ``None`` if no algorithm has archive rows for this family
-        (cold-start case; caller decides what to do with it).
-
-    Notes:
-        ``promoted_at`` is sourced from ``ArtifactStore.read_metadata`` for
-        the winning algorithm. If the winning algorithm has no trained
-        artifact (archive rows exist from a prior training run whose
-        artifact was later discarded), ``promoted_at`` falls back to the
-        current UTC timestamp — the champion decision itself is what's
-        being persisted, and staleness of the underlying artifact is a
-        separate concern tracked via ``source_run_id``.
+        List of :class:`RegressionModelResult`, one per algorithm
+        with archive rows.
     """
-    from datetime import UTC, datetime
-
     from gridiron_edge.evaluation.prop_archive import build_prop_evaluation_df
     from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
-    from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.prop_prediction.base import PropModelType
+
+    del repo  # kept for signature symmetry; not used today
 
     results: list[RegressionModelResult] = []
     for model_type in PropModelType:
@@ -645,9 +639,6 @@ def select_prop_champion_for_family(
                 season=season,
             )
         except KeyError:
-            # Unregistered family — should not happen in normal use
-            # since callers pass registered families, but silently skip
-            # if it does.
             continue
 
         if eval_df.empty:
@@ -674,12 +665,52 @@ def select_prop_champion_for_family(
             )
         )
 
+    return results
+
+
+def select_prop_champion_for_family(
+    family: str,
+    *,
+    repo: Path,
+    season: int | None = None,
+) -> dict[str, Any] | None:
+    """Select the champion algorithm for a single prop stat family.
+
+    Delegates to :func:`build_prop_champion_candidates` for
+    per-algorithm evaluation, then to :func:`select_prop_champion`
+    for winner selection. Returns the champion as a manifest entry
+    or ``None`` if no algorithm has archive rows.
+
+    Args:
+        family: Prop stat family name (e.g. ``"qb_pass_yards"``).
+        repo: Repository root.
+        season: Optional season filter passed to
+            :func:`build_prop_evaluation_df`. ``None`` = all seasons.
+
+    Returns:
+        Manifest entry with ``model_type``, ``promoted_at``, and
+        ``metrics`` (``mae``, ``rmse``, ``r2``, ``coverage``), or
+        ``None`` if no algorithm has archive rows for this family.
+
+    Notes:
+        ``promoted_at`` is sourced from ``ArtifactStore.read_metadata``
+        for the winning algorithm. Falls back to current UTC when the
+        winning algorithm has no on-disk artifact.
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    results = build_prop_champion_candidates(
+        family,
+        repo=repo,
+        season=season,
+    )
     if not results:
         return None
 
     champion, _summary = select_prop_champion(results)
 
-    # Source promoted_at from the winning artifact's trained_at when available.
     store = ArtifactStore(repo)
     if store.is_trained(family, champion.model_type):
         promoted_at = store.read_metadata(family, champion.model_type).trained_at

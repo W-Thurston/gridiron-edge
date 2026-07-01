@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from logging import Logger
+from pathlib import Path
 
 from numpy import ndarray
 from pandas import DataFrame, Series
@@ -19,6 +20,7 @@ from pandas import DataFrame, Series
 # pyrefly: ignore [missing-import]
 import typer
 
+from gridiron_edge.cli._composites import write_champion_manifest
 from gridiron_edge.core.console import console, step
 from gridiron_edge.evaluation.prop_metrics import PropEvalReport
 from gridiron_edge.models.prop_prediction.base import PropModelMetadata, PropModelType, PropTrainer
@@ -465,64 +467,33 @@ def champion_cmd(
     suite (game + prop) so the manifest reflects the entire repo state;
     preserves entries for families outside the current backfill scope.
     """
+    from gridiron_edge.core.settings import get_settings
     from gridiron_edge.evaluation.champion import (
         RegressionComparisonResult,
         RegressionModelResult,
+        build_prop_champion_candidates,
         compare_regression_models,
         format_regression_comparison,
         select_prop_champion,
     )
-    from gridiron_edge.evaluation.prop_metrics import evaluate_prop_model
+
+    repo: Path = get_settings().repo_root
 
     models: list[str] = _all_prop_models() if model == "all" else [model]
-    model_types: list[PropModelType] = list(PropModelType)
 
     for m in models:
         console.header("props champion", subtitle=m)
 
-        results: list[RegressionModelResult] = []
-
-        for mt in model_types:
-            with step(f"Load archive for {m} ({mt})") as s:
-                from gridiron_edge.evaluation.prop_archive import (
-                    build_prop_evaluation_df,
-                )
-
-                eval_df: DataFrame = build_prop_evaluation_df(
-                    model_name=m,
-                    model_type=mt.value,
-                    season=season,
-                )
-                if eval_df.empty:
-                    s.set_detail("no archive rows - skipping")
-                    continue
-
-                s.set_rows(len(eval_df))
-
-            with step(f"Evaluate {m} ({mt})") as s:
-                report: PropEvalReport = evaluate_prop_model(
-                    model_name=m,
-                    actual=eval_df["actual"],
-                    predicted_mean=eval_df["predicted_mean"],
-                    predicted_std=eval_df.get("predicted_std"),
-                    lo_90=eval_df.get("lo_90"),
-                    hi_90=eval_df.get("hi_90"),
-                )
-
-                coverage: float = float("nan")
-                if report.coverage is not None:
-                    coverage = report.coverage.actual_coverage
-
-                result = RegressionModelResult(
-                    model_type=str(mt),
-                    mae=report.accuracy.mae,
-                    rmse=report.accuracy.rmse,
-                    r2=report.accuracy.r2,
-                    coverage=coverage,
-                )
-                results.append(result)
-
-                s.set_detail(f"MAE={result.mae:.1f}  RMSE={result.rmse:.1f}  R²={result.r2:.3f}")
+        with step(f"Load archive for {m}") as s:
+            results: list[RegressionModelResult] = build_prop_champion_candidates(
+                m,
+                repo=repo,
+                season=season,
+            )
+            if not results:
+                s.set_detail("no archive rows — skipping")
+            else:
+                s.set_detail(f"{len(results)} algorithm(s) evaluated")
 
         if not results:
             typer.echo(f"\n  ❌ No archived predictions found for {m}.")
@@ -551,10 +522,7 @@ def champion_cmd(
         typer.echo("  Champion selection complete across all stat families.\n")
 
     if write_manifest:
-        from gridiron_edge.cli._composites import write_champion_manifest
-        from gridiron_edge.core.settings import get_settings
-
-        write_champion_manifest(get_settings().repo_root)
+        write_champion_manifest(repo)
 
 
 @props_app.command("backfill")

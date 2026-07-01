@@ -1427,3 +1427,92 @@ class TestPromoteChampions:
         assert set(result.fresh_entries.keys()) == {"win_prob"}
         assert set(result.preserved_entries.keys()) == {"rb_rush_yards"}
         assert result.total_count == 2
+
+
+class TestBuildPropChampionCandidates:
+    """Cover build_prop_champion_candidates (extracted from
+    select_prop_champion_for_family in Step 9)."""
+
+    def test_returns_result_per_algorithm_with_archive_rows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.evaluation.champion import (
+            build_prop_champion_candidates,
+        )
+
+        call_counter = {"n": 0}
+        reports = [
+            _mock_prop_eval_report(mae=63.4, rmse=80.6, r2=0.05, coverage=0.938),
+            _mock_prop_eval_report(mae=61.2, rmse=78.1, r2=0.09, coverage=0.925),
+            _mock_prop_eval_report(mae=64.8, rmse=82.1, r2=0.04, coverage=0.920),
+        ]
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+            lambda **kwargs: _mock_eval_df_rows(),
+        )
+
+        def counted_mock_eval(**kwargs):
+            report = reports[call_counter["n"]]
+            call_counter["n"] += 1
+            return report
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_metrics.evaluate_prop_model",
+            counted_mock_eval,
+        )
+
+        results = build_prop_champion_candidates(
+            "qb_pass_yards",
+            repo=tmp_path,
+        )
+
+        assert len(results) == 3
+        assert results[0].mae == 63.4
+        assert results[1].mae == 61.2
+        assert results[2].mae == 64.8
+
+    def test_returns_empty_when_no_archive_rows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.evaluation.champion import (
+            build_prop_champion_candidates,
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+            lambda **kwargs: pd.DataFrame(),
+        )
+
+        results = build_prop_champion_candidates(
+            "qb_pass_yards",
+            repo=tmp_path,
+        )
+        assert results == []
+
+    def test_skips_unregistered_family(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.evaluation.champion import (
+            build_prop_champion_candidates,
+        )
+
+        def mock_build(**kwargs):
+            raise KeyError("unknown")
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.prop_archive.build_prop_evaluation_df",
+            mock_build,
+        )
+
+        results = build_prop_champion_candidates(
+            "bogus",
+            repo=tmp_path,
+        )
+        assert results == []
