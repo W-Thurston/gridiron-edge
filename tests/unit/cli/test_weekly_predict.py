@@ -7,7 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from gridiron_edge.cli._composites import StageResult
+import pytest
+
+from gridiron_edge.cli._composites import CompositeStage, StageResult
 from gridiron_edge.cli.weekly_predict import (
     _ALL_STAGES,
     _build_stages,
@@ -18,7 +20,7 @@ class TestStageList:
     """Verify the stage list is well-formed."""
 
     def test_stages_have_expected_names(self) -> None:
-        names = [s.name for s in _build_stages()]
+        names: list[str] = [s.name for s in _build_stages()]
         assert names == [
             "ensure-data-fresh",
             "fetch-odds",
@@ -31,25 +33,25 @@ class TestStageList:
         assert [s.name for s in _build_stages()] == _ALL_STAGES
 
     def test_predict_week_depends_on_data_fresh(self) -> None:
-        stages = {s.name: s for s in _build_stages()}
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert "ensure-data-fresh" in stages["predict-week"].depends_on
 
     def test_render_depends_on_predict(self) -> None:
-        stages = {s.name: s for s in _build_stages()}
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert "predict-week" in stages["render-outputs"].depends_on
 
     def test_generate_edges_depends_on_predict_and_odds(self) -> None:
-        stages = {s.name: s for s in _build_stages()}
-        deps = stages["generate-edges"].depends_on
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
+        deps: tuple[str, ...] = stages["generate-edges"].depends_on
         assert "predict-week" in deps
         assert "fetch-odds" in deps
 
     def test_fetch_odds_is_soft_fail(self) -> None:
-        stages = {s.name: s for s in _build_stages()}
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert stages["fetch-odds"].soft_fail is True
 
     def test_generate_edges_is_soft_fail(self) -> None:
-        stages = {s.name: s for s in _build_stages()}
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert stages["generate-edges"].soft_fail is True
 
 
@@ -236,7 +238,17 @@ class TestCommandInvocation:
         app.command()(weekly_predict_cmd)
 
         runner = CliRunner()
-        result = runner.invoke(app, ["--week", "1", "--season", "2026-2027"])
+        result = runner.invoke(
+            app,
+            [
+                "--week",
+                "1",
+                "--season",
+                "2026-2027",
+                "--model-type",
+                "random_forest",
+            ],
+        )
         assert result.exit_code == 0, result.output
 
     def test_invalid_season_raises(self) -> None:
@@ -278,3 +290,160 @@ class TestCommandInvocation:
         )
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
+
+
+class TestModelTypeResolution:
+    """Cover --model-type auto sentinel handling (W13 Tier 3 Step 2)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def test_explicit_model_type_passes_through(self) -> None:
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
+
+        with (
+            patch(
+                "gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh",
+                return_value=StageResult(success=True, detail="ok"),
+            ),
+            patch(
+                "gridiron_edge.cli.weekly_predict._stage_fetch_odds",
+                return_value=StageResult(success=True, detail="ok"),
+            ),
+            patch(
+                "gridiron_edge.cli.weekly_predict._stage_predict_week",
+                return_value=StageResult(success=True, detail="ok"),
+            ),
+            patch(
+                "gridiron_edge.cli.weekly_predict._stage_render_outputs",
+                return_value=StageResult(success=True, detail="ok"),
+            ),
+            patch(
+                "gridiron_edge.cli.weekly_predict._stage_generate_edges",
+                return_value=StageResult(success=True, detail="ok"),
+            ),
+        ):
+            app = typer.Typer()
+            app.command()(weekly_predict_cmd)
+
+            runner = CliRunner()
+            result = runner.invoke(
+                app,
+                [
+                    "--week",
+                    "1",
+                    "--season",
+                    "2026-2027",
+                    "--model-type",
+                    "xgboost",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "model=xgboost" in result.output
+
+    def test_auto_resolves_from_manifest(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "source_run_id": "RUN_X",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        for stage_fn in (
+            "_stage_ensure_data_fresh",
+            "_stage_fetch_odds",
+            "_stage_predict_week",
+            "_stage_render_outputs",
+            "_stage_generate_edges",
+        ):
+            monkeypatch.setattr(
+                f"gridiron_edge.cli.weekly_predict.{stage_fn}",
+                lambda ctx: StageResult(success=True, detail="stubbed"),
+            )
+
+        app = typer.Typer()
+        app.command()(weekly_predict_cmd)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["--week", "1", "--season", "2026-2027"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "model=random_forest" in result.output
+
+    def test_auto_fails_when_manifest_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
+
+        # tmp_path has no manifest.
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        for stage_fn in (
+            "_stage_ensure_data_fresh",
+            "_stage_fetch_odds",
+            "_stage_predict_week",
+            "_stage_render_outputs",
+            "_stage_generate_edges",
+        ):
+            monkeypatch.setattr(
+                f"gridiron_edge.cli.weekly_predict.{stage_fn}",
+                lambda ctx: StageResult(success=True, detail="stubbed"),
+            )
+
+        app = typer.Typer()
+        app.command()(weekly_predict_cmd)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["--week", "1", "--season", "2026-2027"],
+        )
+
+        assert result.exit_code != 0
+        assert "requires a champion manifest" in result.output

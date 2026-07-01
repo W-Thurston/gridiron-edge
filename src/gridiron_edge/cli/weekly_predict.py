@@ -26,9 +26,11 @@ import typer
 
 from gridiron_edge.cli._composites import (
     CompositeStage,
+    CompositeSummary,
     StageResult,
     render_composite_summary,
     resolve_active_stages,
+    resolve_win_prob_model_type,
     run_composite,
 )
 from gridiron_edge.core.console import console
@@ -300,10 +302,12 @@ def weekly_predict_cmd(
     week: int = typer.Option(..., help="NFL week number to predict."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
     model_type: str = typer.Option(
-        "random_forest",
+        "auto",
         help=(
             "Win-probability model algorithm to use for edges. "
-            "One of: random_forest, xgboost, logistic, elo."
+            "One of: random_forest, xgboost, logistic, elo. "
+            "Defaults to 'auto', which resolves to the current champion "
+            "from the manifest at data/output/champions/champions.json."
         ),
     ),
     bankroll: float = typer.Option(
@@ -331,6 +335,7 @@ def weekly_predict_cmd(
     \b
     Examples:
       gridiron weekly-predict --week 1 --season 2026-2027
+      gridiron weekly-predict --week 1 --season 2026-2027 --model-type xgboost
       gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
       gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
     """
@@ -349,22 +354,27 @@ def weekly_predict_cmd(
             f"Could not parse season '{season}'. Expected format: 'YYYY-YYYY+1' (e.g. '2026-2027')."
         ) from exc
 
+    # Resolve --model-type auto sentinel against the champion manifest.
+    # Runs after Typer/user-input validation so genuine input errors
+    # surface first.
+    resolved_model_type = resolve_win_prob_model_type(model_type)
+
     context: dict[str, Any] = {
         "week": week,
         "season": season,
         "season_int": season_int,
         "resolved_season_int": season_int,
         "upcoming_target": season_int,
-        "model_type": model_type,
+        "model_type": resolved_model_type,
         "bankroll": bankroll,
     }
 
     console.header(
         "weekly-predict",
-        subtitle=f"week {week} · {season} · model={model_type}",
+        subtitle=f"week {week} · {season} · model={resolved_model_type}",
     )
 
-    summary = run_composite(
+    summary: CompositeSummary = run_composite(
         name="weekly-predict",
         stages=stages,
         active=active,
