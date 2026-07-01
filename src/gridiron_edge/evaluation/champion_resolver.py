@@ -54,6 +54,7 @@ it as informational only, not depend on specific keys.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -88,6 +89,55 @@ def _manifest_path(repo: Path | None = None) -> Path:
     directory: Path = root / "data" / "output" / "champions"
     directory.mkdir(parents=True, exist_ok=True)
     return directory / "champions.json"
+
+
+def write_manifest(
+    entries: dict[str, dict[str, Any]],
+    *,
+    source_run_id: str,
+    repo: Path | None = None,
+) -> Path:
+    """Atomically write the champion manifest.
+
+    Args:
+        entries: Mapping of ``model_name`` → manifest entry. Each entry
+            must contain ``model_type``, ``promoted_at``, and ``metrics``.
+            ``source_run_id`` is stamped by this function using the value
+            passed in, so callers should not include it per-entry.
+        source_run_id: Identifier for the write operation (e.g. the
+            full-retrain timestamp). Applied to every entry so all
+            entries in one write share provenance.
+        repo: Repository root override.
+
+    Returns:
+        Absolute path to the written manifest.
+
+    Notes:
+        Write is atomic via ``os.replace``: the manifest is written to
+        a sibling ``.tmp`` file and renamed on success. Readers never
+        observe a partially-written manifest.
+    """
+    path: Path = _manifest_path(repo)
+    tmp_path: Path = path.with_suffix(".json.tmp")
+
+    stamped_entries: dict[str, dict[str, Any]] = {}
+    for model_name, entry in entries.items():
+        stamped_entries[model_name] = {
+            "model_type": entry["model_type"],
+            "promoted_at": entry["promoted_at"],
+            "source_run_id": source_run_id,
+            "metrics": dict(entry.get("metrics", {})),
+        }
+
+    manifest: dict[str, Any] = {
+        "schema_version": CURRENT_SCHEMA_VERSION,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "models": stamped_entries,
+    }
+
+    tmp_path.write_text(json.dumps(manifest, indent=2))
+    tmp_path.replace(path)  # atomic on POSIX + Windows
+    return path
 
 
 def read_manifest(repo: Path | None = None) -> dict[str, Any]:
