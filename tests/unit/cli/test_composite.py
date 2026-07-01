@@ -314,3 +314,109 @@ class TestRenderCompositeSummary:
         captured = capsys.readouterr()
         assert "1 failed (b)" in captured.out
         assert not summary.overall_success
+
+
+class TestResolveWinProbModelType:
+    """Cover resolve_win_prob_model_type (W13 Tier 3 helper)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def test_returns_value_verbatim_when_not_auto(self) -> None:
+        from gridiron_edge.cli._composites import resolve_win_prob_model_type
+
+        assert resolve_win_prob_model_type("random_forest") == "random_forest"
+        assert resolve_win_prob_model_type("xgboost") == "xgboost"
+        assert resolve_win_prob_model_type("elo") == "elo"
+
+    def test_resolves_auto_from_manifest(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        from gridiron_edge.cli._composites import resolve_win_prob_model_type
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": {
+                "win_prob": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "source_run_id": "RUN_X",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        assert resolve_win_prob_model_type("auto") == "random_forest"
+
+    def test_auto_raises_bad_parameter_when_manifest_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import typer
+
+        from gridiron_edge.cli._composites import resolve_win_prob_model_type
+
+        # tmp_path has no manifest at data/output/champions/champions.json
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        with pytest.raises(typer.BadParameter, match="requires a champion manifest"):
+            resolve_win_prob_model_type("auto")
+
+    def test_auto_raises_bad_parameter_when_win_prob_not_in_manifest(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import json
+
+        import typer
+
+        from gridiron_edge.cli._composites import resolve_win_prob_model_type
+
+        # Manifest exists but has no win_prob entry (e.g., only prop models).
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": {
+                "qb_pass_yards": {
+                    "model_type": "elasticnet",
+                    "promoted_at": "2026-07-01T14:10:00",
+                    "source_run_id": "RUN_X",
+                    "metrics": {"mae": 63.4},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        with pytest.raises(typer.BadParameter, match="requires a champion manifest"):
+            resolve_win_prob_model_type("auto")

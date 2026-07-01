@@ -384,3 +384,35 @@ def write_champion_manifest(repo: Path) -> None:
     typer.echo(f"Manifest written: {promote_result.manifest_path}")
     for warning in promote_result.warnings:
         typer.echo(f"  ⚠  {warning}")
+
+
+def resolve_win_prob_model_type(model_type: str) -> str:
+    """Resolve a --model-type CLI value, honoring the 'auto' sentinel.
+
+    When ``model_type == "auto"``, reads the champion manifest and
+    returns the current champion's model_type for the ``win_prob``
+    model_name. Any other value is returned as-is.
+
+    Raises:
+        typer.BadParameter: If ``model_type == "auto"`` but the manifest
+            is missing or has no entry for ``win_prob``.
+    """
+    if model_type != "auto":
+        return model_type
+
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        resolve_current_champion,
+    )
+
+    try:
+        _, resolved = resolve_current_champion("win_prob")
+    except ChampionNotFoundError as exc:
+        raise typer.BadParameter(
+            f"--model-type auto requires a champion manifest. {exc}\n\n"
+            f"Run one of:\n"
+            f"  gridiron full-retrain\n"
+            f"  gridiron evaluate select-model --write-manifest"
+        ) from exc
+
+    return resolved
