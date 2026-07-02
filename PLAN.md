@@ -29,124 +29,174 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W8 — API Serving Layer
+### Current Workstream: W9 — Frontend
 
 ### What we are building
 
-A read-only REST API that exposes every analytics output Gridiron Edge produces, shaped to match the Gridiron Edge frontend prototype end-to-end. Every screen in the prototype gets the endpoints it needs; every field that the backend can populate today returns real data; every field the backend can't yet produce returns `null` accompanied by metadata describing why.
+A React web app that consumes the Gridiron Edge REST API end-to-end.
+Wires the frontend prototype (20 screens, 3 Contexts, OKLCH dark theme)
+to the live 16-endpoint API from W8 Tier 2. Every populated field
+renders real data; every `field_status` marker gets a consistent visual
+treatment; blocked screens render "coming soon" placeholders.
 
-The API is implemented as a FastAPI app with Pydantic v2 response models, mounted as an `api/` package and served via `gridiron api serve`. Pydantic is confined to the `api/` boundary — domain code (models, evaluation, market, features) stays pandas/dataclass-shaped.
+Handoff package (README.md + `source/`) from the design workstream is
+the reference. Prototype is HTML/JSX with in-browser Babel and mock
+data; W9 recreates the designs in Vite + React + TypeScript with real
+API integration.
 
 ### Why we are building it
 
-1. **Verification surface.** The CLI surfaces outputs one at a time. The frontend prototype puts ~19 screens worth of outputs side by side. Wiring the prototype to the API is the next quality-assurance step.
-2. **Frontend unblock.** W9 (Frontend) cannot start until there is an API to wire to.
-3. **Roadmap discovery.** The placeholder fields the API ships form a structured, observable inventory of "what's missing" that drives ROADMAP §9 prioritization.
+1. **Verification of the API.** W8 Tier 2 built against the prototype
+   as a shape reference. Wiring the real frontend to the real API is
+   the next verification loop — surfaces schema mismatches, missing
+   fields, unexpected `field_status` states.
+2. **Roadmap discovery.** Which `field_status` states frustrate users,
+   which additive Tier 3 datasets unlock the most value — discovered
+   only by wiring it up. W8 Tier 3 kickoff waits for this signal.
+3. **First user-facing surface.** All prior workstreams built backend
+   value. W9 surfaces that value visually.
 
 #### Success criteria
 
-- Every endpoint in the prototype-driven inventory returns a 200 response with a valid Pydantic-validated shape.
-- Every populated endpoint returns real data for ≥80% of its fields, with the remainder explicitly marked in `_meta.field_status`.
-- Every Tier 3 endpoint returns `null` fields with structured `_meta.field_status` entries naming a blocker.
-- `gridiron api serve` starts the API and surfaces OpenAPI docs at `/docs`.
-- Test coverage: unit (response model shape + `_meta` correctness), integration (`MiniRepoBuilder`-backed), with e2e deferred to W9.
-- All quality gates pass.
+- Local dev loop works: `gridiron api serve` in one terminal, `pnpm
+  dev` (or equivalent) in another; all 20 screens render.
+- Every populated field on every screen shows real API data.
+- Every `field_status: pending` field renders a consistent pending
+  state.
+- Every `field_status: blocked` field renders a "not available" state
+  with the blocker slug + roadmap reference visible in tooltip.
+- Four entirely-blocked screens (LineShopping, LiveGame, NewsWire,
+  ExplainPage) render full-screen "coming soon" cards.
+- OpenAPI schema is checked in and versionable; `gridiron api
+  export-schema` command exists.
+- Quality gates: `pnpm typecheck`, `pnpm test`, `pnpm build` pass.
 
 ### Disconfirming evidence
 
-- **If the archive's schema drifts** during a Tier 2 step (e.g., new columns, renamed columns), loaders assuming the current shape break silently. Substep verification should include a `.columns.tolist()` check against the live archive before writing loaders.
-- **If a Tier 3 additive dataset lands earlier than expected** (e.g., an injuries feed becomes available mid-Tier 2), a Tier 2 endpoint may want to consume it opportunistically rather than shipping with `field_status: blocked`. Decide case-by-case; the default is "ship blocked and revisit."
-- **If Pydantic v2 shape validation catches loader inconsistencies** — for example, a `float | None` field receiving `NaN` — the loader is the fix site, not the schema. Track any such catches during Tier 2 to inform Tier 3 hardening.
+- **If schema shape mismatches surface,** those are W8 bugs. Track
+  and fix in W8, not W9.
+- **If a screen requires an endpoint that doesn't exist,** the
+  prototype evolved after W8 Tier 2 scoping or the endpoint inventory
+  was wrong. Add a small W8 patch step; do not shoehorn into W9.
+- **If `field_status` state proliferation makes screens unusable,**
+  the placeholder convention (D14) may need refinement. Consider
+  screen-level "under construction" banners in place of per-field
+  markers. Discover during Tier 2.
+- **If OKLCH color rendering has browser compat issues** (older
+  browsers not on the target list), a fallback palette may be needed.
+- **If the three-Context state model doesn't scale** with React
+  Query's async data, adopt Zustand or Jotai. Prototype state is
+  synchronous only.
 
 ### Locked architectural decisions
 
-| Decision | Choice |
-|---|---|
-| Framework | **FastAPI** |
-| Validation / response models | **Pydantic v2** |
-| Pydantic scope | **API boundary only** |
-| Data source | **Parquet/CSV via existing dataset registry** — pre-computed static artifacts per D21 |
-| Serve command | **`gridiron api serve`** |
-| Endpoint coverage | **Full prototype shape, no cuts** |
-| Placeholder convention | **`null` + `_meta.field_status`** |
-| Placeholder granularity | **Field-level** |
+| Decision | Choice | Rationale |
+|---|---|---|
+| Framework | Vite + React + TypeScript | Prototype README default; portable from JSX |
+| Styling | CSS variables + CSS Modules | Preserves the OKLCH token table 1:1 |
+| State | Three React Contexts (Nav, BetSlip, AppState) | Match prototype; low migration risk |
+| Data fetching | React Query (TanStack Query) | Standard for API-backed React; handles loading/error/cache |
+| API client | Generated from OpenAPI schema | Reproducible, typed, versionable |
+| Schema source | Checked-in `api-schema.json` via `gridiron api export-schema` | Reproducible, no server dep during frontend build |
+| Routing | Hash-based (`#/route`) | Match prototype; no server config needed |
+| Deployment | Local dev only for W9 | Verification workstream, not productization |
+| Testing | Vitest + React Testing Library (unit); Playwright (e2e, optional) | Standard React stack |
+| Field_status: pending | Placeholder + info badge, `--ink-4` faint text | Distinct from blocked; preserves layout |
+| Field_status: blocked | "Not available" state, tooltip shows blocker + roadmap | Distinct from pending; user affordance for "not soon" |
+| Entirely-blocked screens | Full-screen "coming soon" card | Better UX than broken shell |
+
+### Prerequisite: OpenAPI schema export command
+
+Not a W9 deliverable. Small W8 patch: add
+`gridiron api export-schema [--output api-schema.json]` that serializes
+the FastAPI app's OpenAPI spec to a checked-in JSON file. W9 build
+consumes it via the client generator. Estimated one commit; can land
+during W9 Tier 1 or as a standalone W8 patch step.
 
 ### Tiers
 
-**Tier 1 — Skeleton + blocked-endpoint stubs.** ✅ Complete (2026-06-27).
-FastAPI app skeleton, `_meta` envelope plumbing, twelve endpoints returning 200 with structurally valid null responses carrying registered blocker slugs. `/docs` groups by domain.
+**Tier 1 — Client infrastructure.**
 
-**Tier 2 — Direct-serialization endpoints.** ✅ Complete (2026-07-02).
+Deliverable: local dev server serving an empty shell that can hit the
+API and render one screen (Dashboard) end-to-end.
+
+Substeps:
+1. Vite + React + TypeScript scaffolding, Geist font loading, base
+   `styles.css` port.
+2. Chrome components (TopNav, SubNav, Breadcrumb, Frame).
+3. Three Contexts (AppState, BetSlip, Nav) with localStorage /
+   sessionStorage persistence.
+4. `gridiron api export-schema` command (W8 patch).
+5. API client generation from checked-in OpenAPI schema.
+6. React Query setup with base client, loading/error states.
+7. Dashboard route wired to `/weeks/current` + `/games?week=` —
+   proves the loop works.
+
+**Tier 2 — Populated screens.**
+
+Deliverable: all 12 API-consuming screens render real data.
+
+Substeps grouped by domain:
+1. Games (GamesList + GameDetail) → `/games`, `/games/{id}`.
+2. Teams (TeamRankings + TeamProfile) → `/teams`, `/teams/{abbr}`.
+3. Projections → `/projections`.
+4. Players / Props (PlayersExplorer + PlayerProp) → `/props`,
+   `/props/{prop_id}`, `/compare/player/{prop_id}`.
+5. Compare (ComparePage) → `/compare/teams`.
+6. Bankroll → `/portfolio/*`.
+7. BetSlip → client-side + `/edges` integration for staging.
+
+**Tier 3 — Blocked screens + polish.**
+
+Deliverable: 20-screen complete UI.
+
+Substeps:
+1. Blocked-screen placeholders (LineShopping, LiveGame, NewsWire,
+   ExplainPage).
+2. Client-side screens (Onboarding, Settings, Tools).
+3. Aesthetic variants decision (Terminal / Fintech / Editorial or none).
+4. Screen-level integration testing.
+5. A11y sweep.
+6. Error states (network failures, backend down).
+
+Tier design blocks are drafted at the start of each tier.
+
+---
+
+## Paused Workstreams
+
+### W8 — API Serving Layer
+
+**Status:** Paused (Tier 2 complete; Tier 3 pending W9 feedback).
+
+**Where we stopped:** Tier 2 complete (2026-07-01). 16 endpoints
+populated. Every prototype-referenced URL returns a 200 with a
+Pydantic-validated shape. Fields not yet populated are marked with
+structured `field_status`.
+
+**How this resumes:** When W9 identifies which Tier 3 additive dataset
+provides the most user value. Frontend feedback drives which of:
+
+- Per-stat league-wide percentile ranking pass
+- Off/def rating decomposition
+- Opponent-allowed-by-position aggregation
+- Cohort splits (season/L4/home/away, indoor/outdoor)
+- Weekly Elo snapshot persistence for trend fields
+- Prior-week projection snapshot for delta
+
+...to build first. When W9 signals a priority, W8 Tier 3 opens with that
+additive scoped as the first step. Substeps mirror Tier 2's rhythm
+(design → loader → schema → serializer → route → integration test).
+
+#### Tier 2 summary retained inline
+
+**Tier 2 — Direct-serialization endpoints.** ✅ Complete (2026-07-01).
 Eight steps shipped. 16 endpoints populated with real data. Every
 prototype-referenced URL returns a 200 with a validated Pydantic shape.
 Fields not yet populated (per Tier 3 additive datasets) are marked with
 structured `field_status` metadata per D14.
 
-| Step | Scope | Status |
-|---|---|---|
-| 1 | `/weeks/current` + all `/portfolio/*` | ✅ Complete (2026-07-01) |
-| 2 | `/model/performance` | ✅ Complete (2026-07-01) |
-| 3 | `/teams` + `/teams/{abbr}` | ✅ Complete (2026-07-01) |
-| 4 | `/projections` | ✅ Complete (2026-07-01) |
-| 5 | `/games`, `/games/{id}` | ✅ Complete (2026-07-02) |
-| 6 | `/edges` | ✅ Complete (2026-07-02) |
-| 7 | `/props`, `/props/{prop_id}` | ✅ Complete (2026-07-02) |
-| 8 | `/compare/teams`, `/compare/player/{prop_id}` | ✅ Complete (2026-07-02) |
-
-#### Step 5 — `/games`, `/games/{id}` ✅ Complete (2026-07-02)
-
-Shipped in four substeps: loader with champion resolution and archive filtering,
-schemas with pending/blocked field scaffolding, serializer with field_status
-population, routes with `ChampionNotFoundError` translation to structured D14
-metadata. `MiniRepoBuilder` extended with `with_champion_manifest` and
-`with_predictions_archive` helpers. `/games/{game_id}/predictions` dropped
-per YAGNI.
-
-#### Step 6 — `/edges` ✅ Complete (2026-07-02)
-
-Shipped in four substeps: loader with champion resolution, odds join,
-and edge computation via `market.recommendations.build_edge_report`;
-schemas with nullable `point_edge` and `cover_prob` for moneyline rows;
-serializer with NaN normalization at the Pydantic boundary; route with
-translation for `ChampionNotFoundError` → `NO_CHAMPION_MANIFEST` and
-`OddsUnavailableError` → `NO_ODDS_AVAILABLE`. `MiniRepoBuilder` extended
-with `with_odds_snapshot`. `api/exceptions.py` introduced for API-surface
-data-state signals; `OddsUnavailableError` is its first entry.
-
-#### Step 7 — `/props`, `/props/{prop_id}` ✅ Complete (2026-07-02)
-
-Shipped in four substeps: loader with per-family champion resolution
-via `resolve_current_champion` iterated across `PROP_STAT_FAMILIES`;
-schemas with `ProjectionBlock` and `LineBlock` clusters, plus scaffolded
-fields for historical/situational/reasoning/injury/recent-form/prop-shop;
-serializer with `prop_id` composition (`{game_id}__{player_id}__{stat_type}`),
-season int → string normalization, and field_status marking; routes with
-`_decode_prop_id` helper and asymmetric exception translation (list:
-`ChampionNotFoundError` → 200 empty; detail: `ChampionNotFoundError`
-→ 200 with projection and line_context null and field_status blocked).
-
-`_resolve_scope` refactored to lazy: only reads `NFL_wk_by_wk_cleaned.csv`
-when a default is actually needed (bug fix, previously eager). Same lazy
-pattern should be applied to `_resolve_scope` in `games.py`, `edges.py`,
-and `teams.py` as a follow-up (tracked in D19 audit backlog).
-
-MiniRepoBuilder gained no new methods; test-side helpers
-(`_write_prop_manifest`, `_write_prop_archive`) inline in
-`test_props_routes.py` for now.
-
-#### Step 8 — `/compare/teams`, `/compare/player/{prop_id}` ✅ Complete (2026-07-01)
-
-Shipped in two substeps. `/compare/teams` uses list-of-stat-rows shape
-with 10 rows (3 populated: rating, rank, record; 7 scaffolded).
-`/compare/player/{prop_id}` uses projection-vs-defense row shape with
-8 rows (4 populated from champion archive; 4 defense-side blocked
-pending opponent-allowed-by-position aggregation). `decode_prop_id`
-helper extracted from `routes/props.py` to `api/_prop_id.py` and
-shared by both routes. `MiniRepoBuilder.with_teams_reference()` added
-for the teams-name-map CSV fixture. `OPPONENT_ALLOWED_BY_POSITION`
-slug registered in `Unavailable`.
-
-**Tier 3 — Backend additions.** Designing. Tier 2 unblocked. Tier 3 kickoff waits for W9 (Frontend) to identify which additive dataset they need first, so backend work sequences to unblock frontend flow.
+#### Tier 3 additions inventory (unchanged)
 
 | Addition | Populates |
 |---|---|
@@ -164,6 +214,8 @@ slug registered in `Unavailable`.
 
 | Date | Change |
 |------|--------|
+| 2026-07-02 | **W9 design phase complete.** Design block locked: Vite + React + TypeScript, CSS variables + CSS Modules, three-Context state model matching the prototype, React Query for API data, generated API client from checked-in OpenAPI schema (via new `gridiron api export-schema` W8 patch). Three tiers: client infrastructure (7 substeps), populated screens (7 substeps grouped by domain), blocked screens + polish (6 substeps). Field_status rendering strategy locked: pending as placeholder + info badge; blocked as "not available" state with tooltip; entirely-blocked screens as full-screen "coming soon" cards. |
+| 2026-07-02 | **W9 promoted to Current Workstream.** W8 Tier 2 complete; W8 Tier 3 paused pending W9 signal on which additive dataset to build first. W9 design phase to follow — likely 3-tier structure covering client infrastructure, populated screens, and `field_status`-driven blocked-state rendering. |
 | 2026-07-02 | **W8 Tier 2 Step 8 design.** Inline design block added for `/compare/teams` and `/compare/player/{prop_id}`. Two substeps: `/compare/teams` (team-vs-team stat row list) and `/compare/player/{prop_id}` (projection vs defense context). Framing A locked — full endpoints with ~20% populated fields from existing data, ~80% scaffolded via `field_status` pending Tier 3 additive datasets. `OPPONENT_ALLOWED_BY_POSITION` new slug scheduled for `Unavailable`. Response shape: list of stat rows matching the prototype's compare-table visual. |
 | 2026-07-02 | **W8 Tier 2 Step 7 complete.** `/props` and `/props/{prop_id}` shipped in four substeps (loader, schemas, serializer, routes). Per-family champion resolution iterates `PROP_STAT_FAMILIES`; each family independent. `prop_id` composite `{game_id}__{player_id}__{stat_type}`. Line-derived fields (`line`, `p_over`, `lean`, `confidence_tier`) 100% null in T2, scaffolded as `field_status: pending` — odds-join at prediction time not yet implemented. `_resolve_scope` refactored to lazy read of games CSV. Endpoints populated so far: 14. |
 | 2026-07-02 | **W8 Tier 2 Step 7 design.** Inline design block added for `/props` and `/props/{prop_id}`. Four substeps: loader with per-family champion resolution (7a), schemas with ProjectionBlock and scaffolded line-dependent fields (7b), serializer (7c), routes with `prop_id` decoding (7d). Archive verification revealed `line`, `p_over`, `lean`, `confidence_tier` are 100% null in the archive today; all four scaffolded as `field_status: pending`. `prop_id` composite locked as `{game_id}__{player_id}__{stat_type}`. Season string normalized to int for archive read. |
