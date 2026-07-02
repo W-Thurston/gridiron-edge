@@ -636,3 +636,416 @@ class TestLoadEdgesForWeek:
 
         with pytest.raises(ChampionNotFoundError):
             load_edges_for_week(settings, season="2026-2027", week=1)
+
+
+class TestParseSeasonInt:
+    """Cover _parse_season_int (W8 Tier 2 Step 7a helper)."""
+
+    def test_hyphenated_returns_leading_year(self) -> None:
+        from gridiron_edge.api.loaders import _parse_season_int
+
+        assert _parse_season_int("2026-2027") == 2026
+
+    def test_single_year_returns_int(self) -> None:
+        from gridiron_edge.api.loaders import _parse_season_int
+
+        assert _parse_season_int("2026") == 2026
+
+    def test_malformed_raises(self) -> None:
+        from gridiron_edge.api.loaders import _parse_season_int
+
+        with pytest.raises(ValueError, match="Cannot parse season"):
+            _parse_season_int("not a season")
+
+
+class TestLoadPropsForWeek:
+    """Cover load_props_for_week (W8 Tier 2 Step 7a)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return FakeSettings(repo_root=tmp_path)
+
+    def _write_manifest(
+        self,
+        tmp_path: Path,
+        families: dict[str, str],
+    ) -> None:
+        """Write a manifest with the given family → model_type entries."""
+        import json
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "champions.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-01T14:00:00+00:00",
+                    "models": {
+                        family: {
+                            "model_type": model_type,
+                            "promoted_at": "2026-07-01T14:00:00",
+                            "source_run_id": "RUN_X",
+                            "metrics": {"mae": 63.0},
+                        }
+                        for family, model_type in families.items()
+                    },
+                }
+            )
+        )
+
+    def _make_archive_row(
+        self,
+        game_id: str = "2026_01_KC_LAC",
+        player_id: str = "00-0033873",
+        stat_type: str = "qb_pass_yards",
+        model_type: str = "elasticnet",
+        week: int = 1,
+        season: int = 2026,
+    ) -> dict:
+        return {
+            "predicted_at": "2026-08-01T00:00:00+00:00",
+            "is_backfilled": True,
+            "season": season,
+            "week": week,
+            "game_id": game_id,
+            "player_id": player_id,
+            "player_name": "P.Mahomes",
+            "position": "QB",
+            "team": "KC",
+            "stat_type": stat_type,
+            "model_name": stat_type,
+            "model_type": model_type,
+            "predicted_mean": 265.0,
+            "predicted_std": 45.0,
+            "lo_90": 190.0,
+            "hi_90": 340.0,
+            "line": None,
+            "p_over": float("nan"),
+            "lean": float("nan"),
+            "confidence_tier": float("nan"),
+        }
+
+    def _write_archive(self, tmp_path: Path, rows: list[dict]) -> None:
+        archive_dir = tmp_path / "data" / "output" / "props"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_parquet(
+            archive_dir / "prop_predictions_log.parquet",
+            index=False,
+        )
+
+    def test_returns_champion_rows_for_one_family(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_props_for_week
+
+        self._write_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_archive(tmp_path, [self._make_archive_row()])
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_props_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+        )
+
+        assert not result.empty
+        assert len(result) == 1
+        assert result.iloc[0]["stat_type"] == "qb_pass_yards"
+        assert result.iloc[0]["model_type"] == "elasticnet"
+
+    def test_stat_type_filter_processes_only_one_family(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_props_for_week
+
+        self._write_manifest(
+            tmp_path,
+            {
+                "qb_pass_yards": "elasticnet",
+                "rb_rush_yards": "random_forest",
+            },
+        )
+        self._write_archive(
+            tmp_path,
+            [
+                self._make_archive_row(stat_type="qb_pass_yards"),
+                self._make_archive_row(
+                    game_id="2026_01_BUF_MIA",
+                    player_id="00-0035700",
+                    stat_type="rb_rush_yards",
+                    model_type="random_forest",
+                ),
+            ],
+        )
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_props_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+            stat_type="qb_pass_yards",
+        )
+
+        assert len(result) == 1
+        assert result.iloc[0]["stat_type"] == "qb_pass_yards"
+
+    def test_position_filter_applied(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_props_for_week
+
+        self._write_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        rows = [
+            self._make_archive_row(player_id="qb1"),
+            {**self._make_archive_row(player_id="wr1"), "position": "WR"},
+        ]
+        self._write_archive(tmp_path, rows)
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_props_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+            position="QB",
+        )
+
+        assert len(result) == 1
+        assert result.iloc[0]["position"] == "QB"
+
+    def test_missing_families_silently_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Manifest only has qb_pass_yards; others missing.
+        from gridiron_edge.api.loaders import load_props_for_week
+
+        self._write_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_archive(tmp_path, [self._make_archive_row()])
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        # Call without stat_type filter — should iterate all 5 families,
+        # find champion for only qb_pass_yards, return its row.
+        result = load_props_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["stat_type"] == "qb_pass_yards"
+
+    def test_no_families_resolved_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # No manifest written at all.
+        from gridiron_edge.api.loaders import load_props_for_week
+        from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        with pytest.raises(ChampionNotFoundError, match="No prop champions"):
+            load_props_for_week(settings, season="2026-2027", week=1)
+
+    def test_family_resolved_but_empty_archive_returns_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Manifest present, archive empty — legitimate "no data yet" state.
+        from gridiron_edge.api.loaders import load_props_for_week
+
+        self._write_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        # No archive file at all.
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_props_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+        )
+        # Empty, but no exception — legitimate state.
+        assert result.empty
+
+
+class TestLoadProp:
+    """Cover load_prop (W8 Tier 2 Step 7a)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return FakeSettings(repo_root=tmp_path)
+
+    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
+        import json
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "champions.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-01T14:00:00+00:00",
+                    "models": {
+                        "qb_pass_yards": {
+                            "model_type": model_type,
+                            "promoted_at": "2026-07-01T14:00:00",
+                            "source_run_id": "RUN_X",
+                            "metrics": {"mae": 63.0},
+                        },
+                    },
+                }
+            )
+        )
+
+    def _write_archive_row(self, tmp_path: Path) -> None:
+        archive_dir = tmp_path / "data" / "output" / "props"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "predicted_at": "2026-08-01T00:00:00+00:00",
+                    "is_backfilled": True,
+                    "season": 2026,
+                    "week": 1,
+                    "game_id": "2026_01_KC_LAC",
+                    "player_id": "00-0033873",
+                    "player_name": "P.Mahomes",
+                    "position": "QB",
+                    "team": "KC",
+                    "stat_type": "qb_pass_yards",
+                    "model_name": "qb_pass_yards",
+                    "model_type": "elasticnet",
+                    "predicted_mean": 265.0,
+                    "predicted_std": 45.0,
+                    "lo_90": 190.0,
+                    "hi_90": 340.0,
+                    "line": None,
+                    "p_over": float("nan"),
+                    "lean": float("nan"),
+                    "confidence_tier": float("nan"),
+                }
+            ]
+        ).to_parquet(
+            archive_dir / "prop_predictions_log.parquet",
+            index=False,
+        )
+
+    def test_returns_dict_for_matching_prop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_prop
+
+        self._write_manifest(tmp_path, "elasticnet")
+        self._write_archive_row(tmp_path)
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_prop(
+            settings,
+            game_id="2026_01_KC_LAC",
+            player_id="00-0033873",
+            stat_type="qb_pass_yards",
+        )
+
+        assert result is not None
+        assert result["stat_type"] == "qb_pass_yards"
+        assert result["player_name"] == "P.Mahomes"
+        assert result["predicted_mean"] == 265.0
+
+    def test_returns_none_for_unknown_composite(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_prop
+
+        self._write_manifest(tmp_path, "elasticnet")
+        self._write_archive_row(tmp_path)
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        result = load_prop(
+            settings,
+            game_id="2026_01_BOGUS",
+            player_id="00-0033873",
+            stat_type="qb_pass_yards",
+        )
+        assert result is None
+
+    def test_missing_manifest_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_prop
+        from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
+
+        settings = self._fake_settings(tmp_path)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        with pytest.raises(ChampionNotFoundError):
+            load_prop(
+                settings,
+                game_id="2026_01_KC_LAC",
+                player_id="00-0033873",
+                stat_type="qb_pass_yards",
+            )

@@ -407,3 +407,156 @@ def _finalize_games_frame(
         "win_prob_hi",
     ]
     return merged.loc[:, columns].copy()
+
+
+def _parse_season_int(season: str) -> int:
+    """Parse the leading int year from a season label.
+
+    Examples:
+        "2026-2027" -> 2026
+        "2026"      -> 2026
+    """
+    try:
+        return int(season.split("-")[0])
+    except (ValueError, IndexError, AttributeError) as exc:
+        msg: str = f"Cannot parse season {season!r}; expected 'YYYY' or 'YYYY-YYYY+1'."
+        raise ValueError(msg) from exc
+
+
+def load_props_for_week(
+    settings: Settings,
+    *,
+    season: str,
+    week: int,
+    stat_type: str | None = None,
+    position: str | None = None,
+) -> pd.DataFrame:
+    """Load champion-model prop predictions for (season, week).
+
+    Iterates registered prop stat families (or just ``stat_type`` when
+    provided), resolves each family's current champion via
+    :func:`resolve_current_champion`, and filters the prop archive to
+    that champion's rows. Families without a resolved champion are
+    silently skipped.
+
+    Args:
+        settings: API settings, source of repo_root.
+        season: Season label, e.g. "2026-2027".
+        week: Week number.
+        stat_type: Optional single-family filter. When set, only this
+            family is processed.
+        position: Optional position filter applied to the returned
+            rows (e.g. "QB", "RB").
+
+    Returns:
+        DataFrame with columns from ``_ARCHIVE_COLUMNS`` in
+        ``evaluation.prop_archive``, filtered to the champion for each
+        family. Empty DataFrame if no families produced rows after
+        filtering.
+
+    Raises:
+        ChampionNotFoundError: If zero families resolved a champion.
+            Not raised when families resolve but their archive is empty.
+    """
+    from gridiron_edge.evaluation.champion_resolver import (
+        ChampionNotFoundError,
+        resolve_current_champion,
+    )
+    from gridiron_edge.evaluation.prop_archive import load_prop_archive
+    from gridiron_edge.models.catalog import PROP_STAT_FAMILIES
+
+    season_int: int = _parse_season_int(season)
+    families: list[str] = [stat_type] if stat_type else PROP_STAT_FAMILIES
+
+    resolved_frames: list[pd.DataFrame] = []
+    resolved_families: list[str] = []
+
+    for family in families:
+        try:
+            _, model_type = resolve_current_champion(
+                family,
+                repo=settings.repo_root,
+            )
+        except ChampionNotFoundError:
+            continue
+
+        family_rows: DataFrame = load_prop_archive(
+            repo=settings.repo_root,
+            stat_type=family,
+            season=season_int,
+        )
+        if family_rows.empty:
+            resolved_families.append(family)
+            continue
+
+        filtered = family_rows.loc[
+            (family_rows["model_type"] == model_type) & (family_rows["week"] == week),
+            :,
+        ]
+        if position is not None:
+            filtered = filtered.loc[filtered["position"] == position, :]
+
+        resolved_families.append(family)
+        if not filtered.empty:
+            resolved_frames.append(filtered)
+
+    if not resolved_families:
+        raise ChampionNotFoundError(
+            "No prop champions registered. Run `gridiron full-retrain` or "
+            "`gridiron props champion --write-manifest`."
+        )
+
+    if not resolved_frames:
+        return pd.DataFrame()
+
+    return pd.concat(resolved_frames, ignore_index=True)
+
+
+def load_prop(
+    settings: Settings,
+    *,
+    game_id: str,
+    player_id: str,
+    stat_type: str,
+) -> dict | None:
+    """Load champion-model prop prediction for one (game_id, player_id, stat_type).
+
+    Args:
+        settings: API settings, source of repo_root.
+        game_id: Composite game_id.
+        player_id: Player identifier.
+        stat_type: Prop stat family (e.g. "qb_pass_yards").
+
+    Returns:
+        Dict with archive-schema fields, or None if the composite
+        doesn't match any archived prediction under the current champion.
+
+    Raises:
+        ChampionNotFoundError: If the champion manifest has no entry
+            for ``stat_type``.
+    """
+    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
+    from gridiron_edge.evaluation.prop_archive import load_prop_archive
+
+    _, model_type = resolve_current_champion(
+        stat_type,
+        repo=settings.repo_root,
+    )
+
+    archive: DataFrame = load_prop_archive(
+        repo=settings.repo_root,
+        stat_type=stat_type,
+    )
+    if archive.empty:
+        return None
+
+    match = archive.loc[
+        (archive["game_id"] == game_id)
+        & (archive["player_id"] == player_id)
+        & (archive["model_type"] == model_type),
+        :,
+    ]
+    if match.empty:
+        return None
+
+    return match.iloc[0].to_dict()
