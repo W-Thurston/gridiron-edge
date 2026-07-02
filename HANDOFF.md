@@ -355,6 +355,27 @@ See `DECISIONS.md` D2 for the post-audit re-baseline that confirmed the
 structural fix is right even though the empirical metric impact was below
 predicted thresholds.
 
+#### Testing patterns for API integration (W8)
+
+Two rules matter when writing tests that exercise FastAPI routes:
+
+- **`app.dependency_overrides` keys on the exact function inside `Depends(...)`.**
+  For `SettingsDep = Annotated[Settings, Depends(settings_dependency)]`, the
+  override key is `settings_dependency`, not the underlying `get_settings`.
+  Grep for `Depends(` in `api/deps.py` and use those function names as keys.
+- **Domain-level module bindings still need monkeypatching.** `dependency_overrides`
+  only reaches FastAPI-injected dependencies. Domain code that reads
+  `get_settings()` at module load time (e.g., `champion_resolver.get_settings`)
+  needs `monkeypatch.setattr("gridiron_edge.evaluation.champion_resolver.get_settings", ...)`
+  to redirect.
+
+Per D19, every loader wrapper in `api/loaders.py` threads `settings.repo_root`
+explicitly to the underlying domain function. Missing threading falls back
+to the process-wide `get_settings()` and reads from the real repo — silently,
+in tests. When adding a new loader, grep the callee's signature for a `repo`
+param and pass `repo=settings.repo_root` if it accepts one. A W8 Tier 2
+Step 5 audit confirmed all existing loaders comply.
+
 ---
 
 ### Workflows (End-to-End Data Flows)

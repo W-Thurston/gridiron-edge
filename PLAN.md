@@ -84,41 +84,19 @@ FastAPI app skeleton, `_meta` envelope plumbing, twelve endpoints returning 200 
 | 2 | `/model/performance` | ✅ Complete (2026-07-01) |
 | 3 | `/teams` + `/teams/{abbr}` | ✅ Complete (2026-07-01) |
 | 4 | `/projections` | ✅ Complete (2026-07-01) |
-| 5 | `/games`, `/games/{id}` | 🟡 Active |
-| 6 | `/edges` | Not started |
+| 5 | `/games`, `/games/{id}` | ✅ Complete (2026-07-01) |
+| 6 | `/edges` | 🟡 Active |
 | 7 | `/props`, `/props/{prop_id}` | Not started |
 | 8 | `/compare/teams`, `/compare/player/{prop_id}` | Not started |
 
-#### Step 5 — `/games`, `/games/{id}` design
+#### Step 5 — `/games`, `/games/{id}` ✅ Complete (2026-07-01)
 
-**Scope change from original plan:** `/games/{game_id}/predictions` dropped per YAGNI. The detail endpoint carries the champion's prediction inline; a separate predictions endpoint is only warranted when a real consumer emerges (per-simulation histograms, per-model audit trail UI).
-
-**Substeps:**
-
-- **5a — Games loader.** ✅ Complete. `load_games_for_week` and `load_game` in `api/loaders.py`. Both resolve the current win_prob champion via `resolve_current_champion`, filter the prediction archive to the champion model's output, join to the games table for schedule truth, and convert long team names to short codes. Champion resolution happens at the loader layer; higher layers stay ignorant. `ChampionNotFoundError` bubbles up unchanged (translation to `field_status` happens in 5d).
-- **5b — Games schemas.** Not started. `api/schemas/games.py` with `GameSummary`, `GameDetail`, and response envelopes. Field-level `field_status` scaffolding for pending/blocked fields.
-- **5c — Games serializer.** Not started. `api/serializers/games.py` following the `serializers/teams.py` pattern. Two functions: `serialize_game_summary` and `serialize_game_detail`.
-- **5d — Games routes + registration.** Not started. `api/routes/games.py` with the two endpoints, wired to `create_app()`. Integration test with `MiniRepoBuilder` + preloaded champion manifest.
-
-**Field scope (locked):**
-
-Populated in the detail response:
-- Game header: `kick`, `venue`, `game_date`, `week`, `season`, `day_of_week`
-- Weather: from the schedule/weather join
-- Teams: `away_team`, `home_team` (short codes)
-- Prediction (champion): `home_win_prob`, `away_win_prob`, `home_win_lo`, `home_win_hi`, `confidence_tier`
-- Enrichment: `model_spread`, `model_total`, `projected_home_score`, `projected_away_score`
-
-Scaffolded with `field_status`:
-- Team comparison stats table → **pending** (no opponent-adjusted percentile logic backend)
-- Swing factors → **blocked on feature-attribution workstream**
-- Injuries → **blocked on ROADMAP §5.3**
-- Top prop edges for this game → **pending** (defer to substep after edge endpoint lands)
-- Edge (side + EV + confidence) → **deferred to `/edges`** to avoid duplication; frontend stitches client-side.
-
-**Filter model:** `/games?week=&season=` — both optional, default from `resolve_current_season_week()`. Matches the `/teams` pattern.
-
-**Champion-missing behavior (5d):** `ChampionNotFoundError` at the loader layer translates to a 200 response with all champion-dependent fields as `null` and `field_status: blocked/CHAMPION_NOT_WRITTEN`. Consistent with D14 — missing backend data surfaces as structured metadata, not HTTP failure.
+Shipped in four substeps: loader with champion resolution and archive filtering,
+schemas with pending/blocked field scaffolding, serializer with field_status
+population, routes with `ChampionNotFoundError` translation to structured D14
+metadata. `MiniRepoBuilder` extended with `with_champion_manifest` and
+`with_predictions_archive` helpers. `/games/{game_id}/predictions` dropped
+per YAGNI.
 
 **Tier 3 — Backend additions.** Designing. Additions inventory unchanged from original plan.
 
@@ -138,6 +116,7 @@ Scaffolded with `field_status`:
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | **W8 Tier 2 Step 5 complete.** `/games` and `/games/{id}` shipped in four substeps (loader, schemas, serializer, routes). Champion resolution threads from manifest through loader to Pydantic response. `MiniRepoBuilder` gained `with_champion_manifest` and `with_predictions_archive` methods. `NO_CHAMPION_MANIFEST` slug registered in `Unavailable`. Two lessons applied for future integration tests: `dependency_overrides` keys on the exact function inside `Depends(...)`, and D19 `repo_root` threading needs an audit sweep across `api/loaders.py`. Endpoints populated so far: 12. |
 | 2026-07-01 | **W8 resumed; Tier 2 Step 5 in progress.** PLAN.md restructured: W13 complete block removed (moved to CHANGELOG), W8 promoted from Paused to Current Workstream. Step 5 rescoped: `/games` and `/games/{id}` (dropped `/games/{game_id}/predictions` per YAGNI). Substep 5a (games loader in `api/loaders.py`) complete: `load_games_for_week` and `load_game` resolve the current win_prob champion, filter the prediction archive, and translate to API-facing shape. |
 | 2026-07-01 | **W13 Tier 3 complete. W13 workstream closed.** Four steps: resolve_win_prob_model_type helper, weekly_predict refactor, edges refactor (both report and clv), intentional-Elo annotations. Actual scope was 3 CLI-option default sites (not 8, per original handoff estimate); the other 5 sites were provenance labels or intentional Elo usage and got comments instead of refactors. W8 (API) unpauses; Tier 2 Step 5 (game endpoints) is now unblocked. |
 | 2026-07-01 | **W13 Tier 2 complete.** Nine steps shipped: manifest writer, three selectors, full-retrain integration, baseline-report annotation, two --write-manifest CLI flags, and the champion_cmd refactor. All champion decisions across CLI and stage surfaces share the same code path. Central catalog at gridiron_edge.models.catalog is now the single source of truth for model pairs and prop families. Tier 3 (CLI consumer refactor) begins. |
