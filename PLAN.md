@@ -98,6 +98,89 @@ metadata. `MiniRepoBuilder` extended with `with_champion_manifest` and
 `with_predictions_archive` helpers. `/games/{game_id}/predictions` dropped
 per YAGNI.
 
+#### Step 6 — `/edges` design
+
+**Scope:** Read-only endpoint that surfaces the champion's ranked edges
+for a given (season, week), computed by joining the prediction archive
+to the current DK odds snapshot. Fields carry per-market context (game,
+side, EV %, Kelly stake, edge strength, confidence tier). No field_status
+scaffolding expected on the happy path — edges are computed end-to-end
+from data we have.
+
+**Substeps:**
+
+- **6a — Edges loader.** `load_edges_for_week` in `api/loaders.py`.
+  Resolves the current win_prob champion via `resolve_current_champion`,
+  filters the prediction archive to the champion, joins to current DK
+  odds via `load_current_odds`, computes edges through
+  `market.recommendations.build_edge_report`, ranks by EV, and converts
+  team names to short codes. Introduces `api/exceptions.py` with
+  `OddsUnavailableError` for the "no current odds snapshot" case.
+- **6b — Edges schemas.** `EdgeRow` and `EdgeList` in `api/schemas/edges.py`.
+  Field parity with the prototype's Edges screen (game, market, side,
+  EV, Kelly stake, edge strength, confidence tier). Neither model has
+  scaffolded fields.
+- **6c — Edges serializer.** `api/serializers/edges.py`. Transforms
+  loader DataFrame to `EdgeList`. Handles NaN-normalization for
+  `point_edge` / `cover_prob` on moneyline rows (which don't carry
+  point-based fields).
+- **6d — Edges route + integration test.** `api/routes/edges.py` with
+  `GET /edges`. Champion-missing translates to 200 empty with
+  `field_status.items: blocked/NO_CHAMPION_MANIFEST` (same pattern as
+  `/games`). Odds-missing translates to 200 empty with
+  `field_status.items: unavailable/NO_ODDS_AVAILABLE`. Integration test
+  uses `MiniRepoBuilder` extended with a `with_odds_snapshot` helper.
+
+**Field scope (locked):**
+
+Populated in each `EdgeRow`:
+- Context: `game_id`, `game_date`, `season`, `week`, `away_team`,
+  `home_team` (short codes), `model_key`, `confidence_tier`.
+- Market: `market_type` (moneyline/spread/total), `side`, `model_value`,
+  `market_value`, `point_edge` (nullable for moneyline), `cover_prob`
+  (nullable for moneyline).
+- Bet economics: `ev`, `edge_strength` (strong/moderate/weak),
+  `kelly_frac`, `kelly_stake`.
+
+No scaffolded fields on `EdgeRow`. The prototype's Edges screen doesn't
+carry data we can't compute.
+
+**Filter model:** `/edges?week=&season=&min_ev=` — `week` and `season`
+optional (default from `resolve_current_season_week()`); `min_ev` defaults
+to `0.0` (matches CLI). Additional bankroll / Kelly params could surface
+as query args in Step 6d design, but the default (`bankroll=1000`,
+`kelly_multiplier=0.25`) matches the CLI and is likely the API default too.
+
+**Champion- and odds-missing behavior (6d):**
+
+| State | Response |
+|---|---|
+| Manifest missing | `200`, `items: []`, `field_status.items: blocked/NO_CHAMPION_MANIFEST` |
+| Odds snapshot missing | `200`, `items: []`, `field_status.items: unavailable/NO_ODDS_AVAILABLE` |
+| Both missing | Champion-missing wins (checked first at the loader). |
+| Predictions empty for (season, week) | `200`, `items: []`, no `field_status` (empty is a valid state) |
+| Edge report empty after filter | `200`, `items: []`, no `field_status` (nothing above `min_ev` is a valid state) |
+
+Both channels use the D14 structured-metadata pattern; the API never
+5xxs on missing static artifacts.
+
+**Design decisions locked:**
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Champion resolution location | Loader | Same as `/games`. Route layer stays ignorant. |
+| Data-state signaling loader → route | Distinct exception types | `ChampionNotFoundError` and `OddsUnavailableError` translate to different `field_status` slugs at the route boundary. Composable and preserves loader's "success means data is present" contract. |
+| New exception module | `api/exceptions.py` | Reserved for API-surface data-state errors from loaders to routes. |
+| New slug | `NO_ODDS_AVAILABLE` in `Unavailable` | "Static artifact needs refresh via `gridiron ingest fetch-odds`" is the operational state. |
+| Team name conversion | Loader, after ranking | Matches `/games` pattern. Conversion at API boundary. |
+| Total std fallback | `13.0` in loader | Matches `cli/edges.py::_TOTAL_STD_FALLBACK`. |
+
+**Disconfirming evidence to watch for during implementation:**
+
+- **If `EdgeList`'s field_status pattern needs to change** — e.g., if the frontend needs per-row status rather than list-level, the schema shape shifts. Unlikely; edges are computed atomically.
+- **If bankroll/Kelly params need to be plumbed through auth/session state** — deferred concern. Tier 2 assumes stateless request/response.
+- **If `build_edge_report`'s per-row shape doesn't map cleanly to Pydantic** — spread/total rows have `point_edge` and `cover_prob`; moneyline rows have them as `NaN`. Serializer needs to normalize to `None` at the Pydantic boundary. Confirmed shape by reading `recommendations.py`.
+
 **Tier 3 — Backend additions.** Designing. Additions inventory unchanged from original plan.
 
 | Addition | Populates |
@@ -116,6 +199,7 @@ per YAGNI.
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | **W8 Tier 2 Step 6 design.** Inline design block added for `/edges`. Four substeps: loader (6a), schemas (6b), serializer (6c), route (6d). Field scope, filter model, and both loader-signaled data-state exceptions (`ChampionNotFoundError`, `OddsUnavailableError`) locked. `NO_ODDS_AVAILABLE` slug scheduled for `Unavailable`. `api/exceptions.py` scheduled as a new module. |
 | 2026-07-01 | **W8 Tier 2 Step 5 complete.** `/games` and `/games/{id}` shipped in four substeps (loader, schemas, serializer, routes). Champion resolution threads from manifest through loader to Pydantic response. `MiniRepoBuilder` gained `with_champion_manifest` and `with_predictions_archive` methods. `NO_CHAMPION_MANIFEST` slug registered in `Unavailable`. Two lessons applied for future integration tests: `dependency_overrides` keys on the exact function inside `Depends(...)`, and D19 `repo_root` threading needs an audit sweep across `api/loaders.py`. Endpoints populated so far: 12. |
 | 2026-07-01 | **W8 resumed; Tier 2 Step 5 in progress.** PLAN.md restructured: W13 complete block removed (moved to CHANGELOG), W8 promoted from Paused to Current Workstream. Step 5 rescoped: `/games` and `/games/{id}` (dropped `/games/{game_id}/predictions` per YAGNI). Substep 5a (games loader in `api/loaders.py`) complete: `load_games_for_week` and `load_game` resolve the current win_prob champion, filter the prediction archive, and translate to API-facing shape. |
 | 2026-07-01 | **W13 Tier 3 complete. W13 workstream closed.** Four steps: resolve_win_prob_model_type helper, weekly_predict refactor, edges refactor (both report and clv), intentional-Elo annotations. Actual scope was 3 CLI-option default sites (not 8, per original handoff estimate); the other 5 sites were provenance labels or intentional Elo usage and got comments instead of refactors. W8 (API) unpauses; Tier 2 Step 5 (game endpoints) is now unblocked. |
