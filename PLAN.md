@@ -130,6 +130,113 @@ MiniRepoBuilder gained no new methods; test-side helpers
 (`_write_prop_manifest`, `_write_prop_archive`) inline in
 `test_props_routes.py` for now.
 
+#### Step 8 — `/compare/teams`, `/compare/player/{prop_id}` design
+
+**Scope:** Read-only comparison endpoints. Both are heavily blocked by
+Tier 3 additive datasets (per-stat percentile ranking, off/def
+decomposition, opponent-allowed-by-position aggregation, cohort
+splits). T2 ships the ~20% of fields we can populate from existing
+data, with everything else scaffolded via `field_status`. Rationale:
+close the API surface completely so W9 (Frontend) sees a 200 for
+every prototype-referenced URL, even where most fields are pending.
+
+**Substeps:**
+
+- **8a — `/compare/teams`.** Loader reuses `load_elo_state_df` and
+  `load_games_df` for team ratings and records. Schema uses a
+  list-of-stat-rows shape (`stats: [{ label, team_a, team_b, unit }, ...]`)
+  matching the prototype's compare-view table. Serializer builds the
+  row list, populating `rating`, `rank`, `wins`, `losses`, `ties` from
+  real data; blocking `off_rating`, `def_rating`, `trend`, cohort
+  splits, and per-stat percentile ranks with `field_status: pending`
+  or `field_status: blocked` slugs.
+- **8b — `/compare/player/{prop_id}`.** Loader calls `load_prop` for
+  the prop-side data (already in the archive). Defense-side data is
+  entirely blocked pending opponent-allowed-by-position aggregation.
+  Route decodes `prop_id` via the same `_decode_prop_id` helper as
+  `/props/{prop_id}`. Schemas mirror the compare-teams row-list shape
+  but with a projection vs defense-context axis instead of team-a vs
+  team-b.
+
+**Field scope (locked):**
+
+Populated in `/compare/teams` response:
+- `season`, `team_a`, `team_b` (echoed back)
+- `stats` list:
+  - `rating` (Elo) — populated per team from `load_elo_state_df`.
+  - `record.wins`, `record.losses`, `record.ties` — populated from
+    `load_games_df` for the season.
+  - `rank` — populated per team from ranked Elo.
+
+Scaffolded with `field_status`:
+- `off_rating`, `def_rating` per team → **blocked**, slug
+  `OFF_DEF_DECOMPOSITION` (already registered in `Unavailable`).
+- `trend` per team → **blocked**, slug `NO_PRIOR_SNAPSHOT` (already
+  registered).
+- `schedule_difficulty`, `playoff_probability` per team → **pending**
+  (Tier 3 additive).
+- `cohort_splits` (season, L4, home, away) per team → **pending**
+  (Tier 3 additive).
+- Per-stat percentile ranks → **pending** (Tier 3 additive).
+
+Populated in `/compare/player/{prop_id}` response:
+- `prop_id`, `game_id`, `season`, `week`, `player_id`, `player_name`,
+  `position`, `team`, `stat_type`, `model_key` (from `load_prop`)
+- `projection` block: `predicted_mean`, `predicted_std`, `lo_90`,
+  `hi_90` (from archive; same as `/props/{prop_id}`)
+
+Scaffolded with `field_status`:
+- `defense_context` block → **entirely blocked** pending
+  opponent-allowed-by-position aggregation. New slug
+  `OPPONENT_ALLOWED_BY_POSITION` scheduled for `Unavailable`.
+- `line_context` — same treatment as `/props/{prop_id}` (pending on
+  odds-join at prediction time).
+- `situational_splits` for the player → **pending** (Tier 3
+  additive).
+
+**Filter model:**
+
+- `/compare/teams?team_a=KC&team_b=LAC&season=`: `team_a` and `team_b`
+  required. Unknown abbreviations → 404. `season` optional, defaults
+  from lazy `_resolve_scope`.
+- `/compare/player/{prop_id}`: no query params beyond the path. Same
+  `prop_id` decode + 404 semantics as `/props/{prop_id}`.
+
+**Champion-, team-, and prop-missing behavior:**
+
+| State | Response |
+|---|---|
+| `team_a` or `team_b` unknown abbreviation | 404 |
+| Season lookup fails (games CSV missing) | 500 (unchanged from `/teams/{abbr}` pattern) |
+| `prop_id` malformed on `/compare/player/{prop_id}` | 404 |
+| Champion for prop stat_type missing | 200 with projection null and `field_status.projection: blocked/NO_CHAMPION_MANIFEST` (mirrors `/props/{prop_id}`) |
+| Prop not in archive | 404 |
+
+**Design decisions locked:**
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Framing | Full endpoints with 20% populated + 80% scaffolded | "Full prototype shape, no cuts" success criterion. W9 sees 200 for every URL. |
+| `/compare/teams` response shape | List of stat rows | Matches prototype's compare-table visual. Extension-friendly. |
+| `/compare/player/{prop_id}` response shape | Row-list mirror of `/compare/teams` | Consistent client rendering. |
+| Loader reuse | Reuse `load_elo_state_df`, `load_games_df`, `load_prop` | No new loader machinery. Comparison is a serialization concern. |
+| New `Unavailable` slug | `OPPONENT_ALLOWED_BY_POSITION` in 8b | Registers the blocker so its field_status has a stable identity. |
+| `prop_id` decode | Reuse `_decode_prop_id` from `/props` | DRY. |
+
+**Disconfirming evidence to watch for:**
+
+- **If the row-list shape doesn't cleanly serialize** (e.g., needing
+  discriminated unions on `label` to enforce which cells populate),
+  fall back to a discriminated tagged-union schema. Not expected.
+- **If the frontend needs sorted stats or grouped sections
+  (Offense/Defense/Special Teams)**, the response might need a
+  `groups: [{group_label, stats: [...]}]` structure. Ship flat first;
+  frontend can group client-side.
+- **If defense_context on `/compare/player/{prop_id}` is fully
+  redundant with a future dedicated endpoint** (e.g., `/defense/{team}`
+  when that lands in Tier 3), we may want to link rather than embed.
+  Not a T2 concern.
+
 **Tier 3 — Backend additions.** Designing. Additions inventory unchanged from original plan.
 
 | Addition | Populates |
@@ -148,6 +255,7 @@ MiniRepoBuilder gained no new methods; test-side helpers
 
 | Date | Change |
 |------|--------|
+| 2026-07-02 | **W8 Tier 2 Step 8 design.** Inline design block added for `/compare/teams` and `/compare/player/{prop_id}`. Two substeps: `/compare/teams` (team-vs-team stat row list) and `/compare/player/{prop_id}` (projection vs defense context). Framing A locked — full endpoints with ~20% populated fields from existing data, ~80% scaffolded via `field_status` pending Tier 3 additive datasets. `OPPONENT_ALLOWED_BY_POSITION` new slug scheduled for `Unavailable`. Response shape: list of stat rows matching the prototype's compare-table visual. |
 | 2026-07-02 | **W8 Tier 2 Step 7 complete.** `/props` and `/props/{prop_id}` shipped in four substeps (loader, schemas, serializer, routes). Per-family champion resolution iterates `PROP_STAT_FAMILIES`; each family independent. `prop_id` composite `{game_id}__{player_id}__{stat_type}`. Line-derived fields (`line`, `p_over`, `lean`, `confidence_tier`) 100% null in T2, scaffolded as `field_status: pending` — odds-join at prediction time not yet implemented. `_resolve_scope` refactored to lazy read of games CSV. Endpoints populated so far: 14. |
 | 2026-07-02 | **W8 Tier 2 Step 7 design.** Inline design block added for `/props` and `/props/{prop_id}`. Four substeps: loader with per-family champion resolution (7a), schemas with ProjectionBlock and scaffolded line-dependent fields (7b), serializer (7c), routes with `prop_id` decoding (7d). Archive verification revealed `line`, `p_over`, `lean`, `confidence_tier` are 100% null in the archive today; all four scaffolded as `field_status: pending`. `prop_id` composite locked as `{game_id}__{player_id}__{stat_type}`. Season string normalized to int for archive read. |
 | 2026-07-02 | **W8 Tier 2 Step 6 complete.** `/edges` shipped in four substeps (loader, schemas, serializer, route). `api/exceptions.py` introduced with `OddsUnavailableError` for loader → route data-state signaling. `MiniRepoBuilder` gained `with_odds_snapshot`. `NO_ODDS_AVAILABLE` registered in `Unavailable`. Two-exception route pattern (`ChampionNotFoundError` and `OddsUnavailableError` translating to distinct `field_status` slugs) validated end-to-end. Endpoints populated so far: 12. |
