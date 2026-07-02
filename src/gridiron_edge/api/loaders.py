@@ -164,3 +164,154 @@ def load_projections_summary_df(
     df = pd.read_csv(path)
     mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
     return df, mtime
+
+
+def load_games_for_week(
+    settings: Settings,
+    *,
+    season: str,
+    week: int,
+) -> pd.DataFrame:
+    """Load champion-model predictions for all games in (season, week).
+
+    Filters the prediction archive to the current win_prob champion's
+    output. Joins to the games table for schedule truth (game_date,
+    game_time, venue) and converts team names to short codes.
+
+    Args:
+        settings: API settings, source of repo_root.
+        season: Season label, e.g. "2026-2027".
+        week: Week number.
+
+    Returns:
+        DataFrame with one row per game. Columns:
+            game_id, game_date, week, season,
+            away_team, home_team (short codes),
+            home_win_prob, away_win_prob,
+            model_spread, model_total,
+            projected_home_score, projected_away_score,
+            confidence_tier,
+            win_prob_lo, win_prob_hi (uncertainty band).
+        Empty DataFrame if no games match.
+
+    Raises:
+        ChampionNotFoundError: If the champion manifest is missing or
+            has no win_prob entry.
+    """
+    from gridiron_edge.evaluation.archive import load_prediction_log
+    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
+
+    _, model_type = resolve_current_champion("win_prob", repo=settings.repo_root)
+
+    archive: DataFrame = load_prediction_log(
+        season=season,
+        week=week,
+        model_name="win_prob",
+        model_type=model_type,
+    )
+
+    if archive.empty:
+        return archive
+
+    games: DataFrame = load_games_df(settings)
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+
+    return _finalize_games_frame(archive, games, long_to_short)
+
+
+def load_game(
+    settings: Settings,
+    *,
+    game_id: str,
+) -> dict | None:
+    """Load champion-model prediction for one game.
+
+    Same champion-filtering and enrichment as ``load_games_for_week``,
+    but returns a dict for a single game rather than a DataFrame.
+
+    Args:
+        settings: API settings, source of repo_root.
+        game_id: Composite game_id, e.g. "2026_01_KC_LAC".
+
+    Returns:
+        Dict of the fields listed in ``load_games_for_week``'s docstring,
+        or ``None`` if the game_id is not in the archive.
+
+    Raises:
+        ChampionNotFoundError: If the champion manifest is missing or
+            has no win_prob entry.
+    """
+    from gridiron_edge.evaluation.archive import load_prediction_log
+    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
+
+    _, model_type = resolve_current_champion("win_prob", repo=settings.repo_root)
+
+    archive: DataFrame = load_prediction_log(
+        model_name="win_prob",
+        model_type=model_type,
+    )
+    if archive.empty:
+        return None
+    archive = archive.loc[archive["game_id"] == game_id, :].copy()
+
+    if archive.empty:
+        return None
+
+    games: DataFrame = load_games_df(settings)
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+
+    enriched: DataFrame = _finalize_games_frame(archive, games, long_to_short)
+    if enriched.empty:
+        return None
+
+    return enriched.iloc[0].to_dict()
+
+
+def _finalize_games_frame(
+    archive: pd.DataFrame,
+    games: pd.DataFrame,
+    long_to_short: dict[str, str],
+) -> pd.DataFrame:
+    """Convert archive rows to the API-facing games shape.
+
+    Shared by ``load_games_for_week`` and ``load_game``. Joins the
+    archive to the games table for schedule truth, converts long team
+    names to short codes, and selects the API-relevant columns.
+    """
+    # Join to games for schedule truth. Left join preserves archive
+    # rows that might reference upcoming games not yet in the games
+    # table (games table is populated post-week).
+    merged: DataFrame = archive.merge(
+        games[["GAME_ID", "YEAR", "WEEK_NUM", "GAME_DATE"]],
+        left_on="game_id",
+        right_on="GAME_ID",
+        how="left",
+        suffixes=("", "_games"),
+    )
+
+    # Prefer games table for game_date when available (schedule truth);
+    # fall back to archive's game_date.
+    merged["game_date"] = merged["GAME_DATE"].fillna(merged["game_date"])
+
+    # Team name conversion to short codes.
+    merged["away_team"] = merged["away_team"].map(long_to_short).fillna(merged["away_team"])
+    merged["home_team"] = merged["home_team"].map(long_to_short).fillna(merged["home_team"])
+
+    columns: list[str] = [
+        "game_id",
+        "game_date",
+        "week",
+        "season",
+        "away_team",
+        "home_team",
+        "home_win_prob",
+        "away_win_prob",
+        "model_spread",
+        "model_total",
+        "projected_home_score",
+        "projected_away_score",
+        "confidence_tier",
+        "win_prob_lo",
+        "win_prob_hi",
+    ]
+    return merged.loc[:, columns].copy()

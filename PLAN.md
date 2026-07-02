@@ -33,158 +33,17 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ### What we are building
 
-Persist the champion decision that `evaluate select-model` (games) and `select_prop_champion` (props) already compute at command time. The persisted decision lives in a static manifest at `data/output/champions/champions.json`. A resolver API (`evaluation/champion_resolver.py::resolve_current_champion(model_name)`) reads it. `full-retrain` writes it as a new stage between `refresh-calibrations` and `baseline-report`. Eight hard-coded CLI callsites get refactored to use the resolver instead of literal `("win_prob", "elo")` pairs.
+A read-only REST API that exposes every analytics output Gridiron Edge produces, shaped to match the Gridiron Edge frontend prototype end-to-end. Every screen in the prototype gets the endpoints it needs; every field that the backend can populate today returns real data; every field the backend can't yet produce returns `null` accompanied by metadata describing why.
 
-The champion algorithm itself does not change. What changes is that the decision becomes a persistent artifact instead of a terminal-only recommendation.
+The API is implemented as a FastAPI app with Pydantic v2 response models, mounted as an `api/` package and served via `gridiron api serve`. Pydantic is confined to the `api/` boundary — domain code (models, evaluation, market, features) stays pandas/dataclass-shaped.
 
 ### Why we are building it
 
-Three reasons:
-
-1. **W8 Tier 2 is blocked without it.** `/games`, `/games/{id}`, and downstream endpoints need to serve champion-only outputs per D21. The champion decision must be a pre-computed artifact, not a request-time computation.
-2. **Eight CLI callsites currently hard-code `("win_prob", "elo")`.** This is technical debt from before the composite-key infrastructure was complete. Now that `select-model` produces the real answer, consumers should read it.
-3. **W3.6/W3.7 built the composite-identity foundation but stopped short of persisting the model_name-level decision.** W13 finishes that job.
-
-#### Success criteria
-- ✅ ``data/output/champions/champions.json`` exists after full-retrain
-  completes.
-- ✅ ``resolve_current_champion(model_name)`` returns the current
-  ``(model_name, model_type)`` pair.
-- ✅ Missing manifest or missing entry raises ``ChampionNotFoundError``;
-  documented and caught in downstream consumers.
-- ✅ ``promote-champions`` stage runs the three selectors in write mode.
-- ✅ CLI consumers use ``resolve_current_champion()`` via the
-  ``--model-type auto`` sentinel where appropriate.
-- ✅ All quality gates pass.
-
-### Disconfirming evidence
-
-- **If `select-model` needs substantial refactoring to be invoked programmatically** (currently a Typer command that prints to terminal), the write path is harder than "flag on existing command." Tier 2 pre-verification will show whether the ranking logic in `evaluation/select.py` is already factored cleanly enough to reuse.
-- **If the prop side needs its own `select-model`-style ranking command** (it currently invokes `select_prop_champion` inline during `props champion`, which prints rather than persists), we may need to build the prop persistence path as a separate task.
-- **If more than the 8 known callsites hard-code models,** the Tier 3 refactor scope grows. An audit during Tier 3 will surface any others.
-
-### Locked architectural decisions
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Champion is a static artifact | **Yes** | D21 — API is a serialization boundary. |
-| Manifest format | **JSON at `data/output/champions/champions.json`** | Small, human-inspectable, matches `data/output/` convention. |
-| Selection algorithm | **Reuse `evaluate select-model`'s composite rank (games) and `select_prop_champion` (props)** | Both already exist and are used. W13 does not touch algorithms. |
-| Read API | **`evaluation/champion_resolver.py::resolve_current_champion(model_name)`** | Central import point for CLI + API consumers. |
-| Missing-entry handling | **`ChampionNotFoundError` exception** | Explicit; downstream callers catch and degrade. |
-| Write trigger | **New `full-retrain` stage between `refresh-calibrations` and `baseline-report`** | The retrain pipeline is the natural moment. Baseline report can then reference champion picks. |
-| Manual write path | **Extend `evaluate select-model` with `--write-manifest` flag** for game side; add equivalent to `props champion` for prop side | Users can update the manifest without a full retrain when needed. |
-| Prop and game share manifest | **Yes — single `champions.json` with entries for both** | Uniform read API. Frontend and CLI don't care which is which; they resolve by `model_name`. |
-
-### Open design questions (resolved during tier design)
-
-1. **Manifest schema fields.** Minimum: `{model_name: {model_type, promoted_at, source_run_id}}`. Should promotion metrics be embedded for audit, or just `source_run_id`? Decide during Tier 1.
-2. **How does `select-model` get invoked programmatically from `full-retrain`?** Options: extract the ranking logic into a plain function callable from both the Typer command and the new stage, or invoke the Typer command as a subprocess. Decide during Tier 2 after inspecting `evaluation/select.py`.
-3. **Prop side ranking:** `props champion` invokes `select_prop_champion` inline and prints. Do we extend it with `--write-manifest`, or build a new `evaluate promote-prop-champion` command? Decide during Tier 2.
-4. **`cli/ratings.py` line 74 uses `("win_prob", "elo")` intentionally** (it's the Elo ratings command). Confirm during Tier 3 refactor that this stays as-is with a comment, or gets migrated to the resolver with an elo-specific opt-in.
-
-### Tiers
-
-**Tier 1 — Manifest schema + resolver API.** ✅ Complete (2026-07-01).
-Shipped ``champion_resolver.py`` with ``read_manifest``,
-``resolve_current_champion``, ``resolve_current_champion_with_metadata``,
-``list_current_champions``, and ``ChampionNotFoundError``. Manifest
-schema documented inline. Reader-only; writer path deferred to Tier 2.
-
-**Tier 2 — Manifest writer and full-retrain integration.** ✅ Complete (2026-07-01).
-Shipped in nine steps:
-
-1. ``write_manifest`` primitive with atomic writes and preservation
-   semantics for ``source_run_id`` (entries with existing ``source_run_id``
-   keep it; new entries get the caller's).
-2. ``select_game_regression_champions`` — reads ``ArtifactStore`` metadata,
-   picks lowest holdout MAE, tie-breaks to ``random_forest``.
-3. ``select_game_classification_champions`` — wraps ``collect_model_metrics``
-   + ``rank_models`` from ``evaluation/select.py`` on Brier/ECE/AUC.
-4. ``select_prop_champion_for_family`` and
-   ``select_prop_champions_all_families`` — build ``RegressionModelResult``
-   list from the prop archive, delegate to existing ``select_prop_champion``.
-5. ``_stage_promote_champions`` in ``cli/full_retrain.py`` between
-   ``refresh-calibrations`` and ``baseline-report``. Preserves prior
-   manifest entries for families outside the current subset.
-6. Baseline report annotates current champions above the metrics table.
-   Bullet-list format so the delta-table parser ignores it.
-7. ``evaluate select-model --write-manifest`` — manual override for the
-   game side. Uses the shared ``promote_champions`` pure function
-   extracted in this step.
-8. ``props champion --write-manifest`` — parity for the prop side.
-   Both flags call the shared ``write_champion_manifest`` helper in
-   ``cli/_composites.py``.
-9. ``champion_cmd`` refactored to use ``build_prop_champion_candidates``,
-   sharing evaluation logic with the manifest writer.
-
-Central catalog at ``gridiron_edge.models.catalog`` is the single source
-of truth for ``GAME_MODEL_PAIRS``, ``PROP_STAT_FAMILIES``, and
-``PROP_ALGORITHMS``. Used by both ``full_retrain.py`` and the
-``--write-manifest`` CLI flags.
-
-Locked decisions: manifest at ``data/output/champions/champions.json``;
-selectors live in ``evaluation/champion.py``; game-regression ties
-broken by preferring ``random_forest``; subset semantics preserve
-untouched families in partial retrains; ``promote-champions`` depends
-only on ``refresh-calibrations`` (not on ``backfill-prop-models``) so
-``--skip-prop-backfill`` continues to work.
-
-**Tier 3 — CLI consumer refactor.** ✅ Complete (2026-07-01).
-Shipped in four steps:
-
-1. ``resolve_win_prob_model_type`` helper in ``cli/_composites.py``.
-   Honors the ``"auto"`` sentinel by reading the champion manifest;
-   passes through explicit values verbatim. Raises
-   ``typer.BadParameter`` with actionable message when manifest is
-   missing.
-2. ``cli/weekly_predict.py`` — ``--model-type`` default flipped from
-   ``"random_forest"`` to ``"auto"``. Resolution happens after
-   Typer/user-input validation so genuine input errors surface first.
-3. ``cli/edges.py`` — both ``report`` and ``clv`` commands migrated
-   with the same pattern. Existing integration tests updated to pass
-   ``--model-type random_forest`` explicitly.
-4. Annotations added to five intentional Elo callsites
-   (``weekly_predict._stage_predict_week``, ``output.output_predictions``,
-   ``evaluate.evaluate_tune`` both branches, ``evaluate.evaluate_backfill``
-   defaults, ``ratings.elo_evaluate``) explaining why they aren't
-   migrated to the resolver.
-
-Callsite recount: the original handoff paragraph's "8 hard-coded
-callsites" conflated three categories. Actual scope was 3 CLI-option
-default sites (weekly_predict, edges report, edges clv). The other 5
-sites are provenance labels or intentional Elo usage — comments added
-instead of refactors.
-
-**W13 Runtime Champion Resolution — COMPLETE.**
-
-Tier design block drafted at the start of the tier.
-
----
-
-## Paused Workstreams
-
-### W8 — API Serving Layer
-
-**Status:** Paused pending W13 completion.
-
-**Where we stopped:** Tier 2 Step 4 complete (`/projections` shipped, 10 endpoints populated). Step 5 (`/games`, `/games/{id}`, `/games/{id}/predictions`) requires runtime champion resolution to serve pre-computed champion-only outputs per D21. W13 addresses this dependency.
-
-**How this resumes:** When W13 closes, Tier 2 status returns from Paused to Active. Step 5 verification and design proceed with `resolve_current_champion()` as a locked given, and the remaining steps (5–8) continue on the original ordering.
-
-#### What we are building (unchanged)
-
-A read-only REST API that exposes every analytics output Gridiron Edge produces, shaped to match the Gridiron Edge frontend prototype end-to-end. Every screen in the prototype gets the endpoints it needs; every field that the backend can populate today returns real data; every field the backend can't yet produce returns `null` accompanied by metadata describing why.
-
-The API is implemented as a FastAPI app with Pydantic v2 response models, mounted as a new `api/` package and served via `gridiron api serve`. Pydantic is confined to the `api/` boundary — domain code (models, evaluation, market, features) stays pandas/dataclass-shaped.
-
-#### Why we are building it (unchanged)
-
-1. **Verification surface.** The CLI surfaces outputs one-at-a-time. The frontend prototype puts ~19 screens worth of outputs side-by-side. Wiring the prototype to the API is the next quality-assurance step.
+1. **Verification surface.** The CLI surfaces outputs one at a time. The frontend prototype puts ~19 screens worth of outputs side by side. Wiring the prototype to the API is the next quality-assurance step.
 2. **Frontend unblock.** W9 (Frontend) cannot start until there is an API to wire to.
 3. **Roadmap discovery.** The placeholder fields the API ships form a structured, observable inventory of "what's missing" that drives ROADMAP §9 prioritization.
 
-#### Success criteria (unchanged)
+#### Success criteria
 
 - Every endpoint in the prototype-driven inventory returns a 200 response with a valid Pydantic-validated shape.
 - Every populated endpoint returns real data for ≥80% of its fields, with the remainder explicitly marked in `_meta.field_status`.
@@ -193,7 +52,13 @@ The API is implemented as a FastAPI app with Pydantic v2 response models, mounte
 - Test coverage: unit (response model shape + `_meta` correctness), integration (`MiniRepoBuilder`-backed), with e2e deferred to W9.
 - All quality gates pass.
 
-#### Locked architectural decisions (unchanged)
+### Disconfirming evidence
+
+- **If the archive's schema drifts** during a Tier 2 step (e.g., new columns, renamed columns), loaders assuming the current shape break silently. Substep verification should include a `.columns.tolist()` check against the live archive before writing loaders.
+- **If a Tier 3 additive dataset lands earlier than expected** (e.g., an injuries feed becomes available mid-Tier 2), a Tier 2 endpoint may want to consume it opportunistically rather than shipping with `field_status: blocked`. Decide case-by-case; the default is "ship blocked and revisit."
+- **If Pydantic v2 shape validation catches loader inconsistencies** — for example, a `float | None` field receiving `NaN` — the loader is the fix site, not the schema. Track any such catches during Tier 2 to inform Tier 3 hardening.
+
+### Locked architectural decisions
 
 | Decision | Choice |
 |---|---|
@@ -206,53 +71,56 @@ The API is implemented as a FastAPI app with Pydantic v2 response models, mounte
 | Placeholder convention | **`null` + `_meta.field_status`** |
 | Placeholder granularity | **Field-level** |
 
-#### Tiers
+### Tiers
 
-##### Tier 1 — Skeleton + blocked-endpoint stubs
+**Tier 1 — Skeleton + blocked-endpoint stubs.** ✅ Complete (2026-06-27).
+FastAPI app skeleton, `_meta` envelope plumbing, twelve endpoints returning 200 with structurally valid null responses carrying registered blocker slugs. `/docs` groups by domain.
 
-**Status:** Complete (2026-06-27)
+**Tier 2 — Direct-serialization endpoints.** 🟡 Active. Steps 1–4 complete (10 endpoints populated). Step 5 (games) in progress.
 
-Shipped the FastAPI app skeleton, the `_meta` envelope plumbing, and every blocked endpoint returning its null-shape response with structured `_meta.field_status` entries. Twelve endpoints returning 200 with structurally valid null responses. `/docs` groups by domain. See CHANGELOG entry for full detail.
+| Step | Scope | Status |
+|---|---|---|
+| 1 | `/weeks/current` + all `/portfolio/*` | ✅ Complete (2026-07-01) |
+| 2 | `/model/performance` | ✅ Complete (2026-07-01) |
+| 3 | `/teams` + `/teams/{abbr}` | ✅ Complete (2026-07-01) |
+| 4 | `/projections` | ✅ Complete (2026-07-01) |
+| 5 | `/games`, `/games/{id}` | 🟡 Active |
+| 6 | `/edges` | Not started |
+| 7 | `/props`, `/props/{prop_id}` | Not started |
+| 8 | `/compare/teams`, `/compare/player/{prop_id}` | Not started |
 
-##### Tier 2 — Direct-serialization endpoints
+#### Step 5 — `/games`, `/games/{id}` design
 
-**Status:** Paused (Steps 1–4 complete; Steps 5–8 paused pending W13)
+**Scope change from original plan:** `/games/{game_id}/predictions` dropped per YAGNI. The detail endpoint carries the champion's prediction inline; a separate predictions endpoint is only warranted when a real consumer emerges (per-simulation histograms, per-model audit trail UI).
 
-Endpoints populated so far: 10.
+**Substeps:**
 
-**Step 1 — `/weeks/current` + all `/portfolio/*` (Complete, 2026-07-01)**
-Six endpoints. Introduced `api/loaders.py`, `api/serializers/` package. D19 (explicit `repo_root` threading), D20 (`Unavailable` slug family for data-limit and missing-query-param cases) recorded.
+- **5a — Games loader.** ✅ Complete. `load_games_for_week` and `load_game` in `api/loaders.py`. Both resolve the current win_prob champion via `resolve_current_champion`, filter the prediction archive to the champion model's output, join to the games table for schedule truth, and convert long team names to short codes. Champion resolution happens at the loader layer; higher layers stay ignorant. `ChampionNotFoundError` bubbles up unchanged (translation to `field_status` happens in 5d).
+- **5b — Games schemas.** Not started. `api/schemas/games.py` with `GameSummary`, `GameDetail`, and response envelopes. Field-level `field_status` scaffolding for pending/blocked fields.
+- **5c — Games serializer.** Not started. `api/serializers/games.py` following the `serializers/teams.py` pattern. Two functions: `serialize_game_summary` and `serialize_game_detail`.
+- **5d — Games routes + registration.** Not started. `api/routes/games.py` with the two endpoints, wired to `create_app()`. Integration test with `MiniRepoBuilder` + preloaded champion manifest.
 
-**Step 2 — `/model/performance` (Complete, 2026-07-01)**
-Nested response combining model prediction quality (via `evaluation/metrics.py`) with betting performance (via `betting/performance.py`). Two new `Unavailable` slugs (`NO_EVALUATION_DATA`, `SINGLE_CLASS_OUTCOME`).
+**Field scope (locked):**
 
-Note: This endpoint computes metrics at request time, which violates D21. Tracked in ROADMAP §9.6 for refactor to a pre-computed summary artifact.
+Populated in the detail response:
+- Game header: `kick`, `venue`, `game_date`, `week`, `season`, `day_of_week`
+- Weather: from the schedule/weather join
+- Teams: `away_team`, `home_team` (short codes)
+- Prediction (champion): `home_win_prob`, `away_win_prob`, `home_win_lo`, `home_win_hi`, `confidence_tier`
+- Enrichment: `model_spread`, `model_total`, `projected_home_score`, `projected_away_score`
 
-**Step 3 — `/teams` + `/teams/{abbr}` (Complete, 2026-07-01)**
-First multi-source composition — Elo state + games records + team name normalization. Two new `Unavailable` slugs (`NO_PRIOR_SNAPSHOT`, `OFF_DEF_DECOMPOSITION`). Introduced `resolve_current_season_week` as a shared loader helper.
+Scaffolded with `field_status`:
+- Team comparison stats table → **pending** (no opponent-adjusted percentile logic backend)
+- Swing factors → **blocked on feature-attribution workstream**
+- Injuries → **blocked on ROADMAP §5.3**
+- Top prop edges for this game → **pending** (defer to substep after edge endpoint lands)
+- Edge (side + EV + confidence) → **deferred to `/edges`** to avoid duplication; frontend stitches client-side.
 
-**Step 4 — `/projections` (Complete, 2026-07-01)**
-Reads Monte Carlo season/playoff projections CSV; returns 32-team ranking with staleness timestamp. One new `Unavailable` slug (`NO_PROJECTIONS_DATA`).
+**Filter model:** `/games?week=&season=` — both optional, default from `resolve_current_season_week()`. Matches the `/teams` pattern.
 
-**Step 5 — `/games`, `/games/{id}`, `/games/{id}/predictions` — PAUSED**
-Discovered during pre-verification that:
-1. The predictions archive holds every model per game (audit trail pattern).
-2. No runtime champion resolution exists to identify which model's output is authoritative.
-3. Per D21, the API cannot compute this at request time.
-4. Per user direction, averaging across models is off the table (would obscure identity, pre-empt W12).
+**Champion-missing behavior (5d):** `ChampionNotFoundError` at the loader layer translates to a 200 response with all champion-dependent fields as `null` and `field_status: blocked/CHAMPION_NOT_WRITTEN`. Consistent with D14 — missing backend data surfaces as structured metadata, not HTTP failure.
 
-Pausing W8 to complete W13 (Runtime Champion Resolution). Step 5 resumes when W13 closes.
-
-**Steps 6–8 — Paused pending W13.**
-- Step 6 (`/edges`) — needs champion resolution to identify which predictions produced the edges.
-- Step 7 (`/props`, `/props/{prop_id}`) — same, for prop models.
-- Step 8 (`/compare/teams`, `/compare/player/{prop_id}`) — no direct dependency on W13, but sequenced after Steps 5–7 in the original plan.
-
-##### Tier 3 — Backend additions
-
-**Status:** Designing (not yet started; waits for Tier 2 to finish)
-
-Unchanged from original design. Additions inventory:
+**Tier 3 — Backend additions.** Designing. Additions inventory unchanged from original plan.
 
 | Addition | Populates |
 |---|---|
@@ -270,6 +138,7 @@ Unchanged from original design. Additions inventory:
 
 | Date | Change |
 |------|--------|
+| 2026-07-01 | **W8 resumed; Tier 2 Step 5 in progress.** PLAN.md restructured: W13 complete block removed (moved to CHANGELOG), W8 promoted from Paused to Current Workstream. Step 5 rescoped: `/games` and `/games/{id}` (dropped `/games/{game_id}/predictions` per YAGNI). Substep 5a (games loader in `api/loaders.py`) complete: `load_games_for_week` and `load_game` resolve the current win_prob champion, filter the prediction archive, and translate to API-facing shape. |
 | 2026-07-01 | **W13 Tier 3 complete. W13 workstream closed.** Four steps: resolve_win_prob_model_type helper, weekly_predict refactor, edges refactor (both report and clv), intentional-Elo annotations. Actual scope was 3 CLI-option default sites (not 8, per original handoff estimate); the other 5 sites were provenance labels or intentional Elo usage and got comments instead of refactors. W8 (API) unpauses; Tier 2 Step 5 (game endpoints) is now unblocked. |
 | 2026-07-01 | **W13 Tier 2 complete.** Nine steps shipped: manifest writer, three selectors, full-retrain integration, baseline-report annotation, two --write-manifest CLI flags, and the champion_cmd refactor. All champion decisions across CLI and stage surfaces share the same code path. Central catalog at gridiron_edge.models.catalog is now the single source of truth for model pairs and prop families. Tier 3 (CLI consumer refactor) begins. |
 | 2026-07-01 | W13 workstream definition locked. Scope: persist the champion decision that `evaluate select-model` and `select_prop_champion` already compute; expose via `resolve_current_champion(model_name)`; hook the write into `full-retrain` as a new stage; refactor 8 hard-coded CLI callsites. Three tiers: manifest+resolver, writer+integration, consumer refactor. Tier 1 verification to follow. |

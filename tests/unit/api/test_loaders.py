@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from gridiron_edge.api.loaders import (
     load_bankroll_history_df,
@@ -121,3 +122,277 @@ class TestResolveCurrentWeek:
             _season, week, source = resolve_current_week(settings)
         assert week == 1
         assert source == "fallback"
+
+
+class TestLoadGamesForWeek:
+    """Cover load_games_for_week (W8 Tier 2 Step 5a)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return FakeSettings(repo_root=tmp_path)
+
+    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
+        import json
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": {
+                "win_prob": {
+                    "model_type": model_type,
+                    "promoted_at": "2026-07-01T14:00:00",
+                    "source_run_id": "RUN_X",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+    def test_returns_champion_filtered_predictions(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_games_for_week
+
+        self._write_manifest(tmp_path, "random_forest")
+        settings = self._fake_settings(tmp_path)
+
+        # Two archived predictions, only one from the champion model.
+        archive = pd.DataFrame(
+            [
+                {
+                    "game_id": "2026_01_KC_LAC",
+                    "model_name": "win_prob",
+                    "model_type": "random_forest",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "game_date": "2026-09-05",
+                    "away_team": "Kansas City Chiefs",
+                    "home_team": "Los Angeles Chargers",
+                    "home_win_prob": 0.55,
+                    "away_win_prob": 0.45,
+                    "model_spread": -2.0,
+                    "model_total": 47.5,
+                    "projected_home_score": 25.0,
+                    "projected_away_score": 23.0,
+                    "confidence_tier": "Moderate",
+                    "win_prob_lo": 0.42,
+                    "win_prob_hi": 0.68,
+                },
+            ]
+        )
+
+        games_df = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2026_01_KC_LAC",
+                    "YEAR": "2026-2027",
+                    "WEEK_NUM": 1,
+                    "GAME_DATE": "2026-09-05",
+                },
+            ]
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_games_df",
+            lambda s: games_df,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_team_name_map",
+            lambda s: {
+                "Kansas City Chiefs": "KC",
+                "Los Angeles Chargers": "LAC",
+            },
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.archive.load_prediction_log",
+            lambda **kwargs: archive,
+        )
+
+        result = load_games_for_week(settings, season="2026-2027", week=1)
+
+        assert len(result) == 1
+        assert result.iloc[0]["game_id"] == "2026_01_KC_LAC"
+        assert result.iloc[0]["away_team"] == "KC"
+        assert result.iloc[0]["home_team"] == "LAC"
+        assert result.iloc[0]["home_win_prob"] == 0.55
+
+    def test_empty_archive_returns_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_games_for_week
+
+        self._write_manifest(tmp_path, "random_forest")
+        settings = self._fake_settings(tmp_path)
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.archive.load_prediction_log",
+            lambda **kwargs: pd.DataFrame(),
+        )
+
+        result = load_games_for_week(settings, season="2026-2027", week=1)
+        assert result.empty
+
+    def test_raises_champion_not_found_when_no_manifest(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_games_for_week
+        from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
+
+        # No manifest written.
+        settings = self._fake_settings(tmp_path)
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+
+        with pytest.raises(ChampionNotFoundError):
+            load_games_for_week(settings, season="2026-2027", week=1)
+
+
+class TestLoadGame:
+    """Cover load_game (W8 Tier 2 Step 5a)."""
+
+    def _fake_settings(self, tmp_path: Path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return FakeSettings(repo_root=tmp_path)
+
+    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
+        import json
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "champions.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-01T14:00:00+00:00",
+                    "models": {
+                        "win_prob": {
+                            "model_type": model_type,
+                            "promoted_at": "2026-07-01T14:00:00",
+                            "source_run_id": "RUN_X",
+                            "metrics": {"brier": 0.213},
+                        },
+                    },
+                }
+            )
+        )
+
+    def test_returns_dict_for_matching_game(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_game
+
+        self._write_manifest(tmp_path, "random_forest")
+        settings = self._fake_settings(tmp_path)
+
+        archive = pd.DataFrame(
+            [
+                {
+                    "game_id": "2026_01_KC_LAC",
+                    "model_name": "win_prob",
+                    "model_type": "random_forest",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "game_date": "2026-09-05",
+                    "away_team": "Kansas City Chiefs",
+                    "home_team": "Los Angeles Chargers",
+                    "home_win_prob": 0.55,
+                    "away_win_prob": 0.45,
+                    "model_spread": -2.0,
+                    "model_total": 47.5,
+                    "projected_home_score": 25.0,
+                    "projected_away_score": 23.0,
+                    "confidence_tier": "Moderate",
+                    "win_prob_lo": 0.42,
+                    "win_prob_hi": 0.68,
+                },
+            ]
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_games_df",
+            lambda s: pd.DataFrame(
+                [
+                    {
+                        "GAME_ID": "2026_01_KC_LAC",
+                        "YEAR": "2026-2027",
+                        "WEEK_NUM": 1,
+                        "GAME_DATE": "2026-09-05",
+                    }
+                ]
+            ),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_team_name_map",
+            lambda s: {
+                "Kansas City Chiefs": "KC",
+                "Los Angeles Chargers": "LAC",
+            },
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.archive.load_prediction_log",
+            lambda **kwargs: archive,
+        )
+
+        result = load_game(settings, game_id="2026_01_KC_LAC")
+
+        assert result is not None
+        assert result["game_id"] == "2026_01_KC_LAC"
+        assert result["away_team"] == "KC"
+        assert result["home_team"] == "LAC"
+
+    def test_returns_none_for_unknown_game_id(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_game
+
+        self._write_manifest(tmp_path, "random_forest")
+        settings = self._fake_settings(tmp_path)
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion_resolver.get_settings",
+            lambda: settings,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.archive.load_prediction_log",
+            lambda **kwargs: pd.DataFrame(),
+        )
+
+        result = load_game(settings, game_id="bogus_game_id")
+        assert result is None
