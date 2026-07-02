@@ -311,6 +311,42 @@ class MiniRepoBuilder:
         df.to_parquet(odds_dir / "dk_odds_current.parquet", index=False)
         return self
 
+    def with_teams_reference(
+        self,
+        long_to_short: dict[str, str] | None = None,
+    ) -> MiniRepoBuilder:
+        """Add a teams reference CSV mapping long names to short codes.
+
+        Writes ``data/cleaned/NFL_long_to_short_name.csv``, the path that
+        ``datasets.loaders.load_teams_long_short`` reads from.
+
+        Args:
+            long_to_short: Mapping of long names to short codes. Defaults
+                to a small four-team fixture set.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        default_map: dict[str, str] = {
+            "Kansas City Chiefs": "KC",
+            "Los Angeles Chargers": "LAC",
+            "Buffalo Bills": "BUF",
+            "Miami Dolphins": "MIA",
+        }
+        mapping: dict[str, str] = long_to_short if long_to_short is not None else default_map
+
+        cleaned_dir: Path = self._root / "data" / "cleaned"
+        cleaned_dir.mkdir(parents=True, exist_ok=True)
+
+        df = pd.DataFrame(
+            {
+                "NFL_LONG_NAME": list(mapping.keys()),
+                "NFL_SHORT_NAME": list(mapping.values()),
+            }
+        )
+        df.to_csv(cleaned_dir / "NFL_long_to_short_name.csv", index=False)
+        return self
+
     def build(self) -> Path:
         """Return the repository root path."""
         return self._root

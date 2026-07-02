@@ -93,6 +93,7 @@ def create_app() -> FastAPI:
 
     from gridiron_edge.api.routes import (
         comparables,
+        compare,
         edges,
         explain,
         games,
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
         weeks,
     )
 
+    app.include_router(compare.router)
     app.include_router(comparables.router)
     app.include_router(edges.router)
     app.include_router(explain.router)
