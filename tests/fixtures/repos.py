@@ -291,6 +291,26 @@ class MiniRepoBuilder:
         df.to_parquet(predictions_dir / "predictions_log.parquet", index=False)
         return self
 
+    def with_odds_snapshot(
+        self,
+        df: pd.DataFrame,
+    ) -> MiniRepoBuilder:
+        """Add a current odds snapshot parquet.
+
+        Writes ``data/odds/dk_odds_current.parquet``, the path that
+        ``ingest.odds.store.load_current_odds`` reads from.
+
+        Args:
+            df: Long-format odds DataFrame matching the ledger schema.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        odds_dir: Path = self._root / "data" / "odds"
+        odds_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(odds_dir / "dk_odds_current.parquet", index=False)
+        return self
+
     def build(self) -> Path:
         """Return the repository root path."""
         return self._root
