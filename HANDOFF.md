@@ -368,6 +368,7 @@ Two rules matter when writing tests that exercise FastAPI routes:
   `get_settings()` at module load time (e.g., `champion_resolver.get_settings`)
   needs `monkeypatch.setattr("gridiron_edge.evaluation.champion_resolver.get_settings", ...)`
   to redirect.
+- **`_resolve_scope` and similar defaults-from-artifacts helpers should be lazy.** Read the underlying artifact (games CSV, manifest, etc.) only when a default is actually needed. Eager reads couple every request to the artifact's existence, which surfaces as `FileNotFoundError` in tests that pass all query params explicitly. Fixed in `props.py::_resolve_scope`; similar fix pending for `games.py`, `edges.py`, `teams.py`.
 
 Per D19, every loader wrapper in `api/loaders.py` threads `settings.repo_root`
 explicitly to the underlying domain function. Missing threading falls back

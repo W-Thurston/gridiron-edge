@@ -84,12 +84,12 @@ FastAPI app skeleton, `_meta` envelope plumbing, twelve endpoints returning 200 
 | 2 | `/model/performance` | ✅ Complete (2026-07-01) |
 | 3 | `/teams` + `/teams/{abbr}` | ✅ Complete (2026-07-01) |
 | 4 | `/projections` | ✅ Complete (2026-07-01) |
-| 5 | `/games`, `/games/{id}` | ✅ Complete (2026-07-01) |
-| 6 | `/edges` | ✅ Complete (2026-07-01) |
-| 7 | `/props`, `/props/{prop_id}` | 🟡 Active |
-| 8 | `/compare/teams`, `/compare/player/{prop_id}` | Not started |
+| 5 | `/games`, `/games/{id}` | ✅ Complete (2026-07-02) |
+| 6 | `/edges` | ✅ Complete (2026-07-02) |
+| 7 | `/props`, `/props/{prop_id}` | ✅ Complete (2026-07-02) |
+| 8 | `/compare/teams`, `/compare/player/{prop_id}` | 🟡 Active |
 
-#### Step 5 — `/games`, `/games/{id}` ✅ Complete (2026-07-01)
+#### Step 5 — `/games`, `/games/{id}` ✅ Complete (2026-07-02)
 
 Shipped in four substeps: loader with champion resolution and archive filtering,
 schemas with pending/blocked field scaffolding, serializer with field_status
@@ -98,7 +98,7 @@ metadata. `MiniRepoBuilder` extended with `with_champion_manifest` and
 `with_predictions_archive` helpers. `/games/{game_id}/predictions` dropped
 per YAGNI.
 
-#### Step 6 — `/edges` ✅ Complete (2026-07-01)
+#### Step 6 — `/edges` ✅ Complete (2026-07-02)
 
 Shipped in four substeps: loader with champion resolution, odds join,
 and edge computation via `market.recommendations.build_edge_report`;
@@ -109,120 +109,26 @@ translation for `ChampionNotFoundError` → `NO_CHAMPION_MANIFEST` and
 with `with_odds_snapshot`. `api/exceptions.py` introduced for API-surface
 data-state signals; `OddsUnavailableError` is its first entry.
 
-#### Step 7 — `/props`, `/props/{prop_id}` design
+#### Step 7 — `/props`, `/props/{prop_id}` ✅ Complete (2026-07-02)
 
-**Scope:** Read-only endpoints exposing per-player prop projections
-from the current champion for each stat family. `/props` lists edges
-across families for a (season, week); `/props/{prop_id}` returns
-detail for one player-game-stat combination.
+Shipped in four substeps: loader with per-family champion resolution
+via `resolve_current_champion` iterated across `PROP_STAT_FAMILIES`;
+schemas with `ProjectionBlock` and `LineBlock` clusters, plus scaffolded
+fields for historical/situational/reasoning/injury/recent-form/prop-shop;
+serializer with `prop_id` composition (`{game_id}__{player_id}__{stat_type}`),
+season int → string normalization, and field_status marking; routes with
+`_decode_prop_id` helper and asymmetric exception translation (list:
+`ChampionNotFoundError` → 200 empty; detail: `ChampionNotFoundError`
+→ 200 with projection and line_context null and field_status blocked).
 
-**Substeps:**
+`_resolve_scope` refactored to lazy: only reads `NFL_wk_by_wk_cleaned.csv`
+when a default is actually needed (bug fix, previously eager). Same lazy
+pattern should be applied to `_resolve_scope` in `games.py`, `edges.py`,
+and `teams.py` as a follow-up (tracked in D19 audit backlog).
 
-- **7a — Props loader.** Two functions in `api/loaders.py`:
-  `load_props_for_week` (list) and `load_prop` (detail). Both iterate
-  the registered prop stat families, resolve each family's champion via
-  `resolve_current_champion(family)`, and filter the prop archive to
-  the champion. Families without a resolved champion are silently
-  skipped. Season parameter is normalized: API accepts
-  `"2026-2027"` and passes the leading int (`2026`) to `load_prop_archive`.
-- **7b — Props schemas.** `PropSummary`, `PropDetail`, `PropList` in
-  `api/schemas/props.py`. `ProjectionBlock` clusters champion output
-  (`predicted_mean`, `predicted_std`, `lo_90`, `hi_90`). Line-dependent
-  fields (`line`, `p_over`, `lean`, `confidence_tier`) are nullable
-  and scaffolded on `PropDetail` with `field_status: pending`
-  (odds-join not yet implemented at prediction time). Additional
-  scaffolds on `PropDetail`: historical vs opponent, situational
-  splits, prop reasoning, injury status, recent form, multi-book
-  shopping.
-- **7c — Props serializer.** `api/serializers/props.py` with
-  `serialize_prop_summary`, `serialize_props_list`, and
-  `serialize_prop_detail`. `_row_to_projection` clusters the four
-  champion fields; NaN normalization at the Pydantic boundary via
-  `_none_if_nan`.
-- **7d — Props routes.** `api/routes/props.py` with `GET /props` and
-  `GET /props/{prop_id}`. `prop_id` decoded as
-  `{game_id}__{player_id}__{stat_type}` (double-underscore separator).
-  Empty-champion state translates to 200 with
-  `field_status.items: blocked/NO_CHAMPION_MANIFEST` when zero families
-  resolved; empty archive returns 200 with no field_status. Malformed
-  `prop_id` or unknown prop returns 404.
-
-**Field scope (locked):**
-
-Populated in `PropSummary`:
-- `prop_id` (composite: `{game_id}__{player_id}__{stat_type}`)
-- `game_id`, `season` (string form: `"2026-2027"`), `week`
-- `player_id`, `player_name`, `position`, `team`
-- `stat_type`, `model_key` (composite `{model_name}_{model_type}`)
-- Projection: `predicted_mean`, `predicted_std`, `lo_90`, `hi_90`
-
-Scaffolded (field_status: pending) on both `PropSummary` and `PropDetail`:
-- `line` — pending: odds-join not yet run at prediction time. Depends
-  on odds ingest running before or after prediction generation
-  (implementation choice for a future backend workstream).
-- `p_over`, `lean` — pending: derived from `line`; blocked on `line`.
-- `confidence_tier` — pending: derived from `p_over` in current
-  post-processing; blocked on `line`.
-
-Scaffolded on `PropDetail` only (list rows stay lean):
-- `historical_vs_opponent` → **pending** (opponent-adjusted matchup
-  aggregation; ROADMAP §9 Tier 3 additive)
-- `situational_splits` → **pending** (indoor/outdoor,
-  favored/underdog, home/away splits per prop; ROADMAP §9 Tier 3
-  additive)
-- `prop_reasoning` → **blocked on feature attribution workstream**
-- `injuries` → **blocked on ROADMAP §5.3**
-- `recent_form` → **pending** (last-N-games aggregation)
-- `multi_book_shopping` → **blocked on multi-book odds ingest (W7)**
-
-**Filter model:**
-
-`/props?season=&week=&stat_type=&position=&min_p_over=`
-
-- `season`, `week`: default from `resolve_current_season_week()`.
-  Season passed as `"2026-2027"` and normalized to leading int for
-  archive read.
-- `stat_type`: default null (all families). When set, only that
-  family's champion is resolved and its rows returned.
-- `position`: default null (all positions — implicitly filtered by
-  `stat_type` when both are passed).
-- `min_p_over`: default null (no filter). Only meaningful when `line`
-  populates. Reserved for future backend work; ignored today.
-
-**Champion- and archive-missing behavior:**
-
-| State | Response |
-|---|---|
-| Manifest missing for all families | 200, `items: []`, `field_status.items: blocked/NO_CHAMPION_MANIFEST` |
-| Manifest present but no families have entries | 200, `items: []`, `field_status.items: blocked/NO_CHAMPION_MANIFEST` |
-| Some families have champion, others don't | 200, list of resolved families (silent skip) |
-| Archive empty for resolved champions | 200, `items: []`, no `field_status` (legitimate) |
-| No rows match (season, week) | 200, `items: []`, no `field_status` (legitimate) |
-| `prop_id` malformed | 404 |
-| `prop_id` not in archive | 404 |
-
-**Design decisions locked:**
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Champion resolution granularity | Per-stat-family, iterated in loader | Matches how `promote-champions` writes per-family entries. Each family independent. |
-| `prop_id` format | `{game_id}__{player_id}__{stat_type}` | Composite matches archive dedup key minus (model_name, model_type). Double-underscore safe from single-underscore game_id/stat_type. |
-| Season normalization | API accepts string ("2026-2027"), loader passes int (2026) to archive | Bridges API convention with archive convention. |
-| Line-dependent fields | All null in T2 with `field_status: pending` | Archive today doesn't populate line at prediction time. Not blocked on a workstream — just deferred backend work. |
-| Missing-family behavior | Silent skip | Families are independent domains. Frontend can call `list_current_champions` separately to see what's registered. |
-| Detail exception translation | 404 for both malformed and unknown | Same convention as `/games/{game_id}`. |
-
-**Disconfirming evidence to watch for:**
-
-- **If the frontend needs to know which families have no champion,**
-  we may need to add a `field_status.families` list or similar. Not
-  scoped today.
-- **If `predicted_std`, `lo_90`, `hi_90` are sometimes null in the
-  archive** (edge case: early implementation before uncertainty
-  quantification landed), the schema needs to accommodate it.
-  Verified today: 100% populated for the existing 1,433 rows.
-- **If `stat_type` becomes a plural filter** (e.g., `?stat_type=qb_pass_yards,qb_rush_yards`),
-  the query parsing changes. Not in T2 scope.
+MiniRepoBuilder gained no new methods; test-side helpers
+(`_write_prop_manifest`, `_write_prop_archive`) inline in
+`test_props_routes.py` for now.
 
 **Tier 3 — Backend additions.** Designing. Additions inventory unchanged from original plan.
 
@@ -242,6 +148,7 @@ Scaffolded on `PropDetail` only (list rows stay lean):
 
 | Date | Change |
 |------|--------|
+| 2026-07-02 | **W8 Tier 2 Step 7 complete.** `/props` and `/props/{prop_id}` shipped in four substeps (loader, schemas, serializer, routes). Per-family champion resolution iterates `PROP_STAT_FAMILIES`; each family independent. `prop_id` composite `{game_id}__{player_id}__{stat_type}`. Line-derived fields (`line`, `p_over`, `lean`, `confidence_tier`) 100% null in T2, scaffolded as `field_status: pending` — odds-join at prediction time not yet implemented. `_resolve_scope` refactored to lazy read of games CSV. Endpoints populated so far: 14. |
 | 2026-07-02 | **W8 Tier 2 Step 7 design.** Inline design block added for `/props` and `/props/{prop_id}`. Four substeps: loader with per-family champion resolution (7a), schemas with ProjectionBlock and scaffolded line-dependent fields (7b), serializer (7c), routes with `prop_id` decoding (7d). Archive verification revealed `line`, `p_over`, `lean`, `confidence_tier` are 100% null in the archive today; all four scaffolded as `field_status: pending`. `prop_id` composite locked as `{game_id}__{player_id}__{stat_type}`. Season string normalized to int for archive read. |
 | 2026-07-02 | **W8 Tier 2 Step 6 complete.** `/edges` shipped in four substeps (loader, schemas, serializer, route). `api/exceptions.py` introduced with `OddsUnavailableError` for loader → route data-state signaling. `MiniRepoBuilder` gained `with_odds_snapshot`. `NO_ODDS_AVAILABLE` registered in `Unavailable`. Two-exception route pattern (`ChampionNotFoundError` and `OddsUnavailableError` translating to distinct `field_status` slugs) validated end-to-end. Endpoints populated so far: 12. |
 | 2026-07-02 | **W8 Tier 2 Step 6 design.** Inline design block added for `/edges`. Four substeps: loader (6a), schemas (6b), serializer (6c), route (6d). Field scope, filter model, and both loader-signaled data-state exceptions (`ChampionNotFoundError`, `OddsUnavailableError`) locked. `NO_ODDS_AVAILABLE` slug scheduled for `Unavailable`. `api/exceptions.py` scheduled as a new module. |
