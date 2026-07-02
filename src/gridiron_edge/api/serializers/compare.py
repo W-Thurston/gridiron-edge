@@ -10,7 +10,7 @@ from __future__ import annotations
 from pandas import DataFrame
 
 from gridiron_edge.api.meta import ResponseMeta, Unavailable
-from gridiron_edge.api.schemas.compare import CompareTeamsResponse, StatRow
+from gridiron_edge.api.schemas.compare import ComparePlayerResponse, CompareTeamsResponse, StatRow
 from gridiron_edge.api.serializers.teams import _compute_record, _latest_ratings
 
 
@@ -164,6 +164,111 @@ def serialize_compare_teams(
         season=season,
         team_a=team_a_short.upper(),
         team_b=team_b_short.upper(),
+        stats=stats,
+        response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
+    )
+
+
+def serialize_compare_player(row: dict) -> ComparePlayerResponse:
+    """Build the /compare/player/{prop_id} response.
+
+    Populated stats come from the archive row's projection fields.
+    Defense-side stats are entirely blocked pending
+    opponent-allowed-by-position aggregation (Tier 3 additive dataset).
+    """
+    from gridiron_edge.api.schemas.compare import (
+        ComparePlayerResponse,
+        PlayerVsDefenseRow,
+    )
+    from gridiron_edge.api.serializers.props import (
+        _build_model_key,
+        _build_prop_id,
+        _none_if_nan,
+        _season_int_to_str,
+    )
+
+    projection_mean = _none_if_nan(row.get("predicted_mean"))
+    projection_std = _none_if_nan(row.get("predicted_std"))
+    projection_lo = _none_if_nan(row.get("lo_90"))
+    projection_hi = _none_if_nan(row.get("hi_90"))
+
+    stats: list[PlayerVsDefenseRow] = [
+        PlayerVsDefenseRow(
+            key="mean",
+            label="Projected Mean",
+            unit="yards",
+            projection_value=projection_mean,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="std",
+            label="Uncertainty (std)",
+            unit="yards",
+            projection_value=projection_std,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="lo_90",
+            label="10th Percentile",
+            unit="yards",
+            projection_value=projection_lo,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="hi_90",
+            label="90th Percentile",
+            unit="yards",
+            projection_value=projection_hi,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="avg_allowed",
+            label="Defense: Avg Allowed",
+            unit="yards",
+            projection_value=None,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="rank_against_position",
+            label="Defense: Rank vs Position",
+            unit="rank",
+            projection_value=None,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="last_5_games_avg",
+            label="Defense: L5 Avg Allowed",
+            unit="yards",
+            projection_value=None,
+            defense_value=None,
+        ),
+        PlayerVsDefenseRow(
+            key="red_zone_rate_allowed",
+            label="Defense: Red Zone Rate Allowed",
+            unit="pct",
+            projection_value=None,
+            defense_value=None,
+        ),
+    ]
+
+    meta = ResponseMeta()
+    # Defense-side rows: all blocked on Tier 3 additive dataset.
+    meta = meta.with_blocked("avg_allowed", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
+    meta = meta.with_blocked("rank_against_position", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
+    meta = meta.with_blocked("last_5_games_avg", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
+    meta = meta.with_blocked("red_zone_rate_allowed", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
+
+    return ComparePlayerResponse(
+        prop_id=_build_prop_id(row),
+        game_id=str(row["game_id"]),
+        season=_season_int_to_str(row.get("season")),
+        week=_none_if_nan(row.get("week")),
+        player_id=str(row["player_id"]),
+        player_name=str(row["player_name"]),
+        position=str(row["position"]),
+        team=str(row["team"]),
+        stat_type=str(row["stat_type"]),
+        model_key=_build_model_key(row),
         stats=stats,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )

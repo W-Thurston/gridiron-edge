@@ -1,20 +1,27 @@
-# src/gridiron_edge/api/routes/compare.py
-
 """Team-vs-team and player-vs-defense comparison endpoints."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from gridiron_edge.api._prop_id import decode_prop_id
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     load_elo_state_df,
     load_games_df,
+    load_prop,
     load_team_name_map,
     resolve_current_season_week,
 )
-from gridiron_edge.api.schemas.compare import CompareTeamsResponse
-from gridiron_edge.api.serializers.compare import serialize_compare_teams
+from gridiron_edge.api.schemas.compare import (
+    ComparePlayerResponse,
+    CompareTeamsResponse,
+)
+from gridiron_edge.api.serializers.compare import (
+    serialize_compare_player,
+    serialize_compare_teams,
+)
+from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
 
 router = APIRouter(prefix="/compare", tags=["compare"])
 
@@ -85,3 +92,59 @@ def compare_teams(
         season=resolved_season,
         as_of_week=as_of_week,
     )
+
+
+@router.get("/player/{prop_id}", response_model=ComparePlayerResponse)
+def compare_player(
+    settings: SettingsDep,
+    prop_id: str,
+) -> ComparePlayerResponse:
+    """Return projection-vs-defense comparison for one prop.
+
+    Projection-side fields (mean, std, lo_90, hi_90) populate from the
+    champion model's archive row. Defense-side fields (avg allowed,
+    rank vs position, L5 avg, red zone rate) are entirely blocked
+    pending opponent-allowed-by-position aggregation (ROADMAP §9 Tier 3).
+
+    - Malformed or unknown prop_id: 404.
+    - Champion for this stat_type not resolved: 200 with projection
+      block null and field_status marking blocked.
+    - Prop not in archive: 404.
+    """
+    game_id, player_id, stat_type = decode_prop_id(prop_id)
+
+    try:
+        row = load_prop(
+            settings,
+            game_id=game_id,
+            player_id=player_id,
+            stat_type=stat_type,
+        )
+    except ChampionNotFoundError:
+        # Fabricate a minimal row: projection fields null, identity
+        # fields from the decoded prop_id. Serializer marks blocked.
+        row = {
+            "game_id": game_id,
+            "player_id": player_id,
+            "player_name": "",
+            "position": "",
+            "team": "",
+            "stat_type": stat_type,
+            "model_name": stat_type,
+            "model_type": "",
+            "season": None,
+            "week": None,
+            "predicted_mean": None,
+            "predicted_std": None,
+            "lo_90": None,
+            "hi_90": None,
+        }
+        return serialize_compare_player(row)
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Prop not found: {prop_id}",
+        )
+
+    return serialize_compare_player(row)

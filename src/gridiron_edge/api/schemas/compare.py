@@ -45,3 +45,43 @@ class CompareTeamsResponse(BaseResponse):
     team_a: str
     team_b: str
     stats: list[StatRow] = Field(default_factory=list)
+
+
+class PlayerVsDefenseRow(BaseModel):
+    """A single row in the player-vs-defense comparison table.
+
+    ``projection_value`` is populated from the champion model's archive
+    row. ``defense_value`` is null in T2 — blocked pending
+    opponent-allowed-by-position aggregation (ROADMAP §9 Tier 3).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str = Field(
+        description="Stable identifier for field_status lookup and row ordering.",
+    )
+    label: str = Field(
+        description="Display label for the row, e.g. 'Projected Mean' or 'Avg Allowed'.",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Formatting hint: 'yards', 'attempts', 'pct', 'rank', 'raw'.",
+    )
+    projection_value: float | int | str | None = None
+    defense_value: float | int | str | None = None
+
+
+class ComparePlayerResponse(BaseResponse):
+    """Response for GET /compare/player/{prop_id}."""
+
+    prop_id: str
+    game_id: str
+    player_id: str
+    player_name: str
+    position: str
+    team: str
+    stat_type: str
+    model_key: str
+    season: str | None = None
+    week: int | None = None
+    stats: list[PlayerVsDefenseRow] = Field(default_factory=list)

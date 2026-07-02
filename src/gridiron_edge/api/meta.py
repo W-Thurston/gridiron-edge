@@ -133,6 +133,10 @@ class Unavailable:
     naturally as more bets accumulate, more CLV data lands, etc.
     """
 
+    OPPONENT_ALLOWED_BY_POSITION: tuple[str, str] = (
+        "opponent_allowed_by_position",
+        "data",
+    )
     NO_CHAMPION_MANIFEST: tuple[str, str] = ("no_champion_manifest", "data")
     NO_CLV_DATA: tuple[str, str] = ("no_clv_data", "data")
     NO_EVALUATION_DATA: tuple[str, str] = ("no_evaluation_data", "data")

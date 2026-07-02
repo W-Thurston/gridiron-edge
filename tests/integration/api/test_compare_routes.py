@@ -265,3 +265,202 @@ class TestCompareTeamsRoute:
         body = response.json()
         # resolve_current_season_week returns latest season from games.
         assert body["season"] == "2026-2027"
+
+
+class TestComparePlayerRoute:
+    def _write_prop_manifest(
+        self,
+        tmp_path: Path,
+        families: dict[str, str],
+    ) -> None:
+        import json
+
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "champions.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-07-01T14:00:00+00:00",
+                    "models": {
+                        family: {
+                            "model_type": model_type,
+                            "promoted_at": "2026-07-01T14:00:00",
+                            "source_run_id": "RUN_X",
+                            "metrics": {"mae": 63.0},
+                        }
+                        for family, model_type in families.items()
+                    },
+                }
+            )
+        )
+
+    def _write_prop_archive(self, tmp_path: Path) -> None:
+        archive_dir = tmp_path / "data" / "output" / "props"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "predicted_at": "2026-08-01T00:00:00+00:00",
+                    "is_backfilled": True,
+                    "season": 2026,
+                    "week": 1,
+                    "game_id": "2026_01_KC_LAC",
+                    "player_id": "00-0033873",
+                    "player_name": "P.Mahomes",
+                    "position": "QB",
+                    "team": "KC",
+                    "stat_type": "qb_pass_yards",
+                    "model_name": "qb_pass_yards",
+                    "model_type": "elasticnet",
+                    "predicted_mean": 265.0,
+                    "predicted_std": 45.0,
+                    "lo_90": 190.0,
+                    "hi_90": 340.0,
+                    "line": None,
+                    "p_over": float("nan"),
+                    "lean": float("nan"),
+                    "confidence_tier": float("nan"),
+                }
+            ]
+        ).to_parquet(
+            archive_dir / "prop_predictions_log.parquet",
+            index=False,
+        )
+
+    def test_returns_comparison_for_known_prop(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        self._write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_prop_archive(tmp_path)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["prop_id"] == prop_id
+        assert body["player_name"] == "P.Mahomes"
+        assert body["stat_type"] == "qb_pass_yards"
+        assert len(body["stats"]) == 8  # 4 projection + 4 defense
+
+    def test_projection_stats_populated(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        self._write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_prop_archive(tmp_path)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        body = response.json()
+        by_key = {row["key"]: row for row in body["stats"]}
+
+        assert by_key["mean"]["projection_value"] == 265.0
+        assert by_key["std"]["projection_value"] == 45.0
+        assert by_key["lo_90"]["projection_value"] == 190.0
+        assert by_key["hi_90"]["projection_value"] == 340.0
+
+        # Defense side null for all four projection rows.
+        assert by_key["mean"]["defense_value"] is None
+
+    def test_defense_stats_all_null(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        self._write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_prop_archive(tmp_path)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        body = response.json()
+        by_key = {row["key"]: row for row in body["stats"]}
+
+        for defense_key in (
+            "avg_allowed",
+            "rank_against_position",
+            "last_5_games_avg",
+            "red_zone_rate_allowed",
+        ):
+            row = by_key[defense_key]
+            assert row["projection_value"] is None
+            assert row["defense_value"] is None
+
+    def test_field_status_marks_defense_blocked(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        self._write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_prop_archive(tmp_path)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        body = response.json()
+        status = body["_meta"]["field_status"]
+
+        for defense_key in (
+            "avg_allowed",
+            "rank_against_position",
+            "last_5_games_avg",
+            "red_zone_rate_allowed",
+        ):
+            assert status[defense_key]["blocker"] == "opponent_allowed_by_position"
+
+    def test_malformed_prop_id_returns_404(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        response = client.get("/compare/player/malformed_prop_id")
+
+        assert response.status_code == 404
+        assert "Malformed prop_id" in response.json()["detail"]
+
+    def test_unknown_stat_type_returns_404(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        prop_id = "2026_01_KC_LAC__00-0033873__bogus_stat"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        assert response.status_code == 404
+        assert "Unknown stat_type" in response.json()["detail"]
+
+    def test_unknown_prop_returns_404(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        self._write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        self._write_prop_archive(tmp_path)
+
+        prop_id = "2026_01_KC_LAC__00-0000000__qb_pass_yards"  # unknown player_id
+        response = client.get(f"/compare/player/{prop_id}")
+
+        assert response.status_code == 404
+        assert "Prop not found" in response.json()["detail"]
+
+    def test_missing_manifest_returns_null_projection(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        # No manifest at all.
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["prop_id"] == prop_id
+        by_key = {row["key"]: row for row in body["stats"]}
+        assert by_key["mean"]["projection_value"] is None
+        assert by_key["std"]["projection_value"] is None

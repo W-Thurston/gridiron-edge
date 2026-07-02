@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from gridiron_edge.api._prop_id import decode_prop_id
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     load_prop,
@@ -19,41 +20,8 @@ from gridiron_edge.api.serializers.props import (
     serialize_props_list,
 )
 from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
-from gridiron_edge.models.catalog import PROP_STAT_FAMILIES
 
 router = APIRouter(prefix="/props", tags=["props"])
-
-
-def _decode_prop_id(prop_id: str) -> tuple[str, str, str]:
-    """Decode a composite prop_id into (game_id, player_id, stat_type).
-
-    Format: ``{game_id}__{player_id}__{stat_type}``. Double-underscore
-    separator so single-underscore game_ids (like "2026_01_KC_LAC")
-    aren't ambiguous.
-
-    Raises:
-        HTTPException: 404 with actionable message on parse or family
-            validation failure.
-    """
-    parts = prop_id.split("__")
-    if len(parts) != 3:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"Malformed prop_id: {prop_id!r}. "
-                f"Expected format: {{game_id}}__{{player_id}}__{{stat_type}}."
-            ),
-        )
-    game_id, player_id, stat_type = parts
-    if stat_type not in PROP_STAT_FAMILIES:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"Unknown stat_type in prop_id: {stat_type!r}. "
-                f"Registered families: {sorted(PROP_STAT_FAMILIES)}."
-            ),
-        )
-    return game_id, player_id, stat_type
 
 
 def _resolve_scope(
@@ -150,7 +118,7 @@ def get_prop(
       and line_context null, field_status blocks marked.
     - Prop not in archive: 404.
     """
-    game_id, player_id, stat_type = _decode_prop_id(prop_id)
+    game_id, player_id, stat_type = decode_prop_id(prop_id)
 
     try:
         row = load_prop(
