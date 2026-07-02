@@ -105,6 +105,7 @@ def create_app() -> FastAPI:
         projections,
         prop_reasoning,
         prop_shop,
+        props,
         swing_factors,
         teams,
         weeks,
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(projections.router)
     app.include_router(prop_reasoning.router)
     app.include_router(prop_shop.router)
+    app.include_router(props.router)
     app.include_router(swing_factors.router)
     app.include_router(teams.router)
     app.include_router(weeks.router)
