@@ -133,15 +133,16 @@ class Unavailable:
     naturally as more bets accumulate, more CLV data lands, etc.
     """
 
+    NO_CHAMPION_MANIFEST: tuple[str, str] = ("no_champion_manifest", "data")
     NO_CLV_DATA: tuple[str, str] = ("no_clv_data", "data")
-    NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
-    NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
-    PERIOD_NOT_REQUESTED: tuple[str, str] = ("period_not_requested", "request")
     NO_EVALUATION_DATA: tuple[str, str] = ("no_evaluation_data", "data")
-    SINGLE_CLASS_OUTCOME: tuple[str, str] = ("single_class_outcome", "data")
+    NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
-    OFF_DEF_DECOMPOSITION: tuple[str, str] = ("off_def_decomposition", "data")
     NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
+    NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
+    OFF_DEF_DECOMPOSITION: tuple[str, str] = ("off_def_decomposition", "data")
+    PERIOD_NOT_REQUESTED: tuple[str, str] = ("period_not_requested", "request")
+    SINGLE_CLASS_OUTCOME: tuple[str, str] = ("single_class_outcome", "data")
 
     @classmethod
     def all_slugs(cls: type[Unavailable]) -> frozenset:

@@ -222,6 +222,75 @@ class MiniRepoBuilder:
             .with_modeling_file()
         )
 
+    def with_champion_manifest(
+        self,
+        *,
+        win_prob_model_type: str = "elo",
+        win_prob_metrics: dict | None = None,
+        extra_models: dict[str, dict] | None = None,
+    ) -> MiniRepoBuilder:
+        """Add a champion manifest.
+
+        Writes ``data/output/champions/champions.json`` with a single
+        win_prob entry by default. Callers can override the win_prob
+        model_type and metrics, and can add additional model_name
+        entries (e.g., total, qb_pass_yards) via ``extra_models``.
+
+        Args:
+            win_prob_model_type: Registered model_type for win_prob.
+                Defaults to "elo" (matches CLI default backfill).
+            win_prob_metrics: Metrics dict for the win_prob entry.
+                Defaults to sensible test values.
+            extra_models: Additional entries keyed by model_name.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        import json
+
+        manifest_dir: Path = self._root / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        default_metrics: dict[str, float] = {"brier": 0.213, "ece": 0.041, "auc": 0.721}
+        models: dict[str, dict] = {
+            "win_prob": {
+                "model_type": win_prob_model_type,
+                "promoted_at": "2026-07-01T14:00:00",
+                "source_run_id": "TEST_RUN",
+                "metrics": win_prob_metrics or default_metrics,
+            },
+        }
+        if extra_models:
+            models.update(extra_models)
+
+        manifest: dict[str, dict[str, dict] | int | str] = {
+            "schema_version": 1,
+            "updated_at": "2026-07-01T14:00:00+00:00",
+            "models": models,
+        }
+        (manifest_dir / "champions.json").write_text(json.dumps(manifest, indent=2))
+        return self
+
+    def with_predictions_archive(
+        self,
+        df: pd.DataFrame,
+    ) -> MiniRepoBuilder:
+        """Add a predictions archive parquet.
+
+        Writes ``data/output/predictions/predictions_log.parquet``, the
+        path that ``evaluation.archive.load_prediction_log`` reads from.
+
+        Args:
+            df: Predictions DataFrame matching the archive schema.
+
+        Returns:
+            Self, for builder chaining.
+        """
+        predictions_dir: Path = self._root / "data" / "output" / "predictions"
+        predictions_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(predictions_dir / "predictions_log.parquet", index=False)
+        return self
+
     def build(self) -> Path:
         """Return the repository root path."""
         return self._root

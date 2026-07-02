@@ -208,6 +208,7 @@ def load_games_for_week(
         week=week,
         model_name="win_prob",
         model_type=model_type,
+        repo=settings.repo_root,
     )
 
     if archive.empty:
@@ -249,6 +250,7 @@ def load_game(
     archive: DataFrame = load_prediction_log(
         model_name="win_prob",
         model_type=model_type,
+        repo=settings.repo_root,
     )
     if archive.empty:
         return None
