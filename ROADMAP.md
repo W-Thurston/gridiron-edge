@@ -165,7 +165,7 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 
 ### Active Workstream
 
-#### W8: API Serving Layer — 🟡 ACTIVE (Tier 2 Step 5 next; unblocked by W13 completion)
+#### W8: API Serving Layer — 🟢 TIER 2 COMPLETE; TIER 3 DESIGNING
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
 
@@ -215,6 +215,28 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
   (weekly_predict._stage_predict_week, output.output_predictions,
   evaluate.evaluate_tune, evaluate.evaluate_backfill,
   ratings.elo_evaluate).
+**Delivered (Tier 2, 2026-07-01):**
+- ✅ 16 endpoints returning populated data with Pydantic-validated
+  responses.
+- ✅ Placeholder convention (D14) applied consistently: unpopulated
+  fields return `null` with structured `_meta.field_status` entries.
+- ✅ Champion resolution flows from manifest → loader → serializer →
+  route for game and prop endpoints (unblocked by W13).
+- ✅ Loader pattern established: pandas DataFrames in, dicts out,
+  explicit `settings.repo_root` threading (D19).
+- ✅ Serializer pattern established: hand-written per D17, owns
+  `_meta.field_status` per D18.
+- ✅ Testing infrastructure: `MiniRepoBuilder` with 4 W8-specific
+  fixture methods; per-route integration tests via `dependency_overrides`.
+
+**Tier 3 designing:** Additive datasets to populate scaffolded fields:
+- Per-stat league-wide percentile ranking pass.
+- Off/def rating decomposition.
+- Opponent-allowed-by-position aggregation.
+- Cohort splits (season/L4/home/away, indoor/outdoor, favored/underdog).
+- Weekly Elo snapshot persistence for trend fields.
+
+**Unlocks:** W9 (Frontend) can begin.
 
 **Unlocks:** W8 Tier 2 Step 5 (game endpoints in the API can now serve
 champion-only outputs per D21).
@@ -523,6 +545,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-01 | **W8 Tier 2 complete.** Eight steps shipped over ~1 month. 16 endpoints populated with real data. Tier 3 additive datasets designing; kickoff waits for W9 feedback on priority. W9 (Frontend) unblocked. |
 | 2026-07-01 | **W13 complete.** Runtime Champion Resolution shipped in full: manifest + resolver (Tier 1), full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3). §9.6 D21 Deviations row for runtime champion resolution updated to Resolved. W8 (API) unpauses at Tier 2 Step 5. |
 | 2026-07-01 | **W13 Tier 2 complete.** Manifest writer, three selectors, full-retrain promote-champions stage, baseline-report annotation, --write-manifest CLI flags on both game and prop sides. §9.6 D21 Deviations row updated to Resolved. Tier 3 (CLI consumer refactor) opens. |
 | 2026-06-23 | **Document restructure.** PLAN.md now scoped to the active workstream only; future workstream candidates, real-bugs backlog, investigations, and operational items migrated to new ROADMAP.md §9 Known Issues & Backlog. Added backend-gaps-surfaced-by-prototype subsection to §9 with W8 Tier 2 disposition per item. M4.5 reworded to reflect prototype-driven verification framing. Current-position callout updated to mark W8 active. |

@@ -46,6 +46,11 @@ How everything works right now. Assumes you know what the project does - see [RE
 | Prop evaluation metrics | `gridiron_edge.evaluation.prop_metrics` - accuracy, bias, coverage, calibration, hit rate, by-tier |
 | Prop prediction archive | `gridiron_edge.evaluation.prop_archive` - append-only Parquet, 4-key dedup |
 | Prop CLI | `gridiron_edge.cli.props` - evaluate, projections, backfill |
+| API loaders | `gridiron_edge.api.loaders` — pandas DataFrames in, dicts out; threads `settings.repo_root` per D19 |
+| API schemas | `gridiron_edge.api.schemas` — Pydantic v2, `frozen=True`, `extra="forbid"`, `_meta` envelope via `_base.BaseResponse` |
+| API serializers | `gridiron_edge.api.serializers` — hand-written per D17, owns `_meta.field_status` per D18 |
+| API routes | `gridiron_edge.api.routes` — FastAPI, exception translation for `ChampionNotFoundError` / `OddsUnavailableError` |
+| API exceptions | `gridiron_edge.api.exceptions` — data-state signals from loaders to routes |
 
 ---
 
@@ -626,6 +631,26 @@ Backward compatible: old archives missing enrichment columns get NaN
 - `VEGAS_LINE` (nflverse): **positive = home favored** (PFR convention)
 - Always negate `VEGAS_LINE` before comparing to `model_spread`
 
+#### API architecture (W8)
+
+Four-layer stack: loaders → schemas → serializers → routes.
+`api/exceptions.py` signals data-state gaps (`OddsUnavailableError`)
+from loaders to routes for translation to `field_status`.
+
+- **Placeholder convention (D14):** unpopulated fields return null;
+  status lives in `_meta.field_status` keyed on the field path.
+- **Blocker registry (D16):** Every Tier 3 blocker uses a slug from
+  `api.meta.Blocker` or `api.meta.Unavailable`.
+- **Loader-level `repo_root` threading (D19):** every loader wrapper
+  passes `settings.repo_root` explicitly. No implicit `get_settings()`
+  reads inside domain calls from the API path.
+- **Champion resolution in loaders, not routes (W13 + W8):** loaders
+  call `resolve_current_champion(...)` for game/prop endpoints. Routes
+  stay ignorant of the champion resolver.
+- **Testing patterns:** FastAPI `dependency_overrides` for
+  `settings_dependency`; `MiniRepoBuilder.with_*` fixture methods
+  for repo layout.
+
 ---
 
 ## Primary workflows
@@ -831,6 +856,10 @@ written via PropTrainer.train_and_save (not yet exposed as a CLI command
 | Prop evaluation metrics | `evaluation/prop_metrics.py` |
 | Prop prediction archive | `evaluation/prop_archive.py` |
 | Prop CLI | `cli/props.py` |
+| API loader pattern | `api/loaders.py` |
+| API schema base | `api/schemas/_base.py` — `BaseResponse`, `BaseListResponse` |
+| Response meta + placeholder slugs | `api/meta.py` — `ResponseMeta`, `Blocker`, `Unavailable` |
+| Prop ID decode | `api/_prop_id.py` |
 
 All paths relative to `src/gridiron_edge/`.
 

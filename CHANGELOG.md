@@ -3,6 +3,84 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-02 — W8 Tier 2: Direct-Serialization Endpoints (16 endpoints populated)
+
+Eight-step tier closing out Tier 2 of the API serving layer. Every
+prototype-referenced URL returns a 200 with a Pydantic-validated
+shape. Fields not yet populated are marked with structured
+`_meta.field_status` per D14.
+
+### Endpoints populated
+
+Step 1 (2026-07-01): `/weeks/current` and all `/portfolio/*`.
+Step 2 (2026-07-01): `/model/performance` (composed metrics endpoint).
+Step 3 (2026-07-01): `/teams` and `/teams/{abbr}`.
+Step 4 (2026-07-01): `/projections`.
+Step 5 (2026-07-01): `/games` and `/games/{game_id}`.
+Step 6 (2026-07-01): `/edges`.
+Step 7 (2026-07-01): `/props` and `/props/{prop_id}`.
+Step 8 (2026-07-01): `/compare/teams` and `/compare/player/{prop_id}`.
+
+### Architecture established
+
+- **Loader pattern (`api/loaders.py`):** pandas DataFrames in, dicts
+  out, explicit `settings.repo_root` threading (D19).
+- **Schema pattern (`api/schemas/*.py`):** Pydantic v2, `frozen=True`,
+  `extra="forbid"`, nullable defensive fields, `_meta` envelope
+  via `BaseResponse` / `BaseListResponse`.
+- **Serializer pattern (`api/serializers/*.py`):** hand-written per
+  D17, owns `_meta.field_status` construction per D18.
+- **Route pattern (`api/routes/*.py`):** FastAPI, exception
+  translation (`ChampionNotFoundError` → `NO_CHAMPION_MANIFEST`,
+  `OddsUnavailableError` → `NO_ODDS_AVAILABLE`), lazy scope resolution
+  (Step 7d learning).
+- **Testing pattern:** `MiniRepoBuilder` extended with four
+  W8-specific methods (`with_champion_manifest`,
+  `with_predictions_archive`, `with_odds_snapshot`,
+  `with_teams_reference`); integration tests via FastAPI
+  `dependency_overrides`.
+
+### New `Unavailable` slugs registered
+
+`NO_CHAMPION_MANIFEST` (Step 5d), `NO_ODDS_AVAILABLE` (Step 6d),
+`OPPONENT_ALLOWED_BY_POSITION` (Step 8b).
+
+### New `api/` modules
+
+- `api/exceptions.py` — API-surface data-state exceptions from
+  loaders to routes.
+- `api/_prop_id.py` — Shared `decode_prop_id` helper used by
+  `/props/{prop_id}` and `/compare/player/{prop_id}`.
+
+### Field_status scaffolding
+
+Fields not yet populated ship with structured `_meta.field_status`
+metadata. Categories:
+
+- **Pending backend work:** kick, venue, weather (games); line, p_over,
+  lean, confidence_tier (props); schedule_difficulty,
+  playoff_probability, cohort_splits, percentile_ranks (teams
+  compare); recent_form, situational_splits, historical_vs_opponent
+  (props/compare).
+- **Blocked on named workstreams:** swing_factors, prop_reasoning
+  (feature attribution); injuries, injury_status (§5.3);
+  multi_book_shopping (W7); off_rating, def_rating (Tier 3);
+  trend (weekly Elo snapshot); avg_allowed, rank_against_position,
+  last_5_games_avg, red_zone_rate_allowed (opponent aggregation).
+
+### Tests
+
+- Per-route integration test file in `tests/integration/api/` for
+  each populated endpoint cluster (games, edges, props, compare).
+- Per-schema unit test file in `tests/unit/api/` for each new schema.
+- Per-serializer unit test file for each new serializer.
+
+### Next
+
+Tier 3 (additive datasets) designing. Kickoff waits for W9
+(Frontend) feedback to identify which additive to build first.
+W9 unblocked and ready to start.
+
 ## 2026-07-01 — W13 Tier 3: CLI Consumer Refactor (W13 workstream complete)
 
 Four-step tier migrating CLI consumers to use the champion manifest
