@@ -137,6 +137,7 @@ class Unavailable:
     NO_CLV_DATA: tuple[str, str] = ("no_clv_data", "data")
     NO_EVALUATION_DATA: tuple[str, str] = ("no_evaluation_data", "data")
     NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
+    NO_ODDS_AVAILABLE: tuple[str, str] = ("no_odds_available", "data")
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
     NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
     NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
