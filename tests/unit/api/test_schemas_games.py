@@ -100,8 +100,11 @@ class TestGameSummary:
 
 class TestGameList:
     def test_empty_list(self) -> None:
-        response = GameList(items=[], _meta={"field_status": {}})  # type: ignore[call-arg]
+        response = GameList()
         assert response.items == []
+        assert response.total is None
+        assert response.season is None
+        assert response.week is None
 
     def test_with_summaries(self) -> None:
         response = GameList(
@@ -119,7 +122,6 @@ class TestGameList:
             ],
             season="2026-2027",
             week=1,
-            _meta={"field_status": {}},  # type: ignore[call-arg]
         )
         assert len(response.items) == 2
         assert response.season == "2026-2027"
@@ -131,7 +133,6 @@ class TestGameDetail:
             game_id="2026_01_KC_LAC",
             away_team="KC",
             home_team="LAC",
-            _meta={"field_status": {}},  # type: ignore[call-arg]
         )
         assert detail.game_id == "2026_01_KC_LAC"
         assert detail.weather is None
@@ -140,6 +141,7 @@ class TestGameDetail:
         assert detail.swing_factors is None
         assert detail.injuries is None
         assert detail.top_prop_edges is None
+        assert detail.response_meta is None
 
     def test_with_all_populated_blocks(self) -> None:
         detail = GameDetail(
@@ -157,7 +159,6 @@ class TestGameDetail:
                 home_win_prob=0.55,
                 confidence_tier="Moderate",
             ),
-            _meta={"field_status": {}},  # type: ignore[call-arg]
         )
         assert detail.weather is not None
         assert detail.weather.temp_f == 72.0
@@ -173,7 +174,15 @@ class TestGameDetail:
             swing_factors=[{"factor": "example"}],
             injuries=[{"player": "example"}],
             top_prop_edges=[{"edge": "example"}],
-            _meta={"field_status": {}},  # type: ignore[call-arg]
         )
         assert detail.team_comparison == {"placeholder": "shape TBD"}
         assert detail.swing_factors == [{"factor": "example"}]
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            GameDetail(
+                game_id="2026_01_KC_LAC",
+                away_team="KC",
+                home_team="LAC",
+                mystery_field="oops",  # type: ignore[call-arg]
+            )
