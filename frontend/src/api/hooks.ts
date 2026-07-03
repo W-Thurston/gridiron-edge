@@ -3,8 +3,6 @@ import { apiClient } from "./client";
 
 /**
  * Fetches the current NFL week from /weeks/current.
- *
- * Returns react-query result: { data, isLoading, error, ... }.
  */
 export function useCurrentWeek() {
   return useQuery({
@@ -16,5 +14,44 @@ export function useCurrentWeek() {
       }
       return data;
     },
+  });
+}
+
+/**
+ * Fetches games for a given season and week.
+ * Both parameters are optional — API defaults to current.
+ */
+export function useGamesList(params: { season?: string; week?: number } = {}) {
+  return useQuery({
+    queryKey: ["games", params],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/games", {
+        params: { query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches detail for a single game.
+ */
+export function useGame(gameId: string | null) {
+  return useQuery({
+    queryKey: ["game", gameId],
+    queryFn: async () => {
+      if (!gameId) throw new Error("gameId required");
+      const { data, error } = await apiClient.GET("/games/{game_id}", {
+        params: { path: { game_id: gameId } },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: gameId !== null,
   });
 }
