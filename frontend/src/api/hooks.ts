@@ -287,3 +287,24 @@ export function usePortfolioSplits(dimension?: "market_type" | "confidence_tier"
     },
   });
 }
+/**
+ * Fetches ranked edges for a given week and min-EV threshold.
+ */
+export function useEdges(params: {
+  season?: string;
+  week?: number;
+  min_ev?: number;
+} = {}) {
+  return useQuery({
+    queryKey: ["edges", params],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/edges", {
+        params: { query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+  });
+}

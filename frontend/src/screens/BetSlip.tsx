@@ -1,5 +1,17 @@
-import { ScreenPlaceholder } from "./ScreenPlaceholder";
+import { EdgesTable } from "../components/betslip/EdgesTable";
+import { SlipPanel } from "../components/betslip/SlipPanel";
 
 export function BetSlip() {
-  return <ScreenPlaceholder title="Bet Slip" subtitle="/betslip" />;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "3fr 2fr",
+        gap: 16,
+      }}
+    >
+      <EdgesTable />
+      <SlipPanel />
+    </div>
+  );
 }

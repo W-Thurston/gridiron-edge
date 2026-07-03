@@ -1,0 +1,309 @@
+import { useState } from "react";
+import { useAppState } from "../../context/AppStateContext";
+import { useBetSlip } from "../../context/BetSlipContext";
+import type { BetLeg, BetSlipMode } from "../../context/BetSlipContext";
+import { americanToDecimal, formatOdds } from "../../utils/odds";
+import { TeamMark } from "../games/TeamMark";
+
+export function SlipPanel() {
+  const { legs, mode, setMode, remove, clear } = useBetSlip();
+  const { state } = useAppState();
+  const [stake, setStake] = useState(25);
+
+  const combinedDecimal = combinedDecimalOdds(legs, mode);
+  const potentialPayout = mode === "parlay"
+    ? stake * combinedDecimal
+    : legs.reduce((sum, leg) => sum + stake * americanToDecimal(leg.odds), 0);
+
+  const potentialProfit = potentialPayout - (mode === "parlay" ? stake : stake * legs.length);
+
+  return (
+    <div className="hm-card" style={{ padding: 24 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Bet Slip
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <ModeButton
+            label="Single"
+            active={mode === "single"}
+            onClick={() => setMode("single")}
+          />
+          <ModeButton
+            label="Parlay"
+            active={mode === "parlay"}
+            onClick={() => setMode("parlay")}
+            disabled={legs.length < 2}
+          />
+        </div>
+      </div>
+
+      {legs.length === 0 ? (
+        <div
+          style={{
+            padding: 32,
+            textAlign: "center",
+            color: "var(--ink-3)",
+            fontSize: 13,
+          }}
+        >
+          Your bet slip is empty. Add edges from the table to stage bets.
+        </div>
+      ) : (
+        <>
+          {/* Legs */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {legs.map((leg) => (
+              <LegRow
+                key={leg.id}
+                leg={leg}
+                oddsFormat={state.oddsFormat}
+                onRemove={() => remove(leg.id)}
+              />
+            ))}
+          </div>
+
+          {/* Stake input */}
+          <div style={{ marginBottom: 16 }}>
+            <div className="upper dim2" style={{ fontSize: 9, marginBottom: 6 }}>
+              {mode === "parlay" ? "Parlay Stake" : "Stake per Bet"}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span className="mono dim">$</span>
+              <input
+                type="number"
+                value={stake}
+                onChange={(e) => setStake(Number(e.target.value) || 0)}
+                min={0}
+                step={5}
+                style={{
+                  background: "var(--bg-1)",
+                  color: "var(--ink)",
+                  border: "1px solid var(--line-soft)",
+                  borderRadius: 5,
+                  padding: "6px 10px",
+                  fontSize: 14,
+                  fontFamily: "var(--f-mono)",
+                  fontVariantNumeric: "tabular-nums",
+                  width: 100,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Totals */}
+          <div
+            style={{
+              padding: 16,
+              background: "var(--bg-2)",
+              borderRadius: 5,
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              {mode === "parlay" && (
+                <MetricLine
+                  label="Combined Odds"
+                  value={
+                    <span className="mono tnum">
+                      {formatOdds(
+                        decimalToAmerican(combinedDecimal),
+                        state.oddsFormat,
+                      )}
+                    </span>
+                  }
+                />
+              )}
+              <MetricLine
+                label="Total Stake"
+                value={
+                  <span className="mono tnum">
+                    ${(mode === "parlay" ? stake : stake * legs.length).toFixed(2)}
+                  </span>
+                }
+              />
+              <MetricLine
+                label="Potential Payout"
+                value={
+                  <span className="mono tnum pos">
+                    ${potentialPayout.toFixed(2)}
+                  </span>
+                }
+              />
+              <MetricLine
+                label="Potential Profit"
+                value={
+                  <span className="mono tnum pos">
+                    +${potentialProfit.toFixed(2)}
+                  </span>
+                }
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={clear}
+              style={{
+                background: "transparent",
+                color: "var(--ink-3)",
+                border: "1px solid var(--line-soft)",
+                borderRadius: 4,
+                padding: "6px 12px",
+                fontSize: 12,
+                fontFamily: "var(--f-sans)",
+                cursor: "pointer",
+                flex: 1,
+              }}
+            >
+              Clear Slip
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function LegRow({
+  leg,
+  oddsFormat,
+  onRemove,
+}: {
+  leg: BetLeg;
+  oddsFormat: "american" | "decimal";
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: "var(--bg-1)",
+        border: "1px solid var(--line-soft)",
+        borderRadius: 5,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 8,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 4,
+              fontSize: 11,
+            }}
+          >
+            <TeamMark abbr={leg.awayTeam} />
+            <span className="dim">@</span>
+            <TeamMark abbr={leg.homeTeam} />
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>
+            {leg.market} · {leg.side}
+            {leg.line != null ? ` · ${leg.line}` : ""}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            className="mono tnum"
+            style={{ fontSize: 12, color: "var(--ink-2)" }}
+          >
+            {formatOdds(leg.odds, oddsFormat)}
+          </span>
+          <span
+            onClick={onRemove}
+            style={{
+              fontSize: 14,
+              color: "var(--ink-3)",
+              cursor: "pointer",
+              padding: "0 4px",
+              lineHeight: 1,
+            }}
+            title="Remove leg"
+          >
+            ×
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModeButton({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: active ? "var(--pos)" : "transparent",
+        color: active ? "var(--bg)" : disabled ? "var(--ink-4)" : "var(--ink-2)",
+        border: `1px solid ${active ? "var(--pos)" : "var(--line-soft)"}`,
+        borderRadius: 4,
+        padding: "3px 10px",
+        fontSize: 11,
+        fontFamily: "var(--f-sans)",
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MetricLine({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="upper dim2" style={{ fontSize: 9, marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13 }}>{value}</div>
+    </div>
+  );
+}
+
+function combinedDecimalOdds(legs: BetLeg[], mode: BetSlipMode): number {
+  if (mode !== "parlay" || legs.length === 0) return 0;
+  return legs.reduce((product, leg) => product * americanToDecimal(leg.odds), 1);
+}
+
+function decimalToAmerican(decimal: number): number {
+  if (decimal >= 2) return Math.round((decimal - 1) * 100);
+  return Math.round(-100 / (decimal - 1));
+}
