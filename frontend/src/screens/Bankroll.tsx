@@ -10,6 +10,8 @@ import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { BalanceCurve } from "../components/portfolio/BalanceCurve";
+import { useAppState } from "../context/AppStateContext";
+import { formatOdds } from "../utils/odds";
 
 type SplitDimension = "market_type" | "confidence_tier" | "model_type";
 
@@ -253,6 +255,7 @@ function BetsCard({
 }: {
   result: ReturnType<typeof usePortfolioBets>;
 }) {
+  const { state } = useAppState();
   return (
     <div className="hm-card" style={{ padding: 24 }}>
       <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
@@ -311,7 +314,7 @@ function BetsCard({
                   {bet.line != null ? ` (${bet.line})` : ""}
                 </td>
                 <td style={{ padding: "10px 12px 10px 0", textAlign: "right" }}>
-                  {bet.odds != null ? formatAmerican(bet.odds) : "—"}
+                  {bet.odds != null ? formatOdds(bet.odds, state.oddsFormat) : "—"}
                 </td>
                 <td style={{ padding: "10px 12px 10px 0", textAlign: "right" }}>
                   {bet.stake != null ? `$${bet.stake.toFixed(2)}` : "—"}
@@ -632,9 +635,4 @@ function formatDateShort(ts: string | null | undefined): string {
   // Timestamp format from API: "2026-06-21 20:10:01.160530+00:00"
   const trimmed = ts.split(".")[0].replace("T", " ");
   return trimmed;
-}
-
-function formatAmerican(odds: number): string {
-  if (odds > 0) return `+${odds}`;
-  return `${odds}`;
 }
