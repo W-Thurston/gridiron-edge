@@ -64,12 +64,8 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 
 | Area | Status | Impact |
 |---|---|---|
-| **API serving layer** | ❌ Not started | Everything is CLI + file output. Blocks visual QA of outputs and friend access. |
-| **Frontend** | ❌ Not started | Prototype exists (Claude Design) but not wired. Required for M5. |
-| Live prediction pipeline | ✅ Exists | `gridiron weekly-predict` is the working game-day workflow |
 | Model ensemble | ❌ Not started | Using individual models only, no weighted combination |
 | Multi-book odds ingestion | ❌ Not started | Can't compare books, can't shop lines |
-| Player prop walk-forward backfill | ✅ Available | Per-(stat, algorithm) walk-forward backfill works |
 | Injury/news feed | ❌ Not started | No injury data; blocks W4.5 scenario engine |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
 
@@ -130,38 +126,49 @@ Spread derivation (probit + per-model sigma calibration), total points model, pr
 #### W3: Market Intelligence Foundation — ✅ COMPLETE
 Pure-math market package: odds_math.py, kelly.py. Power devig via bisection, no scipy dependency. See CHANGELOG.md for details.
 
-#### W4: Player Data & First Prop Models — ✅ COMPLETE
-Player game logs (nflreadpy, 1999–2024), 4 player feature modules, 5 prop models (QB pass/rush yards, RB rush yards, WR rec yards, TE rec yards), PropTrainer base class, post-processing enrichment, prop archive, prop CLI. M3 achieved. See CHANGELOG.md for details.
-
-#### W5: Edge Engine — ✅ COMPLETE
-Edge calculation (moneyline, spread, total), recommendations builder, CLV analysis, CLI commands. See CHANGELOG.md for details.
-
-#### W6: Portfolio & Bet Tracking — ✅ COMPLETE
-Bet ledger, bankroll management (decoupled), performance analytics, 8 CLI commands. Full round-trip validated. See CHANGELOG.md for details.
-
 #### W3.5: Audit Remediation — ✅ COMPLETE
-Closed ~100 findings from `audit_2026_06_18.md` across 11 audit units, plus 4 cross-cutting patterns (vectorization, polish, enums, registry completion). Major outcomes:
+Closed ~100 findings from `audit_2026_06_18.md` across 11 audit units, plus 4 cross-cutting patterns. Major outcomes:
 
 - **Identity unification:** `(model_name, model_type)` composite identity flows through every persistence layer.
 - **Elo simulator:** Single canonical history simulator drives both the state table and the tuner.
 - **Task-discriminated metadata:** Metrics live in a single dict on `BaseModelMetadata`.
 - **Vectorization:** All audit-flagged per-row apply patterns eliminated.
-- **Trainable protocol:** Reduced to `spec + is_trained`. Registry enforces consistency.
 - **CLI ergonomics:** Stage staleness warnings, calibration health flags, archive-driven prop CLI, enum-based string constants.
 
-See `AUDIT_REMEDIATION.md` for unit-by-unit closure detail and `DECISIONS.md` D1–D12 for architectural decisions.
+See DECISIONS.md D1–D12 for architectural decisions.
+
+#### W4: Player Data & First Prop Models — ✅ COMPLETE
+Player game logs (nflreadpy, 1999–2024), 4 player feature modules, 5 prop models (QB pass/rush yards, RB rush yards, WR rec yards, TE rec yards), PropTrainer base class, post-processing enrichment, prop archive, prop CLI. M3 achieved. See CHANGELOG.md for details.
 
 #### W4.1: Composite CLI Workflows — ✅ COMPLETE
-Four composite commands wrap related single-purpose commands into complete workflows:
-- **`weekly-predict`** — game-day prep (refresh → predict → edges)
-- **`post-week`** — archive + drift detection
-- **`full-retrain`** — season-start refresh; persists calibration to disk
-- **`verify`** — pre-commit quality checks
+Four composite commands wrap related single-purpose commands into complete workflows: `weekly-predict`, `post-week`, `full-retrain`, `verify`. Shared infrastructure in `cli/_composites.py` provides stage abstraction, dependency validation, soft-fail semantics, and consolidated summary rendering. M1.6 achieved.
 
-Shared infrastructure (`cli/_composites.py`) provides stage abstraction, dependency validation, soft-fail semantics, and consolidated summary rendering. M1.6 achieved.
+#### W5: Edge Engine — ✅ COMPLETE
+Edge calculation (moneyline, spread, total), recommendations builder, CLV analysis, CLI commands. See CHANGELOG.md for details.
 
-#### W5.5: Deep Code Review + Test Suite Review (Tier 4 sweep) — ✅ COMPLETE
-Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergonomics, composite commands, dead code, documentation drift, exception narrowing, type cleanup, HTML escaping, season-label consistency, name mapping consolidation, calibration persistence, pipeline correctness, and incremental-build staleness detection. Two real bugs surfaced and fixed (XGBoost recalibration Pipeline feature-name warning, modeling-file stale-data preservation). Three items reclassified as future workstream candidates. TIER_4_BACKLOG.md retired; remaining items tracked in PLAN.md.
+#### W5.5: Deep Code Review + Test Suite Review — ✅ COMPLETE
+Multi-session opportunistic cleanup that closed 30 backlog items and surfaced two real bugs that were fixed during the sweep. See CHANGELOG.md for details.
+
+#### W6: Portfolio & Bet Tracking — ✅ COMPLETE
+Bet ledger, bankroll management (decoupled), performance analytics, 8 CLI commands. Full round-trip validated. M2 achieved. See CHANGELOG.md for details.
+
+#### W13: Runtime Champion Resolution — ✅ COMPLETE (2026-07-01)
+Static manifest artifact at `data/output/champions/champions.json` written by `full-retrain`. `resolve_current_champion(model_name)` reads from it. CLI consumers migrated to `--model-type auto` pattern. Unblocks all downstream champion-only consumption paths.
+
+**Scope:** manifest schema + reader API (Tier 1), writer + full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3).
+
+**Discovered as a mid-tier scope elevation from W8** when the API needed runtime champion resolution to serve `/games`, `/edges`, `/props`.
+
+See CHANGELOG.md for details.
+
+#### W9: Frontend — ✅ COMPLETE (2026-07-03)
+Vite + React + TypeScript app at `frontend/` consuming the 16-endpoint API end-to-end. All 20 prototype-referenced screens render. 12 screens consume the API; 4 are blocked-screen placeholders with full blocker context; 4 are client-side (Onboarding, Settings, Tools, BetSlip).
+
+**Architecture established:** Data flows via `openapi-fetch` typed client wrapped in per-endpoint React Query hooks. Three-Context state model (AppState, BetSlip, Nav) with localStorage persistence. Shared field-status primitives (`<PendingField />`, `<BlockedField />`, `<FieldValue />`) compose consistently. Consistent error UX via `<ErrorCard />` and global `<OfflineBanner />`.
+
+**Unlocks:** M4.5 achieved (visual verification of full output set). W8 Tier 3 additive dataset priority now discoverable — the frontend has surfaced which pending/blocked states matter most.
+
+See CHANGELOG.md for details.
 
 ### Active Workstream
 
@@ -169,123 +176,33 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
 
-**Why it matters now:** This is both the bridge to a frontend *and* the next quality-assurance step. The CLI surfaces outputs one-at-a-time; a dashboard forces them side-by-side, which surfaces missing fields, schema drift, and silent bugs that the test suite is blind to. Doing this before W12 (Model Ensemble) or W4.5 (Scenario Engine) means any subsequent workstream automatically inherits a UI surface and a verification harness.
+**Delivered (Tier 1 + Tier 2, 2026-06-27 through 2026-07-01):**
+- ✅ FastAPI app skeleton at `src/gridiron_edge/api/`, reachable via `gridiron api serve`.
+- ✅ 16 endpoints returning populated data with Pydantic-validated responses. Every prototype-referenced URL returns a 200 with a valid shape.
+- ✅ Placeholder convention (D14) applied consistently: unpopulated fields return `null` with structured `_meta.field_status` entries carrying registered blocker slugs.
+- ✅ Champion resolution flows from manifest → loader → serializer → route for game and prop endpoints (unblocked by W13).
+- ✅ Loader/schema/serializer/route pattern established with three-layer separation, per D17/D18/D19.
+- ✅ Testing: `MiniRepoBuilder` extended with API-specific fixture methods; per-route integration tests via FastAPI `dependency_overrides`.
 
-**Key deliverables:**
-- Create `api/` package at `src/gridiron_edge/api/`
-- Choose framework: **FastAPI** (lightweight, async, good docs, type-safe)
-- Read-only first. No POST endpoints, no auth, no DB in scope for W8.
-- Core endpoints:
-  - `GET /games?week=12` — list games with model forecasts and edges
-  - `GET /games/{game_id}` — game detail with fair values, team comparison
-  - `GET /edges?week=12` — ranked edge table
-  - `GET /teams` — power rankings
-  - `GET /props?week=12` — top prop edges
-  - `GET /portfolio/summary` — bankroll + performance (read-only)
-- Data source: read from Parquet/CSV files. No database in W8.
-- CORS configuration for frontend access
+**Tier 3 in design (2026-07-03):** Additive datasets to populate scaffolded `field_status` fields. Priority driven by W9 feedback on which pending/blocked states most impact the UX:
+
+| Addition | Populates |
+|---|---|
+| Per-stat league-wide percentile ranking pass | Compare screen rank columns, Team Detail rank fields |
+| Off/def rating decomposition | Team Rankings off/def split |
+| Weekly Elo snapshot persistence | Team rating-history endpoint, projections week-over-week delta |
+| Opponent-allowed-by-position aggregation | Player vs Defense view, Player Prop matchup section |
+| Cohort splits (season/L4/home/away, indoor/outdoor, favored/underdog) | Game Detail split tabs, Compare splits, Player Prop situational splits |
+| Prior-week projection snapshot for delta | Projections 1-week change column |
 
 **Dependencies:** None. Fully unblocked.
-**Unlocks:** W9 (Frontend), visual QA of full output set, M5 (with W9).
-**Architecture notes:** Start with FastAPI reading Parquet files. The "files vs. database" decision (§5.1) is deferred until W9 reveals concrete query patterns that are awkward in pandas.
-
-#### W13: Runtime Champion Resolution — ✅ COMPLETE (2026-07-01)
-
-**Goal:** Provide a persistent, static-artifact source of truth for "current champion `(model_name, model_type)`" per `model_name`, so every downstream consumer — CLI, API, evaluation — can resolve the authoritative model without hard-coding or in-request computation.
-
-**Why it matters now:** Discovered during W8 Tier 2 Step 5 pre-planning. The API cannot serve `/games`, `/games/{id}`, `/edges`, or `/props/{id}` without knowing which model's output is authoritative. Averaging or ensembling would obscure model identity and pre-empt W12. Per D21, the champion decision must be a pre-computed static artifact, not a request-time computation. The composite-identity foundation from W3.6/W3.7 built the `(model_name, model_type)` key structure but never wired up a runtime authority.
-
-**Delivered (2026-07-01):**
-- ✅ Static manifest artifact at data/output/champions/champions.json
-  with per-model_name entries carrying model_type, promoted_at,
-  source_run_id, and task-flexible metrics dict.
-- ✅ evaluation/champion_resolver.py with the full read/write API.
-- ✅ Three selectors in evaluation/champion.py (game classification,
-  game regression, prop).
-- ✅ Manifest writer hooked into full-retrain as promote-champions
-  stage.
-- ✅ Manual-override flags: `gridiron evaluate select-model
-  --write-manifest` and `gridiron props champion --write-manifest`.
-- ✅ Baseline report annotates current champions.
-- ✅ Central catalog at gridiron_edge.models.catalog.
-- ✅ CLI consumers migrated: `gridiron weekly-predict` and `gridiron
-  edges report/clv` accept `--model-type auto` (default), which reads
-  the champion manifest. Explicit values pass through verbatim.
-- ✅ Intentional Elo callsites annotated with explanatory comments
-  (weekly_predict._stage_predict_week, output.output_predictions,
-  evaluate.evaluate_tune, evaluate.evaluate_backfill,
-  ratings.elo_evaluate).
-**Delivered (Tier 2, 2026-07-01):**
-- ✅ 16 endpoints returning populated data with Pydantic-validated
-  responses.
-- ✅ Placeholder convention (D14) applied consistently: unpopulated
-  fields return `null` with structured `_meta.field_status` entries.
-- ✅ Champion resolution flows from manifest → loader → serializer →
-  route for game and prop endpoints (unblocked by W13).
-- ✅ Loader pattern established: pandas DataFrames in, dicts out,
-  explicit `settings.repo_root` threading (D19).
-- ✅ Serializer pattern established: hand-written per D17, owns
-  `_meta.field_status` per D18.
-- ✅ Testing infrastructure: `MiniRepoBuilder` with 4 W8-specific
-  fixture methods; per-route integration tests via `dependency_overrides`.
-
-**Tier 3 designing:** Additive datasets to populate scaffolded fields:
-- Per-stat league-wide percentile ranking pass.
-- Off/def rating decomposition.
-- Opponent-allowed-by-position aggregation.
-- Cohort splits (season/L4/home/away, indoor/outdoor, favored/underdog).
-- Weekly Elo snapshot persistence for trend fields.
-
-**Unlocks:** W9 (Frontend) can begin.
-
-**Unlocks:** W8 Tier 2 Step 5 (game endpoints in the API can now serve
-champion-only outputs per D21).
-
-**Dependencies:** None. Fully unblocked. Leverages existing `evaluation/champion.py` comparison utilities.
-**Unlocks:** W8 Tier 2 Steps 5–7, unambiguous downstream consumption, and cleaner starting point for W12 (Model Ensemble — the ensemble starts by beating the current champion).
-**Note:** Discovered as a mid-tier scope elevation from W8. W8 pauses in Tier 2 at Step 4; resumes when W13 closes. See PLAN.md.
+**Unlocks:** Every additive shipped fills in more of the frontend UI.
 
 ### Future Workstreams (ordered by current priority)
-
-#### W9: Frontend — ✅ COMPLETE (2026-07-03)
-
-**Goal:** Build a web UI that consumes the API and presents the analytics. Acts as the visual verification surface for everything the platform produces.
-
-**Delivered (2026-07-03):**
-- ✅ Vite + React + TypeScript app at `frontend/`, deployed to local dev
-  via `pnpm dev`.
-- ✅ 20 screens matching the prototype URL inventory. 12 consume the
-  API; 4 are blocked-screen placeholders with full blocker context;
-  4 are client-side (Onboarding, Settings, Tools, BetSlip).
-- ✅ Design system: OKLCH dark theme ported 1:1 from the prototype's
-  `styles.css`. Fonts loaded via Google Fonts (Geist / Geist Mono /
-  Instrument Serif). Design decisions captured in
-  `frontend/src/design-decisions.md`.
-- ✅ Three-Context state model (AppState, BetSlip, Nav) matching the
-  prototype. Persistence to localStorage / sessionStorage.
-- ✅ Data flow: `openapi-fetch` client generated from checked-in
-  `api-schema.json`, wrapped in per-endpoint React Query hooks.
-  Typed end-to-end.
-- ✅ Field-status rendering: shared `<PendingField />`,
-  `<BlockedField />`, `<FieldValue />` primitives compose consistently
-  across every screen.
-- ✅ Error handling: shared `<ErrorCard />` component with error
-  classification and Retry. Global `<OfflineBanner />` polls the API
-  every 30s.
-- ✅ Keyboard accessibility: focus outlines, proper button semantics,
-  ARIA labels on icon-only controls.
-- ✅ Smoke test coverage: Vitest + React Testing Library, 10 tests
-  across critical components.
-
-**Unlocks:** M4.5 achieved (visual verification of full output set).
-W8 Tier 3 additive dataset priority now discoverable — the frontend
-has surfaced which pending/blocked states matter most.
 
 #### W12: Model Ensemble — 🟢 PLANNED
 
 **Goal:** Combine elo, logistic, random forest, and XGBoost predictions into a weighted ensemble for better overall accuracy.
-
-**Why it matters:** Individual models have different strengths. A well-tuned ensemble should beat any individual model on Brier score and AUC.
 
 **Key deliverables:**
 - Resolve the walk-forward backfill bug (single-season expanded-feature windows) first — it's a prerequisite for honest holdout comparison.
@@ -294,14 +211,12 @@ has surfaced which pending/blocked states matter most.
 - Evaluation: must improve Brier by ≥0.002 over current champion to ship.
 - Wire ensemble into prediction pipeline + edge report.
 
-**Dependencies:** W2 ✅. Soft dependency on PLAN.md "Real Bugs" walk-forward backfill fix.
-**Unlocks:** Better predictions for all downstream consumers; auto-surfaces in W8/W9 UI.
+**Dependencies:** W2 ✅. Soft dependency on §9.2 walk-forward backfill bug fix.
+**Unlocks:** Better predictions for all downstream consumers; auto-surfaces in W8 UI.
 
 #### W4.5: Scenario / "What If" Engine — 🟢 PLANNED
 
 **Goal:** Let a user ask "what if Mahomes is out?" or "what if KC is +120 instead of -110?" and see the propagated effects on predictions, edges, and recommended bets.
-
-**Why deferred behind W8/W9 and W12:** Scenarios are most useful when their outputs can be visualized comparatively, and require an injury data source decision (§5.3) that is currently unresolved. Doing W8/W9 first means scenarios have a natural UI surface; doing W12 first means scenarios start from a stronger baseline.
 
 **Phases:** player impact quantification → team adjustment → usage redistribution → conditional re-forecasting → CLI/API interface.
 
@@ -312,14 +227,12 @@ has surfaced which pending/blocked states matter most.
 
 **Goal:** Ingest odds from multiple sportsbooks and build line-comparison tooling.
 
-**Why deferred:** Lower value density than W8/W9/W12 until the existing single-book pipeline is visually verified.
-
 **Key deliverables:**
-- Odds source decision (see §5.2)
-- Additional book ingest modules
-- `market/line_shopping.py`: best_price, price_comparison_table, detect_arbitrage, detect_middles
-- Line movement tracking and steam move detection
-- CLI: `gridiron lines --week 12 --market spread`
+- Odds source decision (see §5.2).
+- Additional book ingest modules.
+- `market/line_shopping.py`: best_price, price_comparison_table, detect_arbitrage, detect_middles.
+- Line movement tracking and steam move detection.
+- CLI: `gridiron lines --week 12 --market spread`.
 
 **Dependencies:** W3 ✅, odds source decision (§5.2).
 **Unlocks:** Better bet execution, arbitrage opportunities, M4.
@@ -331,13 +244,13 @@ has surfaced which pending/blocked states matter most.
 **Key deliverables:** Live game state ingest, live WP model, live odds ingest, live edge detection, hedge calculator, WebSocket API.
 
 **Dependencies:** W7, W8.
-**This is the most complex and least urgent workstream.** Not started until W7 and W8/W9 are solid.
+**This is the most complex and least urgent workstream.** Not started until W7 and W8 are solid.
 
 ### Cross-Cutting: Testing
 **Testing runs in parallel with all workstreams.** Every new feature includes corresponding unit tests. Integration and e2e tests are added as cross-module workflows are built.
 
 ### Cross-Cutting: Feature Engineering
-**Feature engineering is continuous.** Remaining FEATURES.md backlog (CPOE, pace, score differential, penalties, special teams, coaching) can be picked up alongside any workstream.
+**Feature engineering is continuous.** Remaining backlog (CPOE, pace, score differential, penalties, special teams, coaching) can be picked up alongside any workstream.
 
 ---
 
@@ -412,53 +325,50 @@ Current packages, with W8/W9 additions noted:
 
 ```
 
-COMPLETED                                  ACTIVE / REMAINING
-─────────                                  ──────────────────
+COMPLETED                                    ACTIVE / REMAINING
+─────────                                    ──────────────────
 
 W1 (Quick Wins) ✅
 │
-├─────────────────────┬───────────────────────────┐
-▼                     ▼                           ▼
-W2 (Model Outputs) ✅  W3 (Market Math) ✅          W4 (Player Data) ✅
-│                     │                            │
-└─────────┬───────────┘                            │
-▼                                        │
-W5 (Edge Engine) ✅ ◄──────── W4.5 (Scenario) ──┘
-│                          ▲
-┌────────┼─────────┐                │ (blocked: §5.3)
-▼        ▼         ▼                │
-W6 ✅   W3.5 ✅   W4.1 ✅            │
-(Bet     (Audit)  (Composite          │
-Track)            CLI)                │
+├──────────┬───────────┐
+▼          ▼           ▼
+W2 ✅       W3 ✅        W4 ✅
+│          │           │
+└─────┬────┘           │
+▼                       │
+W5 (Edge Engine) ✅ ◄── W4.5 (Scenario) ──┘
+│                       ▲
+┌───────┼──────────┐    │ (blocked: §5.3)
+▼       ▼          ▼    │
+W6 ✅   W3.5 ✅    W4.1 ✅
+(Bet    (Audit)   (Composite
+Track)            CLI)
 │
-W5.5 ✅                              │
-(Deep Code Review)                   │
+W5.5 ✅
+(Deep Review)
 │
-┌─── W8 (API) ⏸ paused ◄─┐
-│      │                  │
-│      ▼                  │
-│   W9 (Frontend) ────────┤
-│                         │
-├─── W13 (Champion 🟡 active
-│     Resolution)         │
-│        │                │
-│        └── unblocks W8 Tier 2 Step 5+
-│                         │
-├─── W12 (Ensemble) ──────┤
-│                         │
-├─── W7 (Multi-Book) ─────┤
-│      │                  │
-│      ▼                  │
-└─── W10 (Real-Time / Live)
+W13 ✅
+(Champion Resolution)
+│
+W8 (API) 🟡 active
+│
+├── W9 (Frontend) ✅
+│
+├── W12 (Ensemble) 🟢 planned
+│
+├── W7 (Multi-Book) 🟢 planned
+│
+└── W10 (Real-Time) 🟢 deferred
 
 ```
 
-**Current position:** W9 complete (2026-07-03). Frontend consumes the API end-to-end; all 20 prototype screens render. Path forward:
-- **W8 Tier 3** 🟡 active — Additive datasets designing. W9 feedback identifies which additive should ship first.
-- **W12 (Ensemble)** — Available; not currently blocking anything.
-- **W4.5 (Scenario)** — Blocked on §5.3 injury data source decision.
-- **W7 (Multi-Book)** — Blocked on §5.2 odds source decision.
-- **W10 (Real-Time)** — Deferred until W7 and W12 stabilize.
+**Current position:** W8 Tier 3 (additive datasets) active. Tiers 1 + 2 complete: 16 populated endpoints with W9 consuming them end-to-end. Path forward:
+
+1. **W8 Tier 3** — additive datasets, prioritized by W9 feedback. Each additive fills in a specific set of scaffolded field_status entries in the API.
+2. **W12 (Ensemble)** — Available; not currently blocking anything. Independent of W8.
+3. **W4.5 (Scenario)** — Blocked on §5.3 injury data source decision.
+4. **W7 (Multi-Book)** — Blocked on §5.2 odds source decision.
+5. **W10 (Real-Time)** — Deferred until W7 and W12 stabilize.
 
 ---
 
@@ -558,6 +468,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-03 | **W9 complete; W8 Tier 3 opens.** ROADMAP restructured to reflect current state: W9 moved to Completed section; W8 elevated to sole Active workstream with Tier 3 additive datasets as the work. §6 dependency graph redrawn; §1.1 "What's Working" and "What's Missing" tables updated. |
 | 2026-07-03 | **W9 complete.** Frontend consumes the API end-to-end; all 20 prototype screens render. Vite + React + TypeScript at `frontend/`. Every populated field shows real data; every scaffolded field surfaces `field_status`; every error state consistent. M4.5 milestone achieved. Path forward: W8 Tier 3 additive datasets, prioritized by W9 feedback on which field_status states most impact the UX. |
 | 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens wired end-to-end. Real data flows for populated fields; `field_status` renders structured null states for pending/blocked fields. Tier 3 (blocked screens + polish) opens next. |
 | 2026-07-02 | **W9 Tier 1 complete.** Frontend client infrastructure shipped in seven substeps. Vite + React + TypeScript + `openapi-fetch` + React Query loop works end-to-end against the local API. Backend hygiene item added to §9.6 (season type inconsistency across endpoints). W9 Tier 2 (populated screens) opens next. |
