@@ -19,40 +19,61 @@ export function GameDetail() {
     );
   }
 
+  const backNav = (
+    <div>
+      <span
+        onClick={() => navigate("/games")}
+        className="dim mono"
+        style={{ fontSize: 12, cursor: "pointer" }}
+      >
+        ← Games
+      </span>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="dim">Loading…</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {backNav}
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="dim">Loading…</div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="neg mono">Error: {error.message}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {backNav}
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="neg mono" style={{ marginBottom: 8 }}>
+            Error: {error.message}
+          </div>
+          <div className="dim mono" style={{ fontSize: 11 }}>
+            This game may not exist in the archive.
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!data) {
-    return null;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {backNav}
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="dim">No game data available.</div>
+        </div>
+      </div>
+    );
   }
 
   const fieldStatus = data._meta?.field_status;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Back nav */}
-      <div>
-        <span
-          onClick={() => navigate("/games")}
-          className="dim mono"
-          style={{ fontSize: 12, cursor: "pointer" }}
-        >
-          ← Games
-        </span>
-      </div>
+      {backNav}
 
       {/* Header */}
       <div className="hm-card" style={{ padding: 24 }}>
@@ -138,7 +159,9 @@ export function GameDetail() {
             />
             <PredictionCell
               label="Confidence"
-              value={<ConfidenceTierPill tier={data.prediction.confidence_tier} />}
+              value={
+                <ConfidenceTierPill tier={data.prediction.confidence_tier} />
+              }
             />
           </div>
         ) : (
@@ -188,10 +211,7 @@ function PredictionCell({
 }) {
   return (
     <div style={{ minWidth: 80 }}>
-      <div
-        className="upper dim2"
-        style={{ fontSize: 10, marginBottom: 6 }}
-      >
+      <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
         {label}
       </div>
       <div className="mono tnum" style={{ fontSize: 14 }}>
