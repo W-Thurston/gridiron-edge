@@ -55,3 +55,43 @@ export function useGame(gameId: string | null) {
     enabled: gameId !== null,
   });
 }
+/**
+ * Fetches the team rankings list.
+ */
+export function useTeamRankings(params: { season?: string } = {}) {
+  return useQuery({
+    queryKey: ["teams", params],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/teams", {
+        params: { query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches detail for a single team.
+ */
+export function useTeamProfile(abbr: string | null, params: { season?: string } = {}) {
+  return useQuery({
+    queryKey: ["team", abbr, params],
+    queryFn: async () => {
+      if (!abbr) throw new Error("abbr required");
+      const { data, error } = await apiClient.GET("/teams/{abbr}", {
+        params: {
+          path: { abbr },
+          query: params,
+        },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: abbr !== null,
+  });
+}
