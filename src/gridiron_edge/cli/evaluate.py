@@ -629,10 +629,10 @@ def evaluate_select_model(
         "('gridiron evaluate diagnostics --compare') before switching models."
     )
 
-    console.summary()
-
     if write_manifest:
         write_champion_manifest(repo)
+
+    console.summary()
 
 
 def _print_ranking_section(
@@ -877,7 +877,6 @@ def evaluate_report(
     except ValueError as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
-    console.summary()
 
     # ── Print report ────────────────────────────────────────────────────────
     _divider: LiteralString = "─" * 60
@@ -896,3 +895,5 @@ def evaluate_report(
     _print_misses_section(
         df_misses, target_key=target_key, top_misses=top_misses, season=season, divider=_divider
     )
+
+    console.summary()
