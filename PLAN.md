@@ -135,32 +135,38 @@ blocking W9.
 
 Frontend infrastructure ready for Tier 2 populated-screen wiring.
 
-**Tier 2 — Populated screens.** 🟡 Active.
+**Tier 2 — Populated screens.** ✅ Complete (2026-07-03).
 
-Deliverable: all 12 API-consuming screens render real data.
+Shipped in seven substeps plus one pre-substep and one W8 patch:
 
-Substeps grouped by domain:
-1. Games (GamesList + GameDetail) → `/games`, `/games/{id}`.
-2. Teams (TeamRankings + TeamProfile) → `/teams`, `/teams/{abbr}`.
-3. Projections → `/projections`.
-4. Players / Props (PlayersExplorer + PlayerProp) → `/props`,
-   `/props/{prop_id}`, `/compare/player/{prop_id}`.
-5. Compare (ComparePage) → `/compare/teams`.
-6. Bankroll → `/portfolio/*`.
-7. BetSlip → client-side + `/edges` integration for staging.
+- **Pre-substep 2.0:** `<PendingField />`, `<BlockedField />`, `<FieldValue />` primitives that render field-status states consistently across all screens.
+- **Substep 2a:** Games (GamesList + GameDetail) with prediction card and scaffolded Weather/TeamComparison/SwingFactors/Injuries/TopPropEdges.
+- **Substep 2b:** Teams (TeamRankings + TeamProfile) with rating history sparkline and recent results strip.
+- **Substep 2c:** Projections with Monte Carlo table.
+- **Substep 2d:** Players (PlayersExplorer + PlayerProp) with FilterBar (first user-input control) and composed prop-vs-defense view.
+- **Substep 2e:** Compare with TeamPicker (URL-synced state for bookmarking) — first substep with URL-driven user-input state.
+- **Substep 2f:** Bankroll with five parallel React Query calls (summary, bets, curve, transactions, splits) into a card-per-endpoint layout with tabbed splits view.
+- **Substep 2g:** BetSlip (Available Edges table + client-side slip panel via BetSlipContext, staked bet totaling with parlay math).
 
-**Tier 3 — Blocked screens + polish.**
+W8 backend hygiene item captured in ROADMAP §9.6 during 2b:
+`season` type inconsistency across endpoints (int vs string). Also captured during 2e: PFR-era team abbreviations (KAN, JAC) vs modern conventions.
+
+Tier 2 covers every prototype-referenced URL that has a populated API endpoint. Blocked screens (LineShopping, LiveGame, NewsWire,
+ExplainPage) and client-side screens (Onboarding, Settings, Tools) still stub — Tier 3.
+
+
+**Tier 3 — Blocked screens + polish.** 🟡 Active.
 
 Deliverable: 20-screen complete UI.
 
 Substeps:
-1. Blocked-screen placeholders (LineShopping, LiveGame, NewsWire,
-   ExplainPage).
+1. Blocked-screen placeholders (LineShopping, LiveGame, NewsWire, ExplainPage).
 2. Client-side screens (Onboarding, Settings, Tools).
 3. Aesthetic variants decision (Terminal / Fintech / Editorial or none).
 4. Screen-level integration testing.
 5. A11y sweep.
 6. Error states (network failures, backend down).
+
 
 Tier design blocks are drafted at the start of each tier.
 
@@ -217,6 +223,7 @@ structured `field_status` metadata per D14.
 
 | Date | Change |
 |------|--------|
+| 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens render real data end-to-end. Seven substeps shipped: Games (2a), Teams (2b), Projections (2c), Players/Props (2d), Compare (2e), Bankroll (2f), BetSlip (2g). Pre-substep 2.0 shipped shared field-status primitives (`<PendingField />`, `<BlockedField />`, `<FieldValue />`) used across every screen. First user-input controls introduced (FilterBar in 2d, TeamPicker in 2e). URL-synced state pattern established in 2e. W8 hygiene items captured: `season` type inconsistency (2b), PFR-era team abbreviations (2e). Tier 3 (blocked screens + polish) opens next. |
 | 2026-07-02 | **W9 Tier 1 complete.** Client infrastructure shipped in seven substeps: Vite + React + TypeScript scaffold, design tokens ported from prototype's `styles.css`, chrome components (TopNav, SubNav, Breadcrumb), hash-based routing with three-Context state model (AppState, BetSlip, Nav), typed API client via `openapi-fetch` with generated `schema.ts`, React Query with per-endpoint hooks. `gridiron api export-schema` W8 patch shipped standalone. Dashboard successfully fetches `/weeks/current` from the live API. Frontend infrastructure ready for Tier 2 populated-screen wiring. |
 | 2026-07-02 | **W9 design phase complete.** Design block locked: Vite + React + TypeScript, CSS variables + CSS Modules, three-Context state model matching the prototype, React Query for API data, generated API client from checked-in OpenAPI schema (via new `gridiron api export-schema` W8 patch). Three tiers: client infrastructure (7 substeps), populated screens (7 substeps grouped by domain), blocked screens + polish (6 substeps). Field_status rendering strategy locked: pending as placeholder + info badge; blocked as "not available" state with tooltip; entirely-blocked screens as full-screen "coming soon" cards. |
 | 2026-07-02 | **W9 promoted to Current Workstream.** W8 Tier 2 complete; W8 Tier 3 paused pending W9 signal on which additive dataset to build first. W9 design phase to follow — likely 3-tier structure covering client infrastructure, populated screens, and `field_status`-driven blocked-state rendering. |
