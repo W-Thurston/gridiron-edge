@@ -179,3 +179,37 @@ export function useComparePlayer(propId: string | null) {
     enabled: propId !== null,
   });
 }
+/**
+ * Fetches team-vs-team comparison.
+ * Both team_a and team_b are required for the API to return data.
+ * When either is missing, the hook is disabled.
+ */
+export function useCompareTeams(params: {
+  team_a: string | null;
+  team_b: string | null;
+  season?: string;
+}) {
+  const enabled = params.team_a !== null && params.team_b !== null;
+  return useQuery({
+    queryKey: ["compare-teams", params],
+    queryFn: async () => {
+      if (!params.team_a || !params.team_b) {
+        throw new Error("team_a and team_b required");
+      }
+      const { data, error } = await apiClient.GET("/compare/teams", {
+        params: {
+          query: {
+            team_a: params.team_a,
+            team_b: params.team_b,
+            season: params.season,
+          },
+        },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled,
+  });
+}
