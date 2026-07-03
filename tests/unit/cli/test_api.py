@@ -10,8 +10,12 @@ Covers:
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+import typer
 from typer.testing import CliRunner
 
 from gridiron_edge.cli.api import api_app
@@ -91,3 +95,78 @@ class TestApiWiredIntoMainCli:
         result = runner.invoke(main_app, ["api", "serve", "--help"])
         assert result.exit_code == 0
         assert "--host" in result.stdout
+
+
+class TestExportSchema:
+    """Cover the export-schema command (W8 patch for W9 kickoff)."""
+
+    def test_writes_schema_to_output(self, tmp_path: Path) -> None:
+        from gridiron_edge.cli.api import export_schema
+
+        output = tmp_path / "test-schema.json"
+
+        app = typer.Typer()
+        app.command()(export_schema)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["--output", str(output)])
+
+        assert result.exit_code == 0, result.output
+        assert output.exists()
+
+        # File is valid JSON and looks like an OpenAPI doc.
+        schema = json.loads(output.read_text())
+        assert "paths" in schema
+        assert "openapi" in schema
+
+    def test_default_output_path(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Default output writes to api-schema.json in the CWD."""
+        from gridiron_edge.cli.api import export_schema
+
+        monkeypatch.chdir(tmp_path)
+
+        app = typer.Typer()
+        app.command()(export_schema)
+
+        runner = CliRunner()
+        result = runner.invoke(app, [])
+
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "api-schema.json").exists()
+
+    def test_deterministic_output(self, tmp_path: Path) -> None:
+        """Two exports produce identical files (sort_keys=True)."""
+        from gridiron_edge.cli.api import export_schema
+
+        output_1 = tmp_path / "schema-1.json"
+        output_2 = tmp_path / "schema-2.json"
+
+        app = typer.Typer()
+        app.command()(export_schema)
+
+        runner = CliRunner()
+        result_1 = runner.invoke(app, ["--output", str(output_1)])
+        result_2 = runner.invoke(app, ["--output", str(output_2)])
+
+        assert result_1.exit_code == 0
+        assert result_2.exit_code == 0
+        assert output_1.read_text() == output_2.read_text()
+
+    def test_short_flag(self, tmp_path: Path) -> None:
+        """The -o short flag also works."""
+        from gridiron_edge.cli.api import export_schema
+
+        output = tmp_path / "schema.json"
+
+        app = typer.Typer()
+        app.command()(export_schema)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["-o", str(output)])
+
+        assert result.exit_code == 0, result.output
+        assert output.exists()

@@ -1,0 +1,6597 @@
+{
+  "components": {
+    "schemas": {
+      "ArbitrageOpportunity": {
+        "additionalProperties": false,
+        "description": "A cross-book lock-in opportunity.",
+        "properties": {
+          "book_a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book A"
+          },
+          "book_b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book B"
+          },
+          "edge_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Locked-in edge in percent.",
+            "title": "Edge Pct"
+          },
+          "side_a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side A"
+          },
+          "side_b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side B"
+          }
+        },
+        "title": "ArbitrageOpportunity",
+        "type": "object"
+      },
+      "BankrollCurve": {
+        "additionalProperties": false,
+        "description": "Bankroll over time.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/CurveBucket"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Requested period, e.g. '30d'.",
+            "title": "Period"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BankrollCurve",
+        "type": "object"
+      },
+      "BaseListResponse_BetRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/BetRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BaseListResponse[BetRow]",
+        "type": "object"
+      },
+      "BaseListResponse_LineRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/LineRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BaseListResponse[LineRow]",
+        "type": "object"
+      },
+      "BaseListResponse_LiveGameSummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/LiveGameSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BaseListResponse[LiveGameSummary]",
+        "type": "object"
+      },
+      "BaseListResponse_NewsItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/NewsItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BaseListResponse[NewsItem]",
+        "type": "object"
+      },
+      "BaseListResponse_TransactionRow_": {
+        "additionalProperties": false,
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/TransactionRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "BaseListResponse[TransactionRow]",
+        "type": "object"
+      },
+      "BetRow": {
+        "additionalProperties": false,
+        "description": "A single row in /portfolio/bets.",
+        "properties": {
+          "bet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bet Id"
+          },
+          "book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book"
+          },
+          "closing_line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closing Line"
+          },
+          "clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clv"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "market_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Type"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "odds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odds"
+          },
+          "placed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placed At"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "stake": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stake"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "BetRow",
+        "type": "object"
+      },
+      "BettingPerformanceBlock": {
+        "additionalProperties": false,
+        "description": "Top-line betting-performance metrics scoped to bets with model context.",
+        "properties": {
+          "calibration_health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Health"
+          },
+          "ev_vs_actual_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ev Vs Actual Gap"
+          },
+          "mean_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Clv"
+          },
+          "mean_ev_at_bet": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Ev At Bet"
+          },
+          "n_model_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Model Bets"
+          },
+          "pct_positive_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Positive Clv"
+          },
+          "roi_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi Pct"
+          }
+        },
+        "title": "BettingPerformanceBlock",
+        "type": "object"
+      },
+      "BlockedStatus": {
+        "additionalProperties": false,
+        "description": "A field blocked on an upstream workstream or external dependency.\n\nAttributes:\n    status: Discriminator. Always the literal \"blocked\".\n    blocker: Stable slug identifying the upstream gap. Must match a\n        value registered in the `Blocker` class.\n    roadmap: ROADMAP.md reference (e.g., \"\u00a75.3\", \"W7\", \"deferred\").",
+        "properties": {
+          "blocker": {
+            "description": "Stable slug identifying the upstream gap.",
+            "title": "Blocker",
+            "type": "string"
+          },
+          "roadmap": {
+            "description": "ROADMAP.md reference for the blocker.",
+            "title": "Roadmap",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "default": "blocked",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blocker",
+          "roadmap"
+        ],
+        "title": "BlockedStatus",
+        "type": "object"
+      },
+      "BookLine": {
+        "additionalProperties": false,
+        "description": "Per-book line for a single market.\n\nMirrors the prototype's per-cell book line shape (book id, line,\nprice, optional best-price highlight).",
+        "properties": {
+          "book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Book identifier (e.g. 'dk', 'fd', 'pin').",
+            "title": "Book"
+          },
+          "is_best": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if this is the best price on the market.",
+            "title": "Is Best"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Line value (spread, total, or moneyline).",
+            "title": "Line"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "American odds.",
+            "title": "Price"
+          }
+        },
+        "title": "BookLine",
+        "type": "object"
+      },
+      "ComparableGame": {
+        "additionalProperties": false,
+        "description": "A historical game similar to the current matchup.",
+        "properties": {
+          "date_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. '2024 \u00b7 Wk 11'.",
+            "title": "Date Label"
+          },
+          "favorite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite"
+          },
+          "favorite_covered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Covered"
+          },
+          "favorite_won": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Won"
+          },
+          "final_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Score"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "underdog": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underdog"
+          }
+        },
+        "title": "ComparableGame",
+        "type": "object"
+      },
+      "ComparePlayerResponse": {
+        "additionalProperties": false,
+        "description": "Response for GET /compare/player/{prop_id}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "model_key": {
+            "title": "Model Key",
+            "type": "string"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "title": "Player Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "prop_id": {
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "stat_type": {
+            "title": "Stat Type",
+            "type": "string"
+          },
+          "stats": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerVsDefenseRow"
+            },
+            "title": "Stats",
+            "type": "array"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "prop_id",
+          "game_id",
+          "player_id",
+          "player_name",
+          "position",
+          "team",
+          "stat_type",
+          "model_key"
+        ],
+        "title": "ComparePlayerResponse",
+        "type": "object"
+      },
+      "CompareTeamsResponse": {
+        "additionalProperties": false,
+        "description": "Response for GET /compare/teams.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "stats": {
+            "items": {
+              "$ref": "#/components/schemas/StatRow"
+            },
+            "title": "Stats",
+            "type": "array"
+          },
+          "team_a": {
+            "title": "Team A",
+            "type": "string"
+          },
+          "team_b": {
+            "title": "Team B",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_a",
+          "team_b"
+        ],
+        "title": "CompareTeamsResponse",
+        "type": "object"
+      },
+      "CredibleBand": {
+        "additionalProperties": false,
+        "description": "90% credible interval around the headline probability.",
+        "properties": {
+          "hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hi"
+          },
+          "lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lo"
+          },
+          "point": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Point"
+          }
+        },
+        "title": "CredibleBand",
+        "type": "object"
+      },
+      "CurrentWeek": {
+        "additionalProperties": false,
+        "description": "The current NFL season + week, derived from the schedule.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "season": {
+            "description": "NFL season year, e.g. 2025 for the 2025-26 season.",
+            "title": "Season",
+            "type": "integer"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the week was resolved: 'schedule' or 'fallback'.",
+            "title": "Source"
+          },
+          "week": {
+            "description": "Week number within the season.",
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season",
+          "week"
+        ],
+        "title": "CurrentWeek",
+        "type": "object"
+      },
+      "CurveBucket": {
+        "additionalProperties": false,
+        "description": "A single point in /portfolio/curve.",
+        "properties": {
+          "bankroll": {
+            "title": "Bankroll",
+            "type": "number"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "bankroll"
+        ],
+        "title": "CurveBucket",
+        "type": "object"
+      },
+      "DrivePoint": {
+        "additionalProperties": false,
+        "description": "A single drive entry in the drive chart.",
+        "properties": {
+          "quarter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarter"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'TD', 'FG', 'Punt', 'Active'.",
+            "title": "Result"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. '12 plays \u00b7 75 yds'.",
+            "title": "Summary"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "wp_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Win-prob delta in percentage points.",
+            "title": "Wp Change"
+          }
+        },
+        "title": "DrivePoint",
+        "type": "object"
+      },
+      "EdgeList": {
+        "additionalProperties": false,
+        "description": "Response for GET /edges.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/EdgeRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "min_ev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Minimum EV threshold applied to the report.",
+            "title": "Min Ev"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "title": "EdgeList",
+        "type": "object"
+      },
+      "EdgeRow": {
+        "additionalProperties": false,
+        "description": "A single edge in the ranked edge report.\n\nOne row per (game, market_type, side) triple. Moneyline rows have\n``point_edge`` and ``cover_prob`` as null; spread/total rows populate\nthem. Fields mirror ``_REPORT_COLUMNS`` in\n``market.recommendations``, with team names as short codes after\nloader-side normalization.",
+        "properties": {
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "confidence_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Low', 'Moderate', or 'High' \u2014 from prediction row.",
+            "title": "Confidence Tier"
+          },
+          "cover_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model-implied cover probability. Null for moneyline.",
+            "title": "Cover Prob"
+          },
+          "edge_strength": {
+            "description": "'strong', 'moderate', or 'weak'.",
+            "title": "Edge Strength",
+            "type": "string"
+          },
+          "ev": {
+            "title": "Ev",
+            "type": "number"
+          },
+          "game_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Date"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "kelly_frac": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kelly Frac"
+          },
+          "kelly_stake": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kelly Stake"
+          },
+          "market_type": {
+            "description": "'moneyline', 'spread', or 'total'.",
+            "title": "Market Type",
+            "type": "string"
+          },
+          "market_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Value"
+          },
+          "model_key": {
+            "description": "Composite {model_name}_{model_type} identifier.",
+            "title": "Model Key",
+            "type": "string"
+          },
+          "model_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Value"
+          },
+          "point_edge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Points of edge (spread/total). Null for moneyline.",
+            "title": "Point Edge"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "side": {
+            "description": "'home', 'away', 'over', or 'under'.",
+            "title": "Side",
+            "type": "string"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "game_id",
+          "away_team",
+          "home_team",
+          "model_key",
+          "market_type",
+          "side",
+          "ev",
+          "edge_strength"
+        ],
+        "title": "EdgeRow",
+        "type": "object"
+      },
+      "ExplainDistribution": {
+        "additionalProperties": false,
+        "description": "Simulated outcome distribution for the explain view.",
+        "properties": {
+          "mean_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected margin in points (home - away).",
+            "title": "Mean Margin"
+          },
+          "samples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of sims (e.g. 2000).",
+            "title": "Samples"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard deviation of margin.",
+            "title": "Sd"
+          }
+        },
+        "title": "ExplainDistribution",
+        "type": "object"
+      },
+      "ExplainFactor": {
+        "additionalProperties": false,
+        "description": "A single factor in the win-prob waterfall.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentage-point contribution to win prob.",
+            "title": "Delta"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One-line rationale.",
+            "title": "Description"
+          },
+          "is_adjustable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Adjustable"
+          },
+          "is_baseline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Baseline"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable factor identifier.",
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable label.",
+            "title": "Label"
+          }
+        },
+        "title": "ExplainFactor",
+        "type": "object"
+      },
+      "GameComparables": {
+        "additionalProperties": false,
+        "description": "Response for GET /games/{game_id}/comparables.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "comparables": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ComparableGame"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparables"
+          },
+          "favorite_cover_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Cover Rate"
+          },
+          "favorite_win_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Win Rate"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "sample_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Size"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "GameComparables",
+        "type": "object"
+      },
+      "GameDetail": {
+        "additionalProperties": false,
+        "description": "Response for GET /games/{game_id}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "day_of_week": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Week"
+          },
+          "game_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Date"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "injuries": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Injury reports for both teams. Blocked on injury data source (ROADMAP \u00a75.3).",
+            "title": "Injuries"
+          },
+          "kick": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local kickoff time, e.g. '1:00 PM ET'.",
+            "title": "Kick"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictionBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "swing_factors": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-game swing factors. Blocked on feature-attribution workstream.",
+            "title": "Swing Factors"
+          },
+          "team_comparison": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opponent-adjusted percentile stats table. Pending: no backend for percentile computation (ROADMAP \u00a79 Tier 3).",
+            "title": "Team Comparison"
+          },
+          "top_prop_edges": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top prop edges for this game. Pending: defer until /edges endpoint lands (Step 6).",
+            "title": "Top Prop Edges"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeatherBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "game_id",
+          "away_team",
+          "home_team"
+        ],
+        "title": "GameDetail",
+        "type": "object"
+      },
+      "GameExplain": {
+        "additionalProperties": false,
+        "description": "Response for GET /games/{game_id}/explain.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CredibleBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExplainDistribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExplainFactor"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "headline_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline Win Prob"
+          },
+          "market_implied": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "De-vigged market implied prob for the favored side.",
+            "title": "Market Implied"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "GameExplain",
+        "type": "object"
+      },
+      "GameInjuries": {
+        "additionalProperties": false,
+        "description": "Response for GET /games/{game_id}/injuries.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "reports": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InjuryReport"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reports"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "GameInjuries",
+        "type": "object"
+      },
+      "GameList": {
+        "additionalProperties": false,
+        "description": "Response for GET /games.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/GameSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "title": "GameList",
+        "type": "object"
+      },
+      "GameSummary": {
+        "additionalProperties": false,
+        "description": "A single row in the /games list response.\n\nSlimmer than GameDetail \u2014 omits weather, team comparison, swing\nfactors, injuries, and prop edges. Sufficient for the games-list\nscreen's per-game card.",
+        "properties": {
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "game_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Date"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictionBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "game_id",
+          "away_team",
+          "home_team"
+        ],
+        "title": "GameSummary",
+        "type": "object"
+      },
+      "GameSwingFactors": {
+        "additionalProperties": false,
+        "description": "Response for GET /games/{game_id}/swing-factors.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SwingFactor"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "GameSwingFactors",
+        "type": "object"
+      },
+      "GroupedMetricRow": {
+        "additionalProperties": false,
+        "description": "A single row in the by_group breakdown.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          },
+          "n_games": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Games"
+          }
+        },
+        "required": [
+          "group_key"
+        ],
+        "title": "GroupedMetricRow",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InjuryReport": {
+        "additionalProperties": false,
+        "description": "A single player injury entry.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Free-text status note.",
+            "title": "Note"
+          },
+          "player": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'OUT', 'Doubtful', 'Questionable', 'Probable', 'Active'.",
+            "title": "Status"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          }
+        },
+        "title": "InjuryReport",
+        "type": "object"
+      },
+      "LineBlock": {
+        "additionalProperties": false,
+        "description": "Odds-derived context for a prop.\n\nAll fields are null in T2 \u2014 the odds-join at prediction time is not\nyet implemented. Serializer marks with field_status: pending.\nPopulates when the odds-join lands as a future backend addition.",
+        "properties": {
+          "confidence_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Low', 'Moderate', or 'High' \u2014 derived from p_over.",
+            "title": "Confidence Tier"
+          },
+          "lean": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Over', 'Under', or 'No Edge'.",
+            "title": "Lean"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "p_over": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model-implied P(over the line).",
+            "title": "P Over"
+          }
+        },
+        "title": "LineBlock",
+        "type": "object"
+      },
+      "LineDetail": {
+        "additionalProperties": false,
+        "description": "Response for GET /lines/{game_id}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "arbitrage": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ArbitrageOpportunity"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arbitrage"
+          },
+          "books": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BookLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Books"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "movement": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time-series of consensus line.",
+            "title": "Movement"
+          },
+          "steam_moves": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SteamMove"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam Moves"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "LineDetail",
+        "type": "object"
+      },
+      "LineRow": {
+        "additionalProperties": false,
+        "description": "A single row in the /lines grid \u2014 one matchup across multiple books.",
+        "properties": {
+          "books": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BookLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Books"
+          },
+          "fair_line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gridiron Edge fair value.",
+            "title": "Fair Line"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'spread', 'total', 'ml', etc.",
+            "title": "Market"
+          }
+        },
+        "title": "LineRow",
+        "type": "object"
+      },
+      "LiveGame": {
+        "additionalProperties": false,
+        "description": "Response for GET /live/{game_id}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "clock": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock"
+          },
+          "down_distance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Down Distance"
+          },
+          "drives": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DrivePoint"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drives"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "live_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Win Prob"
+          },
+          "odds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LiveOdds"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odds"
+          },
+          "possession": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Possession"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "yard_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yard Line"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "LiveGame",
+        "type": "object"
+      },
+      "LiveGameSummary": {
+        "additionalProperties": false,
+        "description": "A row in the /live list.",
+        "properties": {
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "home_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win Prob"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. 'Q3 \u00b7 8:42'.",
+            "title": "Status"
+          }
+        },
+        "title": "LiveGameSummary",
+        "type": "object"
+      },
+      "LiveOdds": {
+        "additionalProperties": false,
+        "description": "Live odds for a market.",
+        "properties": {
+          "away_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Line"
+          },
+          "edge_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge Pct"
+          },
+          "fair_away": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fair Away"
+          },
+          "fair_home": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fair Home"
+          },
+          "home_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Line"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          }
+        },
+        "title": "LiveOdds",
+        "type": "object"
+      },
+      "LiveScore": {
+        "additionalProperties": false,
+        "description": "Current score.",
+        "properties": {
+          "away": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away"
+          },
+          "home": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home"
+          }
+        },
+        "title": "LiveScore",
+        "type": "object"
+      },
+      "ModelPerformance": {
+        "additionalProperties": false,
+        "description": "Response for GET /model/performance.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "betting_performance": {
+            "$ref": "#/components/schemas/BettingPerformanceBlock"
+          },
+          "by_group": {
+            "items": {
+              "$ref": "#/components/schemas/GroupedMetricRow"
+            },
+            "title": "By Group",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ModelPerformanceFilters"
+          },
+          "model_quality": {
+            "$ref": "#/components/schemas/ModelQualityBlock"
+          }
+        },
+        "required": [
+          "filters",
+          "model_quality",
+          "betting_performance"
+        ],
+        "title": "ModelPerformance",
+        "type": "object"
+      },
+      "ModelPerformanceFilters": {
+        "additionalProperties": false,
+        "description": "Echo of applied query parameters.",
+        "properties": {
+          "group_by": {
+            "title": "Group By",
+            "type": "string"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          }
+        },
+        "required": [
+          "group_by"
+        ],
+        "title": "ModelPerformanceFilters",
+        "type": "object"
+      },
+      "ModelQualityBlock": {
+        "additionalProperties": false,
+        "description": "Top-line model-quality metrics from build_evaluation_df.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "brier_reliability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier Reliability"
+          },
+          "brier_resolution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier Resolution"
+          },
+          "brier_uncertainty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier Uncertainty"
+          },
+          "ece": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected calibration error.",
+            "title": "Ece"
+          },
+          "log_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Loss"
+          },
+          "n_games": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Games"
+          },
+          "roc_auc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roc Auc"
+          }
+        },
+        "title": "ModelQualityBlock",
+        "type": "object"
+      },
+      "NewsItem": {
+        "additionalProperties": false,
+        "description": "A single news wire entry.\n\nMatches the prototype's `items` shape: timestamp, team tag,\ncategory, title, body, and betting impact.",
+        "properties": {
+          "betting_impact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Betting Impact"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'injury', 'lineup', 'market', 'weather'.",
+            "title": "Category"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'high', 'med', 'low'.",
+            "title": "Priority"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team abbreviation, 'MKT', or 'NFL'.",
+            "title": "Team"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp or human-readable time.",
+            "title": "Timestamp"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "NewsItem",
+        "type": "object"
+      },
+      "PlayerVsDefenseRow": {
+        "additionalProperties": false,
+        "description": "A single row in the player-vs-defense comparison table.\n\n``projection_value`` is populated from the champion model's archive\nrow. ``defense_value`` is null in T2 \u2014 blocked pending\nopponent-allowed-by-position aggregation (ROADMAP \u00a79 Tier 3).",
+        "properties": {
+          "defense_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defense Value"
+          },
+          "key": {
+            "description": "Stable identifier for field_status lookup and row ordering.",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Display label for the row, e.g. 'Projected Mean' or 'Avg Allowed'.",
+            "title": "Label",
+            "type": "string"
+          },
+          "projection_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projection Value"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Formatting hint: 'yards', 'attempts', 'pct', 'rank', 'raw'.",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "PlayerVsDefenseRow",
+        "type": "object"
+      },
+      "PortfolioSplits": {
+        "additionalProperties": false,
+        "description": "ROI/record splits by a chosen dimension.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "dimension": {
+            "description": "Column grouped on, e.g. 'market_type'.",
+            "title": "Dimension",
+            "type": "string"
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/SplitRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "required": [
+          "dimension"
+        ],
+        "title": "PortfolioSplits",
+        "type": "object"
+      },
+      "PortfolioSummary": {
+        "additionalProperties": false,
+        "description": "Bankroll headline plus performance rollup.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "bankroll": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current bankroll balance.",
+            "title": "Bankroll"
+          },
+          "calibration_health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Health"
+          },
+          "current_streak": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composed streak label, e.g. 'W3' or 'L2'.",
+            "title": "Current Streak"
+          },
+          "ev_vs_actual_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ev Vs Actual Gap"
+          },
+          "longest_loss_streak": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longest Loss Streak"
+          },
+          "longest_win_streak": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longest Win Streak"
+          },
+          "losses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Losses"
+          },
+          "mean_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean closing line value.",
+            "title": "Mean Clv"
+          },
+          "mean_ev_at_bet": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Ev At Bet"
+          },
+          "n_clv_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of bets with CLV data available.",
+            "title": "N Clv Bets"
+          },
+          "n_model_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Model Bets"
+          },
+          "open_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Bets"
+          },
+          "pct_positive_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Positive Clv"
+          },
+          "pushes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pushes"
+          },
+          "roi_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ROI as a percentage.",
+            "title": "Roi Pct"
+          },
+          "settled_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Bets"
+          },
+          "total_bets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bets"
+          },
+          "total_pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pnl"
+          },
+          "total_staked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Staked"
+          },
+          "win_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Pct"
+          },
+          "wins": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wins"
+          }
+        },
+        "title": "PortfolioSummary",
+        "type": "object"
+      },
+      "PredictionBlock": {
+        "additionalProperties": false,
+        "description": "Champion-model prediction for a game.\n\nAll fields populate from the win_prob champion's archived row. When\nthe champion manifest is missing, the entire block is None and the\nserializer marks CHAMPION_NOT_WRITTEN in field_status.",
+        "properties": {
+          "away_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Win Prob"
+          },
+          "confidence_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'Low', 'Moderate', or 'High'.",
+            "title": "Confidence Tier"
+          },
+          "home_win_hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper bound of 90% uncertainty band on home_win_prob.",
+            "title": "Home Win Hi"
+          },
+          "home_win_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower bound of 90% uncertainty band on home_win_prob.",
+            "title": "Home Win Lo"
+          },
+          "home_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win Prob"
+          },
+          "model_spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Predicted point spread (home - away).",
+            "title": "Model Spread"
+          },
+          "model_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Total"
+          },
+          "projected_away_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Away Score"
+          },
+          "projected_home_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Home Score"
+          }
+        },
+        "title": "PredictionBlock",
+        "type": "object"
+      },
+      "ProjectionBlock": {
+        "additionalProperties": false,
+        "description": "Champion-model projection for a prop.\n\nAll fields populate from the archive's champion row. Defensive\nnullability: 100% of the 1,433 archived rows populate these today,\nbut the archive is not yet fully backfilled \u2014 future algorithms\nmay have different NaN patterns.",
+        "properties": {
+          "hi_90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper bound of 90% uncertainty band.",
+            "title": "Hi 90"
+          },
+          "lo_90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower bound of 90% uncertainty band.",
+            "title": "Lo 90"
+          },
+          "predicted_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Mean"
+          },
+          "predicted_std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composite std: sqrt(model_rmse\u00b2 + player_L3_std\u00b2).",
+            "title": "Predicted Std"
+          }
+        },
+        "title": "ProjectionBlock",
+        "type": "object"
+      },
+      "ProjectionsList": {
+        "additionalProperties": false,
+        "description": "Response for GET /projections.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO timestamp of when the projections CSV was last written.",
+            "title": "Computed At"
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/TeamProjectionRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "n_simulations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of Monte Carlo simulations run.",
+            "title": "N Simulations"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "ProjectionsList",
+        "type": "object"
+      },
+      "PropBookLine": {
+        "additionalProperties": false,
+        "description": "A single book's line and price for a prop.",
+        "properties": {
+          "book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book"
+          },
+          "is_best_over": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Best Over"
+          },
+          "is_best_under": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Best Under"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "American odds.",
+            "title": "Price"
+          }
+        },
+        "title": "PropBookLine",
+        "type": "object"
+      },
+      "PropDetail": {
+        "additionalProperties": false,
+        "description": "Response for GET /props/{prop_id}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "historical_vs_opponent": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Past matchups vs this opponent's defense. Pending: opponent-adjusted matchup aggregation (ROADMAP \u00a79 Tier 3).",
+            "title": "Historical Vs Opponent"
+          },
+          "injury_status": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Player injury status. Blocked on injury data source (ROADMAP \u00a75.3).",
+            "title": "Injury Status"
+          },
+          "line_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_key": {
+            "title": "Model Key",
+            "type": "string"
+          },
+          "multi_book_shopping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-book line and odds comparison. Blocked on multi-book odds ingest (W7).",
+            "title": "Multi Book Shopping"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "title": "Player Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "projection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectionBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prop_id": {
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "prop_reasoning": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Feature-attribution explanation for this projection. Blocked on feature-attribution workstream.",
+            "title": "Prop Reasoning"
+          },
+          "recent_form": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last-N-games aggregation. Pending backend work.",
+            "title": "Recent Form"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "situational_splits": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Home/away, dome/outdoor, favored/underdog splits. Pending: prop cohort splits (ROADMAP \u00a79 Tier 3).",
+            "title": "Situational Splits"
+          },
+          "stat_type": {
+            "title": "Stat Type",
+            "type": "string"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "prop_id",
+          "game_id",
+          "player_id",
+          "player_name",
+          "position",
+          "team",
+          "stat_type",
+          "model_key"
+        ],
+        "title": "PropDetail",
+        "type": "object"
+      },
+      "PropList": {
+        "additionalProperties": false,
+        "description": "Response for GET /props.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/PropSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "stat_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stat Type"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "title": "PropList",
+        "type": "object"
+      },
+      "PropReasoning": {
+        "additionalProperties": false,
+        "description": "Response for GET /props/{prop_id}/reasoning.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "entries": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReasoningEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entries"
+          },
+          "lean": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'OVER', 'UNDER', or 'No Edge'.",
+            "title": "Lean"
+          },
+          "prop_id": {
+            "title": "Prop Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prop_id"
+        ],
+        "title": "PropReasoning",
+        "type": "object"
+      },
+      "PropShop": {
+        "additionalProperties": false,
+        "description": "Response for GET /props/{prop_id}/shop.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "best_over": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PropBookLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "best_under": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PropBookLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "books": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PropBookLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Books"
+          },
+          "prop_id": {
+            "title": "Prop Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prop_id"
+        ],
+        "title": "PropShop",
+        "type": "object"
+      },
+      "PropSummary": {
+        "additionalProperties": false,
+        "description": "A single row in the /props list response.\n\nSufficient for the prop shop screen's per-prop card. Detail-only\ncontext (historical vs opponent, situational splits, reasoning)\nlives on PropDetail.",
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "line_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_key": {
+            "description": "Composite {model_name}_{model_type} identifier.",
+            "title": "Model Key",
+            "type": "string"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "title": "Player Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "projection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectionBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prop_id": {
+            "description": "Composite: {game_id}__{player_id}__{stat_type}.",
+            "title": "Prop Id",
+            "type": "string"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "stat_type": {
+            "title": "Stat Type",
+            "type": "string"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "prop_id",
+          "game_id",
+          "player_id",
+          "player_name",
+          "position",
+          "team",
+          "stat_type",
+          "model_key"
+        ],
+        "title": "PropSummary",
+        "type": "object"
+      },
+      "RatingHistoryPoint": {
+        "additionalProperties": false,
+        "description": "A single (week, rating) point in the team's Elo trajectory.",
+        "properties": {
+          "rating": {
+            "title": "Rating",
+            "type": "number"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "week",
+          "rating"
+        ],
+        "title": "RatingHistoryPoint",
+        "type": "object"
+      },
+      "ReasoningEntry": {
+        "additionalProperties": false,
+        "description": "A single 'why the model leans X' entry.",
+        "properties": {
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short category (e.g. 'Volume').",
+            "title": "Tag"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One-sentence rationale.",
+            "title": "Text"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Qualitative strength: 'high', 'med', 'low'.",
+            "title": "Weight"
+          }
+        },
+        "title": "ReasoningEntry",
+        "type": "object"
+      },
+      "RecentResult": {
+        "additionalProperties": false,
+        "description": "A single completed game in the team's recent history.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "is_home": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Home"
+          },
+          "opponent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opponent"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'W', 'L', or 'T'.",
+            "title": "Result"
+          },
+          "score_against": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Against"
+          },
+          "score_for": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score For"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "week"
+        ],
+        "title": "RecentResult",
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "additionalProperties": false,
+        "description": "Optional `_meta` envelope attached to API responses.\n\n`field_status` is keyed on dot-notation field paths within the response\n(e.g., \"model.home_win_prob\", \"injuries\", \"splits.l4\"). Granularity is\nfield-level per D14.\n\nBuilder methods (`with_pending`, `with_blocked`) return new instances\nrather than mutating in place, consistent with `frozen=True`.",
+        "properties": {
+          "field_status": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/BlockedStatus"
+                }
+              ],
+              "description": "Status of an unpopulated field."
+            },
+            "description": "Map from field path to status (field-level per D14).",
+            "title": "Field Status",
+            "type": "object"
+          }
+        },
+        "title": "ResponseMeta",
+        "type": "object"
+      },
+      "SplitRow": {
+        "additionalProperties": false,
+        "description": "A single row in /portfolio/splits.",
+        "properties": {
+          "dimension_value": {
+            "title": "Dimension Value",
+            "type": "string"
+          },
+          "losses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Losses"
+          },
+          "pushes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pushes"
+          },
+          "roi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "win_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Pct"
+          },
+          "wins": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wins"
+          }
+        },
+        "required": [
+          "dimension_value"
+        ],
+        "title": "SplitRow",
+        "type": "object"
+      },
+      "StatRow": {
+        "additionalProperties": false,
+        "description": "A single row in a comparison table.\n\n``team_a_value`` and ``team_b_value`` are loose ``float | int | str``\nunions because different stat rows carry different value types (Elo\nrating is float, record is a formatted string, rank is int). Frontend\nformats via ``unit``.\n\nRows for blocked/pending stats emit ``team_a_value: None`` and\n``team_b_value: None`` with a matching entry in the response's\n``_meta.field_status`` keyed on the row's ``key``.",
+        "properties": {
+          "key": {
+            "description": "Stable identifier for field_status lookup and row ordering.",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Display label for the row, e.g. 'Rating' or 'Record'.",
+            "title": "Label",
+            "type": "string"
+          },
+          "team_a_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team A Value"
+          },
+          "team_b_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team B Value"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Formatting hint: 'elo', 'rank', 'record', 'pct', 'raw'.",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "StatRow",
+        "type": "object"
+      },
+      "SteamMove": {
+        "additionalProperties": false,
+        "description": "A detected sharp-money line move.",
+        "properties": {
+          "book": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "title": "SteamMove",
+        "type": "object"
+      },
+      "SwingFactor": {
+        "additionalProperties": false,
+        "description": "A single swing-factor entry \u2014 tag, description, leaning team.",
+        "properties": {
+          "leans_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team abbreviation favored by this factor, or None for neutral.",
+            "title": "Leans To"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short category (e.g. 'Run game').",
+            "title": "Tag"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One-sentence rationale.",
+            "title": "Text"
+          }
+        },
+        "title": "SwingFactor",
+        "type": "object"
+      },
+      "TeamProfile": {
+        "additionalProperties": false,
+        "description": "Response for GET /teams/{abbr}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "abbr": {
+            "title": "Abbr",
+            "type": "string"
+          },
+          "as_of_week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Week"
+          },
+          "def_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Def Rating"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "off_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Off Rating"
+          },
+          "playoff_probability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playoff Probability"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "rating_history": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RatingHistoryPoint"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating History"
+          },
+          "recent_results": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecentResult"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Results"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schedule_difficulty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Difficulty"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "situational_splits": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Situational Splits"
+          },
+          "top_players": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Top players by WAR \u2014 blocked pending WAR computation.",
+            "title": "Top Players"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          }
+        },
+        "required": [
+          "abbr",
+          "name"
+        ],
+        "title": "TeamProfile",
+        "type": "object"
+      },
+      "TeamProjectionRow": {
+        "additionalProperties": false,
+        "description": "A single team's postseason projection row.",
+        "properties": {
+          "abbr": {
+            "title": "Abbr",
+            "type": "string"
+          },
+          "avg_wins": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Wins"
+          },
+          "clinched": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clinched"
+          },
+          "eliminated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated"
+          },
+          "make_playoffs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "P(makes playoffs)",
+            "title": "Make Playoffs"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reach_conf": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "P(reaches conference championship)",
+            "title": "Reach Conf"
+          },
+          "reach_div": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "P(reaches divisional round)",
+            "title": "Reach Div"
+          },
+          "reach_sb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "P(reaches Super Bowl)",
+            "title": "Reach Sb"
+          },
+          "week_over_week_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week Over Week Delta"
+          },
+          "win_sb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "P(wins Super Bowl)",
+            "title": "Win Sb"
+          }
+        },
+        "required": [
+          "abbr",
+          "name"
+        ],
+        "title": "TeamProjectionRow",
+        "type": "object"
+      },
+      "TeamRankingRow": {
+        "additionalProperties": false,
+        "description": "A single row in the /teams power rankings list.",
+        "properties": {
+          "abbr": {
+            "title": "Abbr",
+            "type": "string"
+          },
+          "def_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Def Rating"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "off_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Off Rating"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          }
+        },
+        "required": [
+          "abbr",
+          "name"
+        ],
+        "title": "TeamRankingRow",
+        "type": "object"
+      },
+      "TeamRankingsList": {
+        "additionalProperties": false,
+        "description": "Response for GET /teams.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "as_of_week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Week"
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/TeamRankingRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "TeamRankingsList",
+        "type": "object"
+      },
+      "TeamRecord": {
+        "additionalProperties": false,
+        "description": "Win/loss/tie record for a team within a season.",
+        "properties": {
+          "losses": {
+            "default": 0,
+            "title": "Losses",
+            "type": "integer"
+          },
+          "ties": {
+            "default": 0,
+            "title": "Ties",
+            "type": "integer"
+          },
+          "wins": {
+            "default": 0,
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "title": "TeamRecord",
+        "type": "object"
+      },
+      "TransactionRow": {
+        "additionalProperties": false,
+        "description": "A single row in /portfolio/transactions.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "txn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Txn Id"
+          },
+          "txn_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Txn Type"
+          }
+        },
+        "title": "TransactionRow",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WeatherBlock": {
+        "additionalProperties": false,
+        "description": "Weather snapshot for a game.\n\nFields populate from the schedule/weather join. When the join produces\nno data (e.g., domed venue, missing feed), all fields are None and\nthe serializer marks the block as UNAVAILABLE_NO_WEATHER.",
+        "properties": {
+          "conditions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditions"
+          },
+          "precip_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precip Pct"
+          },
+          "temp_f": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp F"
+          },
+          "wind_mph": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Mph"
+          }
+        },
+        "title": "WeatherBlock",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Read-only REST API exposing Gridiron Edge analytics outputs. See PLAN.md for the active workstream and ROADMAP.md \u00a79.5 for the backend-gaps backlog that drives field-level placeholders.",
+    "title": "Gridiron Edge API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/compare/player/{prop_id}": {
+      "get": {
+        "description": "Return projection-vs-defense comparison for one prop.\n\nProjection-side fields (mean, std, lo_90, hi_90) populate from the\nchampion model's archive row. Defense-side fields (avg allowed,\nrank vs position, L5 avg, red zone rate) are entirely blocked\npending opponent-allowed-by-position aggregation (ROADMAP \u00a79 Tier 3).\n\n- Malformed or unknown prop_id: 404.\n- Champion for this stat_type not resolved: 200 with projection\n  block null and field_status marking blocked.\n- Prop not in archive: 404.",
+        "operationId": "compare_player_compare_player__prop_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prop_id",
+            "required": true,
+            "schema": {
+              "title": "Prop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparePlayerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Player",
+        "tags": [
+          "compare"
+        ]
+      }
+    },
+    "/compare/teams": {
+      "get": {
+        "description": "Return team-vs-team comparison across stats.\n\nPopulated stats: Elo rating, rank, season record.\nScaffolded stats: off/def decomposition, trend, schedule difficulty,\nplayoff probability, cohort splits, per-stat percentile ranks \u2014 all\nmarked in ``_meta.field_status`` per D14.\n\nReturns 404 if either abbreviation is unknown.",
+        "operationId": "compare_teams_compare_teams_get",
+        "parameters": [
+          {
+            "description": "Short-code team abbreviation, e.g. 'KC'.",
+            "in": "query",
+            "name": "team_a",
+            "required": true,
+            "schema": {
+              "description": "Short-code team abbreviation, e.g. 'KC'.",
+              "title": "Team A",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Short-code team abbreviation, e.g. 'LAC'.",
+            "in": "query",
+            "name": "team_b",
+            "required": true,
+            "schema": {
+              "description": "Short-code team abbreviation, e.g. 'LAC'.",
+              "title": "Team B",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Season, e.g. '2026-2027'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season, e.g. '2026-2027'. Defaults to current.",
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareTeamsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Teams",
+        "tags": [
+          "compare"
+        ]
+      }
+    },
+    "/edges": {
+      "get": {
+        "description": "Return ranked edges for (season, week) using the champion model.\n\n- Missing champion manifest: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_CHAMPION_MANIFEST.\n- Missing odds snapshot: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_ODDS_AVAILABLE.\n- No predictions or no positive-EV edges: 200 with empty list, no\n  field_status (legitimate empty state).",
+        "operationId": "list_edges_edges_get",
+        "parameters": [
+          {
+            "description": "Season, e.g. '2026-2027'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season, e.g. '2026-2027'. Defaults to current.",
+              "title": "Season"
+            }
+          },
+          {
+            "description": "Week number. Defaults to current.",
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Week number. Defaults to current.",
+              "title": "Week"
+            }
+          },
+          {
+            "description": "Minimum EV threshold. Rows with ev <= min_ev excluded.",
+            "in": "query",
+            "name": "min_ev",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "description": "Minimum EV threshold. Rows with ev <= min_ev excluded.",
+              "title": "Min Ev",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Bankroll for Kelly stake sizing.",
+            "in": "query",
+            "name": "bankroll",
+            "required": false,
+            "schema": {
+              "default": 1000.0,
+              "description": "Bankroll for Kelly stake sizing.",
+              "title": "Bankroll",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Fraction of full Kelly (e.g. 0.25 = quarter-Kelly).",
+            "in": "query",
+            "name": "kelly_multiplier",
+            "required": false,
+            "schema": {
+              "default": 0.25,
+              "description": "Fraction of full Kelly (e.g. 0.25 = quarter-Kelly).",
+              "title": "Kelly Multiplier",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Edges",
+        "tags": [
+          "edges"
+        ]
+      }
+    },
+    "/games": {
+      "get": {
+        "description": "Return champion-model predictions for all games in (season, week).\n\nWhen the champion manifest is missing, returns an empty items list\nwith _meta.field_status[\"items\"] marked NO_CHAMPION_MANIFEST.",
+        "operationId": "list_games_games_get",
+        "parameters": [
+          {
+            "description": "Season, e.g. '2026-2027'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season, e.g. '2026-2027'. Defaults to current.",
+              "title": "Season"
+            }
+          },
+          {
+            "description": "Week number. Defaults to current.",
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Week number. Defaults to current.",
+              "title": "Week"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Games",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/games/{game_id}": {
+      "get": {
+        "description": "Return champion-model prediction and metadata for one game.\n\nReturns 404 if the game_id is not in the prediction archive.\nReturns 200 with the champion-dependent fields null when the\nchampion manifest is missing (structured field_status per D14).",
+        "operationId": "get_game_games__game_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Game",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/games/{game_id}/comparables": {
+      "get": {
+        "description": "Return null comparables until comparables retrieval lands.",
+        "operationId": "get_game_comparables_games__game_id__comparables_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameComparables"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Historical games similar to a single matchup.",
+        "tags": [
+          "comparables"
+        ]
+      }
+    },
+    "/games/{game_id}/explain": {
+      "get": {
+        "description": "Return a null explainability shape until the scenario engine lands.",
+        "operationId": "get_game_explain_games__game_id__explain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameExplain"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Win-probability factor decomposition with credible band.",
+        "tags": [
+          "explain"
+        ]
+      }
+    },
+    "/games/{game_id}/injuries": {
+      "get": {
+        "description": "Return a null explainability shape until the scenario engine lands.",
+        "operationId": "get_game_injuries_games__game_id__injuries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameInjuries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Injury reports for both teams in a single matchup.",
+        "tags": [
+          "injuries"
+        ]
+      }
+    },
+    "/games/{game_id}/swing-factors": {
+      "get": {
+        "description": "Return null swing factors until feature attribution lands.",
+        "operationId": "get_game_swing_factors_games__game_id__swing_factors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameSwingFactors"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Top factors driving a single matchup's model lean.",
+        "tags": [
+          "swing-factors"
+        ]
+      }
+    },
+    "/lines": {
+      "get": {
+        "description": "Return an empty list until multi-book odds ingest lands.",
+        "operationId": "list_lines_lines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_LineRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List of matchups with cross-book line grids.",
+        "tags": [
+          "lines"
+        ]
+      }
+    },
+    "/lines/{game_id}": {
+      "get": {
+        "description": "Return a null-shape detail until multi-book odds ingest lands.",
+        "operationId": "get_line_lines__game_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Line detail for a single matchup.",
+        "tags": [
+          "lines"
+        ]
+      }
+    },
+    "/live": {
+      "get": {
+        "description": "Return an empty list until live state ingest lands.",
+        "operationId": "list_live_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_LiveGameSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List of in-progress games.",
+        "tags": [
+          "live"
+        ]
+      }
+    },
+    "/live/{game_id}": {
+      "get": {
+        "description": "Return a null-shape detail until live state ingest lands.",
+        "operationId": "get_live_live__game_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveGame"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live game state for a single matchup.",
+        "tags": [
+          "live"
+        ]
+      }
+    },
+    "/model/performance": {
+      "get": {
+        "description": "Return model prediction quality and betting performance metrics.",
+        "operationId": "get_model_performance_model_performance_get",
+        "parameters": [
+          {
+            "description": "Filter to a specific season, e.g. '2025-2026'.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a specific season, e.g. '2025-2026'.",
+              "title": "Season"
+            }
+          },
+          {
+            "description": "Filter to a specific model purpose, e.g. 'win_prob'.",
+            "in": "query",
+            "name": "model_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a specific model purpose, e.g. 'win_prob'.",
+              "title": "Model Name"
+            }
+          },
+          {
+            "description": "Filter to a specific model algorithm, e.g. 'random_forest'.",
+            "in": "query",
+            "name": "model_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a specific model algorithm, e.g. 'random_forest'.",
+              "title": "Model Type"
+            }
+          },
+          {
+            "description": "Group results by: season, week, model_name, or model_type.",
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "season",
+              "description": "Group results by: season, week, model_name, or model_type.",
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPerformance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Model Performance",
+        "tags": [
+          "model"
+        ]
+      }
+    },
+    "/news": {
+      "get": {
+        "description": "Return an empty feed until news ingest lands.",
+        "operationId": "list_news_news_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_NewsItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "News and lineup feed.",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/news/alerts": {
+      "get": {
+        "description": "Return an empty alerts list until news ingest lands.",
+        "operationId": "list_alerts_news_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_NewsItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Alerts relevant to active positions.",
+        "tags": [
+          "news"
+        ]
+      }
+    },
+    "/portfolio/bets": {
+      "get": {
+        "description": "Return the list of bets, optionally filtered by status.",
+        "operationId": "get_portfolio_bets_portfolio_bets_get",
+        "parameters": [
+          {
+            "description": "Filter by bet status: open, won, lost, push.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by bet status: open, won, lost, push.",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_BetRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Portfolio Bets",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio/curve": {
+      "get": {
+        "description": "Return the bankroll running-balance curve.",
+        "operationId": "get_portfolio_curve_portfolio_curve_get",
+        "parameters": [
+          {
+            "description": "Optional time-window label, e.g. '30d'. Currently informational only.",
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional time-window label, e.g. '30d'. Currently informational only.",
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankrollCurve"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Portfolio Curve",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio/splits": {
+      "get": {
+        "description": "Return performance splits grouped by the chosen dimension.",
+        "operationId": "get_portfolio_splits_portfolio_splits_get",
+        "parameters": [
+          {
+            "description": "Column to split on. One of: market_type, side, book, model_name.",
+            "in": "query",
+            "name": "dimension",
+            "required": false,
+            "schema": {
+              "default": "market_type",
+              "description": "Column to split on. One of: market_type, side, book, model_name.",
+              "title": "Dimension",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSplits"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Portfolio Splits",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio/summary": {
+      "get": {
+        "description": "Return bankroll balance and performance rollup.",
+        "operationId": "get_portfolio_summary_portfolio_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Portfolio Summary",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/portfolio/transactions": {
+      "get": {
+        "description": "Return the raw bankroll transaction log.",
+        "operationId": "get_portfolio_transactions_portfolio_transactions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseListResponse_TransactionRow_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Portfolio Transactions",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/projections": {
+      "get": {
+        "description": "Return Monte Carlo season and playoff projections for all teams.",
+        "operationId": "get_projections_projections_get",
+        "parameters": [
+          {
+            "description": "Season to project, e.g. '2025-2026'. Currently ignored \u2014 returns the latest available projections regardless. Reserved for future multi-season history.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season to project, e.g. '2025-2026'. Currently ignored \u2014 returns the latest available projections regardless. Reserved for future multi-season history.",
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionsList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Projections",
+        "tags": [
+          "projections"
+        ]
+      }
+    },
+    "/props": {
+      "get": {
+        "description": "Return champion-model prop predictions for (season, week).\n\nIterates the registered prop stat families (or just ``stat_type``\nwhen provided), resolves each family's current champion, filters\nthe archive to that champion's rows. Families without a resolved\nchampion are silently skipped.\n\n- Zero families resolve champion: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_CHAMPION_MANIFEST.\n- Some families resolve, others don't: 200 with list of resolved\n  families (silent skip).\n- Resolved but empty archive: 200 with empty list, no field_status.",
+        "operationId": "list_props_props_get",
+        "parameters": [
+          {
+            "description": "Season, e.g. '2026-2027'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season, e.g. '2026-2027'. Defaults to current.",
+              "title": "Season"
+            }
+          },
+          {
+            "description": "Week number. Defaults to current.",
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Week number. Defaults to current.",
+              "title": "Week"
+            }
+          },
+          {
+            "description": "Prop family filter, e.g. 'qb_pass_yards'.",
+            "in": "query",
+            "name": "stat_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Prop family filter, e.g. 'qb_pass_yards'.",
+              "title": "Stat Type"
+            }
+          },
+          {
+            "description": "Position filter, e.g. 'QB'.",
+            "in": "query",
+            "name": "position",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Position filter, e.g. 'QB'.",
+              "title": "Position"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Props",
+        "tags": [
+          "props"
+        ]
+      }
+    },
+    "/props/{prop_id}": {
+      "get": {
+        "description": "Return champion-model prop prediction and metadata for one prop.\n\n- Malformed or unknown prop_id: 404.\n- Champion for this stat_type not resolved: 200 with projection\n  and line_context null, field_status blocks marked.\n- Prop not in archive: 404.",
+        "operationId": "get_prop_props__prop_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prop_id",
+            "required": true,
+            "schema": {
+              "title": "Prop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Prop",
+        "tags": [
+          "props"
+        ]
+      }
+    },
+    "/props/{prop_id}/reasoning": {
+      "get": {
+        "description": "Return null reasoning entries until feature attribution lands.",
+        "operationId": "get_prop_reasoning_props__prop_id__reasoning_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prop_id",
+            "required": true,
+            "schema": {
+              "title": "Prop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropReasoning"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factor-level rationale behind the model's lean on a single prop.",
+        "tags": [
+          "prop-reasoning"
+        ]
+      }
+    },
+    "/props/{prop_id}/shop": {
+      "get": {
+        "description": "Return null cross-book lines until multi-book odds ingest lands.",
+        "operationId": "get_prop_shop_props__prop_id__shop_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prop_id",
+            "required": true,
+            "schema": {
+              "title": "Prop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropShop"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cross-book line and price comparison for a single prop.",
+        "tags": [
+          "prop-shop"
+        ]
+      }
+    },
+    "/teams": {
+      "get": {
+        "description": "Return power rankings for all teams in the given season.",
+        "operationId": "list_teams_teams_get",
+        "parameters": [
+          {
+            "description": "Season to rank against, e.g. '2025-2026'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season to rank against, e.g. '2025-2026'. Defaults to current.",
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamRankingsList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Teams",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
+    "/teams/{abbr}": {
+      "get": {
+        "description": "Return per-team profile with ratings, record, and history.",
+        "operationId": "get_team_teams__abbr__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "abbr",
+            "required": true,
+            "schema": {
+              "title": "Abbr",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Season to profile against, e.g. '2025-2026'. Defaults to current.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season to profile against, e.g. '2025-2026'. Defaults to current.",
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Team",
+        "tags": [
+          "teams"
+        ]
+      }
+    },
+    "/weeks/current": {
+      "get": {
+        "description": "Return the current NFL season and week.",
+        "operationId": "get_current_week_weeks_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentWeek"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Current Week",
+        "tags": [
+          "weeks"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Current week and season.",
+      "name": "weeks"
+    },
+    {
+      "description": "Game list, detail, and predictions.",
+      "name": "games"
+    },
+    {
+      "description": "Model edges across markets.",
+      "name": "edges"
+    },
+    {
+      "description": "Power rankings and team profiles.",
+      "name": "teams"
+    },
+    {
+      "description": "Season and playoff projections.",
+      "name": "projections"
+    },
+    {
+      "description": "Player prop list and detail.",
+      "name": "props"
+    },
+    {
+      "description": "Bankroll, bets, performance.",
+      "name": "portfolio"
+    },
+    {
+      "description": "Team vs team and player vs defense.",
+      "name": "compare"
+    },
+    {
+      "description": "Model performance metrics.",
+      "name": "model"
+    },
+    {
+      "description": "Current NFL season and week.",
+      "name": "weeks"
+    },
+    {
+      "description": "Bankroll, bets, curve, transactions, splits.",
+      "name": "portfolio"
+    },
+    {
+      "description": "Multi-book line shopping. Blocked on multi-book odds ingest.",
+      "name": "lines"
+    },
+    {
+      "description": "Live game state. Blocked on live state ingest.",
+      "name": "live"
+    },
+    {
+      "description": "Injury and market news. Blocked on news ingest.",
+      "name": "news"
+    },
+    {
+      "description": "Game injuries. Blocked on injury data source (\u00a75.3).",
+      "name": "injuries"
+    },
+    {
+      "description": "Win-probability explainability. Blocked on scenario engine.",
+      "name": "explain"
+    },
+    {
+      "description": "Per-game swing factors. Blocked on feature attribution.",
+      "name": "swing-factors"
+    },
+    {
+      "description": "Historical comparable games. Blocked on comparables retrieval.",
+      "name": "comparables"
+    },
+    {
+      "description": "Per-prop multi-book shopping. Blocked on multi-book odds ingest.",
+      "name": "prop-shop"
+    },
+    {
+      "description": "Per-prop model reasoning. Blocked on feature attribution.",
+      "name": "prop-reasoning"
+    },
+    {
+      "description": "Model prediction quality and betting performance.",
+      "name": "model"
+    },
+    {
+      "description": "Power rankings and per-team profiles.",
+      "name": "teams"
+    },
+    {
+      "description": "Monte Carlo season and playoff projections.",
+      "name": "projections"
+    }
+  ]
+}

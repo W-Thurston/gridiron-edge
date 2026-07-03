@@ -1,13 +1,17 @@
-# src/gridiron_edge/cli/api.py
-"""`gridiron api serve` command.
+"""`gridiron api` commands.
 
-Launches the Gridiron Edge API via uvicorn, pointing at
-`gridiron_edge.api.app:app`. Reload mode is opt-in for local
-development.
+- ``serve`` launches the API via uvicorn.
+- ``export-schema`` serializes the FastAPI OpenAPI spec to a JSON file
+  that W9 (Frontend) consumes to generate a typed API client.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI
 import typer
 import uvicorn
 
@@ -44,3 +48,35 @@ def serve(
         reload=reload,
         log_level=log_level,
     )
+
+
+@api_app.command("export-schema")
+def export_schema(
+    output: Path = typer.Option(  # noqa: B008
+        Path("api-schema.json"),
+        "--output",
+        "-o",
+        help="Where to write the OpenAPI JSON schema.",
+    ),
+) -> None:
+    """Serialize the FastAPI OpenAPI spec to a JSON file.
+
+    Used by W9 (Frontend) to generate a typed API client from the
+    checked-in schema. Rerun after any API surface change to keep the
+    frontend client in sync.
+    """
+    from gridiron_edge.api.app import create_app
+    from gridiron_edge.core.console import console, step
+
+    console.header("api export-schema", subtitle=str(output))
+
+    with step("Serialize OpenAPI spec") as s:
+        app: FastAPI = create_app()
+        schema: dict[str, Any] = app.openapi()
+        s.set_detail(f"{len(schema.get('paths', {}))} paths")
+
+    with step("Write to disk") as s:
+        output.write_text(json.dumps(schema, indent=2, sort_keys=True))
+        s.set_detail(f"{output.stat().st_size / 1024:.1f} KB")
+
+    console.summary()
