@@ -298,6 +298,47 @@ model_type="elo"`` callsites across ``weekly_predict.py``, ``output.py``,
 Confirm ``ratings.py``'s intentional Elo usage stays as-is with a
 comment.
 
+## 2026-06-27 — W8 Tier 1: API Skeleton and Blocked-Endpoint Stubs
+
+First tier of W8. FastAPI app skeleton at `src/gridiron_edge/api/` plus
+12 blocked-endpoint stubs matching the prototype URL inventory. Each
+returns 200 with a structurally valid null response carrying registered
+blocker slugs. Reachable via `gridiron api serve`.
+
+### Shipped
+
+- `api/app.py` — FastAPI factory with OpenAPI tag inventory and CORS.
+- `api/meta.py` — `ResponseMeta`, `Blocker` registry, `Unavailable` slugs.
+- `api/schemas/_base.py` — `BaseResponse` / `BaseListResponse` with
+  `_meta` envelope.
+- `api/deps.py` — `SettingsDep` / `DataPathResolverDep` shared
+  dependencies with a single override seam.
+- Twelve stubbed routes for Tier 3-blocked endpoints (comparables,
+  explain, injuries, lines, live, model, news, prop_reasoning,
+  prop_shop, swing_factors, plus placeholder shapes for teams,
+  projections). Each returns a structurally valid null response
+  with `_meta.field_status` populated.
+
+### Architectural decisions
+
+- **D14:** Placeholder convention — null field + `_meta.field_status`
+  entry with either the literal string "pending" or a `BlockedStatus`
+  object naming a stable blocker slug.
+- **D16:** Every Tier 3 route uses a slug registered in
+  `Blocker.all_slugs()`; consistency test enforces this.
+
+### Tests
+
+- Integration tests confirm all 12 endpoints reachable via
+  `gridiron api serve`, return the expected status codes, and carry
+  valid `_meta.field_status` metadata where scaffolded.
+
+### Next
+
+Tier 2 (populated endpoints): fill in the 16 endpoints the prototype
+consumes with real data. Establish loader/schema/serializer/route
+pattern.
+
 ## 2026-06-22 — Workstream 5: Tier 4 Cleanup Sweep
 
 ### Summary
@@ -368,7 +409,7 @@ Multi-session opportunistic cleanup that closed 30 items from the Tier 4 backlog
 
 - `TIER_4_BACKLOG.md` — replaced by PLAN.md's "Future Workstream Candidates" section
 
-## 2026-06-18 - Workstream 2: Game Model Refactor
+## 2026-06-18 — Workstream 2: Game Model Refactor
 
 ### Added
 - `BaseModelMetadata` shared metadata type with `GameModelMetadata` and `PropModelMetadata` subclasses.
@@ -391,7 +432,7 @@ Multi-session opportunistic cleanup that closed 30 items from the Tier 4 backlog
 - `EloV1Predictor`, `EloV2Predictor`, `EloV3Predictor` (collapsed into `WinProbEloPredictor`).
 - `evaluation/archive.py::migrate_archive` (no longer needed).
 
-### 2026-06-17 - Workstream 1: Champion/Challenger for Props
+## 2026-06-17 — Workstream 1: Champion/Challenger for Props
 
 - **Prop model factory pattern** (`PropModelType` enum: elasticnet,
   random_forest, xgboost) with `_create_model()` factory and
@@ -438,7 +479,7 @@ Multi-session opportunistic cleanup that closed 30 items from the Tier 4 backlog
   (`ClassificationComparisonResult`, `compare_classification_models`,
   `extract_classification_metrics`).
 
-#### 2026-06-10 - W4: Player Data & First Prop Models - Mostly Complete
+## 2026-06-10 - W4: Player Data & First Prop Models - Mostly Complete
 
 Complete player-level data pipeline, 5 trained prop models, post-processing
 enrichment, evaluation metrics, archive, and CLI. M3 milestone achieved.
@@ -592,7 +633,7 @@ enrichment, evaluation metrics, archive, and CLI. M3 milestone achieved.
 - **5 new test files**, 4 modified, **~90 new tests**
 - All quality gates green: ruff, pyrefly, pytest
 
-#### 2026-06-04 - Sigma/Margin_std Recalibration & Versioned Model Cleanup - Complete
+## 2026-06-04 - Sigma/Margin_std Recalibration & Versioned Model Cleanup - Complete
 
 Recalibrated spread derivation parameters and confidence tiers after
 TimeSeriesSplit retrain. Cleaned all vestiges of old versioned model names.
@@ -654,7 +695,7 @@ TimeSeriesSplit retrain. Cleaned all vestiges of old versioned model names.
 - **2 new scripts**, 6 source files modified, 5 test files modified
 - Resolves "Recalibrate sigma/margin_std after retrain" debt item
 
-### 2026-06-04 - Champion/Challenger Model Refactor - Complete
+## 2026-06-04 - Champion/Challenger Model Refactor - Complete
 
 Replaced versioned model variants with a champion/challenger system and
 fixed temporal CV leakage in all model families.
@@ -745,7 +786,7 @@ honest ones. Calibration (ECE) improved dramatically (0.036 → 0.013).
 - **1 new test file**, 3 modified, **13 new tests**
 - All quality gates green: ruff, pyrefly, pytest
 
-### 2026-06-03 - W6: Portfolio & Bet Tracking - Complete
+## 2026-06-03 - W6: Portfolio & Bet Tracking - Complete
 
 The feedback loop - track bets, measure performance, prove (or disprove)
 the system works.  The M2 milestone.  Builds on W5 (edge context for
@@ -836,7 +877,7 @@ settlement).
 - `betting/` package: 3 modules (ledger, bankroll, performance)
 - All quality gates green: ruff, pyrefly, pytest
 
-### 2026-06-02 - W5: Edge Engine - Complete
+## 2026-06-02 - W5: Edge Engine - Complete
 
 The convergence point - model predictions meet market prices to surface
 betting edges.  Builds on W1 (odds ingest & joins), W2 (enriched
@@ -907,7 +948,7 @@ odds_math/kelly).
 - `market/` package: 5 modules (odds_math, kelly, edge, recommendations, clv)
 - All quality gates green: ruff, pyrefly, pytest
 
-### 2026-06-02 - W2: Richer Game Model Outputs - Complete
+## 2026-06-02 - W2: Richer Game Model Outputs - Complete
 
 Extended game prediction models to produce spread, total, projected scores,
 uncertainty bands, and confidence tiers - not just win probability.
