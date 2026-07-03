@@ -6,6 +6,7 @@ import type { FieldStatus } from "../components/field-status/types";
 import { TeamMark } from "../components/games/TeamMark";
 import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function ComparePage() {
   const { route, navigate } = useNav();
@@ -24,7 +25,7 @@ export function ComparePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamA, teamB]);
 
-  const { data, isLoading, error } = useCompareTeams({
+  const { data, isLoading, error, refetch } = useCompareTeams({
     team_a: teamA || null,
     team_b: teamB || null,
   });
@@ -54,10 +55,13 @@ export function ComparePage() {
 
       {bothSelected && isLoading && <div className="dim">Loading…</div>}
       {bothSelected && error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {error.message}
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load games"
+        />
       )}
+
 
       {bothSelected && data && (
         <div>

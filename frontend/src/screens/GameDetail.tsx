@@ -5,11 +5,12 @@ import { TeamMark } from "../components/games/TeamMark";
 import { WinProbBand } from "../components/games/WinProbBand";
 import { useNav } from "../context/NavContext";
 import type { FieldStatus } from "../components/field-status/types";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
   const gameId = route.params.gameId ?? null;
-  const { data, isLoading, error } = useGame(gameId);
+  const { data, isLoading, error, refetch } = useGame(gameId);
 
   if (!gameId) {
     return (
@@ -55,14 +56,10 @@ export function GameDetail() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {backNav}
-        <div className="hm-card" style={{ padding: 24 }}>
-          <div className="neg mono" style={{ marginBottom: 8 }}>
-            Error: {error.message}
-          </div>
-          <div className="dim mono" style={{ fontSize: 11 }}>
-            This game may not exist in the archive.
-          </div>
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }

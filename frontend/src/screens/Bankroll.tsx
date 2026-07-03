@@ -12,6 +12,7 @@ import type { FieldStatus } from "../components/field-status/types";
 import { BalanceCurve } from "../components/portfolio/BalanceCurve";
 import { useAppState } from "../context/AppStateContext";
 import { formatOdds } from "../utils/odds";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 type SplitDimension = "market_type" | "confidence_tier" | "model_type";
 
@@ -79,9 +80,10 @@ function SummaryCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
 
       {result.data && (
@@ -158,9 +160,10 @@ function RecordCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
 
       {result.data && (
@@ -230,9 +233,10 @@ function CurveCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
 
       {result.data && (
@@ -264,9 +268,10 @@ function BetsCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
 
       {result.data && (result.data.items ?? []).length === 0 && (
@@ -421,9 +426,10 @@ function SplitsCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
 
       {result.data && (result.data.items ?? []).length === 0 && (
@@ -536,10 +542,12 @@ function TransactionsCard({
 
       {result.isLoading && <div className="dim">Loading…</div>}
       {result.error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {result.error.message}
-        </div>
+        <ErrorCard
+          error={result.error}
+          onRetry={() => result.refetch()}
+        />
       )}
+
 
       {result.data && (result.data.items ?? []).length === 0 && (
         <div className="dim mono" style={{ fontSize: 12 }}>

@@ -4,10 +4,11 @@ import { PendingField } from "../components/field-status/PendingField";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";
 import { useNav } from "../context/NavContext";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function TeamRankings() {
   const { navigate } = useNav();
-  const { data, isLoading, error } = useTeamRankings();
+  const { data, isLoading, error, refetch } = useTeamRankings();
 
   const handleRowClick = (abbr: string) => {
     navigate("/teams", { team: abbr });
@@ -23,11 +24,15 @@ export function TeamRankings() {
       </div>
 
       {isLoading && <div className="dim">Loading…</div>}
+
       {error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {error.message}
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load games"
+        />
       )}
+
 
       {data && (data.items ?? []).length === 0 && (
         <div className="dim mono" style={{ fontSize: 12 }}>

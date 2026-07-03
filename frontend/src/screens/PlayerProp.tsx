@@ -4,6 +4,7 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { TeamMark } from "../components/games/TeamMark";
 import { useNav } from "../context/NavContext";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -57,14 +58,10 @@ export function PlayerProp() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {backNav}
-        <div className="hm-card" style={{ padding: 24 }}>
-          <div className="neg mono" style={{ marginBottom: 8 }}>
-            Error: {propResult.error.message}
-          </div>
-          <div className="dim mono" style={{ fontSize: 11 }}>
-            This prop may not exist in the archive.
-          </div>
-        </div>
+        <ErrorCard
+          error={propResult.error}
+          onRetry={() => propResult.refetch()}
+        />
       </div>
     );
   }

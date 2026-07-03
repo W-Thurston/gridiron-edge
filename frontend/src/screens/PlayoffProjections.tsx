@@ -4,9 +4,10 @@ import { PendingField } from "../components/field-status/PendingField";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";
 import { StatusPill } from "../components/projections/StatusPill";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function PlayoffProjections() {
-  const { data, isLoading, error } = useProjections();
+  const { data, isLoading, error, refetch } = useProjections();
 
   return (
     <div className="hm-card" style={{ padding: 24 }}>
@@ -33,11 +34,15 @@ export function PlayoffProjections() {
       </div>
 
       {isLoading && <div className="dim">Loading…</div>}
+
       {error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {error.message}
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load games"
+        />
       )}
+
 
       {data && (data.items ?? []).length === 0 && (
         <div className="dim mono" style={{ fontSize: 12 }}>

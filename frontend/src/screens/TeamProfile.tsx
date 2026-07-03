@@ -6,11 +6,12 @@ import { RatingHistorySparkline } from "../components/teams/RatingHistorySparkli
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
 import { TeamMark } from "../components/games/TeamMark";
 import { useNav } from "../context/NavContext";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function TeamProfile() {
   const { route, navigate } = useNav();
   const abbr = route.params.team ?? null;
-  const { data, isLoading, error } = useTeamProfile(abbr);
+  const { data, isLoading, error, refetch } = useTeamProfile(abbr);
 
   if (!abbr) {
     return (
@@ -51,8 +52,12 @@ export function TeamProfile() {
 
   if (error) {
     return (
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="neg mono">Error: {error.message}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {backNav}
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }

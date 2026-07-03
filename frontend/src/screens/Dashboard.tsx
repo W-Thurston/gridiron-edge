@@ -1,9 +1,10 @@
 import { useCurrentWeek } from "../api/hooks";
 import { FieldValue } from "../components/field-status/FieldValue";
 import { ScreenPlaceholder } from "./ScreenPlaceholder";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function Dashboard() {
-  const { data, isLoading, error } = useCurrentWeek();
+  const { data, isLoading, error, refetch } = useCurrentWeek();
 
   return (
     <div>
@@ -16,9 +17,10 @@ export function Dashboard() {
         </div>
         {isLoading && <div className="dim">Loading…</div>}
         {error && (
-          <div className="neg mono" style={{ fontSize: 12 }}>
-            Error: {error.message}
-          </div>
+          <ErrorCard
+              error={error}
+              onRetry={() => refetch()}
+            />
         )}
         {data && (
           <div className="mono tnum" style={{ fontSize: 12 }}>

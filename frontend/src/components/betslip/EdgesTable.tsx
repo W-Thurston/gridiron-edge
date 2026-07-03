@@ -5,6 +5,7 @@ import type { FieldStatus } from "../field-status/types";
 import { TeamMark } from "../games/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
 import type { BetLeg } from "../../context/BetSlipContext";
+import { ErrorCard } from "../../components/error/ErrorCard";
 
 type EdgeRowShape = {
   game_id: string;
@@ -24,7 +25,7 @@ type EdgeRowShape = {
 };
 
 export function EdgesTable() {
-  const { data, isLoading, error } = useEdges();
+  const { data, isLoading, error, refetch } = useEdges();
   const { legs, add } = useBetSlip();
 
   const legIds = new Set(legs.map((l) => l.id));
@@ -52,11 +53,15 @@ export function EdgesTable() {
       </div>
 
       {isLoading && <div className="dim">Loading…</div>}
+
       {error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {error.message}
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load games"
+        />
       )}
+
 
       {data && (data.items ?? []).length === 0 && (
         <ListEmptyState status={listStatus} />

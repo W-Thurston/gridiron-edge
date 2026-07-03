@@ -4,12 +4,13 @@ import { useNav } from "../context/NavContext";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { TeamMark } from "../components/games/TeamMark";
 import { WinProbBand } from "../components/games/WinProbBand";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function GamesList() {
   const { navigate } = useNav();
   const { state } = useAppState();
   void state; // unused for now; will be used for odds format later
-  const { data, isLoading, error } = useGamesList();
+  const { data, isLoading, error, refetch } = useGamesList();
 
   const handleRowClick = (gameId: string) => {
     navigate("/games", { gameId });
@@ -33,9 +34,11 @@ export function GamesList() {
 
         {isLoading && <div className="dim">Loading…</div>}
         {error && (
-          <div className="neg mono" style={{ fontSize: 12 }}>
-            Error: {error.message}
-          </div>
+          <ErrorCard
+            error={error}
+            onRetry={() => refetch()}
+            title="Couldn't load games"
+          />
         )}
 
         {data && (data.items ?? []).length === 0 && (

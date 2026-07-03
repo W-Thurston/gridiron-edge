@@ -6,13 +6,14 @@ import type { FieldStatus } from "../components/field-status/types";
 import { TeamMark } from "../components/games/TeamMark";
 import { FilterBar } from "../components/props/FilterBar";
 import { useNav } from "../context/NavContext";
+import { ErrorCard } from "../components/error/ErrorCard";
 
 export function PlayersExplorer() {
   const { navigate } = useNav();
   const [statType, setStatType] = useState("");
   const [position, setPosition] = useState("");
 
-  const { data, isLoading, error } = usePropsList({
+  const { data, isLoading, error, refetch } = usePropsList({
     stat_type: statType || undefined,
     position: position || undefined,
   });
@@ -38,11 +39,15 @@ export function PlayersExplorer() {
       />
 
       {isLoading && <div className="dim">Loading…</div>}
+
       {error && (
-        <div className="neg mono" style={{ fontSize: 12 }}>
-          Error: {error.message}
-        </div>
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load games"
+        />
       )}
+
 
       {data && (data.items ?? []).length === 0 && (
         <div className="dim mono" style={{ fontSize: 12 }}>
