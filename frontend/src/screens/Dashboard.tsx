@@ -1,24 +1,8 @@
-import { useEffect, useState } from "react";
-import { apiClient } from "../api/client";
+import { useCurrentWeek } from "../api/hooks";
 import { ScreenPlaceholder } from "./ScreenPlaceholder";
-import type { components } from "../api/schema";
-
-type CurrentWeek = components["schemas"]["CurrentWeek"];
 
 export function Dashboard() {
-  const [data, setData] = useState<CurrentWeek | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await apiClient.GET("/weeks/current");
-      if (error) {
-        setError(JSON.stringify(error));
-        return;
-      }
-      if (data) setData(data);
-    })();
-  }, []);
+  const { data, isLoading, error } = useCurrentWeek();
 
   return (
     <div>
@@ -27,9 +11,10 @@ export function Dashboard() {
         <div className="upper dim" style={{ fontSize: 10, marginBottom: 8 }}>
           API Test — /weeks/current
         </div>
+        {isLoading && <div className="dim">Loading…</div>}
         {error && (
           <div className="neg mono" style={{ fontSize: 12 }}>
-            Error: {error}
+            Error: {error.message}
           </div>
         )}
         {data && (
@@ -39,7 +24,6 @@ export function Dashboard() {
             <div>Source: {data.source ?? "(null)"}</div>
           </div>
         )}
-        {!data && !error && <div className="dim">Loading…</div>}
       </div>
     </div>
   );
