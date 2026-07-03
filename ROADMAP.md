@@ -165,7 +165,7 @@ Multi-session opportunistic cleanup that closed 30 backlog items across CLI ergo
 
 ### Active Workstream
 
-#### W8: API Serving Layer — 🟢 TIER 2 COMPLETE; TIER 3 DESIGNING
+#### W8: API Serving Layer — 🟡 ACTIVE (Tier 3 designing)
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
 
@@ -247,27 +247,39 @@ champion-only outputs per D21).
 
 ### Future Workstreams (ordered by current priority)
 
-#### W9: Frontend — 🟢 PLANNED (immediately after W8)
+#### W9: Frontend — ✅ COMPLETE (2026-07-03)
 
 **Goal:** Build a web UI that consumes the API and presents the analytics. Acts as the visual verification surface for everything the platform produces.
 
-**Key deliverables:**
-- Scaffold app (React/Vite or Next.js)
-- Wire up to API endpoints
-- Implement screens progressively as backend capabilities arrive:
-  - Dashboard (games + edges)
-  - Game Detail
-  - Power Rankings
-  - Player Props Explorer
-  - Line Shopping (when W7 ships)
-  - Bet Slip
-  - Bankroll / Portfolio
-  - News / Alerts
-  - Settings
-- The Claude Design prototype provides the visual spec.
+**Delivered (2026-07-03):**
+- ✅ Vite + React + TypeScript app at `frontend/`, deployed to local dev
+  via `pnpm dev`.
+- ✅ 20 screens matching the prototype URL inventory. 12 consume the
+  API; 4 are blocked-screen placeholders with full blocker context;
+  4 are client-side (Onboarding, Settings, Tools, BetSlip).
+- ✅ Design system: OKLCH dark theme ported 1:1 from the prototype's
+  `styles.css`. Fonts loaded via Google Fonts (Geist / Geist Mono /
+  Instrument Serif). Design decisions captured in
+  `frontend/src/design-decisions.md`.
+- ✅ Three-Context state model (AppState, BetSlip, Nav) matching the
+  prototype. Persistence to localStorage / sessionStorage.
+- ✅ Data flow: `openapi-fetch` client generated from checked-in
+  `api-schema.json`, wrapped in per-endpoint React Query hooks.
+  Typed end-to-end.
+- ✅ Field-status rendering: shared `<PendingField />`,
+  `<BlockedField />`, `<FieldValue />` primitives compose consistently
+  across every screen.
+- ✅ Error handling: shared `<ErrorCard />` component with error
+  classification and Retry. Global `<OfflineBanner />` polls the API
+  every 30s.
+- ✅ Keyboard accessibility: focus outlines, proper button semantics,
+  ARIA labels on icon-only controls.
+- ✅ Smoke test coverage: Vitest + React Testing Library, 10 tests
+  across critical components.
 
-**Dependencies:** W8.
-**Unlocks:** M5 (friends can use it), output-driven prioritization of W12 vs W4.5 vs W7.
+**Unlocks:** M4.5 achieved (visual verification of full output set).
+W8 Tier 3 additive dataset priority now discoverable — the frontend
+has surfaced which pending/blocked states matter most.
 
 #### W12: Model Ensemble — 🟢 PLANNED
 
@@ -441,13 +453,12 @@ W5.5 ✅                              │
 
 ```
 
-**Current position:** W13 Tier 3 (CLI consumer refactor) is active. Tiers 1–2 complete: manifest + resolver + writer + selectors + full-retrain integration + manual-override flags. W8 (API) remains paused; resumes at Tier 2 Step 5 when W13 Tier 3 closes. Path forward:
-
-1. **W13 (Champion Resolution)** 🟡 active — small workstream, discovered from W8 Step 5 pre-planning.
-2. **W8 (API)** ⏸ paused — resumes at Tier 2 Step 5 when W13 closes.
-3. **W9 (Frontend)** — sequential after W8.
-4. After W9, pick between **W12 (Ensemble)**, **W4.5 (Scenario)** (pending §5.3), and **W7 (Multi-Book)**.
-5. **W10 (Real-Time)** — deferred until everything else stabilizes.
+**Current position:** W9 complete (2026-07-03). Frontend consumes the API end-to-end; all 20 prototype screens render. Path forward:
+- **W8 Tier 3** 🟡 active — Additive datasets designing. W9 feedback identifies which additive should ship first.
+- **W12 (Ensemble)** — Available; not currently blocking anything.
+- **W4.5 (Scenario)** — Blocked on §5.3 injury data source decision.
+- **W7 (Multi-Book)** — Blocked on §5.2 odds source decision.
+- **W10 (Real-Time)** — Deferred until W7 and W12 stabilize.
 
 ---
 
@@ -460,7 +471,7 @@ W5.5 ✅                              │
 | **M1.6: One-command weekly workflow** | Run `gridiron weekly-predict` to do the full Thursday/Sunday prep in one command. | W4.1 | ✅ **ACHIEVED** |
 | **M2: Know if the model makes money** | After a month of tracking bets, run `gridiron bet summary` and see your CLV, ROI, and record by confidence tier. | W6 | ✅ **ACHIEVED** |
 | **M3: First prop edge** | Full prop evaluation report with accuracy, bias, coverage metrics. | W4 + W5 | ✅ **ACHIEVED** |
-| **M4.5: Visual output verification** | Wire the Gridiron Edge frontend prototype to the API and walk the full surface. Every populated field is verified; every `null` field surfaces a backend gap that's tracked in §9. | W8 + W9 | 🟡 **NEXT** |
+| **M4.5: Visual output verification** | Wire the Gridiron Edge frontend prototype to the API and walk the full surface. Every populated field is verified; every `null` field surfaces a backend gap that's tracked in §9. | W8 + W9 | ✅ **ACHIEVED** |
 | **M4: Shop across 3+ books** | Run `gridiron lines --week 12` and see a cross-book comparison with best prices highlighted. | W7 | Planned |
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned (delivered with M4.5 + auth) |
 | **M6: Live game day experience** | Real-time win prob, live edges, hedge suggestions during a game. | W10 | Planned |
@@ -547,6 +558,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-03 | **W9 complete.** Frontend consumes the API end-to-end; all 20 prototype screens render. Vite + React + TypeScript at `frontend/`. Every populated field shows real data; every scaffolded field surfaces `field_status`; every error state consistent. M4.5 milestone achieved. Path forward: W8 Tier 3 additive datasets, prioritized by W9 feedback on which field_status states most impact the UX. |
 | 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens wired end-to-end. Real data flows for populated fields; `field_status` renders structured null states for pending/blocked fields. Tier 3 (blocked screens + polish) opens next. |
 | 2026-07-02 | **W9 Tier 1 complete.** Frontend client infrastructure shipped in seven substeps. Vite + React + TypeScript + `openapi-fetch` + React Query loop works end-to-end against the local API. Backend hygiene item added to §9.6 (season type inconsistency across endpoints). W9 Tier 2 (populated screens) opens next. |
 | 2026-07-01 | **W8 Tier 2 complete.** Eight steps shipped over ~1 month. 16 endpoints populated with real data. Tier 3 additive datasets designing; kickoff waits for W9 feedback on priority. W9 (Frontend) unblocked. |

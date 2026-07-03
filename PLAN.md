@@ -29,7 +29,7 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W9 — Frontend
+### Current Workstream: W8 — API Serving Layer (Tier 3)
 
 ### What we are building
 
@@ -155,17 +155,20 @@ Tier 2 covers every prototype-referenced URL that has a populated API endpoint. 
 ExplainPage) and client-side screens (Onboarding, Settings, Tools) still stub — Tier 3.
 
 
-**Tier 3 — Blocked screens + polish.** 🟡 Active.
+**Tier 3 — Blocked screens + polish.** ✅ Complete (2026-07-03).
 
-Deliverable: 20-screen complete UI.
+Shipped in six substeps:
 
-Substeps:
-1. Blocked-screen placeholders (LineShopping, LiveGame, NewsWire, ExplainPage).
-2. Client-side screens (Onboarding, Settings, Tools).
-3. Aesthetic variants decision (Terminal / Fintech / Editorial or none).
-4. Screen-level integration testing.
-5. A11y sweep.
-6. Error states (network failures, backend down).
+- **3a:** Blocked-screen placeholders (LineShopping, LiveGame, NewsWire, ExplainPage) via shared `<BlockedScreen />` component. Each surfaces blocker slug + roadmap reference in tooltip and requirements list.
+- **3b:** Client-side screens (Settings, Onboarding, Tools). First exercise of `AppStateContext` write paths — odds format toggle
+  propagates globally, bankroll edits persist, danger-zone reset works.
+- **3c:** Aesthetic identity documented (`frontend/src/design-decisions.md`).
+  Functional blend of Terminal + Fintech + Editorial rather than formal variant selection. Font/color usage patterns codified.
+- **3d:** Vitest + React Testing Library smoke tests. 10 tests across 5 files (BlockedScreen, LineShopping, FieldValue, Settings, Tools). `pnpm test` and `pnpm test:run` scripts added.
+- **3e:** Keyboard accessibility sweep. Clickable spans converted to buttons; table rows get `tabIndex={0}` + Enter/Space handlers; global `:focus-visible` outline; `aria-label` on icon-only controls; `aria-pressed` on toggle-style buttons.
+- **3f:** Error state consistency and offline detection. Shared `<ErrorCard />` component with error classification and Retry button used across all 10 API-consuming screens. Global `<OfflineBanner />` polls `/weeks/current` every 30s.
+
+**W9 Frontend — COMPLETE.**
 
 
 Tier design blocks are drafted at the start of each tier.
@@ -223,6 +226,7 @@ structured `field_status` metadata per D14.
 
 | Date | Change |
 |------|--------|
+| 2026-07-03 | **W9 Tier 3 complete. W9 workstream closed.** Six substeps: BlockedScreen for four Tier-3-blocked screens (3a), Settings/Onboarding/Tools with AppStateContext write paths (3b), aesthetic identity documentation (3c), Vitest smoke tests (3d), keyboard accessibility sweep (3e), ErrorCard + OfflineBanner (3f). All 20 prototype-referenced screens render. Every populated field shows real data; every scaffolded field surfaces structured `field_status`; every error state has consistent UX. |
 | 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens render real data end-to-end. Seven substeps shipped: Games (2a), Teams (2b), Projections (2c), Players/Props (2d), Compare (2e), Bankroll (2f), BetSlip (2g). Pre-substep 2.0 shipped shared field-status primitives (`<PendingField />`, `<BlockedField />`, `<FieldValue />`) used across every screen. First user-input controls introduced (FilterBar in 2d, TeamPicker in 2e). URL-synced state pattern established in 2e. W8 hygiene items captured: `season` type inconsistency (2b), PFR-era team abbreviations (2e). Tier 3 (blocked screens + polish) opens next. |
 | 2026-07-02 | **W9 Tier 1 complete.** Client infrastructure shipped in seven substeps: Vite + React + TypeScript scaffold, design tokens ported from prototype's `styles.css`, chrome components (TopNav, SubNav, Breadcrumb), hash-based routing with three-Context state model (AppState, BetSlip, Nav), typed API client via `openapi-fetch` with generated `schema.ts`, React Query with per-endpoint hooks. `gridiron api export-schema` W8 patch shipped standalone. Dashboard successfully fetches `/weeks/current` from the live API. Frontend infrastructure ready for Tier 2 populated-screen wiring. |
 | 2026-07-02 | **W9 design phase complete.** Design block locked: Vite + React + TypeScript, CSS variables + CSS Modules, three-Context state model matching the prototype, React Query for API data, generated API client from checked-in OpenAPI schema (via new `gridiron api export-schema` W8 patch). Three tiers: client infrastructure (7 substeps), populated screens (7 substeps grouped by domain), blocked screens + polish (6 substeps). Field_status rendering strategy locked: pending as placeholder + info badge; blocked as "not available" state with tooltip; entirely-blocked screens as full-screen "coming soon" cards. |

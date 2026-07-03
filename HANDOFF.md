@@ -51,6 +51,11 @@ How everything works right now. Assumes you know what the project does - see [RE
 | API serializers | `gridiron_edge.api.serializers` — hand-written per D17, owns `_meta.field_status` per D18 |
 | API routes | `gridiron_edge.api.routes` — FastAPI, exception translation for `ChampionNotFoundError` / `OddsUnavailableError` |
 | API exceptions | `gridiron_edge.api.exceptions` — data-state signals from loaders to routes |
+| Frontend | `frontend/` — Vite + React + TypeScript, consumes API via generated `openapi-fetch` client and React Query hooks |
+| Frontend design system | `frontend/src/index.css` — OKLCH dark theme ported from prototype; `frontend/src/design-decisions.md` documents the aesthetic blend |
+| Frontend state | Three React Contexts (`frontend/src/context/`): AppState (odds format, bankroll, alerts), BetSlip (legs + mode), Nav (route + params) |
+| Frontend testing | Vitest + React Testing Library; smoke tests at `frontend/src/**/*.test.tsx` |
+
 
 ---
 
@@ -74,6 +79,11 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `src/gridiron_edge/cli/` | Typer app + sub-commands |
 | `data/` | Generated at runtime - not committed |
 | `data/models/{version}/` | Trained model artifacts (joblib + metadata JSON) |
+| `frontend/` | React + TypeScript frontend consuming the API |
+| `frontend/src/api/` | Typed API client (`openapi-fetch` + generated schema) and React Query hooks |
+| `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
+| `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
+| `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
 
 **Data layout:**
 
@@ -381,6 +391,41 @@ to the process-wide `get_settings()` and reads from the real repo — silently,
 in tests. When adding a new loader, grep the callee's signature for a `repo`
 param and pass `repo=settings.repo_root` if it accepts one. A W8 Tier 2
 Step 5 audit confirmed all existing loaders comply.
+
+#### Frontend architecture (W9)
+
+- **Framework:** Vite + React + TypeScript. Not Next.js — no SSR needed
+  for local dev.
+- **Data fetching:** React Query wrapping `openapi-fetch`. Types
+  generated from checked-in `api-schema.json` — regenerate via
+  `pnpm gen:api` (frontend) after any API surface change.
+- **State model:** Three React Contexts (Nav, BetSlip, AppState) matching
+  the prototype's design. Persistence to localStorage
+  (bankroll, bet slip, odds format) and sessionStorage (current route).
+- **Field-status rendering:** All D14 metadata surfaces via shared
+  primitives — `<PendingField />`, `<BlockedField />`, `<FieldValue />`.
+  Never inline; consistent visual language across screens.
+- **Error handling:** Shared `<ErrorCard />` with error classification.
+  Global `<OfflineBanner />` polls `/weeks/current` every 30s.
+- **Routing:** Hash-based (`#/route`) with query params for detail
+  routes. No React Router — small custom implementation in
+  `context/NavContext.tsx`.
+- **Styling:** CSS variables + inline styles per component. No CSS-in-JS
+  library. Design tokens in `frontend/src/index.css`.
+- **Testing:** Vitest for smoke tests, not exhaustive coverage.
+  Run via `pnpm test` (watch) or `pnpm test:run` (CI).
+
+**Local dev loop:**
+
+```bash
+# Terminal 1: API
+uv run gridiron api serve
+
+# Terminal 2: Frontend
+cd frontend
+pnpm dev
+```
+App runs at http://localhost:5173 and reads from http://localhost:8000.
 
 ---
 

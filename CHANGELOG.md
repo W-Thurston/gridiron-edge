@@ -3,6 +3,74 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-03 — W9 Frontend (20-screen React app consuming the API)
+
+Three-tier workstream shipping a complete React frontend. Consumes
+the 16-endpoint W8 Tier 2 API surface end-to-end. Every prototype
+screen renders with real data where populated, structured
+`field_status` where scaffolded, and consistent error UX everywhere.
+
+### Shipped
+
+**Tier 1 — Client infrastructure (7 substeps):**
+- Vite + React + TypeScript scaffolding with Geist font loading and
+  OKLCH dark theme port.
+- Chrome components: TopNav, SubNav, Breadcrumb.
+- Three React Contexts (AppState, BetSlip, Nav) with
+  localStorage/sessionStorage persistence.
+- `openapi-fetch` typed API client from checked-in schema.
+- React Query with per-endpoint hooks and query key namespacing.
+
+**Tier 2 — Populated screens (7 substeps + 1 pre-substep):**
+- Pre-substep 2.0: Field-status primitives (`<PendingField />`,
+  `<BlockedField />`, `<FieldValue />`).
+- 2a: Games (GamesList + GameDetail).
+- 2b: Teams (TeamRankings + TeamProfile).
+- 2c: Projections (PlayoffProjections).
+- 2d: Players/Props (PlayersExplorer + PlayerProp).
+- 2e: Compare (ComparePage) with URL-synced state for bookmarking.
+- 2f: Bankroll consuming 5 `/portfolio/*` endpoints in parallel.
+- 2g: BetSlip staging bets from `/edges`.
+
+**Tier 3 — Blocked screens + polish (6 substeps):**
+- 3a: BlockedScreen for LineShopping, LiveGame, NewsWire, ExplainPage.
+- 3b: Settings, Onboarding, Tools (client-side, no API).
+- 3c: Aesthetic identity documented.
+- 3d: Vitest smoke tests.
+- 3e: Keyboard accessibility sweep.
+- 3f: ErrorCard + OfflineBanner.
+
+### Architecture established
+
+- **Data flow:** endpoint → generated TypeScript type → React Query hook
+  → screen component → shared primitive (FieldValue, ErrorCard, etc.).
+- **State:** three Contexts (Nav, BetSlip, AppState) persisted client-side.
+- **Styling:** OKLCH dark theme via CSS variables. Cards for grouping,
+  monospace for numerics, serif for editorial emphasis.
+- **Testing:** Vitest + React Testing Library. Smoke coverage of
+  critical paths.
+- **Accessibility:** Semantic HTML, focus indicators, ARIA labels on
+  icon-only controls.
+
+### W8 backend hygiene items surfaced
+
+- `season` type inconsistency (int vs string across endpoints).
+  Captured in ROADMAP §9.6.
+- Team abbreviation convention (KAN/JAC vs KC/JAX). Not blocking, not
+  tracked as an issue.
+- `evaluate select-model --write-manifest` display bug: "Persist
+  manifest" step appeared after the summary block. Fixed as a small
+  W8 patch during 2f verification.
+
+### Next
+
+W8 Tier 3 designing. Now that W9 has surfaced which pending/blocked
+states appear on real screens, the additive dataset priority can be
+decided empirically rather than speculatively. Most likely first
+additive: per-stat percentile ranking (drives compare screen rank
+columns and team detail rank fields) OR opponent-allowed-by-position
+(drives the entire defense side of PlayerProp).
+
 ## 2026-07-02 — W8 Tier 2: Direct-Serialization Endpoints (16 endpoints populated)
 
 Eight-step tier closing out Tier 2 of the API serving layer. Every
