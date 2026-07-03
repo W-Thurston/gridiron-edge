@@ -1,111 +1,211 @@
+/* ============================================================
+   Gridiron Edge - Design Tokens
+   Ported from source/styles.css. All colors in OKLCH (dark theme,
+   cool near-black family). Do not modify token values without
+   updating the design reference.
+   ============================================================ */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* ---------- Color: Background ---------- */
+  --bg: oklch(0.165 0.006 240);        /* app background */
+  --bg-1: oklch(0.195 0.006 240);      /* cards */
+  --bg-2: oklch(0.225 0.006 240);      /* raised surfaces */
+  --bg-3: oklch(0.265 0.006 240);      /* tracks / chips */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* ---------- Color: Lines ---------- */
+  --line: oklch(0.305 0.006 240);      /* borders */
+  --line-soft: oklch(0.245 0.006 240); /* soft borders / dividers */
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* ---------- Color: Ink (text) ---------- */
+  --ink: oklch(0.965 0.004 240);       /* primary text */
+  --ink-2: oklch(0.78 0.005 240);      /* secondary text */
+  --ink-3: oklch(0.58 0.006 240);      /* tertiary / dim */
+  --ink-4: oklch(0.44 0.006 240);      /* faint / disabled */
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  /* ---------- Color: Semantic ---------- */
+  --pos: oklch(0.78 0.15 148);         /* edge / cover / favorable / brand */
+  --pos-dim: oklch(0.55 0.10 148);
+  --neg: oklch(0.66 0.19 27);          /* against / fade / alert badge */
+  --neg-dim: oklch(0.48 0.13 27);
+  --warn: oklch(0.80 0.15 78);         /* caution / uncertainty */
+  --warn-dim: oklch(0.58 0.11 78);
+  --info: oklch(0.74 0.13 240);        /* informational */
+  --accent: var(--pos);                /* default accent alias */
+
+  /* ---------- Typography ---------- */
+  --f-sans: "Geist", "Söhne", -apple-system, BlinkMacSystemFont,
+            "Segoe UI", Roboto, sans-serif;
+  --f-mono: "Geist Mono", "JetBrains Mono", ui-monospace,
+            SFMono-Regular, "Menlo", monospace;
+  --f-serif: "Instrument Serif", Georgia, serif;
+
+  /* ---------- Base body typography (per design brief) ---------- */
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* ============================================================
+   Base
+   ============================================================ */
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+  font-variant-numeric: tabular-nums;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+/* Thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+.mono {
+  font-family: var(--f-mono);
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
+.serif {
+  font-family: var(--f-serif);
+}
+
+.upper {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text emphasis / dim states */
+.dim {
+  color: var(--ink-3);
+}
+
+.dim2 {
+  color: var(--ink-4);
+}
+
+/* Semantic text colors */
+.pos {
+  color: var(--pos);
+}
+
+.neg {
+  color: var(--neg);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+/* ============================================================
+   Layout Primitives
+   ============================================================ */
+
+.hm-frame {
+  width: 1440px;
+  min-height: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hm-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+
+.hm-divider {
+  border-top: 1px solid var(--line-soft);
+}
+
+.hm-vdivider {
+  border-left: 1px solid var(--line-soft);
+}
+
+/* ============================================================
+   Data-Viz Primitives
+   ============================================================ */
+
+/* Horizontal progress / sparkline bar */
+.bar-track {
+  height: 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--pos);
+  transition: width 200ms ease;
+}
+
+/* Probability band (uncertainty interval with a central point) */
+.prob-band {
+  height: 10px;
+  position: relative;
+}
+
+.prob-band .range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in oklab, var(--accent) 20%, transparent);
+  border-left: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-right: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+.prob-band .point {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+/* Team abbreviation chip */
+.team-mark {
+  width: 22px;
+  height: 22px;
   border-radius: 4px;
-  color: var(--text-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 600;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* ============================================================
+   Interactive States
+   ============================================================ */
+
+.proj-row {
+  transition: background 90ms ease;
+}
+
+.proj-row:hover {
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
 }
