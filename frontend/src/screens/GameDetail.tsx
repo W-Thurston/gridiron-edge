@@ -21,13 +21,22 @@ export function GameDetail() {
 
   const backNav = (
     <div>
-      <span
+      <button
+        type="button"
         onClick={() => navigate("/games")}
         className="dim mono"
-        style={{ fontSize: 12, cursor: "pointer" }}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink-3)",
+          fontSize: 12,
+        }}
       >
         ← Games
-      </span>
+      </button>
     </div>
   );
 

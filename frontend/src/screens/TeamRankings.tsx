@@ -76,6 +76,15 @@ export function TeamRankings() {
                 key={team.abbr}
                 className="proj-row"
                 onClick={() => handleRowClick(team.abbr)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleRowClick(team.abbr);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`View profile for ${team.name}`}
                 style={{
                   borderTop: "1px solid var(--line-soft)",
                   cursor: "pointer",

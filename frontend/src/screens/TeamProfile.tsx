@@ -20,6 +20,27 @@ export function TeamProfile() {
     );
   }
 
+  const backNav = (
+    <div>
+      <button
+        type="button"
+        onClick={() => navigate("/teams")}
+        className="dim mono"
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink-3)",
+          fontSize: 12,
+        }}
+      >
+        ← Team Rankings
+      </button>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="hm-card" style={{ padding: 24 }}>
@@ -44,17 +65,7 @@ export function TeamProfile() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Back nav */}
-      <div>
-        <span
-          onClick={() => navigate("/teams")}
-          className="dim mono"
-          style={{ fontSize: 12, cursor: "pointer" }}
-        >
-          ← Team Rankings
-        </span>
-      </div>
-
+      {backNav}
       {/* Header card */}
       <div className="hm-card" style={{ padding: 24 }}>
         <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>

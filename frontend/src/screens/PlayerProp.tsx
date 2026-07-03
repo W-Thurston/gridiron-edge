@@ -23,13 +23,22 @@ export function PlayerProp() {
   // Render back nav + status-dependent content.
   const backNav = (
     <div>
-      <span
+      <button
+        type="button"
         onClick={() => navigate("/players")}
         className="dim mono"
-        style={{ fontSize: 12, cursor: "pointer" }}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          font: "inherit",
+          color: "var(--ink-3)",
+          fontSize: 12,
+        }}
       >
         ← Players
-      </span>
+      </button>
     </div>
   );
 

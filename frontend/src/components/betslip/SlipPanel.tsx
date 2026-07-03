@@ -231,19 +231,24 @@ function LegRow({
           >
             {formatOdds(leg.odds, oddsFormat)}
           </span>
-          <span
+          <button
+            type="button"
             onClick={onRemove}
+            aria-label="Remove bet leg"
+            title="Remove leg"
             style={{
+              background: "transparent",
+              border: "none",
+              padding: "0 4px",
+              cursor: "pointer",
+              font: "inherit",
               fontSize: 14,
               color: "var(--ink-3)",
-              cursor: "pointer",
-              padding: "0 4px",
               lineHeight: 1,
             }}
-            title="Remove leg"
           >
             ×
-          </span>
+          </button>
         </div>
       </div>
     </div>

@@ -37,13 +37,19 @@ export function TopNav() {
       }}
     >
       {/* Left: Logo lockup */}
-      <div
+      <button
+        type="button"
         onClick={() => navigate("/today")}
+        aria-label="Go to today's dashboard"
         style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          font: "inherit",
           display: "flex",
           alignItems: "center",
           gap: 8,
-          cursor: "pointer",
         }}
       >
         <div
@@ -69,7 +75,7 @@ export function TopNav() {
         >
           v4.2
         </span>
-      </div>
+      </button>
 
       {/* Center: Nav items */}
       <div
@@ -103,7 +109,7 @@ export function TopNav() {
         }}
       >
         <SearchBox />
-        <IconButton>
+        <IconButton label={`${alertCount} unread notifications`}>
           <BellIcon />
           {alertCount > 0 && <Badge color="var(--neg)">{alertCount}</Badge>}
         </IconButton>
@@ -131,20 +137,25 @@ function NavItem({
   onClick: () => void;
 }) {
   return (
-    <span
+    <button
+      type="button"
       onClick={onClick}
       style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        paddingBottom: 4,
+        cursor: "pointer",
+        font: "inherit",
         fontSize: 13,
         fontWeight: active ? 500 : 400,
         color: active ? "var(--ink)" : "var(--ink-3)",
         borderBottom: active ? "2px solid var(--pos)" : "2px solid transparent",
-        paddingBottom: 4,
-        cursor: "pointer",
         transition: "color 90ms ease",
       }}
     >
       {label}
-    </span>
+    </button>
   );
 }
 
@@ -194,10 +205,17 @@ function SearchBox() {
   );
 }
 
-function IconButton({ children }: { children: React.ReactNode }) {
+function IconButton({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <div
+    <button
+      type="button"
+      aria-label={label}
       style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        font: "inherit",
         position: "relative",
         width: 32,
         height: 32,
@@ -205,12 +223,11 @@ function IconButton({ children }: { children: React.ReactNode }) {
         alignItems: "center",
         justifyContent: "center",
         color: "var(--ink-3)",
-        cursor: "pointer",
         transition: "color 90ms ease",
       }}
     >
       {children}
-    </div>
+    </button>
   );
 }
 
@@ -252,8 +269,10 @@ function BetSlipButton({
 }) {
   const hasLegs = count > 0;
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
+      aria-label={`Open bet slip${count > 0 ? ` (${count} legs)` : ""}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -267,6 +286,7 @@ function BetSlipButton({
         color: hasLegs ? "var(--pos)" : "var(--ink-2)",
         fontSize: 13,
         cursor: "pointer",
+        font: "inherit",
         transition: "background 90ms ease",
       }}
     >
@@ -287,7 +307,7 @@ function BetSlipButton({
           {count}
         </span>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -299,23 +319,28 @@ function Avatar({
   onClick: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
+      aria-label="Go to settings"
       style={{
+        background: "var(--bg-3)",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        font: "inherit",
         width: 30,
         height: 30,
         borderRadius: "50%",
-        background: "var(--bg-3)",
         color: "var(--ink-2)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontSize: 11,
         fontWeight: 600,
-        cursor: "pointer",
       }}
     >
       {initials}
-    </div>
+    </button>
   );
 }

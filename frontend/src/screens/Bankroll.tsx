@@ -498,18 +498,24 @@ function TabButton({
   onClick: () => void;
 }) {
   return (
-    <span
+    <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       style={{
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        paddingBottom: 2,
+        cursor: "pointer",
+        font: "inherit",
         fontSize: 11,
         color: active ? "var(--ink)" : "var(--ink-3)",
         borderBottom: active ? "2px solid var(--pos)" : "2px solid transparent",
-        paddingBottom: 2,
-        cursor: "pointer",
       }}
     >
       {label}
-    </span>
+    </button>
   );
 }
 

@@ -101,6 +101,15 @@ export function PlayersExplorer() {
                 key={prop.prop_id}
                 className="proj-row"
                 onClick={() => handleRowClick(prop.prop_id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleRowClick(prop.prop_id);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`View prop details for ${prop.player_name} ${prop.stat_type}`}
                 style={{
                   borderTop: "1px solid var(--line-soft)",
                   cursor: "pointer",

@@ -199,16 +199,22 @@ function OddsChoice({
   onSelect: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onSelect}
+      aria-pressed={selected}
       style={{
-        padding: 16,
-        borderRadius: 6,
-        border: `1px solid ${selected ? "var(--pos)" : "var(--line-soft)"}`,
+        width: "100%",
+        textAlign: "left",
         background: selected
           ? "color-mix(in oklab, var(--pos) 8%, transparent)"
           : "var(--bg-1)",
+        padding: 16,
+        borderRadius: 6,
+        border: `1px solid ${selected ? "var(--pos)" : "var(--line-soft)"}`,
         cursor: "pointer",
+        font: "inherit",
+        color: "inherit",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -229,7 +235,7 @@ function OddsChoice({
           background: selected ? "var(--pos)" : "transparent",
         }}
       />
-    </div>
+    </button>
   );
 }
 

@@ -70,6 +70,15 @@ export function GamesList() {
                   key={game.game_id}
                   className="proj-row"
                   onClick={() => handleRowClick(game.game_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleRowClick(game.game_id);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View details for ${game.away_team} at ${game.home_team}`}
                   style={{
                     borderTop: "1px solid var(--line-soft)",
                     cursor: "pointer",

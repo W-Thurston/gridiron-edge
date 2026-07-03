@@ -209,3 +209,15 @@ html, body {
 .proj-row:hover {
   background: color-mix(in oklab, var(--ink) 4%, transparent);
 }
+
+/* ============================================================
+   Focus indicators (a11y)
+   ============================================================ */
+
+button:focus-visible,
+[tabindex="0"]:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--pos);
+  outline-offset: 2px;
+}
