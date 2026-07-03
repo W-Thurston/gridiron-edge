@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated API client types (regenerate via `pnpm gen:api`)
+src/api/schema.ts
