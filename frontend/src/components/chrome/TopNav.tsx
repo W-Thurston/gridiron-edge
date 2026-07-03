@@ -1,5 +1,7 @@
 import { useNav } from "../../context/NavContext";
 import { BellIcon, BetSlipIcon, SearchIcon } from "./icons";
+import { useAppState } from "../../context/AppStateContext";
+import { useBetSlip } from "../../context/BetSlipContext";
 
 const NAV_ITEMS = [
   { label: "Today", path: "/today" },
@@ -14,14 +16,12 @@ const NAV_ITEMS = [
   { label: "My Bets", path: "/mybets" },
 ] as const;
 
-type TopNavProps = {
-  /** Notification count shown on the bell badge. */
-  alertCount?: number;
-  /** Bet slip leg count shown on the slip button badge. */
-  slipCount?: number;
-};
 
-export function TopNav({ alertCount = 4, slipCount = 0 }: TopNavProps) {
+export function TopNav() {
+  const { state } = useAppState();
+  const { legs } = useBetSlip();
+  const alertCount = state.alerts;
+  const slipCount = legs.length;
   const { route, navigate } = useNav();
 
   return (
