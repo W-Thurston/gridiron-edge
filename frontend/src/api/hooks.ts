@@ -213,3 +213,77 @@ export function useCompareTeams(params: {
     enabled,
   });
 }
+/**
+ * Fetches portfolio summary.
+ */
+export function usePortfolioSummary() {
+  return useQuery({
+    queryKey: ["portfolio-summary"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/portfolio/summary");
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches open + recent bets from the ledger.
+ */
+export function usePortfolioBets() {
+  return useQuery({
+    queryKey: ["portfolio-bets"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/portfolio/bets");
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches historical bankroll balance curve.
+ */
+export function usePortfolioCurve() {
+  return useQuery({
+    queryKey: ["portfolio-curve"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/portfolio/curve");
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches raw bankroll transaction log.
+ */
+export function usePortfolioTransactions() {
+  return useQuery({
+    queryKey: ["portfolio-transactions"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/portfolio/transactions");
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
+
+/**
+ * Fetches performance splits by the given dimension.
+ * Dimension defaults to "market_type" server-side.
+ */
+export function usePortfolioSplits(dimension?: "market_type" | "confidence_tier" | "model_type") {
+  return useQuery({
+    queryKey: ["portfolio-splits", dimension],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/portfolio/splits", {
+        params: {
+          query: dimension ? { dimension } : {},
+        },
+      });
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
