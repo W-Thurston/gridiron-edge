@@ -1,3 +1,4 @@
+import { useNav } from "../../context/NavContext";
 import { BellIcon, BetSlipIcon, SearchIcon } from "./icons";
 
 const NAV_ITEMS = [
@@ -14,19 +15,15 @@ const NAV_ITEMS = [
 ] as const;
 
 type TopNavProps = {
-  /** Current route path — used to render active state. */
-  activePath?: string;
   /** Notification count shown on the bell badge. */
   alertCount?: number;
   /** Bet slip leg count shown on the slip button badge. */
   slipCount?: number;
 };
 
-export function TopNav({
-  activePath = "/today",
-  alertCount = 4,
-  slipCount = 0,
-}: TopNavProps) {
+export function TopNav({ alertCount = 4, slipCount = 0 }: TopNavProps) {
+  const { route, navigate } = useNav();
+
   return (
     <nav
       style={{
@@ -41,6 +38,7 @@ export function TopNav({
     >
       {/* Left: Logo lockup */}
       <div
+        onClick={() => navigate("/today")}
         style={{
           display: "flex",
           alignItems: "center",
@@ -84,9 +82,14 @@ export function TopNav({
         }}
       >
         {NAV_ITEMS.map((item) => {
-          const isActive = activePath.startsWith(item.path);
+          const isActive = route.path.startsWith(item.path);
           return (
-            <NavItem key={item.path} label={item.label} active={isActive} />
+            <NavItem
+              key={item.path}
+              label={item.label}
+              active={isActive}
+              onClick={() => navigate(item.path)}
+            />
           );
         })}
       </div>
@@ -104,8 +107,11 @@ export function TopNav({
           <BellIcon />
           {alertCount > 0 && <Badge color="var(--neg)">{alertCount}</Badge>}
         </IconButton>
-        <BetSlipButton count={slipCount} />
-        <Avatar initials="RG" />
+        <BetSlipButton
+          count={slipCount}
+          onClick={() => navigate("/betslip")}
+        />
+        <Avatar initials="RG" onClick={() => navigate("/settings")} />
       </div>
     </nav>
   );
@@ -115,9 +121,18 @@ export function TopNav({
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function NavItem({ label, active }: { label: string; active: boolean }) {
+function NavItem({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <span
+      onClick={onClick}
       style={{
         fontSize: 13,
         fontWeight: active ? 500 : 400,
@@ -228,16 +243,25 @@ function Badge({
   );
 }
 
-function BetSlipButton({ count }: { count: number }) {
+function BetSlipButton({
+  count,
+  onClick,
+}: {
+  count: number;
+  onClick: () => void;
+}) {
   const hasLegs = count > 0;
   return (
     <div
+      onClick={onClick}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 6,
         padding: "6px 10px",
-        background: hasLegs ? "color-mix(in oklab, var(--pos) 15%, transparent)" : "var(--bg-1)",
+        background: hasLegs
+          ? "color-mix(in oklab, var(--pos) 15%, transparent)"
+          : "var(--bg-1)",
         border: `1px solid ${hasLegs ? "var(--pos-dim)" : "var(--line-soft)"}`,
         borderRadius: 5,
         color: hasLegs ? "var(--pos)" : "var(--ink-2)",
@@ -267,9 +291,16 @@ function BetSlipButton({ count }: { count: number }) {
   );
 }
 
-function Avatar({ initials }: { initials: string }) {
+function Avatar({
+  initials,
+  onClick,
+}: {
+  initials: string;
+  onClick: () => void;
+}) {
   return (
     <div
+      onClick={onClick}
       style={{
         width: 30,
         height: 30,
