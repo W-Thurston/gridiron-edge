@@ -1,6 +1,6 @@
 # Gridiron Edge - Handoff
 
-How everything works right now. Assumes you know what the project does - see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [TIER_4_BACKLOG.md](TIER_4_BACKLOG.md) for ambient hygiene items addressed opportunistically.
+How everything works right now. Assumes you know what the project does - see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [ROADMAP.md](ROADMAP.md) §9 for known issues and opportunistic cleanup items.
 
 ---
 
@@ -318,7 +318,7 @@ old champion is restored. Use `--force` to override, `--no-promote` for
 dry-run comparison. Logic lives in `evaluation/champion.py`.
 
 Promotion semantics currently support classification models only.
-Regression model promotion is a future workstream (see TIER_4_BACKLOG.md).
+Regression model promotion is a future workstream (see ROADMAP.md §9).
 
 ##### Runtime champion resolution (W13)
 
@@ -414,6 +414,11 @@ Step 5 audit confirmed all existing loaders comply.
   library. Design tokens in `frontend/src/index.css`.
 - **Testing:** Vitest for smoke tests, not exhaustive coverage.
   Run via `pnpm test` (watch) or `pnpm test:run` (CI).
+- **Schema-derived types:** Component types are derived from the
+  generated schema via `components["schemas"]["TypeName"]` rather than
+  hand-declared. Ensures the frontend stays in lockstep with the API
+  contract; regenerating the schema catches breaking changes at build
+  time.
 
 **Local dev loop:**
 
@@ -428,13 +433,6 @@ pnpm dev
 App runs at http://localhost:5173 and reads from http://localhost:8000.
 
 ---
-
-### Workflows (End-to-End Data Flows)
-
-These trace how data moves through the system for each major operation.
-Use them to understand what happens when a command runs, where to add
-new functionality, and where to look when something breaks.
-
 
 ### Workflows (End-to-End Data Flows)
 
@@ -839,8 +837,8 @@ The prop CLI is fully archive-driven post-Unit-7c. evaluate and
 champion read from the prop prediction archive instead of retraining
 inside every command. backfill does honest walk-forward (per-season
 training through the cutoff). projections requires a trained artifact
-written via PropTrainer.train_and_save (not yet exposed as a CLI command
-- see TIER_4_BACKLOG.md).
+written via PropTrainer.train_and_save. `gridiron props train-and-save`
+is now exposed as a CLI command (added during W5.5).
 
 ---
 
@@ -905,6 +903,10 @@ written via PropTrainer.train_and_save (not yet exposed as a CLI command
 | API schema base | `api/schemas/_base.py` — `BaseResponse`, `BaseListResponse` |
 | Response meta + placeholder slugs | `api/meta.py` — `ResponseMeta`, `Blocker`, `Unavailable` |
 | Prop ID decode | `api/_prop_id.py` |
+| Frontend chrome (TopNav, SubNav, Breadcrumb) | `frontend/src/components/chrome/` |
+| Frontend field-status primitives | `frontend/src/components/field-status/` |
+| Frontend API client | `frontend/src/api/client.ts`, `frontend/src/api/hooks.ts` |
+| Frontend design decisions | `frontend/src/design-decisions.md` |
 
 All paths relative to `src/gridiron_edge/`.
 
@@ -985,7 +987,7 @@ Each workstream is expected to bring its modules to 80%+ coverage.
 
 ## Known sharp edges
 
-> Many of these items are tracked in `TIER_4_BACKLOG.md` for opportunistic cleanup. The items below are the ones a new user is most likely to hit on day one.
+> Many of these items are tracked in ROADMAP.md §9 for opportunistic cleanup. The items below are the ones a new user is most likely to hit on day one.
 
 ### Missing stadium coordinates (2026-2027)
 
