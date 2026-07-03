@@ -95,3 +95,19 @@ export function useTeamProfile(abbr: string | null, params: { season?: string } 
     enabled: abbr !== null,
   });
 }
+
+/**
+ * Fetches Monte Carlo playoff projections.
+ */
+export function useProjections() {
+  return useQuery({
+    queryKey: ["projections"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/projections");
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+  });
+}
