@@ -546,6 +546,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-02 | **W9 Tier 1 complete.** Frontend client infrastructure shipped in seven substeps. Vite + React + TypeScript + `openapi-fetch` + React Query loop works end-to-end against the local API. Backend hygiene item added to §9.6 (season type inconsistency across endpoints). W9 Tier 2 (populated screens) opens next. |
 | 2026-07-01 | **W8 Tier 2 complete.** Eight steps shipped over ~1 month. 16 endpoints populated with real data. Tier 3 additive datasets designing; kickoff waits for W9 feedback on priority. W9 (Frontend) unblocked. |
 | 2026-07-01 | **W13 complete.** Runtime Champion Resolution shipped in full: manifest + resolver (Tier 1), full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3). §9.6 D21 Deviations row for runtime champion resolution updated to Resolved. W8 (API) unpauses at Tier 2 Step 5. |
 | 2026-07-01 | **W13 Tier 2 complete.** Manifest writer, three selectors, full-retrain promote-champions stage, baseline-report annotation, --write-manifest CLI flags on both game and prop sides. §9.6 D21 Deviations row updated to Resolved. Tier 3 (CLI consumer refactor) opens. |

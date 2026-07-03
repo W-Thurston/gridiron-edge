@@ -115,24 +115,27 @@ during W9 Tier 1 or as a standalone W8 patch step.
 
 ### Tiers
 
-**Tier 1 — Client infrastructure.**
+**Tier 1 — Client infrastructure.** ✅ Complete (2026-07-02).
 
-Deliverable: local dev server serving an empty shell that can hit the
-API and render one screen (Dashboard) end-to-end.
+Shipped in seven substeps: Vite + React + TypeScript scaffolding
+with Geist fonts (1a), design tokens ported from prototype's
+`styles.css` (1b), chrome components — TopNav, SubNav, Breadcrumb (1c),
+hash-based routing with NavContext and 18 screen stubs (1d),
+BetSlipContext + AppStateContext + odds helpers (1e), typed API client
+via `openapi-fetch` with generated `schema.ts` (1f), React Query with
+QueryClient and per-endpoint hooks (1g). Dashboard successfully fetches
+`/weeks/current` from the live API.
 
-Substeps:
-1. Vite + React + TypeScript scaffolding, Geist font loading, base
-   `styles.css` port.
-2. Chrome components (TopNav, SubNav, Breadcrumb, Frame).
-3. Three Contexts (AppState, BetSlip, Nav) with localStorage /
-   sessionStorage persistence.
-4. `gridiron api export-schema` command (W8 patch).
-5. API client generation from checked-in OpenAPI schema.
-6. React Query setup with base client, loading/error states.
-7. Dashboard route wired to `/weeks/current` + `/games?week=` —
-   proves the loop works.
+W8 patch shipped standalone before 1a: `gridiron api export-schema`
+serializes the FastAPI OpenAPI spec to `api-schema.json` for W9 client
+generation. Backend inconsistency surfaced during 1f: `/weeks/current`
+returns `season: int` while other endpoints return `season: str`.
+Captured in ROADMAP §9.6 as opportunistic W8 hygiene work; not
+blocking W9.
 
-**Tier 2 — Populated screens.**
+Frontend infrastructure ready for Tier 2 populated-screen wiring.
+
+**Tier 2 — Populated screens.** 🟡 Active.
 
 Deliverable: all 12 API-consuming screens render real data.
 
@@ -214,6 +217,7 @@ structured `field_status` metadata per D14.
 
 | Date | Change |
 |------|--------|
+| 2026-07-02 | **W9 Tier 1 complete.** Client infrastructure shipped in seven substeps: Vite + React + TypeScript scaffold, design tokens ported from prototype's `styles.css`, chrome components (TopNav, SubNav, Breadcrumb), hash-based routing with three-Context state model (AppState, BetSlip, Nav), typed API client via `openapi-fetch` with generated `schema.ts`, React Query with per-endpoint hooks. `gridiron api export-schema` W8 patch shipped standalone. Dashboard successfully fetches `/weeks/current` from the live API. Frontend infrastructure ready for Tier 2 populated-screen wiring. |
 | 2026-07-02 | **W9 design phase complete.** Design block locked: Vite + React + TypeScript, CSS variables + CSS Modules, three-Context state model matching the prototype, React Query for API data, generated API client from checked-in OpenAPI schema (via new `gridiron api export-schema` W8 patch). Three tiers: client infrastructure (7 substeps), populated screens (7 substeps grouped by domain), blocked screens + polish (6 substeps). Field_status rendering strategy locked: pending as placeholder + info badge; blocked as "not available" state with tooltip; entirely-blocked screens as full-screen "coming soon" cards. |
 | 2026-07-02 | **W9 promoted to Current Workstream.** W8 Tier 2 complete; W8 Tier 3 paused pending W9 signal on which additive dataset to build first. W9 design phase to follow — likely 3-tier structure covering client infrastructure, populated screens, and `field_status`-driven blocked-state rendering. |
 | 2026-07-02 | **W8 Tier 2 Step 8 design.** Inline design block added for `/compare/teams` and `/compare/player/{prop_id}`. Two substeps: `/compare/teams` (team-vs-team stat row list) and `/compare/player/{prop_id}` (projection vs defense context). Framing A locked — full endpoints with ~20% populated fields from existing data, ~80% scaffolded via `field_status` pending Tier 3 additive datasets. `OPPONENT_ALLOWED_BY_POSITION` new slug scheduled for `Unavailable`. Response shape: list of stat rows matching the prototype's compare-table visual. |
