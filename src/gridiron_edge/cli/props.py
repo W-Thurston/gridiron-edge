@@ -22,6 +22,7 @@ import typer
 
 from gridiron_edge.cli._composites import write_champion_manifest
 from gridiron_edge.core.console import console, step
+from gridiron_edge.core.settings import Settings
 from gridiron_edge.evaluation.prop_metrics import PropEvalReport
 from gridiron_edge.models.prop_prediction.base import PropModelMetadata, PropModelType, PropTrainer
 
@@ -932,5 +933,58 @@ def compute_splits_cmd(
         with step(f"Persist splits for {st}") as s:
             path = write_situational_splits(df, st, repo)
             s.set_detail(str(path.relative_to(repo)))
+
+    console.summary()
+
+
+@props_app.command("compute-opponent-allowed")
+def compute_opponent_allowed_cmd() -> None:
+    """Compute per-defense per-position stat aggregations.
+
+    For each (opponent_team, position, stat_type) combination in the
+    current season, computes:
+        - Mean stat allowed (across season and l5 rolling cohorts)
+        - Sample size (number of games)
+        - Rank against position (1 = stingiest, 32 = most generous)
+
+    Writes the artifact to
+    ``data/output/props/opponent_allowed.parquet``.
+
+    Consumed by `/compare/player/{prop_id}` to populate the 3
+    defense-side rows: avg_allowed, rank_against_position, and
+    last_5_games_avg (from the l5 cohort).
+    """
+    import pandas as pd
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.opponent_allowed import (
+        compute_opponent_allowed,
+        write_opponent_allowed,
+    )
+
+    settings: Settings = get_settings()
+    repo: Path = settings.repo_root
+
+    console.header("props compute-opponent-allowed")
+
+    with step("Load player game logs") as s:
+        logs_path: Path = repo / "data" / "cleaned" / "player_game_logs.parquet"
+        if not logs_path.exists():
+            typer.echo(f"Player game logs not found at {logs_path}")
+            raise typer.Exit(code=1)
+
+        logs: DataFrame = pd.read_parquet(logs_path)
+        s.set_detail(f"{len(logs):,} log rows")
+
+    with step("Compute opponent-allowed aggregates") as s:
+        df: DataFrame = compute_opponent_allowed(logs)
+        if df.empty:
+            typer.echo("No aggregates produced.")
+            raise typer.Exit(code=1)
+        s.set_detail(f"{len(df)} rows")
+
+    with step("Persist artifact") as s:
+        path: Path = write_opponent_allowed(df, repo)
+        s.set_detail(str(path.relative_to(repo)))
 
     console.summary()
