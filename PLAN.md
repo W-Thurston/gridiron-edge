@@ -125,81 +125,15 @@ Test-fixture inconsistency surfaced during integration testing:
 
 **Step 1 — Complete (2026-07-03).**
 
-**Step 2 — Per-team percentile ranking pass.** 🟡 Active.
+**Step 2 — Per-team percentile ranking pass.** ✅ Complete (2026-07-03).
 
-#### What we are building
+Shipped in three substeps:
+- **2a:** `evaluation/percentiles.py` module + persistence. Computes per-team percentiles for 4 stats (rating, avg_wins, make_playoffs, win_sb), writes to `data/output/rankings/percentiles/`. Wired into `sim run` as a final step; standalone `gridiron sim compute-percentiles` CLI command added.
+- **2b:** Loader + populate `/teams` and `/teams/{abbr}`. Four percentile fields added to `TeamRankingRow` and `TeamProfile` schemas. Empty artifact → null fields.
+- **2c:** Populate `/compare/teams` percentile fields. `team_a_pct` and `team_b_pct` added to `StatRow`. Populated on 4 rankable stat rows. Aggregate `percentile_ranks` scaffold row removed; `avg_wins` and `win_sb` rows added; `playoff_probability` renamed to `make_playoffs`.
 
-An offline artifact that computes per-team percentile rankings across
-four stats (Elo rating, average projected wins, playoff probability,
-Super Bowl win probability). API endpoints consume the artifact to
-populate percentile fields on `/teams`, `/teams/{abbr}`, and
-`/compare/teams`.
+**Step 2 — Complete (2026-07-03).**
 
-#### Why we are building it now
-
-The prototype's Compare screen renders every stat row as a
-percentile-normalized bar (`bar_length = pct * 100%`, color coded by
-`rankColor(pct)`). Currently the Compare screen has 3 populated rows
-and 7 blocked/pending rows — percentile pass fills the visual
-foundation for the entire screen. Team Ranking and Team Profile
-screens gain per-stat percentile bars as a bonus.
-
-#### Success criteria
-
-- New artifact at `data/output/rankings/percentiles/percentiles_{season}_wk{NN}.parquet`
-  containing per-team percentiles for four stats.
-- `/teams` populates `rating_pct`, `avg_wins_pct`, `make_playoffs_pct`,
-  `win_sb_pct` on every `TeamRankingRow`.
-- `/teams/{abbr}` same four fields on `TeamProfile`.
-- `/compare/teams` populates `team_a_pct` and `team_b_pct` on each
-  rankable stat row.
-- All quality gates pass.
-
-#### Locked decisions
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Stats to rank | Elo rating, avg_wins, make_playoffs, win_sb | Available today from Elo state + projections CSV. Off/def decomposition is a separate future step. |
-| Artifact shape | Wide format, one row per (team, season, week) | Small stat set (4). Wide is simpler to consume than long. |
-| Percentile formula | `(count - rank) / count` — 0 to 1 scale | Matches the prototype's `pct` field used for bar rendering. |
-| Artifact location | `data/output/rankings/percentiles/percentiles_{season}_wk{NN}.parquet` | Follows existing rankings pattern. |
-| When computed | Automatic during `sim run` | No new command; users don't need to remember anything. |
-| Historical data | Current week only | Sufficient for frontend consumption. |
-| Aggregate `percentile_ranks` row on `/compare/teams` | **Remove.** Per-row percentiles replace it. | Cleaner API surface. Each rankable stat row carries its own percentile. |
-| Schema evolution | Additive — new fields on TeamRankingRow, TeamProfile, StatRow | No breaking changes; Frontend keeps working. |
-
-#### Disconfirming evidence
-
-- **If the projections CSV or Elo state changes column names,** the
-  loader breaks silently. Add a diagnostic log for missing columns.
-- **If team names differ between the projections CSV (`TEAM`) and Elo
-  state (`NFL_TEAM`, long name),** the join fails silently. Test
-  fixtures need to use consistent team codes (matches the
-  fixture-inconsistency item logged during Step 1).
-- **If future Tier 3 steps add stats to the response** (e.g., off/def
-  rating, cohort splits), the number of percentile fields grows. Not
-  blocking — schema is designed to be additive. Would reconsider at
-  ~10 percentile fields.
-
-#### Substep breakdown
-
-**Substep 2a — Percentile computation module + persistence.**
-- New file `evaluation/percentiles.py` with `compute_team_percentiles(elo_state, projections)` returning DataFrame with columns: `team_abbr` (short), `season`, `week`, `rating_pct`, `avg_wins_pct`, `make_playoffs_pct`, `win_sb_pct`.
-- Wire into `sim/season.py::run_full_simulation` as a final write step.
-- Optional CLI command `gridiron sim compute-percentiles` for standalone use (small helper).
-- Unit tests: standard case, tied values, missing stat, empty input.
-
-**Substep 2b — Loader + populate `/teams` and `/teams/{abbr}`.**
-- Schema additions to `TeamRankingRow` and `TeamProfile`: four `float | None` percentile fields (`rating_pct`, `avg_wins_pct`, `make_playoffs_pct`, `win_sb_pct`).
-- New loader `load_team_percentiles(settings)` reads the latest percentile artifact.
-- Update `serialize_team_rankings` and `serialize_team_profile` to populate percentile fields.
-- Integration test.
-
-**Substep 2c — Populate `/compare/teams` percentile fields.**
-- Schema addition to `StatRow`: `team_a_pct: float | None`, `team_b_pct: float | None`.
-- Update `serialize_compare_teams` to populate percentile fields on rankable-stat rows (rating, avg_wins, playoff prob, win SB).
-- Remove the aggregate `percentile_ranks` scaffold row from the response.
-- Integration test.
 
 #### Tier 3 remaining inventory (unchanged)
 
@@ -228,6 +162,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-03 | **W8 Tier 3 Step 2 complete.** Per-team percentile ranking pass shipped across `/teams`, `/teams/{abbr}`, and `/compare/teams`. New `evaluation/percentiles.py` module + persistence artifact at `data/output/rankings/percentiles/`. Wired into `sim run` and exposed via `gridiron sim compute-percentiles` for standalone use. |
 | 2026-07-03 | **W8 Tier 3 Step 2 design.** Per-team percentile ranking pass for 4 stats (Elo, avg_wins, make_playoffs, win_sb). Three substeps: computation module (2a), loader + `/teams` endpoints (2b), `/compare/teams` percentile fields (2c). Aggregate `percentile_ranks` scaffold row on `/compare/teams` replaced with per-row percentiles on rankable stat rows. Frontend consumes `pct` values via `rankColor()` and bar-width formulas already in the prototype. |
 | 2026-07-03 | **W8 Tier 3 Step 1 complete.** `week_over_week_delta` field on `/projections` now populated with per-team Elo delta from prior NFL week. No new artifact — reads directly from the existing Elo state table. First Tier 3 additive shipped. |
 | 2026-07-03 | **W8 Tier 3 Step 1 design.** Prior-week projection delta populates via existing Elo state table. No snapshot mechanism needed — `NFL_Team_Elo.csv` already stores weekly Elo per team. Single substep to update the projections loader and serializer. Week 1 → null (em-dash) per user preference over playoff-final delta which reads as "nothing happened" for 30 of 32 teams. |
