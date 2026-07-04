@@ -9,6 +9,7 @@ from pandas import DataFrame
 
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
+    compute_elo_deltas,
     load_elo_state_df,
     load_games_df,
     load_team_name_map,
@@ -51,6 +52,7 @@ def list_teams(
     games: DataFrame = load_games_df(settings)
     long_to_short: dict[str, str] = load_team_name_map(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
+    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_rankings(
@@ -60,6 +62,7 @@ def list_teams(
         resolved_season,
         as_of_week,
         percentiles,
+        trends,
     )
 
 
@@ -85,6 +88,7 @@ def get_team(
     elo: DataFrame = load_elo_state_df(settings)
     games: DataFrame = load_games_df(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
+    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_profile(
@@ -95,4 +99,5 @@ def get_team(
         resolved_season,
         as_of_week,
         percentiles,
+        trends,
     )

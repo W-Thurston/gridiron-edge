@@ -176,7 +176,8 @@ class TestSerializeTeamRankings:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         assert result.total == 0
         assert result.items == []
@@ -188,7 +189,8 @@ class TestSerializeTeamRankings:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         assert result.total == 3
         assert result.items[0].abbr == "BAL"  # Highest at week 3
@@ -202,11 +204,11 @@ class TestSerializeTeamRankings:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         assert result.response_meta is not None
         fs: dict[str, FieldStatus] = result.response_meta.field_status
-        assert "items.trend" in fs
         assert "items.off_rating" in fs
 
 
@@ -219,7 +221,8 @@ class TestSerializeTeamProfile:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         assert result.abbr == "XXX"
         assert result.rating is None
@@ -232,7 +235,8 @@ class TestSerializeTeamProfile:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         assert result.abbr == "BAL"
         assert result.name == "Baltimore Ravens"
@@ -250,11 +254,11 @@ class TestSerializeTeamProfile:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
         )
         fs = result.response_meta.field_status
         for expected in (
-            "trend",
             "off_rating",
             "def_rating",
             "schedule_difficulty",
@@ -267,8 +271,6 @@ class TestSerializeTeamProfile:
 
 class TestTeamRankingsPercentiles:
     def test_populates_percentile_fields(self) -> None:
-        from gridiron_edge.api.serializers.teams import serialize_team_rankings
-
         elo = pd.DataFrame(
             [
                 {
@@ -317,6 +319,7 @@ class TestTeamRankingsPercentiles:
             "2026-2027",
             1,
             percentiles,
+            pd.DataFrame(),  # trends
         )
 
         by_abbr = {row.abbr: row for row in result.items}
@@ -325,8 +328,6 @@ class TestTeamRankingsPercentiles:
         assert by_abbr["LAC"].rating_pct == 0.25
 
     def test_empty_percentiles_null_fields(self) -> None:
-        from gridiron_edge.api.serializers.teams import serialize_team_rankings
-
         elo = pd.DataFrame(
             [
                 {
@@ -348,7 +349,73 @@ class TestTeamRankingsPercentiles:
             "2026-2027",
             1,
             percentiles,
+            pd.DataFrame(),  # trends
         )
 
         assert result.items[0].rating_pct is None
         assert result.items[0].avg_wins_pct is None
+
+
+class TestTrendPopulation:
+    def test_populates_trend_from_delta(self) -> None:
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1600.0,
+                },
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1620.0,
+                },
+            ]
+        )
+        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        long_to_short = {"Kansas City Chiefs": "KC"}
+        trends = pd.DataFrame(
+            [
+                {"team_abbr": "KC", "elo_delta": 20.0},
+            ]
+        )
+
+        result = serialize_team_rankings(
+            elo,
+            games,
+            long_to_short,
+            "2026-2027",
+            2,
+            pd.DataFrame(),  # percentiles
+            trends,
+        )
+
+        assert result.items[0].trend == 20.0
+
+    def test_empty_trends_leaves_trend_null(self) -> None:
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1600.0,
+                },
+            ]
+        )
+        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        long_to_short = {"Kansas City Chiefs": "KC"}
+
+        result = serialize_team_rankings(
+            elo,
+            games,
+            long_to_short,
+            "2026-2027",
+            1,
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # empty trends
+        )
+
+        assert result.items[0].trend is None

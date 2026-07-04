@@ -206,3 +206,79 @@ class TestTeamProfilePercentiles:
         body = response.json()
         assert body["rating_pct"] is None
         assert body["avg_wins_pct"] is None
+
+
+class TestTrendPopulation:
+    def test_trend_populated_from_elo_delta(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        # Elo state with two weeks so delta is computable
+        elo_state = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1600.0,
+                },
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1620.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1520.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1510.0,
+                },
+            ]
+        )
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_elo_state(elo_state)
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams?season=2026-2027")
+        body = response.json()
+        by_abbr = {item["abbr"]: item for item in body["items"]}
+        assert by_abbr["KC"]["trend"] == 20.0
+        assert by_abbr["LAC"]["trend"] == -10.0
+
+    def test_week_1_returns_null_trend(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        elo_state = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+            ]
+        )
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_elo_state(elo_state)
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams?season=2026-2027")
+        body = response.json()
+        for item in body["items"]:
+            assert item["trend"] is None

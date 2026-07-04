@@ -32,6 +32,22 @@ def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
     return v
 
 
+def _trend_for_team(
+    trends: DataFrame,
+    team_abbr: str,
+) -> float | None:
+    """Return the Elo trend (delta from prior week) for a team.
+
+    Returns None if trends DataFrame is empty or the team isn't found.
+    """
+    if trends.empty:
+        return None
+    match = trends.loc[trends["team_abbr"] == team_abbr]
+    if match.empty:
+        return None
+    return _none_if_nan(match.iloc[0].get("elo_delta"))
+
+
 def _percentile_for_team(
     percentiles: DataFrame,
     team_abbr: str,
@@ -104,6 +120,7 @@ def serialize_team_rankings(
     season: str,
     as_of_week: int,
     percentiles: DataFrame,
+    trends: DataFrame,
 ) -> TeamRankingsList:
     """Build the /teams power rankings response."""
     latest: DataFrame = _latest_ratings(elo, season, as_of_week)
@@ -125,7 +142,7 @@ def serialize_team_rankings(
     for rank_idx, (_, r) in enumerate(ranked.iterrows()):
         long_name = r["NFL_TEAM"]
         abbr = long_to_short.get(long_name, long_name[:3].upper())
-        pcts: dict[str, float | None] = _percentile_for_team(percentiles, abbr)
+        pcts = _percentile_for_team(percentiles, abbr)
         rows.append(
             TeamRankingRow(
                 abbr=abbr,
@@ -133,6 +150,7 @@ def serialize_team_rankings(
                 rating=_none_if_nan(r["ELO"]),
                 rank=rank_idx + 1,
                 record=_compute_record(season_games, long_name),
+                trend=_trend_for_team(trends, abbr),
                 rating_pct=pcts["rating_pct"],
                 avg_wins_pct=pcts["avg_wins_pct"],
                 make_playoffs_pct=pcts["make_playoffs_pct"],
@@ -143,7 +161,6 @@ def serialize_team_rankings(
     # Trend, off_rating, def_rating are null for every row.
     # Mark once at the items-level path.
     meta = ResponseMeta()
-    meta = meta.with_blocked("items.trend", *Unavailable.NO_PRIOR_SNAPSHOT)
     meta = meta.with_blocked("items.off_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("items.def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
 
@@ -207,6 +224,7 @@ def serialize_team_profile(
     season: str,
     as_of_week: int,
     percentiles: DataFrame,
+    trends: DataFrame,
 ) -> TeamProfile:
     """Build the /teams/{abbr} response."""
     short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
@@ -284,7 +302,6 @@ def serialize_team_profile(
     # Field-status metadata
     # ------------------------------------------------------------------
     meta = ResponseMeta()
-    meta = meta.with_blocked("trend", *Unavailable.NO_PRIOR_SNAPSHOT)
     meta = meta.with_blocked("off_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_pending("schedule_difficulty")
@@ -302,6 +319,7 @@ def serialize_team_profile(
         rating=rating,
         rank=rank,
         record=record,
+        trend=_trend_for_team(trends, abbr.upper()),
         rating_pct=pcts["rating_pct"],
         avg_wins_pct=pcts["avg_wins_pct"],
         make_playoffs_pct=pcts["make_playoffs_pct"],
