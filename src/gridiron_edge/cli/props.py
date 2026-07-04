@@ -845,3 +845,92 @@ def projections_cmd(
     typer.echo()
     typer.echo(display.to_string(index=False))
     console.summary()
+
+
+@props_app.command("compute-splits")
+def compute_splits_cmd(
+    stat_type: str = typer.Option(
+        "all",
+        "--stat-type",
+        "-s",
+        help=(
+            "Stat family to compute splits for. 'all' iterates over all registered prop families."
+        ),
+    ),
+) -> None:
+    """Compute per-player situational splits for prop stat families.
+
+    Joins player_game_logs to games CSV on game_id, then partitions by
+    cohort (season, home, away, favored, underdog, indoor, outdoor, l4).
+
+    Writes per-stat-type artifacts to
+    ``data/output/props/situational_splits/{stat_type}.parquet``.
+
+    Consumed by `/props/{prop_id}` to populate the `situational_splits`
+    field.
+    """
+    import pandas as pd
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_teams_long_short
+    from gridiron_edge.evaluation.situational_splits import (
+        STAT_COLUMN_MAP,
+        compute_player_situational_splits,
+        write_situational_splits,
+    )
+
+    settings = get_settings()
+    repo = settings.repo_root
+
+    subtitle: str = "all stat families" if stat_type == "all" else stat_type
+    console.header("props compute-splits", subtitle=subtitle)
+
+    with step("Load player game logs + games") as s:
+        logs_path = repo / "data" / "cleaned" / "player_game_logs.parquet"
+        games_path = repo / "data" / "cleaned" / "NFL_wk_by_wk_cleaned.csv"
+
+        if not logs_path.exists():
+            typer.echo(f"Player game logs not found at {logs_path}")
+            raise typer.Exit(code=1)
+        if not games_path.exists():
+            typer.echo(f"Games CSV not found at {games_path}")
+            raise typer.Exit(code=1)
+
+        logs = pd.read_parquet(logs_path)
+        games = pd.read_csv(games_path)
+
+        mapping_df = load_teams_long_short(repo)
+        long_to_short = dict(
+            zip(
+                mapping_df["NFL_LONG_NAME"],
+                mapping_df["NFL_SHORT_NAME"],
+                strict=True,
+            )
+        )
+
+        s.set_detail(f"{len(logs):,} log rows, {len(games):,} games")
+
+    stat_types: list[str] = list(STAT_COLUMN_MAP.keys()) if stat_type == "all" else [stat_type]
+
+    for st in stat_types:
+        if st not in STAT_COLUMN_MAP:
+            typer.echo(f"Unknown stat_type: {st}")
+            continue
+
+        with step(f"Compute splits for {st}") as s:
+            df = compute_player_situational_splits(
+                logs,
+                games,
+                long_to_short,
+                st,
+            )
+            if df.empty:
+                s.set_detail("no rows produced")
+                continue
+            s.set_detail(f"{df['player_id'].nunique()} players, {len(df)} rows")
+
+        with step(f"Persist splits for {st}") as s:
+            path = write_situational_splits(df, st, repo)
+            s.set_detail(str(path.relative_to(repo)))
+
+    console.summary()
