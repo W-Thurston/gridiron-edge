@@ -263,7 +263,7 @@ class TestSerializeTeamProfile:
             "def_rating",
             "schedule_difficulty",
             "playoff_probability",
-            "situational_splits",
+            "cohort_splits",
             "top_players",
         ):
             assert expected in fs, f"missing field_status for {expected}"
@@ -419,3 +419,42 @@ class TestTrendPopulation:
         )
 
         assert result.items[0].trend is None
+
+
+class TestTeamProfileCohortSplits:
+    def test_populates_cohort_splits_when_data_present(self) -> None:
+        from gridiron_edge.api.serializers.teams import serialize_team_profile
+
+        result = serialize_team_profile(
+            "BAL",
+            _make_elo(),
+            _make_games(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            3,
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
+            cohort_splits={
+                "season": {"off_epa_per_play": 0.15, "sample_size": 4},
+                "l4": {"off_epa_per_play": 0.20, "sample_size": 4},
+            },
+        )
+        assert result.cohort_splits is not None
+        assert result.cohort_splits["season"]["off_epa_per_play"] == 0.15
+
+    def test_none_leaves_pending_marker(self) -> None:
+        from gridiron_edge.api.serializers.teams import serialize_team_profile
+
+        result = serialize_team_profile(
+            "BAL",
+            _make_elo(),
+            _make_games(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            3,
+            pd.DataFrame(),
+            pd.DataFrame(),
+            cohort_splits=None,
+        )
+        assert result.cohort_splits is None
+        assert "cohort_splits" in result.response_meta.field_status

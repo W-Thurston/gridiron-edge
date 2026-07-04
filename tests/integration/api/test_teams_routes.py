@@ -282,3 +282,58 @@ class TestTrendPopulation:
         body = response.json()
         for item in body["items"]:
             assert item["trend"] is None
+
+
+class TestTeamProfileCohortSplits:
+    def test_cohort_splits_populated_from_artifact(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_elo_state(_make_elo_df())
+            .with_teams_reference()
+        )
+
+        # Write cohort splits artifact.
+        cohort_dir = tmp_path / "data" / "output" / "rankings"
+        cohort_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "team_abbr": "KC",
+                    "cohort": "season",
+                    "off_epa_per_play": 0.15,
+                    "def_epa_per_play": -0.10,
+                    "sample_size": 4,
+                    "rank_off_epa_per_play": 1,
+                },
+            ]
+        ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
+
+        response = client.get("/teams/KC?season=2026-2027")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cohort_splits"] is not None
+        assert body["cohort_splits"]["season"]["off_epa_per_play"] == 0.15
+
+    def test_missing_artifact_leaves_field_null_pending(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_elo_state(_make_elo_df())
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams/KC?season=2026-2027")
+        body = response.json()
+        assert body["cohort_splits"] is None
+        status = body["_meta"]["field_status"]
+        assert status.get("cohort_splits") == "pending"

@@ -80,6 +80,7 @@ def serialize_compare_teams(
     season: str,
     as_of_week: int,
     percentiles: DataFrame,
+    cohort_splits: dict[str, dict] | None = None,
 ) -> CompareTeamsResponse:
     """Build the /compare/teams response.
 
@@ -200,7 +201,8 @@ def serialize_compare_teams(
     meta = meta.with_blocked("trend", *Unavailable.NO_PRIOR_SNAPSHOT)
     # Pending on Tier 3 additive datasets.
     meta = meta.with_pending("schedule_difficulty")
-    meta = meta.with_pending("cohort_splits")
+    if cohort_splits is None:
+        meta = meta.with_pending("cohort_splits")
     # Note: avg_wins, make_playoffs, win_sb now have percentiles populated
     # via team_a_pct / team_b_pct, so they're no longer marked pending here.
     # The team_*_value fields remain null (raw values not shown on compare).
@@ -211,6 +213,7 @@ def serialize_compare_teams(
         team_a=team_a_short.upper(),
         team_b=team_b_short.upper(),
         stats=stats,
+        cohort_splits=cohort_splits,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )
 

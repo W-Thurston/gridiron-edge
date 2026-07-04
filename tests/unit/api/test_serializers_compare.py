@@ -279,3 +279,38 @@ class TestSerializeComparePlayerOpponentAllowed:
         assert "avg_allowed" in fs
         assert "rank_against_position" in fs
         assert "last_5_games_avg" in fs
+
+
+class TestCompareTeamsCohortSplits:
+    def test_populates_cohort_splits(self) -> None:
+        result = serialize_compare_teams(
+            _make_elo(),
+            _make_games(),
+            LONG_TO_SHORT,
+            team_a_short="KC",
+            team_b_short="LAC",
+            season="2026-2027",
+            as_of_week=1,
+            percentiles=pd.DataFrame(),
+            cohort_splits={
+                "KC": {"season": {"off_epa_per_play": 0.15, "sample_size": 4}},
+                "LAC": {"season": {"off_epa_per_play": 0.10, "sample_size": 4}},
+            },
+        )
+        assert result.cohort_splits is not None
+        assert result.cohort_splits["KC"]["season"]["off_epa_per_play"] == 0.15
+
+    def test_none_leaves_pending_marker(self) -> None:
+        result = serialize_compare_teams(
+            _make_elo(),
+            _make_games(),
+            LONG_TO_SHORT,
+            team_a_short="KC",
+            team_b_short="LAC",
+            season="2026-2027",
+            as_of_week=1,
+            percentiles=pd.DataFrame(),
+            cohort_splits=None,
+        )
+        assert result.cohort_splits is None
+        assert "cohort_splits" in result.response_meta.field_status

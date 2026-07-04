@@ -53,6 +53,14 @@ class CompareTeamsResponse(BaseResponse):
     team_a: str
     team_b: str
     stats: list[StatRow] = Field(default_factory=list)
+    cohort_splits: dict[str, dict] | None = Field(
+        default=None,
+        description=(
+            "Per-team cohort splits: {team_abbr: {cohort: {metric: value, "
+            "'rank_metric': int, 'sample_size': int}}}. Populated from "
+            "team_cohort_splits.parquet."
+        ),
+    )
 
 
 class PlayerVsDefenseRow(BaseModel):

@@ -10,10 +10,12 @@ from pandas import DataFrame
 from gridiron_edge.api._prop_id import decode_prop_id, resolve_opponent_from_game_id
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
+    format_team_cohort_splits,
     load_elo_state_df,
     load_games_df,
     load_opponent_allowed_for_prop,
     load_prop,
+    load_team_cohort_splits_df,
     load_team_name_map,
     load_team_percentiles_df,
     resolve_current_season_week,
@@ -87,6 +89,19 @@ def compare_teams(
     elo: DataFrame = load_elo_state_df(settings)
     games: DataFrame = load_games_df(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
+    cohort_splits_df = load_team_cohort_splits_df(settings)
+
+    # Build cohort_splits dict for both teams.
+    cohort_splits: dict[str, dict] | None = None
+    a_splits = format_team_cohort_splits(cohort_splits_df, team_a.upper())
+    b_splits = format_team_cohort_splits(cohort_splits_df, team_b.upper())
+    if a_splits is not None or b_splits is not None:
+        cohort_splits = {}
+        if a_splits is not None:
+            cohort_splits[team_a.upper()] = a_splits
+        if b_splits is not None:
+            cohort_splits[team_b.upper()] = b_splits
+
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_compare_teams(
@@ -98,6 +113,7 @@ def compare_teams(
         season=resolved_season,
         as_of_week=as_of_week,
         percentiles=percentiles,
+        cohort_splits=cohort_splits,
     )
 
 

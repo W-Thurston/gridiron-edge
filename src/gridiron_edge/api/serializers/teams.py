@@ -225,6 +225,7 @@ def serialize_team_profile(
     as_of_week: int,
     percentiles: DataFrame,
     trends: DataFrame,
+    cohort_splits: dict[str, dict] | None = None,
 ) -> TeamProfile:
     """Build the /teams/{abbr} response."""
     short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
@@ -306,7 +307,8 @@ def serialize_team_profile(
     meta = meta.with_blocked("def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_pending("schedule_difficulty")
     meta = meta.with_pending("playoff_probability")
-    meta = meta.with_pending("situational_splits")
+    if cohort_splits is None:
+        meta = meta.with_pending("cohort_splits")
     meta = meta.with_blocked("top_players", *Blocker.WAR)
 
     pcts: dict[str, float | None] = _percentile_for_team(percentiles, abbr.upper())
@@ -326,5 +328,6 @@ def serialize_team_profile(
         win_sb_pct=pcts["win_sb_pct"],
         rating_history=history,
         recent_results=recent,
+        cohort_splits=cohort_splits,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )

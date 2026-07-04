@@ -117,4 +117,11 @@ class TeamProfile(BaseResponse):
         default=None,
         description="Top players by WAR — blocked pending WAR computation.",
     )
-    situational_splits: dict | None = None
+    cohort_splits: dict | None = Field(
+        default=None,
+        description=(
+            "Per-team cohort splits: {cohort_name: {metric: value, "
+            "'rank_metric': int, 'sample_size': int}}. Cohorts include "
+            "season, l4, home, away. Populated from team_cohort_splits.parquet."
+        ),
+    )

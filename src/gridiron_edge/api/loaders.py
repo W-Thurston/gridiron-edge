@@ -804,3 +804,58 @@ def load_opponent_allowed_for_prop(
         }
 
     return result
+
+
+def load_team_cohort_splits_df(settings: Settings) -> pd.DataFrame:
+    """Load the team cohort splits artifact.
+
+    Returns:
+        DataFrame with team_abbr, cohort, and metric columns from
+        team_cohort_splits.parquet. Empty DataFrame if the artifact
+        doesn't exist.
+    """
+    from gridiron_edge.evaluation.team_cohort_splits import load_team_cohort_splits
+
+    return load_team_cohort_splits(settings.repo_root)
+
+
+def format_team_cohort_splits(
+    df: pd.DataFrame,
+    team_abbr: str,
+) -> dict[str, dict] | None:
+    """Format cohort splits DataFrame into a nested dict for one team.
+
+    Args:
+        df: DataFrame from load_team_cohort_splits_df.
+        team_abbr: Team short code (e.g. "KC").
+
+    Returns:
+        Nested dict {cohort: {metric_name: value, ...}} or None if the
+        team isn't in the DataFrame or df is empty.
+    """
+    if df.empty:
+        return None
+
+    team_rows = df.loc[df["team_abbr"] == team_abbr, :]
+    if team_rows.empty:
+        return None
+
+    result: dict[str, dict] = {}
+    for _, row in team_rows.iterrows():
+        cohort = str(row["cohort"])
+        # Collect all non-identity columns for this cohort row.
+        cohort_data: dict = {}
+        for col in row.index:
+            if col in ("team_abbr", "cohort"):
+                continue
+            val = row[col]
+            # Convert numpy/pandas types to Python primitives.
+            if pd.isna(val):
+                cohort_data[str(col)] = None
+            elif hasattr(val, "item"):
+                cohort_data[str(col)] = val.item()
+            else:
+                cohort_data[str(col)] = val
+        result[cohort] = cohort_data
+
+    return result

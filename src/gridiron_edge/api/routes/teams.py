@@ -10,8 +10,10 @@ from pandas import DataFrame
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     compute_elo_deltas,
+    format_team_cohort_splits,
     load_elo_state_df,
     load_games_df,
+    load_team_cohort_splits_df,
     load_team_name_map,
     load_team_percentiles_df,
     resolve_current_season_week,
@@ -76,8 +78,8 @@ def get_team(
     ),
 ) -> TeamProfile:
     """Return per-team profile with ratings, record, and history."""
-    long_to_short: dict[str, str] = load_team_name_map(settings)
-    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
+    long_to_short = load_team_name_map(settings)
+    short_to_long = {v: k for k, v in long_to_short.items()}
 
     if abbr.upper() not in short_to_long:
         raise HTTPException(
@@ -85,10 +87,12 @@ def get_team(
             detail=f"Unknown team abbreviation: {abbr}",
         )
 
-    elo: DataFrame = load_elo_state_df(settings)
-    games: DataFrame = load_games_df(settings)
-    percentiles: DataFrame = load_team_percentiles_df(settings)
-    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
+    elo = load_elo_state_df(settings)
+    games = load_games_df(settings)
+    percentiles = load_team_percentiles_df(settings)
+    trends = compute_elo_deltas(elo, long_to_short)
+    cohort_splits_df = load_team_cohort_splits_df(settings)
+    cohort_splits = format_team_cohort_splits(cohort_splits_df, abbr.upper())
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_profile(
@@ -100,4 +104,5 @@ def get_team(
         as_of_week,
         percentiles,
         trends,
+        cohort_splits,
     )

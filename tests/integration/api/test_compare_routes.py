@@ -680,3 +680,44 @@ class TestComparePlayerOpponentAllowed:
         assert status.get("avg_allowed") is not None
         assert status.get("rank_against_position") is not None
         assert status.get("last_5_games_avg") is not None
+
+
+class TestCompareTeamsCohortSplits:
+    def test_cohort_splits_populated_from_artifact(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_for_teams())
+            .with_elo_state(_make_elo_state_for_teams())
+            .with_teams_reference()
+        )
+
+        # Write cohort splits artifact.
+        cohort_dir = tmp_path / "data" / "output" / "rankings"
+        cohort_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "team_abbr": "KC",
+                    "cohort": "season",
+                    "off_epa_per_play": 0.15,
+                    "sample_size": 4,
+                },
+                {
+                    "team_abbr": "LAC",
+                    "cohort": "season",
+                    "off_epa_per_play": 0.10,
+                    "sample_size": 4,
+                },
+            ]
+        ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
+
+        response = client.get("/compare/teams?team_a=KC&team_b=LAC&season=2026-2027")
+
+        body = response.json()
+        assert body["cohort_splits"] is not None
+        assert "KC" in body["cohort_splits"]
+        assert "LAC" in body["cohort_splits"]
