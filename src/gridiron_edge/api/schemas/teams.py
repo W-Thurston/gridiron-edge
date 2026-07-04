@@ -32,6 +32,22 @@ class TeamRankingRow(BaseModel):
     trend: float | None = None
     off_rating: float | None = None
     def_rating: float | None = None
+    rating_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of Elo rating within the league (0-1).",
+    )
+    avg_wins_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of projected average wins (0-1).",
+    )
+    make_playoffs_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of playoff probability (0-1).",
+    )
+    win_sb_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of Super Bowl win probability (0-1).",
+    )
 
 
 class TeamRankingsList(BaseListResponse[TeamRankingRow]):
@@ -77,6 +93,22 @@ class TeamProfile(BaseResponse):
     trend: float | None = None
     off_rating: float | None = None
     def_rating: float | None = None
+    rating_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of Elo rating within the league (0-1).",
+    )
+    avg_wins_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of projected average wins (0-1).",
+    )
+    make_playoffs_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of playoff probability (0-1).",
+    )
+    win_sb_pct: float | None = Field(
+        default=None,
+        description="Percentile rank of Super Bowl win probability (0-1).",
+    )
     rating_history: list[RatingHistoryPoint] | None = None
     recent_results: list[RecentResult] | None = None
     schedule_difficulty: float | None = None

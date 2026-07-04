@@ -259,6 +259,24 @@ def load_projections_summary_df(
     return df, mtime
 
 
+def load_team_percentiles_df(
+    settings: Settings,
+) -> pd.DataFrame:
+    """Load the latest team percentile artifact.
+
+    Reads the most recent file from ``data/output/rankings/percentiles/``.
+    Returns empty DataFrame if no artifact exists yet (e.g., before the
+    first sim run has completed).
+
+    Returns:
+        DataFrame with columns team_abbr, season, week, rating_pct,
+        avg_wins_pct, make_playoffs_pct, win_sb_pct.
+    """
+    from gridiron_edge.evaluation.percentiles import load_latest_team_percentiles
+
+    return load_latest_team_percentiles(settings.repo_root)
+
+
 def load_games_for_week(
     settings: Settings,
     *,

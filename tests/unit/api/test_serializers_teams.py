@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from gridiron_edge.api.meta import FieldStatus
+from gridiron_edge.api.schemas.teams import TeamProfile, TeamRankingsList
 from gridiron_edge.api.serializers.teams import (
     _compute_record,
     _latest_ratings,
@@ -168,23 +170,25 @@ class TestSerializeResult:
 
 class TestSerializeTeamRankings:
     def test_empty_elo(self) -> None:
-        result = serialize_team_rankings(
+        result: TeamRankingsList = serialize_team_rankings(
             pd.DataFrame(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         assert result.total == 0
         assert result.items == []
 
     def test_ranks_by_elo(self) -> None:
-        result = serialize_team_rankings(
+        result: TeamRankingsList = serialize_team_rankings(
             _make_elo(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         assert result.total == 3
         assert result.items[0].abbr == "BAL"  # Highest at week 3
@@ -192,40 +196,43 @@ class TestSerializeTeamRankings:
         assert result.items[-1].abbr == "CLE"  # Lowest
 
     def test_marks_meta_fields_blocked(self) -> None:
-        result = serialize_team_rankings(
+        result: TeamRankingsList = serialize_team_rankings(
             _make_elo(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         assert result.response_meta is not None
-        fs = result.response_meta.field_status
+        fs: dict[str, FieldStatus] = result.response_meta.field_status
         assert "items.trend" in fs
         assert "items.off_rating" in fs
 
 
 class TestSerializeTeamProfile:
     def test_unknown_abbr(self) -> None:
-        result = serialize_team_profile(
+        result: TeamProfile = serialize_team_profile(
             "XXX",
             _make_elo(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         assert result.abbr == "XXX"
         assert result.rating is None
 
     def test_populated_baltimore(self) -> None:
-        result = serialize_team_profile(
+        result: TeamProfile = serialize_team_profile(
             "BAL",
             _make_elo(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         assert result.abbr == "BAL"
         assert result.name == "Baltimore Ravens"
@@ -236,13 +243,14 @@ class TestSerializeTeamProfile:
         assert len(result.recent_results) == 2  # Only 2 games in fixture
 
     def test_meta_has_all_expected_entries(self) -> None:
-        result = serialize_team_profile(
+        result: TeamProfile = serialize_team_profile(
             "BAL",
             _make_elo(),
             _make_games(),
             LONG_TO_SHORT,
             "2025-2026",
             3,
+            pd.DataFrame(),
         )
         fs = result.response_meta.field_status
         for expected in (
@@ -255,3 +263,92 @@ class TestSerializeTeamProfile:
             "top_players",
         ):
             assert expected in fs, f"missing field_status for {expected}"
+
+
+class TestTeamRankingsPercentiles:
+    def test_populates_percentile_fields(self) -> None:
+        from gridiron_edge.api.serializers.teams import serialize_team_rankings
+
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1620.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1520.0,
+                },
+            ]
+        )
+        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        long_to_short = {"Kansas City Chiefs": "KC", "Los Angeles Chargers": "LAC"}
+        percentiles = pd.DataFrame(
+            [
+                {
+                    "team_abbr": "KC",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "rating_pct": 0.75,
+                    "avg_wins_pct": 0.75,
+                    "make_playoffs_pct": 0.75,
+                    "win_sb_pct": 0.75,
+                },
+                {
+                    "team_abbr": "LAC",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "rating_pct": 0.25,
+                    "avg_wins_pct": 0.25,
+                    "make_playoffs_pct": 0.25,
+                    "win_sb_pct": 0.25,
+                },
+            ]
+        )
+
+        result = serialize_team_rankings(
+            elo,
+            games,
+            long_to_short,
+            "2026-2027",
+            1,
+            percentiles,
+        )
+
+        by_abbr = {row.abbr: row for row in result.items}
+        assert by_abbr["KC"].rating_pct == 0.75
+        assert by_abbr["KC"].avg_wins_pct == 0.75
+        assert by_abbr["LAC"].rating_pct == 0.25
+
+    def test_empty_percentiles_null_fields(self) -> None:
+        from gridiron_edge.api.serializers.teams import serialize_team_rankings
+
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1620.0,
+                },
+            ]
+        )
+        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        long_to_short = {"Kansas City Chiefs": "KC"}
+        percentiles = pd.DataFrame()  # Empty
+
+        result = serialize_team_rankings(
+            elo,
+            games,
+            long_to_short,
+            "2026-2027",
+            1,
+            percentiles,
+        )
+
+        assert result.items[0].rating_pct is None
+        assert result.items[0].avg_wins_pct is None

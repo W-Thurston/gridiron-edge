@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pandas import DataFrame
 
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     load_elo_state_df,
     load_games_df,
     load_team_name_map,
+    load_team_percentiles_df,
     resolve_current_season_week,
 )
 from gridiron_edge.api.schemas.teams import TeamProfile, TeamRankingsList
@@ -30,9 +32,9 @@ def _resolve_scope(
     if season is None:
         return resolve_current_season_week(settings)
 
-    games = load_games_df(settings)
+    games: DataFrame = load_games_df(settings)
     season_games = games.loc[games["YEAR"] == season, "WEEK_NUM"]
-    as_of_week = int(season_games.max()) if not season_games.empty else 0
+    as_of_week: int = int(season_games.max()) if not season_games.empty else 0
     return (season, as_of_week)
 
 
@@ -45,9 +47,10 @@ def list_teams(
     ),
 ) -> TeamRankingsList:
     """Return power rankings for all teams in the given season."""
-    elo = load_elo_state_df(settings)
-    games = load_games_df(settings)
-    long_to_short = load_team_name_map(settings)
+    elo: DataFrame = load_elo_state_df(settings)
+    games: DataFrame = load_games_df(settings)
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+    percentiles: DataFrame = load_team_percentiles_df(settings)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_rankings(
@@ -56,6 +59,7 @@ def list_teams(
         long_to_short,
         resolved_season,
         as_of_week,
+        percentiles,
     )
 
 
@@ -69,8 +73,8 @@ def get_team(
     ),
 ) -> TeamProfile:
     """Return per-team profile with ratings, record, and history."""
-    long_to_short = load_team_name_map(settings)
-    short_to_long = {v: k for k, v in long_to_short.items()}
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
 
     if abbr.upper() not in short_to_long:
         raise HTTPException(
@@ -78,8 +82,9 @@ def get_team(
             detail=f"Unknown team abbreviation: {abbr}",
         )
 
-    elo = load_elo_state_df(settings)
-    games = load_games_df(settings)
+    elo: DataFrame = load_elo_state_df(settings)
+    games: DataFrame = load_games_df(settings)
+    percentiles: DataFrame = load_team_percentiles_df(settings)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_profile(
@@ -89,4 +94,5 @@ def get_team(
         long_to_short,
         resolved_season,
         as_of_week,
+        percentiles,
     )
