@@ -158,18 +158,76 @@ Single substep.
 
 **Step 4 — Complete (2026-07-04).**
 
-#### Tier 3 remaining inventory (unchanged)
+**Step 5 — Populate `situational_splits` on `/props/{prop_id}`.** 🟡 Active.
 
-Steps 3+ still pending prioritization:
-- Opponent-allowed-by-position aggregation (unblocks PlayerProp defense side)
-- Team cohort splits (season/L4/home/away)
-- Prop cohort splits (indoor/outdoor, favored/underdog)
-- Off/def rating decomposition (larger design phase; likely later)
+#### What we are building
+
+Precomputed per-(player_id, stat_type) situational splits — mean stat
+value and sample size across 8 cohorts (season, home, away, favored,
+underdog, indoor, outdoor, l4). Populates the currently-null
+`situational_splits` field on `/props/{prop_id}` with a nested dict of
+cohort → stats. Removes the `field_status: pending` marker.
+
+#### Why we are building it now
+
+Smallest of the remaining "real work" additives. Data exists across
+two known sources (player game logs + games CSV); computation is a
+groupby + join. Fills a pending field on the currently-blockier prop
+detail screen. Establishes the "cohort splits" pattern that Step 6+
+(team cohort splits) can adapt.
+
+#### Success criteria
+
+- New computation module `evaluation/situational_splits.py` produces
+  per-(player_id, stat_type, cohort) rows with `sample_size` and
+  `mean_value` columns.
+- New CLI command `gridiron props compute-splits [--stat-type STAT]`
+  writes per-stat-type artifacts to
+  `data/output/props/situational_splits/{stat_type}.parquet`.
+- `/props/{prop_id}` populates `situational_splits` field as a dict
+  of cohort name → `{sample_size, mean_value}`.
+- `field_status: pending` marker on `situational_splits` removed when
+  populated; retained when the artifact is missing.
+- All quality gates pass.
+
+#### Locked decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Data sources | Player game logs (stats) + games CSV (context flags) joined on game_id | Neither source alone has both stats and context |
+| Cohorts | 8: season, home, away, favored, underdog, indoor, outdoor, l4 | Matches prototype's core split set |
+| Stats per cohort | sample_size, mean_value | Simple. Median, std, hit rate deferred to Tier 4 polish |
+| L4 semantic | Last 4 games ever (not "last 4 before prop's game") | Simpler persistence. Frontend interpretation reasonable |
+| Persistence | Per-stat-type Parquet, long format | One file per stat_type = smaller reads |
+| Location | `data/output/props/situational_splits/{stat_type}.parquet` | Distinct from `data/output/props/prop_predictions_log.parquet` |
+| When computed | Standalone CLI command `gridiron props compute-splits` | Not tied to any existing composite. Fresh cadence: rerun after each `full-retrain` |
+| Response shape | Nested dict `{cohort_name: {sample_size, mean_value}}` | Matches PropDetail's existing `dict | None` type |
+| Missing cohort/data | Return `null` mean_value, `0` sample_size | Distinguishable from "not computed yet" (whole field null) |
+
+#### Substep breakdown
+
+**Substep 5a — Situational splits computation module + persistence.**
+- New file `src/gridiron_edge/evaluation/situational_splits.py`.
+- `compute_player_situational_splits(player_game_logs, games, stat_type)`:
+  joins two data sources on `game_id`, partitions by cohort, aggregates mean and sample size per (player_id, cohort).
+- `write_situational_splits(df, stat_type, repo)`: writes to per-stat-type Parquet.
+- `load_situational_splits(stat_type, repo)`: reads the latest artifact for a given stat_type.
+- `gridiron props compute-splits` CLI command. Iterates PROP_STAT_FAMILIES (or the specified `--stat-type`), writes artifacts.
+- Unit tests: cohort partitioning, sample sizes, mean calculations, empty inputs, missing context flags.
+
+**Substep 5b — Loader + populate `situational_splits` on `/props/{prop_id}`.**
+- New loader `load_prop_situational_splits(settings, player_id, stat_type)`. Returns dict of cohort → stats, or empty dict if no artifact exists.
+- Update `serialize_prop_detail` to populate `situational_splits` field from the loader.
+- Remove `field_status: pending` marker when field is populated (keep it as pending if artifact is missing).
+- Integration test with MiniRepoBuilder-backed artifact.
 
 #### Disconfirming evidence
 
-- **If `current_nfl_season()` and the Elo state's latest `NFL_YEAR` disagree** (e.g., off-season month issue), delta computation may return null even when prior data exists. Add a diagnostic log so future debugging is easy.
-- **If the Elo state uses `NFL_TEAM` short codes but projections CSV uses `TEAM` short codes with different conventions** (e.g., legacy vs modern abbreviations), the join fails silently and returns null for every team. Verify both use the same convention. If not, add a team-name-map join step (`load_team_name_map`).
+- **Games CSV column names for context flags** may differ from what the prototype's `game_context.py` expects. Verify column names for `is_home`, `is_dome`, `VEGAS_LINE` before writing computation logic.
+- **`favored`/`underdog` requires perspective-aware computation**:
+  a home team with negative spread is favored; an away team with negative spread is the underdog. Requires the join to determine which team the player was on.
+- **`l4` requires deterministic sorting**: sort by (season, week) not by predicted_at or game_date. Some season/week ties exist for Thursday/Sunday game splits — sort stably on those to keep results reproducible across runs.
+- **Small sample sizes are expected today**: the archive has 1,433 rows of qb_pass_yards/elasticnet only. Many players will have 5-10 historical games; some cohorts may show sample_size: 0`.
 
 Tier design blocks are drafted at the start of each step.
 
