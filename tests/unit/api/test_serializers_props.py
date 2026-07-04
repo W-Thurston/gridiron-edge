@@ -255,3 +255,39 @@ class TestSerializePropDetail:
 
         assert isinstance(status["multi_book_shopping"], BlockedStatus)
         assert status["multi_book_shopping"].blocker == "multi_book_ingest"
+
+
+class TestSerializePropDetailSituationalSplits:
+    def test_populates_situational_splits(self) -> None:
+        from gridiron_edge.api.serializers.props import serialize_prop_detail
+
+        row = _valid_row()  # Existing helper in this file
+        splits = {
+            "season": {"sample_size": 5, "mean_value": 260.0},
+            "home": {"sample_size": 3, "mean_value": 293.3},
+        }
+
+        result = serialize_prop_detail(row, situational_splits=splits)
+
+        assert result.situational_splits == splits
+
+    def test_null_splits_leaves_pending_marker(self) -> None:
+        from gridiron_edge.api.serializers.props import serialize_prop_detail
+
+        row = _valid_row()
+        result = serialize_prop_detail(row, situational_splits=None)
+
+        assert result.situational_splits is None
+        assert result.response_meta is not None
+        assert result.response_meta.field_status.get("situational_splits") == "pending"
+
+    def test_empty_dict_no_pending_marker(self) -> None:
+        """Empty dict (artifact exists but no data for player) should not be pending."""
+        from gridiron_edge.api.serializers.props import serialize_prop_detail
+
+        row = _valid_row()
+        result = serialize_prop_detail(row, situational_splits={})
+
+        assert result.situational_splits == {}
+        assert result.response_meta is not None
+        assert "situational_splits" not in result.response_meta.field_status

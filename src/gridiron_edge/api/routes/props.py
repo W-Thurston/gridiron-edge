@@ -10,6 +10,7 @@ from gridiron_edge.api._prop_id import decode_prop_id
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     load_prop,
+    load_prop_situational_splits,
     load_props_for_week,
     resolve_current_season_week,
 )
@@ -152,4 +153,9 @@ def get_prop(
             detail=f"Prop not found: {prop_id}",
         )
 
-    return serialize_prop_detail(row)
+    splits = load_prop_situational_splits(
+        settings,
+        player_id=player_id,
+        stat_type=stat_type,
+    )
+    return serialize_prop_detail(row, situational_splits=splits)

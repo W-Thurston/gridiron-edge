@@ -305,3 +305,93 @@ class TestGetPropRoute:
         assert status["projection"]["status"] == "blocked"
         assert status["projection"]["blocker"] == "no_champion_manifest"
         assert status["line_context"]["status"] == "blocked"
+
+
+class TestPropDetailSituationalSplits:
+    def test_populated_from_artifact(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        _write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        _write_prop_archive(tmp_path, [_make_prop_archive_row()])
+
+        # Write situational splits artifact.
+        splits_dir = tmp_path / "data" / "output" / "props" / "situational_splits"
+        splits_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "player_id": "00-0033873",
+                    "cohort": "season",
+                    "sample_size": 5,
+                    "mean_value": 260.0,
+                },
+                {
+                    "player_id": "00-0033873",
+                    "cohort": "home",
+                    "sample_size": 3,
+                    "mean_value": 290.0,
+                },
+            ]
+        ).to_parquet(splits_dir / "qb_pass_yards.parquet", index=False)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/props/{prop_id}")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["situational_splits"] is not None
+        assert body["situational_splits"]["season"]["sample_size"] == 5
+        assert body["situational_splits"]["season"]["mean_value"] == 260.0
+        assert body["situational_splits"]["home"]["sample_size"] == 3
+
+    def test_missing_artifact_leaves_field_null_pending(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        _write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        _write_prop_archive(tmp_path, [_make_prop_archive_row()])
+        # No situational splits artifact.
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/props/{prop_id}")
+
+        body = response.json()
+        assert body["situational_splits"] is None
+        status = body["_meta"]["field_status"]
+        assert status.get("situational_splits") == "pending"
+
+    def test_player_not_in_artifact_returns_empty_dict(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        """Artifact exists but has no rows for this player_id."""
+        _write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        _write_prop_archive(tmp_path, [_make_prop_archive_row()])
+
+        splits_dir = tmp_path / "data" / "output" / "props" / "situational_splits"
+        splits_dir.mkdir(parents=True, exist_ok=True)
+        # Different player.
+        pd.DataFrame(
+            [
+                {
+                    "player_id": "SOMEBODY_ELSE",
+                    "cohort": "season",
+                    "sample_size": 5,
+                    "mean_value": 260.0,
+                },
+            ]
+        ).to_parquet(splits_dir / "qb_pass_yards.parquet", index=False)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/props/{prop_id}")
+
+        body = response.json()
+        # Empty dict — artifact was loaded but player had no rows.
+        assert body["situational_splits"] == {}
+        # No pending marker — the artifact is there.
+        status = body["_meta"]["field_status"]
+        assert "situational_splits" not in status

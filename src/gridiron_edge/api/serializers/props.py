@@ -135,16 +135,19 @@ def serialize_props_list(
     )
 
 
-def serialize_prop_detail(row: dict) -> PropDetail:
+def serialize_prop_detail(
+    row: dict,
+    situational_splits: dict | None = None,
+) -> PropDetail:
     """Build the /props/{prop_id} response.
 
     Populated fields come from the archive row. Pending/blocked fields
     are marked in _meta.field_status per D14.
     """
-    projection = _build_projection_block(row)
-    line_context = _build_line_block(row)
+    projection: ProjectionBlock = _build_projection_block(row)
+    line_context: LineBlock = _build_line_block(row)
 
-    meta = ResponseMeta()
+    meta: ResponseMeta = ResponseMeta()
     # LineBlock fields — pending on odds-join at prediction time.
     meta = meta.with_pending("line_context.line")
     meta = meta.with_pending("line_context.p_over")
@@ -152,7 +155,10 @@ def serialize_prop_detail(row: dict) -> PropDetail:
     meta = meta.with_pending("line_context.confidence_tier")
     # PropDetail-only scaffolded fields.
     meta = meta.with_pending("historical_vs_opponent")
-    meta = meta.with_pending("situational_splits")
+    if situational_splits is None:
+        # Artifact not yet computed for this stat_type. Mark pending.
+        meta = meta.with_pending("situational_splits")
+    # else: field is populated (possibly empty dict); no marker needed.
     meta = meta.with_pending("recent_form")
     meta = meta.with_blocked("prop_reasoning", *Blocker.FEATURE_ATTRIBUTION)
     meta = meta.with_blocked("injury_status", *Blocker.INJURY_DATA)
@@ -171,5 +177,6 @@ def serialize_prop_detail(row: dict) -> PropDetail:
         model_key=_build_model_key(row),
         projection=projection,
         line_context=line_context,
+        situational_splits=situational_splits,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )

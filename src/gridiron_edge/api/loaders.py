@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from pandas import DataFrame
@@ -288,6 +289,67 @@ def load_team_percentiles_df(
     from gridiron_edge.evaluation.percentiles import load_latest_team_percentiles
 
     return load_latest_team_percentiles(settings.repo_root)
+
+
+def load_prop_situational_splits(
+    settings: Settings,
+    *,
+    player_id: str,
+    stat_type: str,
+) -> dict | None:
+    """Load situational splits for one (player_id, stat_type).
+
+    Reads the per-stat-type artifact and filters to the player. Returns
+    a nested dict of cohort → {sample_size, mean_value}. Returns None
+    if no artifact exists for the stat_type, or an empty dict if the
+    artifact exists but has no rows for the player.
+
+    Args:
+        settings: API settings.
+        player_id: Player identifier.
+        stat_type: Stat family (e.g. "qb_pass_yards").
+
+    Returns:
+        Nested dict: {"season": {"sample_size": 5, "mean_value": 260.0}, ...}
+        Empty dict if artifact exists but player not found.
+        None if the artifact file doesn't exist at all.
+    """
+    from gridiron_edge.evaluation.situational_splits import load_situational_splits
+
+    df = load_situational_splits(stat_type, settings.repo_root)
+    if df.empty:
+        return None
+
+    player_rows = df.loc[df["player_id"] == player_id, :]
+    if player_rows.empty:
+        return {}
+
+    # Nest into dict: cohort → {sample_size, mean_value}
+    result: dict = {}
+    for _, row in player_rows.iterrows():
+        cohort = str(row["cohort"])
+        sample_size = _none_if_nan_int(row["sample_size"])
+        mean_value = _none_if_nan_float(row["mean_value"])
+        result[cohort] = {
+            "sample_size": sample_size,
+            "mean_value": mean_value,
+        }
+
+    return result
+
+
+def _none_if_nan_int(v: Any) -> int | None:  # noqa: ANN401
+    """Return int or None for NaN."""
+    if pd.isna(v):
+        return None
+    return int(v)  # type: ignore[arg-type]
+
+
+def _none_if_nan_float(v: Any) -> float | None:  # noqa: ANN401
+    """Return float or None for NaN."""
+    if pd.isna(v):
+        return None
+    return float(v)  # type: ignore[arg-type]
 
 
 def load_games_for_week(
