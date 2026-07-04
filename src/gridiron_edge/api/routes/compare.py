@@ -1,8 +1,11 @@
+# src/gridiron_edge/api/routes/compare.py
+
 """Team-vs-team and player-vs-defense comparison endpoints."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pandas import DataFrame
 
 from gridiron_edge.api._prop_id import decode_prop_id
 from gridiron_edge.api.deps import SettingsDep
@@ -11,6 +14,7 @@ from gridiron_edge.api.loaders import (
     load_games_df,
     load_prop,
     load_team_name_map,
+    load_team_percentiles_df,
     resolve_current_season_week,
 )
 from gridiron_edge.api.schemas.compare import (
@@ -65,8 +69,8 @@ def compare_teams(
 
     Returns 404 if either abbreviation is unknown.
     """
-    long_to_short = load_team_name_map(settings)
-    short_to_long = {v: k for k, v in long_to_short.items()}
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
 
     if team_a.upper() not in short_to_long:
         raise HTTPException(
@@ -79,8 +83,9 @@ def compare_teams(
             detail=f"Unknown team abbreviation for team_b: {team_b}",
         )
 
-    elo = load_elo_state_df(settings)
-    games = load_games_df(settings)
+    elo: DataFrame = load_elo_state_df(settings)
+    games: DataFrame = load_games_df(settings)
+    percentiles: DataFrame = load_team_percentiles_df(settings)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_compare_teams(
@@ -91,6 +96,7 @@ def compare_teams(
         team_b_short=team_b,
         season=resolved_season,
         as_of_week=as_of_week,
+        percentiles=percentiles,
     )
 
 

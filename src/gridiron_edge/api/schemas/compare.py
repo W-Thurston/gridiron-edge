@@ -36,6 +36,14 @@ class StatRow(BaseModel):
     )
     team_a_value: float | int | str | None = None
     team_b_value: float | int | str | None = None
+    team_a_pct: float | None = Field(
+        default=None,
+        description="Team A's league-wide percentile (0-1) on this stat.",
+    )
+    team_b_pct: float | None = Field(
+        default=None,
+        description="Team B's league-wide percentile (0-1) on this stat.",
+    )
 
 
 class CompareTeamsResponse(BaseResponse):

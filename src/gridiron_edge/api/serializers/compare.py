@@ -46,6 +46,30 @@ def _record_string(games: DataFrame, long_name: str) -> str:
     return f"{record.wins}-{record.losses}-{record.ties}"
 
 
+def _pct_for_team(
+    percentiles: DataFrame,
+    team_abbr: str,
+    column: str,
+) -> float | None:
+    """Return a specific percentile value for a team, or None if missing."""
+    if percentiles.empty:
+        return None
+    match = percentiles.loc[percentiles["team_abbr"] == team_abbr]
+    if match.empty:
+        return None
+    val = match.iloc[0].get(column)
+    if val is None:
+        return None
+    try:
+        import pandas as pd
+
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return float(val)
+
+
 def serialize_compare_teams(
     elo: DataFrame,
     games: DataFrame,
@@ -55,6 +79,7 @@ def serialize_compare_teams(
     team_b_short: str,
     season: str,
     as_of_week: int,
+    percentiles: DataFrame,
 ) -> CompareTeamsResponse:
     """Build the /compare/teams response.
 
@@ -62,9 +87,9 @@ def serialize_compare_teams(
     Scaffolded stats: off_rating, def_rating, trend, schedule_difficulty,
     playoff_probability, cohort splits, percentile ranks — via field_status.
     """
-    short_to_long = {v: k for k, v in long_to_short.items()}
-    long_a = short_to_long.get(team_a_short.upper())
-    long_b = short_to_long.get(team_b_short.upper())
+    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
+    long_a: str | None = short_to_long.get(team_a_short.upper())
+    long_b: str | None = short_to_long.get(team_b_short.upper())
 
     # Route should have validated abbreviations before this call. Defensive
     # fallback: use the short code as a placeholder if the map miss.
@@ -76,6 +101,10 @@ def serialize_compare_teams(
     rating_a, rank_a = _rating_for_team(elo, long_a, season, as_of_week)
     rating_b, rank_b = _rating_for_team(elo, long_b, season, as_of_week)
 
+    # Precompute percentiles for both teams (all four stats).
+    a: str = team_a_short.upper()
+    b: str = team_b_short.upper()
+
     stats: list[StatRow] = [
         StatRow(
             key="rating",
@@ -83,6 +112,8 @@ def serialize_compare_teams(
             unit="elo",
             team_a_value=rating_a,
             team_b_value=rating_b,
+            team_a_pct=_pct_for_team(percentiles, a, "rating_pct"),
+            team_b_pct=_pct_for_team(percentiles, b, "rating_pct"),
         ),
         StatRow(
             key="rank",
@@ -97,6 +128,33 @@ def serialize_compare_teams(
             unit="record",
             team_a_value=_record_string(season_games, long_a),
             team_b_value=_record_string(season_games, long_b),
+        ),
+        StatRow(
+            key="avg_wins",
+            label="Projected Avg Wins",
+            unit="raw",
+            team_a_value=None,
+            team_b_value=None,
+            team_a_pct=_pct_for_team(percentiles, a, "avg_wins_pct"),
+            team_b_pct=_pct_for_team(percentiles, b, "avg_wins_pct"),
+        ),
+        StatRow(
+            key="make_playoffs",
+            label="Playoff Probability",
+            unit="pct",
+            team_a_value=None,
+            team_b_value=None,
+            team_a_pct=_pct_for_team(percentiles, a, "make_playoffs_pct"),
+            team_b_pct=_pct_for_team(percentiles, b, "make_playoffs_pct"),
+        ),
+        StatRow(
+            key="win_sb",
+            label="Super Bowl Win Probability",
+            unit="pct",
+            team_a_value=None,
+            team_b_value=None,
+            team_a_pct=_pct_for_team(percentiles, a, "win_sb_pct"),
+            team_b_pct=_pct_for_team(percentiles, b, "win_sb_pct"),
         ),
         StatRow(
             key="off_rating",
@@ -127,38 +185,26 @@ def serialize_compare_teams(
             team_b_value=None,
         ),
         StatRow(
-            key="playoff_probability",
-            label="Playoff Probability",
-            unit="pct",
-            team_a_value=None,
-            team_b_value=None,
-        ),
-        StatRow(
             key="cohort_splits",
             label="Cohort Splits (Season/L4/Home/Away)",
             unit="raw",
             team_a_value=None,
             team_b_value=None,
         ),
-        StatRow(
-            key="percentile_ranks",
-            label="Per-Stat Percentile Ranks",
-            unit="pct",
-            team_a_value=None,
-            team_b_value=None,
-        ),
     ]
 
-    meta = ResponseMeta()
+    meta: ResponseMeta = ResponseMeta()
     # Blocked on upstream workstreams.
     meta = meta.with_blocked("off_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("trend", *Unavailable.NO_PRIOR_SNAPSHOT)
     # Pending on Tier 3 additive datasets.
     meta = meta.with_pending("schedule_difficulty")
-    meta = meta.with_pending("playoff_probability")
     meta = meta.with_pending("cohort_splits")
-    meta = meta.with_pending("percentile_ranks")
+    # Note: avg_wins, make_playoffs, win_sb now have percentiles populated
+    # via team_a_pct / team_b_pct, so they're no longer marked pending here.
+    # The team_*_value fields remain null (raw values not shown on compare).
+    # percentile_ranks scaffold row removed — per-row percentiles replace it.
 
     return CompareTeamsResponse(
         season=season,

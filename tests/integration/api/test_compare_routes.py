@@ -121,7 +121,9 @@ class TestCompareTeamsRoute:
         assert body["season"] == "2026-2027"
         assert body["team_a"] == "KC"
         assert body["team_b"] == "LAC"
-        assert len(body["stats"]) == 10  # 3 populated + 7 scaffolded
+        assert (
+            len(body["stats"]) == 11
+        )  # 3 populated + 3 rankable (avg_wins/make_playoffs/win_sb) + 5 scaffolded
 
     def test_populated_stats_have_values(
         self,
@@ -172,9 +174,7 @@ class TestCompareTeamsRoute:
             "def_rating",
             "trend",
             "schedule_difficulty",
-            "playoff_probability",
             "cohort_splits",
-            "percentile_ranks",
         ):
             row = by_key[scaffolded_key]
             assert row["team_a_value"] is None
@@ -203,9 +203,7 @@ class TestCompareTeamsRoute:
 
         # Pending
         assert status["schedule_difficulty"] == "pending"
-        assert status["playoff_probability"] == "pending"
         assert status["cohort_splits"] == "pending"
-        assert status["percentile_ranks"] == "pending"
 
     def test_unknown_team_a_returns_404(
         self,
@@ -464,3 +462,89 @@ class TestComparePlayerRoute:
         by_key = {row["key"]: row for row in body["stats"]}
         assert by_key["mean"]["projection_value"] is None
         assert by_key["std"]["projection_value"] is None
+
+
+class TestCompareTeamsPercentiles:
+    def test_percentiles_populate_on_rating_row(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_for_teams())
+            .with_elo_state(_make_elo_state_for_teams())
+            .with_teams_reference()
+        )
+
+        # Write percentile artifact
+        pct_dir = tmp_path / "data" / "output" / "rankings" / "percentiles"
+        pct_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "team_abbr": "KC",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "rating_pct": 0.75,
+                    "avg_wins_pct": 0.75,
+                    "make_playoffs_pct": 0.75,
+                    "win_sb_pct": 0.75,
+                },
+                {
+                    "team_abbr": "LAC",
+                    "season": "2026-2027",
+                    "week": 1,
+                    "rating_pct": 0.25,
+                    "avg_wins_pct": 0.25,
+                    "make_playoffs_pct": 0.25,
+                    "win_sb_pct": 0.25,
+                },
+            ]
+        ).to_parquet(pct_dir / "percentiles_2026-2027_wk01.parquet", index=False)
+
+        response = client.get("/compare/teams?team_a=KC&team_b=LAC&season=2026-2027")
+
+        assert response.status_code == 200
+        body = response.json()
+        by_key = {row["key"]: row for row in body["stats"]}
+        assert by_key["rating"]["team_a_pct"] == 0.75
+        assert by_key["rating"]["team_b_pct"] == 0.25
+
+    def test_percentile_ranks_row_removed(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_for_teams())
+            .with_elo_state(_make_elo_state_for_teams())
+            .with_teams_reference()
+        )
+
+        response = client.get("/compare/teams?team_a=KC&team_b=LAC&season=2026-2027")
+
+        body = response.json()
+        keys = {row["key"] for row in body["stats"]}
+        assert "percentile_ranks" not in keys
+
+    def test_no_percentile_artifact_leaves_pct_fields_null(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_for_teams())
+            .with_elo_state(_make_elo_state_for_teams())
+            .with_teams_reference()
+        )
+        # No percentile artifact written.
+
+        response = client.get("/compare/teams?team_a=KC&team_b=LAC&season=2026-2027")
+
+        body = response.json()
+        by_key = {row["key"]: row for row in body["stats"]}
+        assert by_key["rating"]["team_a_pct"] is None
+        assert by_key["rating"]["team_b_pct"] is None
