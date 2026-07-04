@@ -184,54 +184,35 @@ screens gain per-stat percentile bars as a bonus.
 #### Substep breakdown
 
 **Substep 2a — Percentile computation module + persistence.**
-- New file `evaluation/percentiles.py` with
-  `compute_team_percentiles(elo_state, projections)` returning
-  DataFrame with columns: `team_abbr` (short), `season`, `week`,
-  `rating_pct`, `avg_wins_pct`, `make_playoffs_pct`, `win_sb_pct`.
+- New file `evaluation/percentiles.py` with `compute_team_percentiles(elo_state, projections)` returning DataFrame with columns: `team_abbr` (short), `season`, `week`, `rating_pct`, `avg_wins_pct`, `make_playoffs_pct`, `win_sb_pct`.
 - Wire into `sim/season.py::run_full_simulation` as a final write step.
-- Optional CLI command `gridiron sim compute-percentiles` for
-  standalone use (small helper).
+- Optional CLI command `gridiron sim compute-percentiles` for standalone use (small helper).
 - Unit tests: standard case, tied values, missing stat, empty input.
 
 **Substep 2b — Loader + populate `/teams` and `/teams/{abbr}`.**
-- Schema additions to `TeamRankingRow` and `TeamProfile`: four
-  `float | None` percentile fields (`rating_pct`, `avg_wins_pct`,
-  `make_playoffs_pct`, `win_sb_pct`).
-- New loader `load_team_percentiles(settings)` reads the latest
-  percentile artifact.
-- Update `serialize_team_rankings` and `serialize_team_profile` to
-  populate percentile fields.
+- Schema additions to `TeamRankingRow` and `TeamProfile`: four `float | None` percentile fields (`rating_pct`, `avg_wins_pct`, `make_playoffs_pct`, `win_sb_pct`).
+- New loader `load_team_percentiles(settings)` reads the latest percentile artifact.
+- Update `serialize_team_rankings` and `serialize_team_profile` to populate percentile fields.
 - Integration test.
 
 **Substep 2c — Populate `/compare/teams` percentile fields.**
-- Schema addition to `StatRow`: `team_a_pct: float | None`,
-  `team_b_pct: float | None`.
-- Update `serialize_compare_teams` to populate percentile fields on
-  rankable-stat rows (rating, avg_wins, playoff prob, win SB).
-- Remove the aggregate `percentile_ranks` scaffold row from the
-  response.
+- Schema addition to `StatRow`: `team_a_pct: float | None`, `team_b_pct: float | None`.
+- Update `serialize_compare_teams` to populate percentile fields on rankable-stat rows (rating, avg_wins, playoff prob, win SB).
+- Remove the aggregate `percentile_ranks` scaffold row from the response.
 - Integration test.
 
 #### Tier 3 remaining inventory (unchanged)
 
 Steps 3+ still pending prioritization:
-- Opponent-allowed-by-position aggregation (unblocks PlayerProp
-  defense side)
+- Opponent-allowed-by-position aggregation (unblocks PlayerProp defense side)
 - Team cohort splits (season/L4/home/away)
 - Prop cohort splits (indoor/outdoor, favored/underdog)
 - Off/def rating decomposition (larger design phase; likely later)
 
 #### Disconfirming evidence
 
-- **If `current_nfl_season()` and the Elo state's latest `NFL_YEAR`
-  disagree** (e.g., off-season month issue), delta computation may
-  return null even when prior data exists. Add a diagnostic log so
-  future debugging is easy.
-- **If the Elo state uses `NFL_TEAM` short codes but projections CSV
-  uses `TEAM` short codes with different conventions** (e.g., legacy
-  vs modern abbreviations), the join fails silently and returns null
-  for every team. Verify both use the same convention. If not, add a
-  team-name-map join step (`load_team_name_map`).
+- **If `current_nfl_season()` and the Elo state's latest `NFL_YEAR` disagree** (e.g., off-season month issue), delta computation may return null even when prior data exists. Add a diagnostic log so future debugging is easy.
+- **If the Elo state uses `NFL_TEAM` short codes but projections CSV uses `TEAM` short codes with different conventions** (e.g., legacy vs modern abbreviations), the join fails silently and returns null for every team. Verify both use the same convention. If not, add a team-name-map join step (`load_team_name_map`).
 
 Tier design blocks are drafted at the start of each step.
 

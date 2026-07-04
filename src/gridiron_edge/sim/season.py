@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.sim import playoffs as _playoffs_mod
 from gridiron_edge.sim._engine import (
@@ -391,10 +392,10 @@ def extract_fixed_playoff_winners(
 
     def team_name_to_id(name: str) -> int | None:
         if name in team_index.short_to_id:
-            return int(team_index.short_to_id[name])
+            return team_index.short_to_id[name]
         short = team_index.long_to_short.get(name)
         if short is not None and short in team_index.short_to_id:
-            return int(team_index.short_to_id[short])
+            return team_index.short_to_id[short]
         return None
 
     fixed = np.full((N_PLAYOFF_ROUNDS, N_TEAMS, N_TEAMS), -1, dtype=np.int16)
@@ -417,7 +418,7 @@ def extract_fixed_playoff_winners(
 
     for _, row in df.iterrows():
         wk = int(row["WEEK_NUM"])
-        rnd = int(round_by_week[wk])
+        rnd = round_by_week[wk]
         gid = str(row["GAME_ID"])
         if gid not in game_to_pair:
             continue
@@ -634,10 +635,10 @@ def run_full_simulation(
             pts_vs_actual,
             wins_vs_actual,
             reg_win_counts_actual,
-            float(config.k_factor),
-            float(config.p_tie),
-            int(config.base_seed),
-            float(config.divisor),
+            config.k_factor,
+            config.p_tie,
+            config.base_seed,
+            config.divisor,
         )
 
     with _log_phase("Extract fixed playoff outcomes"):
@@ -696,12 +697,35 @@ def run_full_simulation(
 
     with _log_phase("Save outputs"):
         paths.output_temp_dir.mkdir(parents=True, exist_ok=True)
-        proj_path = paths.output_temp_dir / "projections_summary.csv"
-        grid_path = paths.output_temp_dir / "season_grid.csv"
+        proj_path: Path = paths.output_temp_dir / "projections_summary.csv"
+        grid_path: Path = paths.output_temp_dir / "season_grid.csv"
         df_projections.to_csv(proj_path, index=False)
         df_season_grid.to_csv(grid_path, index=False)
         logger.info("Wrote: %s", proj_path)
         logger.info("Wrote: %s", grid_path)
+
+    with _log_phase("Compute + persist team percentiles"):
+        from gridiron_edge.core.settings import get_settings
+        from gridiron_edge.evaluation.percentiles import (
+            compute_team_percentiles,
+            write_team_percentiles,
+        )
+
+        df_percentiles: DataFrame = compute_team_percentiles(
+            elo_state=df_elo,
+            projections=df_projections,
+            long_to_short=long_to_short,
+        )
+        if not df_percentiles.empty:
+            pct_path: Path = write_team_percentiles(
+                df_percentiles,
+                season=season_year,
+                week=final_actual_week,
+                repo=get_settings().repo_root,
+            )
+            logger.info("Wrote: %s", pct_path)
+        else:
+            logger.info("Percentile computation returned empty; nothing written.")
 
     if render:
         with _log_phase("Render playoff probability table"):
