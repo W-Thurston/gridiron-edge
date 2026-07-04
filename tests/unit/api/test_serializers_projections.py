@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from gridiron_edge.api.schemas.projections import ProjectionsList
 from gridiron_edge.api.serializers.projections import serialize_projections
 
 LONG_TO_SHORT = {
@@ -70,7 +71,7 @@ class TestSerializeProjections:
         assert result.items[0].make_playoffs == 0.7762
 
     def test_marks_pending_and_blocked_fields(self) -> None:
-        result = serialize_projections(
+        result: ProjectionsList = serialize_projections(
             _make_df(),
             LONG_TO_SHORT,
             "2025-2026",
@@ -78,9 +79,10 @@ class TestSerializeProjections:
         )
         fs = result.response_meta.field_status
         assert "n_simulations" in fs
-        assert "items.week_over_week_delta" in fs
         assert "items.clinched" in fs
         assert "items.eliminated" in fs
+        # week_over_week_delta is now populated from Elo state, not blocked.
+        assert "items.week_over_week_delta" not in fs
 
     def test_unknown_abbr_falls_back_to_abbr_as_name(self) -> None:
         df = pd.DataFrame(

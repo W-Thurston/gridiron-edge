@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pandas as pd
+from pandas import DataFrame
 import pytest
 
 from gridiron_edge.api.loaders import (
@@ -1049,3 +1051,171 @@ class TestLoadProp:
                 player_id="00-0033873",
                 stat_type="qb_pass_yards",
             )
+
+
+class TestComputeEloDeltas:
+    """Cover compute_elo_deltas helper (W8 Tier 3 Substep 1a)."""
+
+    def _long_to_short(self) -> dict[str, str]:
+        return {
+            "Kansas City Chiefs": "KAN",
+            "Los Angeles Chargers": "LAC",
+            "Seattle Seahawks": "SEA",
+        }
+
+    def test_empty_elo_state_returns_empty(self) -> None:
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        result: DataFrame = compute_elo_deltas(pd.DataFrame(), self._long_to_short())
+        assert result.empty
+
+    def test_computes_delta_for_latest_week_with_short_codes(self) -> None:
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1595.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1520.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1512.0,
+                },
+            ]
+        )
+
+        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+
+        assert len(result) == 2
+        by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
+        assert by_team["KAN"] == 15.0
+        assert by_team["LAC"] == -8.0
+
+    def test_week_1_returns_null_deltas(self) -> None:
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1520.0,
+                },
+            ]
+        )
+
+        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+
+        assert len(result) == 2
+        assert result["elo_delta"].isnull().all()
+        assert set(result["team_abbr"]) == {"KAN", "LAC"}
+
+    def test_uses_latest_season(self) -> None:
+        """Delta computed for latest NFL_YEAR only; prior seasons ignored."""
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        elo = pd.DataFrame(
+            [
+                # Prior season — should be ignored for delta computation.
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2025-2026",
+                    "NFL_WEEK": 22,
+                    "ELO": 1600.0,
+                },
+                # Current season.
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1595.0,
+                },
+            ]
+        )
+
+        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+
+        assert len(result) == 1
+        assert result.iloc[0]["team_abbr"] == "KAN"
+        assert result.iloc[0]["elo_delta"] == 15.0  # 1595 - 1580, not 1595 - 1600
+
+    def test_team_missing_from_prior_week_gets_null(self) -> None:
+        """New team that wasn't in prior week (e.g., expansion, relocation)."""
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        elo = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1595.0,
+                },
+                # LAC only appears in current week.
+                {
+                    "NFL_TEAM": "Los Angeles Chargers",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 2,
+                    "ELO": 1512.0,
+                },
+            ]
+        )
+
+        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+
+        by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
+        assert by_team["KAN"] == 15.0
+        assert pd.isna(by_team["LAC"])
+
+    def test_unmapped_team_falls_back_to_long_name(self) -> None:
+        """A team not in long_to_short map falls back to its long name."""
+        from gridiron_edge.api.loaders import compute_elo_deltas
+
+        elo = pd.DataFrame(
+            [
+                {"NFL_TEAM": "Mystery Team", "NFL_YEAR": "2026-2027", "NFL_WEEK": 1, "ELO": 1500.0},
+                {"NFL_TEAM": "Mystery Team", "NFL_YEAR": "2026-2027", "NFL_WEEK": 2, "ELO": 1510.0},
+            ]
+        )
+
+        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+
+        assert len(result) == 1
+        assert result.iloc[0]["team_abbr"] == "Mystery Team"
+        assert result.iloc[0]["elo_delta"] == 10.0

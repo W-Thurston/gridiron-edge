@@ -13,6 +13,9 @@ never used from the API path.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pandas as pd
 from pandas import DataFrame
 
@@ -144,25 +147,115 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
     return (str(latest["YEAR"]), int(latest["WEEK_NUM"]))
 
 
+def compute_elo_deltas(
+    elo_state: DataFrame,
+    long_to_short: dict[str, str],
+) -> DataFrame:
+    """Compute per-team Elo delta from prior NFL week within same season.
+
+    For the latest (season, week) in the Elo state table, computes:
+        elo_delta = current_week_elo - prior_week_elo
+
+    Prior week is `NFL_WEEK - 1` within the same `NFL_YEAR`. Teams with
+    no prior-week Elo (Week 1 of a season, or fresh checkouts) get null.
+
+    The Elo state table stores long team names (e.g. "Arizona Cardinals").
+    This function converts to short codes (e.g. "ARI") using the provided
+    map for join compatibility with the projections summary CSV.
+
+    Args:
+        elo_state: DataFrame with columns NFL_TEAM (long), NFL_YEAR, NFL_WEEK, ELO.
+        long_to_short: Mapping from long team names to short codes.
+
+    Returns:
+        DataFrame with columns team_abbr, elo_delta. One row per team.
+        Empty if elo_state is empty.
+    """
+    if elo_state.empty:
+        return pd.DataFrame(columns=["team_abbr", "elo_delta"])
+
+    # Resolve latest (season, week) — max NFL_WEEK for latest NFL_YEAR.
+    latest_year = str(elo_state["NFL_YEAR"].max())
+    year_rows = elo_state.loc[elo_state["NFL_YEAR"] == latest_year, :]
+    latest_week = int(year_rows["NFL_WEEK"].max())
+
+    # Week 1 → no prior week within same season → return null deltas.
+    if latest_week == 1:
+        current = year_rows.loc[
+            year_rows["NFL_WEEK"] == latest_week,
+            ["NFL_TEAM"],
+        ].copy()
+        current["team_abbr"] = current["NFL_TEAM"].map(long_to_short).fillna(current["NFL_TEAM"])
+        current["elo_delta"] = None
+        return current.loc[:, ["team_abbr", "elo_delta"]].copy()
+
+    # Current-week Elo.
+    current = year_rows.loc[
+        year_rows["NFL_WEEK"] == latest_week,
+        ["NFL_TEAM", "ELO"],
+    ].rename(columns={"ELO": "current_elo"})
+
+    # Prior-week Elo.
+    prior = year_rows.loc[
+        year_rows["NFL_WEEK"] == latest_week - 1,
+        ["NFL_TEAM", "ELO"],
+    ].rename(columns={"ELO": "prior_elo"})
+
+    # Join on long team name.
+    merged = current.merge(prior, on="NFL_TEAM", how="left")
+    merged["elo_delta"] = merged["current_elo"] - merged["prior_elo"]
+
+    # Convert to short codes.
+    merged["team_abbr"] = merged["NFL_TEAM"].map(long_to_short).fillna(merged["NFL_TEAM"])
+
+    return merged.loc[:, ["team_abbr", "elo_delta"]].copy()
+
+
 def load_projections_summary_df(
     settings: Settings,
 ) -> tuple[pd.DataFrame, str | None]:
-    """Load the projections summary CSV.
+    """Load the projections summary CSV, joined with per-team Elo deltas.
+
+    Reads projections_summary.csv and joins per-team Elo delta from the
+    Elo state table (prior NFL week within same season). Populates the
+    ``week_over_week_delta`` column on the returned DataFrame.
 
     Returns:
-        Tuple of (dataframe, csv_mtime_iso). The mtime is the CSV file's
-        last-modified time as an ISO string, useful for staleness display.
-        Returns (empty_df, None) if the CSV doesn't exist.
-    """
-    from datetime import UTC, datetime
+        Tuple of (dataframe, csv_mtime_iso). The mtime is the projections
+        CSV file's last-modified time as an ISO string, useful for
+        staleness display. Returns (empty_df, None) if the CSV doesn't
+        exist.
 
-    path = settings.repo_root / "data" / "output" / "temp" / "projections_summary.csv"
+    Notes:
+        Teams without a prior-week Elo entry (Week 1 of a season, or
+        fresh checkouts without historical data) get null for
+        ``week_over_week_delta``. Frontend renders these as em-dashes.
+    """
+    path: Path = settings.repo_root / "data" / "output" / "temp" / "projections_summary.csv"
 
     if not path.exists():
         return pd.DataFrame(), None
 
     df = pd.read_csv(path)
-    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+    mtime: str = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+
+    # Compute per-team Elo deltas and join.
+    elo_state: DataFrame = load_elo_state_df(settings)
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+    deltas: DataFrame = compute_elo_deltas(elo_state, long_to_short)
+
+    if deltas.empty:
+        df["week_over_week_delta"] = None
+    else:
+        df = df.merge(
+            deltas,
+            left_on="TEAM",
+            right_on="team_abbr",
+            how="left",
+        )
+        df["week_over_week_delta"] = df["elo_delta"]
+        df = df.drop(columns=["team_abbr", "elo_delta"], errors="ignore")
+
     return df, mtime
 
 

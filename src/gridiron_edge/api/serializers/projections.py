@@ -44,15 +44,16 @@ def serialize_projections(
         P_REACH_CONF → reach_conf
         P_REACH_SB → reach_sb
         P_WIN_SB → win_sb
+        week_over_week_delta → week_over_week_delta  (Elo change from prior week)
     """
     # Invert long_to_short for name resolution: {abbr → long_name}
-    short_to_long = {v: k for k, v in long_to_short.items()}
+    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
 
     meta = ResponseMeta()
 
     if df.empty:
         # No projections CSV or empty file. Mark items as unavailable.
-        meta = meta.with_blocked("items", *Unavailable.NO_PROJECTIONS_DATA)
+        meta: ResponseMeta = meta.with_blocked("items", *Unavailable.NO_PROJECTIONS_DATA)
         return ProjectionsList(
             season=season,
             computed_at=computed_at,
@@ -63,9 +64,9 @@ def serialize_projections(
         )
 
     # Sort by SB win probability descending.
-    df_sorted = df.sort_values("P_WIN_SB", ascending=False).reset_index(drop=True)
+    df_sorted: DataFrame = df.sort_values("P_WIN_SB", ascending=False).reset_index(drop=True)
 
-    rows = [
+    rows: list[TeamProjectionRow] = [
         TeamProjectionRow(
             abbr=str(row["TEAM"]),
             name=short_to_long.get(str(row["TEAM"]), str(row["TEAM"])),
@@ -75,16 +76,15 @@ def serialize_projections(
             reach_conf=_none_if_nan(row.get("P_REACH_CONF")),
             reach_sb=_none_if_nan(row.get("P_REACH_SB")),
             win_sb=_none_if_nan(row.get("P_WIN_SB")),
+            week_over_week_delta=_none_if_nan(row.get("week_over_week_delta")),
         )
         for _, row in df_sorted.iterrows()
     ]
 
-    # Mark pending / blocked fields on every row (n_simulations is response-level).
+    # Response-level pending fields (n_simulations still not populated).
+    # Row-level pending: clinched, eliminated remain pending.
+    # week_over_week_delta is now populated; no longer marked as blocked.
     meta = meta.with_pending("n_simulations")
-    meta = meta.with_blocked(
-        "items.week_over_week_delta",
-        *Unavailable.NO_PRIOR_SNAPSHOT,
-    )
     meta = meta.with_pending("items.clinched")
     meta = meta.with_pending("items.eliminated")
 
