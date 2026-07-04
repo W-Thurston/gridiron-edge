@@ -145,6 +145,18 @@ Single substep — smaller than Steps 1 and 2 given the reuse.
 
 **Step 3 — Complete (2026-07-04).**
 
+**Step 4 — Populate `n_simulations` on `/projections`.** ✅ Complete (2026-07-04).
+
+New metadata sidecar `projections_metadata.json` written alongside the
+projections CSV in `run_full_simulation`. Contains `n_simulations` and
+`computed_at`. `load_projections_summary_df` return tuple grew from
+`(df, mtime)` to `(df, mtime, n_simulations)`. Serializer accepts and
+populates the field. Backwards compatible — legacy projections without
+sidecar leave the field null.
+
+Single substep.
+
+**Step 4 — Complete (2026-07-04).**
 
 #### Tier 3 remaining inventory (unchanged)
 
@@ -173,6 +185,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | **W8 Tier 3 Step 4 complete.** `n_simulations` on `/projections` populated via new `projections_metadata.json` sidecar. Backwards compatible — legacy projections without sidecar leave the field null. |
 | 2026-07-04 | **W8 Tier 3 Step 3 complete.** `trend` field on `/teams` and `/teams/{abbr}` populated via reused `compute_elo_deltas` from Step 1. Smaller substep than 1 or 2 due to helper reuse. |
 | 2026-07-04 | **W8 Tier 3 Step 3 design.** Populate `trend` field on `/teams` and `/teams/{abbr}` with per-team Elo change from prior NFL week. Same shape as Step 1's `week_over_week_delta` on projections. Single substep. |
 | 2026-07-04 | **W8 Tier 3 Step 2 complete.** Per-team percentile ranking pass shipped across `/teams`, `/teams/{abbr}`, and `/compare/teams`. New `evaluation/percentiles.py` module + persistence artifact at `data/output/rankings/percentiles/`. Wired into `sim run` and exposed via `gridiron sim compute-percentiles` for standalone use. |
