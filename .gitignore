@@ -79,3 +79,14 @@ code_reviews/
 # -----------------------------------------------------------------------------
 scripts/
 skills/
+
+
+# -----------------------------------------------------------------------------
+# Annoying Files
+# -----------------------------------------------------------------------------
+.dockerignore
+CODE_REVIEW_template.md
+directory_structure.txt
+github-actions-demo.yml
+notebooks/exploratory/*
+Dockerfile
