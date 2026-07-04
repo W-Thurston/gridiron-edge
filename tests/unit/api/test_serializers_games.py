@@ -200,3 +200,28 @@ class TestSerializeGameDetail:
         row["game_date"] = None
         detail: GameDetail = serialize_game_detail(row)
         assert detail.day_of_week is None
+
+
+class TestGameDetailTeamComparison:
+    def test_populates_team_comparison(self) -> None:
+        team_comparison = {
+            "KC": {"season": {"off_epa_per_play": 0.15, "sample_size": 4}},
+            "LAC": {"season": {"off_epa_per_play": 0.10, "sample_size": 4}},
+        }
+
+        detail: GameDetail = serialize_game_detail(
+            _valid_row(),
+            team_comparison=team_comparison,
+        )
+
+        assert detail.team_comparison == team_comparison
+        # Marker removed when populated
+        assert "team_comparison" not in detail.response_meta.field_status
+
+    def test_none_leaves_pending_marker(self) -> None:
+        detail: GameDetail = serialize_game_detail(
+            _valid_row(),
+            team_comparison=None,
+        )
+        assert detail.team_comparison is None
+        assert detail.response_meta.field_status["team_comparison"] == "pending"

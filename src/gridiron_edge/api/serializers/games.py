@@ -105,7 +105,10 @@ def serialize_games_list(
     )
 
 
-def serialize_game_detail(row: dict) -> GameDetail:
+def serialize_game_detail(
+    row: dict,
+    team_comparison: dict[str, dict] | None = None,
+) -> GameDetail:
     """Build the /games/{game_id} response.
 
     Populated fields come from the loader row. Pending/blocked fields
@@ -122,7 +125,8 @@ def serialize_game_detail(row: dict) -> GameDetail:
     meta = meta.with_pending("venue")
     meta = meta.with_pending("weather")
     # Tier 3 additive datasets (per PLAN.md W8 Tier 3).
-    meta = meta.with_pending("team_comparison")
+    if team_comparison is None:
+        meta = meta.with_pending("team_comparison")
     meta = meta.with_pending("top_prop_edges")
     # Blocked on upstream workstreams.
     meta = meta.with_blocked("swing_factors", *Blocker.FEATURE_ATTRIBUTION)
@@ -140,5 +144,6 @@ def serialize_game_detail(row: dict) -> GameDetail:
         home_team=str(row["home_team"]),
         weather=None,
         prediction=prediction,
+        team_comparison=team_comparison,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )

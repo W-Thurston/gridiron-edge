@@ -8,8 +8,10 @@ from fastapi import APIRouter, HTTPException, Query
 
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
+    format_team_cohort_splits,
     load_game,
     load_games_for_week,
+    load_team_cohort_splits_df,
     resolve_current_season_week,
 )
 from gridiron_edge.api.meta import ResponseMeta, Unavailable
@@ -107,4 +109,18 @@ def get_game(
             detail=f"Unknown game_id: {game_id}",
         )
 
-    return serialize_game_detail(row)
+    # Build team_comparison dict from cohort splits for both teams.
+    cohort_splits_df = load_team_cohort_splits_df(settings)
+    team_comparison: dict[str, dict] | None = None
+    away_team = str(row["away_team"])
+    home_team = str(row["home_team"])
+    away_splits = format_team_cohort_splits(cohort_splits_df, away_team)
+    home_splits = format_team_cohort_splits(cohort_splits_df, home_team)
+    if away_splits is not None or home_splits is not None:
+        team_comparison = {}
+        if away_splits is not None:
+            team_comparison[away_team] = away_splits
+        if home_splits is not None:
+            team_comparison[home_team] = home_splits
+
+    return serialize_game_detail(row, team_comparison=team_comparison)

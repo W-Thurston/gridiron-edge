@@ -251,3 +251,69 @@ class TestGetGameRoute:
         status = body["_meta"]["field_status"]["prediction"]
         assert status["status"] == "blocked"
         assert status["blocker"] == "no_champion_manifest"
+
+
+class TestGameDetailTeamComparison:
+    def test_team_comparison_populated_when_artifact_exists(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_champion_manifest()
+            .with_predictions_archive(predictions)
+        )
+
+        # Write cohort splits artifact for both teams
+        cohort_dir = tmp_path / "data" / "output" / "rankings"
+        cohort_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "team_abbr": "KC",
+                    "cohort": "season",
+                    "off_epa_per_play": 0.15,
+                    "sample_size": 4,
+                },
+                {
+                    "team_abbr": "LAC",
+                    "cohort": "season",
+                    "off_epa_per_play": 0.10,
+                    "sample_size": 4,
+                },
+            ]
+        ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
+
+        response = client.get("/games/2026_01_KC_LAC")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["team_comparison"] is not None
+        assert "KC" in body["team_comparison"]
+        assert "LAC" in body["team_comparison"]
+        assert body["team_comparison"]["KC"]["season"]["off_epa_per_play"] == 0.15
+        # Marker removed
+        assert "team_comparison" not in body["_meta"]["field_status"]
+
+    def test_team_comparison_pending_when_artifact_missing(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_champion_manifest()
+            .with_predictions_archive(predictions)
+        )
+        # No cohort splits artifact.
+
+        response = client.get("/games/2026_01_KC_LAC")
+
+        body = response.json()
+        assert body["team_comparison"] is None
+        assert body["_meta"]["field_status"]["team_comparison"] == "pending"
