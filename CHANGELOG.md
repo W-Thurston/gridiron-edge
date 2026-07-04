@@ -3,6 +3,51 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-04 — W8 Tier 3: Additive Datasets (7 additives, 15+ substeps)
+
+Seven-step tier closing out W8 Tier 3. Each additive is a small feature
+engineering module + persistence artifact + loader + serializer wiring
+that populates one or more previously-scaffolded `field_status: pending`
+fields on the API.
+
+### Additives shipped
+
+- **Step 1 (2026-07-03):** `week_over_week_delta` on `/projections`. No new module — reads directly from Elo state table.
+- **Step 2 (2026-07-03):** Per-team percentile ranking pass (4 stats: elo, avg_wins, make_playoffs, win_sb). Populates `/teams`, `/teams/{abbr}`, `/compare/teams`. New module `evaluation/percentiles.py`.
+- **Step 3 (2026-07-03):** `trend` on `/teams` and `/teams/{abbr}`. Reused `compute_elo_deltas` from Step 1.
+- **Step 4 (2026-07-03):** `n_simulations` on `/projections`. New `projections_metadata.json` sidecar written by `run_full_simulation`.
+- **Step 5 (2026-07-03):** Per-player situational splits (8 cohorts) on `/props/{prop_id}`. Joins player game logs to games CSV. New module `evaluation/situational_splits.py`.
+- **Step 6 (2026-07-04):** Opponent-allowed-by-position defense rows on `/compare/player/{prop_id}` (3 of 4 rows; `red_zone_rate_allowed` deferred). New module `evaluation/opponent_allowed.py`.
+- **Step 7 (2026-07-04):** Team cohort splits (4 cohorts × 8 metrics) on `/compare/teams`, `/teams/{abbr}`, `/games/{game_id}`. New module `evaluation/team_cohort_splits.py` and new `gridiron teams` CLI subcommand.
+
+### New CLI subcommands
+
+- `gridiron sim compute-percentiles`
+- `gridiron props compute-splits`
+- `gridiron props compute-opponent-allowed`
+- `gridiron teams compute-cohort-splits`
+
+### New persistence artifacts
+
+- `data/output/rankings/percentiles/percentiles_{season}_wk{NN}.parquet`
+- `data/output/rankings/team_cohort_splits.parquet`
+- `data/output/props/situational_splits/{stat_type}.parquet`
+- `data/output/props/opponent_allowed.parquet`
+- `data/output/temp/projections_metadata.json`
+
+### Test-fixture inconsistencies discovered
+
+- `MiniRepoBuilder.with_teams_reference()` produces modern short codes (`KC`, `LAC`, `BUF`, `MIA`) but rest of codebase uses PFR-era codes (`KAN`, `JAC`). Not blocking. Captured in ROADMAP §9.6.
+
+### Remaining not-shipped
+
+- Off/def rating decomposition (real modeling work).
+- Various `field_status: pending` fields blocked on named workstreams.
+
+### Next
+
+W8 workstream closed. Between-workstreams pause. Available next workstreams: W12 (Ensemble), W4.5 (Scenario, blocked on §5.3), W7 (Multi-Book, blocked on §5.2), W10 (Real-Time, deferred).
+
 ## 2026-07-03 — W9 Frontend (20-screen React app consuming the API)
 
 Three-tier workstream shipping a complete React frontend. Consumes

@@ -55,7 +55,10 @@ How everything works right now. Assumes you know what the project does - see [RE
 | Frontend design system | `frontend/src/index.css` — OKLCH dark theme ported from prototype; `frontend/src/design-decisions.md` documents the aesthetic blend |
 | Frontend state | Three React Contexts (`frontend/src/context/`): AppState (odds format, bankroll, alerts), BetSlip (legs + mode), Nav (route + params) |
 | Frontend testing | Vitest + React Testing Library; smoke tests at `frontend/src/**/*.test.tsx` |
-
+| Percentile ranking pass | `gridiron_edge.evaluation.percentiles` — per-team percentile ranks over 4 stats |
+| Situational splits (props) | `gridiron_edge.evaluation.situational_splits` — per-player, 8 cohorts, from player game logs |
+| Opponent-allowed aggregates | `gridiron_edge.evaluation.opponent_allowed` — per-opponent-position stat aggregations |
+| Team cohort splits | `gridiron_edge.evaluation.team_cohort_splits` — 4 cohorts × 8 metrics from EPA data |
 
 ---
 
@@ -907,6 +910,11 @@ is now exposed as a CLI command (added during W5.5).
 | Frontend field-status primitives | `frontend/src/components/field-status/` |
 | Frontend API client | `frontend/src/api/client.ts`, `frontend/src/api/hooks.ts` |
 | Frontend design decisions | `frontend/src/design-decisions.md` |
+| Percentile ranking | `evaluation/percentiles.py` |
+| Prop situational splits | `evaluation/situational_splits.py` |
+| Opponent-allowed defense | `evaluation/opponent_allowed.py` |
+| Team cohort splits | `evaluation/team_cohort_splits.py` |
+| Teams CLI subcommand | `cli/teams.py` |
 
 All paths relative to `src/gridiron_edge/`.
 

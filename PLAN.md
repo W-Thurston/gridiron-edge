@@ -29,179 +29,40 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W8 — API Serving Layer (Tier 3)
+### Current Workstream: (none — between workstreams)
 
-**Status:** Designing.
+**Tier 3 — Additive datasets.** ✅ Complete (2026-07-04).
 
-### What we are building
+Seven additives shipped across 15+ substeps, populating scaffolded
+`field_status` fields across the frontend surface:
 
-Tier 3 additive datasets that populate the `field_status: pending` and
-`field_status: blocked` fields currently surfaced by W8 Tier 2's 16
-endpoints. Which additives ship first, and in what order, is driven
-by W9 feedback — the frontend surfaced which pending states most
-impact the UX.
+- **Step 1:** `week_over_week_delta` on `/projections` — Elo change from Elo state table.
+- **Step 2:** Percentile ranking pass — 4 stats across `/teams`, `/teams/{abbr}`, `/compare/teams`.
+- **Step 3:** `trend` on `/teams` and `/teams/{abbr}` — reused compute_elo_deltas helper.
+- **Step 4:** `n_simulations` on `/projections` — new metadata sidecar written by sim.
+- **Step 5:** `situational_splits` on `/props/{prop_id}` — per-player, 8 cohorts, from player game logs + games CSV.
+- **Step 6:** Defense-side rows on `/compare/player/{prop_id}` — per-opponent-position aggregates from player game logs. `red_zone_rate_allowed` remains blocked pending PBP-derived aggregation.
+- **Step 7:** Team cohort splits on `/compare/teams`, `/teams/{abbr}`, `/games/{game_id}` — 4 cohorts × 8 metrics from EPA data.
 
-### Why we are building it
+**New CLI subcommand apps:**
+- `gridiron sim compute-percentiles` (Step 2)
+- `gridiron props compute-splits` (Step 5)
+- `gridiron props compute-opponent-allowed` (Step 6)
+- `gridiron teams compute-cohort-splits` (Step 7) — new `gridiron teams` app
 
-W8 Tier 2 shipped 16 endpoints with roughly 20% of prototype-referenced
-fields populated. The remaining 80% are scaffolded — the shape exists,
-the data doesn't. Tier 3 fills in the data, endpoint by endpoint,
-prioritized by which additive dataset unlocks the most UI value per
-unit of backend work.
+**New artifacts under `data/output/`:**
+- `rankings/percentiles/percentiles_{season}_wk{NN}.parquet`
+- `rankings/team_cohort_splits.parquet`
+- `props/situational_splits/{stat_type}.parquet`
+- `props/opponent_allowed.parquet`
+- `temp/projections_metadata.json`
 
-### Prerequisite: prioritization
+**Remaining not-shipped from original inventory:**
+- Off/def rating decomposition — real modeling work; deferred to future workstream if pursued.
 
-Before design begins, decide which additive dataset ships first. The
-inventory:
+**Remaining field_status: pending fields** are all blocked on named workstreams (feature attribution, injury data source, multi-book odds, PBP-derived aggregations). Not additive-dataset work.
 
-| Addition | Populates | User-facing impact (from W9) |
-|---|---|---|
-| Per-stat league-wide percentile ranking pass | Compare screen rank columns, Team Detail rank fields | TBD |
-| Off/def rating decomposition | Team Rankings off/def split | TBD |
-| Weekly Elo snapshot persistence | Team rating-history endpoint, projections week-over-week delta | TBD |
-| Opponent-allowed-by-position aggregation | Player vs Defense view, Player Prop matchup section | TBD |
-| Limited cohort splits (season, L4, home, away) per team | Game Detail split tabs, Compare splits | TBD |
-| Limited cohort splits (indoor/outdoor, favored/underdog) per prop | Player Prop situational splits | TBD |
-| Prior-week projection snapshot for delta | Projections 1-week change column | TBD |
-
-Rate each additive for user-facing impact based on what you saw
-during W9 exploration. Highest impact goes first.
-
-### Design — Tier 3
-
-**Step 1 — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-04).
-
-**What we are building:** The `TeamProjectionRow.week_over_week_delta`
-field on the `/projections` API response is currently declared but never
-populated (returns null with no `field_status` marker). Compute the
-value as the Elo rating change per team from the prior NFL week within
-the same season, and populate the field.
-
-**Why we are building it now:** Small, clean opening step. Populates a
-field the frontend already renders (in the "1w Δ" column). Real
-user-visible impact — the column moves from em-dashes to signed values
-showing Seattle gained 8.4 Elo, Kansas City lost 3.2, etc.
-Establishes the "Tier 3 step" rhythm on a low-risk scope: no new
-artifact, no new schema field, no new module.
-
-**Why we're not building a snapshot mechanism:** Initial design assumed
-we'd need per-week snapshots to compute deltas. Investigation revealed
-the Elo state table (`data/cleaned/NFL_Team_Elo.csv`) already stores
-one row per (team, season, week). Prior-week Elo is a direct lookup.
-No snapshot infrastructure needed.
-
-#### Success criteria
-
-- `/projections` response populates `week_over_week_delta` for every
-  team where prior-week Elo exists in the state table.
-- Value semantic: `current_elo - prior_week_elo`. Positive means Elo
-  went up.
-- Week 1 (no prior week within the season): field is null. Frontend
-  renders em-dash.
-- `pnpm build`, `uv run gridiron verify` both pass.
-
-#### Locked decisions
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Storage | No new artifact | Elo state table already has weekly granularity |
-| Delta metric | Elo change | Direct measure of "power shift" per team |
-| Week 1 handling | Null | Semantically clearer than playoff-final delta (only 2 teams change) |
-| Loader shape | Extend `load_projections_summary_df` (or add a composed loader that joins) | Loader owns computation per D19 |
-| Serializer change | Populate field that's already in the schema | No schema change |
-
-#### Substep breakdown
-
-**Substep 1a — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-04).
-
-Shipped in one commit:
-- `compute_elo_deltas` helper in `api/loaders.py`. Converts long team names in Elo state to short codes via `load_team_name_map` before returning delta rows keyed on short abbreviation.
-- `load_projections_summary_df` joins delta column into projections CSV data.
-- Serializer populates `week_over_week_delta` from the DataFrame column. `NO_PRIOR_SNAPSHOT` blocker removed from `field_status`.
-- Week 1 → null (em-dash) per design.
-
-Test-fixture inconsistency surfaced during integration testing:
-`MiniRepoBuilder.with_teams_reference()` produces modern short codes (`KC`) while other fixtures use PFR-era codes (`KAN`). Captured for ROADMAP §9.6 as future backend hygiene.
-
-**Step 1 — Complete (2026-07-04).**
-
-**Step 2 — Per-team percentile ranking pass.** ✅ Complete (2026-07-04).
-
-Shipped in three substeps:
-- **2a:** `evaluation/percentiles.py` module + persistence. Computes per-team percentiles for 4 stats (rating, avg_wins, make_playoffs, win_sb), writes to `data/output/rankings/percentiles/`. Wired into `sim run` as a final step; standalone `gridiron sim compute-percentiles` CLI command added.
-- **2b:** Loader + populate `/teams` and `/teams/{abbr}`. Four percentile fields added to `TeamRankingRow` and `TeamProfile` schemas. Empty artifact → null fields.
-- **2c:** Populate `/compare/teams` percentile fields. `team_a_pct` and `team_b_pct` added to `StatRow`. Populated on 4 rankable stat rows. Aggregate `percentile_ranks` scaffold row removed; `avg_wins` and `win_sb` rows added; `playoff_probability` renamed to `make_playoffs`.
-
-**Step 2 — Complete (2026-07-04).**
-
-**Step 3 — Populate `trend` field on `/teams` and `/teams/{abbr}`.** ✅ Complete (2026-07-04).
-
-Reused `compute_elo_deltas` from Step 1 to compute per-team Elo change
-from the prior NFL week within the same season. Serializers populate
-the `trend` field on both `TeamRankingRow` and `TeamProfile`. Removed
-`NO_PRIOR_SNAPSHOT` blocker on trend fields. Week 1 → null.
-
-Single substep — smaller than Steps 1 and 2 given the reuse.
-
-**Step 3 — Complete (2026-07-04).**
-
-**Step 4 — Populate `n_simulations` on `/projections`.** ✅ Complete (2026-07-04).
-
-New metadata sidecar `projections_metadata.json` written alongside the
-projections CSV in `run_full_simulation`. Contains `n_simulations` and
-`computed_at`. `load_projections_summary_df` return tuple grew from
-`(df, mtime)` to `(df, mtime, n_simulations)`. Serializer accepts and
-populates the field. Backwards compatible — legacy projections without
-sidecar leave the field null.
-
-Single substep.
-
-**Step 4 — Complete (2026-07-04).**
-
-**Step 5 — Populate `situational_splits` on `/props/{prop_id}`.** ✅ Complete (2026-07-04).
-
-Shipped in two substeps:
-- **5a:** `evaluation/situational_splits.py` module. Joins player game logs to games CSV on game_id, partitions by 8 cohorts (season, home, away, favored, underdog, indoor, outdoor,l4), aggregates sample_size + mean_value per (player_id, cohort). CLI command `gridiron props compute-splits`. Per-stat-type Parquet artifact at `data/output/props/situational_splits/{stat_type}.parquet`.
-- **5b:** Loader `load_prop_situational_splits` reads the artifact and filters to player_id. Serializer populates `situational_splits` as nested dict of cohort → {sample_size, mean_value}. Conditional field_status: pending when artifact missing, no marker when populated (even if empty for the player).
-
-**Step 5 — Complete (2026-07-04).**
-
-**Step 6 — Populate defense-side rows on `/compare/player/{prop_id}`.** ✅ Complete (2026-07-04).
-
-Shipped in two substeps:
-- **6a:** `evaluation/opponent_allowed.py` module.
-Computes per- (opponent_team, position, stat_type, cohort) aggregates: mean allowed, sample size, rank against position (1 = stingiest). Two cohorts:
-  season, l5. CLI command `gridiron props compute-opponent-allowed`.
-  Single Parquet artifact at `data/output/props/opponent_allowed.parquet`.
-- **6b:** Loader `load_opponent_allowed_for_prop` reads artifact and filters to (opponent, position, stat_type). New `_prop_id.py` helper `resolve_opponent_from_game_id` parses game_id string to determine opponent. Serializer populates 3 of 4 defense-side rows
-  (`avg_allowed`, `rank_against_position`, `last_5_games_avg`).
-  Conditional blocker: rows blocked when artifact missing, populated
-  otherwise. `red_zone_rate_allowed` remains blocked (PBP-derived,
-  out of scope).
-
-**Step 6 — Complete (2026-07-04).**
-
-**Step 7 — Team cohort splits.** ✅ Complete (2026-07-04).
-
-Shipped in three substeps:
-- **7a:** `evaluation/team_cohort_splits.py` module. Computes per-
-  (team, cohort) aggregates: 8 metrics (off/def EPA, third-down pct,
-  redzone TD pct, turnover_diff) with rank per (cohort, metric).
-  4 cohorts: season, l4, home, away. CLI command
-  `gridiron teams compute-cohort-splits` in new `cli/teams.py`.
-  Single Parquet artifact at
-  `data/output/rankings/team_cohort_splits.parquet`.
-- **7b:** Loaders `load_team_cohort_splits_df` and
-  `format_team_cohort_splits`. Schema changes:
-  `TeamProfile.situational_splits` renamed to `cohort_splits`;
-  new `cohort_splits` field on `CompareTeamsResponse`. Both endpoints
-  populate the field with conditional pending marker.
-- **7c:** `GameDetail.team_comparison` populated by reading cohort
-  splits for both teams playing. Field on schema was already present
-  but marked pending; now conditionally populates when artifact
-  exists.
-
-**Step 7 — Complete (2026-07-04).**
+**W8 workstream complete.** Tier 1 (skeleton + stubs), Tier 2 (16 populated endpoints), Tier 3 (7 additive datasets) all shipped.
 
 Tier design blocks are drafted at the start of each step.
 
@@ -217,6 +78,8 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | **W8 Tier 3 complete. W8 workstream closed.** Seven additive datasets shipped populating scaffolded fields across the frontend API surface. New CLI subcommand `gridiron teams`. Five new persistence artifacts. Remaining field_status: pending fields blocked on named workstreams. |
+| 2026-07-04 | **W8 workstream closed.** Full W8 (API Serving Layer) shipped across three tiers: skeleton + blocked stubs (Tier 1), populated endpoints (Tier 2, 16 endpoints), additive datasets (Tier 3, 7 additives). Consumed end-to-end by W9 (Frontend). Now between workstreams. |
 | 2026-07-04 | **W8 Tier 3 Step 7 complete.** Team cohort splits: 8 metrics × 4 cohorts per team from EPA data. Populates `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), and `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand app. |
 | 2026-07-04 | **W8 Tier 3 Step 7 design (revised).** Team cohort splits: 8 metrics × 4 cohorts per team, from `epa_by_game.parquet`. Populates 3 endpoints: `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand. Three substeps. |
 | 2026-07-04 | **W8 Tier 3 Step 6 complete.** Opponent-allowed-by-position aggregations for `/compare/player/{prop_id}`. 3 of 4 defense-side rows populate from the artifact; `red_zone_rate_allowed` remains blocked. `resolve_opponent_from_game_id` helper added to `_prop_id.py`. |

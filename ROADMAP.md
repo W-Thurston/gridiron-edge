@@ -172,31 +172,26 @@ See CHANGELOG.md for details.
 
 ### Active Workstream
 
-#### W8: API Serving Layer — 🟡 ACTIVE (Tier 3 designing)
+#### W8: API Serving Layer — ✅ COMPLETE (2026-07-04)
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
 
-**Delivered (Tier 1 + Tier 2, 2026-06-27 through 2026-07-01):**
-- ✅ FastAPI app skeleton at `src/gridiron_edge/api/`, reachable via `gridiron api serve`.
-- ✅ 16 endpoints returning populated data with Pydantic-validated responses. Every prototype-referenced URL returns a 200 with a valid shape.
-- ✅ Placeholder convention (D14) applied consistently: unpopulated fields return `null` with structured `_meta.field_status` entries carrying registered blocker slugs.
-- ✅ Champion resolution flows from manifest → loader → serializer → route for game and prop endpoints (unblocked by W13).
-- ✅ Loader/schema/serializer/route pattern established with three-layer separation, per D17/D18/D19.
-- ✅ Testing: `MiniRepoBuilder` extended with API-specific fixture methods; per-route integration tests via FastAPI `dependency_overrides`.
+**Delivered (2026-07-04):**
+- ✅ 16 endpoints returning populated data with Pydantic-validated responses (Tier 2).
+- ✅ 7 additive datasets computed by dedicated modules, persisted to `data/output/`, and consumed via loader→serializer→route pattern (Tier 3).
+- ✅ Placeholder convention (D14) applied consistently: null + `_meta.field_status` for anything not yet populated.
+- ✅ Champion resolution flows manifest → loader → serializer → route for game and prop endpoints.
+- ✅ Testing infrastructure: `MiniRepoBuilder` extended with 4+ W8-specific methods; integration tests via FastAPI `dependency_overrides`.
 
-**Tier 3 in design (2026-07-03):** Additive datasets to populate scaffolded `field_status` fields. Priority driven by W9 feedback on which pending/blocked states most impact the UX:
+**Remaining scope items** (each in a future workstream):
+- Off/def rating decomposition (Elo variants or EPA-derived, real modeling work).
+- Feature attribution / swing factors / prop reasoning (feature-attribution workstream).
+- Injury data source and downstream fields (ROADMAP §5.3).
+- Multi-book odds / line shopping fields (W7).
+- Live game state fields (W10).
+- PBP-derived aggregations for red_zone_rate_allowed and similar (future workstream).
 
-| Addition | Populates |
-|---|---|
-| Per-stat league-wide percentile ranking pass | Compare screen rank columns, Team Detail rank fields |
-| Off/def rating decomposition | Team Rankings off/def split |
-| Weekly Elo snapshot persistence | Team rating-history endpoint, projections week-over-week delta |
-| Opponent-allowed-by-position aggregation | Player vs Defense view, Player Prop matchup section |
-| Cohort splits (season/L4/home/away, indoor/outdoor, favored/underdog) | Game Detail split tabs, Compare splits, Player Prop situational splits |
-| Prior-week projection snapshot for delta | Projections 1-week change column |
-
-**Dependencies:** None. Fully unblocked.
-**Unlocks:** Every additive shipped fills in more of the frontend UI.
+**Unlocks:** W9 (Frontend) consumes end-to-end. Future workstreams (W12, W4.5, W7, W10) can proceed independently.
 
 ### Future Workstreams (ordered by current priority)
 
@@ -350,7 +345,7 @@ W5.5 ✅
 W13 ✅
 (Champion Resolution)
 │
-W8 (API) 🟡 active
+W8 (API) ✅
 │
 ├── W9 (Frontend) ✅
 │
@@ -362,13 +357,14 @@ W8 (API) 🟡 active
 
 ```
 
-**Current position:** W8 Tier 3 (additive datasets) active. Tiers 1 + 2 complete: 16 populated endpoints with W9 consuming them end-to-end. Path forward:
 
-1. **W8 Tier 3** — additive datasets, prioritized by W9 feedback. Each additive fills in a specific set of scaffolded field_status entries in the API.
-2. **W12 (Ensemble)** — Available; not currently blocking anything. Independent of W8.
-3. **W4.5 (Scenario)** — Blocked on §5.3 injury data source decision.
-4. **W7 (Multi-Book)** — Blocked on §5.2 odds source decision.
-5. **W10 (Real-Time)** — Deferred until W7 and W12 stabilize.
+**Current position:** W8 workstream complete (2026-07-04). All three tiers shipped. Frontend consumes API end-to-end. Between-workstreams pause. Path forward:
+- **W12 (Model Ensemble)** — available. Combines existing champion models into a weighted ensemble.
+- **W4.5 (Scenario Engine)** — blocked on §5.3 injury data source decision.
+- **W7 (Multi-Book Line Shopping)** — blocked on §5.2 odds source decision.
+- **W10 (Real-Time)** — deferred until W7/W12 stabilize.
+- **W8 off/def decomposition** — orphan Tier 3 item; could revisit as a small standalone workstream.
+
 
 ---
 
@@ -469,6 +465,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-04 | **W8 workstream complete.** All three tiers shipped: Tier 1 skeleton + blocked stubs, Tier 2 populated endpoints (16), Tier 3 additive datasets (7). Frontend (W9) consumes API end-to-end. |
 | 2026-07-03 | **W9 complete; W8 Tier 3 opens.** ROADMAP restructured to reflect current state: W9 moved to Completed section; W8 elevated to sole Active workstream with Tier 3 additive datasets as the work. §6 dependency graph redrawn; §1.1 "What's Working" and "What's Missing" tables updated. |
 | 2026-07-03 | **W9 complete.** Frontend consumes the API end-to-end; all 20 prototype screens render. Vite + React + TypeScript at `frontend/`. Every populated field shows real data; every scaffolded field surfaces `field_status`; every error state consistent. M4.5 milestone achieved. Path forward: W8 Tier 3 additive datasets, prioritized by W9 feedback on which field_status states most impact the UX. |
 | 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens wired end-to-end. Real data flows for populated fields; `field_status` renders structured null states for pending/blocked fields. Tier 3 (blocked screens + polish) opens next. |
