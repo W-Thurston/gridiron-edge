@@ -166,6 +166,94 @@ Shipped in two substeps:
 
 **Step 5 — Complete (2026-07-04).**
 
+**Step 6 — Populate defense-side rows on `/compare/player/{prop_id}`.** 🟡 Active.
+
+#### What we are building
+
+Precomputed per-(opponent_team, position, stat_type) aggregations —
+mean stat allowed and rank against the position — for the current
+season. Populates 3 of the 4 currently-blocked defense-side rows on
+the compare/player response: `avg_allowed`, `rank_against_position`,
+`last_5_games_avg`. Leaves `red_zone_rate_allowed` pending (requires
+PBP data not derived here).
+
+#### Why we are building it now
+
+Biggest UX unlock on the /compare/player screen. 4 of 8 stat rows
+currently render "not available" — this step populates 3 of them.
+Same computation pattern as Step 5 (situational splits), so the
+substep breakdown mirrors Step 5's rhythm.
+
+#### Success criteria
+
+- New computation module `evaluation/opponent_allowed.py` produces
+  per-(opponent_team, position, stat_type, cohort) rows.
+- Two cohorts computed: `season` and `l5` (last 5 games rolling).
+- New CLI command `gridiron props compute-opponent-allowed` writes
+  the artifact to `data/output/props/opponent_allowed.parquet`.
+- `/compare/player/{prop_id}` populates the 3 defense-side rows for
+  which we have data. `red_zone_rate_allowed` stays pending.
+- `field_status: blocked/OPPONENT_ALLOWED_BY_POSITION` marker removed
+  from the 3 populated rows.
+- All quality gates pass.
+
+#### Locked decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Cohorts | `season` (all games in current season) + `l5` (last 5 games rolling) | Matches prototype's avg_allowed + last_5_games_avg rows |
+| Attribution | Per game, sum stat from all offensive players with matching position. Average across games. | Handles rare multi-QB games; broader than "starter only" |
+| Season scope | Current season only (max NFL_YEAR from player_game_logs) | Simplest; matches Step 5's approach |
+| When computed | Standalone CLI command `gridiron props compute-opponent-allowed`. Wire into `full-retrain` as follow-up | Small, standalone command; can be automated later |
+| `red_zone_rate_allowed` | Defer to future step | Requires PBP-derived aggregation; out of scope for W8 Tier 3 |
+| Team codes | Modern short codes (KC, LAC, JAX) matching player_game_logs and prop archive | player_game_logs.opponent_team already uses these conventions |
+| Artifact location | `data/output/props/opponent_allowed.parquet` — single file | Small (~1,280 rows); no partitioning needed |
+| Rank convention | 1 = stingiest (lowest avg allowed) to 32 = most generous. Ranked within (position, stat_type, cohort). | Matches prototype's convention |
+| Opponent lookup at request time | Parse from game_id string (e.g. "2026_01_KC_LAC" + player_team=KC → opponent=LAC) | No games CSV lookup needed |
+
+#### Disconfirming evidence
+
+- **Team code mismatch (already noted in ROADMAP §9.6):** player_game_logs
+  uses modern short codes (KC, LAC, JAX); the `NFL_long_to_short_name.csv`
+  reference table uses PFR-era codes (KAN, JAC). Since this step reads
+  directly from player_game_logs and doesn't cross a naming-map
+  boundary, we can use modern codes throughout without issue. But test
+  fixtures should be consistent to avoid confusion.
+- **Small sample sizes early in the season:** if the season has 3 weeks
+  played, `l5` cohort will only have 3 games. Handle gracefully (return
+  sample_size < 5).
+- **`is_skill` filter unclear:** player_game_logs has an `is_skill`
+  column. Should we filter to only skill players when attributing stats?
+  Defer to Substep 6a — for now, sum all players with matching position
+  regardless of `is_skill`.
+
+#### Substep breakdown
+
+**Substep 6a — Opponent-allowed computation module + CLI.**
+- New file `src/gridiron_edge/evaluation/opponent_allowed.py`.
+- Public functions:
+  - `compute_opponent_allowed(player_game_logs)` — returns DataFrame
+    with columns `opponent_team, position, stat_type, cohort,
+    avg_allowed, sample_size, rank_against_position`.
+  - `write_opponent_allowed(df, repo)` — persist to Parquet.
+  - `load_opponent_allowed(repo)` — read the artifact.
+- CLI command `gridiron props compute-opponent-allowed` in `cli/props.py`.
+- Unit tests: cohort partitioning, rank computation, per-position sum,
+  empty inputs, multiple stat_types.
+
+**Substep 6b — Loader + populate defense-side rows on `/compare/player/{prop_id}`.**
+- New loader `load_opponent_allowed_for_prop(settings, opponent_team,
+  position, stat_type)` — returns dict of cohort → aggregates.
+- Small helper `resolve_opponent_from_game_id(game_id, player_team)` in
+  `api/_prop_id.py` — parses game_id string, returns the team code that
+  isn't the player's team.
+- Update `serialize_compare_player` and its route:
+  - Determine opponent via `resolve_opponent_from_game_id`.
+  - Load opponent-allowed lookup.
+  - Populate 3 defense-side rows.
+  - Remove `OPPONENT_ALLOWED_BY_POSITION` blocker for those 3 rows.
+- Integration test.
+
 Tier design blocks are drafted at the start of each step.
 
 ---
@@ -180,6 +268,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | **W8 Tier 3 Step 6 design.** Opponent-allowed-by-position: per-defense aggregations of stat allowed to each position across season + l5 cohorts. Populates 3 defense-side rows on `/compare/player/{prop_id}`. Two substeps: computation module + CLI (6a), loader + serializer (6b). red_zone_rate_allowed deferred pending PBP-derived aggregation. |
 | 2026-07-04 | **W8 Tier 3 Step 5 complete.** Situational splits computed by joining player game logs to games CSV; 8 cohorts (season, home/away, favored/underdog, indoor/outdoor, l4). Per-stat-type Parquet artifacts consumed by `/props/{prop_id}`. First real feature-engineering module in Tier 3. |
 | 2026-07-04 | **W8 Tier 3 Step 5 design.** Prop cohort splits for 8 cohorts (season, home, away, favored, underdog, indoor, outdoor, l4). Data joined from player_game_logs + games CSV on game_id. Per-stat-type Parquet artifacts at `data/output/props/situational_splits/`. Two substeps: computation module + CLI (5a), loader + serializer (5b). |
 | 2026-07-04 | **W8 Tier 3 Step 4 complete.** `n_simulations` on `/projections` populated via new `projections_metadata.json` sidecar. Backwards compatible — legacy projections without sidecar leave the field null. |
