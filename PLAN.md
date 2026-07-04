@@ -112,22 +112,18 @@ No snapshot infrastructure needed.
 
 #### Substep breakdown
 
-Single substep given the small scope:
+**Substep 1a — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-03).
 
-**Substep 1a — Populate `week_over_week_delta` on `/projections`.**
-- Update `api/loaders.py`: helper that reads Elo state, resolves current
-  (season, week), computes per-team Elo delta from prior week within
-  same season, returns team → delta mapping. Handle Week 1 null case.
-- Update the projections loader path to include the delta column (either
-  by modifying `load_projections_summary_df` or by adding a composed
-  loader that joins delta to the CSV data).
-- Update `api/serializers/projections.py` to populate
-  `week_over_week_delta` from the loader's delta column.
-- Unit tests: helper with fixture Elo state (populated, empty, Week 1).
-- Integration test: full `/projections` response returns populated
-  deltas after MiniRepoBuilder writes both Elo state and projections CSV.
-- Frontend: verify the "1w Δ" column renders signed values, styled by
-  sign (green positive, red negative).
+Shipped in one commit:
+- `compute_elo_deltas` helper in `api/loaders.py`. Converts long team names in Elo state to short codes via `load_team_name_map` before returning delta rows keyed on short abbreviation.
+- `load_projections_summary_df` joins delta column into projections CSV data.
+- Serializer populates `week_over_week_delta` from the DataFrame column. `NO_PRIOR_SNAPSHOT` blocker removed from `field_status`.
+- Week 1 → null (em-dash) per design.
+
+Test-fixture inconsistency surfaced during integration testing:
+`MiniRepoBuilder.with_teams_reference()` produces modern short codes (`KC`) while other fixtures use PFR-era codes (`KAN`). Captured for ROADMAP §9.6 as future backend hygiene.
+
+**Step 1 — Complete (2026-07-03).**
 
 #### Disconfirming evidence
 
@@ -155,6 +151,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-03 | **W8 Tier 3 Step 1 complete.** `week_over_week_delta` field on `/projections` now populated with per-team Elo delta from prior NFL week. No new artifact — reads directly from the existing Elo state table. First Tier 3 additive shipped. |
 | 2026-07-03 | **W8 Tier 3 Step 1 design.** Prior-week projection delta populates via existing Elo state table. No snapshot mechanism needed — `NFL_Team_Elo.csv` already stores weekly Elo per team. Single substep to update the projections loader and serializer. Week 1 → null (em-dash) per user preference over playoff-final delta which reads as "nothing happened" for 30 of 32 teams. |
 | 2026-07-03 | **W9 Frontend complete.** Vite + React + TypeScript app consuming the 16-endpoint API. Three tiers: client infrastructure, populated screens (12 API-consuming), blocked screens + polish (4 blocked, 4 client-side). Every prototype-referenced URL renders. Every `field_status` scaffolded field surfaces its state via `<PendingField />` / `<BlockedField />`. Consistent error UX via `<ErrorCard />` and global `<OfflineBanner />`. Details in CHANGELOG.md. |
 | 2026-07-01 | **W8 API Serving Layer Tier 2 complete.** 16 endpoints returning populated data with Pydantic-validated responses. Champion resolution threads through loader → serializer → route. Placeholder convention (D14) applied consistently via `_meta.field_status`. Details in CHANGELOG.md. |
