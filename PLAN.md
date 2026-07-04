@@ -181,111 +181,27 @@ Computes per- (opponent_team, position, stat_type, cohort) aggregates: mean allo
 
 **Step 6 — Complete (2026-07-04).**
 
-**Step 7 — Team cohort splits.** 🟡 Active.
+**Step 7 — Team cohort splits.** ✅ Complete (2026-07-04).
 
-#### What we are building
+Shipped in three substeps:
+- **7a:** `evaluation/team_cohort_splits.py` module. Computes per-
+  (team, cohort) aggregates: 8 metrics (off/def EPA, third-down pct,
+  redzone TD pct, turnover_diff) with rank per (cohort, metric).
+  4 cohorts: season, l4, home, away. CLI command
+  `gridiron teams compute-cohort-splits` in new `cli/teams.py`.
+  Single Parquet artifact at
+  `data/output/rankings/team_cohort_splits.parquet`.
+- **7b:** Loaders `load_team_cohort_splits_df` and
+  `format_team_cohort_splits`. Schema changes:
+  `TeamProfile.situational_splits` renamed to `cohort_splits`;
+  new `cohort_splits` field on `CompareTeamsResponse`. Both endpoints
+  populate the field with conditional pending marker.
+- **7c:** `GameDetail.team_comparison` populated by reading cohort
+  splits for both teams playing. Field on schema was already present
+  but marked pending; now conditionally populates when artifact
+  exists.
 
-Precomputed per-(team, cohort) EPA and efficiency aggregations for
-the current season. Populates cohort_splits fields on three
-endpoints: `/compare/teams`, `/teams/{abbr}`, and `/games/{game_id}`.
-
-Eight metrics per (team, cohort):
-- `off_epa_per_play`, `def_epa_per_play` (unit strengths)
-- `off_pass_epa`, `off_rush_epa`, `def_rush_epa` (breakdown)
-- `off_third_down_pct`, `off_redzone_td_pct` (situational)
-- `turnover_diff` (composite: off_turnover_rate - def_turnover_rate)
-
-Four cohorts: season, l4, home, away.
-
-#### Why we are building it now
-
-Fills currently-blocked space on three major screens: Compare
-(team-vs-team stat rows), Team Profile (situational splits card),
-and Game Detail (team comparison card). Uses existing
-`epa_by_game.parquet` data — no new joins needed.
-
-Symmetric with Step 5's prop cohort splits at team level.
-
-#### Success criteria
-
-- New computation module `evaluation/team_cohort_splits.py`.
-- New CLI command `gridiron teams compute-cohort-splits`.
-- Artifact at `data/output/rankings/team_cohort_splits.parquet`.
-- `/compare/teams` populates `cohort_splits` for both teams.
-- `/teams/{abbr}` populates renamed `cohort_splits` field.
-- `/games/{game_id}` populates `team_comparison` field with cohort
-  splits for both teams playing.
-- All quality gates pass.
-
-#### Locked decisions
-
-| Decision | Choice | Rationale |
-|---|---|---|
-| Data source | `epa_by_game.parquet` (existing) | All 8 metrics from single source; no joins needed |
-| Metrics (8) | off_epa_per_play, off_pass_epa, off_rush_epa, def_epa_per_play, def_rush_epa, off_third_down_pct, off_redzone_td_pct, turnover_diff | Matches prototype Team Comparison rows |
-| Cohorts | season, l4, home, away | Matches Step 5's cohort model |
-| Season scope | Current season only | Same as Step 5 |
-| Team names | Long names in EPA → short codes via `load_teams_long_short` | Same pattern as Step 5 |
-| Home/away | Parse from game_id string (e.g. "2024_01_KC_LAC" → KC away, LAC home) | Consistent with Step 6 |
-| Rank direction | Off metrics: rank 1 = highest. Def metrics + turnover_diff: rank 1 = best (lowest def; highest turnover_diff). | Reflects "better team" for both directions |
-| Artifact | `data/output/rankings/team_cohort_splits.parquet` (long format) | Small (~128 rows) |
-| CLI location | New `gridiron teams` subcommand app in `cli/teams.py` | No team commands exist today |
-| Schema additions | `CompareTeamsResponse.cohort_splits: dict[str, dict] | None`; populate `GameDetail.team_comparison` (existing field) | Additive on compare; renaming needed for TeamProfile |
-| Schema rename | `TeamProfile.situational_splits` → `cohort_splits` | Consistent naming across endpoints |
-| When computed | Standalone command; wire into `full-retrain` as follow-up | Same as Step 6 |
-
-#### Disconfirming evidence
-
-- **Prototype Team Comparison uses "vs winning teams" cohort** — this
-  would be a 5th cohort. Skip for T7 (deferred to future step or Tier 4
-  polish).
-- **Prototype shows "Run def yds/g" not `def_rush_epa`** — the yardage
-  metric isn't directly available in EPA data. Use `def_rush_epa` as a
-  proxy for run defense strength.
-- **Prototype's `turnover_diff` shows +0.4 per game** — this is per-game
-  turnover margin. My proposed `turnover_diff` metric is a rate difference
-  (0-1 scale); may want to scale to per-game (× off_plays or × games).
-  Simpler: leave as rate difference and let frontend format.
-- **Frontend consuming `situational_splits` on TeamProfile** will need
-  updating when renamed to `cohort_splits`. Small frontend change.
-- **`GameDetail.team_comparison` is currently a broader concept** in the
-  frontend prototype (includes labels, bar rendering, etc.). Populating
-  it with cohort_splits is one interpretation; frontend may need format
-  adjustment. Defer that adjustment; the schema will hold the data
-  either way.
-
-#### Substep breakdown
-
-**Substep 7a — Team cohort splits computation module + CLI.**
-- New file `src/gridiron_edge/evaluation/team_cohort_splits.py`.
-- Public functions:
-  - `compute_team_cohort_splits(epa_df, long_to_short)` → DataFrame
-    with columns: team_abbr, cohort, off_epa_per_play, off_pass_epa,
-    off_rush_epa, def_epa_per_play, def_rush_epa, off_third_down_pct,
-    off_redzone_td_pct, turnover_diff, sample_size, plus 8 rank columns.
-  - `write_team_cohort_splits(df, repo)` → Path.
-  - `load_team_cohort_splits(repo)` → DataFrame.
-- New `cli/teams.py` with `teams_app` and `compute_cohort_splits_cmd`.
-- Register `teams_app` in `cli/main.py`.
-- Unit tests: cohort partitioning, rank direction (off vs def),
-  team name conversion, empty inputs, missing metric columns,
-  turnover_diff computation.
-
-**Substep 7b — Loader + populate `/compare/teams` and `/teams/{abbr}`.**
-- Rename `TeamProfile.situational_splits` → `cohort_splits` in schema.
-- Add `cohort_splits: dict[str, dict] | None` field on
-  `CompareTeamsResponse`.
-- New loader `load_team_cohort_splits_df(settings)`.
-- Helper `format_cohort_splits_for_team(df, team_abbr)` → nested dict.
-- Update serializers.
-- Remove pending markers when populated.
-- Integration tests.
-
-**Substep 7c — Populate `team_comparison` on `/games/{game_id}`.**
-- Update `serialize_game_detail` to populate `team_comparison` with
-  cohort splits for both teams.
-- Remove pending marker when populated.
-- Integration test.
+**Step 7 — Complete (2026-07-04).**
 
 Tier design blocks are drafted at the start of each step.
 
@@ -301,6 +217,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | **W8 Tier 3 Step 7 complete.** Team cohort splits: 8 metrics × 4 cohorts per team from EPA data. Populates `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), and `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand app. |
 | 2026-07-04 | **W8 Tier 3 Step 7 design (revised).** Team cohort splits: 8 metrics × 4 cohorts per team, from `epa_by_game.parquet`. Populates 3 endpoints: `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand. Three substeps. |
 | 2026-07-04 | **W8 Tier 3 Step 6 complete.** Opponent-allowed-by-position aggregations for `/compare/player/{prop_id}`. 3 of 4 defense-side rows populate from the artifact; `red_zone_rate_allowed` remains blocked. `resolve_opponent_from_game_id` helper added to `_prop_id.py`. |
 | 2026-07-04 | **W8 Tier 3 Step 6 design.** Opponent-allowed-by-position: per-defense aggregations of stat allowed to each position across season + l5 cohorts. Populates 3 defense-side rows on `/compare/player/{prop_id}`. Two substeps: computation module + CLI (6a), loader + serializer (6b). red_zone_rate_allowed deferred pending PBP-derived aggregation. |
