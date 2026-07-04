@@ -69,7 +69,7 @@ during W9 exploration. Highest impact goes first.
 
 ### Design — Tier 3
 
-**Step 1 — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-03).
+**Step 1 — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-04).
 
 **What we are building:** The `TeamProjectionRow.week_over_week_delta`
 field on the `/projections` API response is currently declared but never
@@ -112,7 +112,7 @@ No snapshot infrastructure needed.
 
 #### Substep breakdown
 
-**Substep 1a — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-03).
+**Substep 1a — Populate `week_over_week_delta` on `/projections`.** ✅ Complete (2026-07-04).
 
 Shipped in one commit:
 - `compute_elo_deltas` helper in `api/loaders.py`. Converts long team names in Elo state to short codes via `load_team_name_map` before returning delta rows keyed on short abbreviation.
@@ -123,49 +123,27 @@ Shipped in one commit:
 Test-fixture inconsistency surfaced during integration testing:
 `MiniRepoBuilder.with_teams_reference()` produces modern short codes (`KC`) while other fixtures use PFR-era codes (`KAN`). Captured for ROADMAP §9.6 as future backend hygiene.
 
-**Step 1 — Complete (2026-07-03).**
+**Step 1 — Complete (2026-07-04).**
 
-**Step 2 — Per-team percentile ranking pass.** ✅ Complete (2026-07-03).
+**Step 2 — Per-team percentile ranking pass.** ✅ Complete (2026-07-04).
 
 Shipped in three substeps:
 - **2a:** `evaluation/percentiles.py` module + persistence. Computes per-team percentiles for 4 stats (rating, avg_wins, make_playoffs, win_sb), writes to `data/output/rankings/percentiles/`. Wired into `sim run` as a final step; standalone `gridiron sim compute-percentiles` CLI command added.
 - **2b:** Loader + populate `/teams` and `/teams/{abbr}`. Four percentile fields added to `TeamRankingRow` and `TeamProfile` schemas. Empty artifact → null fields.
 - **2c:** Populate `/compare/teams` percentile fields. `team_a_pct` and `team_b_pct` added to `StatRow`. Populated on 4 rankable stat rows. Aggregate `percentile_ranks` scaffold row removed; `avg_wins` and `win_sb` rows added; `playoff_probability` renamed to `make_playoffs`.
 
-**Step 2 — Complete (2026-07-03).**
+**Step 2 — Complete (2026-07-04).**
 
-**Step 3 — Populate `trend` field on `/teams` and `/teams/{abbr}`.** 🟡 Active.
+**Step 3 — Populate `trend` field on `/teams` and `/teams/{abbr}`.** ✅ Complete (2026-07-04).
 
-#### What we are building
+Reused `compute_elo_deltas` from Step 1 to compute per-team Elo change
+from the prior NFL week within the same season. Serializers populate
+the `trend` field on both `TeamRankingRow` and `TeamProfile`. Removed
+`NO_PRIOR_SNAPSHOT` blocker on trend fields. Week 1 → null.
 
-Populate the currently-blocked `trend` field on `TeamRankingRow` and `TeamProfile` with per-team Elo change from the prior NFL week within the same season.
+Single substep — smaller than Steps 1 and 2 given the reuse.
 
-#### Why we are building it now
-
-Small drop-in win. The `trend` field is already declared on both team schemas but currently marked `field_status: NO_PRIOR_SNAPSHOT`. Elo state table already has weekly granularity — same setup as Step 1's `week_over_week_delta` on projections. One loader helper + one serializer update populates the field on both endpoints. Frontend already renders trend when populated (as green ↑ / red ↓ badges per the TeamRankings prototype).
-
-#### Success criteria
-
-- `/teams` populates `trend` on every `TeamRankingRow` where prior-week Elo exists.
-- `/teams/{abbr}` populates `trend` on `TeamProfile`.
-- Week 1 → null.
-- `field_status` no longer marks trend as blocked.
-- All quality gates pass.
-
-#### Locked decisions
-
-Same shape as Step 1. See ROADMAP §9.6 for backend hygiene notes if new patterns emerge.
-
-#### Substep breakdown
-
-Single substep given the small scope:
-
-**Substep 3a — Populate `trend` field.**
-- Reuse `compute_elo_deltas` from Step 1 (or add a similar `compute_team_trend` helper if the shape needs to differ — verify
-  first).
-- Update `serialize_team_rankings` and `serialize_team_profile` to populate `trend` from the delta.
-- Remove `NO_PRIOR_SNAPSHOT` blocker on trend fields in both serializers.
-- Unit + integration tests.
+**Step 3 — Complete (2026-07-04).**
 
 
 #### Tier 3 remaining inventory (unchanged)
@@ -195,11 +173,12 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| 2026-07-03 | **W8 Tier 3 Step 3 design.** Populate `trend` field on `/teams` and `/teams/{abbr}` with per-team Elo change from prior NFL week. Same shape as Step 1's `week_over_week_delta` on projections. Single substep. |
-| 2026-07-03 | **W8 Tier 3 Step 2 complete.** Per-team percentile ranking pass shipped across `/teams`, `/teams/{abbr}`, and `/compare/teams`. New `evaluation/percentiles.py` module + persistence artifact at `data/output/rankings/percentiles/`. Wired into `sim run` and exposed via `gridiron sim compute-percentiles` for standalone use. |
-| 2026-07-03 | **W8 Tier 3 Step 2 design.** Per-team percentile ranking pass for 4 stats (Elo, avg_wins, make_playoffs, win_sb). Three substeps: computation module (2a), loader + `/teams` endpoints (2b), `/compare/teams` percentile fields (2c). Aggregate `percentile_ranks` scaffold row on `/compare/teams` replaced with per-row percentiles on rankable stat rows. Frontend consumes `pct` values via `rankColor()` and bar-width formulas already in the prototype. |
-| 2026-07-03 | **W8 Tier 3 Step 1 complete.** `week_over_week_delta` field on `/projections` now populated with per-team Elo delta from prior NFL week. No new artifact — reads directly from the existing Elo state table. First Tier 3 additive shipped. |
-| 2026-07-03 | **W8 Tier 3 Step 1 design.** Prior-week projection delta populates via existing Elo state table. No snapshot mechanism needed — `NFL_Team_Elo.csv` already stores weekly Elo per team. Single substep to update the projections loader and serializer. Week 1 → null (em-dash) per user preference over playoff-final delta which reads as "nothing happened" for 30 of 32 teams. |
+| 2026-07-04 | **W8 Tier 3 Step 3 complete.** `trend` field on `/teams` and `/teams/{abbr}` populated via reused `compute_elo_deltas` from Step 1. Smaller substep than 1 or 2 due to helper reuse. |
+| 2026-07-04 | **W8 Tier 3 Step 3 design.** Populate `trend` field on `/teams` and `/teams/{abbr}` with per-team Elo change from prior NFL week. Same shape as Step 1's `week_over_week_delta` on projections. Single substep. |
+| 2026-07-04 | **W8 Tier 3 Step 2 complete.** Per-team percentile ranking pass shipped across `/teams`, `/teams/{abbr}`, and `/compare/teams`. New `evaluation/percentiles.py` module + persistence artifact at `data/output/rankings/percentiles/`. Wired into `sim run` and exposed via `gridiron sim compute-percentiles` for standalone use. |
+| 2026-07-04 | **W8 Tier 3 Step 2 design.** Per-team percentile ranking pass for 4 stats (Elo, avg_wins, make_playoffs, win_sb). Three substeps: computation module (2a), loader + `/teams` endpoints (2b), `/compare/teams` percentile fields (2c). Aggregate `percentile_ranks` scaffold row on `/compare/teams` replaced with per-row percentiles on rankable stat rows. Frontend consumes `pct` values via `rankColor()` and bar-width formulas already in the prototype. |
+| 2026-07-04 | **W8 Tier 3 Step 1 complete.** `week_over_week_delta` field on `/projections` now populated with per-team Elo delta from prior NFL week. No new artifact — reads directly from the existing Elo state table. First Tier 3 additive shipped. |
+| 2026-07-04 | **W8 Tier 3 Step 1 design.** Prior-week projection delta populates via existing Elo state table. No snapshot mechanism needed — `NFL_Team_Elo.csv` already stores weekly Elo per team. Single substep to update the projections loader and serializer. Week 1 → null (em-dash) per user preference over playoff-final delta which reads as "nothing happened" for 30 of 32 teams. |
 | 2026-07-03 | **W9 Frontend complete.** Vite + React + TypeScript app consuming the 16-endpoint API. Three tiers: client infrastructure, populated screens (12 API-consuming), blocked screens + polish (4 blocked, 4 client-side). Every prototype-referenced URL renders. Every `field_status` scaffolded field surfaces its state via `<PendingField />` / `<BlockedField />`. Consistent error UX via `<ErrorCard />` and global `<OfflineBanner />`. Details in CHANGELOG.md. |
 | 2026-07-01 | **W8 API Serving Layer Tier 2 complete.** 16 endpoints returning populated data with Pydantic-validated responses. Champion resolution threads through loader → serializer → route. Placeholder convention (D14) applied consistently via `_meta.field_status`. Details in CHANGELOG.md. |
 | 2026-07-01 | **W13 Runtime Champion Resolution complete.** Static manifest artifact at `data/output/champions/champions.json` written by `full-retrain`. `resolve_current_champion(model_name)` reads from it. CLI consumers migrated to `--model-type auto` pattern. Unblocks all downstream champion-only consumption paths. Details in CHANGELOG.md. |
