@@ -48,6 +48,7 @@ class TestSerializeProjections:
             LONG_TO_SHORT,
             "2025-2026",
             None,
+            n_simulations=None,
         )
         assert result.items == []
         assert result.total == 0
@@ -60,6 +61,7 @@ class TestSerializeProjections:
             LONG_TO_SHORT,
             "2025-2026",
             "2025-11-24T18:30:00Z",
+            n_simulations=None,
         )
         assert result.total == 2
         assert result.season == "2025-2026"
@@ -76,13 +78,11 @@ class TestSerializeProjections:
             LONG_TO_SHORT,
             "2025-2026",
             None,
+            n_simulations=None,
         )
         fs = result.response_meta.field_status
-        assert "n_simulations" in fs
         assert "items.clinched" in fs
         assert "items.eliminated" in fs
-        # week_over_week_delta is now populated from Elo state, not blocked.
-        assert "items.week_over_week_delta" not in fs
 
     def test_unknown_abbr_falls_back_to_abbr_as_name(self) -> None:
         df = pd.DataFrame(
@@ -98,7 +98,48 @@ class TestSerializeProjections:
                 },
             ],
         )
-        result = serialize_projections(df, LONG_TO_SHORT, "2025-2026", None)
+        result = serialize_projections(
+            df,
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=None,
+        )
         # Unknown abbreviation should default name to the abbr
         assert result.items[0].abbr == "XXX"
         assert result.items[0].name == "XXX"
+
+
+class TestNSimulations:
+    def test_populates_n_simulations(self) -> None:
+        result = serialize_projections(
+            _make_df(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=10000,
+        )
+        assert result.n_simulations == 10000
+
+    def test_null_n_simulations_stays_null(self) -> None:
+        result = serialize_projections(
+            _make_df(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=None,
+        )
+        assert result.n_simulations is None
+
+    def test_no_longer_marks_n_simulations_pending(self) -> None:
+        """The field_status marker on n_simulations should be gone
+        now that we populate the field."""
+        result = serialize_projections(
+            _make_df(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=10000,
+        )
+        fs = result.response_meta.field_status
+        assert "n_simulations" not in fs

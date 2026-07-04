@@ -14,6 +14,7 @@ never used from the API path.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -213,31 +214,43 @@ def compute_elo_deltas(
 
 def load_projections_summary_df(
     settings: Settings,
-) -> tuple[pd.DataFrame, str | None]:
-    """Load the projections summary CSV, joined with per-team Elo deltas.
+) -> tuple[pd.DataFrame, str | None, int | None]:
+    """Load the projections summary CSV, joined with Elo deltas.
+
+    Also reads the projections_metadata.json sidecar if present.
 
     Reads projections_summary.csv and joins per-team Elo delta from the
     Elo state table (prior NFL week within same season). Populates the
     ``week_over_week_delta`` column on the returned DataFrame.
 
     Returns:
-        Tuple of (dataframe, csv_mtime_iso). The mtime is the projections
-        CSV file's last-modified time as an ISO string, useful for
-        staleness display. Returns (empty_df, None) if the CSV doesn't
-        exist.
+        Tuple of (dataframe, csv_mtime_iso, n_simulations).
+        - dataframe: projections with delta column merged.
+        - csv_mtime_iso: last-modified time of the CSV as ISO string.
+        - n_simulations: from the metadata JSON, or None if unavailable.
 
-    Notes:
-        Teams without a prior-week Elo entry (Week 1 of a season, or
-        fresh checkouts without historical data) get null for
-        ``week_over_week_delta``. Frontend renders these as em-dashes.
+        Returns (empty_df, None, None) if the CSV doesn't exist.
     """
     path: Path = settings.repo_root / "data" / "output" / "temp" / "projections_summary.csv"
+    metadata_path: Path = (
+        settings.repo_root / "data" / "output" / "temp" / "projections_metadata.json"
+    )
 
     if not path.exists():
-        return pd.DataFrame(), None
+        return pd.DataFrame(), None, None
 
     df = pd.read_csv(path)
     mtime: str = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+
+    # Read metadata sidecar if it exists.
+    n_simulations: int | None = None
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text())
+            n_simulations = metadata.get("n_simulations")
+        except (json.JSONDecodeError, OSError):
+            # Corrupt metadata → treat as missing.
+            n_simulations = None
 
     # Compute per-team Elo deltas and join.
     elo_state: DataFrame = load_elo_state_df(settings)
@@ -256,7 +269,7 @@ def load_projections_summary_df(
         df["week_over_week_delta"] = df["elo_delta"]
         df = df.drop(columns=["team_abbr", "elo_delta"], errors="ignore")
 
-    return df, mtime
+    return df, mtime, n_simulations
 
 
 def load_team_percentiles_df(

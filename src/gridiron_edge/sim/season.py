@@ -19,6 +19,8 @@ containers from sim._types; import kernels from sim._engine.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -703,6 +705,16 @@ def run_full_simulation(
         df_season_grid.to_csv(grid_path, index=False)
         logger.info("Wrote: %s", proj_path)
         logger.info("Wrote: %s", grid_path)
+
+        # Metadata sidecar for the projections. Used by /projections to
+        # populate the n_simulations field on the response.
+        metadata_path: Path = paths.output_temp_dir / "projections_metadata.json"
+        metadata: dict[str, int | str] = {
+            "n_simulations": config.n_sims,
+            "computed_at": datetime.now(UTC).isoformat(),
+        }
+        metadata_path.write_text(json.dumps(metadata, indent=2))
+        logger.info("Wrote: %s", metadata_path)
 
     with _log_phase("Compute + persist team percentiles"):
         from gridiron_edge.core.settings import get_settings

@@ -33,6 +33,7 @@ def serialize_projections(
     long_to_short: dict[str, str],
     season: str,
     computed_at: str | None,
+    n_simulations: int | None,
 ) -> ProjectionsList:
     """Build the /projections response from the projections summary CSV.
 
@@ -57,7 +58,7 @@ def serialize_projections(
         return ProjectionsList(
             season=season,
             computed_at=computed_at,
-            n_simulations=None,
+            n_simulations=n_simulations,
             items=[],
             total=0,
             response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
@@ -84,14 +85,13 @@ def serialize_projections(
     # Response-level pending fields (n_simulations still not populated).
     # Row-level pending: clinched, eliminated remain pending.
     # week_over_week_delta is now populated; no longer marked as blocked.
-    meta = meta.with_pending("n_simulations")
     meta = meta.with_pending("items.clinched")
     meta = meta.with_pending("items.eliminated")
 
     return ProjectionsList(
         season=season,
         computed_at=computed_at,
-        n_simulations=None,
+        n_simulations=n_simulations,
         items=rows,
         total=len(rows),
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]

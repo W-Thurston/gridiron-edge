@@ -31,7 +31,7 @@ def get_projections(
     ),
 ) -> ProjectionsList:
     """Return Monte Carlo season and playoff projections for all teams."""
-    df, computed_at = load_projections_summary_df(settings)
+    df, computed_at, n_simulations = load_projections_summary_df(settings)
     long_to_short = load_team_name_map(settings)
 
     if season is None:
@@ -39,4 +39,10 @@ def get_projections(
     else:
         resolved_season = season
 
-    return serialize_projections(df, long_to_short, resolved_season, computed_at)
+    return serialize_projections(
+        df,
+        long_to_short,
+        resolved_season,
+        computed_at,
+        n_simulations,
+    )

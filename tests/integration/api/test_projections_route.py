@@ -234,3 +234,101 @@ class TestProjectionsDelta:
 
         # Key should not exist since we removed the blocker.
         assert "items.week_over_week_delta" not in status
+
+
+class TestNSimulationsMetadata:
+    def test_populates_from_metadata_json(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        import json
+
+        elo_state = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+            ]
+        )
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_minimal_games_df())
+            .with_elo_state(elo_state)
+            .with_teams_reference()
+        )
+
+        _write_projections_summary(
+            tmp_path,
+            [
+                {
+                    "TEAM": "KC",
+                    "AVG_WINS": 11.5,
+                    "P_MAKE_PLAYOFFS": 0.85,
+                    "P_REACH_DIV": 0.65,
+                    "P_REACH_CONF": 0.42,
+                    "P_REACH_SB": 0.24,
+                    "P_WIN_SB": 0.13,
+                },
+            ],
+        )
+
+        # Write metadata sidecar.
+        metadata_path = tmp_path / "data" / "output" / "temp" / "projections_metadata.json"
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "n_simulations": 5000,
+                    "computed_at": "2026-07-03T14:00:00+00:00",
+                }
+            )
+        )
+
+        response = client.get("/projections")
+        body = response.json()
+        assert body["n_simulations"] == 5000
+
+    def test_no_metadata_leaves_field_null(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        elo_state = pd.DataFrame(
+            [
+                {
+                    "NFL_TEAM": "Kansas City Chiefs",
+                    "NFL_YEAR": "2026-2027",
+                    "NFL_WEEK": 1,
+                    "ELO": 1580.0,
+                },
+            ]
+        )
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_minimal_games_df())
+            .with_elo_state(elo_state)
+            .with_teams_reference()
+        )
+
+        _write_projections_summary(
+            tmp_path,
+            [
+                {
+                    "TEAM": "KC",
+                    "AVG_WINS": 11.5,
+                    "P_MAKE_PLAYOFFS": 0.85,
+                    "P_REACH_DIV": 0.65,
+                    "P_REACH_CONF": 0.42,
+                    "P_REACH_SB": 0.24,
+                    "P_WIN_SB": 0.13,
+                },
+            ],
+        )
+        # No metadata sidecar written.
+
+        response = client.get("/projections")
+        body = response.json()
+        assert body["n_simulations"] is None
