@@ -196,3 +196,86 @@ class TestCompareTeamsPercentiles:
         )
         assert result.response_meta is not None
         assert "percentile_ranks" not in result.response_meta.field_status
+
+
+class TestSerializeComparePlayerOpponentAllowed:
+    def _valid_row(self) -> dict:
+        return {
+            "predicted_at": "2024-08-01T00:00:00+00:00",
+            "is_backfilled": True,
+            "season": 2024,
+            "week": 1,
+            "game_id": "2024_01_LAC_KC",
+            "player_id": "P1",
+            "player_name": "P.Mahomes",
+            "position": "QB",
+            "team": "KC",
+            "stat_type": "qb_pass_yards",
+            "model_name": "qb_pass_yards",
+            "model_type": "elasticnet",
+            "predicted_mean": 275.0,
+            "predicted_std": 45.0,
+            "lo_90": 200.0,
+            "hi_90": 350.0,
+        }
+
+    def test_populates_defense_rows_when_data_present(self) -> None:
+        from gridiron_edge.api.serializers.compare import serialize_compare_player
+
+        opponent_allowed = {
+            "season": {"avg_allowed": 275.0, "sample_size": 5, "rank_against_position": 3},
+            "l5": {"avg_allowed": 265.0, "sample_size": 5, "rank_against_position": 2},
+        }
+
+        result = serialize_compare_player(
+            self._valid_row(),
+            opponent_allowed=opponent_allowed,
+        )
+
+        by_key = {row.key: row for row in result.stats}
+        assert by_key["avg_allowed"].defense_value == 275.0
+        assert by_key["rank_against_position"].defense_value == 3
+        assert by_key["last_5_games_avg"].defense_value == 265.0
+        # red_zone_rate_allowed always null.
+        assert by_key["red_zone_rate_allowed"].defense_value is None
+
+    def test_removes_blocker_when_data_present(self) -> None:
+        from gridiron_edge.api.serializers.compare import serialize_compare_player
+
+        opponent_allowed = {
+            "season": {"avg_allowed": 275.0, "sample_size": 5, "rank_against_position": 3},
+        }
+
+        result = serialize_compare_player(
+            self._valid_row(),
+            opponent_allowed=opponent_allowed,
+        )
+
+        fs = result.response_meta.field_status
+        # 3 defense rows no longer blocked.
+        assert "avg_allowed" not in fs
+        assert "rank_against_position" not in fs
+        assert "last_5_games_avg" not in fs
+        # red_zone_rate_allowed still blocked.
+        assert "red_zone_rate_allowed" in fs
+
+    def test_none_leaves_blockers_intact(self) -> None:
+        from gridiron_edge.api.serializers.compare import serialize_compare_player
+
+        result = serialize_compare_player(self._valid_row(), opponent_allowed=None)
+
+        fs = result.response_meta.field_status
+        assert "avg_allowed" in fs
+        assert "rank_against_position" in fs
+        assert "last_5_games_avg" in fs
+        assert "red_zone_rate_allowed" in fs
+
+    def test_empty_dict_leaves_blockers_intact(self) -> None:
+        from gridiron_edge.api.serializers.compare import serialize_compare_player
+
+        result = serialize_compare_player(self._valid_row(), opponent_allowed={})
+
+        fs = result.response_meta.field_status
+        assert "avg_allowed" in fs
+        assert "rank_against_position" in fs
+        assert "last_5_games_avg" in fs

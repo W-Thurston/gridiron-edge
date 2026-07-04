@@ -215,7 +215,11 @@ def serialize_compare_teams(
     )
 
 
-def serialize_compare_player(row: dict) -> ComparePlayerResponse:
+def serialize_compare_player(
+    row: dict,
+    *,
+    opponent_allowed: dict[str, dict] | None = None,
+) -> ComparePlayerResponse:
     """Build the /compare/player/{prop_id} response.
 
     Populated stats come from the archive row's projection fields.
@@ -272,21 +276,21 @@ def serialize_compare_player(row: dict) -> ComparePlayerResponse:
             label="Defense: Avg Allowed",
             unit="yards",
             projection_value=None,
-            defense_value=None,
+            defense_value=_get_defense_stat(opponent_allowed, "season", "avg_allowed"),
         ),
         PlayerVsDefenseRow(
             key="rank_against_position",
             label="Defense: Rank vs Position",
             unit="rank",
             projection_value=None,
-            defense_value=None,
+            defense_value=_get_defense_stat(opponent_allowed, "season", "rank_against_position"),
         ),
         PlayerVsDefenseRow(
             key="last_5_games_avg",
             label="Defense: L5 Avg Allowed",
             unit="yards",
             projection_value=None,
-            defense_value=None,
+            defense_value=_get_defense_stat(opponent_allowed, "l5", "avg_allowed"),
         ),
         PlayerVsDefenseRow(
             key="red_zone_rate_allowed",
@@ -298,11 +302,27 @@ def serialize_compare_player(row: dict) -> ComparePlayerResponse:
     ]
 
     meta = ResponseMeta()
-    # Defense-side rows: all blocked on Tier 3 additive dataset.
-    meta = meta.with_blocked("avg_allowed", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
-    meta = meta.with_blocked("rank_against_position", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
-    meta = meta.with_blocked("last_5_games_avg", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
-    meta = meta.with_blocked("red_zone_rate_allowed", *Unavailable.OPPONENT_ALLOWED_BY_POSITION)
+    # red_zone_rate_allowed always blocked (requires PBP-derived aggregation).
+    meta = meta.with_blocked(
+        "red_zone_rate_allowed",
+        *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
+    )
+
+    # Other defense rows: block only when data is missing (no artifact
+    # for this opponent/position/stat combination).
+    if opponent_allowed is None or not opponent_allowed:
+        meta = meta.with_blocked(
+            "avg_allowed",
+            *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
+        )
+        meta = meta.with_blocked(
+            "rank_against_position",
+            *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
+        )
+        meta = meta.with_blocked(
+            "last_5_games_avg",
+            *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
+        )
 
     return ComparePlayerResponse(
         prop_id=_build_prop_id(row),
@@ -318,3 +338,20 @@ def serialize_compare_player(row: dict) -> ComparePlayerResponse:
         stats=stats,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )
+
+
+def _get_defense_stat(
+    opponent_allowed: dict[str, dict] | None,
+    cohort: str,
+    field: str,
+) -> float | int | None:
+    """Extract a specific stat from the opponent_allowed dict.
+
+    Returns None if the dict is None/empty or the cohort/field isn't present.
+    """
+    if opponent_allowed is None:
+        return None
+    cohort_data = opponent_allowed.get(cohort)
+    if cohort_data is None:
+        return None
+    return cohort_data.get(field)

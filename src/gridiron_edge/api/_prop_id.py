@@ -44,3 +44,27 @@ def decode_prop_id(prop_id: str) -> tuple[str, str, str]:
             ),
         )
     return game_id, player_id, stat_type
+
+
+def resolve_opponent_from_game_id(game_id: str, player_team: str) -> str | None:
+    """Determine the opponent team from a game_id and the player's team.
+
+    Args:
+        game_id: Composite game_id like "2026_01_KC_LAC".
+        player_team: Short team code (e.g. "KC").
+
+    Returns:
+        Short team code of the opponent, or None if game_id is malformed
+        or player_team doesn't match either team in the game.
+    """
+    parts: list[str] = game_id.split("_")
+    if len(parts) != 4:
+        return None
+
+    _, _, away_team, home_team = parts
+
+    if player_team == away_team:
+        return home_team
+    if player_team == home_team:
+        return away_team
+    return None

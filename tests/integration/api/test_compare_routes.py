@@ -89,6 +89,73 @@ def _make_elo_state_for_teams() -> pd.DataFrame:
     )
 
 
+def _write_prop_manifest(
+    tmp_path: Path,
+    families: dict[str, str],
+) -> None:
+    """Write a champion manifest for the given families."""
+    import json
+
+    manifest_dir = tmp_path / "data" / "output" / "champions"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "schema_version": 1,
+        "updated_at": "2026-07-04T00:00:00+00:00",
+        "models": {
+            family: {
+                "model_type": model_type,
+                "promoted_at": "2026-07-04T00:00:00",
+                "source_run_id": "TEST_RUN",
+                "metrics": {"mae": 60.0},
+            }
+            for family, model_type in families.items()
+        },
+    }
+    (manifest_dir / "champions.json").write_text(json.dumps(manifest))
+
+
+def _write_prop_archive(tmp_path: Path, rows: list[dict]) -> None:
+    """Write a prop predictions archive with the given rows."""
+    archive_dir = tmp_path / "data" / "output" / "props"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(
+        archive_dir / "prop_predictions_log.parquet",
+        index=False,
+    )
+
+
+def _make_prop_archive_row(
+    game_id: str = "2026_01_KC_LAC",
+    player_id: str = "00-0033873",
+    stat_type: str = "qb_pass_yards",
+    model_type: str = "elasticnet",
+    team: str = "KC",
+) -> dict:
+    """Build a canonical valid prop archive row."""
+    return {
+        "predicted_at": "2026-08-01T00:00:00+00:00",
+        "is_backfilled": True,
+        "season": 2026,
+        "week": 1,
+        "game_id": game_id,
+        "player_id": player_id,
+        "player_name": "P.Mahomes",
+        "position": "QB",
+        "team": team,
+        "stat_type": stat_type,
+        "model_name": stat_type,
+        "model_type": model_type,
+        "predicted_mean": 275.0,
+        "predicted_std": 45.0,
+        "lo_90": 200.0,
+        "hi_90": 350.0,
+        "line": None,
+        "p_over": float("nan"),
+        "lean": float("nan"),
+        "confidence_tier": float("nan"),
+    }
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     """TestClient with settings pointing at tmp_path.
@@ -548,3 +615,68 @@ class TestCompareTeamsPercentiles:
         by_key = {row["key"]: row for row in body["stats"]}
         assert by_key["rating"]["team_a_pct"] is None
         assert by_key["rating"]["team_b_pct"] is None
+
+
+class TestComparePlayerOpponentAllowed:
+    def test_populates_defense_rows(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        _write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        _write_prop_archive(tmp_path, [_make_prop_archive_row()])
+
+        # Write opponent-allowed artifact.
+        oppdir = tmp_path / "data" / "output" / "props"
+        oppdir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "opponent_team": "LAC",
+                    "position": "QB",
+                    "stat_type": "qb_pass_yards",
+                    "cohort": "season",
+                    "avg_allowed": 275.0,
+                    "sample_size": 5,
+                    "rank_against_position": 3,
+                },
+                {
+                    "opponent_team": "LAC",
+                    "position": "QB",
+                    "stat_type": "qb_pass_yards",
+                    "cohort": "l5",
+                    "avg_allowed": 265.0,
+                    "sample_size": 5,
+                    "rank_against_position": 2,
+                },
+            ]
+        ).to_parquet(oppdir / "opponent_allowed.parquet", index=False)
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        assert response.status_code == 200
+        body = response.json()
+        by_key = {row["key"]: row for row in body["stats"]}
+        assert by_key["avg_allowed"]["defense_value"] == 275.0
+        assert by_key["rank_against_position"]["defense_value"] == 3
+        assert by_key["last_5_games_avg"]["defense_value"] == 265.0
+        assert by_key["red_zone_rate_allowed"]["defense_value"] is None
+
+    def test_missing_artifact_leaves_rows_blocked(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        _write_prop_manifest(tmp_path, {"qb_pass_yards": "elasticnet"})
+        _write_prop_archive(tmp_path, [_make_prop_archive_row()])
+        # No opponent-allowed artifact.
+
+        prop_id = "2026_01_KC_LAC__00-0033873__qb_pass_yards"
+        response = client.get(f"/compare/player/{prop_id}")
+
+        body = response.json()
+        status = body["_meta"]["field_status"]
+        assert status.get("avg_allowed") is not None
+        assert status.get("rank_against_position") is not None
+        assert status.get("last_5_games_avg") is not None

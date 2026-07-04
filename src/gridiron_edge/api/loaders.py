@@ -746,3 +746,61 @@ def load_prop(
         return None
 
     return match.iloc[0].to_dict()
+
+
+def load_opponent_allowed_for_prop(
+    settings: Settings,
+    *,
+    opponent_team: str,
+    position: str,
+    stat_type: str,
+) -> dict[str, dict]:
+    """Load opponent-allowed data for a specific defense vs position vs stat.
+
+    Reads the opponent_allowed.parquet artifact and filters to matching
+    rows. Returns nested dict of cohort → aggregates.
+
+    Args:
+        settings: API settings.
+        opponent_team: Opponent's short team code (e.g. "LAC").
+        position: Position matching the stat_type (e.g. "QB").
+        stat_type: Stat family (e.g. "qb_pass_yards").
+
+    Returns:
+        Dict mapping cohort name → dict of stats. Empty if no artifact
+        exists or no rows match.
+
+    Example:
+        {
+            "season": {"avg_allowed": 275.0, "sample_size": 2,
+                       "rank_against_position": 3},
+            "l5": {"avg_allowed": 275.0, "sample_size": 2,
+                   "rank_against_position": 3},
+        }
+    """
+    from gridiron_edge.evaluation.opponent_allowed import load_opponent_allowed
+
+    df = load_opponent_allowed(settings.repo_root)
+    if df.empty:
+        return {}
+
+    match = df.loc[
+        (df["opponent_team"] == opponent_team)
+        & (df["position"] == position)
+        & (df["stat_type"] == stat_type),
+        :,
+    ]
+
+    if match.empty:
+        return {}
+
+    result: dict[str, dict] = {}
+    for _, row in match.iterrows():
+        cohort = str(row["cohort"])
+        result[cohort] = {
+            "avg_allowed": _none_if_nan_float(row["avg_allowed"]),
+            "sample_size": _none_if_nan_int(row["sample_size"]),
+            "rank_against_position": _none_if_nan_int(row["rank_against_position"]),
+        }
+
+    return result

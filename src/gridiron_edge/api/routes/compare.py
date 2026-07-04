@@ -7,11 +7,12 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pandas import DataFrame
 
-from gridiron_edge.api._prop_id import decode_prop_id
+from gridiron_edge.api._prop_id import decode_prop_id, resolve_opponent_from_game_id
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
     load_elo_state_df,
     load_games_df,
+    load_opponent_allowed_for_prop,
     load_prop,
     load_team_name_map,
     load_team_percentiles_df,
@@ -153,4 +154,19 @@ def compare_player(
             detail=f"Prop not found: {prop_id}",
         )
 
-    return serialize_compare_player(row)
+    # Determine opponent from game_id and player's team.
+    opponent = resolve_opponent_from_game_id(
+        str(row["game_id"]),
+        str(row["team"]),
+    )
+
+    opponent_allowed: dict[str, dict] | None = None
+    if opponent is not None:
+        opponent_allowed = load_opponent_allowed_for_prop(
+            settings,
+            opponent_team=opponent,
+            position=str(row["position"]),
+            stat_type=stat_type,
+        )
+
+    return serialize_compare_player(row, opponent_allowed=opponent_allowed)
