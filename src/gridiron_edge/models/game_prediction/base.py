@@ -481,6 +481,7 @@ class GamesTrainer(ABC):
         repo: Path | None = None,
         train_through_season: str | None = None,
         persist: bool = True,
+        min_cv_train_rows: int | None = None,
     ) -> GameModelMetadata:
         """Full training pipeline: prepare data, HP search, fit, evaluate, save.
 
@@ -498,6 +499,13 @@ class GamesTrainer(ABC):
                 ``ArtifactStore``. Pass ``False`` for walk-forward
                 intermediates that should be discarded after producing
                 their season's predictions.
+            min_cv_train_rows: Override the minimum training rows per CV
+                fold. When ``None`` (default), uses
+                ``_features.MIN_CV_TRAIN_ROWS`` — the champion-training
+                default sized for the full-history split. Walk-forward
+                backfill passes a smaller value; see the "walk-forward
+                data-sufficiency contract" in ``evaluation/backfill.py``.
+
 
         Returns:
             ``GameModelMetadata`` with task-appropriate holdout metrics
@@ -531,6 +539,8 @@ class GamesTrainer(ABC):
             model_type=model_type,
             feature_fn=feature_fn,
             repo=resolved_repo,
+            train_through_season=train_through_season,
+            min_cv_train_rows=min_cv_train_rows,
         )
 
         self._model = search.model
@@ -565,13 +575,6 @@ class GamesTrainer(ABC):
                 schema_version=CURRENT_SCHEMA_VERSION,
             )
 
-        ArtifactStore(resolved_repo).save(
-            metadata=metadata,
-            model_obj=self._model,
-            scaler=self._scaler,
-            overwrite=True,
-        )
-
         if persist:
             ArtifactStore(resolved_repo).save(
                 metadata=metadata,
@@ -589,6 +592,7 @@ class GamesTrainer(ABC):
         feature_fn: Callable,
         repo: Path,
         train_through_season: str | None = None,
+        min_cv_train_rows: int | None = None,
     ) -> _SearchResult:
         """Run randomized hyperparameter search; refit best on full training set.
 
@@ -599,10 +603,16 @@ class GamesTrainer(ABC):
         # pyrefly: ignore [missing-import]
         from sklearn.model_selection import TimeSeriesSplit
 
+        from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
+
         spec: GameModelSpec = self.spec
         grid: list[dict[str, Any]] = _get_param_grid(model_type, spec.task)
         n_iter: int = min(_n_iter_for(model_type, spec.task), len(grid))
         rng = np.random.default_rng(42)
+
+        effective_min: int = (
+            min_cv_train_rows if min_cv_train_rows is not None else MIN_CV_TRAIN_ROWS
+        )
 
         window_cache: dict[int, WindowData] = {}
         tscv = TimeSeriesSplit(n_splits=_CV_FOLDS)
@@ -617,6 +627,9 @@ class GamesTrainer(ABC):
         best_y_hold: Series | None = None
         best_train_seasons: list[str] = []
         best_hold_seasons: list[str] = []
+        # Diagnostics for the "no valid pipeline" error path.
+        n_combos_all_folds_skipped: int = 0
+        last_train_pool_size: int = 0
 
         sample_indices: list[int] = list(rng.choice(len(grid), size=n_iter, replace=False).tolist())
 
@@ -639,14 +652,18 @@ class GamesTrainer(ABC):
                 repo=repo,
                 train_through_season=train_through_season,
             )
+            last_train_pool_size = len(x_train)
 
-            score: float = self._cv_score(
+            score, n_folds_scored = self._cv_score(
                 x_train=x_train,
                 y_train=y_train,
                 params=sampled,
                 model_type=model_type,
                 tscv=tscv,
+                min_cv_train_rows=min_cv_train_rows,
             )
+            if n_folds_scored == 0:
+                n_combos_all_folds_skipped += 1
 
             if score < best_score:
                 best_score = score
@@ -672,8 +689,18 @@ class GamesTrainer(ABC):
             or best_x_hold is None
             or best_y_hold is None
         ):
-            msg = (
-                f"{spec.name}/{model_type.value}: hyperparameter search produced no valid pipeline"
+            approx_largest_fold: int = int(last_train_pool_size * _CV_FOLDS / (_CV_FOLDS + 1))
+            msg: str = (
+                f"{spec.name}/{model_type.value}: hyperparameter search produced "
+                f"no valid pipeline. Tried {len(sample_indices)} combo(s); "
+                f"{n_combos_all_folds_skipped} had every CV fold skipped by the "
+                f"min_cv_train_rows guard. Diagnostics: "
+                f"training_pool≈{last_train_pool_size} rows, "
+                f"n_splits={_CV_FOLDS}, "
+                f"approx largest fold≈{approx_largest_fold} rows, "
+                f"min_cv_train_rows={effective_min}. "
+                f"If this is walk-forward, lower min_cv_train_rows further or "
+                f"raise _MIN_WALK_FORWARD_TRAIN_SEASONS in evaluation/backfill.py."
             )
             raise RuntimeError(msg)
 
@@ -751,21 +778,32 @@ class GamesTrainer(ABC):
         params: dict[str, Any],
         model_type: GameModelType,
         tscv: TimeSeriesSplit,
-    ) -> float:
+        min_cv_train_rows: int | None = None,
+    ) -> tuple[float, int]:
         """Run cross-validated score for one parameter combo.
 
         Classification scores by Brier (lower is better); regression scores
         by MAE (lower is better). MIN_CV_TRAIN_ROWS guard from _features
         applies only to classification.
+
+        Returns:
+            Tuple of ``(mean_score, n_folds_scored)``. ``mean_score`` is
+            ``float("inf")`` when no folds survived the guard. Callers use
+            ``n_folds_scored == 0`` to distinguish "guard skipped all folds"
+            from other failure modes.
+
         """
         from gridiron_edge.evaluation.metrics import brier_score
         from gridiron_edge.models.game_prediction._features import MIN_CV_TRAIN_ROWS
 
         spec: GameModelSpec = self.spec
+        effective_min: int = (
+            min_cv_train_rows if min_cv_train_rows is not None else MIN_CV_TRAIN_ROWS
+        )
         fold_scores: list[float] = []
 
         for train_idx, val_idx in tscv.split(x_train):
-            if spec.task == "classification" and len(train_idx) < MIN_CV_TRAIN_ROWS:
+            if spec.task == "classification" and len(train_idx) < effective_min:
                 continue
             x_tr = x_train.iloc[train_idx]
             y_tr = y_train.iloc[train_idx]
@@ -791,8 +829,8 @@ class GamesTrainer(ABC):
                 fold_scores.append(float(np.mean(np.abs(preds - np.asarray(y_val)))))
 
         if not fold_scores:
-            return float("inf")
-        return float(np.mean(fold_scores))
+            return float("inf"), 0
+        return float(np.mean(fold_scores)), len(fold_scores)
 
     def _build_classification_metadata(
         self,

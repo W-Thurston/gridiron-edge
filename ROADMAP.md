@@ -459,6 +459,14 @@ Per D21, the API layer is a serialization boundary — every response reads from
 | Team-name convention: PFR-era codes vs. modern nflverse | Backend uses `KAN`, `JAC`, `LV` — legacy PFR conventions. Modern usage prefers `KC`, `JAX`. Not a bug — reference table was created deliberately — but surface area for confusion when frontend has to hardcode team lists. | Options: (a) leave as-is and require frontend/documentation to know the convention; (b) migrate to nflverse conventions repo-wide (all archives, references, tests); (c) expose a `/teams/names` API endpoint that returns the map so frontends don't guess. Not blocking. |
 | MiniRepoBuilder default team-name-map inconsistent with archive data | `MiniRepoBuilder.with_teams_reference()` maps long team names to modern short codes (`KC`, `LAC`), but the rest of the codebase uses PFR-era short codes (`KAN`, `JAC`) in archives and CSVs. Tests that need to join across a team-name-map boundary must remember to use short codes matching the fixture's output, not the codebase's convention. | Either: (a) update the fixture to use PFR-era short codes to match the codebase; (b) make the mapping configurable per-test with a sensible default; (c) migrate the codebase to modern short codes (larger effort). Surfaces every time a test writes cross-CSV joins. |
 
+### Other
+
+- [ ] Reconsider `MIN_CV_TRAIN_ROWS` default in
+  `models/game_prediction/_features.py`. Currently a fixed 4000, which
+  requires walk-forward to override. Consider scaling with training-pool
+  size (e.g. `min(4000, N // 3)`) so callers don't need to know the guard
+  exists.
+
 ---
 
 ## 10. Changelog for This Document

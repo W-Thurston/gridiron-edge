@@ -63,6 +63,48 @@ _CURRENT_MODEL_DEFAULTS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+# ---------------------------------------------------------------------------
+# Walk-forward data-sufficiency contract
+# ---------------------------------------------------------------------------
+#
+# Two knobs together determine when walk-forward will attempt a cutoff:
+#
+#   1. ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` (below) sets a *season* floor.
+#      _backfill_walk_forward will not attempt any cutoff whose training
+#      pool covers fewer than this many prior seasons. Prevents obviously
+#      degenerate early cutoffs from entering the loop at all.
+#
+#   2. ``min_cv_train_rows`` passed to ``trainer.train(...)`` sets a *row*
+#      floor inside HP search. TimeSeriesSplit(n_splits=5) produces
+#      training folds of roughly N/6 ... 5N/6. Any fold below this row
+#      count is skipped by ``GamesTrainer._cv_score``. If every fold is
+#      skipped for every combo, ``_run_hp_search`` raises.
+#
+# For champion training on the full-history split (~13k rows), the module
+# default from ``_features.MIN_CV_TRAIN_ROWS`` (4000) leaves folds 2-5
+# surviving. Walk-forward's training pools are much smaller, so
+# ``_walk_forward_one_season`` explicitly overrides with a lower value.
+# The two knobs must stay in rough agreement: at
+# ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` seasons, at least one CV fold must
+# clear ``min_cv_train_rows``, otherwise the earliest cutoff will raise
+# and the whole retrain fails.
+#
+# ~272 games/season x 2 rows (home/away perspective) ≈ 544 rows/season.
+# At 3 seasons, training pool ≈ 1,632 rows; largest fold (5/6) ≈ 1,360.
+# The walk-forward override of ``min_cv_train_rows=200`` clears that with
+# ample margin.
+#
+# ---------------------------------------------------------------------------
+
+#: Minimum number of prior seasons required before walk-forward will
+#: attempt a cutoff. See "Walk-forward data-sufficiency contract" above.
+_MIN_WALK_FORWARD_TRAIN_SEASONS: int = 3
+
+#: Minimum training rows per CV fold for the walk-forward path.
+#: Overrides the champion-training default of ``MIN_CV_TRAIN_ROWS``.
+#: See "Walk-forward data-sufficiency contract" above.
+_WALK_FORWARD_MIN_CV_TRAIN_ROWS: int = 200
+
 BackfillMode = Literal["walk-forward", "current-model"]
 
 
@@ -154,8 +196,11 @@ def _resolve_season_range(
     seasons = sorted(df["YEAR"].astype(str).unique().tolist())
 
     if start_season is None:
-        # Need at least one prior season for training, so start at the second.
-        start_season = seasons[1] if len(seasons) >= 2 else seasons[0]
+        # Need enough prior seasons to survive TimeSeriesSplit + the
+        # MIN_CV_TRAIN_ROWS guard. Otherwise all HP combos return inf.
+        floor_idx: int = _MIN_WALK_FORWARD_TRAIN_SEASONS
+        start_season = seasons[floor_idx] if len(seasons) > floor_idx else seasons[-1]
+
     if end_season is None:
         end_season = seasons[-1]
 
@@ -195,6 +240,7 @@ def _walk_forward_one_season(
         repo=repo,
         train_through_season=train_through_season,
         persist=False,
+        min_cv_train_rows=_WALK_FORWARD_MIN_CV_TRAIN_ROWS,
     )
 
     # Filter df to target season

@@ -43,10 +43,24 @@ from gridiron_edge.models.game_prediction._columns import (
 
 logger: Logger = logging.getLogger(__name__)
 
-# Minimum training rows per CV fold.  TimeSeriesSplit's early folds can
-# be too small for high-dimensional feature sets (e.g. 107 features on
-# ~1,600 rows).  Folds below this threshold are skipped during HP search.
+
+#: Default minimum training rows per CV fold.
+#:
+#: TimeSeriesSplit's early folds can be too small for high-dimensional
+#: feature sets (e.g. 107 features on ~1,600 rows). Folds below this
+#: threshold are skipped by ``GamesTrainer._cv_score`` during HP search.
+#:
+#: This is the *default* for champion training (all-history splits where
+#: the training pool is ~13k rows and folds 2-5 comfortably clear the
+#: guard). Walk-forward backfill trains on much smaller pools and
+#: overrides this via ``GamesTrainer.train(min_cv_train_rows=...)`` —
+#: see the "walk-forward data sufficiency" contract at the top of
+#: ``evaluation/backfill.py``.
+#:
+#: Backlog: consider scaling this with training-pool size rather than
+#: relying on callers to override.
 MIN_CV_TRAIN_ROWS: int = 4000
+
 
 # ---------------------------------------------------------------------------
 # Feature engineering
