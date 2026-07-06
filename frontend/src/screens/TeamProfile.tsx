@@ -2,7 +2,7 @@ import { useTeamProfile } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
-import { RatingHistorySparkline } from "../components/teams/RatingHistorySparkline";
+import { Spark } from "../components/primitives/Spark";
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { useNav } from "../context/NavContext";
@@ -129,7 +129,11 @@ export function TeamProfile() {
         <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
           Rating Trajectory ({data.season})
         </div>
-        <RatingHistorySparkline history={data.rating_history} width={480} height={60} />
+        <Spark
+          data={data.rating_history?.map((p) => p.rating) ?? []}
+          width={480}
+          height={60}
+        />
       </div>
 
       {/* Recent results */}
