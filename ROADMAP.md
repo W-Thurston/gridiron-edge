@@ -806,44 +806,46 @@ Future frontend workstreams (call them W9.5, W9.6, or per-screen
 revamps) will pull from this list based on what's most valuable at
 that moment.
 
-### Other
+### Backlog (from 2026-07-06 audit)
 
-- [ ] Reconsider `MIN_CV_TRAIN_ROWS` default in
-  `models/game_prediction/_features.py`. Currently a fixed 4000, which
-  requires walk-forward to override. Consider scaling with training-pool
-  size (e.g. `min(4000, N // 3)`) so callers don't need to know the guard
-  exists.
-- [ ] Prop `train()` and `train_through()` measure NaN rates on their
-      training slice (correct), but the 50% threshold still lets
-      era-boundary features like `passing_cpoe` pass the filter when
-      training data spans both pre- and post-existence eras. Rows before
-      the feature's existence are silently discarded by `dropna`.
-      For `qb_pass_yards` champion training (HOLDOUT_SEASONS = 2023-2025),
-      this discards 1999-2008 seasons (~5,000 rows) without warning.
-      Options: (a) tighter threshold (e.g. 20%); (b) per-era feature
-      sets; (c) imputation policy; (d) warn/log when dropna cost is
-      large. Decide before we make claims about the prop dashboard's
-      historical coverage.
-- [ ] Investigate why prop walk-forward produces empty holdout slices at
-  specific cutoffs (observed: qb_pass_yards / elasticnet at cutoff 2003).
-  Likely a feature that crosses the 50% NaN threshold from unusable to
-  usable between consecutive cutoffs, then happens to be systematically
-  NaN in the target season. Decide whether to: (a) tighten the 50%
-  threshold, (b) apply per-slice usability with intersection, or (c)
-  accept skip-and-continue as the design and document the coverage
-  implication.
-- [ ] Introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring
-  the prop-side pattern. Would enforce meta.feature_columns as the
-  source of truth at predict time, making the fit/predict feature
-  contract explicit rather than conventional. Callers in
-  evaluation/backfill.py (_walk_forward_one_season) and any future
-  game predictor path would use it.
-- [ ] Audit game feature construction (`feature_fn` implementations)
-  for cross-slice dependencies. `_filter_for_walk_forward` re-splits
-  pre-computed features, which assumes feature construction is purely
-  row-local (no aggregate statistics over the training pool). Verify
-  with a data-lineage check that no game feature reads
-  training-slice-scoped state.
+- [ ] Games trainer: introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring
+      the prop-side pattern. Would enforce `meta.feature_columns` as the source of
+      truth at predict time, making the fit/predict feature contract explicit
+      rather than conventional. Callers in `evaluation/backfill.py` and any future
+      game predictor path would use it.
+
+- [ ] Games trainer: metadata records `feature_columns` from the spec, not from
+      the actual fit. If `feature_fn` and `spec.feature_set.feature_names` ever
+      disagree, the metadata lies about what the model was fit on. Verify they
+      match at metadata-build time, or record from actual `x_train.columns`.
+
+- [ ] Games trainer: audit `feature_fn` implementations for cross-slice
+      dependencies. `_filter_for_walk_forward` re-splits pre-computed features,
+      which assumes feature construction is purely row-local (no aggregate
+      statistics over the training pool).
+
+- [ ] Games trainer: `MIN_CV_TRAIN_ROWS = 4000` is a fixed default that walk-forward
+      overrides. Consider scaling with training-pool size (e.g. `min(4000, N // 3)`)
+      so callers don't need to know the guard exists.
+
+- [ ] Prop trainer: 50% NaN threshold is porous at era boundaries (see
+      passing_cpoe on qb_pass_yards). Consider tighter threshold, per-era feature
+      sets, or imputation policy. Decide before making claims about prop
+      dashboard historical coverage.
+
+- [ ] `full-retrain --only` semantics: `--only` treats unlisted stages as
+      "must not run", which blocks partial-resume workflows where completed
+      stages aren't in the `--only` list. Consider making `--only` accept a
+      dependency-satisfying stage, or improve the error to suggest
+      `--assume-done`.
+
+- [ ] Composite dependency graph: consider treating "artifact on disk" as
+      satisfying a dependency, so partial resumes don't require explicit
+      `--assume-done` flags.
+
+- [ ] 2026 PBP fetch warning: `_stage_refresh_all_data` requests PBP for the
+      current season and gets a warning that the source only supports through
+      2025. Clamp to the max available season instead of failing softly.
 
 ---
 
