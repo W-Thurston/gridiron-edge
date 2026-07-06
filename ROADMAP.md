@@ -193,6 +193,15 @@ See CHANGELOG.md for details.
 
 **Unlocks:** W9 (Frontend) consumes end-to-end. Future workstreams (W12, W4.5, W7, W10) can proceed independently.
 
+#### W9.5: Dashboard Rebuild + Cross-Cutting Primitives — ✅ COMPLETE (2026-07-04)
+
+Small workstream between W8 close-out and next major work. Shipped 11
+substeps: team metadata backend patch and CSV consolidation (Tier 1),
+5 shared primitives (Pill, WhyLink, TeamMark-with-colors, Spark, TeamHero)
+(Tier 2), 4 Dashboard sections + integration (Tier 3). Also consolidated
+NFL_long_to_short_name.csv and NFL_conference_division.csv into
+NFL_team_metadata.csv. See CHANGELOG.md for details.
+
 ### Future Workstreams (ordered by current priority)
 
 #### W12: Model Ensemble — 🟢 PLANNED
@@ -853,6 +862,7 @@ that moment.
 
 | Date | Change |
 |---|---|
+| 2026-07-04 | **W9.5 complete.** Dashboard now a real landing page. 5 cross-cutting primitives available. Team metadata reference consolidated. See CHANGELOG.md. |
 | 2026-07-05 | **Prototype vs. implementation audit complete.** Systematic screen-by-screen comparison of 16 screens against the frontend prototype. Findings consolidated into §9.7 (W8 backend hygiene backlog, ~90 items) and §9.8 (W9 frontend polish backlog, ~90 items). PROTOTYPE_AUDIT.md retired. Not blocking any active workstream — items pulled from these lists as future work. |
 | 2026-07-04 | **W8 workstream complete.** All three tiers shipped: Tier 1 skeleton + blocked stubs, Tier 2 populated endpoints (16), Tier 3 additive datasets (7). Frontend (W9) consumes API end-to-end. |
 | 2026-07-03 | **W9 complete; W8 Tier 3 opens.** ROADMAP restructured to reflect current state: W9 moved to Completed section; W8 elevated to sole Active workstream with Tier 3 additive datasets as the work. §6 dependency graph redrawn; §1.1 "What's Working" and "What's Missing" tables updated. |

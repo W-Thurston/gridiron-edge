@@ -3,6 +3,78 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-06 — W9.5 Frontend Polish (Dashboard Rebuild + Cross-Cutting Primitives)
+
+Small workstream between W8 close-out and next major work. Focused on
+two things: rebuild the Dashboard (unusable debug scaffolding from
+W9 Tier 1) into a real landing page, and ship 5 cross-cutting shared
+primitives identified in the prototype audit.
+
+### Shipped
+
+**Tier 1 — Backend patch (1 substep):**
+- Added `city`, `conference`, `division`, `primary_color`, `secondary_color`
+  fields to `TeamRankingRow` and `TeamProfile` schemas.
+- Consolidated `NFL_long_to_short_name.csv` and `NFL_conference_division.csv`
+  into unified `NFL_team_metadata.csv`.
+- Registry migrations: `teams_long_short` + `divisions` → `team_metadata`.
+- Sim, API, CLI, and test fixture consumers all migrated.
+
+**Tier 2 — Cross-cutting primitives (5 substeps):**
+- **Pill:** shared filter toggle button.
+- **WhyLink:** explainability affordance (labeled and dot variants),
+  navigates to `/explain` with subject params.
+- **TeamMark:** refactor with team primary color background via
+  React Query cache; falls back to grey when unavailable.
+- **Spark:** generic sparkline generalized from `RatingHistorySparkline`.
+- **TeamHero:** composed team identity block (team-colored mark + city +
+  name + record + rating), left/right orientation.
+
+**Tier 3 — Dashboard sections (5 substeps):**
+- **FeaturedMatchupsGrid:** 3-card top row. Composes `/edges` (ranked
+  by EV) + `/games` (predictions). Uses TeamHero, WinProbBand, WhyLink,
+  bet slip integration.
+- **ModelEdgesTable:** sortable ranked table with 4 filter tabs
+  (All/Spread/Total/Moneyline). Uses Pill primitive.
+- **PropEdgesRail:** 5-row compact list sorted by predicted mean
+  descending. WhyLink and slip integration.
+- **ModelPerformanceRail:** Spark-based sparkline + all-time ROI +
+  W-L-P record + bankroll CTA. Consumes `/portfolio/summary` and
+  `/portfolio/curve`.
+- **Dashboard integration:** 2-row grid layout. Removed API loop
+  verification card and field-status demo (moved to git history only).
+
+### Architecture established
+
+- **`components/primitives/` folder** for cross-domain shared components.
+  Future workstreams pull from here.
+- **`components/dashboard/` folder** for Dashboard-specific sections.
+  Pattern reusable for other screen rebuilds.
+- **Team color hook (`useTeamMetadata`, `useTeamByAbbr`):** React Query
+  cache with 5-minute stale time. All screens using `TeamMark` benefit.
+- **Placeholder odds (-110):** when adding edges to bet slip from Dashboard,
+  we use -110 as placeholder odds until W7 multi-book lands.
+
+### Test coverage
+
+59 tests total across primitives + Dashboard sections. Vitest + React
+Testing Library. Every primitive has its own unit test file.
+
+### What's not shipped (surfaced during work)
+
+- Rolling 7d/30d ROI windows on `/portfolio/summary` — tracked in
+  ROADMAP §9.7. Currently shown as "All-Time" honestly.
+- Real market odds — bet slip integration uses placeholder -110. Blocked
+  on W7 (multi-book odds).
+- Prop leg semantic — `add()` currently encodes prop as "prop" market
+  type; BetLeg schema might need refinement for prop legs specifically.
+
+### Next
+
+Between workstreams. Options: W12 (Model Ensemble), W7 (Multi-Book Odds),
+W4.5 (Scenario Engine, blocked on §5.3), or another frontend polish
+sweep pulling from §9.7/§9.8 backlogs.
+
 ## 2026-07-04 — W8 Tier 3: Additive Datasets (7 additives, 15+ substeps)
 
 Seven-step tier closing out W8 Tier 3. Each additive is a small feature

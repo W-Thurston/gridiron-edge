@@ -177,4 +177,5 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| **W9.5 complete.** Dashboard Rebuild + Cross-Cutting Primitives shipped in 11 substeps across 3 tiers. Tier 1: team metadata backend patch + CSV consolidation. Tier 2: 5 shared primitives (Pill, WhyLink, TeamMark-with-colors, Spark, TeamHero). Tier 3: 4 Dashboard sections + integration. Debug scaffolding removed. |
 | 2026-07-04 | **W9.5 Dashboard Rebuild + Cross-Cutting Primitives design.** Locked. Total 11 substeps across 3 tiers. Tier 1: backend patch adds team colors + conference + division. Tier 2: 5 primitives (`Pill`, `WhyLink`, `TeamMark`-with-colors, `Spark`, `TeamHero`). Tier 3: 5 Dashboard sections + integration. Featured matchups model-only until W7 lands. |

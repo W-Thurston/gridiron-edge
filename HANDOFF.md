@@ -87,6 +87,8 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
 | `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
 | `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
+| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, Spark, TeamHero) — used across many screens |
+| `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
 
 **Data layout:**
 
@@ -422,6 +424,11 @@ Step 5 audit confirmed all existing loaders comply.
   hand-declared. Ensures the frontend stays in lockstep with the API
   contract; regenerating the schema catches breaking changes at build
   time.
+- **Shared primitives pattern:** Cross-domain components live in
+  `components/primitives/`. When building a new screen, look here first
+  before creating scoped components. Primitives available: Pill,
+  WhyLink, TeamMark (with team colors via React Query cache), Spark,
+  TeamHero.
 
 **Local dev loop:**
 
