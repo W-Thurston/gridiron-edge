@@ -29,40 +29,139 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: (none — between workstreams)
+### Current Workstream: W9.5 — Dashboard Rebuild + Cross-Cutting Primitives
 
-**Tier 3 — Additive datasets.** ✅ Complete (2026-07-04).
+**Status:** Designing.
 
-Seven additives shipped across 15+ substeps, populating scaffolded
-`field_status` fields across the frontend surface:
+### What we are building
 
-- **Step 1:** `week_over_week_delta` on `/projections` — Elo change from Elo state table.
-- **Step 2:** Percentile ranking pass — 4 stats across `/teams`, `/teams/{abbr}`, `/compare/teams`.
-- **Step 3:** `trend` on `/teams` and `/teams/{abbr}` — reused compute_elo_deltas helper.
-- **Step 4:** `n_simulations` on `/projections` — new metadata sidecar written by sim.
-- **Step 5:** `situational_splits` on `/props/{prop_id}` — per-player, 8 cohorts, from player game logs + games CSV.
-- **Step 6:** Defense-side rows on `/compare/player/{prop_id}` — per-opponent-position aggregates from player game logs. `red_zone_rate_allowed` remains blocked pending PBP-derived aggregation.
-- **Step 7:** Team cohort splits on `/compare/teams`, `/teams/{abbr}`, `/games/{game_id}` — 4 cohorts × 8 metrics from EPA data.
+A rebuilt Dashboard (currently a debug scaffold shipped in Substep
+2.0 during W9 Tier 1) that renders as the actual primary landing
+page: featured matchups grid, model edges table with tab filters,
+model performance rail with sparkline, and player prop edges rail.
 
-**New CLI subcommand apps:**
-- `gridiron sim compute-percentiles` (Step 2)
-- `gridiron props compute-splits` (Step 5)
-- `gridiron props compute-opponent-allowed` (Step 6)
-- `gridiron teams compute-cohort-splits` (Step 7) — new `gridiron teams` app
+Alongside Dashboard: five cross-cutting frontend primitives that
+unblock every other future frontend workstream — `Pill` (filter
+toggle), `WhyLink` (explainability affordance), `TeamMark`-with-team-
+colors (visual identity), `Spark` (generic sparkline), and
+`TeamHero` (composed team identity block).
 
-**New artifacts under `data/output/`:**
-- `rankings/percentiles/percentiles_{season}_wk{NN}.parquet`
-- `rankings/team_cohort_splits.parquet`
-- `props/situational_splits/{stat_type}.parquet`
-- `props/opponent_allowed.parquet`
-- `temp/projections_metadata.json`
+Small W8 patch upfront: add `primary_color`, `secondary_color`,
+`conference`, and `division` fields to `TeamRankingRow` and
+`TeamProfile` schemas so primitives that consume team identity have
+real data.
 
-**Remaining not-shipped from original inventory:**
-- Off/def rating decomposition — real modeling work; deferred to future workstream if pursued.
+### Why we are building it now
 
-**Remaining field_status: pending fields** are all blocked on named workstreams (feature attribution, injury data source, multi-book odds, PBP-derived aggregations). Not additive-dataset work.
+Two motivations:
 
-**W8 workstream complete.** Tier 1 (skeleton + stubs), Tier 2 (16 populated endpoints), Tier 3 (7 additive datasets) all shipped.
+1. **Dashboard is unusable.** The primary landing page currently shows
+   an API loop verification card and a field-status primitives demo
+   table — debug scaffolding shipped in W9 Tier 1 and never built out.
+   Every visit to `/today` renders as broken/incomplete.
+
+2. **Primitives unblock everything.** Shared components identified in
+   the prototype audit (`Pill`, `WhyLink`, `TeamMark`-with-colors,
+   `Spark`, `TeamHero`) are used across 10+ screens. Building them in
+   isolation with proper APIs makes every future frontend workstream
+   faster and more consistent.
+
+#### Success criteria
+
+- Dashboard `/today` renders four working sections: featured matchups
+  grid (3 games), model edges table with 5 filter tabs, model
+  performance rail with sparkline + big number, prop edges rail (5 rows).
+- Five primitives exist in `components/primitives/` with unit tests.
+- `TeamMark` renders team primary color background where team metadata
+  is available.
+- `WhyLink` navigates to `/explain?subject=...` with proper parameters.
+- Backend fields (`primary_color`, `secondary_color`, `conference`,
+  `division`) populate on `TeamRankingRow` and `TeamProfile` for all
+  32 teams.
+- Existing API verification card and field-status demo removed from
+  Dashboard (moved to `/debug` route or deleted).
+- All quality gates pass.
+
+### Locked architectural decisions
+
+| Decision | Choice |
+|---|---|
+| Order of substeps | Backend patch → Primitives → Dashboard sections |
+| Backend patch strategy | Single commit at start; ships colors + conf + div |
+| Featured matchups when market lines blocked | Model-only render; market side blank |
+| Model performance rail with limited data | All-time ROI as big number; mark 7d/30d as pending |
+| Multi-sport pills | Skip; NFL-only for now |
+| Primitives location | `frontend/src/components/primitives/` (new folder) |
+| Team metadata source | New reference CSV: `data/cleaned/NFL_team_metadata.csv` |
+| Test coverage | Vitest smoke tests per primitive; integration tests for Dashboard sections |
+| Existing dashboard content | Move to `/debug` route (preserved for future work) |
+
+### Prerequisite
+
+None. Backend patch is part of Tier 1.
+
+### Tiers
+
+**Tier 1 — Backend patch (1 substep).**
+
+Add team metadata fields to schemas and populate from new reference
+CSV. Unblocks primitive work.
+
+**Tier 2 — Shared primitives (5 substeps).**
+
+Build five primitives in `components/primitives/`:
+- `Pill` — filter toggle
+- `WhyLink` — explainability affordance
+- `TeamMark` (refactor) — with team primary color
+- `Spark` — generic sparkline (renamed from `RatingHistorySparkline`)
+- `TeamHero` — composed team identity block
+
+**Tier 3 — Dashboard sections (5 substeps).**
+
+Build four working sections + integration:
+- `FeaturedMatchupsGrid` — 3 game cards
+- `ModelEdgesTable` — table with 5 filter tabs
+- `PropEdgesRail` — 5-row compact list
+- `ModelPerformanceRail` — card with sparkline + big number
+- Dashboard integration — wire sections into 2-column layout;
+  remove debug demo content
+
+### Disconfirming evidence
+
+- **If backend patch reveals data mismatches** (some teams missing
+  colors, city/name split inconsistent), we handle per-team with
+  defaults and log for follow-up. Not blocking.
+- **If `WhyLink` navigation reveals `/explain` needs specific
+  parameters we haven't documented**, we add them as we go. `/explain`
+  is currently a `<BlockedScreen />` — the WhyLink shipping is what
+  makes the navigation-to-blocked-screen pattern meaningful.
+- **If `Spark` refactor breaks existing `RatingHistorySparkline`
+  usages** (TeamProfile), we ship both temporarily and migrate. Not
+  blocking.
+- **If Dashboard's model performance rail has no historical data**
+  (fresh installs), sparkline renders as flat or empty. Mark as
+  pending. Acceptable.
+- **If `/props?limit=5&sort=ev_desc` doesn't exist**, add query params
+  to `/props` endpoint as a substep 3c prerequisite. Small.
+
+### Timeline
+
+Total: 11 substeps. Not tied to calendar; work at natural cadence.
+Estimated ~1-2 weeks of active work at normal substep rhythm.
+
+### Success artifacts
+
+By workstream close:
+
+- Dashboard renders as a real landing page with 4 working sections
+- 5 primitives live in `components/primitives/` with unit tests
+- Backend patch shipped with team colors + conf + div
+- 4 new API-consuming Dashboard sections
+- Frontend visual identity (team primary colors) shipped
+- Path to explainability (`WhyLink`) established even though `/explain`
+  itself remains blocked
+
+Ready for close-out and next-workstream decision.
 
 Tier design blocks are drafted at the start of each step.
 
@@ -78,22 +177,4 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| 2026-07-04 | **W8 Tier 3 complete. W8 workstream closed.** Seven additive datasets shipped populating scaffolded fields across the frontend API surface. New CLI subcommand `gridiron teams`. Five new persistence artifacts. Remaining field_status: pending fields blocked on named workstreams. |
-| 2026-07-04 | **W8 workstream closed.** Full W8 (API Serving Layer) shipped across three tiers: skeleton + blocked stubs (Tier 1), populated endpoints (Tier 2, 16 endpoints), additive datasets (Tier 3, 7 additives). Consumed end-to-end by W9 (Frontend). Now between workstreams. |
-| 2026-07-04 | **W8 Tier 3 Step 7 complete.** Team cohort splits: 8 metrics × 4 cohorts per team from EPA data. Populates `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), and `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand app. |
-| 2026-07-04 | **W8 Tier 3 Step 7 design (revised).** Team cohort splits: 8 metrics × 4 cohorts per team, from `epa_by_game.parquet`. Populates 3 endpoints: `/compare/teams` (new `cohort_splits` field), `/teams/{abbr}` (rename `situational_splits` → `cohort_splits`), `/games/{game_id}` (populate `team_comparison`). New `gridiron teams` CLI subcommand. Three substeps. |
-| 2026-07-04 | **W8 Tier 3 Step 6 complete.** Opponent-allowed-by-position aggregations for `/compare/player/{prop_id}`. 3 of 4 defense-side rows populate from the artifact; `red_zone_rate_allowed` remains blocked. `resolve_opponent_from_game_id` helper added to `_prop_id.py`. |
-| 2026-07-04 | **W8 Tier 3 Step 6 design.** Opponent-allowed-by-position: per-defense aggregations of stat allowed to each position across season + l5 cohorts. Populates 3 defense-side rows on `/compare/player/{prop_id}`. Two substeps: computation module + CLI (6a), loader + serializer (6b). red_zone_rate_allowed deferred pending PBP-derived aggregation. |
-| 2026-07-04 | **W8 Tier 3 Step 5 complete.** Situational splits computed by joining player game logs to games CSV; 8 cohorts (season, home/away, favored/underdog, indoor/outdoor, l4). Per-stat-type Parquet artifacts consumed by `/props/{prop_id}`. First real feature-engineering module in Tier 3. |
-| 2026-07-04 | **W8 Tier 3 Step 5 design.** Prop cohort splits for 8 cohorts (season, home, away, favored, underdog, indoor, outdoor, l4). Data joined from player_game_logs + games CSV on game_id. Per-stat-type Parquet artifacts at `data/output/props/situational_splits/`. Two substeps: computation module + CLI (5a), loader + serializer (5b). |
-| 2026-07-04 | **W8 Tier 3 Step 4 complete.** `n_simulations` on `/projections` populated via new `projections_metadata.json` sidecar. Backwards compatible — legacy projections without sidecar leave the field null. |
-| 2026-07-04 | **W8 Tier 3 Step 3 complete.** `trend` field on `/teams` and `/teams/{abbr}` populated via reused `compute_elo_deltas` from Step 1. Smaller substep than 1 or 2 due to helper reuse. |
-| 2026-07-04 | **W8 Tier 3 Step 3 design.** Populate `trend` field on `/teams` and `/teams/{abbr}` with per-team Elo change from prior NFL week. Same shape as Step 1's `week_over_week_delta` on projections. Single substep. |
-| 2026-07-04 | **W8 Tier 3 Step 2 complete.** Per-team percentile ranking pass shipped across `/teams`, `/teams/{abbr}`, and `/compare/teams`. New `evaluation/percentiles.py` module + persistence artifact at `data/output/rankings/percentiles/`. Wired into `sim run` and exposed via `gridiron sim compute-percentiles` for standalone use. |
-| 2026-07-04 | **W8 Tier 3 Step 2 design.** Per-team percentile ranking pass for 4 stats (Elo, avg_wins, make_playoffs, win_sb). Three substeps: computation module (2a), loader + `/teams` endpoints (2b), `/compare/teams` percentile fields (2c). Aggregate `percentile_ranks` scaffold row on `/compare/teams` replaced with per-row percentiles on rankable stat rows. Frontend consumes `pct` values via `rankColor()` and bar-width formulas already in the prototype. |
-| 2026-07-04 | **W8 Tier 3 Step 1 complete.** `week_over_week_delta` field on `/projections` now populated with per-team Elo delta from prior NFL week. No new artifact — reads directly from the existing Elo state table. First Tier 3 additive shipped. |
-| 2026-07-04 | **W8 Tier 3 Step 1 design.** Prior-week projection delta populates via existing Elo state table. No snapshot mechanism needed — `NFL_Team_Elo.csv` already stores weekly Elo per team. Single substep to update the projections loader and serializer. Week 1 → null (em-dash) per user preference over playoff-final delta which reads as "nothing happened" for 30 of 32 teams. |
-| 2026-07-03 | **W9 Frontend complete.** Vite + React + TypeScript app consuming the 16-endpoint API. Three tiers: client infrastructure, populated screens (12 API-consuming), blocked screens + polish (4 blocked, 4 client-side). Every prototype-referenced URL renders. Every `field_status` scaffolded field surfaces its state via `<PendingField />` / `<BlockedField />`. Consistent error UX via `<ErrorCard />` and global `<OfflineBanner />`. Details in CHANGELOG.md. |
-| 2026-07-01 | **W8 API Serving Layer Tier 2 complete.** 16 endpoints returning populated data with Pydantic-validated responses. Champion resolution threads through loader → serializer → route. Placeholder convention (D14) applied consistently via `_meta.field_status`. Details in CHANGELOG.md. |
-| 2026-07-01 | **W13 Runtime Champion Resolution complete.** Static manifest artifact at `data/output/champions/champions.json` written by `full-retrain`. `resolve_current_champion(model_name)` reads from it. CLI consumers migrated to `--model-type auto` pattern. Unblocks all downstream champion-only consumption paths. Details in CHANGELOG.md. |
-| 2026-06-23 | PLAN.md restructured to focus on the active workstream only. Future workstream candidates, real-bugs backlog, investigations, and operational items migrated to ROADMAP.md §9. |
+| 2026-07-04 | **W9.5 Dashboard Rebuild + Cross-Cutting Primitives design.** Locked. Total 11 substeps across 3 tiers. Tier 1: backend patch adds team colors + conference + division. Tier 2: 5 primitives (`Pill`, `WhyLink`, `TeamMark`-with-colors, `Spark`, `TeamHero`). Tier 3: 5 Dashboard sections + integration. Featured matchups model-only until W7 lands. |
