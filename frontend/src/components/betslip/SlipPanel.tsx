@@ -3,7 +3,7 @@ import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
 import type { BetLeg, BetSlipMode } from "../../context/BetSlipContext";
 import { americanToDecimal, formatOdds } from "../../utils/odds";
-import { TeamMark } from "../games/TeamMark";
+import { TeamMark } from "../primitives/TeamMark";
 
 export function SlipPanel() {
   const { legs, mode, setMode, remove, clear } = useBetSlip();

@@ -2,7 +2,7 @@ import { useAppState } from "../context/AppStateContext";
 import { useGamesList } from "../api/hooks";
 import { useNav } from "../context/NavContext";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
-import { TeamMark } from "../components/games/TeamMark";
+import { TeamMark } from "../components/primitives/TeamMark";
 import { WinProbBand } from "../components/games/WinProbBand";
 import { ErrorCard } from "../components/error/ErrorCard";
 

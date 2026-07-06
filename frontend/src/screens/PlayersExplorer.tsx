@@ -3,7 +3,7 @@ import { usePropsList } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
-import { TeamMark } from "../components/games/TeamMark";
+import { TeamMark } from "../components/primitives/TeamMark";
 import { FilterBar } from "../components/props/FilterBar";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";

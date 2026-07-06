@@ -850,6 +850,22 @@
             ],
             "description": "Optional metadata describing unpopulated fields (per D14)."
           },
+          "cohort_splits": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-team cohort splits: {team_abbr: {cohort: {metric: value, 'rank_metric': int, 'sample_size': int}}}. Populated from team_cohort_splits.parquet.",
+            "title": "Cohort Splits"
+          },
           "season": {
             "anyOf": [
               {
@@ -4287,6 +4303,18 @@
             "title": "Label",
             "type": "string"
           },
+          "team_a_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team A's league-wide percentile (0-1) on this stat.",
+            "title": "Team A Pct"
+          },
           "team_a_value": {
             "anyOf": [
               {
@@ -4303,6 +4331,18 @@
               }
             ],
             "title": "Team A Value"
+          },
+          "team_b_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team B's league-wide percentile (0-1) on this stat.",
+            "title": "Team B Pct"
           },
           "team_b_value": {
             "anyOf": [
@@ -4467,6 +4507,53 @@
             ],
             "title": "As Of Week"
           },
+          "avg_wins_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of projected average wins (0-1).",
+            "title": "Avg Wins Pct"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "cohort_splits": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-team cohort splits: {cohort_name: {metric: value, 'rank_metric': int, 'sample_size': int}}. Cohorts include season, l4, home, away. Populated from team_cohort_splits.parquet.",
+            "title": "Cohort Splits"
+          },
+          "conference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conference"
+          },
           "def_rating": {
             "anyOf": [
               {
@@ -4477,6 +4564,29 @@
               }
             ],
             "title": "Def Rating"
+          },
+          "division": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division"
+          },
+          "make_playoffs_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of playoff probability (0-1).",
+            "title": "Make Playoffs Pct"
           },
           "name": {
             "title": "Name",
@@ -4503,6 +4613,17 @@
               }
             ],
             "title": "Playoff Probability"
+          },
+          "primary_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Color"
           },
           "rank": {
             "anyOf": [
@@ -4539,6 +4660,18 @@
               }
             ],
             "title": "Rating History"
+          },
+          "rating_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of Elo rating within the league (0-1).",
+            "title": "Rating Pct"
           },
           "recent_results": {
             "anyOf": [
@@ -4586,17 +4719,16 @@
             ],
             "title": "Season"
           },
-          "situational_splits": {
+          "secondary_color": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Situational Splits"
+            "title": "Secondary Color"
           },
           "top_players": {
             "anyOf": [
@@ -4624,6 +4756,18 @@
               }
             ],
             "title": "Trend"
+          },
+          "win_sb_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of Super Bowl win probability (0-1).",
+            "title": "Win Sb Pct"
           }
         },
         "required": [
@@ -4765,6 +4909,40 @@
             "title": "Abbr",
             "type": "string"
           },
+          "avg_wins_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of projected average wins (0-1).",
+            "title": "Avg Wins Pct"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "conference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conference"
+          },
           "def_rating": {
             "anyOf": [
               {
@@ -4775,6 +4953,29 @@
               }
             ],
             "title": "Def Rating"
+          },
+          "division": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division"
+          },
+          "make_playoffs_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of playoff probability (0-1).",
+            "title": "Make Playoffs Pct"
           },
           "name": {
             "title": "Name",
@@ -4790,6 +4991,17 @@
               }
             ],
             "title": "Off Rating"
+          },
+          "primary_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Color"
           },
           "rank": {
             "anyOf": [
@@ -4813,6 +5025,18 @@
             ],
             "title": "Rating"
           },
+          "rating_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of Elo rating within the league (0-1).",
+            "title": "Rating Pct"
+          },
           "record": {
             "anyOf": [
               {
@@ -4822,6 +5046,17 @@
                 "type": "null"
               }
             ]
+          },
+          "secondary_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondary Color"
           },
           "trend": {
             "anyOf": [
@@ -4833,6 +5068,18 @@
               }
             ],
             "title": "Trend"
+          },
+          "win_sb_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentile rank of Super Bowl win probability (0-1).",
+            "title": "Win Sb Pct"
           }
         },
         "required": [

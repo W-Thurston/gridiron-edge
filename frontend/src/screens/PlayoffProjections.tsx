@@ -1,5 +1,5 @@
 import { useProjections } from "../api/hooks";
-import { TeamMark } from "../components/games/TeamMark";
+import { TeamMark } from "../components/primitives/TeamMark";
 import { PendingField } from "../components/field-status/PendingField";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";

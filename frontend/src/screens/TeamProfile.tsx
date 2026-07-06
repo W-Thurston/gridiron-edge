@@ -4,7 +4,7 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { RatingHistorySparkline } from "../components/teams/RatingHistorySparkline";
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
-import { TeamMark } from "../components/games/TeamMark";
+import { TeamMark } from "../components/primitives/TeamMark";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 

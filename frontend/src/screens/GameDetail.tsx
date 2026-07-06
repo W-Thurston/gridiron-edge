@@ -1,7 +1,7 @@
 import { useGame } from "../api/hooks";
 import { ComingSoonCard } from "../components/games/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
-import { TeamMark } from "../components/games/TeamMark";
+import { TeamMark } from "../components/primitives/TeamMark";
 import { WinProbBand } from "../components/games/WinProbBand";
 import { useNav } from "../context/NavContext";
 import type { FieldStatus } from "../components/field-status/types";

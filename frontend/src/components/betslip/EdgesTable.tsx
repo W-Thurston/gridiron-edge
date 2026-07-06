@@ -2,7 +2,7 @@ import { useEdges } from "../../api/hooks";
 import { BlockedField } from "../field-status/BlockedField";
 import { PendingField } from "../field-status/PendingField";
 import type { FieldStatus } from "../field-status/types";
-import { TeamMark } from "../games/TeamMark";
+import { TeamMark } from "../primitives/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
 import type { BetLeg } from "../../context/BetSlipContext";
 import { ErrorCard } from "../../components/error/ErrorCard";
