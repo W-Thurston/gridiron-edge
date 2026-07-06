@@ -70,6 +70,18 @@ class PropModelSpec:
         trainable: Whether this model has an explicit training step.
             Defaults to ``True`` since all prop trainers implement the
             Trainable protocol.
+        exclude_feature_prefixes: Feature-name prefixes to strip from
+            the feature set before any NaN-rate filtering. Used to
+            remove structurally-invalid feature families for the
+            position (e.g. ``receiving_*`` for QB models, ``passing_*``
+            for non-QB models). Sporadic non-null values in
+            structurally-invalid features (trick plays, halfback
+            passes) can push a column's NaN rate just under the 50%
+            threshold used by ``_filter_and_split``, causing the
+            feature to be kept for training but exhibit ~100% NaN in
+            the prediction slice, which collapses the holdout. This
+            list closes that hole by dropping such families outright,
+            independent of NaN rate.
     """
 
     name: str
@@ -79,6 +91,7 @@ class PropModelSpec:
     clip_lo: float = 0.0
     clip_hi: float = 1000.0
     trainable: bool = True
+    exclude_feature_prefixes: tuple[str, ...] = ()
 
 
 @dataclass(kw_only=True)
@@ -299,7 +312,7 @@ class PropTrainer(ABC):
             grid,
             desc=f"  {self.spec.name} ({model_type})",
             unit="combo",
-            ncols=88,
+            ncols=100,
             colour="cyan",
         )
         for params in bar:
@@ -418,107 +431,175 @@ class PropTrainer(ABC):
         )
         return df
 
-    def train(
+    def _prepare_features(
         self,
         *,
-        model_type: PropModelType = PropModelType.ELASTICNET,
         repo: Path | None = None,
-    ) -> PropModelMetadata:
-        """Full training pipeline: load data, split, fit, evaluate.
+    ) -> tuple[DataFrame, list[str]]:
+        """Load raw data, build features, return (features_df, available).
 
-        Uses HOLDOUT_SEASONS for the train/holdout split, consistent
-        with the game prediction models.
+        Shared entry point for train() and train_through(). Returns the
+        full features DataFrame (all seasons) sorted chronologically and
+        the intersection of self._feature_columns() with columns actually
+        present in the DataFrame.
 
         Args:
-            model_type: Algorithm to use (elasticnet, random_forest, xgboost).
             repo: Repository root override.
 
         Returns:
-            PropModelMetadata with evaluation metrics.
+            Tuple of (features_df, available_feature_columns).
         """
-        # Parse HOLDOUT_SEASONS ("2023-2024" → 2023) for integer season column
-        holdout_ints: set[int] = {int(s.split("-")[0]) for s in HOLDOUT_SEASONS}
-
         df: DataFrame = self._load_data(repo=repo)
         features_df: DataFrame = self._build_features(df)
+        features_df = features_df.sort_values(["season", "week"]).reset_index(drop=True)
         feature_cols: list[str] = self._feature_columns()
 
-        # Ensure chronological order
-        features_df = features_df.sort_values(["season", "week"]).reset_index(drop=True)
+        # Strip structurally-invalid feature families before any NaN-based
+        # filtering. See PropModelSpec.exclude_feature_prefixes docstring
+        # for rationale.
+        excluded_prefixes = self.spec.exclude_feature_prefixes
+        if excluded_prefixes:
+            before = len(feature_cols)
+            feature_cols = [
+                c for c in feature_cols if not any(c.startswith(p) for p in excluded_prefixes)
+            ]
+            n_excluded = before - len(feature_cols)
+            if n_excluded:
+                logger.info(
+                    "%s: excluded %d features by prefix (%s)",
+                    self.spec.name,
+                    n_excluded,
+                    ", ".join(excluded_prefixes),
+                )
 
-        # Filter to available feature columns
-        available_features: list[str] = [c for c in feature_cols if c in features_df.columns]
+        available: list[str] = [c for c in feature_cols if c in features_df.columns]
+        return features_df, available
 
-        # Position-aware NaN handling: only keep features with reasonable
-        # coverage for this position, then drop rows with NaN in those.
-        # This avoids losing all QB rows due to receiving features being
-        # ~99% NaN, or all WR rows due to passing features.
-        target: str = self.spec.target_col
-        nan_rates: Series = features_df[available_features].isna().mean()
-        usable_features: list[str] = [c for c in available_features if nan_rates[c] < 0.5]
-        dropped_features = set(available_features) - set(usable_features)
-        if dropped_features:
+    def _filter_and_split(
+        self,
+        *,
+        features_df: DataFrame,
+        available_features: list[str],
+        train_mask: Series,
+        hold_mask: Series,
+        context: str,
+    ) -> tuple[DataFrame, DataFrame, list[str]]:
+        """Apply era-aware NaN policy and split into train/holdout.
+
+        NaN rates are measured on the training slice (rows where
+        ``train_mask`` is True) so era-boundary features like
+        ``passing_cpoe`` are correctly excluded when the training slice
+        predates the feature's existence. Then dropna on the full
+        DataFrame and reapply the masks against the surviving index.
+
+        Args:
+            features_df: Full features DataFrame (all seasons).
+            available_features: Feature columns present in features_df.
+            train_mask: Boolean Series identifying training rows.
+            hold_mask: Boolean Series identifying holdout rows.
+            context: Human-readable description for logs and errors
+                (e.g. "cutoff_season=2015").
+
+        Returns:
+            Tuple of (train_df, hold_df, usable_features).
+
+        Raises:
+            ValueError: If the training slice is empty.
+        """
+        target = self.spec.target_col
+        train_slice = features_df.loc[train_mask, :]
+        if train_slice.empty:
+            msg: str = f"No training rows for {self.spec.name} ({context})."
+            raise ValueError(msg)
+
+        nan_rates: Series = train_slice[available_features].isna().mean()
+        usable: list[str] = [c for c in available_features if nan_rates[c] < 0.5]
+        dropped: set[str] = set(available_features) - set(usable)
+        if dropped:
             logger.info(
-                "Dropped %d features with >50%% NaN for %s: %s",
-                len(dropped_features),
+                "Dropped %d features with >50%% NaN in train slice for %s (%s): %s",
+                len(dropped),
                 self.spec.position_filter,
-                sorted(dropped_features)[:10],
+                context,
+                sorted(dropped)[:10],
             )
 
-        required_cols: list[str] = [*usable_features, target]
-        n_before = len(features_df)
-        features_df = features_df.dropna(subset=required_cols)
+        n_before: int = len(features_df)
+        cleaned: DataFrame = features_df.dropna(subset=[*usable, target])
         logger.info(
             "NaN drop: %d → %d rows (%d dropped, %d usable features)",
             n_before,
-            len(features_df),
-            n_before - len(features_df),
-            len(usable_features),
+            len(cleaned),
+            n_before - len(cleaned),
+            len(usable),
         )
-        available_features = usable_features
 
-        # HOLDOUT_SEASONS split - consistent with game models
-        train_mask: Series = ~features_df["season"].isin(holdout_ints)
-        hold_mask: Series = features_df["season"].isin(holdout_ints)
+        surviving_train = train_mask.loc[cleaned.index]
+        surviving_hold = hold_mask.loc[cleaned.index]
+        train_df = cleaned.loc[surviving_train, :]
+        hold_df = cleaned.loc[surviving_hold, :]
 
-        train_df: DataFrame = features_df.loc[train_mask, :]
-        hold_df: DataFrame = features_df.loc[hold_mask, :]
+        return train_df, hold_df, usable
 
-        x_train: DataFrame = train_df.loc[:, available_features]
+    def _fit_and_build_metadata(
+        self,
+        *,
+        train_df: DataFrame,
+        hold_df: DataFrame,
+        usable_features: list[str],
+        model_type: PropModelType,
+        context: str,
+    ) -> PropModelMetadata:
+        """Fit the model, evaluate on holdout, and return metadata.
+
+        Shared by ``train()`` and ``train_through()``. Both split the data
+        differently but the fit-and-evaluate path is identical from here on.
+
+        Args:
+            train_df: Training rows (post-split).
+            hold_df: Holdout rows (post-split).
+            usable_features: Feature columns to fit on. Recorded verbatim
+                in the returned metadata's ``feature_columns`` field as
+                the fit-time source of truth for prediction.
+            model_type: Algorithm to fit.
+            context: Human-readable description for logs.
+
+        Returns:
+            ``PropModelMetadata`` describing the fitted model.
+
+        Raises:
+            ValueError: If the holdout slice is empty.
+        """
+        target = self.spec.target_col
+        x_train = train_df.loc[:, usable_features]
         y_train: Series = train_df[target]
-        x_hold: DataFrame = hold_df.loc[:, available_features]
+        x_hold = hold_df.loc[:, usable_features]
         y_hold: Series = hold_df[target]
 
         logger.info(
-            "Training %s: %d train rows (seasons %s), %d holdout rows (seasons %s), %d features",
+            "Training %s (%s): %d train rows, %d holdout rows, %d features",
             self.spec.name,
+            context,
             len(x_train),
-            sorted(train_df["season"].unique()),
             len(x_hold),
-            sorted(hold_df["season"].unique()),
-            len(available_features),
+            len(usable_features),
         )
 
         if len(x_hold) == 0:
-            msg: str = (
-                f"No holdout data for {self.spec.name}. "
-                f"HOLDOUT_SEASONS={holdout_ints} produced 0 rows."
-            )
+            msg: str = f"No holdout rows for {self.spec.name} ({context})."
             raise ValueError(msg)
 
-        # Fit on training data using TimeSeriesSplit inner CV.
-        params: dict[str, Any] = self._fit(x_train, y_train, model_type=model_type)
-
-        # Evaluate on holdout
-        y_pred: ndarray = self._predict(x_hold)
-        evaluator_metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
+        params = self._fit(x_train, y_train, model_type=model_type)
+        y_pred = self._predict(x_hold)
+        metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
 
         logger.info(
-            "%s holdout: MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
+            "%s holdout (%s): MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
             self.spec.name,
-            evaluator_metrics["mae"],
-            evaluator_metrics["rmse"],
-            evaluator_metrics["r2"],
+            context,
+            metrics["mae"],
+            metrics["rmse"],
+            metrics["r2"],
             len(y_hold),
         )
 
@@ -531,14 +612,94 @@ class PropTrainer(ABC):
             training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
             holdout_seasons=[f"{y}-{y + 1}" for y in sorted(hold_df["season"].unique().tolist())],
             parameters=params,
-            feature_columns=available_features,
+            feature_columns=usable_features,
             n_train_rows=len(x_train),
             n_holdout_rows=len(x_hold),
             metrics={
-                "mae": evaluator_metrics["mae"],
-                "rmse": evaluator_metrics["rmse"],
-                "r2": evaluator_metrics["r2"],
+                "mae": metrics["mae"],
+                "rmse": metrics["rmse"],
+                "r2": metrics["r2"],
             },
+        )
+
+    def predict_with_meta(
+        self,
+        df: DataFrame,
+        meta: PropModelMetadata,
+    ) -> tuple[ndarray, DataFrame]:
+        """Predict on a slice using the fit-time feature list from meta.
+
+        This is the only sanctioned prediction path outside of the
+        internal fit-and-evaluate flow. Callers pass the metadata
+        returned by ``train()`` / ``train_through()`` (or loaded via
+        ``ArtifactStore.read_metadata``) so the exact feature list the
+        model was fit on drives prediction. This closes the drift bug
+        where independent NaN filtering at predict time can disagree
+        with the fit-time feature set and trigger sklearn's feature-name
+        check.
+
+        Rows in ``df`` with NaN in any fit-time feature are dropped
+        before prediction. Callers can use the returned DataFrame's
+        index to align predictions with their input.
+
+        Args:
+            df: Data slice to predict on. Must contain all columns in
+                ``meta.feature_columns``.
+            meta: Metadata from the model's training run.
+
+        Returns:
+            Tuple of (predictions ndarray, df filtered to rows that
+            survived NaN-drop and were predicted).
+
+        Raises:
+            RuntimeError: If ``meta.feature_columns`` contains a column
+                not present in ``df`` — a feature-pipeline regression.
+        """
+        usable: list[str] = list(meta.feature_columns)
+        missing: list[str] = [c for c in usable if c not in df.columns]
+        if missing:
+            msg: str = (
+                f"{meta.model_name}/{meta.model_type}: prediction slice "
+                f"missing columns present at fit time: {missing}. Feature "
+                f"pipeline changed between train and predict."
+            )
+            raise RuntimeError(msg)
+
+        clean: DataFrame = df.dropna(subset=usable)
+        if clean.empty:
+            return np.array([]), clean
+
+        preds = self._predict(clean.loc[:, usable])
+        return preds, clean
+
+    def train(
+        self,
+        *,
+        model_type: PropModelType = PropModelType.ELASTICNET,
+        repo: Path | None = None,
+    ) -> PropModelMetadata:
+        """Full training pipeline using the HOLDOUT_SEASONS split."""
+        holdout_ints: set[int] = {int(s.split("-")[0]) for s in HOLDOUT_SEASONS}
+        features_df, available = self._prepare_features(repo=repo)
+
+        train_mask: Series[bool] = ~features_df["season"].isin(holdout_ints)
+        hold_mask: Series[bool] = features_df["season"].isin(holdout_ints)
+        context: str = f"HOLDOUT_SEASONS={sorted(holdout_ints)}"
+
+        train_df, hold_df, usable = self._filter_and_split(
+            features_df=features_df,
+            available_features=available,
+            train_mask=train_mask,
+            hold_mask=hold_mask,
+            context=context,
+        )
+
+        return self._fit_and_build_metadata(
+            train_df=train_df,
+            hold_df=hold_df,
+            usable_features=usable,
+            model_type=model_type,
+            context=context,
         )
 
     def train_through(
@@ -548,127 +709,32 @@ class PropTrainer(ABC):
         model_type: PropModelType = PropModelType.ELASTICNET,
         repo: Path | None = None,
     ) -> PropModelMetadata:
-        """Train using only seasons strictly before ``cutoff_season``.
+        """Walk-forward training using seasons strictly before ``cutoff_season``.
 
-        Walk-forward variant of ``train()``. Training data is restricted to
-        seasons whose integer label is ``< cutoff_season``. The
-        ``cutoff_season`` itself becomes the implicit holdout window for
-        this training run, so the returned ``PropModelMetadata`` reflects
-        honest historical generalisation rather than the standard
-        ``HOLDOUT_SEASONS`` split.
-
-        Used by ``gridiron props backfill`` to produce season-by-season
-        predictions without leaking future information into the training
-        set. Each call performs a full HP search and a single refit; the
-        caller is responsible for iterating across seasons.
-
-        Args:
-            cutoff_season: Integer season label (e.g. ``2024``). Training
-                uses only seasons strictly less than this. The same value
-                is used as the single holdout season for evaluation.
-            model_type: Algorithm to use.
-            repo: Repository root override.
-
-        Returns:
-            ``PropModelMetadata`` for the walk-forward run.
-
-        Raises:
-            ValueError: If no training rows precede ``cutoff_season``, or
-                the cutoff season has no rows to evaluate against.
+        ``cutoff_season`` itself becomes the holdout. Used by
+        ``gridiron props backfill`` and the composite ``full-retrain``
+        prop backfill stage.
         """
-        df: DataFrame = self._load_data(repo=repo)
-        features_df: DataFrame = self._build_features(df)
-        feature_cols: list[str] = self._feature_columns()
+        features_df, available = self._prepare_features(repo=repo)
 
-        features_df = features_df.sort_values(["season", "week"]).reset_index(drop=True)
+        train_mask: Series[bool] = features_df["season"] < cutoff_season
+        hold_mask: Series[bool] = features_df["season"] == cutoff_season
+        context: str = f"cutoff_season={cutoff_season}"
 
-        available_features: list[str] = [c for c in feature_cols if c in features_df.columns]
-
-        target: str = self.spec.target_col
-        nan_rates: Series = features_df[available_features].isna().mean()
-        usable_features: list[str] = [c for c in available_features if nan_rates[c] < 0.5]
-        dropped_features = set(available_features) - set(usable_features)
-        if dropped_features:
-            logger.info(
-                "Dropped %d features with >50%% NaN for %s: %s",
-                len(dropped_features),
-                self.spec.position_filter,
-                sorted(dropped_features)[:10],
-            )
-
-        required_cols: list[str] = [*usable_features, target]
-        n_before = len(features_df)
-        features_df = features_df.dropna(subset=required_cols)
-        logger.info(
-            "NaN drop: %d → %d rows (%d dropped, %d usable features)",
-            n_before,
-            len(features_df),
-            n_before - len(features_df),
-            len(usable_features),
-        )
-        available_features = usable_features
-
-        train_mask: Series = features_df["season"] < cutoff_season
-        hold_mask: Series = features_df["season"] == cutoff_season
-
-        train_df: DataFrame = features_df.loc[train_mask, :]
-        hold_df: DataFrame = features_df.loc[hold_mask, :]
-
-        x_train: DataFrame = train_df.loc[:, available_features]
-        y_train: Series = train_df[target]
-        x_hold: DataFrame = hold_df.loc[:, available_features]
-        y_hold: Series = hold_df[target]
-
-        logger.info(
-            "Walk-forward train %s through %d: %d train rows, %d holdout rows, %d features",
-            self.spec.name,
-            cutoff_season,
-            len(x_train),
-            len(x_hold),
-            len(available_features),
+        train_df, hold_df, usable = self._filter_and_split(
+            features_df=features_df,
+            available_features=available,
+            train_mask=train_mask,
+            hold_mask=hold_mask,
+            context=context,
         )
 
-        if len(x_train) == 0:
-            msg: str = (
-                f"No training rows precede cutoff_season={cutoff_season} for {self.spec.name}."
-            )
-            raise ValueError(msg)
-        if len(x_hold) == 0:
-            msg = f"No rows available for cutoff_season={cutoff_season} for {self.spec.name}."
-            raise ValueError(msg)
-
-        params: dict[str, Any] = self._fit(x_train, y_train, model_type=model_type)
-
-        y_pred: ndarray = self._predict(x_hold)
-        evaluator_metrics: dict[str, float] = evaluate_props(np.asarray(y_hold), y_pred)
-
-        logger.info(
-            "%s walk-forward holdout (cutoff=%d): MAE=%.1f, RMSE=%.1f, R²=%.3f (n=%d)",
-            self.spec.name,
-            cutoff_season,
-            evaluator_metrics["mae"],
-            evaluator_metrics["rmse"],
-            evaluator_metrics["r2"],
-            len(y_hold),
-        )
-
-        return PropModelMetadata(
-            model_name=self.spec.name,
-            model_type=model_type.value,
-            task="regression",
-            trained_at=datetime.now(UTC).isoformat(),
-            target_col=self.spec.target_col,
-            training_seasons=[f"{y}-{y + 1}" for y in sorted(train_df["season"].unique().tolist())],
-            holdout_seasons=[f"{y}-{y + 1}" for y in sorted(hold_df["season"].unique().tolist())],
-            parameters=params,
-            feature_columns=available_features,
-            n_train_rows=len(x_train),
-            n_holdout_rows=len(x_hold),
-            metrics={
-                "mae": evaluator_metrics["mae"],
-                "rmse": evaluator_metrics["rmse"],
-                "r2": evaluator_metrics["r2"],
-            },
+        return self._fit_and_build_metadata(
+            train_df=train_df,
+            hold_df=hold_df,
+            usable_features=usable,
+            model_type=model_type,
+            context=context,
         )
 
     def train_and_save(

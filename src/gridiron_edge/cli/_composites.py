@@ -130,6 +130,7 @@ def _check_dependencies(
     *,
     stages: Sequence[CompositeStage],
     active: set[str],
+    assume_satisfied: set[str] | None = None,
 ) -> None:
     """Validate that depends_on references point at known stages.
 
@@ -140,13 +141,17 @@ def _check_dependencies(
     Args:
         stages: Ordered list of all stages in this composite.
         active: Set of stage names selected for execution.
+        assume_satisfied: Stage names that completed in a prior run and
+            whose outputs are on disk. Treated as pre-satisfied when
+            checking dependencies. Enables resume-from-partial-run
+            workflows without re-running expensive completed stages.
 
     Raises:
         typer.BadParameter: If any active stage has an unmet
             ``depends_on`` reference.
     """
     all_names: set[str] = {s.name for s in stages}
-    seen_active: set[str] = set()
+    seen_active: set[str] = set(assume_satisfied or ())
     unmet: list[tuple[str, str]] = []
 
     for stage in stages:
@@ -181,6 +186,7 @@ def run_composite(
     active: set[str],
     context: dict[str, Any] | None = None,
     strict: bool = False,
+    assume_satisfied: set[str] | None = None,
 ) -> CompositeSummary:
     """Execute a sequence of stages with consistent error handling.
 
@@ -200,6 +206,10 @@ def run_composite(
         strict: If True, all soft failures are treated as hard
             failures. Used by ``verify`` to convert flaky-network
             warnings into a clean signal.
+        assume_satisfied: Stage names that completed in a prior run and
+            whose outputs are on disk. Forwarded to
+            :func:`_check_dependencies` so dependency checks accept
+            missing-but-completed stages.
 
     Returns:
         ``CompositeSummary`` with per-stage outcomes and consolidated
@@ -207,7 +217,11 @@ def run_composite(
     """
     from gridiron_edge.core.console import step
 
-    _check_dependencies(stages=stages, active=active)
+    _check_dependencies(
+        stages=stages,
+        active=active,
+        assume_satisfied=assume_satisfied,
+    )
 
     ctx: dict[str, Any] = context if context is not None else {}
     summary = CompositeSummary(name=name)

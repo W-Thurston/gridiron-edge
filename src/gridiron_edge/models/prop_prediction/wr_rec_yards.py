@@ -19,4 +19,15 @@ class WRRecYardsTrainer(PropTrainer):
             position_filter=["WR"],
             description="WR receiving yards prop model",
             clip_hi=300,
+            exclude_feature_prefixes=(
+                # WRs do not throw passes; passing-side rolling stats
+                # are structurally undefined for the position. Note
+                # that rushing_* is intentionally kept — WRs get rare
+                # end-arounds and jet sweeps and the feature is not
+                # structurally invalid the way passing_ is.
+                "passing_",
+                "attempts_",
+                "completions_",
+                "sacks_suffered_",
+            ),
         )

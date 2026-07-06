@@ -34,8 +34,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 # pyrefly: ignore [missing-import]
 import typer
 
@@ -69,6 +67,14 @@ from gridiron_edge.models.catalog import (
 
 
 __all__: list[str] = ["_GAME_MODEL_PAIRS", "_PROP_ALGORITHMS", "_PROP_STAT_FAMILIES"]
+
+
+#: Minimum number of prior seasons required before prop walk-forward
+#: will attempt a cutoff. Prop features include shift(1) rolling stats,
+#: so the earliest available season produces all-NaN training rows and
+#: ``train_through`` raises "No training rows precede cutoff_season=N".
+#: Mirrors ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` in evaluation/backfill.py.
+_MIN_PROP_WALK_FORWARD_TRAIN_SEASONS: int = 3
 
 
 @dataclass(frozen=True)
@@ -178,10 +184,14 @@ def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
 def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
     """Walk-forward backfill all selected prop model pairs.
 
-    Iterates over (stat_family, algorithm) pairs and calls the prop
-    backfill function. This is the longest stage by far.
+    Iterates over (stat_family, algorithm) pairs and delegates to
+    the canonical prop walk-forward implementation in
+    ``cli/props.py``. Uses the same NaN policy (>50% column threshold)
+    as ``gridiron props backfill``.
     """
-    from gridiron_edge.models.prop_prediction.base import PropModelType
+    from gridiron_edge.cli.props import _walk_forward_predict_for_season
+    from gridiron_edge.features.player.builder import build_prop_features
+    from gridiron_edge.models.prop_prediction.base import PropModelType, PropTrainer
     from gridiron_edge.models.registry import ModelRegistry
 
     pairs: list[tuple[str, str]] = ctx["prop_pairs"]
@@ -189,6 +199,8 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
         return StageResult(success=True, detail="no prop pairs requested")
 
     # Trigger registry population.
+    from typing import cast
+
     import gridiron_edge.models.prop_prediction.qb_pass_yards
     import gridiron_edge.models.prop_prediction.qb_rush_yards
     import gridiron_edge.models.prop_prediction.rb_rush_yards
@@ -200,66 +212,37 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
 
     for stat_family, algorithm in pairs:
         model_cls = ModelRegistry.get(stat_family)
-        trainer = model_cls()
+        trainer_typed = cast(PropTrainer, model_cls())
 
-        # Resolve all available seasons in player game logs.
-        # The trainer's _load_data is the canonical loader.
-        from typing import cast
-
-        from gridiron_edge.models.prop_prediction.base import PropTrainer
-
-        trainer_typed = cast(PropTrainer, trainer)
-        df = trainer_typed._load_data()
-        seasons_int = sorted(df["season"].unique().tolist())
+        # Build features once per pair; walk-forward slices by season.
+        features_df = build_prop_features(
+            position_filter=trainer_typed.spec.position_filter,
+        )
+        seasons_available: list[int] = sorted(
+            int(s) for s in features_df["season"].dropna().unique().tolist()
+        )
 
         # Walk-forward: predict each season using a model trained
-        # through the prior season.
+        # through the prior season. Skip the earliest season since
+        # there's no prior training window.
         pair_n = 0
-        for season in seasons_int[1:]:
-            meta = trainer_typed.train_through(
-                cutoff_season=season,
+        for season in seasons_available[1:]:
+            enriched, _ = _walk_forward_predict_for_season(
+                model_name=stat_family,
                 model_type=PropModelType(algorithm),
+                season=season,
+                features_df=features_df,
             )
-
-            # The trainer holds the fitted state; project the cutoff
-            # season using the canonical predict path.
-            from gridiron_edge.features.player.builder import (
-                build_prop_features,
-            )
-
-            features_all = build_prop_features(
-                position_filter=trainer_typed.spec.position_filter,
-            )
-            features_season = features_all[features_all["season"] == season]
-            if features_season.empty:
+            if enriched.empty:
                 continue
-
-            usable_cols = [c for c in meta.feature_columns if c in features_season.columns]
-            x = features_season[usable_cols].dropna()
-            if x.empty:
-                continue
-
-            features_season = features_season.loc[x.index, :]
-
-            preds = trainer_typed._predict(x)
-
-            preds_df = pd.DataFrame(
-                {
-                    "player_id": features_season["player_id"].values,
-                    "game_id": features_season["game_id"].values,
-                    "season": features_season["season"].values,
-                    "week": features_season["week"].values,
-                    "stat_type": trainer_typed.spec.target_col,
-                    "predicted_mean": preds,
-                }
-            )
 
             archive_prop_predictions(
-                preds_df,
+                enriched,
+                is_backfilled=True,
                 model_name=stat_family,
                 model_type=algorithm,
             )
-            pair_n += len(preds_df)
+            pair_n += len(enriched)
 
         total_archived += pair_n
         pair_summaries.append(f"{stat_family}/{algorithm}={pair_n:,}")
@@ -964,6 +947,15 @@ def full_retrain_cmd(
         "--only",
         help=_ONLY_HELP,
     ),
+    assume_done: list[str] = typer.Option(  # noqa: B008
+        [],
+        "--assume-done",
+        help=(
+            "Stage(s) that completed in a prior run and whose artifacts "
+            "are on disk. Their dependencies are considered satisfied "
+            "without re-running them. Useful for resuming after a failure."
+        ),
+    ),
 ) -> None:
     r"""Heavy full-retrain workflow: all data, all models, all calibrations.
 
@@ -1005,6 +997,7 @@ def full_retrain_cmd(
         stages=stages,
         active=active,
         context=context,
+        assume_satisfied=set(assume_done),
     )
 
     render_composite_summary(summary)

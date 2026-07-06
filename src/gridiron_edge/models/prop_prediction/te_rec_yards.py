@@ -19,4 +19,13 @@ class TERecYardsTrainer(PropTrainer):
             position_filter=["TE"],
             description="TE receiving yards prop model",
             clip_hi=250,
+            exclude_feature_prefixes=(
+                # TEs do not throw passes; passing-side rolling stats
+                # are structurally undefined for the position. See
+                # wr_rec_yards.py for the fuller rationale.
+                "passing_",
+                "attempts_",
+                "completions_",
+                "sacks_suffered_",
+            ),
         )

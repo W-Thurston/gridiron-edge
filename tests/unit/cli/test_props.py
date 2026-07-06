@@ -44,30 +44,46 @@ class TestPropsCliStructure:
         assert result.exit_code != 0
 
 
-class TestDataPrepSharing:
-    """Verify champion_cmd shares data prep across model types.
+class TestPropsInternalHelpers:
+    """Smoke tests for the internal helper surface of cli/props.py.
 
-    These are smoke tests; the real perf validation happens at runtime.
+    After the training-path consolidation, the single canonical
+    predictionenrichment helper is `_enrich_and_predict`, used by
+    both `_walk_forward_predict_for_season` (backfill path) and
+    `_project_for_model` (projections path). This class documents
+    the intended surface so accidental re-fragmentation is caught
+    by a broken import.
     """
 
-    def test_prepare_holdout_data_function_exists(self) -> None:
-        """champion_cmd's data-prep helper must be importable for sharing."""
-        from gridiron_edge.cli.props import _prepare_holdout_data
+    def test_enrich_and_predict_is_importable(self) -> None:
+        """The single canonical predictionenrichment helper."""
+        from gridiron_edge.cli.props import _enrich_and_predict
 
-        assert callable(_prepare_holdout_data)
+        assert callable(_enrich_and_predict)
 
-    def test_enrich_predictions_function_exists(self) -> None:
-        """The model-type-specific enrichment helper must be importable."""
-        from gridiron_edge.cli.props import _enrich_predictions_for_holdout
+    def test_walk_forward_predict_for_season_is_importable(self) -> None:
+        """Used by both the CLI backfill and full-retrain composite."""
+        from gridiron_edge.cli.props import _walk_forward_predict_for_season
 
-        assert callable(_enrich_predictions_for_holdout)
+        assert callable(_walk_forward_predict_for_season)
 
-    def test_train_and_enrich_still_exists(self) -> None:
-        """The convenience wrapper used by evaluate_cmd, backfill_cmd,
-        and projections_cmd must remain available."""
-        from gridiron_edge.cli.props import _train_and_enrich
+    def test_project_for_model_is_importable(self) -> None:
+        """Used by the projections CLI command."""
+        from gridiron_edge.cli.props import _project_for_model
 
-        assert callable(_train_and_enrich)
+        assert callable(_project_for_model)
+
+    def test_removed_helpers_are_gone(self) -> None:
+        """These helpers were folded into _enrich_and_predict.
+
+        Assert they stay gone so future changes don't accidentally
+        reintroduce a parallel prediction path.
+        """
+        import gridiron_edge.cli.props as props_mod
+
+        assert not hasattr(props_mod, "_prepare_holdout_data")
+        assert not hasattr(props_mod, "_enrich_predictions_for_holdout")
+        assert not hasattr(props_mod, "_train_and_enrich")
 
 
 class TestPropsRegistry:
@@ -385,3 +401,101 @@ class TestSeasonArgParsing:
     def test_rejects_garbage(self) -> None:
         with pytest.raises(typer.BadParameter):
             _parse_season_arg("not-a-season")
+
+
+class TestWalkForwardPredictionDrift:
+    """Regression test for the sklearn feature-name mismatch bug.
+
+    train_through can select a feature set based on training-slice NaN
+    rates. A previous bug in _walk_forward_predict_for_season re-derived
+    a different feature set based on prediction-slice NaN rates, causing
+    sklearn to raise 'The feature names should match those that were
+    passed during fit.'
+    """
+
+    def test_prediction_uses_meta_feature_columns_not_re_derived(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A column that is <50% NaN in training but >50% NaN in the
+        prediction season must still be passed to the model.
+        """
+        import numpy as np
+        import pandas as pd
+
+        from gridiron_edge.cli.props import _walk_forward_predict_for_season
+        from gridiron_edge.models.prop_prediction.base import PropModelType
+
+        # Build synthetic features across 2015-2020.
+        # - feat_stable: populated all seasons
+        # - feat_flaky: fully populated pre-2020 (in training slice),
+        #   90% NaN in 2020 (the prediction slice)
+        rng = np.random.default_rng(0)
+        rows = []
+        for season in range(2015, 2021):
+            for i in range(100):
+                is_nan_flaky = (season == 2020) and (i > 10)
+                rows.append(
+                    {
+                        "season": season,
+                        "week": 1,
+                        "player_id": f"p{i}",
+                        "game_id": f"g{season}_{i}",
+                        "rushing_yards": float(rng.integers(20, 150)),
+                        "carries": float(rng.integers(5, 25)),
+                        "feat_stable": float(rng.normal()),
+                        "feat_flaky": float("nan") if is_nan_flaky else float(rng.normal()),
+                    }
+                )
+        features_df = pd.DataFrame(rows)
+
+        monkeypatch.setattr(
+            "gridiron_edge.models.prop_prediction.base.build_prop_features",
+            lambda *_, **__: features_df,
+        )
+
+        # Use rb_rush_yards; align feature list with our synthetic df.
+        # We monkey-patch _feature_columns on the trainer class to
+        # advertise only our synthetic feature columns.
+        from gridiron_edge.models.prop_prediction.rb_rush_yards import (
+            RBRushYardsTrainer,
+        )
+
+        monkeypatch.setattr(
+            RBRushYardsTrainer,
+            "_feature_columns",
+            lambda self: ["feat_stable", "feat_flaky"],
+        )
+
+        # This is the call that used to raise "The feature names should
+        # match those that were passed during fit." because the outer
+        # helper recomputed the usable list on the prediction slice.
+        enriched, _rmse = _walk_forward_predict_for_season(
+            model_name="rb_rush_yards",
+            model_type=PropModelType.ELASTICNET,
+            season=2020,
+            features_df=features_df,
+        )
+
+        # Even though feat_flaky is >50% NaN in 2020, the ~11 rows where
+        # it IS populated should still produce predictions.
+        assert not enriched.empty
+        assert "predicted_mean" in enriched.columns
+
+
+def test_train_and_train_through_share_helpers() -> None:
+    """train() and train_through() must both go through
+    _prepare_features, _filter_and_split, _fit_and_build_metadata.
+
+    Sourcecode-level check. Not pretty but catches structural drift.
+    """
+    import inspect
+
+    from gridiron_edge.models.prop_prediction.base import PropTrainer
+
+    train_src = inspect.getsource(PropTrainer.train)
+    train_through_src = inspect.getsource(PropTrainer.train_through)
+
+    for helper in ("_prepare_features", "_filter_and_split", "_fit_and_build_metadata"):
+        assert helper in train_src, f"train() must delegate to {helper}"
+        assert helper in train_through_src, f"train_through() must delegate to {helper}"

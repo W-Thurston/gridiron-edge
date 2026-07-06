@@ -459,6 +459,353 @@ Per D21, the API layer is a serialization boundary — every response reads from
 | Team-name convention: PFR-era codes vs. modern nflverse | Backend uses `KAN`, `JAC`, `LV` — legacy PFR conventions. Modern usage prefers `KC`, `JAX`. Not a bug — reference table was created deliberately — but surface area for confusion when frontend has to hardcode team lists. | Options: (a) leave as-is and require frontend/documentation to know the convention; (b) migrate to nflverse conventions repo-wide (all archives, references, tests); (c) expose a `/teams/names` API endpoint that returns the map so frontends don't guess. Not blocking. |
 | MiniRepoBuilder default team-name-map inconsistent with archive data | `MiniRepoBuilder.with_teams_reference()` maps long team names to modern short codes (`KC`, `LAC`), but the rest of the codebase uses PFR-era short codes (`KAN`, `JAC`) in archives and CSVs. Tests that need to join across a team-name-map boundary must remember to use short codes matching the fixture's output, not the codebase's convention. | Either: (a) update the fixture to use PFR-era short codes to match the codebase; (b) make the mapping configurable per-test with a sensible default; (c) migrate the codebase to modern short codes (larger effort). Surfaces every time a test writes cross-CSV joins. |
 
+### 9.7 W8 backend hygiene backlog (surfaced by prototype audit)
+
+Gaps between what the frontend prototype expects and what our API
+returns today. Surfaced during the 2026-07-04 systematic
+prototype-vs-implementation audit. Items are prioritized by
+user-visible impact per the audit findings; P0 = blocks a screen
+from being usable, P1 = adds significant value to a partially-shipped
+screen, P2 = polish or nice-to-have.
+
+**Not blocking any specific active workstream.** Items are pulled from
+this list as future work (per-screen or per-domain), not as a monolithic
+"W8 Tier 4" tier. Deferred items blocked on other workstreams reference
+those workstreams inline.
+
+#### Team-related data gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| Team `primary_color` + `secondary_color` (hex) | P0 | Used by TeamMark, TeamHero, chip fills across all screens |
+| Team `city` / `name` split (currently one string) | P0 | Prototype renders as "Kansas City · Chiefs" with serif italic name |
+| Team `conference` (AFC/NFC) | P0 | Used by conference filter pills, division labels |
+| Team `division` letter (N/S/E/W) | P0 | Same |
+| `TeamRankingRow.rank_delta` (week-over-week rank change) | P1 | Requires previous-week rank snapshot storage |
+| `TeamProfile.ats_record` (season aggregate) | P1 | Requires odds join + season aggregation |
+| `TeamProfile.ou_record` (season aggregate) | P1 | Same |
+| `RecentResult` enriched with `spread_line`, `ats_result`, `total_line`, `total_result` | P1 | Requires per-game odds history |
+| `TeamProfile.upcoming_games[]` with difficulty index | P1 | Difficulty derived from opponent rating |
+| `TeamProfile.postseason_outlook` (compose from `/projections`) | P2 | Cross-endpoint composition |
+| Rating history with uncertainty band `{week, rating, lo, hi}` | P2 | Requires Elo uncertainty estimation |
+| Off/def rating decomposition | Blocked | Real modeling work; deferred workstream |
+| Situational splits by down/quarter/etc. | Blocked | PBP-derived; deferred workstream |
+| Top players by WAR | Blocked | Significant ML work; ROADMAP §9.5 |
+
+#### Game-related data gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `GameSummary.kick_time` (actual time-of-day, not just date) | P0 | Prototype renders "Sun · 4:25 PM ET" |
+| `GameDetail.tv_network` | P1 | e.g., "CBS", "NBC", "ESPN" |
+| `GameDetail.venue_text` | P1 | e.g., "M&T Bank Stadium · BAL" |
+| `GameDetail.weather_text` | P1 | e.g., "Light rain · 41°F · Wind 11mph" |
+| `GameDetail.top_edge` (compose from `/edges` filtered to game_id) | P1 | Top-EV edge for this specific game |
+| `GameDetail.top_prop_edges[]` (compose from `/props` filtered to game_id) | P1 | 4-5 top prop edges for this game |
+| `GameDetail.day_of_week_group` (for filter) | P2 | Enables day filter pills on GamesList |
+| Game storyline text | Blocked | Requires generation; deferred |
+| Multi-book market odds (spread/total/ML) | Blocked on W7 | Multi-book ingest |
+| Live game state | Blocked on W10 | Live ingest |
+| Injuries data | Blocked on §5.3 | Injury data source decision |
+| Swing factors | Blocked on feature attribution | Deferred workstream |
+
+#### Projections-related gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `TeamProjectionRow.rating` (currently need cross-endpoint join) | P1 | Composed from `/teams` |
+| `TeamProjectionRow.trend` (currently need cross-endpoint join) | P1 | Same |
+| `TeamProjectionRow.current_record` | P1 | For "Curr." column |
+| `TeamProjectionRow.projected_record` (derived from `avg_wins`) | P1 | Format like "14-3" |
+| `TeamProjectionRow.conference` / `division` | P1 | For filter pills + Division column |
+| `ProjectionsList.model_version` + `random_seed` on envelope | P2 | Metadata already in sidecar |
+
+#### Prop-related gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `/players/{player_id}/history?stat=&limit=` — game log endpoint | P0 | Powers L6 sparkline in PlayersExplorer + 12-game history chart in PlayerProp |
+| Player season averages endpoint | P1 | For PlayerProp header stats (Pass yds/g, Rush yds/g) |
+| `PropSummary.related_props[]` (via `?team=&exclude_prop_id=` filter) | P1 | For PlayerProp related props sidebar |
+| Stat display names ("Pass Yds" vs "qb_pass_yards") | P2 | Frontend or backend mapping |
+| Distribution shape parameters (skewness on ProjectionBlock) | P2 | For richer density curve rendering |
+| Player jersey number + physical stats | P2 | Needs roster data |
+| MVP odds / honors odds | P2 | External prop data |
+| Prop injury status | Blocked on §5.3 | |
+| Prop reasoning | Blocked on feature attribution | |
+| Multi-book prop shopping | Blocked on W7 | |
+
+#### Portfolio-related gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `/portfolio/summary?period=7d|30d|90d|ytd|all` | P0 | Powers period pills on Bankroll |
+| `/portfolio/curve?horizon=21d&with_projection=true` | P1 | Powers projected band on curve |
+| `bet.recommended_stake` field on ledger | P1 | Powers Kelly adherence dashboard |
+| `bet.clv_computed_at` + populated CLV | P1 | Currently null in summary |
+| `/portfolio/kelly-adherence` endpoint | P1 | Powers Kelly adherence card + distribution bars |
+| `/portfolio/goals` CRUD endpoint | P2 | Powers Goals view |
+| `/portfolio/tax` endpoint (deposit/withdrawal log) | P2 | Powers Tax & log view |
+| Cashout value computation | Blocked on W10 | Requires live odds |
+| Multi-sport support (if ever added) | Deferred | Not currently in scope |
+
+#### Compare data expansion
+
+| Item | Priority | Notes |
+|---|---|---|
+| ~12 additional team metrics per cohort (yardage, red zone %, third down %, pressure rate, takeaways) | P1 | Prototype has 24 metrics vs our 8 (Step 7 shipped 8) |
+| Percentile per metric per cohort (not just for 4 stats) | P1 | Extends Step 2 percentile pass |
+| `vs_winning` and `vs_top_10` cohorts | P1 | Extends Step 7 cohorts (currently 4: season/l4/home/away) |
+| Matchup edges per dimension on `/compare/teams` | P1 | Derived from percentile diff per side |
+| Special teams EPA metric | P2 | Requires PBP work |
+| Penalties/game metric | P2 | Requires PBP work |
+
+#### BetSlip / edges gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `EdgeRowShape.cover_prob` (or `model_prob`) exposed | P0 | Powers combined EV computation on parlays + Kelly stake suggestion |
+| `/edges/correlations?game_id=` endpoint | P1 | Powers SGP correlation warning + parlay correlation matrix in Tools |
+| Line movement history | Blocked on W7 | Powers "moved -0.5" indicators + live alerts |
+| Book-level odds per game/market | Blocked on W7 | Powers book selector at bottom of slip |
+
+#### Dashboard data gaps
+
+| Item | Priority | Notes |
+|---|---|---|
+| `/model/performance/history?weeks=4` endpoint | P1 | Powers model performance sparkline on Dashboard |
+| Rolling ROI windows (7d/30d) on portfolio summary | P1 | Powers "30d +24.3%" big number on Dashboard rail |
+| Multi-sport switcher data | Deferred | Not currently in scope |
+
+---
+
+### 9.8 W9 frontend polish backlog (surfaced by prototype audit)
+
+Frontend implementation gaps between prototype fidelity and current
+shipped code. Same audit source (2026-07-04). Same priority framework.
+
+Items grouped by:
+1. Shared primitives (used across many screens)
+2. Chart components (mostly new)
+3. Chrome and layout patterns
+4. Per-screen sections
+
+#### Shared primitives (used across many screens)
+
+| Item | Priority | Notes |
+|---|---|---|
+| `Pill` — shared filter toggle button | P0 | Every screen with filters inlines its own |
+| `WhyLink` — explainability entry point (labeled + dot modes) | P0 | Missing entirely; used across ~10 screens in prototype |
+| `TeamMark` with team primary color background | P0 | Currently uses `--bg-3` grey; big visual identity gap |
+| `Spark` — generic sparkline | P1 | Currently only exists as team-scoped `RatingHistorySparkline` |
+| `ProbBand` — generic version of WinProbBand with tick labels + color/height props | P1 | |
+| `ConfPill` with descriptive labels ("Higher confidence" vs "High") | P1 | Currently just "High/Moderate/Low" |
+| `Pct` — signed percentage renderer with pos/neg coloring | P2 | Frontend helper; currently formatted inline |
+| `Segmented` — mode/split switcher (used by Compare, Tools, others) | P2 | |
+
+#### Chart components (new)
+
+| Item | Priority | Notes |
+|---|---|---|
+| `BankrollCurve` with projected band | P1 | Extends current BalanceCurve with dashed projection line + filled uncertainty band + "Today" marker |
+| `DistributionChart` — SVG density curve overlay | P1 | Used by PlayerProp (projected distribution) and Explain (simulated outcomes) |
+| `HistoryChart` — bar chart with hit/miss coloring | P1 | Used by PlayerProp (12-game history) |
+| `GameLog` — SVG bar chart with book line + defense line overlays | P1 | Used by Compare player mode |
+| `RatingChart` — line chart with uncertainty band + axis grid | P2 | Used by TeamProfile |
+| `WinProbChart` — line chart with drive-event markers | Blocked on W10 | Used by LiveGame |
+| `LineMovementChart` — line chart of odds over time | Blocked on W7 | Used by LineShopping drilldown |
+| `Waterfall` — factor contribution visualization | Blocked on feature attribution | Used by Explain |
+| Variance preview distribution bars | P2 | Used by Tools Kelly calculator |
+| Correlation heat map grid | P2 | Used by Tools + BetSlip SGP mode |
+
+#### Chrome and layout patterns
+
+| Item | Priority | Notes |
+|---|---|---|
+| SubNav filter pills (day, category, market, position, etc.) | P0 | Currently inlined per screen; needs shared pattern |
+| Split-view layout (e.g., TeamRankings + TeamProfile side-by-side) | P0 | Currently separate routes |
+| Two-column layout (main / rail) — most screens need this | P0 | Currently single-column stacks on GameDetail, PlayerProp, Bankroll |
+| Header band with hero identity + big number + action buttons | P1 | Used by Bankroll, GameDetail, PlayerProp, TeamProfile |
+| `TeamHero` component (mark + city + name serif + record + rating) | P1 | Used by GameDetail, TeamProfile |
+| Sidebar navigation with sub-sections (Settings, potentially Bankroll views) | P1 | Currently flat single view |
+
+#### Per-screen missing sections
+
+**Dashboard (`/today`)** — currently a debug scaffold; essentially unbuilt
+
+| Item | Priority | Notes |
+|---|---|---|
+| Featured matchups grid (3 game cards) | P0 | Blocking primary landing page use |
+| Model edges table with tab filters | P0 | Powers Model edges rail |
+| Model performance rail (sparkline + big number) | P0 | Blocked on model performance history endpoint |
+| Player prop edges rail (5-row compact list) | P0 | |
+| Multi-sport SubNav pills | P2 | Data only NFL anyway |
+| Remove API verification and field-status demo cards | P1 | Or move to `/debug` route |
+
+**GameDetail (`/games/:id`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Two-column layout (65% main / 35% rail) | P0 | Currently single-column stack |
+| Full-width game header with `TeamHero` + kick/venue/weather center + model lean + action buttons | P0 | Currently minimal header |
+| Team comparison card that consumes `team_comparison` field (already populated via Step 7c) | P0 | Data ships; renderer doesn't |
+| Lines & model fair value table | P1 | Partial (model side works, market side blocked on W7) |
+| Win probability card with projected score + caveat callout | P1 | |
+| Top prop edges card (compose from `/props` filtered to game_id) | P1 | |
+| Swing factors card | Blocked on feature attribution | |
+| Injuries card | Blocked on §5.3 | |
+| "Add to bet slip" and "★ Track" buttons in header | P2 | Track blocked; slip integration works |
+
+**PlayerProp (`/players/:id`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Player hero header (team-colored mark + serif italic name + season stats row) | P0 | Currently minimal card |
+| Two-column layout | P0 | |
+| Distribution chart (Gaussian density from mean + std) | P0 | Data exists |
+| Situational splits card that consumes `situational_splits` field (already populated via Step 5) | P0 | Data ships; renderer doesn't |
+| History bar chart (12-game log) | P1 | Blocked on player history endpoint |
+| Related props sidebar | P1 | Blocked on related-props filter |
+| "Why the model leans" reasoning column | Blocked on feature attribution | |
+| Line shopping mini-table | Blocked on W7 | |
+
+**TeamRankings + TeamProfile (`/teams`, `/teams/:abbr`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Split-view restructure (rankings + profile in one route) | P0 | Major restructure |
+| Team hero band with team primary color background | P0 | |
+| Rating chart with uncertainty band | P1 | Enhance current sparkline |
+| Cohort splits table with colored percentile bars | P1 | Data exists via Step 7 |
+| Schedule difficulty visualization (7 upcoming week blocks) | P1 | Blocked on upcoming_games backend |
+| Postseason outlook rows | P1 | Blocked on postseason_outlook backend |
+| Top players by WAR list with colored bars | Blocked on WAR | |
+| Ranking table off/def tabs | Blocked on off/def decomposition | |
+
+**Compare (`/compare`)** — largest single frontend gap
+
+| Item | Priority | Notes |
+|---|---|---|
+| Mode switcher (Team vs Team / Player vs Defense) | P0 | |
+| Split control strip (6 cohort pills) | P0 | Currently no cohort switcher |
+| Three grouped sections layout ("When A has ball" / "When B has ball" / "Even footing") | P0 | Currently flat table |
+| `TaleRow` with colored percentile bars + `AdvChip` edge indicator | P0 | Defines the visual identity |
+| Enhanced `TeamPicker` with team colors + Off/Def mini-stat bars | P1 | |
+| Auto-generated matchup narrative banner | P1 | Frontend computation on percentile diffs |
+| Player vs Defense mode with `GameLog` chart | P1 | Blocked on player history endpoint |
+| Drag-and-drop row reordering | P2 | Pure frontend |
+| Sort by edge / sort by category buttons | P2 | |
+
+**PlayoffProjections (`/projections`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| `HeatCell` component with sequential color intensity per probability | P0 | Defines the screen's visual language |
+| Sortable column headers with active-state UI | P0 | |
+| Trend badge with colored background (green/red/neutral) | P1 | |
+| Conference filter pills (AFC/NFC/All) in SubNav | P1 | |
+| Model metadata top-right block (version, seed, run time) | P1 | Data available in sidecar |
+| Heat scale gradient bar in footer legend | P2 | |
+| Row click → team profile navigation | P2 | |
+
+**BetSlip (`/betslip`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Kelly stake suggestion card with "Use" button | P0 | Data path exists (`utils/odds.ts` has `kelly()`) |
+| Bankroll % indicator on stake input | P0 | AppStateContext has bankroll |
+| EV row on payout summary | P0 | Needs combined model prob from legs |
+| SGP mode + correlation warning | P1 | Blocked on `/edges/correlations` |
+| Round-robin mode with subs count via `choose(n, k)` | P1 | Pure frontend math |
+| Teaser mode with ±6/6.5/7 pt options | P1 | Needs teaser pricing logic |
+| LegCard enhanced (numbered, model comparison, EV pill, conf pill) | P1 | |
+| Quick stake buttons ($10/$25/$50/$100/$250) | P1 | |
+| Live line-movement alert banner | Blocked on W7 | |
+| Book selector at bottom of slip | Blocked on W7 | |
+
+**GamesList (`/games`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Rich card layout instead of table row | P1 | Card shows: kick, network, weather, teams, spread/total/ML, WP, band, model lean, actions |
+| Filter pills (day, has-edge, primetime, weather) | P1 | |
+| Network badge per row | P1 | Blocked on `tv_network` backend |
+| Weather alert indicator per row | P1 | Blocked on `weather_text` backend |
+| "+ Slip" button per row | P1 | |
+
+**PlayersExplorer (`/players`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Compare checkbox column with star toggle | P0 | Enables the compare rail |
+| Compare rail on right side with selected props | P0 | |
+| L6 sparkline column | P1 | Blocked on player history endpoint |
+| Colored stat/lean cells (green OVER, red UNDER) | P1 | Blocked on line context |
+| Filter pills in SubNav instead of inline FilterBar | P2 | |
+| Sort by EV | P2 | |
+
+**Tools (`/tools`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Tab switcher for 6 tools (Kelly, Hedge, Arb, Corr, Devig, Middle) | P0 | Currently 3-tool grid layout |
+| Hedge calculator | P1 | Pure frontend math |
+| Devig calculator | P1 | Pure frontend math |
+| Middle finder (empty state until W7 lands) | P1 | Blocked on W7 |
+| Slider component for percentage inputs | P1 | Used by Kelly + Model tuning |
+| Variance preview distribution bars | P2 | Adds depth to Kelly output |
+| Correlation heat map | Blocked on correlations endpoint | |
+| Arbitrage finder table | Blocked on W7 | |
+
+**Settings (`/settings`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Sidebar layout with 8 sections | P0 | Currently single view |
+| Connected books section | P1 | Blocked on OAuth story (out of scope for now) |
+| Alerts & notifications with 7 toggles + channel indicators | P1 | Blocked on server-side pref storage |
+| Model tuning section with 5 sliders | P1 | Blocked on server-side model retuning endpoint |
+| Responsible play limits section | P1 | Blocked on server-side enforcement |
+| Data & export section (CSV, PDF, delete) | P2 | |
+| Display preferences enhanced (theme, density, tone) | P2 | Client-side |
+
+**Onboarding (`/onboarding`)**
+
+| Item | Priority | Notes |
+|---|---|---|
+| Sports selection step + betting style tier | P1 | Missing step; multi-sport not shipping |
+| Books connection step | P1 | Blocked on OAuth |
+| Tone preview step | P1 | Client-side preference |
+| Progress bar instead of dots | P2 | |
+| Skip link (upper right) | P2 | |
+| Kelly explanation callout on bankroll step | P2 | |
+
+#### Cross-cutting interaction patterns
+
+| Item | Priority | Notes |
+|---|---|---|
+| Row-click nav pattern (used across many list screens) | P0 | Partially wired |
+| Filter pill component (shared) | P0 | See §9.8 Pill primitive |
+| Sortable table headers (shared) | P1 | Used by Projections, GamesList, PlayersExplorer, Bankroll |
+| Drag-and-drop reorder (used by Compare) | P2 | Pure frontend |
+| Cohort/mode switcher pattern (used by Compare, Bankroll) | P2 | See Segmented primitive |
+| Slider input (used by Tools, Settings) | P2 | |
+
+#### Priority summary
+
+- **P0 items:** ~35. Blocking meaningful use of one or more screens. Most valuable next work.
+- **P1 items:** ~50. Adds significant value to partially-shipped screens.
+- **P2 items:** ~30. Polish and nice-to-have.
+- **Blocked items:** ~25. Waiting on named workstreams (W7, W10, §5.3, feature attribution).
+
+Total estimated substeps to reach prototype fidelity across all
+screens: **~80-100 substeps.**
+
+Not all of these need to happen. This is a comprehensive backlog.
+Future frontend workstreams (call them W9.5, W9.6, or per-screen
+revamps) will pull from this list based on what's most valuable at
+that moment.
+
 ### Other
 
 - [ ] Reconsider `MIN_CV_TRAIN_ROWS` default in
@@ -466,6 +813,25 @@ Per D21, the API layer is a serialization boundary — every response reads from
   requires walk-forward to override. Consider scaling with training-pool
   size (e.g. `min(4000, N // 3)`) so callers don't need to know the guard
   exists.
+- [ ] Prop `train()` and `train_through()` measure NaN rates on their
+      training slice (correct), but the 50% threshold still lets
+      era-boundary features like `passing_cpoe` pass the filter when
+      training data spans both pre- and post-existence eras. Rows before
+      the feature's existence are silently discarded by `dropna`.
+      For `qb_pass_yards` champion training (HOLDOUT_SEASONS = 2023-2025),
+      this discards 1999-2008 seasons (~5,000 rows) without warning.
+      Options: (a) tighter threshold (e.g. 20%); (b) per-era feature
+      sets; (c) imputation policy; (d) warn/log when dropna cost is
+      large. Decide before we make claims about the prop dashboard's
+      historical coverage.
+- [ ] Investigate why prop walk-forward produces empty holdout slices at
+  specific cutoffs (observed: qb_pass_yards / elasticnet at cutoff 2003).
+  Likely a feature that crosses the 50% NaN threshold from unusable to
+  usable between consecutive cutoffs, then happens to be systematically
+  NaN in the target season. Decide whether to: (a) tighten the 50%
+  threshold, (b) apply per-slice usability with intersection, or (c)
+  accept skip-and-continue as the design and document the coverage
+  implication.
 
 ---
 
@@ -473,6 +839,7 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 | Date | Change |
 |---|---|
+| 2026-07-05 | **Prototype vs. implementation audit complete.** Systematic screen-by-screen comparison of 16 screens against the frontend prototype. Findings consolidated into §9.7 (W8 backend hygiene backlog, ~90 items) and §9.8 (W9 frontend polish backlog, ~90 items). PROTOTYPE_AUDIT.md retired. Not blocking any active workstream — items pulled from these lists as future work. |
 | 2026-07-04 | **W8 workstream complete.** All three tiers shipped: Tier 1 skeleton + blocked stubs, Tier 2 populated endpoints (16), Tier 3 additive datasets (7). Frontend (W9) consumes API end-to-end. |
 | 2026-07-03 | **W9 complete; W8 Tier 3 opens.** ROADMAP restructured to reflect current state: W9 moved to Completed section; W8 elevated to sole Active workstream with Tier 3 additive datasets as the work. §6 dependency graph redrawn; §1.1 "What's Working" and "What's Missing" tables updated. |
 | 2026-07-03 | **W9 complete.** Frontend consumes the API end-to-end; all 20 prototype screens render. Vite + React + TypeScript at `frontend/`. Every populated field shows real data; every scaffolded field surfaces `field_status`; every error state consistent. M4.5 milestone achieved. Path forward: W8 Tier 3 additive datasets, prioritized by W9 feedback on which field_status states most impact the UX. |

@@ -19,4 +19,21 @@ class QBPassYardsTrainer(PropTrainer):
             position_filter=["QB"],
             description="QB passing yards prop model",
             clip_hi=600,
+            exclude_feature_prefixes=(
+                # QBs do not catch passes; receiving-side rolling stats
+                # are structurally undefined for the position. Sporadic
+                # non-null rows (trick plays, halfback passes recorded
+                # against a QB) let these columns squeak under the 50%
+                # NaN threshold used during training, but they are
+                # ~100% NaN in any given holdout season and collapse
+                # the holdout via dropna.
+                "receiving_",
+                "receptions_",
+                "targets_",
+                "target_share",
+                "air_yards_share",
+                "wopr",
+                "racr",
+                "pacr",
+            ),
         )

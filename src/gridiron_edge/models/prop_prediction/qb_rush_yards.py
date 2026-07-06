@@ -19,4 +19,17 @@ class QBRushYardsTrainer(PropTrainer):
             position_filter=["QB"],
             description="QB rushing yards prop model",
             clip_hi=200,
+            exclude_feature_prefixes=(
+                # QBs do not catch passes; receiving-side rolling stats
+                # are structurally undefined for the position. See
+                # qb_pass_yards.py for the fuller rationale.
+                "receiving_",
+                "receptions_",
+                "targets_",
+                "target_share",
+                "air_yards_share",
+                "wopr",
+                "racr",
+                "pacr",
+            ),
         )

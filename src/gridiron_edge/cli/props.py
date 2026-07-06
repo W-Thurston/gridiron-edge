@@ -14,8 +14,7 @@ import logging
 from logging import Logger
 from pathlib import Path
 
-from numpy import ndarray
-from pandas import DataFrame, Series
+from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
 import typer
@@ -90,6 +89,61 @@ def _ensure_prop_models_registered() -> None:
     import gridiron_edge.models.prop_prediction.wr_rec_yards  # noqa: F401
 
 
+def _enrich_and_predict(
+    trainer: PropTrainer,
+    df: DataFrame,
+    meta: PropModelMetadata,
+    model_rmse: float,
+) -> DataFrame:
+    """Single prediction + enrichment path for prop CLI + composite.
+
+    Uses ``trainer.predict_with_meta()`` so ``meta.feature_columns`` is
+    the source of truth for which columns get passed to the model.
+    Rows dropped by that path are excluded from the returned DataFrame.
+
+    The returned DataFrame is archive-ready: ``predicted_mean``,
+    ``stat_type``, and all post-process enrichment columns
+    (``predicted_std``, ``lo_90``, ``hi_90``, and — when ``line`` is
+    present — ``p_over``, ``lean``, ``tier``) are populated.
+
+    Args:
+        trainer: Fitted (or artifact-loaded) prop trainer instance.
+        df: Data slice to predict on.
+        meta: Metadata from the trainer's ``train()`` /
+            ``train_through()`` or from ``ArtifactStore.read_metadata``.
+        model_rmse: Trained model's RMSE, used by
+            ``enrich_prop_predictions`` for std computation.
+
+    Returns:
+        Archive-ready DataFrame, empty if no rows survived NaN-drop.
+    """
+    import numpy as np
+
+    from gridiron_edge.models.prop_prediction.post_process import (
+        TARGET_STD_MAP,
+        enrich_prop_predictions,
+    )
+
+    preds, predicted_df = trainer.predict_with_meta(df, meta)
+    if predicted_df.empty:
+        return DataFrame()
+
+    result: DataFrame = predicted_df.copy()
+    result["predicted_mean"] = preds
+    result["stat_type"] = trainer.spec.name
+
+    target: str = trainer.spec.target_col
+    std_col: str = TARGET_STD_MAP.get(trainer.spec.name, f"{target}_L3_std")
+    if std_col not in result.columns:
+        result[std_col] = np.nan
+
+    return enrich_prop_predictions(
+        df=result,
+        model_rmse=model_rmse,
+        target_std_col=std_col,
+    )
+
+
 def _all_prop_models() -> list[str]:
     """Return registered prop model family names."""
     from gridiron_edge.models.registry import ModelRegistry
@@ -127,120 +181,6 @@ def _get_trainer(model_name: str) -> PropTrainer:
     return trainer
 
 
-def _prepare_holdout_data(
-    model_name: str,
-) -> tuple[PropTrainer, DataFrame, list[str]]:
-    """Build features once and prepare holdout-filtered, NaN-cleaned data.
-
-    Shared by champion_cmd across model types so feature engineering
-    runs once per stat family rather than once per (stat, model_type)
-    combination.
-
-    Args:
-        model_name: Which stat family (e.g. "qb_pass_yards").
-
-    Returns:
-        Tuple of (trainer, holdout_df, usable_feature_columns).
-    """
-    from gridiron_edge.core.constants import HOLDOUT_SEASONS
-    from gridiron_edge.features.player.builder import build_prop_features
-
-    trainer: PropTrainer = _get_trainer(model_name)
-
-    holdout_ints: set[int] = {int(s.split("-")[0]) for s in HOLDOUT_SEASONS}
-    df: DataFrame = build_prop_features(position_filter=trainer.spec.position_filter)
-
-    # Filter to holdout seasons
-    df = df.loc[df["season"].isin(holdout_ints), :].copy()
-
-    # Get feature columns and filter to usable ones
-    feature_cols: list[str] = trainer._feature_columns()
-    available: list[str] = [c for c in feature_cols if c in df.columns]
-    nan_rates: Series = df[available].isna().mean()
-    usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
-
-    # Drop NaN
-    target: str = trainer.spec.target_col
-    df = df.dropna(subset=[*usable, target])
-
-    if len(df) == 0:
-        typer.echo(f"No holdout data available for {model_name}")
-        raise typer.Exit(code=1)
-
-    return trainer, df, usable
-
-
-def _enrich_predictions_for_holdout(
-    trainer: PropTrainer,
-    holdout_df: DataFrame,
-    usable_features: list[str],
-    model_rmse: float,
-) -> DataFrame:
-    """Predict on prepared holdout data and enrich with post-process columns.
-
-    Args:
-        trainer: Already-trained PropTrainer instance.
-        holdout_df: Holdout DataFrame from _prepare_holdout_data().
-        usable_features: Feature columns to use for prediction.
-        model_rmse: Trained model's holdout RMSE for std computation.
-
-    Returns:
-        Enriched predictions DataFrame.
-    """
-    import numpy as np
-
-    from gridiron_edge.models.prop_prediction.post_process import (
-        TARGET_STD_MAP,
-        enrich_prop_predictions,
-    )
-
-    # Generate predictions
-    preds: ndarray = trainer._predict(holdout_df.loc[:, usable_features])
-    df = holdout_df.copy()
-    df["predicted_mean"] = preds
-    df["stat_type"] = trainer.spec.name
-
-    # Enrich
-    target: str = trainer.spec.target_col
-    std_col: str = TARGET_STD_MAP.get(trainer.spec.name, f"{target}_L3_std")
-    if std_col not in df.columns:
-        df[std_col] = np.nan
-
-    enriched: DataFrame = enrich_prop_predictions(
-        df=df,
-        model_rmse=model_rmse,
-        target_std_col=std_col,
-    )
-
-    return enriched
-
-
-def _train_and_enrich(
-    model_name: str,
-    model_type: PropModelType = PropModelType.ELASTICNET,
-) -> tuple[DataFrame, float]:
-    """Train a model, generate holdout predictions, and enrich them.
-
-    Convenience wrapper combining _prepare_holdout_data and training.
-    Used by evaluate_cmd, backfill_cmd, and projections_cmd which only
-    need to handle one model type. champion_cmd uses the split functions
-    directly to share data prep across model types.
-
-    Args:
-        model_name: Which stat family (e.g. "qb_pass_yards").
-        model_type: Algorithm to use.
-
-    Returns:
-        Tuple of (enriched predictions DataFrame, model RMSE).
-    """
-    trainer, holdout_df, usable = _prepare_holdout_data(model_name)
-    meta: PropModelMetadata = trainer.train(model_type=model_type)
-    enriched = _enrich_predictions_for_holdout(
-        trainer, holdout_df, usable, meta.metrics.get("rmse", float("nan"))
-    )
-    return enriched, meta.metrics.get("rmse", float("nan"))
-
-
 def _walk_forward_predict_for_season(
     *,
     model_name: str,
@@ -250,50 +190,48 @@ def _walk_forward_predict_for_season(
 ) -> tuple[DataFrame, float]:
     """Train through ``season`` and predict that season's player-games.
 
-    Used by ``backfill_cmd`` to walk forward across the historical
-    range. Predictions are enriched with the standard post-process
-    columns so the result is archive-ready.
+    Used by ``backfill_cmd`` and the composite full-retrain prop
+    backfill stage. Returns archive-ready enriched predictions.
 
     Args:
         model_name: Prop family name (e.g. ``"qb_pass_yards"``).
         model_type: Algorithm to use.
-        season: Integer season label. Becomes the cutoff and the
-            single prediction window.
-        features_df: Pre-built features DataFrame containing all
-            seasons. Sliced by ``season`` for the prediction step
-            to avoid rebuilding features for each iteration.
+        season: Integer season label. Becomes cutoff and prediction window.
+        features_df: Pre-built features DataFrame containing all seasons.
 
     Returns:
         Tuple of (enriched predictions DataFrame, model RMSE).
     """
     trainer: PropTrainer = _get_trainer(model_name)
-
-    meta: PropModelMetadata = trainer.train_through(
-        cutoff_season=season,
-        model_type=model_type,
-    )
+    try:
+        meta: PropModelMetadata = trainer.train_through(
+            cutoff_season=season,
+            model_type=model_type,
+        )
+    except ValueError as exc:
+        # Some cutoffs produce an empty training or holdout slice after
+        # the era-aware NaN filter. This is expected at era boundaries
+        # and is not a program error — it means the model cannot honestly
+        # predict that season with the feature set the training slice
+        # supports. Log and return an empty result; the outer loop
+        # continues.
+        msg = str(exc)
+        if "No training rows" in msg or "No holdout rows" in msg or "No rows available" in msg:
+            logger.warning(
+                "%s/%s cutoff=%d skipped: %s",
+                model_name,
+                model_type.value,
+                season,
+                msg,
+            )
+            return DataFrame(), float("nan")
+        raise
 
     season_df: DataFrame = features_df.loc[features_df["season"] == season, :].copy()
+    rmse: float = meta.metrics.get("rmse", float("nan"))
 
-    feature_cols: list[str] = trainer._feature_columns()
-    available: list[str] = [c for c in feature_cols if c in season_df.columns]
-    nan_rates: Series = season_df[available].isna().mean()
-    usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
-
-    target: str = trainer.spec.target_col
-    season_df = season_df.dropna(subset=[*usable, target])
-
-    if season_df.empty:
-        return DataFrame(), meta.metrics.get("rmse", float("nan"))
-
-    enriched: DataFrame = _enrich_predictions_for_holdout(
-        trainer,
-        season_df,
-        usable,
-        meta.metrics.get("rmse", float("nan")),
-    )
-
-    return enriched, meta.metrics.get("rmse", float("nan"))
+    enriched: DataFrame = _enrich_and_predict(trainer, season_df, meta, rmse)
+    return enriched, rmse
 
 
 # ---------------------------------------------------------------------------
@@ -706,22 +644,19 @@ def _project_for_model(
 ) -> DataFrame:
     """Load a trained prop artifact and project upcoming player-games.
 
+    Uses the artifact's metadata as the source of truth for prediction
+    features, closing the drift bug where re-derived NaN filters at
+    predict time can disagree with the fit-time feature list.
+
     Returns an empty DataFrame when:
         - no trained artifact exists,
         - no upcoming feature rows exist,
-        - all upcoming rows are dropped by NaN filtering.
-
-    Callers should accumulate non-empty results and present them as a
-    single projection table.
+        - all upcoming rows are dropped by the fit-time NaN filter.
     """
-    import numpy as np
+    from typing import cast
 
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
-    from gridiron_edge.models.prop_prediction.post_process import (
-        TARGET_STD_MAP,
-        enrich_prop_predictions,
-    )
 
     trainer: PropTrainer = _get_trainer(model_name)
     store = ArtifactStore(get_settings().repo_root)
@@ -729,43 +664,24 @@ def _project_for_model(
     if not store.is_trained(trainer.spec.name, model_type.value):
         return DataFrame()
 
-    artifact = store.load(trainer.spec.name, model_type.value)
-    scaler = store.load_scaler(trainer.spec.name, model_type.value)
+    trainer._model = store.load(trainer.spec.name, model_type.value)
+    trainer._scaler = store.load_scaler(trainer.spec.name, model_type.value)
+
+    # Narrow BaseModelMetadata → PropModelMetadata. Safe because we
+    # loaded from a prop artifact directory (ArtifactStore paths are
+    # partitioned by model_name, and this trainer's spec.name is a
+    # registered prop family).
+    meta: PropModelMetadata = cast(
+        PropModelMetadata,
+        store.read_metadata(trainer.spec.name, model_type.value),
+    )
 
     upcoming_df: DataFrame = _load_upcoming_prop_features(trainer)
     if upcoming_df.empty:
         return DataFrame()
 
-    feature_cols: list[str] = trainer._feature_columns()
-    available: list[str] = [c for c in feature_cols if c in upcoming_df.columns]
-    nan_rates: Series = upcoming_df[available].isna().mean()
-    usable: list[str] = [c for c in available if nan_rates[c] < 0.5]
-
-    upcoming_clean: DataFrame = upcoming_df.dropna(subset=usable).copy()
-    if upcoming_clean.empty:
-        return DataFrame()
-
-    trainer._model = artifact
-    trainer._scaler = scaler
-
-    preds: ndarray = trainer._predict(upcoming_clean.loc[:, usable])
-
-    enriched_input: DataFrame = upcoming_clean.copy()
-    enriched_input["predicted_mean"] = preds
-    enriched_input["stat_type"] = trainer.spec.name
-
-    target: str = trainer.spec.target_col
-    std_col: str = TARGET_STD_MAP.get(trainer.spec.name, f"{target}_L3_std")
-    if std_col not in enriched_input.columns:
-        enriched_input[std_col] = np.nan
-
-    enriched: DataFrame = enrich_prop_predictions(
-        df=enriched_input,
-        model_rmse=float("nan"),
-        target_std_col=std_col,
-    )
-
-    return enriched
+    rmse: float = meta.metrics.get("rmse", float("nan"))
+    return _enrich_and_predict(trainer, upcoming_df, meta, rmse)
 
 
 @props_app.command("projections")
