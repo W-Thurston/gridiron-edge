@@ -1,3 +1,5 @@
+# src/gridiron_edge/models/prop_prediction/qb_rush_yards.py
+
 """QB rushing yards prop model."""
 
 from __future__ import annotations

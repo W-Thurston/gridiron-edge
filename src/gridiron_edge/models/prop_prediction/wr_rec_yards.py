@@ -1,3 +1,5 @@
+# src/gridiron_edge/models/prop_prediction/wr_rec_yards.py
+
 """WR receiving yards prop model."""
 
 from __future__ import annotations
