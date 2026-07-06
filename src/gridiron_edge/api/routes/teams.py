@@ -17,6 +17,7 @@ from gridiron_edge.api.loaders import (
     load_team_name_map,
     load_team_percentiles_df,
     resolve_current_season_week,
+    team_metadata_lookup,
 )
 from gridiron_edge.api.schemas.teams import TeamProfile, TeamRankingsList
 from gridiron_edge.api.serializers.teams import (
@@ -55,6 +56,7 @@ def list_teams(
     long_to_short: dict[str, str] = load_team_name_map(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
     trends: DataFrame = compute_elo_deltas(elo, long_to_short)
+    team_metadata = team_metadata_lookup(settings)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_rankings(
@@ -65,6 +67,7 @@ def list_teams(
         as_of_week,
         percentiles,
         trends,
+        team_metadata,
     )
 
 
@@ -78,8 +81,8 @@ def get_team(
     ),
 ) -> TeamProfile:
     """Return per-team profile with ratings, record, and history."""
-    long_to_short = load_team_name_map(settings)
-    short_to_long = {v: k for k, v in long_to_short.items()}
+    long_to_short: dict[str, str] = load_team_name_map(settings)
+    short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
 
     if abbr.upper() not in short_to_long:
         raise HTTPException(
@@ -87,12 +90,13 @@ def get_team(
             detail=f"Unknown team abbreviation: {abbr}",
         )
 
-    elo = load_elo_state_df(settings)
-    games = load_games_df(settings)
-    percentiles = load_team_percentiles_df(settings)
-    trends = compute_elo_deltas(elo, long_to_short)
-    cohort_splits_df = load_team_cohort_splits_df(settings)
+    elo: DataFrame = load_elo_state_df(settings)
+    games: DataFrame = load_games_df(settings)
+    percentiles: DataFrame = load_team_percentiles_df(settings)
+    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
+    cohort_splits_df: DataFrame = load_team_cohort_splits_df(settings)
     cohort_splits = format_team_cohort_splits(cohort_splits_df, abbr.upper())
+    team_metadata = team_metadata_lookup(settings)
     resolved_season, as_of_week = _resolve_scope(settings, season)
 
     return serialize_team_profile(
@@ -104,5 +108,6 @@ def get_team(
         as_of_week,
         percentiles,
         trends,
-        cohort_splits,
+        team_metadata,
+        cohort_splits=cohort_splits,
     )

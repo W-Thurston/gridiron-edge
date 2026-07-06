@@ -859,3 +859,51 @@ def format_team_cohort_splits(
         result[cohort] = cohort_data
 
     return result
+
+
+def load_team_metadata(settings: Settings) -> pd.DataFrame:
+    """Load the team metadata reference CSV.
+
+    Returns:
+        DataFrame with columns NFL_LONG_NAME, NFL_SHORT_NAME, city,
+        name, conf, div, primary_color, secondary_color. Empty if
+        missing.
+    """
+    path = settings.repo_root / "data" / "cleaned" / "NFL_team_metadata.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def team_metadata_lookup(settings: Settings) -> dict[str, dict]:
+    """Return dict of long_name → metadata dict.
+
+    Metadata dict has keys: city, name, conference, division,
+    primary_color, secondary_color. All None if team not found.
+    """
+    df: DataFrame = load_team_metadata(settings)
+    if df.empty:
+        return {}
+
+    def _clean(v: Any) -> str | None:  # noqa: ANN401
+        """Return None for NaN, else str value."""
+        if v is None:
+            return None
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return str(v)
+
+    return {
+        str(row["NFL_LONG_NAME"]): {
+            "city": _clean(row.get("city")),
+            "name": _clean(row.get("name")),
+            "conference": _clean(row.get("conf")),
+            "division": _clean(row.get("div")),
+            "primary_color": _clean(row.get("primary_color")),
+            "secondary_color": _clean(row.get("secondary_color")),
+        }
+        for _, row in df.iterrows()
+    }

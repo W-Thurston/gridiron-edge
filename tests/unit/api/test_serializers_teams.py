@@ -178,6 +178,7 @@ class TestSerializeTeamRankings:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},
         )
         assert result.total == 0
         assert result.items == []
@@ -191,6 +192,7 @@ class TestSerializeTeamRankings:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},
         )
         assert result.total == 3
         assert result.items[0].abbr == "BAL"  # Highest at week 3
@@ -206,6 +208,7 @@ class TestSerializeTeamRankings:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},
         )
         assert result.response_meta is not None
         fs: dict[str, FieldStatus] = result.response_meta.field_status
@@ -223,6 +226,7 @@ class TestSerializeTeamProfile:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
         assert result.abbr == "XXX"
         assert result.rating is None
@@ -237,6 +241,7 @@ class TestSerializeTeamProfile:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
         assert result.abbr == "BAL"
         assert result.name == "Baltimore Ravens"
@@ -256,6 +261,7 @@ class TestSerializeTeamProfile:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
         fs = result.response_meta.field_status
         for expected in (
@@ -320,6 +326,7 @@ class TestTeamRankingsPercentiles:
             1,
             percentiles,
             pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
 
         by_abbr = {row.abbr: row for row in result.items}
@@ -350,6 +357,7 @@ class TestTeamRankingsPercentiles:
             1,
             percentiles,
             pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
 
         assert result.items[0].rating_pct is None
@@ -389,7 +397,8 @@ class TestTrendPopulation:
             "2026-2027",
             2,
             pd.DataFrame(),  # percentiles
-            trends,
+            trends,  # trends
+            {},  # team_metadata
         )
 
         assert result.items[0].trend == 20.0
@@ -415,7 +424,8 @@ class TestTrendPopulation:
             "2026-2027",
             1,
             pd.DataFrame(),  # percentiles
-            pd.DataFrame(),  # empty trends
+            pd.DataFrame(),  # trends
+            {},  # team_metadata
         )
 
         assert result.items[0].trend is None
@@ -434,6 +444,7 @@ class TestTeamProfileCohortSplits:
             3,
             pd.DataFrame(),  # percentiles
             pd.DataFrame(),  # trends
+            {},  # team_metadata
             cohort_splits={
                 "season": {"off_epa_per_play": 0.15, "sample_size": 4},
                 "l4": {"off_epa_per_play": 0.20, "sample_size": 4},
@@ -452,8 +463,9 @@ class TestTeamProfileCohortSplits:
             LONG_TO_SHORT,
             "2025-2026",
             3,
-            pd.DataFrame(),
-            pd.DataFrame(),
+            pd.DataFrame(),  # percentiles
+            pd.DataFrame(),  # trends
+            {},  # team_metadata
             cohort_splits=None,
         )
         assert result.cohort_splits is None

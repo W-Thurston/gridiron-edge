@@ -26,6 +26,11 @@ class TeamRankingRow(BaseModel):
 
     abbr: str
     name: str
+    city: str | None = None
+    conference: str | None = None
+    division: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
     rating: float | None = None
     rank: int | None = None
     record: TeamRecord | None = None
@@ -85,6 +90,11 @@ class TeamProfile(BaseResponse):
 
     abbr: str
     name: str
+    city: str | None = None
+    conference: str | None = None
+    division: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
     season: str | None = None
     as_of_week: int | None = None
     rating: float | None = None

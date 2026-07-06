@@ -121,6 +121,7 @@ def serialize_team_rankings(
     as_of_week: int,
     percentiles: DataFrame,
     trends: DataFrame,
+    team_metadata: dict[str, dict],
 ) -> TeamRankingsList:
     """Build the /teams power rankings response."""
     latest: DataFrame = _latest_ratings(elo, season, as_of_week)
@@ -143,10 +144,16 @@ def serialize_team_rankings(
         long_name = r["NFL_TEAM"]
         abbr = long_to_short.get(long_name, long_name[:3].upper())
         pcts = _percentile_for_team(percentiles, abbr)
+        team_meta = team_metadata.get(long_name, {})
         rows.append(
             TeamRankingRow(
                 abbr=abbr,
                 name=long_name,
+                city=team_meta.get("city"),
+                conference=team_meta.get("conference"),
+                division=team_meta.get("division"),
+                primary_color=team_meta.get("primary_color"),
+                secondary_color=team_meta.get("secondary_color"),
                 rating=_none_if_nan(r["ELO"]),
                 rank=rank_idx + 1,
                 record=_compute_record(season_games, long_name),
@@ -225,6 +232,7 @@ def serialize_team_profile(
     as_of_week: int,
     percentiles: DataFrame,
     trends: DataFrame,
+    team_metadata: dict[str, dict],
     cohort_splits: dict[str, dict] | None = None,
 ) -> TeamProfile:
     """Build the /teams/{abbr} response."""
@@ -242,6 +250,11 @@ def serialize_team_profile(
             as_of_week=as_of_week,
             response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
         )
+
+    # ------------------------------------------------------------------
+    # Team metadata (colors, city, conference, division)
+    # ------------------------------------------------------------------
+    team_meta = team_metadata.get(long_name, {})
 
     # ------------------------------------------------------------------
     # Rating + rank (from latest week ≤ as_of_week within season)
@@ -316,6 +329,11 @@ def serialize_team_profile(
     return TeamProfile(
         abbr=abbr.upper(),
         name=long_name,
+        city=team_meta.get("city"),
+        conference=team_meta.get("conference"),
+        division=team_meta.get("division"),
+        primary_color=team_meta.get("primary_color"),
+        secondary_color=team_meta.get("secondary_color"),
         season=season,
         as_of_week=as_of_week,
         rating=rating,
