@@ -8,7 +8,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gridiron_edge.cli.models import _apply_promotion_decision, _split_composite_key
+from gridiron_edge.cli.models import (
+    _apply_promotion_decision,
+    _metric_block_for,
+    _primary_metric_for,
+    _split_composite_key,
+)
+from gridiron_edge.models.game_prediction.base import GameModelMetadata
 
 
 class TestSplitCompositeKey:
@@ -49,8 +55,13 @@ class TestApplyPromotionDecisionNoChampion:
 
         champion_dir = tmp_path / "rf"
 
-        challenger_meta = MagicMock()
-        challenger_meta.holdout_brier = 0.225
+        challenger_meta = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"brier": 0.225},
+        )
 
         _apply_promotion_decision(
             champion_meta=None,
@@ -334,8 +345,14 @@ class TestTrainChallengerIntoCandidate:
         def fake_train(_df: object, *, repo: Path) -> object:
             champion_dir.mkdir()
             (champion_dir / "trained_marker").touch()
-            meta = MagicMock()
-            meta.holdout_brier = 0.225
+            meta = GameModelMetadata(
+                model_name="win_prob",
+                model_type="random_forest",
+                task="classification",
+                trained_at="2026-06-22T12:00:00",
+                metrics={"brier": 0.225},
+            )
+
             return meta
 
         predictor = MagicMock()
@@ -360,5 +377,235 @@ class TestTrainChallengerIntoCandidate:
         # Holding never created
         holding = tmp_path / "rf__holding"
         assert not holding.exists()
-        # Returned meta
-        assert result.holdout_brier == 0.225
+        # Returned meta comes from the fake predictor
+        assert result.metrics["brier"] == 0.225
+
+
+class TestPrimaryMetricFor:
+    """`_primary_metric_for` must read from meta.metrics, not deprecated
+    top-level attribute-style fields.
+
+    Regression test for the `.holdout_brier` bug that the # type: ignore
+    comments in cli/models.py were hiding.
+    """
+
+    def test_classification_reads_brier_from_metrics_dict(self) -> None:
+        meta = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"brier": 0.2215, "ece": 0.015, "auc": 0.68},
+        )
+        label, value = _primary_metric_for(meta)
+        assert label == "Holdout Brier"
+        assert value == "0.22150"
+
+    def test_regression_reads_mae_from_metrics_dict(self) -> None:
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"mae": 10.5, "rmse": 13.2, "r2": 0.15},
+        )
+        label, value = _primary_metric_for(meta)
+        assert label == "Holdout MAE"
+        assert value == "10.50000"
+
+    def test_missing_metric_returns_not_recorded(self) -> None:
+        meta = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-22T12:00:00",
+            metrics={},
+        )
+        label, value = _primary_metric_for(meta)
+        assert label == "Holdout Brier"
+        assert value == "(not recorded)"
+
+    def test_unknown_task_returns_dashes(self) -> None:
+        meta = GameModelMetadata(
+            model_name="mystery",
+            model_type="random_forest",
+            task="clustering",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"score": 0.5},
+        )
+        label, value = _primary_metric_for(meta)
+        assert label == "-"
+        assert value == "-"
+
+
+class TestMetricBlockFor:
+    """`_metric_block_for` returns task-appropriate metric rows."""
+
+    def test_classification_returns_five_rows(self) -> None:
+        meta = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-22T12:00:00",
+            metrics={
+                "brier": 0.2215,
+                "ece": 0.015,
+                "auc": 0.68,
+                "log_loss": 0.62,
+                "accuracy": 0.62,
+            },
+        )
+        rows = _metric_block_for(meta)
+        labels = [r[0] for r in rows]
+        assert labels == [
+            "Holdout Brier",
+            "ECE",
+            "AUC",
+            "Log Loss",
+            "Accuracy",
+        ]
+
+    def test_regression_returns_three_rows(self) -> None:
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"mae": 10.5, "rmse": 13.2, "r2": 0.15},
+        )
+        rows = _metric_block_for(meta)
+        labels = [r[0] for r in rows]
+        assert labels == ["Holdout MAE", "Holdout RMSE", "Holdout R²"]
+
+    def test_missing_metric_shows_not_recorded(self) -> None:
+        meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"mae": 10.5},  # rmse and r2 missing
+        )
+        rows = _metric_block_for(meta)
+        assert rows[0] == ("Holdout MAE", "10.50000")
+        assert rows[1] == ("Holdout RMSE", "(not recorded)")
+        assert rows[2] == ("Holdout R²", "(not recorded)")
+
+
+class TestColdStartMetricOutput:
+    """Cold-start promotion path must report the correct task-appropriate
+    metric label and value, drawn from meta.metrics rather than a
+    deprecated attribute-style field.
+
+    Direct regression test for the `.holdout_brier` # type: ignore bug.
+    """
+
+    def test_cold_start_reports_brier_for_classification(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        candidate = tmp_path / "candidate"
+        candidate.mkdir()
+        (candidate / "artifact.pkl").write_bytes(b"stub")
+
+        champion = tmp_path / "champion"
+
+        challenger_meta = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"brier": 0.2215},
+        )
+
+        _apply_promotion_decision(
+            champion_meta=None,
+            challenger_meta=challenger_meta,
+            champion_dir=champion,
+            candidate_dir=candidate,
+            force=False,
+            no_promote=False,
+        )
+
+        out = capsys.readouterr().out
+        assert "Holdout Brier" in out
+        assert "0.22150" in out
+
+    def test_cold_start_reports_mae_for_regression(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        candidate = tmp_path / "candidate"
+        candidate.mkdir()
+        (candidate / "artifact.pkl").write_bytes(b"stub")
+
+        champion = tmp_path / "champion"
+
+        challenger_meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-06-22T12:00:00",
+            metrics={"mae": 10.5},
+        )
+
+        _apply_promotion_decision(
+            champion_meta=None,
+            challenger_meta=challenger_meta,
+            champion_dir=champion,
+            candidate_dir=candidate,
+            force=False,
+            no_promote=False,
+        )
+
+        out = capsys.readouterr().out
+        assert "Holdout MAE" in out
+        assert "10.50000" in out
+        # The regression cold-start MUST NOT hardcode "Brier"
+        assert "Brier" not in out
+
+
+class TestNoDeprecatedAttributes:
+    """The metadata refactor moved holdout_brier / holdout_mae etc from
+    top-level fields into meta.metrics. Assert cli/models.py doesn't
+    reach for them via attribute access anywhere.
+
+    This is the guardrail against the exact pattern that was hiding
+    behind `# type: ignore [attr-defined]` comments for weeks.
+    """
+
+    def test_source_has_no_holdout_brier_access(self) -> None:
+        import inspect
+
+        import gridiron_edge.cli.models as mod
+
+        source = inspect.getsource(mod)
+        assert ".holdout_brier" not in source, (
+            "cli/models.py must not access .holdout_brier as an attribute; "
+            "use meta.metrics['brier'] via _primary_metric_for instead."
+        )
+
+    def test_source_has_no_holdout_mae_access(self) -> None:
+        import inspect
+
+        import gridiron_edge.cli.models as mod
+
+        source = inspect.getsource(mod)
+        assert ".holdout_mae" not in source, (
+            "cli/models.py must not access .holdout_mae as an attribute; "
+            "use meta.metrics['mae'] via _primary_metric_for instead."
+        )
+
+    def test_source_has_no_type_ignore_attr_defined(self) -> None:
+        """The `# type: ignore [attr-defined]` comments were hiding the
+        bug. Assert they don't come back."""
+        import inspect
+
+        import gridiron_edge.cli.models as mod
+
+        source = inspect.getsource(mod)
+        assert "attr-defined" not in source, (
+            "cli/models.py must not use `# type: ignore [attr-defined]` "
+            "for metadata access; type-check the code properly instead."
+        )

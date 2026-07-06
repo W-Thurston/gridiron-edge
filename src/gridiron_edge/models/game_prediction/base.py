@@ -599,6 +599,19 @@ class GamesTrainer(ABC):
         Returns a populated :class:`_SearchResult`. Raises ``RuntimeError`` if
         no valid pipeline was produced (e.g. all CV folds were skipped due to
         the MIN_CV_TRAIN_ROWS guard).
+
+        Args:
+            df: Full modeling DataFrame from ``load_modeling_file``.
+            model_type: Algorithm to search over.
+            feature_fn: Feature-construction callable from the spec.
+            repo: Repository root.
+            train_through_season: Optional walk-forward cutoff. Forwarded
+                to ``_prepare_window`` so training data is filtered to
+                seasons strictly before this label.
+            min_cv_train_rows: Override for the per-fold row floor.
+                Forwarded to ``_cv_score``. When ``None``, ``_cv_score``
+                uses ``_features.MIN_CV_TRAIN_ROWS``.
+
         """
         # pyrefly: ignore [missing-import]
         from sklearn.model_selection import TimeSeriesSplit
@@ -637,7 +650,7 @@ class GamesTrainer(ABC):
             sample_indices,
             desc=f"  {spec.name}/{model_type.value}",
             unit="iter",
-            ncols=88,
+            ncols=100,
             colour="cyan",
         )
         for idx in bar:
@@ -785,6 +798,16 @@ class GamesTrainer(ABC):
         Classification scores by Brier (lower is better); regression scores
         by MAE (lower is better). MIN_CV_TRAIN_ROWS guard from _features
         applies only to classification.
+
+        Args:
+            x_train: Feature matrix for the current window.
+            y_train: Target vector aligned with ``x_train``.
+            params: One HP combo (without ``epa_window``).
+            model_type: Algorithm to instantiate for each fold.
+            tscv: Configured ``TimeSeriesSplit`` instance.
+            min_cv_train_rows: Override for the per-fold row floor. When
+                ``None``, uses ``_features.MIN_CV_TRAIN_ROWS``. Only
+                applies to classification tasks.
 
         Returns:
             Tuple of ``(mean_score, n_folds_scored)``. ``mean_score`` is

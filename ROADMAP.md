@@ -832,6 +832,18 @@ that moment.
   threshold, (b) apply per-slice usability with intersection, or (c)
   accept skip-and-continue as the design and document the coverage
   implication.
+- [ ] Introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring
+  the prop-side pattern. Would enforce meta.feature_columns as the
+  source of truth at predict time, making the fit/predict feature
+  contract explicit rather than conventional. Callers in
+  evaluation/backfill.py (_walk_forward_one_season) and any future
+  game predictor path would use it.
+- [ ] Audit game feature construction (`feature_fn` implementations)
+  for cross-slice dependencies. `_filter_for_walk_forward` re-splits
+  pre-computed features, which assumes feature construction is purely
+  row-local (no aggregate statistics over the training pool). Verify
+  with a data-lineage check that no game feature reads
+  training-slice-scoped state.
 
 ---
 

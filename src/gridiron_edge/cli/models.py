@@ -123,7 +123,8 @@ def _apply_promotion_decision(
             shutil.rmtree(champion_dir)
         shutil.move(str(candidate_dir), str(champion_dir))
         typer.echo("\nNo existing champion. Saved as champion.")
-        typer.echo(f"  Brier: {challenger_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
+        label, value = _primary_metric_for(challenger_meta)
+        typer.echo(f"  {label}: {value}")
         typer.echo(f"  Artifact: {champion_dir}")
         return
 
@@ -311,14 +312,17 @@ def models_train(
 
     If no champion exists, the new model is saved as champion. If a
     champion exists, the new model is compared using promotion gates
-    (Brier improvement, ECE tolerance, AUC tolerance). The champion is
-    replaced only if all gates pass (or --force is used).
+    appropriate to the task: classification gates check Brier
+    improvement, ECE tolerance, and AUC tolerance; regression gates
+    check MAE improvement and RMSE tolerance. The champion is replaced
+    only if all gates pass (or --force is used).
 
     \b
     Examples:
       gridiron models train win_prob random_forest
       gridiron models train win_prob xgboost --force
       gridiron models train win_prob logistic --no-promote
+      gridiron models train total random_forest
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
@@ -364,7 +368,8 @@ def models_train(
     if store.is_trained(model_name, model_type):
         with step("Read champion metadata") as s:
             champion_meta = store.read_metadata(model_name, model_type)
-            s.set_detail(f"Brier: {champion_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
+            label, value = _primary_metric_for(champion_meta)
+            s.set_detail(f"{label}: {value}")
 
     # ── Train challenger into candidate directory ──────────────────
     with step("Load feature matrix") as s:
@@ -380,7 +385,8 @@ def models_train(
             candidate_dir=candidate_dir,
             model_type=model_type,
         )
-        s.set_detail(f"holdout Brier: {challenger_meta.holdout_brier:.5f}")  # type: ignore[attr-defined]
+        label, value = _primary_metric_for(challenger_meta)
+        s.set_detail(f"holdout {label}: {value}")
 
     # ── Compare and decide ─────────────────────────────────────────
     _apply_promotion_decision(
@@ -493,7 +499,6 @@ def models_info(
 
     if not store.is_trained(model_name, model_type):
         # Check whether this is an analytic model that doesn't persist artifacts
-        registry_key: str = f"{model_name}_{model_type}"
         try:
             predictor = PredictorRegistry.get(registry_key)()
             if hasattr(predictor, "spec") and not getattr(predictor.spec, "trainable", True):
