@@ -13,8 +13,7 @@ DatasetKey = Literal[
     "elo_state",
     "stadiums",
     "moneylines",
-    "teams_long_short",
-    "divisions",
+    "team_metadata",
     "epa_by_game",
     "player_game_logs",
     # ---- Derived modeling artifacts ----
@@ -54,8 +53,7 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "weather_enriched": DatasetSpec("data/cleaned/NFL_wk_by_wk_w_weather.csv"),
     "stadiums": DatasetSpec("data/cleaned/NFL_stadium_reference.csv"),
     "moneylines": DatasetSpec("data/cleaned/NFL_historical_moneylines.csv"),
-    "teams_long_short": DatasetSpec("data/cleaned/NFL_long_to_short_name.csv"),
-    "divisions": DatasetSpec("data/cleaned/NFL_conference_division.csv"),
+    "team_metadata": DatasetSpec("data/cleaned/NFL_team_metadata.csv"),
     "epa_by_game": DatasetSpec("data/cleaned/epa_by_game.parquet"),
     "player_game_logs": DatasetSpec("data/cleaned/player_game_logs.parquet"),
     # ---- Ratings / state ----

@@ -12,8 +12,8 @@ class TestDatasetRegistry:
     def test_datasets_not_empty(self) -> None:
         assert len(DATASETS) > 0
 
-    def test_has_20_keys(self) -> None:
-        assert len(DATASETS) == 20
+    def test_has_19_keys(self) -> None:
+        assert len(DATASETS) == 19
 
     def test_all_values_are_dataset_spec(self) -> None:
         for key, spec in DATASETS.items():
@@ -36,8 +36,7 @@ class TestDatasetRegistry:
             "elo_state",
             "stadiums",
             "moneylines",
-            "teams_long_short",
-            "divisions",
+            "team_metadata",
             "epa_by_game",
             "player_game_logs",
             # Derived modeling artifacts

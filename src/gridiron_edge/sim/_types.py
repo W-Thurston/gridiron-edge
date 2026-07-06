@@ -124,8 +124,14 @@ class SimPaths:
 
     @property
     def mapping_file(self) -> Path:
-        """Absolute path to the long-to-short team name mapping CSV."""
-        return self.data_cleaned / "NFL_long_to_short_name.csv"
+        """Absolute path to the unified team metadata CSV.
+
+        Contains long/short names, city/name split, conf/div,
+        primary/secondary colors. Consumed by
+        ``sim.season.load_long_to_short_mapping``, which reads the
+        NFL_LONG_NAME + NFL_SHORT_NAME columns.
+        """
+        return self.data_cleaned / "NFL_team_metadata.csv"
 
     @property
     def elo_file(self) -> Path:
@@ -134,8 +140,13 @@ class SimPaths:
 
     @property
     def conf_div_file(self) -> Path:
-        """Absolute path to the conference and division assignment CSV."""
-        return self.data_cleaned / "NFL_conference_division.csv"
+        """Absolute path to the unified team metadata CSV.
+
+        Points to the same file as ``mapping_file``. Consumed by
+        ``sim.season.build_conf_div_arrays_from_csv``, which reads
+        the conf + div columns.
+        """
+        return self.data_cleaned / "NFL_team_metadata.csv"
 
     @property
     def output_temp_dir(self) -> Path:

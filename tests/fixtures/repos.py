@@ -315,20 +315,26 @@ class MiniRepoBuilder:
         self,
         long_to_short: dict[str, str] | None = None,
     ) -> MiniRepoBuilder:
-        """Add a teams reference CSV mapping long names to short codes.
+        """Add a unified team metadata CSV.
 
-        Writes ``data/cleaned/NFL_long_to_short_name.csv``, the path that
-        ``datasets.loaders.load_teams_long_short`` reads from.
+        Writes ``data/cleaned/NFL_team_metadata.csv``, the unified team
+        reference that:
+        - ``datasets.loaders.load_teams_long_short`` selects 2 cols from,
+        - ``datasets.loaders.load_divisions`` selects 3 cols from,
+        - ``api.loaders.load_team_metadata`` surfaces to the API,
+        - ``sim.season.load_long_to_short_mapping`` reads for sim setup.
 
         Args:
             long_to_short: Mapping of long names to short codes. Defaults
-                to a small four-team fixture set.
+                to a small four-team fixture set (KAN/LAC/BUF/MIA using
+                PFR-era short codes). Non-default teams get placeholder
+                metadata.
 
         Returns:
             Self, for builder chaining.
         """
         default_map: dict[str, str] = {
-            "Kansas City Chiefs": "KC",
+            "Kansas City Chiefs": "KAN",
             "Los Angeles Chargers": "LAC",
             "Buffalo Bills": "BUF",
             "Miami Dolphins": "MIA",
@@ -338,13 +344,62 @@ class MiniRepoBuilder:
         cleaned_dir: Path = self._root / "data" / "cleaned"
         cleaned_dir.mkdir(parents=True, exist_ok=True)
 
-        df = pd.DataFrame(
-            {
-                "NFL_LONG_NAME": list(mapping.keys()),
-                "NFL_SHORT_NAME": list(mapping.values()),
-            }
+        # Full metadata for the 4 default teams.
+        default_metadata: dict[str, dict[str, str]] = {
+            "Kansas City Chiefs": {
+                "city": "Kansas City",
+                "name": "Chiefs",
+                "conf": "AFC",
+                "div": "W",
+                "primary_color": "#E31837",
+                "secondary_color": "#FFB81C",
+            },
+            "Los Angeles Chargers": {
+                "city": "Los Angeles",
+                "name": "Chargers",
+                "conf": "AFC",
+                "div": "W",
+                "primary_color": "#0080C6",
+                "secondary_color": "#FFC20E",
+            },
+            "Buffalo Bills": {
+                "city": "Buffalo",
+                "name": "Bills",
+                "conf": "AFC",
+                "div": "E",
+                "primary_color": "#00338D",
+                "secondary_color": "#C60C30",
+            },
+            "Miami Dolphins": {
+                "city": "Miami",
+                "name": "Dolphins",
+                "conf": "AFC",
+                "div": "E",
+                "primary_color": "#008E97",
+                "secondary_color": "#FC4C02",
+            },
+        }
+
+        rows = []
+        for long_name, short in mapping.items():
+            meta = default_metadata.get(long_name, {})
+            rows.append(
+                {
+                    "NFL_LONG_NAME": long_name,
+                    "NFL_SHORT_NAME": short,
+                    "city": meta.get("city", long_name),
+                    "name": meta.get("name", long_name),
+                    "conf": meta.get("conf", "AFC"),
+                    "div": meta.get("div", "E"),
+                    "primary_color": meta.get("primary_color", "#000000"),
+                    "secondary_color": meta.get("secondary_color", "#FFFFFF"),
+                }
+            )
+
+        pd.DataFrame(rows).to_csv(
+            cleaned_dir / "NFL_team_metadata.csv",
+            index=False,
         )
-        df.to_csv(cleaned_dir / "NFL_long_to_short_name.csv", index=False)
         return self
 
     def build(self) -> Path:

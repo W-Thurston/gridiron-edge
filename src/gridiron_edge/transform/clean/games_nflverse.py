@@ -62,7 +62,8 @@ Notes:
     - YEAR uses the "YYYY-YYYY+1" season label format (e.g. "2025-2026").
     - GAME_LOCATION uses: "H" = home game, "@" = away game, "N" = neutral site.
     - nflverse uses short team codes. This module maps them to long names
-      using the teams_long_short reference dataset so all downstream code
+      using the team_metadata reference dataset (long/short name columns)
+
       (Elo table, features) continues to work unchanged.
 """
 

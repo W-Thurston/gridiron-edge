@@ -89,27 +89,48 @@ def load_moneylines(repo_root: Path) -> pd.DataFrame:
 
 
 def load_teams_long_short(repo_root: Path) -> pd.DataFrame:
-    """Load the team name long-to-short mapping dataset.
+    """Load team long-to-short name mapping (from unified metadata).
 
     Args:
         repo_root: Absolute path to the repository root.
 
     Returns:
-        DataFrame mapping full team names to short codes.
+        DataFrame with columns NFL_LONG_NAME, NFL_SHORT_NAME. Sources from
+        the unified team_metadata CSV.
     """
-    return load_csv(repo_root, "teams_long_short")
+    df: pd.DataFrame = load_csv(repo_root, "team_metadata")
+    return df.loc[:, ["NFL_LONG_NAME", "NFL_SHORT_NAME"]].copy()
 
 
 def load_divisions(repo_root: Path) -> pd.DataFrame:
-    """Load the conference and division assignment dataset.
+    """Load conference and division assignment (from unified metadata).
 
     Args:
         repo_root: Absolute path to the repository root.
 
     Returns:
-        DataFrame mapping each team to its conference and division.
+        DataFrame with columns NFL_TEAM, CONFERENCE, DIVISION. Sources from
+        the unified team_metadata CSV. Converts single-letter div codes
+        (N/S/E/W) to full "AFC North" / "NFC East" style names for
+        backward compatibility with sim/season.py::build_conf_div_arrays_from_csv.
     """
-    return load_csv(repo_root, "divisions")
+    df: pd.DataFrame = load_csv(repo_root, "team_metadata")
+
+    div_letter_to_name: dict[str, str] = {
+        "N": "North",
+        "S": "South",
+        "E": "East",
+        "W": "West",
+    }
+
+    div_names: pd.Series = df["div"].map(div_letter_to_name)
+    return pd.DataFrame(
+        {
+            "NFL_TEAM": df["NFL_LONG_NAME"],
+            "CONFERENCE": df["conf"],
+            "DIVISION": df["conf"].str.cat(div_names, sep=" "),
+        }
+    )
 
 
 def load_epa_by_game(repo_root: Path) -> pd.DataFrame:

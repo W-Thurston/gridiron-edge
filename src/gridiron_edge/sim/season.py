@@ -335,42 +335,49 @@ def build_conf_div_arrays_from_csv(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build conference and division assignment arrays from CSV.
 
+    Reads from the unified NFL_team_metadata.csv. Constructs full division
+    names (e.g. "AFC North") from the single-letter div codes (N/S/E/W)
+    plus conf for DIV_CODES lookup.
+
     Returns:
         (conf_id, div_id) arrays of shape (32,).
     """
     df = pd.read_csv(conf_div_path)
-    required = {"NFL_TEAM", "CONFERENCE", "DIVISION"}
+    required: set[str] = {"NFL_LONG_NAME", "conf", "div"}
     if not required.issubset(df.columns):
-        raise ValueError(f"conf/div file missing columns: {required - set(df.columns)}")
+        raise ValueError(f"team metadata file missing columns: {required - set(df.columns)}")
 
     conf_id = np.full(N_TEAMS, -1, dtype=np.int8)
     div_id = np.full(N_TEAMS, -1, dtype=np.int8)
 
+    div_letter_to_name: dict[str, str] = {"N": "North", "S": "South", "E": "East", "W": "West"}
+
     for row in df.itertuples(index=False):
-        long_name = str(row.NFL_TEAM)
-        conf = str(row.CONFERENCE)
-        div = str(row.DIVISION)
+        long_name = str(row.NFL_LONG_NAME)
+        conf_str = str(row.conf)
+        div_letter = str(row.div)
+        div_name: str = f"{conf_str} {div_letter_to_name.get(div_letter, div_letter)}"
 
-        short = team_index.long_to_short.get(long_name)
+        short: str | None = team_index.long_to_short.get(long_name)
         if short is None:
-            raise ValueError(f"Missing long->short mapping for conf/div team: {long_name}")
+            raise ValueError(f"Missing long->short mapping for team: {long_name}")
 
-        tid = team_index.short_to_id.get(short)
+        tid: int | None = team_index.short_to_id.get(short)
         if tid is None:
             raise ValueError(f"Team {short} not found in team_index")
 
-        c = CONF_CODES.get(conf)
-        d = DIV_CODES.get(div)
+        c: int | None = CONF_CODES.get(conf_str)
+        d: int | None = DIV_CODES.get(div_name)
         if c is None:
-            raise ValueError(f"Unknown CONFERENCE: {conf}")
+            raise ValueError(f"Unknown CONFERENCE: {conf_str}")
         if d is None:
-            raise ValueError(f"Unknown DIVISION: {div}")
+            raise ValueError(f"Unknown DIVISION: {div_name}")
 
         conf_id[tid] = np.int8(c)
         div_id[tid] = np.int8(d)
 
     if (conf_id < 0).any() or (div_id < 0).any():
-        missing = [
+        missing: list[str] = [
             team_index.short_names[i] for i in range(N_TEAMS) if conf_id[i] < 0 or div_id[i] < 0
         ]
         raise ValueError(f"Conference/division incomplete. Missing: {missing}")

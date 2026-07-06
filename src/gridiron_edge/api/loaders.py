@@ -862,14 +862,16 @@ def format_team_cohort_splits(
 
 
 def load_team_metadata(settings: Settings) -> pd.DataFrame:
-    """Load the team metadata reference CSV.
+    """Load the unified team metadata CSV via the datasets registry.
 
     Returns:
         DataFrame with columns NFL_LONG_NAME, NFL_SHORT_NAME, city,
         name, conf, div, primary_color, secondary_color. Empty if
-        missing.
+        the file does not exist yet.
     """
-    path = settings.repo_root / "data" / "cleaned" / "NFL_team_metadata.csv"
+    from gridiron_edge.datasets.registry import dataset_path
+
+    path: Path = dataset_path(settings.repo_root, "team_metadata")
     if not path.exists():
         return pd.DataFrame()
     return pd.read_csv(path)
