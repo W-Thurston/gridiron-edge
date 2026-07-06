@@ -1,130 +1,41 @@
-import { useCurrentWeek } from "../api/hooks";
-import { FieldValue } from "../components/field-status/FieldValue";
-import { ScreenPlaceholder } from "./ScreenPlaceholder";
-import { ErrorCard } from "../components/error/ErrorCard";
+import { FeaturedMatchupsGrid } from "../components/dashboard/FeaturedMatchupsGrid";
+import { ModelEdgesTable } from "../components/dashboard/ModelEdgesTable";
+import { ModelPerformanceRail } from "../components/dashboard/ModelPerformanceRail";
+import { PropEdgesRail } from "../components/dashboard/PropEdgesRail";
 
+/**
+ * Primary landing page for Gridiron Edge.
+ *
+ * Layout:
+ * - Top row: FeaturedMatchupsGrid (3-card row of top matchups)
+ * - Bottom row: Two-column split
+ *   - Left (~60%): ModelEdgesTable with filter tabs
+ *   - Right (~40%): Stacked ModelPerformanceRail + PropEdgesRail
+ *
+ * Each section handles its own data loading and error states.
+ * When backend data is unavailable, sections render actionable
+ * empty states with CLI hints.
+ */
 export function Dashboard() {
-  const { data, isLoading, error, refetch } = useCurrentWeek();
-
   return (
-    <div>
-      <ScreenPlaceholder title="Dashboard" subtitle="/today" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Top row: Featured matchups (full width) */}
+      <FeaturedMatchupsGrid />
 
-      {/* API loop verification */}
-      <div className="hm-card" style={{ padding: 24, maxWidth: 720, marginTop: 16 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 8 }}>
-          API — /weeks/current
+      {/* Bottom row: Edges table + right rail */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "3fr 2fr",
+          gap: 16,
+        }}
+      >
+        <ModelEdgesTable />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <ModelPerformanceRail />
+          <PropEdgesRail />
         </div>
-        {isLoading && <div className="dim">Loading…</div>}
-        {error && (
-          <ErrorCard
-              error={error}
-              onRetry={() => refetch()}
-            />
-        )}
-        {data && (
-          <div className="mono tnum" style={{ fontSize: 12 }}>
-            <div>Season: {data.season ?? "(null)"}</div>
-            <div>Week: {data.week ?? "(null)"}</div>
-            <div>Source: {data.source ?? "(null)"}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Field-status demo */}
-      <div className="hm-card" style={{ padding: 24, maxWidth: 720, marginTop: 16 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Field Status Demo — Substep 2.0
-        </div>
-
-        <table
-          className="mono tnum"
-          style={{
-            width: "100%",
-            fontSize: 12,
-            borderCollapse: "collapse",
-          }}
-        >
-          <thead>
-            <tr style={{ color: "var(--ink-3)" }}>
-              <th style={{ textAlign: "left", padding: "4px 12px 4px 0" }}>
-                Scenario
-              </th>
-              <th style={{ textAlign: "left", padding: "4px 12px 4px 0" }}>
-                Renders
-              </th>
-              <th style={{ textAlign: "left", padding: "4px 0" }}>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <DemoRow
-              scenario="Populated"
-              value={<FieldValue value={0.71} />}
-              note="Value renders normally"
-            />
-            <DemoRow
-              scenario="Null, no status"
-              value={<FieldValue value={null} />}
-              note="Bare em dash"
-            />
-            <DemoRow
-              scenario="Null, pending"
-              value={<FieldValue value={null} status="pending" />}
-              note='Hover "i" badge for tooltip'
-            />
-            <DemoRow
-              scenario="Null, blocked (feature attr.)"
-              value={
-                <FieldValue
-                  value={null}
-                  status={{
-                    status: "blocked",
-                    blocker: "feature_attribution",
-                    roadmap: "deferred",
-                  }}
-                />
-              }
-              note='Hover "!" badge for tooltip'
-            />
-            <DemoRow
-              scenario="Null, blocked (injuries)"
-              value={
-                <FieldValue
-                  value={null}
-                  status={{
-                    status: "blocked",
-                    blocker: "injury_data_source",
-                    roadmap: "§5.3",
-                  }}
-                />
-              }
-              note="Different blocker, same shape"
-            />
-          </tbody>
-        </table>
       </div>
     </div>
-  );
-}
-
-function DemoRow({
-  scenario,
-  value,
-  note,
-}: {
-  scenario: string;
-  value: React.ReactNode;
-  note: string;
-}) {
-  return (
-    <tr style={{ borderTop: "1px solid var(--line-soft)" }}>
-      <td style={{ padding: "8px 12px 8px 0", color: "var(--ink-2)" }}>
-        {scenario}
-      </td>
-      <td style={{ padding: "8px 12px 8px 0" }}>{value}</td>
-      <td style={{ padding: "8px 0", color: "var(--ink-3)", fontSize: 11 }}>
-        {note}
-      </td>
-    </tr>
   );
 }
