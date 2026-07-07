@@ -14,6 +14,7 @@ import { probToAmerican } from "../utils/odds";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { useState } from "react";
 import { Pill } from "../components/primitives/Pill";
+import { usePropsList } from "../api/hooks";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -145,7 +146,7 @@ export function GameDetail() {
 
         {/* Right rail */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <SectionPlaceholder title="Top Prop Edges" />
+          <TopPropEdgesCard gameId={data.game_id} />
           <ComingSoonCard
             title="Swing Factors"
             status={fieldStatus?.swing_factors as FieldStatus | undefined}
@@ -340,31 +341,6 @@ function stripCityPrefix(
     return name.slice(prefix.length);
   }
   return name;
-}
-
-/**
- * Titled empty card for sections in-progress this workstream.
- * Different from ComingSoonCard which is used for cross-workstream
- * blocked sections.
- */
-function SectionPlaceholder({ title }: { title: string }) {
-  return (
-    <div className="hm-card" style={{ padding: 20 }}>
-      <div className="upper dim" style={{ fontSize: 10 }}>
-        {title}
-      </div>
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        Coming in Tier 2/3
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -1289,4 +1265,297 @@ function MetricRow({
       </span>
     </div>
   );
+}
+/**
+ * Top prop edges card — right rail. 4-row compact list of top prop
+ * projections for this game, sorted by predicted_mean descending.
+ *
+ * Data flow:
+ * 1. Fetch /props (unfiltered)
+ * 2. Filter to this game_id client-side
+ * 3. Sort by predicted_mean descending
+ * 4. Take top 4
+ *
+ * Row click navigates to PlayerProp. Uses same pattern as Dashboard's
+ * PropEdgesRail.
+ */
+function TopPropEdgesCard({ gameId }: { gameId: string }) {
+  const { navigate } = useNav();
+  const { legs, add } = useBetSlip();
+  const { data, isLoading, error } = usePropsList({});
+
+  if (isLoading) {
+    return (
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+          Top Prop Edges
+        </div>
+        <div className="dim">Loading…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+          Top Prop Edges
+        </div>
+        <div className="dim mono" style={{ fontSize: 12 }}>
+          Couldn't load props.
+        </div>
+      </div>
+    );
+  }
+
+  const items = data?.items ?? [];
+  const gameProps = items
+    .filter((p) => p.game_id === gameId)
+    .filter((p) => p.projection?.predicted_mean != null)
+    .sort((a, b) => {
+      const aMean = a.projection?.predicted_mean ?? 0;
+      const bMean = b.projection?.predicted_mean ?? 0;
+      return bMean - aMean;
+    })
+    .slice(0, 4);
+
+  const totalGameProps = items.filter((p) => p.game_id === gameId).length;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Top Prop Edges
+        </div>
+        {totalGameProps > 0 && (
+          <button
+            type="button"
+            onClick={() => navigate("/players")}
+            className="mono dim"
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              font: "inherit",
+              fontSize: 10.5,
+              color: "var(--ink-3)",
+            }}
+          >
+            See all {totalGameProps} →
+          </button>
+        )}
+      </div>
+
+      {gameProps.length === 0 && (
+        <div style={{ padding: 16, textAlign: "center" }}>
+          <div className="dim mono" style={{ fontSize: 12, marginBottom: 6 }}>
+            No prop projections yet.
+          </div>
+          <div className="mono dim2" style={{ fontSize: 10.5 }}>
+            Run `gridiron props projections`.
+          </div>
+        </div>
+      )}
+
+      {gameProps.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {gameProps.map((prop, i) => (
+            <PropRow
+              key={prop.prop_id}
+              prop={prop}
+              legs={legs}
+              add={add}
+              navigate={navigate}
+              isFirst={i === 0}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type PropRowProps = {
+  prop: {
+    prop_id: string;
+    player_name: string;
+    position: string;
+    team: string;
+    stat_type: string;
+    projection?: {
+      predicted_mean?: number | null;
+      predicted_std?: number | null;
+    } | null;
+    line_context?: {
+      line?: number | null;
+      lean?: string | null;
+      confidence_tier?: string | null;
+    } | null;
+  };
+  legs: Array<{ id: string }>;
+  add: Parameters<ReturnType<typeof useBetSlip>["add"]> extends [infer L] ? (leg: L) => void : never;
+  navigate: (path: string, params?: Record<string, string>) => void;
+  isFirst: boolean;
+};
+
+function PropRow({ prop, legs, add, navigate, isFirst }: PropRowProps) {
+  const legId = `game-detail-prop-${prop.prop_id}`;
+  const isPicked = legs.some((l) => l.id === legId);
+  const statLabel = formatStatType(prop.stat_type);
+  const lean = prop.line_context?.lean ?? null;
+  const line = prop.line_context?.line ?? null;
+  const modelMean = prop.projection?.predicted_mean ?? null;
+  const confidenceTier = prop.line_context?.confidence_tier ?? null;
+
+  const handleClick = () => {
+    navigate("/players", { propId: prop.prop_id });
+  };
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isPicked) return;
+    add({
+      id: legId,
+      gameId: prop.prop_id,
+      market: "prop" as never,
+      side: (lean ?? "over") as "home" | "away" | "over" | "under",
+      odds: -110,
+      awayTeam: prop.team,
+      homeTeam: prop.team,
+    });
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`View details for ${prop.player_name} ${statLabel}`}
+      style={{
+        padding: "10px 0",
+        borderTop: isFirst ? "none" : "1px solid var(--line-soft)",
+        cursor: "pointer",
+      }}
+    >
+      {/* Top row: player + position + confidence tier */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 4,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+          }}
+        >
+          <TeamMark abbr={prop.team} size={16} />
+          <span style={{ color: "var(--ink)" }}>{prop.player_name}</span>
+          <span className="mono dim2" style={{ fontSize: 10 }}>
+            {prop.position}
+          </span>
+        </div>
+        {confidenceTier && (
+          <ConfidenceTierPill tier={confidenceTier} />
+        )}
+      </div>
+
+      {/* Bottom row: stat + lean + line + model */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 11,
+        }}
+      >
+        <span className="dim mono">{statLabel}</span>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 10,
+          }}
+        >
+          <span
+            style={{
+              color:
+                lean === "Over"
+                  ? "var(--pos)"
+                  : lean === "Under"
+                    ? "var(--neg)"
+                    : "var(--ink-3)",
+              fontWeight: 500,
+            }}
+          >
+            {lean ?? "—"}
+          </span>
+          <span className="mono tnum" style={{ color: "var(--ink-2)" }}>
+            {line != null ? line.toFixed(1) : "—"}
+          </span>
+          <span className="mono dim">
+            model{" "}
+            <span style={{ color: "var(--ink)" }}>
+              {modelMean != null ? modelMean.toFixed(1) : "—"}
+            </span>
+          </span>
+          <WhyLink
+            dot
+            tone="pos"
+            subject={{ kind: "prop", propId: prop.prop_id }}
+          />
+          <button
+            onClick={handleAdd}
+            type="button"
+            aria-label={isPicked ? "Prop on slip" : "Add prop to slip"}
+            style={{
+              padding: "2px 8px",
+              background: isPicked ? "var(--bg-3)" : "var(--pos)",
+              color: isPicked ? "var(--ink-4)" : "var(--bg)",
+              border: "none",
+              borderRadius: 3,
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: isPicked ? "default" : "pointer",
+              fontFamily: "var(--f-sans)",
+            }}
+          >
+            {isPicked ? "✓" : "+"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatStatType(statType: string): string {
+  // Convert "qb_pass_yards" → "Pass Yds"
+  const map: Record<string, string> = {
+    qb_pass_yards: "Pass Yds",
+    qb_rush_yards: "Rush Yds",
+    rb_rush_yards: "Rush Yds",
+    wr_rec_yards: "Rec Yds",
+    te_rec_yards: "Rec Yds",
+  };
+  return map[statType] ?? statType;
 }
