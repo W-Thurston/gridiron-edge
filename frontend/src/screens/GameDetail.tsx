@@ -10,6 +10,7 @@ import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { useEdges } from "../api/hooks";
 import { useBetSlip } from "../context/BetSlipContext";
 import { WhyLink } from "../components/primitives/WhyLink";
+import { probToAmerican } from "../utils/odds";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -121,7 +122,12 @@ export function GameDetail() {
       >
         {/* Main column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <SectionPlaceholder title="Lines & Model Fair Value" />
+          <LinesAndFairValueCard
+            gameId={data.game_id}
+            awayTeam={data.away_team}
+            homeTeam={data.home_team}
+            prediction={data.prediction}
+          />
           <WinProbabilityCard prediction={data.prediction} />
           <SectionPlaceholder title="Team Comparison" />
         </div>
@@ -619,5 +625,320 @@ function ModelLeanCallout({
         {isPicked ? "✓ On slip" : "Add to bet slip"}
       </button>
     </div>
+  );
+}
+
+/**
+ * Lines & Model Fair Value card. 3-row table showing:
+ * - Market row: blocked on W7 (odds ingest), all cells em-dash
+ * - Gridiron Edge fair: model spread/total/moneyline from prediction data
+ * - Recommendation: composed from /edges filtered to game_id
+ *
+ * Recommendation row has subtle green tint highlight.
+ */
+function LinesAndFairValueCard({
+  gameId,
+  awayTeam,
+  homeTeam,
+  prediction,
+}: {
+  gameId: string;
+  awayTeam: string;
+  homeTeam: string;
+  prediction: {
+    home_win_prob?: number | null;
+    away_win_prob?: number | null;
+    model_spread?: number | null;
+    model_total?: number | null;
+  } | null | undefined;
+}) {
+  const { data: edgesData } = useEdges();
+
+  // Filter edges to this game and split by market
+  const gameEdges = (edgesData?.items ?? []).filter((e) => e.game_id === gameId);
+  const spreadEdge = gameEdges
+    .filter((e) => e.market_type === "spread")
+    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
+  const totalEdge = gameEdges
+    .filter((e) => e.market_type === "total")
+    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
+  const mlEdge = gameEdges
+    .filter((e) => e.market_type === "moneyline")
+    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
+
+  // Model fair values
+  const modelSpread = prediction?.model_spread;
+  const modelTotal = prediction?.model_total;
+  const modelHomeML = prediction?.home_win_prob != null
+    ? probToAmerican(prediction.home_win_prob)
+    : null;
+  const modelAwayML = prediction?.away_win_prob != null
+    ? probToAmerican(prediction.away_win_prob)
+    : null;
+
+  return (
+    <div className="hm-card" style={{ padding: 0 }}>
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--line-soft)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Lines & Model Fair Value
+        </div>
+      </div>
+
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: 12,
+        }}
+      >
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--line-soft)" }}>
+            <th
+              style={{
+                padding: "10px 16px",
+                textAlign: "left",
+                fontSize: 10,
+                color: "var(--ink-4)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontWeight: 400,
+                width: 140,
+              }}
+            ></th>
+            <th
+              style={{
+                padding: "10px 16px",
+                textAlign: "left",
+                fontSize: 10,
+                color: "var(--ink-4)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontWeight: 400,
+              }}
+            >
+              Spread
+            </th>
+            <th
+              style={{
+                padding: "10px 16px",
+                textAlign: "left",
+                fontSize: 10,
+                color: "var(--ink-4)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontWeight: 400,
+              }}
+            >
+              Total
+            </th>
+            <th
+              style={{
+                padding: "10px 16px",
+                textAlign: "left",
+                fontSize: 10,
+                color: "var(--ink-4)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontWeight: 400,
+              }}
+            >
+              Moneyline
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* Market row - blocked on W7 */}
+          <tr style={{ borderBottom: "1px solid var(--line-soft)" }}>
+            <td
+              style={{
+                padding: "12px 16px",
+                color: "var(--ink-2)",
+                fontWeight: 500,
+              }}
+            >
+              Market
+            </td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
+          </tr>
+
+          {/* Model fair row */}
+          <tr style={{ borderBottom: "1px solid var(--line-soft)" }}>
+            <td
+              style={{
+                padding: "12px 16px",
+                color: "var(--ink-2)",
+                fontWeight: 500,
+              }}
+            >
+              Gridiron Edge fair
+            </td>
+            <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
+              {formatSpreadDisplay(modelSpread, awayTeam, homeTeam)}
+            </td>
+            <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
+              {formatTotalDisplay(modelTotal)}
+            </td>
+            <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
+              {formatMLDisplay(modelAwayML, modelHomeML, awayTeam, homeTeam)}
+            </td>
+          </tr>
+
+          {/* Recommendation row */}
+          <tr
+            style={{
+              background: "color-mix(in oklab, var(--pos) 5%, transparent)",
+            }}
+          >
+            <td
+              style={{
+                padding: "12px 16px",
+                color: "var(--pos)",
+                fontWeight: 500,
+              }}
+            >
+              Recommendation
+            </td>
+            <td style={{ padding: "12px 16px" }}>
+              <RecCell edge={spreadEdge} />
+            </td>
+            <td style={{ padding: "12px 16px" }}>
+              <RecCell edge={totalEdge} />
+            </td>
+            <td style={{ padding: "12px 16px" }}>
+              <RecCell edge={mlEdge} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Recommendation cell — either the edge or "No play" if no edge exists
+ * for this market.
+ */
+function RecCell({
+  edge,
+}: {
+  edge:
+    | {
+        side: string;
+        ev?: number | null;
+      }
+    | undefined;
+}) {
+  if (!edge) {
+    return (
+      <span
+        className="mono dim"
+        style={{ fontSize: 11 }}
+      >
+        No play
+      </span>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          color: "var(--pos)",
+          fontWeight: 600,
+          fontFamily: "var(--f-mono)",
+        }}
+      >
+        {edge.side}
+      </div>
+      {edge.ev != null && (
+        <div
+          className="mono"
+          style={{
+            fontSize: 10.5,
+            color: "var(--pos)",
+            marginTop: 2,
+          }}
+        >
+          +{(edge.ev * 100).toFixed(1)}% EV
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Format model spread as two-line stack (away/home perspectives).
+ *
+ * Backend: negative = home favored (e.g., model_spread = -4.5)
+ * Display:
+ *   SF +4.5      (away gets +spread magnitude)
+ *   BAL -4.5     (home gets -spread magnitude)
+ */
+function formatSpreadDisplay(
+  spread: number | null | undefined,
+  awayTeam: string,
+  homeTeam: string,
+): React.ReactNode {
+  if (spread == null) return "—";
+  const magnitude = Math.abs(spread);
+  const awaySign = spread > 0 ? "-" : "+";
+  const homeSign = spread > 0 ? "+" : "-";
+  return (
+    <>
+      <div>
+        {awayTeam} {awaySign}
+        {magnitude.toFixed(1)}
+      </div>
+      <div>
+        {homeTeam} {homeSign}
+        {magnitude.toFixed(1)}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Format model total as two-line stack (over/under).
+ */
+function formatTotalDisplay(total: number | null | undefined): React.ReactNode {
+  if (total == null) return "—";
+  return (
+    <>
+      <div>O {total.toFixed(1)}</div>
+      <div>U {total.toFixed(1)}</div>
+    </>
+  );
+}
+
+/**
+ * Format model moneyline as two-line stack (away/home).
+ */
+function formatMLDisplay(
+  awayML: number | null,
+  homeML: number | null,
+  awayTeam: string,
+  homeTeam: string,
+): React.ReactNode {
+  if (awayML == null || homeML == null) return "—";
+  const formatML = (v: number) => (v > 0 ? `+${v}` : `${v}`);
+  return (
+    <>
+      <div>
+        {awayTeam} {formatML(awayML)}
+      </div>
+      <div>
+        {homeTeam} {formatML(homeML)}
+      </div>
+    </>
   );
 }

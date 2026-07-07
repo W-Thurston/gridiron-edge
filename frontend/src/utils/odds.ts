@@ -57,6 +57,22 @@ export function kelly(p: number, b: number): number {
   return Math.max(0, f);
 }
 
+/**
+ * Convert win probability (0-1) to American odds.
+ *
+ * Examples:
+ *   probToAmerican(0.65) → -186 (favored)
+ *   probToAmerican(0.35) → +186 (underdog)
+ *   probToAmerican(0.50) → -100
+ *
+ * Returns 0 for invalid inputs (prob ≤ 0 or prob ≥ 1) as a defensive fallback.
+ */
+export function probToAmerican(prob: number): number {
+  if (prob <= 0 || prob >= 1) return 0;
+  if (prob >= 0.5) return Math.round((-100 * prob) / (1 - prob));
+  return Math.round((100 * (1 - prob)) / prob);
+}
+
 /** Sportsbook names used across line-shopping views. */
 export const BOOKS = [
   "DraftKings",
