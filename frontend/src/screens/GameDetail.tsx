@@ -7,6 +7,9 @@ import type { FieldStatus } from "../components/field-status/types";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { TeamHero } from "../components/primitives/TeamHero";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
+import { useEdges } from "../api/hooks";
+import { useBetSlip } from "../context/BetSlipContext";
+import { WhyLink } from "../components/primitives/WhyLink";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -82,13 +85,31 @@ export function GameDetail() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {backNav}
 
-      {/* Full-width header — Tier 2 will replace with composed team hero header */}
-      <GameHeader
-        awayTeam={data.away_team}
-        homeTeam={data.home_team}
-        gameDate={data.game_date}
-        dayOfWeek={data.day_of_week}
-      />
+      {/* Full-width header row: game header + model lean callout */}
+      <div
+        className="hm-card"
+        style={{
+          padding: "20px 24px 24px",
+          borderBottom: "1px solid var(--line-soft)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 32,
+        }}
+      >
+        <GameHeader
+          awayTeam={data.away_team}
+          homeTeam={data.home_team}
+          gameDate={data.game_date}
+          dayOfWeek={data.day_of_week}
+        />
+        <ModelLeanCallout
+          gameId={data.game_id}
+          awayTeam={data.away_team}
+          homeTeam={data.home_team}
+          confidenceTier={data.prediction?.confidence_tier ?? null}
+        />
+      </div>
 
       {/* 2-column grid: main content + right rail */}
       <div
@@ -142,107 +163,101 @@ function GameHeader({
 }) {
   const away = useTeamByAbbr(awayTeam);
   const home = useTeamByAbbr(homeTeam);
+
   const awayName = stripCityPrefix(away?.name ?? undefined, away?.city ?? undefined);
   const homeName = stripCityPrefix(home?.name ?? undefined, home?.city ?? undefined);
 
   return (
     <div
-      className="hm-card"
       style={{
-        padding: "20px 24px 24px",
-        borderBottom: "1px solid var(--line-soft)",
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
+        alignItems: "center",
+        gap: 32,
+        flex: 1,
       }}
     >
+      {/* Away team (right-oriented) */}
+      <TeamHero
+        team={{
+          abbr: awayTeam,
+          city: away?.city ?? undefined,
+          name: awayName,
+          primary_color: away?.primary_color ?? undefined,
+          conference: away?.conference ?? undefined,
+          division: away?.division ?? undefined,
+        }}
+        context="AWAY"
+        orientation="right"
+        size={56}
+      />
+
+      {/* Center block */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
+          display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          gap: 32,
+          minWidth: 180,
+          gap: 4,
         }}
       >
-        {/* Away team (right-oriented) */}
-        <TeamHero
-          team={{
-            abbr: awayTeam,
-            city: away?.city ?? undefined,
-            name: awayName,                              // ← updated
-            primary_color: away?.primary_color ?? undefined,
-            conference: away?.conference ?? undefined,
-            division: away?.division ?? undefined,
-          }}
-          context="AWAY"
-          orientation="right"
-          size={56}
-        />
-
-        {/* Center block */}
         <div
+          className="mono upper"
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            minWidth: 180,
-            gap: 4,
+            fontSize: 10,
+            color: "var(--ink-3)",
+            letterSpacing: "0.1em",
           }}
         >
-          <div
-            className="mono upper"
-            style={{
-              fontSize: 10,
-              color: "var(--ink-3)",
-              letterSpacing: "0.1em",
-            }}
-          >
-            {formatKickLabel(gameDate, dayOfWeek)}
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--f-serif)",
-              fontSize: 24,
-              fontStyle: "italic",
-              color: "var(--ink)",
-              lineHeight: 1,
-            }}
-          >
-            at
-          </div>
-          <div
-            className="mono"
-            style={{
-              fontSize: 10.5,
-              color: "var(--ink-3)",
-              marginTop: 4,
-            }}
-          >
-            — · —
-          </div>
-          <div
-            className="mono"
-            style={{
-              fontSize: 10.5,
-              color: "var(--ink-3)",
-            }}
-          >
-            —
-          </div>
+          {formatKickLabel(gameDate, dayOfWeek)}
         </div>
-
-        {/* Home team (left-oriented) */}
-        <TeamHero
-          team={{
-            abbr: homeTeam,
-            city: home?.city ?? undefined,
-            name: homeName,                              // ← updated
-            primary_color: home?.primary_color ?? undefined,
-            conference: home?.conference ?? undefined,
-            division: home?.division ?? undefined,
+        <div
+          style={{
+            fontFamily: "var(--f-serif)",
+            fontSize: 24,
+            fontStyle: "italic",
+            color: "var(--ink)",
+            lineHeight: 1,
           }}
-          context="HOME"
-          orientation="left"
-          size={56}
-        />
+        >
+          at
+        </div>
+        <div
+          className="mono"
+          style={{
+            fontSize: 10.5,
+            color: "var(--ink-3)",
+            marginTop: 4,
+          }}
+        >
+          — · —
+        </div>
+        <div
+          className="mono"
+          style={{
+            fontSize: 10.5,
+            color: "var(--ink-3)",
+          }}
+        >
+          —
+        </div>
       </div>
+
+      {/* Home team (left-oriented) */}
+      <TeamHero
+        team={{
+          abbr: homeTeam,
+          city: home?.city ?? undefined,
+          name: homeName,
+          primary_color: home?.primary_color ?? undefined,
+          conference: home?.conference ?? undefined,
+          division: home?.division ?? undefined,
+        }}
+        context="HOME"
+        orientation="left"
+        size={56}
+      />
     </div>
   );
 }
@@ -445,4 +460,164 @@ function PredictionCell({
 function formatSpread(spread: number): string {
   const sign = spread > 0 ? "+" : "";
   return `${sign}${spread.toFixed(1)}`;
+}
+
+/**
+ * Model lean callout on the right side of the header. Shows top edge
+ * for this game (recommendation, EV, confidence tier, WhyLink, slip button).
+ *
+ * Data flow:
+ * 1. Fetch all edges via useEdges
+ * 2. Filter to this game_id client-side
+ * 3. Take top by EV
+ * 4. Render recommendation + metadata
+ *
+ * Empty states:
+ * - No edges available (odds blocked): shows "No model edge" muted
+ * - Loading: shows nothing (avoids flash)
+ * - Error: shows nothing
+ */
+function ModelLeanCallout({
+  gameId,
+  awayTeam,
+  homeTeam,
+  confidenceTier,
+}: {
+  gameId: string;
+  awayTeam: string;
+  homeTeam: string;
+  confidenceTier: string | null;
+}) {
+  const { data, isLoading, error } = useEdges();
+  const { legs, add } = useBetSlip();
+
+  if (isLoading || error) return null;
+
+  const items = data?.items ?? [];
+  const gameEdges = items
+    .filter((e) => e.game_id === gameId)
+    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0));
+  const topEdge = gameEdges[0];
+
+  if (!topEdge) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: 4,
+          minWidth: 200,
+        }}
+      >
+        <div
+          className="upper dim"
+          style={{
+            fontSize: 9.5,
+            letterSpacing: "0.1em",
+            color: "var(--ink-4)",
+          }}
+        >
+          Model Lean
+        </div>
+        <div
+          className="dim mono"
+          style={{ fontSize: 12, marginTop: 4 }}
+        >
+          No model edge
+        </div>
+      </div>
+    );
+  }
+
+  const legId = `game-detail-lean-${topEdge.game_id}`;
+  const isPicked = legs.some((l) => l.id === legId);
+
+  const handleAddSlip = () => {
+    if (isPicked) return;
+    add({
+      id: legId,
+      gameId: topEdge.game_id,
+      market: topEdge.market_type as "moneyline" | "spread" | "total",
+      side: topEdge.side as "home" | "away" | "over" | "under",
+      odds: -110,
+      awayTeam: awayTeam,
+      homeTeam: homeTeam,
+    });
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        gap: 4,
+        minWidth: 200,
+      }}
+    >
+      <span
+        className="upper dim"
+        style={{
+          fontSize: 9.5,
+          letterSpacing: "0.1em",
+          color: "var(--ink-4)",
+        }}
+      >
+        Model Lean
+      </span>
+      <span
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: "var(--pos)",
+        }}
+      >
+        {topEdge.side}
+      </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11,
+          color: "var(--ink-3)",
+        }}
+      >
+        <span className="mono">
+          +{(topEdge.ev * 100).toFixed(1)}% EV
+        </span>
+        {confidenceTier && (
+          <>
+            <span>·</span>
+            <ConfidenceTierPill tier={confidenceTier} />
+          </>
+        )}
+        <WhyLink
+          dot
+          tone="pos"
+          subject={{ kind: "rec", gameId: topEdge.game_id }}
+        />
+      </div>
+      <button
+        onClick={handleAddSlip}
+        type="button"
+        disabled={isPicked}
+        style={{
+          padding: "6px 14px",
+          background: isPicked ? "var(--bg-3)" : "var(--pos)",
+          color: isPicked ? "var(--ink-4)" : "var(--bg)",
+          border: "none",
+          borderRadius: 4,
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: "var(--f-sans)",
+          cursor: isPicked ? "default" : "pointer",
+          marginTop: 4,
+        }}
+      >
+        {isPicked ? "✓ On slip" : "Add to bet slip"}
+      </button>
+    </div>
+  );
 }
