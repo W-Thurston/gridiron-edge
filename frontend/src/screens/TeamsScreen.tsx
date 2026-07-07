@@ -462,50 +462,8 @@ function ProfileColumn({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Team profile — existing structure. Tier 3 replaces section by section. */}
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Team Profile — {data.season} through Week {data.as_of_week}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            fontSize: 20,
-          }}
-        >
-          <TeamMark abbr={data.abbr} />
-          <span>{data.name}</span>
-        </div>
-
-        <div style={{ display: "flex", gap: 32, marginTop: 20, flexWrap: "wrap" }}>
-          <ProfileCell label="Rating" value={data.rating?.toFixed(0) ?? "—"} />
-          <ProfileCell label="Rank" value={data.rank?.toString() ?? "—"} />
-          <ProfileCell
-            label="Record"
-            value={
-              data.record
-                ? `${data.record.wins}-${data.record.losses}${
-                    data.record.ties > 0 ? `-${data.record.ties}` : ""
-                  }`
-                : "—"
-            }
-          />
-          <ProfileCell
-            label="Off Rating"
-            value={<InlineFieldStatus status={fieldStatus?.off_rating as FieldStatus | undefined} />}
-          />
-          <ProfileCell
-            label="Def Rating"
-            value={<InlineFieldStatus status={fieldStatus?.def_rating as FieldStatus | undefined} />}
-          />
-          <ProfileCell
-            label="Trend"
-            value={data.trend?.toFixed(1) ?? "—"}
-          />
-        </div>
-      </div>
+      {/* Team hero band */}
+      <TeamHeroBand data={data} />
 
       {/* Rating history */}
       <div className="hm-card" style={{ padding: 24 }}>
@@ -548,30 +506,30 @@ function ProfileColumn({
   );
 }
 
-function ProfileCell({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div style={{ minWidth: 100 }}>
-      <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
-        {label}
-      </div>
-      <div className="mono tnum" style={{ fontSize: 14 }}>
-        {value}
-      </div>
-    </div>
-  );
-}
+// function ProfileCell({
+//   label,
+//   value,
+// }: {
+//   label: string;
+//   value: React.ReactNode;
+// }) {
+//   return (
+//     <div style={{ minWidth: 100 }}>
+//       <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
+//         {label}
+//       </div>
+//       <div className="mono tnum" style={{ fontSize: 14 }}>
+//         {value}
+//       </div>
+//     </div>
+//   );
+// }
 
-function InlineFieldStatus({ status }: { status: FieldStatus | undefined }) {
-  if (!status) return <span className="mono tnum dim2">—</span>;
-  if (status === "pending") return <PendingField />;
-  return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
-}
+// function InlineFieldStatus({ status }: { status: FieldStatus | undefined }) {
+//   if (!status) return <span className="mono tnum dim2">—</span>;
+//   if (status === "pending") return <PendingField />;
+//   return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
+// }
 
 function ScaffoldCard({
   title,
@@ -667,4 +625,172 @@ function BlockedTabState({ tab }: { tab: RankingsTab }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Team hero band. Team-colored gradient background, TeamMark on left,
+ * title block on right with breadcrumb + big serif italic team name +
+ * inline hero stats.
+ */
+function TeamHeroBand({
+  data,
+}: {
+  data: {
+    abbr: string;
+    name: string;
+    city?: string | null;
+    conference?: string | null;
+    division?: string | null;
+    primary_color?: string | null;
+    season?: string | null;
+    as_of_week?: number | null;
+    rating?: number | null;
+    rank?: number | null;
+    record?: { wins: number; losses: number; ties: number } | null;
+  };
+}) {
+  const primaryColor = data.primary_color;
+  // Gradient from team color at ~25% to darker fade
+  const background = primaryColor
+    ? `linear-gradient(180deg, color-mix(in oklab, ${primaryColor} 30%, var(--bg)) 0%, var(--bg-1) 100%)`
+    : "var(--bg-1)";
+
+  // Format breadcrumb
+  const divExpanded = expandDivisionLetter(data.division ?? "");
+  const confDiv = data.conference && data.division
+    ? `${data.conference} ${divExpanded}`
+    : null;
+  const rankPart = data.rank != null ? `#${data.rank} Power` : null;
+  const seasonPart = data.season ? formatSeason(data.season) : null;
+  const weekPart = data.as_of_week != null ? `Through Wk ${data.as_of_week}` : null;
+  const breadcrumbParts = [confDiv, rankPart, seasonPart, weekPart].filter(
+    (p): p is string => p != null,
+  );
+  const breadcrumb = breadcrumbParts.join(" · ");
+
+  // Team name split
+  const nameWithoutCity = stripCityPrefix(data.name, data.city ?? undefined);
+  const cityPart = data.city ?? "";
+
+  // Format record stat
+  const recordText = data.record
+    ? `${data.record.wins}-${data.record.losses}${
+        data.record.ties > 0 ? `-${data.record.ties}` : ""
+      }`
+    : "—";
+
+  return (
+    <div
+      className="hm-card"
+      style={{
+        padding: "24px 28px",
+        background,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        {/* TeamMark on left */}
+        <TeamMark abbr={data.abbr} size={56} />
+
+        {/* Title block on right */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Breadcrumb above title */}
+          <div
+            className="mono upper"
+            style={{
+              fontSize: 10.5,
+              color: "var(--ink-3)",
+              letterSpacing: "0.08em",
+              marginBottom: 4,
+            }}
+          >
+            {breadcrumb || "—"}
+          </div>
+
+          {/* Big serif italic team name */}
+          <div
+            style={{
+              fontFamily: "var(--f-serif)",
+              fontSize: 30,
+              fontWeight: 400,
+              color: "var(--ink)",
+              lineHeight: 1.1,
+              marginBottom: 8,
+            }}
+          >
+            {cityPart} <span style={{ fontStyle: "italic" }}>{nameWithoutCity}</span>
+          </div>
+
+          {/* Inline hero stats */}
+          <div
+            className="mono"
+            style={{
+              fontSize: 12,
+              color: "var(--ink-3)",
+              display: "flex",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              Record{" "}
+              <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
+                {recordText}
+              </span>
+            </span>
+            <span>
+              Rank{" "}
+              <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
+                {data.rank != null ? `#${data.rank}` : "—"}
+              </span>
+            </span>
+            <span>
+              Rating{" "}
+              <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
+                {data.rating?.toFixed(0) ?? "—"}
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Strip city prefix from team name (matches GameDetail helper).
+ * "Kansas City Chiefs" + city "Kansas City" → "Chiefs"
+ */
+function stripCityPrefix(
+  name: string | undefined | null,
+  city: string | undefined,
+): string {
+  if (!name) return "—";
+  if (!city) return name;
+  const prefix = `${city} `;
+  if (name.startsWith(prefix)) {
+    return name.slice(prefix.length);
+  }
+  return name;
+}
+
+/**
+ * Expand division letter to full name.
+ * N → North, S → South, E → East, W → West
+ */
+function expandDivisionLetter(letter: string): string {
+  const map: Record<string, string> = {
+    N: "North",
+    S: "South",
+    E: "East",
+    W: "West",
+  };
+  return map[letter.toUpperCase()] ?? letter;
+}
+
+/**
+ * Format season string. "2025-2026" → "2025".
+ */
+function formatSeason(season: string): string {
+  const parts = season.split("-");
+  return parts[0] ?? season;
 }
