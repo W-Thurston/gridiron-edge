@@ -29,139 +29,115 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W9.5 — Dashboard Rebuild + Cross-Cutting Primitives
+### Current Workstream: W9.6 — GameDetail Full Fidelity
 
 **Status:** Designing.
 
 ### What we are building
 
-A rebuilt Dashboard (currently a debug scaffold shipped in Substep
-2.0 during W9 Tier 1) that renders as the actual primary landing
-page: featured matchups grid, model edges table with tab filters,
-model performance rail with sparkline, and player prop edges rail.
+Rebuilt GameDetail (`/games/:id`) from the current skeleton
+(header + prediction cell grid + 5 coming-soon cards) to prototype
+fidelity. Ships 5 new working sections and preserves 2 as
+placeholders (blocked on named workstreams).
 
-Alongside Dashboard: five cross-cutting frontend primitives that
-unblock every other future frontend workstream — `Pill` (filter
-toggle), `WhyLink` (explainability affordance), `TeamMark`-with-team-
-colors (visual identity), `Spark` (generic sparkline), and
-`TeamHero` (composed team identity block).
-
-Small W8 patch upfront: add `primary_color`, `secondary_color`,
-`conference`, and `division` fields to `TeamRankingRow` and
-`TeamProfile` schemas so primitives that consume team identity have
-real data.
+Uses all 5 primitives shipped in W9.5 (`Pill`, `WhyLink`, `TeamMark`,
+`Spark`, `TeamHero`).
 
 ### Why we are building it now
 
-Two motivations:
+GameDetail is the most-visited screen after Dashboard (every "click
+game" from Dashboard, GamesList, or Compare lands here). Currently
+renders as: minimal header + flat prediction cell grid + 5
+placeholder cards that say "not yet available." Data ships for most
+of it — `team_comparison` field from Step 7c, prop edges from
+`/props`, and predictions from `/games/:id`. Just needs rendering.
 
-1. **Dashboard is unusable.** The primary landing page currently shows
-   an API loop verification card and a field-status primitives demo
-   table — debug scaffolding shipped in W9 Tier 1 and never built out.
-   Every visit to `/today` renders as broken/incomplete.
-
-2. **Primitives unblock everything.** Shared components identified in
-   the prototype audit (`Pill`, `WhyLink`, `TeamMark`-with-colors,
-   `Spark`, `TeamHero`) are used across 10+ screens. Building them in
-   isolation with proper APIs makes every future frontend workstream
-   faster and more consistent.
+Compound value: consumes all 5 primitives shipped in W9.5, showing
+the primitives' payoff clearly.
 
 #### Success criteria
 
-- Dashboard `/today` renders four working sections: featured matchups
-  grid (3 games), model edges table with 5 filter tabs, model
-  performance rail with sparkline + big number, prop edges rail (5 rows).
-- Five primitives exist in `components/primitives/` with unit tests.
-- `TeamMark` renders team primary color background where team metadata
-  is available.
-- `WhyLink` navigates to `/explain?subject=...` with proper parameters.
-- Backend fields (`primary_color`, `secondary_color`, `conference`,
-  `division`) populate on `TeamRankingRow` and `TeamProfile` for all
-  32 teams.
-- Existing API verification card and field-status demo removed from
-  Dashboard (moved to `/debug` route or deleted).
+- Two-column layout replaces single-column stack.
+- Full-width game header renders with TeamHero for both teams,
+  center block with kick + venue + weather placeholders, and model
+  lean callout (from `/edges`).
+- Lines & model fair value table with 3 rows (Market / Model /
+  Recommendation).
+- Win probability card with 2 prob bands + projected score.
+- Team comparison card with 4 cohort tabs (Season / L4 / Home /
+  Away) — consumes existing Step 7c data.
+- Top prop edges card with 4-5 filtered rows from `/props`.
+- Swing factors and Injuries remain as `<ComingSoonCard>` with
+  proper `field_status` badges.
 - All quality gates pass.
 
 ### Locked architectural decisions
 
 | Decision | Choice |
 |---|---|
-| Order of substeps | Backend patch → Primitives → Dashboard sections |
-| Backend patch strategy | Single commit at start; ships colors + conf + div |
-| Featured matchups when market lines blocked | Model-only render; market side blank |
-| Model performance rail with limited data | All-time ROI as big number; mark 7d/30d as pending |
-| Multi-sport pills | Skip; NFL-only for now |
-| Primitives location | `frontend/src/components/primitives/` (new folder) |
-| Team metadata source | New reference CSV: `data/cleaned/NFL_team_metadata.csv` |
-| Test coverage | Vitest smoke tests per primitive; integration tests for Dashboard sections |
-| Existing dashboard content | Move to `/debug` route (preserved for future work) |
+| Layout | Full-width header + 3fr/2fr 2-col grid below |
+| Kick time | Date only from `game_date` (no time-of-day backend data yet) |
+| Weather / venue | Em-dash placeholder (blocked; consistent with elsewhere) |
+| Model lean callout | Compose from `/edges` filtered to game |
+| Market row on lines table | Show pending markers |
+| Team comparison cohorts | 4 tabs (Season/L4/Home/Away) via Pill primitive |
+| Team comparison row rendering | Simple 3-col (away value / metric / home value) with color-coded percentile — no colored bars for v1 |
+| Bet slip integration | Add recommended edge as leg with -110 placeholder odds |
+| Right rail | Top prop edges (rendered) + Swing factors (placeholder) + Injuries (placeholder) |
+| Track button | Skip (no tracking system) |
+| Existing prediction card | Replace with new composed cards |
 
 ### Prerequisite
 
-None. Backend patch is part of Tier 1.
+None. All primitives from W9.5 are shipped.
 
 ### Tiers
 
-**Tier 1 — Backend patch (1 substep).**
+**Tier 1 — Layout restructure (1 substep).**
 
-Add team metadata fields to schemas and populate from new reference
-CSV. Unblocks primitive work.
+Rebuild the layout skeleton with full-width header slot and 2-col
+grid below. No new components yet; move existing prediction cells
+into placeholder cards. Verifies structural change without semantic
+change.
 
-**Tier 2 — Shared primitives (5 substeps).**
+**Tier 2 — Header composition (2 substeps).**
 
-Build five primitives in `components/primitives/`:
-- `Pill` — filter toggle
-- `WhyLink` — explainability affordance
-- `TeamMark` (refactor) — with team primary color
-- `Spark` — generic sparkline (renamed from `RatingHistorySparkline`)
-- `TeamHero` — composed team identity block
+Build the full-width game header:
+- 2a: Team hero header with TeamHero for both teams, center block
+  with placeholders.
+- 2b: Model lean callout (compose from /edges).
 
-**Tier 3 — Dashboard sections (5 substeps).**
+**Tier 3 — Main column cards (3 substeps).**
 
-Build four working sections + integration:
-- `FeaturedMatchupsGrid` — 3 game cards
-- `ModelEdgesTable` — table with 5 filter tabs
-- `PropEdgesRail` — 5-row compact list
-- `ModelPerformanceRail` — card with sparkline + big number
-- Dashboard integration — wire sections into 2-column layout;
-  remove debug demo content
+Build the 3 main column sections:
+- 3a: Lines & model fair value table.
+- 3b: Win probability card with projected score.
+- 3c: Team comparison card with cohort tabs.
 
-### Disconfirming evidence
+**Tier 4 — Right rail + integration (3 substeps).**
 
-- **If backend patch reveals data mismatches** (some teams missing
-  colors, city/name split inconsistent), we handle per-team with
-  defaults and log for follow-up. Not blocking.
-- **If `WhyLink` navigation reveals `/explain` needs specific
-  parameters we haven't documented**, we add them as we go. `/explain`
-  is currently a `<BlockedScreen />` — the WhyLink shipping is what
-  makes the navigation-to-blocked-screen pattern meaningful.
-- **If `Spark` refactor breaks existing `RatingHistorySparkline`
-  usages** (TeamProfile), we ship both temporarily and migrate. Not
-  blocking.
-- **If Dashboard's model performance rail has no historical data**
-  (fresh installs), sparkline renders as flat or empty. Mark as
-  pending. Acceptable.
-- **If `/props?limit=5&sort=ev_desc` doesn't exist**, add query params
-  to `/props` endpoint as a substep 3c prerequisite. Small.
+Complete the right rail and integrate:
+- 4a: Top prop edges card.
+- 4b: Placeholder integration for blocked sections.
+- 4c: Final integration cleanup — old prediction card removed,
+  layout wired, tests updated.
 
 ### Timeline
 
-Total: 11 substeps. Not tied to calendar; work at natural cadence.
-Estimated ~1-2 weeks of active work at normal substep rhythm.
+Total: 9 substeps. Not tied to calendar; natural cadence.
 
 ### Success artifacts
 
 By workstream close:
 
-- Dashboard renders as a real landing page with 4 working sections
-- 5 primitives live in `components/primitives/` with unit tests
-- Backend patch shipped with team colors + conf + div
-- 4 new API-consuming Dashboard sections
-- Frontend visual identity (team primary colors) shipped
-- Path to explainability (`WhyLink`) established even though `/explain`
-  itself remains blocked
-
-Ready for close-out and next-workstream decision.
+- GameDetail renders with 5 new working sections
+- 2 placeholders remain (Swing factors, Injuries) with clear blocker
+  messaging
+- All 5 W9.5 primitives consumed (TeamHero heavily; Pill in comparison
+  tabs; WhyLink in header + prop edges; Spark not directly here — for
+  future win prob chart)
+- Two-column layout established as reusable pattern for future screen
+  rebuilds
 
 Tier design blocks are drafted at the start of each step.
 
@@ -177,5 +153,4 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| **W9.5 complete.** Dashboard Rebuild + Cross-Cutting Primitives shipped in 11 substeps across 3 tiers. Tier 1: team metadata backend patch + CSV consolidation. Tier 2: 5 shared primitives (Pill, WhyLink, TeamMark-with-colors, Spark, TeamHero). Tier 3: 4 Dashboard sections + integration. Debug scaffolding removed. |
-| 2026-07-04 | **W9.5 Dashboard Rebuild + Cross-Cutting Primitives design.** Locked. Total 11 substeps across 3 tiers. Tier 1: backend patch adds team colors + conference + division. Tier 2: 5 primitives (`Pill`, `WhyLink`, `TeamMark`-with-colors, `Spark`, `TeamHero`). Tier 3: 5 Dashboard sections + integration. Featured matchups model-only until W7 lands. |
+| 2026-07-06 | **W9.6 GameDetail Full Fidelity design.** Locked. 9 substeps across 4 tiers. Layout restructure + header composition + main column cards (lines table, win prob, team comparison) + right rail (prop edges + placeholders). Uses all 5 primitives from W9.5. |
