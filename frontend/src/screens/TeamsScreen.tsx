@@ -473,6 +473,9 @@ function ProfileColumn({
         <RatingChart history={data.rating_history} />
       </div>
 
+      {/* Cohort splits */}
+      <CohortSplitsCard cohortSplits={data.cohort_splits} />
+
       {/* Recent results */}
       <div className="hm-card" style={{ padding: 24 }}>
         <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
@@ -492,10 +495,6 @@ function ProfileColumn({
         <ScaffoldCard
           title="Top Players"
           status={fieldStatus?.top_players as FieldStatus | undefined}
-        />
-        <ScaffoldCard
-          title="Situational Splits"
-          status={fieldStatus?.cohort_splits as FieldStatus | undefined}
         />
       </div>
     </div>
@@ -789,4 +788,140 @@ function expandDivisionLetter(letter: string): string {
 function formatSeason(season: string): string {
   const parts = season.split("-");
   return parts[0] ?? season;
+}
+
+type CohortKey = "season" | "l4" | "home" | "away";
+
+const COHORT_TABS: { key: CohortKey; label: string }[] = [
+  { key: "season", label: "Season" },
+  { key: "l4", label: "Last 4" },
+  { key: "home", label: "Home" },
+  { key: "away", label: "Away" },
+];
+
+const SPLIT_METRICS: {
+  key: string;
+  label: string;
+  fmt: (v: number) => string;
+}[] = [
+  { key: "off_epa_per_play", label: "Off. EPA/play", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_pass_epa", label: "Pass EPA/play", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_rush_epa", label: "Rush EPA/play", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "def_epa_per_play", label: "Def. EPA/play", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "def_rush_epa", label: "Def. Rush EPA", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_third_down_pct", label: "3rd-down conv.", fmt: (v) => (v * 100).toFixed(1) + "%" },
+  { key: "off_redzone_td_pct", label: "Red-zone TD %", fmt: (v) => (v * 100).toFixed(1) + "%" },
+  { key: "turnover_diff", label: "Turnover diff", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) },
+];
+
+/**
+ * Situational Splits card for team profile. Renders 8 metrics for the
+ * selected cohort. Uses Pill primitive for cohort switching.
+ */
+function CohortSplitsCard({
+  cohortSplits,
+}: {
+  cohortSplits: { [key: string]: unknown } | null | undefined;
+}) {
+  const [cohort, setCohort] = useState<CohortKey>("season");
+
+  const data = cohortSplits?.[cohort] as
+    | Record<string, number>
+    | undefined;
+  const hasData = data != null;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Situational Splits
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {COHORT_TABS.map((tab) => (
+            <Pill
+              key={tab.key}
+              active={cohort === tab.key}
+              onClick={() => setCohort(tab.key)}
+            >
+              {tab.label}
+            </Pill>
+          ))}
+        </div>
+      </div>
+
+      {!hasData ? (
+        <div
+          style={{
+            padding: 20,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          No data available for {COHORT_TABS.find((t) => t.key === cohort)?.label}.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 4 }}>
+          {SPLIT_METRICS.map((metric, i) => (
+            <SplitMetricRow
+              key={metric.key}
+              label={metric.label}
+              value={data[metric.key]}
+              fmt={metric.fmt}
+              first={i === 0}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single metric row: 2-column with label on left, value on right.
+ */
+function SplitMetricRow({
+  label,
+  value,
+  fmt,
+  first,
+}: {
+  label: string;
+  value: number | null | undefined;
+  fmt: (v: number) => string;
+  first: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderTop: first ? "none" : "1px solid var(--line-soft)",
+        fontSize: 12,
+      }}
+    >
+      <span className="dim mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+        {label}
+      </span>
+      <span
+        className="mono tnum"
+        style={{
+          color: "var(--ink)",
+          fontWeight: 500,
+        }}
+      >
+        {value != null ? fmt(value) : "—"}
+      </span>
+    </div>
+  );
 }
