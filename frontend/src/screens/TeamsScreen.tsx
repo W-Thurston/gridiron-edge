@@ -5,11 +5,11 @@ import { TeamMark } from "../components/primitives/TeamMark";
 import { PendingField } from "../components/field-status/PendingField";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";
-import { Spark } from "../components/primitives/Spark";
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { Pill } from "../components/primitives/Pill";
+import { RatingChart } from "../components/primitives/RatingChart";
 
 /**
  * Consolidated split-view Teams screen. Left column shows rankings;
@@ -465,16 +465,12 @@ function ProfileColumn({
       {/* Team hero band */}
       <TeamHeroBand data={data} />
 
-      {/* Rating history */}
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Rating Trajectory ({data.season})
+      {/* Rating chart */}
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+          Power rating · season trend
         </div>
-        <Spark
-            data={data.rating_history?.map((p) => p.rating) ?? []}
-            width={480}
-            height={60}
-        />
+        <RatingChart history={data.rating_history} />
       </div>
 
       {/* Recent results */}
