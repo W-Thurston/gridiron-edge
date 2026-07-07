@@ -12,6 +12,8 @@ import { useBetSlip } from "../context/BetSlipContext";
 import { WhyLink } from "../components/primitives/WhyLink";
 import { probToAmerican } from "../utils/odds";
 import { TeamMark } from "../components/primitives/TeamMark";
+import { useState } from "react";
+import { Pill } from "../components/primitives/Pill";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -134,7 +136,11 @@ export function GameDetail() {
             awayTeam={data.away_team}
             homeTeam={data.home_team}
           />
-          <SectionPlaceholder title="Team Comparison" />
+          <TeamComparisonCard
+            teamComparison={data.team_comparison}
+            awayTeam={data.away_team}
+            homeTeam={data.home_team}
+          />
         </div>
 
         {/* Right rail */}
@@ -1044,5 +1050,243 @@ function formatMLDisplay(
         {homeTeam} {formatML(homeML)}
       </div>
     </>
+  );
+}
+
+type CohortKey = "season" | "l4" | "home" | "away";
+
+const COHORT_TABS: { key: CohortKey; label: string }[] = [
+  { key: "season", label: "Season" },
+  { key: "l4", label: "Last 4" },
+  { key: "home", label: "Home" },
+  { key: "away", label: "Away" },
+];
+
+const METRICS: {
+  key: string;
+  label: string;
+  better: "higher" | "lower";
+  fmt: (v: number) => string;
+}[] = [
+  { key: "off_epa_per_play", label: "Off. EPA/play", better: "higher", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_pass_epa", label: "Pass EPA/play", better: "higher", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_rush_epa", label: "Rush EPA/play", better: "higher", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "def_epa_per_play", label: "Def. EPA/play", better: "lower", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "def_rush_epa", label: "Def. Rush EPA", better: "lower", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(3) },
+  { key: "off_third_down_pct", label: "3rd-down conv.", better: "higher", fmt: (v) => (v * 100).toFixed(1) + "%" },
+  { key: "off_redzone_td_pct", label: "Red-zone TD %", better: "higher", fmt: (v) => (v * 100).toFixed(1) + "%" },
+  { key: "turnover_diff", label: "Turnover diff", better: "higher", fmt: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) },
+];
+
+/**
+ * Team Comparison card — 3-column layout with:
+ * - Column 1: away team value + colored by better/worse
+ * - Column 2: metric label (dim, centered)
+ * - Column 3: home team value + colored by better/worse
+ *
+ * Consumes team_comparison field from /games/{id} (Step 7c data).
+ * Nested dict: {team_abbr: {cohort: {metric: value}}}
+ *
+ * Cohort switcher via Pill primitives.
+ * Empty state when no data or cohort not present.
+ */
+function TeamComparisonCard({
+  teamComparison,
+  awayTeam,
+  homeTeam,
+}: {
+  teamComparison: { [key: string]: unknown } | null | undefined;
+  awayTeam: string;
+  homeTeam: string;
+}) {
+  const { navigate } = useNav();
+  const [cohort, setCohort] = useState<CohortKey>("season");
+
+  const awayTeamData = teamComparison?.[awayTeam] as
+    | Record<string, Record<string, number>>
+    | undefined;
+  const homeTeamData = teamComparison?.[homeTeam] as
+    | Record<string, Record<string, number>>
+    | undefined;
+  const awayData = awayTeamData?.[cohort];
+  const homeData = homeTeamData?.[cohort];
+  const hasData = awayData != null && homeData != null;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Team Comparison
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {COHORT_TABS.map((tab) => (
+              <Pill
+                key={tab.key}
+                active={cohort === tab.key}
+                onClick={() => setCohort(tab.key)}
+              >
+                {tab.label}
+              </Pill>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/compare", { a: awayTeam, b: homeTeam })
+            }
+            className="mono"
+            style={{
+              background: "color-mix(in oklab, var(--info) 8%, transparent)",
+              border: "1px solid color-mix(in oklab, var(--info) 30%, transparent)",
+              color: "var(--info)",
+              padding: "4px 10px",
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: "pointer",
+              fontFamily: "var(--f-mono)",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Open full comparison →
+          </button>
+        </div>
+      </div>
+
+      {!hasData ? (
+        <div
+          style={{
+            padding: 24,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          No comparison data for {COHORT_TABS.find((t) => t.key === cohort)?.label}.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {METRICS.map((metric, i) => (
+            <MetricRow
+              key={metric.key}
+              awayValue={awayData[metric.key]}
+              homeValue={homeData[metric.key]}
+              label={metric.label}
+              better={metric.better}
+              fmt={metric.fmt}
+              first={i === 0}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single row in team comparison. Colored by which team wins the metric.
+ */
+function MetricRow({
+  awayValue,
+  homeValue,
+  label,
+  better,
+  fmt,
+  first,
+}: {
+  awayValue: number | null | undefined;
+  homeValue: number | null | undefined;
+  label: string;
+  better: "higher" | "lower";
+  fmt: (v: number) => string;
+  first: boolean;
+}) {
+  if (awayValue == null || homeValue == null) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          gap: 12,
+          alignItems: "center",
+          padding: "8px 0",
+          borderTop: first ? "none" : "1px solid var(--line-soft)",
+          fontSize: 11.5,
+        }}
+      >
+        <span className="mono dim2" style={{ textAlign: "right" }}>—</span>
+        <span
+          className="dim"
+          style={{
+            textAlign: "center",
+            fontSize: 10,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </span>
+        <span className="mono dim2">—</span>
+      </div>
+    );
+  }
+
+  // Determine which team wins this metric
+  const awayWins =
+    better === "higher"
+      ? awayValue > homeValue
+      : awayValue < homeValue;
+  const homeWins = awayValue !== homeValue && !awayWins;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderTop: first ? "none" : "1px solid var(--line-soft)",
+        fontSize: 11.5,
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          textAlign: "right",
+          color: awayWins ? "var(--pos)" : "var(--ink-2)",
+          fontWeight: awayWins ? 600 : 400,
+        }}
+      >
+        {fmt(awayValue)}
+      </span>
+      <span
+        className="dim"
+        style={{
+          textAlign: "center",
+          fontSize: 10,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono"
+        style={{
+          color: homeWins ? "var(--pos)" : "var(--ink-2)",
+          fontWeight: homeWins ? 600 : 400,
+        }}
+      >
+        {fmt(homeValue)}
+      </span>
+    </div>
   );
 }
