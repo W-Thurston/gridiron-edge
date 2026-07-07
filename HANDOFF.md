@@ -434,6 +434,11 @@ Step 5 audit confirmed all existing loaders comply.
   card in a screen might consume 1-3 different API endpoints. Use
   React Query hooks for each; filter client-side when backend filters
   aren't available.
+- **Split-view route pattern:** TeamsScreen (W9.7) demonstrated the
+  pattern for consolidating list + detail routes into a single
+  screen with optional URL param. `/teams?team=X` pattern preserves
+  browsing context; back-navigation not required when browsing
+  through teams.
 
 **Local dev loop:**
 

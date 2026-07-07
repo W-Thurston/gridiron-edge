@@ -3,6 +3,150 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-07 — W9.7 Teams Split-View Rebuild
+
+Restructured `/teams` and `/teams/:abbr` from two separate screens
+into a single split-view at `/teams` with optional `?team=X` param.
+Left column shows the league rankings; right column shows the
+selected team's profile. Clicking a rankings row updates the right
+pane without navigation, preserving ranking context across team
+browsing.
+
+### Shipped
+
+**Tier 1 — Route restructure (1 substep):**
+- Consolidated `TeamRankings` and `TeamProfile` into single
+  `TeamsScreen.tsx`
+- Auto-select #1 team silently when no `?team=` param
+- Row click updates URL param via `navigate("/teams", {team: abbr})`
+- Router routes /teams to TeamsScreen (both with and without team param)
+
+**Tier 2 — Left column (2 substeps):**
+- Enhanced rankings table with hover state on rows and selection
+  highlight
+- Trend column with signed colored pill (green/red/dim)
+- 5-tab strip (Overall / Offense / Defense / ATS / Net Rating)
+  via Pill primitive
+- Overall (default) renders 32 teams sorted by rating
+- Offense / Defense / ATS / Net Rating render `BlockedTabState`
+  with §9.7 backend reference
+
+**Tier 3 — Right column sections (4 substeps):**
+- **Team hero band** — team-colored vertical gradient
+  (180deg, 30% mix top → var(--bg-1) bottom). TeamMark (56px) left,
+  breadcrumb (conf/div · rank · season · through week) above serif
+  italic team name, inline hero stats (Record/Rank/Rating)
+- **Rating chart** — new `RatingChart` primitive with Y-axis grid +
+  rating labels, dots at each data point, X-axis week labels every
+  ~4-5 weeks, inline W/L markers per week (green W below line, red
+  L above line)
+- **Situational Splits card** — Pill cohort switcher (Season/L4/Home/
+  Away), 8 metrics (off/def EPA, breakdowns, situational percentages,
+  turnover diff) from `cohort_splits` field
+- **Recent Results** — existing `RecentResultsStrip` (unchanged)
+- **Postseason Outlook** — composed from `/projections`, 5 rows
+  (Make Playoffs, Reach Divisional, Reach Conf. Championship, Reach
+  Super Bowl, Win Super Bowl) with colored progress bars mapping
+  probability to fill width
+
+**Tier 4 — Placeholders + cleanup (2 substeps):**
+- Schedule Difficulty placeholder (blocker: `schedule_difficulty`,
+  roadmap `§9.7`)
+- Top Players placeholder (blocked)
+- Deleted `TeamRankings.tsx` and `TeamProfile.tsx` files
+- Deleted commented dead code (`ProfileCell`, `InlineFieldStatus`)
+
+**Substep 4c — Polish sweep (7 adjustments in one substep):**
+- Left column narrower (5fr / 11fr split); gap between columns
+- Hero band aligned within profile column (removed negative margin
+  after realizing our container width doesn't match prototype's
+  full-screen assumption)
+- Green 3px left border on selected rankings row
+- Rankings subheader "Wk N · model v4.2"
+- Single-column layout beneath hero (reverted from failed 80/20
+  attempt; prototype's 80/20 works at ~1400px, ours at ~800px
+  didn't fit)
+- Postseason outlook: colored progress bars per row
+- Rating chart W/L markers moved from X-axis text to inline
+  (below line for W, above for L)
+
+### Architecture consumed
+
+**All 5 W9.5 primitives:**
+- `TeamMark` — throughout (colored via cache)
+- `Pill` — rankings tabs + cohort switcher
+- `WhyLink` — not used in Teams; deferred
+- `Spark` — not used; new dedicated `RatingChart` primitive instead
+- `TeamHero` — not used inline; hero band composition doesn't fit
+  its API. Composed directly in TeamsScreen.
+
+### New primitive
+
+**RatingChart** — SVG line chart with:
+- Responsive width via viewBox
+- Y-axis grid + rating value labels
+- Line + data point dots
+- X-axis labels every 4-5 weeks
+- Optional recentResults prop for inline W/L markers
+
+Location: `frontend/src/components/primitives/RatingChart.tsx`
+
+### Helpers established
+
+- `stripCityPrefix` — same pattern as GameDetail (backend returns
+  full name, we strip city prefix to render "New England Patriots"
+  as "New England _Patriots_" italic split)
+- `expandDivisionLetter` — N/S/E/W → North/South/East/West
+- `formatSeason` — "2025-2026" → "2025"
+
+### Composition patterns
+
+- Split-view route: single URL, optional query param drives selection
+- Cross-endpoint composition: `/teams` + `/projections` joined
+  client-side by team_abbr for postseason outlook
+- Blocked-state tabs on `Pill` primitive: tabs remain clickable and
+  show blocker messaging when selected, consistent with `field_status`
+  pattern
+
+### What surfaced
+
+**Design tension:** Prototype uses ~1400px full-screen layout; our
+app is centered ~800px. Two-column layouts that work in prototype
+(e.g., 80/20 rating chart + narrow rail) don't fit our width. Reverted
+to single-column below hero band. Documented for future workstreams —
+prototype fidelity work will always need this constraint check.
+
+### Test coverage
+
+Existing 59 tests continue passing. No new tests added for TeamsScreen
+components — coverage would be integration-level. Primitive tests from
+W9.5 provide indirect coverage of building blocks.
+
+### What's not shipped
+
+Preserved as `ScheduleDifficultyPlaceholder` and Top Players
+`ScaffoldCard`:
+- Schedule Difficulty (blocker: `upcoming_games` backend enrichment)
+- Top Players (blocker: WAR feature attribution)
+
+Not consumed:
+- WhyLink primitive (opportunity for future explainability affordance
+  on rating chart or team stats)
+
+### Backend gaps that surfaced
+
+None new. Same gaps as previously identified in ROADMAP §9.7:
+- `upcoming_games` enrichment for Schedule Difficulty
+- WAR data for Top Players
+- Off/def rating decomposition for Offense/Defense/Net Rating tabs
+- Cumulative ATS record for ATS tab
+- Enriched RecentResult with spread/ATS/O-U (not consumed in W9.7)
+
+### Next
+
+Between workstreams. Options: W9.8 (backend enablers), W9.9
+(PlayerProp rebuild), or something else.
+
 ## 2026-07-07 — W9.6 GameDetail Full Fidelity
 
 Rebuilt GameDetail (`/games/:id`) from skeleton with 5 coming-soon

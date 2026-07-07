@@ -208,6 +208,16 @@ card (consumes Step 7c team_comparison field). Right rail: Top Prop
 Edges card + placeholder cards for blocked sections (Swing Factors,
 Injuries). See CHANGELOG.md for details.
 
+#### W9.7: Teams Split-View Rebuild — ✅ COMPLETE (2026-07-07)
+
+Restructured `/teams` and `/teams/:abbr` into consolidated split-view
+screen at `/teams` with optional `?team=X` param. Left column rankings
+table with 5-tab strip (Overall + 4 blocked); right column profile
+with team hero band, rating chart, situational splits, recent results,
+postseason outlook, and 2 blocked placeholders. New `RatingChart`
+primitive supports inline W/L markers per week. See CHANGELOG.md for
+details.
+
 See CHANGELOG.md for details.
 
 ### Active Workstream
@@ -880,6 +890,7 @@ that moment.
 
 | Date | Change |
 |---|---|
+| 2026-07-07 | **W9.7 complete.** Teams Split-View Rebuild across 9 substeps in 4 tiers. Consolidated route structure. New RatingChart primitive. All 5 W9.5 primitives consumed. Cohort splits and postseason outlook composed from existing data. |
 | 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity across 9 substeps in 4 tiers. All 5 W9.5 primitives consumed heavily. Rebuild covers header composition, 3 main column cards, and 3 right-rail cards. |
 | 2026-07-04 | **W9.5 complete.** Dashboard now a real landing page. 5 cross-cutting primitives available. Team metadata reference consolidated. See CHANGELOG.md. |
 | 2026-07-05 | **Prototype vs. implementation audit complete.** Systematic screen-by-screen comparison of 16 screens against the frontend prototype. Findings consolidated into §9.7 (W8 backend hygiene backlog, ~90 items) and §9.8 (W9 frontend polish backlog, ~90 items). PROTOTYPE_AUDIT.md retired. Not blocking any active workstream — items pulled from these lists as future work. |
