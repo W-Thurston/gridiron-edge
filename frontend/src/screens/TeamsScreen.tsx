@@ -508,31 +508,6 @@ function ProfileColumn({
   );
 }
 
-// function ProfileCell({
-//   label,
-//   value,
-// }: {
-//   label: string;
-//   value: React.ReactNode;
-// }) {
-//   return (
-//     <div style={{ minWidth: 100 }}>
-//       <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
-//         {label}
-//       </div>
-//       <div className="mono tnum" style={{ fontSize: 14 }}>
-//         {value}
-//       </div>
-//     </div>
-//   );
-// }
-
-// function InlineFieldStatus({ status }: { status: FieldStatus | undefined }) {
-//   if (!status) return <span className="mono tnum dim2">—</span>;
-//   if (status === "pending") return <PendingField />;
-//   return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
-// }
-
 function ScaffoldCard({
   title,
   status,
