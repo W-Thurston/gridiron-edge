@@ -3,6 +3,118 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-07 — W9.6 GameDetail Full Fidelity
+
+Rebuilt GameDetail (`/games/:id`) from skeleton with 5 coming-soon
+cards to prototype fidelity across 9 substeps in 4 tiers. Uses all
+5 primitives shipped in W9.5.
+
+### Shipped
+
+**Tier 1 — Layout restructure (1 substep):**
+- Full-width header slot + 2-column grid (3fr main / 2fr rail)
+- Preserved existing prediction data in placeholder cards during transition
+- All old flat layout removed
+
+**Tier 2 — Header composition (2 substeps):**
+- Team hero header: two TeamHero components (right-oriented away,
+  left-oriented home) framing center block with kick date + "at" +
+  venue/weather placeholders
+- Model lean callout composed from `/edges` filtered to game_id:
+  recommendation + EV% + confidence tier + WhyLink dot + slip button
+- Empty state "No model edge" when no edges available for game
+
+**Tier 3 — Main column cards (3 substeps):**
+- **Lines & Model Fair Value table** — 3 rows × 3 columns:
+  - Market row: em-dashes (blocked on W7)
+  - Gridiron Edge fair row: spread + total + moneyline (probability
+    → American via new `probToAmerican()` helper in utils/odds.ts)
+  - Recommendation row: top edge per market from `/edges` filter;
+    highlighted with green tint
+- **Win Probability card** — 2 columns:
+  - Left: two prob bands with team label + big % + range label
+  - Right: projected score display + margin string
+  - Away band derived from home band (1 - home_hi/lo)
+- **Team Comparison card** — 8 metrics × 4 cohorts:
+  - Season / Last 4 / Home / Away tabs via Pill primitive
+  - Simple 3-column layout (away value / metric / home value)
+  - Green + bold coloring on winning team per metric
+  - "Open full comparison →" button navigates to Compare with team
+    abbrevs prefilled
+  - Consumes `team_comparison` field from Step 7c
+
+**Tier 4 — Right rail + cleanup (3 substeps):**
+- **Top Prop Edges card** — compact right-rail list:
+  - Filters `/props` by game_id (client-side)
+  - Sort by predicted_mean descending, take top 4
+  - Each row: player + TeamMark + position + confidence tier +
+    stat + lean + line + model value + WhyLink dot + slip button
+  - Row click → PlayerProp; "See all N →" shows count of props
+- Placeholder integration: Swing Factors + Injuries remain as
+  ComingSoonCard (blocked on named workstreams)
+- Cleanup: deleted SectionPlaceholder dead code
+
+### Architecture consumed
+
+- **All 5 W9.5 primitives:** TeamHero (heavy — 4 usages), Pill
+  (Team Comparison cohort tabs), WhyLink (model lean + prop edges),
+  TeamMark (throughout, colored via cache), Spark (not directly
+  used in GameDetail — future win prob chart candidate)
+
+### New helpers
+
+- `stripCityPrefix()` — removes "Kansas City " prefix from
+  "Kansas City Chiefs" when city and name are exposed separately.
+  Otherwise displays "Kansas City Kansas City Chiefs".
+- `probToAmerican()` in `utils/odds.ts` — win probability to
+  American odds using standard formula: `prob >= 0.5` (favored)
+  gives negative American; `prob < 0.5` gives positive American.
+- `formatKickLabel()` — game_date → "SUN · FEB 8" (mono uppercase)
+- `formatMargin()` — model_spread + team names → "TEAM by X.X"
+- `formatSpreadDisplay()`, `formatTotalDisplay()`, `formatMLDisplay()`
+  — two-line stacks per Lines table cell
+- `formatStatType()` — "qb_pass_yards" → "Pass Yds" for prop rows
+
+### Composition patterns established
+
+- Header + right-side callout wrapped in outer flex container with
+  space-between
+- Composed cards from multiple endpoints (game, edges, props) via
+  React Query
+- Client-side filtering by game_id for cross-endpoint composition
+  (no backend filter params needed)
+- Bet slip integration via `useBetSlip.add()` with placeholder -110
+  odds (real odds arrive with W7)
+
+### Test coverage
+
+Existing 59 tests continue passing. No new tests added for GameDetail
+sub-components — coverage would be integration-level (real API data
+in browser). Primitive tests from W9.5 provide indirect coverage of
+building blocks.
+
+### What's not shipped
+
+Preserved as `ComingSoonCard` placeholders for future work:
+- Swing Factors (blocked on feature attribution workstream)
+- Injuries (blocked on §5.3 injury data source)
+
+No `Spark` usage in GameDetail. Future win probability chart or
+prop distribution overlay could use it.
+
+### Backend gaps that surfaced
+
+None new. Same gaps as previously identified in ROADMAP §9.7:
+- `kick_time` not exposed (game_date only)
+- `venue_text`, `weather_text` pending
+- `market_spread`, `market_total`, moneyline market lines blocked on W7
+
+### Next
+
+Between workstreams. Options: W9.7 (Teams split-view), W9.8 (backend
+frontend-enablers), W9.9 (PlayerProp rebuild), or another slice of
+polish work.
+
 ## 2026-07-06 — W9.5 Frontend Polish (Dashboard Rebuild + Cross-Cutting Primitives)
 
 Small workstream between W8 close-out and next major work. Focused on

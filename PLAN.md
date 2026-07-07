@@ -29,117 +29,51 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W9.6 — GameDetail Full Fidelity
+### Current Workstream: (none — between workstreams)
 
-**Status:** Designing.
+### Recently Completed
 
-### What we are building
+#### W9.6: GameDetail Full Fidelity — ✅ COMPLETE (2026-07-07)
 
-Rebuilt GameDetail (`/games/:id`) from the current skeleton
-(header + prediction cell grid + 5 coming-soon cards) to prototype
-fidelity. Ships 5 new working sections and preserves 2 as
-placeholders (blocked on named workstreams).
+Rebuilt GameDetail from placeholder-heavy skeleton to prototype
+fidelity across 9 substeps in 4 tiers.
 
-Uses all 5 primitives shipped in W9.5 (`Pill`, `WhyLink`, `TeamMark`,
-`Spark`, `TeamHero`).
+**Delivered:**
+- Full-width game header with `TeamHero` primitives (colored marks
+  + serif italic team names + AWAY/HOME context labels + kick date
+  + venue placeholder + weather placeholder) — 2 substeps
+- Model lean callout composed from `/edges` (recommendation + EV +
+  confidence pill + WhyLink + slip button)
+- Lines & Model Fair Value table (3 rows × 3 columns): Market row
+  em-dashed pending W7; Model row from prediction data (spread,
+  total, moneyline via `probToAmerican()`); Recommendation row
+  composed from `/edges` per market with green highlight tint
+- Win Probability card: 2-column with prob bands + labels on left,
+  projected score + margin on right
+- Team Comparison card: 8 metrics × 4 cohorts (Season/L4/Home/Away)
+  via Pill primitive, "Open full comparison →" navigation to Compare
+- Top Prop Edges card in right rail: 4-row compact list filtered
+  to game_id, WhyLink dot per row, slip button per row
 
-### Why we are building it now
+**Preserved as blocked placeholders:**
+- Swing Factors (feature attribution workstream)
+- Injuries (§5.3 injury data source)
 
-GameDetail is the most-visited screen after Dashboard (every "click
-game" from Dashboard, GamesList, or Compare lands here). Currently
-renders as: minimal header + flat prediction cell grid + 5
-placeholder cards that say "not yet available." Data ships for most
-of it — `team_comparison` field from Step 7c, prop edges from
-`/props`, and predictions from `/games/:id`. Just needs rendering.
+**Data path adjustments:**
+- Team city prefix stripped from `name` field in header
+  (`stripCityPrefix` helper)
+- `probToAmerican()` helper added to `utils/odds.ts`
+- Client-side filtering for game-scoped composition (edges, props)
+  since backend doesn't support per-game filter params
 
-Compound value: consumes all 5 primitives shipped in W9.5, showing
-the primitives' payoff clearly.
+**Uses all 5 primitives from W9.5:**
+- Pill (cohort tabs on Team Comparison)
+- WhyLink (dot variant on model lean + prop edges)
+- TeamMark (throughout, colored)
+- Spark — not used in GameDetail (deferred to future win prob chart)
+- TeamHero (both team heroes in header, plus prop row TeamMarks)
 
-#### Success criteria
-
-- Two-column layout replaces single-column stack.
-- Full-width game header renders with TeamHero for both teams,
-  center block with kick + venue + weather placeholders, and model
-  lean callout (from `/edges`).
-- Lines & model fair value table with 3 rows (Market / Model /
-  Recommendation).
-- Win probability card with 2 prob bands + projected score.
-- Team comparison card with 4 cohort tabs (Season / L4 / Home /
-  Away) — consumes existing Step 7c data.
-- Top prop edges card with 4-5 filtered rows from `/props`.
-- Swing factors and Injuries remain as `<ComingSoonCard>` with
-  proper `field_status` badges.
-- All quality gates pass.
-
-### Locked architectural decisions
-
-| Decision | Choice |
-|---|---|
-| Layout | Full-width header + 3fr/2fr 2-col grid below |
-| Kick time | Date only from `game_date` (no time-of-day backend data yet) |
-| Weather / venue | Em-dash placeholder (blocked; consistent with elsewhere) |
-| Model lean callout | Compose from `/edges` filtered to game |
-| Market row on lines table | Show pending markers |
-| Team comparison cohorts | 4 tabs (Season/L4/Home/Away) via Pill primitive |
-| Team comparison row rendering | Simple 3-col (away value / metric / home value) with color-coded percentile — no colored bars for v1 |
-| Bet slip integration | Add recommended edge as leg with -110 placeholder odds |
-| Right rail | Top prop edges (rendered) + Swing factors (placeholder) + Injuries (placeholder) |
-| Track button | Skip (no tracking system) |
-| Existing prediction card | Replace with new composed cards |
-
-### Prerequisite
-
-None. All primitives from W9.5 are shipped.
-
-### Tiers
-
-**Tier 1 — Layout restructure (1 substep).**
-
-Rebuild the layout skeleton with full-width header slot and 2-col
-grid below. No new components yet; move existing prediction cells
-into placeholder cards. Verifies structural change without semantic
-change.
-
-**Tier 2 — Header composition (2 substeps).**
-
-Build the full-width game header:
-- 2a: Team hero header with TeamHero for both teams, center block
-  with placeholders.
-- 2b: Model lean callout (compose from /edges).
-
-**Tier 3 — Main column cards (3 substeps).**
-
-Build the 3 main column sections:
-- 3a: Lines & model fair value table.
-- 3b: Win probability card with projected score.
-- 3c: Team comparison card with cohort tabs.
-
-**Tier 4 — Right rail + integration (3 substeps).**
-
-Complete the right rail and integrate:
-- 4a: Top prop edges card.
-- 4b: Placeholder integration for blocked sections.
-- 4c: Final integration cleanup — old prediction card removed,
-  layout wired, tests updated.
-
-### Timeline
-
-Total: 9 substeps. Not tied to calendar; natural cadence.
-
-### Success artifacts
-
-By workstream close:
-
-- GameDetail renders with 5 new working sections
-- 2 placeholders remain (Swing factors, Injuries) with clear blocker
-  messaging
-- All 5 W9.5 primitives consumed (TeamHero heavily; Pill in comparison
-  tabs; WhyLink in header + prop edges; Spark not directly here — for
-  future win prob chart)
-- Two-column layout established as reusable pattern for future screen
-  rebuilds
-
-Tier design blocks are drafted at the start of each step.
+**W9.6 workstream complete.**
 
 ---
 
@@ -153,4 +87,5 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity shipped in 9 substeps across 4 tiers. All 5 W9.5 primitives consumed (heavy TeamHero + Pill + WhyLink usage). Composed cards from /edges, /games, /props, and `team_comparison` field from Step 7c. |
 | 2026-07-06 | **W9.6 GameDetail Full Fidelity design.** Locked. 9 substeps across 4 tiers. Layout restructure + header composition + main column cards (lines table, win prob, team comparison) + right rail (prop edges + placeholders). Uses all 5 primitives from W9.5. |

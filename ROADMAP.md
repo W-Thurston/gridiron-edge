@@ -168,10 +168,6 @@ Vite + React + TypeScript app at `frontend/` consuming the 16-endpoint API end-t
 
 **Unlocks:** M4.5 achieved (visual verification of full output set). W8 Tier 3 additive dataset priority now discoverable — the frontend has surfaced which pending/blocked states matter most.
 
-See CHANGELOG.md for details.
-
-### Active Workstream
-
 #### W8: API Serving Layer — ✅ COMPLETE (2026-07-04)
 
 **Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
@@ -201,6 +197,22 @@ substeps: team metadata backend patch and CSV consolidation (Tier 1),
 (Tier 2), 4 Dashboard sections + integration (Tier 3). Also consolidated
 NFL_long_to_short_name.csv and NFL_conference_division.csv into
 NFL_team_metadata.csv. See CHANGELOG.md for details.
+
+#### W9.6: GameDetail Full Fidelity — ✅ COMPLETE (2026-07-07)
+
+Rebuilt GameDetail from skeleton to prototype fidelity across 9
+substeps. Full-width game header with team-colored TeamHero + kick +
+model lean callout. Main column: Lines & Fair Value table (Model +
+Recommendation rows populated), Win Probability card, Team Comparison
+card (consumes Step 7c team_comparison field). Right rail: Top Prop
+Edges card + placeholder cards for blocked sections (Swing Factors,
+Injuries). See CHANGELOG.md for details.
+
+See CHANGELOG.md for details.
+
+### Active Workstream
+
+
 
 ### Future Workstreams (ordered by current priority)
 
@@ -856,12 +868,19 @@ that moment.
       current season and gets a warning that the source only supports through
       2025. Clamp to the max available season instead of failing softly.
 
+- [ ] `_parse_baseline_report` extracted zero-valued cells for the previous
+  report's win_prob_logistic row, causing the delta to display as the raw
+  current value with a `+` sign rather than a proper delta or an em-dash.
+  Investigate whether the parser is misaligning columns or if 0.0 is being
+  produced where None is expected.
+
 ---
 
 ## 10. Changelog for This Document
 
 | Date | Change |
 |---|---|
+| 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity across 9 substeps in 4 tiers. All 5 W9.5 primitives consumed heavily. Rebuild covers header composition, 3 main column cards, and 3 right-rail cards. |
 | 2026-07-04 | **W9.5 complete.** Dashboard now a real landing page. 5 cross-cutting primitives available. Team metadata reference consolidated. See CHANGELOG.md. |
 | 2026-07-05 | **Prototype vs. implementation audit complete.** Systematic screen-by-screen comparison of 16 screens against the frontend prototype. Findings consolidated into §9.7 (W8 backend hygiene backlog, ~90 items) and §9.8 (W9 frontend polish backlog, ~90 items). PROTOTYPE_AUDIT.md retired. Not blocking any active workstream — items pulled from these lists as future work. |
 | 2026-07-04 | **W8 workstream complete.** All three tiers shipped: Tier 1 skeleton + blocked stubs, Tier 2 populated endpoints (16), Tier 3 additive datasets (7). Frontend (W9) consumes API end-to-end. |

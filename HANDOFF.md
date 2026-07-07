@@ -429,6 +429,11 @@ Step 5 audit confirmed all existing loaders comply.
   before creating scoped components. Primitives available: Pill,
   WhyLink, TeamMark (with team colors via React Query cache), Spark,
   TeamHero.
+- **Composed screens pattern:** GameDetail (W9.6) demonstrated the
+  pattern for composing multiple endpoints into a single screen. Each
+  card in a screen might consume 1-3 different API endpoints. Use
+  React Query hooks for each; filter client-side when backend filters
+  aren't available.
 
 **Local dev loop:**
 

@@ -1,20 +1,19 @@
-import { useGame } from "../api/hooks";
+import { useState } from "react";
+
+import { useEdges, useGame, usePropsList } from "../api/hooks";
+import { useTeamByAbbr } from "../api/team_metadata_hook";
+import { ErrorCard } from "../components/error/ErrorCard";
+import type { FieldStatus } from "../components/field-status/types";
 import { ComingSoonCard } from "../components/games/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { WinProbBand } from "../components/games/WinProbBand";
-import { useNav } from "../context/NavContext";
-import type { FieldStatus } from "../components/field-status/types";
-import { ErrorCard } from "../components/error/ErrorCard";
-import { TeamHero } from "../components/primitives/TeamHero";
-import { useTeamByAbbr } from "../api/team_metadata_hook";
-import { useEdges } from "../api/hooks";
-import { useBetSlip } from "../context/BetSlipContext";
-import { WhyLink } from "../components/primitives/WhyLink";
-import { probToAmerican } from "../utils/odds";
-import { TeamMark } from "../components/primitives/TeamMark";
-import { useState } from "react";
 import { Pill } from "../components/primitives/Pill";
-import { usePropsList } from "../api/hooks";
+import { TeamHero } from "../components/primitives/TeamHero";
+import { TeamMark } from "../components/primitives/TeamMark";
+import { WhyLink } from "../components/primitives/WhyLink";
+import { useBetSlip } from "../context/BetSlipContext";
+import { useNav } from "../context/NavContext";
+import { probToAmerican } from "../utils/odds";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
