@@ -29,51 +29,142 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: (none — between workstreams)
+### Current Workstream: W9.7 — Teams Split-View Rebuild
 
-### Recently Completed
+**Status:** Designing.
 
-#### W9.6: GameDetail Full Fidelity — ✅ COMPLETE (2026-07-07)
+### What we are building
 
-Rebuilt GameDetail from placeholder-heavy skeleton to prototype
-fidelity across 9 substeps in 4 tiers.
+Restructure `/teams` and `/teams/:abbr` into a single split-view
+screen at `/teams` with an optional `?team=X` param. Left column
+shows the league table (all 32 teams); right column shows the
+selected team's profile. Clicking a table row updates the right
+pane without navigation, preserving ranking context.
 
-**Delivered:**
-- Full-width game header with `TeamHero` primitives (colored marks
-  + serif italic team names + AWAY/HOME context labels + kick date
-  + venue placeholder + weather placeholder) — 2 substeps
-- Model lean callout composed from `/edges` (recommendation + EV +
-  confidence pill + WhyLink + slip button)
-- Lines & Model Fair Value table (3 rows × 3 columns): Market row
-  em-dashed pending W7; Model row from prediction data (spread,
-  total, moneyline via `probToAmerican()`); Recommendation row
-  composed from `/edges` per market with green highlight tint
-- Win Probability card: 2-column with prob bands + labels on left,
-  projected score + margin on right
-- Team Comparison card: 8 metrics × 4 cohorts (Season/L4/Home/Away)
-  via Pill primitive, "Open full comparison →" navigation to Compare
-- Top Prop Edges card in right rail: 4-row compact list filtered
-  to game_id, WhyLink dot per row, slip button per row
+Sections rendered:
+- **Left column:** Rankings table with Overall/Offense/Defense/ATS/Net
+  Rating tabs (Off/Def blocked as placeholders)
+- **Right column:** Team hero band with primary color + 3 stat hero
+  row + rating chart + cohort splits + recent results + postseason
+  outlook
 
-**Preserved as blocked placeholders:**
-- Swing Factors (feature attribution workstream)
-- Injuries (§5.3 injury data source)
+Blocked sections shipped as `ComingSoonCard` for consistency:
+- Schedule Difficulty (backend blocked)
+- Top Players by WAR (blocked in §9.7)
 
-**Data path adjustments:**
-- Team city prefix stripped from `name` field in header
-  (`stripCityPrefix` helper)
-- `probToAmerican()` helper added to `utils/odds.ts`
-- Client-side filtering for game-scoped composition (edges, props)
-  since backend doesn't support per-game filter params
+Old `/teams/:abbr` route redirects to `/teams?team=abbr` for
+backward compatibility.
 
-**Uses all 5 primitives from W9.5:**
-- Pill (cohort tabs on Team Comparison)
-- WhyLink (dot variant on model lean + prop edges)
-- TeamMark (throughout, colored)
-- Spark — not used in GameDetail (deferred to future win prob chart)
-- TeamHero (both team heroes in header, plus prop row TeamMarks)
+### Why we are building it now
 
-**W9.6 workstream complete.**
+Two motivations:
+
+1. **UX gap.** Current two-route pattern forces back-navigation to
+   compare teams. Users lose ranking context. Split-view is the
+   natural affordance for a "browse-and-inspect" flow.
+
+2. **Data ready.** All the data we need ships from existing
+   endpoints:
+   - `/teams` for rankings
+   - `/teams/{abbr}` for team profile with rating_history + record + recent_results + cohort_splits (via Step 7c)
+   - `/projections` for postseason outlook (composed client-side)
+   - Team metadata (colors, city, name) via W9.5 primitives
+
+   Rebuild leverages every primitive from W9.5 (Pill, WhyLink,
+   TeamMark, Spark, TeamHero).
+
+#### Success criteria
+
+- Route `/teams` renders split-view with rankings on left, profile
+  on right
+- Auto-selects #1 ranked team when no `?team=X` param
+- Row click updates URL and right pane (no navigation)
+- Rankings table shows all 32 teams with tabs for view mode
+- Team hero band uses team primary color as background
+- Rating chart, cohort splits, recent results, postseason outlook
+  all populated from existing data
+- Old `/teams/:abbr` route redirects to `/teams?team=abbr`
+- Schedule Difficulty + Top Players remain as ComingSoonCards
+- Old TeamRankings + TeamProfile files deleted (consolidated into
+  single `TeamsScreen.tsx`)
+- All quality gates pass
+
+### Locked architectural decisions
+
+| Decision | Choice |
+|---|---|
+| Route structure | Single `/teams` with optional `?team=X`; old `/teams/:abbr` redirects |
+| Default team | Auto-select #1 ranked |
+| Split ratio | 40 / 60 (left / right) |
+| Left column rows | All 32 teams, scrollable |
+| Rankings tabs | Overall (default) / Offense (blocked) / Defense (blocked) / ATS (blocked) / Net rating |
+| Rating chart | Existing Spark primitive; no uncertainty band (not shipped) |
+| Cohort splits layout | 3-column with cohort switcher via Pill (matches GameDetail Team Comparison pattern) |
+| Recent results | Show what backend has (opponent + score + W/L result) |
+| Hero stats | Record + Rank + Rating (3 stats big) |
+| Team hero band background | `color-mix` primary_color at 15% |
+| Column sorting | Skip (backlog item; sort by rating desc default) |
+| File consolidation | Single `TeamsScreen.tsx` file |
+
+### Prerequisite
+
+None. All backend data already ships. All W9.5 primitives available.
+
+### Tiers
+
+**Tier 1 — Route restructure (1 substep).**
+
+Combine `TeamRankings` and `TeamProfile` into a single component at
+`/teams`. Auto-select #1 team when no `?team=X` param. Old
+`/teams/:abbr` route added to redirect.
+
+**Tier 2 — Left column (2 substeps).**
+
+- 2a: Rankings table with row selection and URL sync (no navigation)
+- 2b: Rankings tabs (Overall/Offense/Defense/ATS/Net rating); Off/Def
+  blocked as pill placeholders
+
+**Tier 3 — Right column sections (4 substeps).**
+
+- 3a: Team hero band with primary color + 3 hero stats
+- 3b: Rating chart with Spark primitive
+- 3c: Cohort splits section (3-column, Pill cohort switcher, 8 metrics)
+- 3d: Recent results + postseason outlook (two smaller cards)
+
+**Tier 4 — Blocked placeholders + integration (2 substeps).**
+
+- 4a: Schedule Difficulty + Top Players as ComingSoonCards
+- 4b: Final integration cleanup (delete old files, verify redirects,
+  ensure tests pass)
+
+### Disconfirming evidence
+
+- **If team primary color at 15% mix is too dark for readability** on
+  hero band, adjust to 8-10% or use a different tint.
+- **If /projections filtering by team_abbr adds latency**, consider
+  cross-endpoint caching or client-side pre-filtering.
+- **If rankings table row height is too tall to fit 32 rows without
+  scrolling**, tighten `padding` on rows.
+- **If Old `/teams/:abbr` redirect creates flicker**, we accept it or
+  handle in nav context.
+- **If backend `recent_results` field doesn't have enough context to
+  render (e.g., missing opponent short abbr)**, we display what's
+  available (opponent long name + score + result letter).
+
+### Timeline
+
+Total: 9 substeps. Not tied to calendar; natural cadence.
+
+### Success artifacts
+
+By workstream close:
+
+- `TeamsScreen.tsx` renders as split-view
+- 32-team ranking table with tab structure
+- Right pane populated with 6 real sections + 2 blocked placeholders
+- All 5 W9.5 primitives consumed (Pill, WhyLink, TeamMark, Spark, TeamHero)
+- Backward-compatible route handling for old `/teams/:abbr` URLs
+- Cleanup: `TeamRankings.tsx` + `TeamProfile.tsx` deleted
 
 ---
 
@@ -87,5 +178,4 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity shipped in 9 substeps across 4 tiers. All 5 W9.5 primitives consumed (heavy TeamHero + Pill + WhyLink usage). Composed cards from /edges, /games, /props, and `team_comparison` field from Step 7c. |
-| 2026-07-06 | **W9.6 GameDetail Full Fidelity design.** Locked. 9 substeps across 4 tiers. Layout restructure + header composition + main column cards (lines table, win prob, team comparison) + right rail (prop edges + placeholders). Uses all 5 primitives from W9.5. |
+| 2026-07-07 | **W9.7 Teams Split-View Rebuild design.** Locked. 9 substeps across 4 tiers. Route consolidation, split-view layout, rankings table with tabs, team hero + 6 sections in right pane (blocked schedule/top players as placeholders). Consumes all 5 W9.5 primitives + Step 7c cohort_splits + /projections composition. |
