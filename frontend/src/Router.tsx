@@ -14,8 +14,7 @@ import { PlayerProp } from "./screens/PlayerProp";
 import { PlayersExplorer } from "./screens/PlayersExplorer";
 import { PlayoffProjections } from "./screens/PlayoffProjections";
 import { Settings } from "./screens/Settings";
-import { TeamProfile } from "./screens/TeamProfile";
-import { TeamRankings } from "./screens/TeamRankings";
+import { TeamsScreen } from "./screens/TeamsScreen";
 import { Tools } from "./screens/Tools";
 
 export function Router() {
@@ -25,7 +24,7 @@ export function Router() {
   // they need to check for the param's presence before falling
   // through to the list variant.
   if (route.path === "/games" && route.params.gameId) return <GameDetail />;
-  if (route.path === "/teams" && route.params.team) return <TeamProfile />;
+  if (route.path === "/teams" && route.params.team) return <TeamsScreen />;
   if (route.path === "/players" && route.params.propId) return <PlayerProp />;
 
   switch (route.path) {
@@ -34,7 +33,7 @@ export function Router() {
     case "/games":
       return <GamesList />;
     case "/teams":
-      return <TeamRankings />;
+      return <TeamsScreen />;
     case "/projections":
       return <PlayoffProjections />;
     case "/players":
