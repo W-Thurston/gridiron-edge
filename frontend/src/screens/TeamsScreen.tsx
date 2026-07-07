@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { useTeamProfile, useTeamRankings } from "../api/hooks";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { PendingField } from "../components/field-status/PendingField";
@@ -54,6 +56,12 @@ export function TeamsScreen() {
 /**
  * Left column: rankings table. Row click updates selection via
  * onSelectTeam callback (URL param, not navigation).
+ *
+ * Enhancements in Substep 2a:
+ * - Trend column wired to real backend data
+ * - Signed colored pill for trend badge
+ * - Hover state on rows
+ * - Tighter row height for 32-team fit
  */
 function RankingsColumn({
   rankings,
@@ -79,27 +87,33 @@ function RankingsColumn({
 }) {
   return (
     <div className="hm-card" style={{ padding: 20 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-        Power Rankings
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Power Rankings
+        </div>
+        {rankings.length > 0 && (
+          <span className="mono dim2" style={{ fontSize: 10 }}>
+            {rankings.length} teams
+          </span>
+        )}
       </div>
-
-      {isLoading && <div className="dim">Loading…</div>}
 
       {error && (
         <ErrorCard
-            error={error}
-            onRetry={onRetry}
-            title="Couldn't load rankings"
+          error={error}
+          onRetry={onRetry}
+          title="Couldn't load rankings"
         />
-        )}
-
-      {!isLoading && !error && rankings.length === 0 && (
-        <div className="dim mono" style={{ fontSize: 12 }}>
-          No team ratings found.
-        </div>
       )}
 
-      {!isLoading && !error && rankings.length > 0 && (
+      {!error && (
         <table
           className="mono tnum"
           style={{
@@ -110,94 +124,251 @@ function RankingsColumn({
         >
           <thead>
             <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-              <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>#</th>
-              <th style={{ padding: "6px 12px 6px 0" }}>Team</th>
-              <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>
+              <th
+                style={{
+                  padding: "6px 12px 6px 0",
+                  textAlign: "right",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 400,
+                }}
+              >
+                #
+              </th>
+              <th
+                style={{
+                  padding: "6px 12px 6px 0",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 400,
+                }}
+              >
+                Team
+              </th>
+              <th
+                style={{
+                  padding: "6px 12px 6px 0",
+                  textAlign: "right",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 400,
+                }}
+              >
                 Rating
               </th>
-              <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>
+              <th
+                style={{
+                  padding: "6px 12px 6px 0",
+                  textAlign: "right",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 400,
+                }}
+              >
                 Record
               </th>
-              <th style={{ padding: "6px 0" }}>Trend</th>
+              <th
+                style={{
+                  padding: "6px 0",
+                  textAlign: "right",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 400,
+                }}
+              >
+                Trend
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rankings.map((team) => {
-              const isSelected = team.abbr === selectedAbbr;
-              return (
-                <tr
-                  key={team.abbr}
-                  onClick={() => onSelectTeam(team.abbr)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSelectTeam(team.abbr);
-                    }
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Select ${team.name}`}
-                  aria-current={isSelected ? "true" : undefined}
-                  style={{
-                    borderTop: "1px solid var(--line-soft)",
-                    cursor: "pointer",
-                    background: isSelected
-                      ? "color-mix(in oklab, var(--pos) 6%, transparent)"
-                      : "transparent",
-                  }}
-                >
-                  <td
-                    style={{
-                      padding: "8px 12px 8px 0",
-                      textAlign: "right",
-                      color: "var(--ink-3)",
-                    }}
-                  >
-                    {team.rank ?? "—"}
-                  </td>
-                  <td style={{ padding: "8px 12px 8px 0" }}>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <TeamMark abbr={team.abbr} size={18} />
-                      <span
-                        style={{
-                          color: isSelected ? "var(--ink)" : "var(--ink-2)",
-                          fontWeight: isSelected ? 500 : 400,
-                        }}
-                      >
-                        {team.name}
-                      </span>
-                    </span>
-                  </td>
-                  <td style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>
-                    {team.rating?.toFixed(0) ?? "—"}
-                  </td>
-                  <td
-                    style={{
-                      padding: "8px 12px 8px 0",
-                      textAlign: "right",
-                      color: "var(--ink-2)",
-                    }}
-                  >
-                    {team.record
-                      ? `${team.record.wins}-${team.record.losses}${
-                          team.record.ties > 0 ? `-${team.record.ties}` : ""
-                        }`
-                      : "—"}
-                  </td>
-                  <td style={{ padding: "8px 0" }}>—</td>
-                </tr>
-              );
-            })}
+            {isLoading && (
+              <tr>
+                <td colSpan={5}>
+                  <div className="dim" style={{ padding: "20px 0" }}>
+                    Loading…
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!isLoading && rankings.length === 0 && (
+              <tr>
+                <td colSpan={5}>
+                  <div className="dim mono" style={{ fontSize: 12, padding: "20px 0" }}>
+                    No team ratings found.
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!isLoading &&
+              rankings.map((team) => {
+                const isSelected = team.abbr === selectedAbbr;
+                return (
+                  <RankingRow
+                    key={team.abbr}
+                    team={team}
+                    isSelected={isSelected}
+                    onClick={() => onSelectTeam(team.abbr)}
+                  />
+                );
+              })}
           </tbody>
         </table>
       )}
     </div>
+  );
+}
+
+/**
+ * Individual row in the rankings table with hover state.
+ */
+function RankingRow({
+  team,
+  isSelected,
+  onClick,
+}: {
+  team: {
+    abbr: string;
+    name: string;
+    rating?: number | null;
+    rank?: number | null;
+    record?: { wins: number; losses: number; ties: number } | null;
+    trend?: number | null;
+  };
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const [isHover, setIsHover] = useState(false);
+
+  const bg = isSelected
+    ? "color-mix(in oklab, var(--pos) 8%, transparent)"
+    : isHover
+      ? "color-mix(in oklab, var(--ink) 3%, transparent)"
+      : "transparent";
+
+  return (
+    <tr
+      onClick={onClick}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => setIsHover(false)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`Select ${team.name}`}
+      aria-current={isSelected ? "true" : undefined}
+      style={{
+        borderTop: "1px solid var(--line-soft)",
+        cursor: "pointer",
+        background: bg,
+        transition: "background 90ms ease",
+      }}
+    >
+      <td
+        style={{
+          padding: "6px 12px 6px 0",
+          textAlign: "right",
+          color: "var(--ink-3)",
+        }}
+      >
+        {team.rank ?? "—"}
+      </td>
+      <td style={{ padding: "6px 12px 6px 0" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <TeamMark abbr={team.abbr} size={18} />
+          <span
+            style={{
+              color: isSelected ? "var(--ink)" : "var(--ink-2)",
+              fontWeight: isSelected ? 500 : 400,
+            }}
+          >
+            {team.name}
+          </span>
+        </span>
+      </td>
+      <td
+        style={{
+          padding: "6px 12px 6px 0",
+          textAlign: "right",
+        }}
+      >
+        {team.rating?.toFixed(0) ?? "—"}
+      </td>
+      <td
+        style={{
+          padding: "6px 12px 6px 0",
+          textAlign: "right",
+          color: "var(--ink-2)",
+        }}
+      >
+        {team.record
+          ? `${team.record.wins}-${team.record.losses}${
+              team.record.ties > 0 ? `-${team.record.ties}` : ""
+            }`
+          : "—"}
+      </td>
+      <td style={{ padding: "6px 0", textAlign: "right" }}>
+        <TrendBadge trend={team.trend} />
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * Signed colored pill for team trend. Positive = green, negative = red,
+ * zero or missing = dim.
+ */
+function TrendBadge({ trend }: { trend: number | null | undefined }) {
+  if (trend == null) {
+    return <span className="mono dim2">—</span>;
+  }
+
+  const isPositive = trend > 0;
+  const isNegative = trend < 0;
+  const color = isPositive
+    ? "var(--pos)"
+    : isNegative
+      ? "var(--neg)"
+      : "var(--ink-3)";
+  const bg = isPositive
+    ? "color-mix(in oklab, var(--pos) 14%, transparent)"
+    : isNegative
+      ? "color-mix(in oklab, var(--neg) 14%, transparent)"
+      : "var(--bg-2)";
+
+  const sign = trend > 0 ? "+" : "";
+  const formatted = `${sign}${trend.toFixed(1)}`;
+
+  return (
+    <span
+      className="mono tnum"
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        fontSize: 10,
+        color,
+        background: bg,
+        borderRadius: 3,
+        fontWeight: 600,
+        minWidth: 40,
+      }}
+    >
+      {formatted}
+    </span>
   );
 }
 
