@@ -10,6 +10,7 @@ import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { Pill } from "../components/primitives/Pill";
 import { RatingChart } from "../components/primitives/RatingChart";
+import { useProjections } from "../api/hooks";
 
 /**
  * Consolidated split-view Teams screen. Left column shows rankings;
@@ -484,6 +485,9 @@ function ProfileColumn({
         <RecentResultsStrip results={data.recent_results} />
       </div>
 
+      {/* Postseason outlook */}
+      <PostseasonOutlookCard teamAbbr={data.abbr} />
+
       {/* Scaffolded cards */}
       <div
         style={{
@@ -921,6 +925,150 @@ function SplitMetricRow({
         }}
       >
         {value != null ? fmt(value) : "—"}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Postseason outlook card for team profile. Filters /projections
+ * response client-side to find the current team, then renders 5
+ * probability rows for postseason milestones.
+ */
+function PostseasonOutlookCard({ teamAbbr }: { teamAbbr: string }) {
+  const { data, isLoading, error } = useProjections();
+
+  if (isLoading) {
+    return (
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+          Postseason Outlook
+        </div>
+        <div className="dim">Loading…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+          Postseason Outlook
+        </div>
+        <div className="dim mono" style={{ fontSize: 12 }}>
+          Couldn't load projections.
+        </div>
+      </div>
+    );
+  }
+
+  const teamProjection = data?.items?.find((row) => row.abbr === teamAbbr);
+
+  if (!teamProjection) {
+    return (
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+          Postseason Outlook
+        </div>
+        <div
+          style={{
+            padding: 20,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          No projection data available.
+        </div>
+      </div>
+    );
+  }
+
+  const rows: { label: string; value: number | null | undefined }[] = [
+    { label: "Make Playoffs", value: teamProjection.make_playoffs },
+    { label: "Reach Divisional", value: teamProjection.reach_div },
+    { label: "Reach Conf. Championship", value: teamProjection.reach_conf },
+    { label: "Reach Super Bowl", value: teamProjection.reach_sb },
+    { label: "Win Super Bowl", value: teamProjection.win_sb },
+  ];
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+        Postseason Outlook
+      </div>
+
+      <div style={{ display: "grid", gap: 4 }}>
+        {rows.map((row, i) => (
+          <PostseasonRow
+            key={row.label}
+            label={row.label}
+            value={row.value}
+            first={i === 0}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Single row in postseason outlook: label on left, percentage on right.
+ */
+function PostseasonRow({
+  label,
+  value,
+  first,
+}: {
+  label: string;
+  value: number | null | undefined;
+  first: boolean;
+}) {
+  const pct = value != null ? Math.round(value * 100) : null;
+  const formatted = pct != null ? `${pct}%` : "—";
+
+  // Color by probability strength
+  const color =
+    pct == null
+      ? "var(--ink-3)"
+      : pct >= 75
+        ? "var(--pos)"
+        : pct >= 50
+          ? "var(--info)"
+          : pct >= 20
+            ? "var(--ink)"
+            : "var(--ink-3)";
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderTop: first ? "none" : "1px solid var(--line-soft)",
+        fontSize: 12,
+      }}
+    >
+      <span
+        className="dim mono"
+        style={{
+          fontSize: 10.5,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono tnum"
+        style={{
+          color,
+          fontWeight: 500,
+        }}
+      >
+        {formatted}
       </span>
     </div>
   );
