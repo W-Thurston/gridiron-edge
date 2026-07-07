@@ -86,7 +86,7 @@ export function RatingChart({
 
   return (
     <svg
-      viewBox={`0 0 ${width} ${height + 16}`}
+      viewBox={`0 0 ${width} ${height}`}
       style={{ width: "100%", height: "auto", display: "block" }}
     >
       {/* Y-axis grid */}
@@ -147,27 +147,34 @@ export function RatingChart({
         );
       })}
 
-      {/* W/L markers below x-axis */}
+      {/* W/L markers on chart, adjacent to data points */}
       {recentResults &&
         recentResults.map((r) => {
           const i = history.findIndex((h) => h.week === r.week);
           if (i === -1 || r.result == null) return null;
+          const point = history[i];
           const markerColor =
             r.result === "W"
               ? "var(--pos)"
               : r.result === "L"
                 ? "var(--neg)"
                 : "var(--ink-3)";
+          const yOffset =
+            r.result === "W"
+              ? 12  // W goes below the line
+              : r.result === "L"
+                ? -8  // L goes above the line
+                : 0;  // T (or unknown) at line level
           return (
             <text
               key={`marker-${r.week}`}
               x={x(i)}
-              y={height + 4}
+              y={y(point.rating) + yOffset}
               textAnchor="middle"
               fontSize={9}
               fontFamily="var(--f-mono)"
               fill={markerColor}
-              fontWeight={600}
+              fontWeight={700}
             >
               {r.result}
             </text>

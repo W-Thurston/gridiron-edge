@@ -478,48 +478,39 @@ function ProfileColumn({
         {/* Team hero band */}
         <TeamHeroBand data={data} />
 
-        {/* Two-column layout: wide left, narrow right */}
-        <div style={{ display: "grid", gridTemplateColumns: "4fr 1fr", gap: 16 }}>
-        {/* Wide column (80%) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Rating chart */}
-            <div className="hm-card" style={{ padding: 20 }}>
-            <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
-                Power rating · season trend
-            </div>
-            <RatingChart
-                history={data.rating_history}
-                recentResults={data.recent_results}
-            />
-            </div>
-
-            {/* Cohort splits */}
-            <CohortSplitsCard cohortSplits={data.cohort_splits} />
-
-            {/* Recent results */}
-            <div className="hm-card" style={{ padding: 24 }}>
-            <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-                Recent Results
-            </div>
-            <RecentResultsStrip results={data.recent_results} />
-            </div>
+        {/* Rating chart */}
+        <div className="hm-card" style={{ padding: 20 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+            Power rating · season trend
+        </div>
+        <RatingChart
+            history={data.rating_history}
+            recentResults={data.recent_results}
+        />
         </div>
 
-        {/* Narrow column (20%) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Schedule difficulty */}
-            <ScheduleDifficultyPlaceholder />
+        {/* Cohort splits */}
+        <CohortSplitsCard cohortSplits={data.cohort_splits} />
 
-            {/* Postseason outlook */}
-            <PostseasonOutlookCard teamAbbr={data.abbr} />
+        {/* Recent results */}
+        <div className="hm-card" style={{ padding: 24 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+            Recent Results
+        </div>
+        <RecentResultsStrip results={data.recent_results} />
+        </div>
 
-            {/* Top Players */}
-            <ScaffoldCard
-            title="Top Players"
-            status={fieldStatus?.top_players as FieldStatus | undefined}
-            />
-        </div>
-        </div>
+        {/* Schedule difficulty */}
+        <ScheduleDifficultyPlaceholder />
+
+        {/* Postseason outlook */}
+        <PostseasonOutlookCard teamAbbr={data.abbr} />
+
+        {/* Top Players */}
+        <ScaffoldCard
+        title="Top Players"
+        status={fieldStatus?.top_players as FieldStatus | undefined}
+        />
     </div>
     );
 }
