@@ -485,6 +485,9 @@ function ProfileColumn({
         <RecentResultsStrip results={data.recent_results} />
       </div>
 
+      {/* Schedule difficulty (blocked placeholder) */}
+      <ScheduleDifficultyPlaceholder />
+
       {/* Postseason outlook */}
       <PostseasonOutlookCard teamAbbr={data.abbr} />
 
@@ -1070,6 +1073,45 @@ function PostseasonRow({
       >
         {formatted}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Placeholder for the schedule difficulty section.
+ * Blocked on backend work per ROADMAP §9.7 — requires upcoming_games
+ * enrichment with per-opponent difficulty index.
+ */
+function ScheduleDifficultyPlaceholder() {
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        className="upper dim"
+        style={{
+          fontSize: 10,
+          marginBottom: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>Schedule Difficulty</span>
+        <BlockedField
+          blocker="schedule_difficulty"
+          roadmap="§9.7"
+          placeholder=""
+        />
+      </div>
+      <div
+        style={{
+          padding: 20,
+          textAlign: "center",
+          color: "var(--ink-4)",
+          fontSize: 12,
+        }}
+      >
+        Upcoming opponents + difficulty index not yet available.
+      </div>
     </div>
   );
 }
