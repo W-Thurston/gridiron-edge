@@ -35,7 +35,7 @@ export function TeamsScreen() {
   const profileResult = useTeamProfile(selectedAbbr);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "5fr 11fr", gap: 16 }}>
       {/* Left column: Rankings */}
       <RankingsColumn
         rankings={rankings}
@@ -44,6 +44,7 @@ export function TeamsScreen() {
         onRetry={() => rankingsResult.refetch()}
         selectedAbbr={selectedAbbr}
         onSelectTeam={(abbr) => navigate("/teams", { team: abbr })}
+        asOfWeek={rankingsResult.data?.as_of_week}
       />
 
       {/* Right column: Team profile */}
@@ -82,6 +83,7 @@ function RankingsColumn({
   onRetry,
   selectedAbbr,
   onSelectTeam,
+  asOfWeek,
 }: {
   rankings: Array<{
     abbr: string;
@@ -96,6 +98,7 @@ function RankingsColumn({
   onRetry: () => void;
   selectedAbbr: string | null;
   onSelectTeam: (abbr: string) => void;
+  asOfWeek?: number | null
 }) {
   const [activeTab, setActiveTab] = useState<RankingsTab>("overall");
   const activeTabInfo = TABS.find((t) => t.key === activeTab);
@@ -105,21 +108,27 @@ function RankingsColumn({
     <div className="hm-card" style={{ padding: 20 }}>
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 12,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 4,
         }}
-      >
+        >
         <div className="upper dim" style={{ fontSize: 10 }}>
-          Power Rankings
+            Power Rankings
         </div>
         {rankings.length > 0 && (
-          <span className="mono dim2" style={{ fontSize: 10 }}>
+            <span className="mono dim2" style={{ fontSize: 10 }}>
             {rankings.length} teams
-          </span>
+            </span>
         )}
-      </div>
+        </div>
+        <div
+        className="mono dim2"
+        style={{ fontSize: 10, marginBottom: 12 }}
+        >
+        {asOfWeek != null ? `Wk ${asOfWeek} · model v4.2` : "model v4.2"}
+        </div>
 
       {/* Tab strip */}
       <div
@@ -291,6 +300,8 @@ function RankingRow({
       ? "color-mix(in oklab, var(--ink) 3%, transparent)"
       : "transparent";
 
+  const borderLeft = isSelected ? "3px solid var(--pos)" : "3px solid transparent";
+
   return (
     <tr
       onClick={onClick}
@@ -308,6 +319,7 @@ function RankingRow({
       aria-current={isSelected ? "true" : undefined}
       style={{
         borderTop: "1px solid var(--line-soft)",
+        borderLeft,
         cursor: "pointer",
         background: bg,
         transition: "background 90ms ease",
@@ -463,49 +475,53 @@ function ProfileColumn({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Team hero band */}
-      <TeamHeroBand data={data} />
+        {/* Team hero band */}
+        <TeamHeroBand data={data} />
 
-      {/* Rating chart */}
-      <div className="hm-card" style={{ padding: 20 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
-          Power rating · season trend
+        {/* Two-column layout: wide left, narrow right */}
+        <div style={{ display: "grid", gridTemplateColumns: "4fr 1fr", gap: 16 }}>
+        {/* Wide column (80%) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Rating chart */}
+            <div className="hm-card" style={{ padding: 20 }}>
+            <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+                Power rating · season trend
+            </div>
+            <RatingChart
+                history={data.rating_history}
+                recentResults={data.recent_results}
+            />
+            </div>
+
+            {/* Cohort splits */}
+            <CohortSplitsCard cohortSplits={data.cohort_splits} />
+
+            {/* Recent results */}
+            <div className="hm-card" style={{ padding: 24 }}>
+            <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+                Recent Results
+            </div>
+            <RecentResultsStrip results={data.recent_results} />
+            </div>
         </div>
-        <RatingChart history={data.rating_history} />
-      </div>
 
-      {/* Cohort splits */}
-      <CohortSplitsCard cohortSplits={data.cohort_splits} />
+        {/* Narrow column (20%) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Schedule difficulty */}
+            <ScheduleDifficultyPlaceholder />
 
-      {/* Recent results */}
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Recent Results
+            {/* Postseason outlook */}
+            <PostseasonOutlookCard teamAbbr={data.abbr} />
+
+            {/* Top Players */}
+            <ScaffoldCard
+            title="Top Players"
+            status={fieldStatus?.top_players as FieldStatus | undefined}
+            />
         </div>
-        <RecentResultsStrip results={data.recent_results} />
-      </div>
-
-      {/* Schedule difficulty (blocked placeholder) */}
-      <ScheduleDifficultyPlaceholder />
-
-      {/* Postseason outlook */}
-      <PostseasonOutlookCard teamAbbr={data.abbr} />
-
-      {/* Scaffolded cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-        }}
-      >
-        <ScaffoldCard
-          title="Top Players"
-          status={fieldStatus?.top_players as FieldStatus | undefined}
-        />
-      </div>
+        </div>
     </div>
-  );
+    );
 }
 
 function ScaffoldCard({
@@ -658,11 +674,11 @@ function TeamHeroBand({
 
   return (
     <div
-      className="hm-card"
-      style={{
-        padding: "24px 28px",
-        background,
-      }}
+        className="hm-card"
+        style={{
+            padding: "24px 28px",
+            background,
+        }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
         {/* TeamMark on left */}
@@ -1002,10 +1018,9 @@ function PostseasonRow({
   value: number | null | undefined;
   first: boolean;
 }) {
-  const pct = value != null ? Math.round(value * 100) : null;
-  const formatted = pct != null ? `${pct}%` : "—";
+  const pct = value != null ? value * 100 : null;
+  const formatted = pct != null ? `${Math.round(pct)}%` : "—";
 
-  // Color by probability strength
   const color =
     pct == null
       ? "var(--ink-3)"
@@ -1020,34 +1035,64 @@ function PostseasonRow({
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 12,
-        alignItems: "center",
         padding: "8px 0",
         borderTop: first ? "none" : "1px solid var(--line-soft)",
-        fontSize: 12,
       }}
     >
-      <span
-        className="dim mono"
+      {/* Row content (label + %) */}
+      <div
         style={{
-          fontSize: 10.5,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 12,
+          alignItems: "center",
+          fontSize: 12,
+          marginBottom: 4,
         }}
       >
-        {label}
-      </span>
-      <span
-        className="mono tnum"
-        style={{
-          color,
-          fontWeight: 500,
-        }}
-      >
-        {formatted}
-      </span>
+        <span
+          className="dim mono"
+          style={{
+            fontSize: 10.5,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {label}
+        </span>
+        <span
+          className="mono tnum"
+          style={{
+            color,
+            fontWeight: 500,
+          }}
+        >
+          {formatted}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      {pct != null && (
+        <div
+          style={{
+            width: "100%",
+            height: 4,
+            background: "var(--bg-2)",
+            borderRadius: 2,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${pct}%`,
+              height: "100%",
+              background: color,
+              opacity: 0.5,
+              transition: "width 200ms ease",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

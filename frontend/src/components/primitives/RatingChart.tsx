@@ -3,8 +3,14 @@ type RatingHistoryPoint = {
   rating: number;
 };
 
+type RecentResult = {
+  week: number;
+  result?: string | null;
+};
+
 type RatingChartProps = {
   history?: RatingHistoryPoint[] | null;
+  recentResults?: RecentResult[] | null;
   /** Chart height in px. Default 160. */
   height?: number;
   /** Color for the line. Default var(--pos). */
@@ -17,14 +23,13 @@ type RatingChartProps = {
  * - Line for rating series
  * - Small dots at each data point
  * - X-axis week labels (every ~4-5 weeks)
+ * - W/L markers below X-axis when recentResults provided
  *
  * Responsive width via SVG viewBox scaling.
- *
- * When we have uncertainty band data, extend this component to render
- * the band as a filled area behind the line. For now, line-only.
  */
 export function RatingChart({
   history,
+  recentResults,
   height = 160,
   color = "var(--pos)",
 }: RatingChartProps) {
@@ -51,7 +56,7 @@ export function RatingChart({
   const ratings = history.map((p) => p.rating);
   const minR = Math.min(...ratings);
   const maxR = Math.max(...ratings);
-  const range = Math.max(maxR - minR, 20); // Ensure min 20-point range
+  const range = Math.max(maxR - minR, 20);
   const yMin = Math.floor((minR - range * 0.1) / 5) * 5;
   const yMax = Math.ceil((maxR + range * 0.1) / 5) * 5;
 
@@ -81,7 +86,7 @@ export function RatingChart({
 
   return (
     <svg
-      viewBox={`0 0 ${width} ${height}`}
+      viewBox={`0 0 ${width} ${height + 16}`}
       style={{ width: "100%", height: "auto", display: "block" }}
     >
       {/* Y-axis grid */}
@@ -121,13 +126,7 @@ export function RatingChart({
 
       {/* Data point dots */}
       {history.map((p, i) => (
-        <circle
-          key={p.week}
-          cx={x(i)}
-          cy={y(p.rating)}
-          r={2}
-          fill={color}
-        />
+        <circle key={p.week} cx={x(i)} cy={y(p.rating)} r={2} fill={color} />
       ))}
 
       {/* X-axis labels */}
@@ -147,6 +146,33 @@ export function RatingChart({
           </text>
         );
       })}
+
+      {/* W/L markers below x-axis */}
+      {recentResults &&
+        recentResults.map((r) => {
+          const i = history.findIndex((h) => h.week === r.week);
+          if (i === -1 || r.result == null) return null;
+          const markerColor =
+            r.result === "W"
+              ? "var(--pos)"
+              : r.result === "L"
+                ? "var(--neg)"
+                : "var(--ink-3)";
+          return (
+            <text
+              key={`marker-${r.week}`}
+              x={x(i)}
+              y={height + 4}
+              textAnchor="middle"
+              fontSize={9}
+              fontFamily="var(--f-mono)"
+              fill={markerColor}
+              fontWeight={600}
+            >
+              {r.result}
+            </text>
+          );
+        })}
     </svg>
   );
 }
