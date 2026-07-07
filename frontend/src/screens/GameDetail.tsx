@@ -11,6 +11,7 @@ import { useEdges } from "../api/hooks";
 import { useBetSlip } from "../context/BetSlipContext";
 import { WhyLink } from "../components/primitives/WhyLink";
 import { probToAmerican } from "../utils/odds";
+import { TeamMark } from "../components/primitives/TeamMark";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -128,7 +129,11 @@ export function GameDetail() {
             homeTeam={data.home_team}
             prediction={data.prediction}
           />
-          <WinProbabilityCard prediction={data.prediction} />
+          <WinProbabilityCard
+            prediction={data.prediction}
+            awayTeam={data.away_team}
+            homeTeam={data.home_team}
+          />
           <SectionPlaceholder title="Team Comparison" />
         </div>
 
@@ -357,11 +362,17 @@ function SectionPlaceholder({ title }: { title: string }) {
 }
 
 /**
- * Prediction cells rendered as compact win probability card.
- * Tier 3b replaces with real 2-band + projected score composition.
+ * Win probability card — 2-column layout with:
+ * - Left: home team prob band + label, away team prob band + label
+ * - Right: projected score + margin
+ *
+ * Caveat callout (injury-related) is skipped — blocked on §5.3 injury
+ * data source.
  */
 function WinProbabilityCard({
   prediction,
+  awayTeam,
+  homeTeam,
 }: {
   prediction:
     | {
@@ -369,73 +380,114 @@ function WinProbabilityCard({
         away_win_prob?: number | null;
         home_win_lo?: number | null;
         home_win_hi?: number | null;
-        confidence_tier?: string | null;
         model_spread?: number | null;
-        model_total?: number | null;
         projected_home_score?: number | null;
         projected_away_score?: number | null;
       }
     | null
     | undefined;
+  awayTeam: string;
+  homeTeam: string;
 }) {
   return (
     <div className="hm-card" style={{ padding: 20 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
-        Win Probability
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 16,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Win Probability
+        </div>
+        {prediction && (
+          <div className="mono dim2" style={{ fontSize: 10 }}>
+            with uncertainty band
+          </div>
+        )}
       </div>
+
       {prediction ? (
-        <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
-          <PredictionCell
-            label="Home WP"
-            value={
-              prediction.home_win_prob != null
-                ? `${Math.round(prediction.home_win_prob * 100)}%`
-                : "—"
-            }
-          />
-          <PredictionCell
-            label="Away WP"
-            value={
-              prediction.away_win_prob != null
-                ? `${Math.round(prediction.away_win_prob * 100)}%`
-                : "—"
-            }
-          />
-          <PredictionCell
-            label="Uncertainty Band"
-            value={
-              <WinProbBand
-                homeWinProb={prediction.home_win_prob}
-                homeWinLo={prediction.home_win_lo}
-                homeWinHi={prediction.home_win_hi}
-              />
-            }
-          />
-          <PredictionCell
-            label="Spread"
-            value={
-              prediction.model_spread != null
-                ? formatSpread(prediction.model_spread)
-                : "—"
-            }
-          />
-          <PredictionCell
-            label="Total"
-            value={prediction.model_total?.toFixed(1) ?? "—"}
-          />
-          <PredictionCell
-            label="Projected"
-            value={
-              prediction.projected_away_score != null &&
-              prediction.projected_home_score != null
-                ? `${prediction.projected_away_score.toFixed(0)} — ${prediction.projected_home_score.toFixed(0)}`
-                : "—"
-            }
-          />
-          <PredictionCell
-            label="Confidence"
-            value={<ConfidenceTierPill tier={prediction.confidence_tier} />}
-          />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 24,
+            alignItems: "center",
+          }}
+        >
+          {/* Left column: Prob bands with team labels */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <TeamProbRow
+              team={homeTeam}
+              prob={prediction.home_win_prob}
+              lo={prediction.home_win_lo}
+              hi={prediction.home_win_hi}
+            />
+            <TeamProbRow
+              team={awayTeam}
+              prob={prediction.away_win_prob}
+              lo={
+                prediction.home_win_hi != null
+                  ? 1 - prediction.home_win_hi
+                  : undefined
+              }
+              hi={
+                prediction.home_win_lo != null
+                  ? 1 - prediction.home_win_lo
+                  : undefined
+              }
+            />
+          </div>
+
+          {/* Right column: Projected score + margin */}
+          <div style={{ borderLeft: "1px solid var(--line-soft)", paddingLeft: 24 }}>
+            <div
+              className="upper dim2"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                marginBottom: 8,
+              }}
+            >
+              Projected Score
+            </div>
+            <div
+              className="mono tnum"
+              style={{
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {prediction.projected_away_score != null &&
+              prediction.projected_home_score != null ? (
+                <>
+                  <span style={{ color: "var(--ink-2)" }}>
+                    {awayTeam} {prediction.projected_away_score.toFixed(1)}
+                  </span>
+                  <span className="dim2" style={{ margin: "0 10px" }}>
+                    —
+                  </span>
+                  <span style={{ color: "var(--pos)" }}>
+                    {homeTeam} {prediction.projected_home_score.toFixed(1)}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
+            </div>
+            {prediction.model_spread != null && (
+              <div
+                className="mono dim"
+                style={{ fontSize: 10.5, marginTop: 4 }}
+              >
+                Margin: {formatMargin(prediction.model_spread, awayTeam, homeTeam)}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="dim mono">No prediction available.</div>
@@ -444,29 +496,81 @@ function WinProbabilityCard({
   );
 }
 
-function PredictionCell({
-  label,
-  value,
+/**
+ * Single team row in the win probability card. Shows team abbrev + big %
+ * + band range label + WinProbBand visualization.
+ */
+function TeamProbRow({
+  team,
+  prob,
+  lo,
+  hi,
 }: {
-  label: string;
-  value: React.ReactNode;
+  team: string;
+  prob: number | null | undefined;
+  lo: number | null | undefined;
+  hi: number | null | undefined;
 }) {
   return (
-    <div style={{ minWidth: 80 }}>
-      <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
-        {label}
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 6,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <TeamMark abbr={team} size={20} />
+          <span style={{ fontWeight: 500 }}>{team}</span>
+        </div>
+        <span
+          className="mono tnum"
+          style={{
+            fontWeight: 600,
+            fontSize: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          {prob != null ? `${Math.round(prob * 100)}%` : "—"}
+          {lo != null && hi != null && (
+            <span
+              className="dim2"
+              style={{ fontWeight: 400, fontSize: 11 }}
+            >
+              · band {Math.round(lo * 100)}–{Math.round(hi * 100)}%
+            </span>
+          )}
+        </span>
       </div>
-      <div className="mono tnum" style={{ fontSize: 14 }}>
-        {value}
-      </div>
+      <WinProbBand
+        homeWinProb={prob}
+        homeWinLo={lo}
+        homeWinHi={hi}
+      />
     </div>
   );
 }
 
-function formatSpread(spread: number): string {
-  const sign = spread > 0 ? "+" : "";
-  return `${sign}${spread.toFixed(1)}`;
+/**
+ * Format the margin display.
+ *
+ * model_spread is negative when home is favored, positive when away is favored.
+ * Absolute value gives the magnitude.
+ */
+function formatMargin(
+  modelSpread: number,
+  awayTeam: string,
+  homeTeam: string,
+): string {
+  const magnitude = Math.abs(modelSpread);
+  const favoredTeam = modelSpread < 0 ? homeTeam : awayTeam;
+  return `${favoredTeam} by ${magnitude.toFixed(1)}`;
 }
+
 
 /**
  * Model lean callout on the right side of the header. Shows top edge
