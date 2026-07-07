@@ -9,6 +9,7 @@ import { Spark } from "../components/primitives/Spark";
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
+import { Pill } from "../components/primitives/Pill";
 
 /**
  * Consolidated split-view Teams screen. Left column shows rankings;
@@ -63,6 +64,16 @@ export function TeamsScreen() {
  * - Hover state on rows
  * - Tighter row height for 32-team fit
  */
+type RankingsTab = "overall" | "offense" | "defense" | "ats" | "net";
+
+const TABS: { key: RankingsTab; label: string; blocked: boolean }[] = [
+  { key: "overall", label: "Overall", blocked: false },
+  { key: "offense", label: "Offense", blocked: true },
+  { key: "defense", label: "Defense", blocked: true },
+  { key: "ats", label: "ATS", blocked: true },
+  { key: "net", label: "Net Rating", blocked: true },
+];
+
 function RankingsColumn({
   rankings,
   isLoading,
@@ -85,6 +96,10 @@ function RankingsColumn({
   selectedAbbr: string | null;
   onSelectTeam: (abbr: string) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<RankingsTab>("overall");
+  const activeTabInfo = TABS.find((t) => t.key === activeTab);
+  const isBlocked = activeTabInfo?.blocked ?? false;
+
   return (
     <div className="hm-card" style={{ padding: 20 }}>
       <div
@@ -105,6 +120,27 @@ function RankingsColumn({
         )}
       </div>
 
+      {/* Tab strip */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 12,
+          paddingBottom: 12,
+          borderBottom: "1px solid var(--line-soft)",
+        }}
+      >
+        {TABS.map((tab) => (
+          <Pill
+            key={tab.key}
+            active={activeTab === tab.key}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+          </Pill>
+        ))}
+      </div>
+
       {error && (
         <ErrorCard
           error={error}
@@ -113,7 +149,11 @@ function RankingsColumn({
         />
       )}
 
-      {!error && (
+      {!error && isBlocked && (
+        <BlockedTabState tab={activeTab} />
+      )}
+
+      {!error && !isBlocked && (
         <table
           className="mono tnum"
           style={{
@@ -173,16 +213,16 @@ function RankingsColumn({
               </th>
               <th
                 style={{
-                  padding: "6px 0",
-                  textAlign: "right",
-                  fontSize: 10,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  fontWeight: 400,
+                    padding: "6px 8px 6px 0",
+                    textAlign: "right",
+                    fontSize: 10,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontWeight: 400,
                 }}
-              >
+                >
                 Trend
-              </th>
+                </th>
             </tr>
           </thead>
           <tbody>
@@ -321,7 +361,7 @@ function RankingRow({
             }`
           : "—"}
       </td>
-      <td style={{ padding: "6px 0", textAlign: "right" }}>
+      <td style={{ padding: "6px 8px 6px 0", textAlign: "right" }}>
         <TrendBadge trend={team.trend} />
       </td>
     </tr>
@@ -571,6 +611,59 @@ function ScaffoldCard({
         }}
       >
         Not yet available
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when user selects a rankings tab that isn't backed by data yet.
+ * Explains what's needed and why. Uses same visual language as
+ * ComingSoonCard but scoped to tab content area.
+ */
+function BlockedTabState({ tab }: { tab: RankingsTab }) {
+  const info: Record<RankingsTab, { title: string; reason: string }> = {
+    overall: { title: "Overall Rankings", reason: "" }, // never rendered
+    offense: {
+      title: "Offense Rankings",
+      reason: "Requires offensive rating decomposition (backend work; ROADMAP §9.7).",
+    },
+    defense: {
+      title: "Defense Rankings",
+      reason: "Requires defensive rating decomposition (backend work; ROADMAP §9.7).",
+    },
+    ats: {
+      title: "ATS Rankings",
+      reason: "Requires cumulative ATS record enrichment (backend work; ROADMAP §9.7).",
+    },
+    net: {
+      title: "Net Rating",
+      reason: "Requires off/def rating decomposition (backend work; ROADMAP §9.7).",
+    },
+  };
+
+  const { title, reason } = info[tab];
+
+  return (
+    <div
+      style={{
+        padding: 32,
+        textAlign: "center",
+        color: "var(--ink-3)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          marginBottom: 8,
+          color: "var(--ink-2)",
+          fontWeight: 500,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+        {reason}
       </div>
     </div>
   );
