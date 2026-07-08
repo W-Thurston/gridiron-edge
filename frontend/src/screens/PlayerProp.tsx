@@ -157,8 +157,8 @@ export function PlayerProp() {
         />
       </div>
 
-      {/* Situational Splits placeholder — Tier 3b replaces */}
-      <SectionPlaceholder title="Situational Splits" />
+      {/* Situational splits */}
+      <SituationalSplitsCard situationalSplits={prop.situational_splits} />
 
       {/* Player vs Defense (existing table, polished in 3c) */}
       <div className="hm-card" style={{ padding: 24 }}>
@@ -520,30 +520,6 @@ function formatSeason(season: string): string {
 }
 
 
-/**
- * Titled empty card for sections in-progress this workstream.
- */
-function SectionPlaceholder({ title }: { title: string }) {
-  return (
-    <div className="hm-card" style={{ padding: 20 }}>
-      <div className="upper dim" style={{ fontSize: 10 }}>
-        {title}
-      </div>
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        Coming in Tier 3
-      </div>
-    </div>
-  );
-}
-
-
 function CompareCell({
   value,
   status,
@@ -624,4 +600,149 @@ function getOpponentFromGameId(
   if (playerTeam === home) return away;
   if (playerTeam === away) return home;
   return null;
+}
+
+type CohortInfo = {
+  key: string;
+  label: string;
+};
+
+const SPLIT_COHORTS: CohortInfo[] = [
+  { key: "season", label: "Season" },
+  { key: "l4", label: "Last 4 games" },
+  { key: "home", label: "Home" },
+  { key: "away", label: "Away" },
+  { key: "favored", label: "Favored" },
+  { key: "underdog", label: "Underdog" },
+  { key: "indoor", label: "Indoor" },
+  { key: "outdoor", label: "Outdoor" },
+];
+
+/**
+ * Situational Splits card for player prop. Renders 8 cohorts from Step 5
+ * situational_splits data. Each row: cohort label + mean value + sample size.
+ *
+ * When situational_splits is null (pending), shows empty state with pending
+ * indicator. When individual cohorts are missing, shows em-dash rows.
+ */
+function SituationalSplitsCard({
+  situationalSplits,
+}: {
+  situationalSplits: { [key: string]: unknown } | null | undefined;
+}) {
+  const hasData = situationalSplits != null;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          Situational Splits
+        </div>
+        {!hasData && <PendingField placeholder="" />}
+      </div>
+
+      {!hasData ? (
+        <div
+          style={{
+            padding: 20,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          Splits data not yet available for this prop.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 4 }}>
+          {SPLIT_COHORTS.map((cohort, i) => (
+            <SplitRow
+              key={cohort.key}
+              label={cohort.label}
+              data={
+                situationalSplits[cohort.key] as
+                  | { sample_size?: number; mean_value?: number }
+                  | undefined
+              }
+              first={i === 0}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single cohort row in Situational Splits.
+ */
+function SplitRow({
+  label,
+  data,
+  first,
+}: {
+  label: string;
+  data: { sample_size?: number; mean_value?: number } | undefined;
+  first: boolean;
+}) {
+  const meanValue = data?.mean_value;
+  const sampleSize = data?.sample_size;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderTop: first ? "none" : "1px solid var(--line-soft)",
+        fontSize: 12,
+      }}
+    >
+      <span
+        className="dim mono"
+        style={{
+          fontSize: 10.5,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono tnum"
+        style={{
+          color: meanValue != null ? "var(--ink)" : "var(--ink-4)",
+          fontWeight: 500,
+        }}
+      >
+        {meanValue != null ? (
+          <>
+            {meanValue.toFixed(1)}
+            {sampleSize != null && (
+              <span
+                className="dim2"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 400,
+                  marginLeft: 6,
+                }}
+              >
+                avg · {sampleSize} games
+              </span>
+            )}
+          </>
+        ) : (
+          "—"
+        )}
+      </span>
+    </div>
+  );
 }
