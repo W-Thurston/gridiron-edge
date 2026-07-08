@@ -3,6 +3,122 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-07 — W9.9 PlayerProp Rebuild
+
+Rebuilt PlayerProp screen (`/players/:propId`) from skeleton with 6
+ComingSoonCards to prototype fidelity across 8 substeps in 4 tiers.
+Consumes existing data from Step 5 (situational splits) + Step 6
+(player vs defense) + game + team metadata endpoints. New
+DistributionChart primitive extractable to Compare screen (W9.10).
+
+### Shipped
+
+**Tier 1 — Layout restructure (1 substep):**
+- Rebuild GameDetail-style skeleton: full-width hero placeholder +
+  single-column content below
+- Preserve existing content in placeholder cards (`HeroPlaceholder`,
+  `DistributionPlaceholder`, `SectionPlaceholder`)
+- Player vs Defense table unchanged
+- Blocked ComingSoonCards reduced from 6 to 5 (Situational Splits
+  removed from grid — will be real card in Tier 3b)
+
+**Tier 2 — Hero header (2 substeps):**
+- 2a: Player hero band with team-colored gradient (180deg, 30% mix →
+  var(--bg-1)), TeamMark 56px, breadcrumb, big serif player name
+- 2b: Prop summary callout — distinct card with green accent border,
+  stat label with game context "MON vs SF", big em-dash for pending
+  line, model mean + range on flex row, pending markers for
+  confidence + EV
+- "+ Bet slip" button outside the summary card
+
+**Tier 3 — Content sections (3 substeps):**
+- 3a: `DistributionChart` primitive at `components/primitives/`. SVG
+  Gaussian density curve with 90% credible band shading, dashed
+  vertical mean marker with value label, x-axis endpoints for
+  lo_90/hi_90. Line marker slot (unused; pending). Responsive width
+  via viewBox.
+- 3b: `SituationalSplitsCard` consuming Step 5 `situational_splits`
+  field. 8 cohorts in canonical order (Season / Last 4 / Home /
+  Away / Favored / Underdog / Indoor / Outdoor). Format: "X.X avg ·
+  N games". Empty state when field null (many props currently
+  pending).
+- 3c: Player vs Defense polish — WhyLink dot in header (info tone,
+  kind: prop_defense), table headers restyled with uppercase small
+  letter-spacing to match card language.
+
+**Tier 4 — Placeholders + cleanup (2 substeps):**
+- 4a: Change ComingSoonCards grid from 2-col to 3-col (`repeat(3, 1fr)`)
+  for better use of horizontal space (5 cards fit as 3 + 2 rows).
+- 4b: Cleanup verification — no dead code, no unused imports.
+
+### Architecture consumed
+
+**All 5 W9.5 primitives:**
+- `TeamMark` — hero band + prop summary
+- `Pill` — not used in PlayerProp; deferred
+- `WhyLink` — dot variant on Player vs Defense card
+- `Spark` — not used; new dedicated `DistributionChart` primitive
+- `TeamHero` — not composed inline; hero band custom-built
+
+### New primitive
+
+**DistributionChart** — at `components/primitives/DistributionChart.tsx`.
+- Renders Gaussian PDF from mean + std
+- 90% credible band shading (filled area between lo/hi)
+- Dashed vertical marker at mean + value label above
+- Endpoint labels for lo_90 + hi_90
+- Line marker slot (currently unused; awaits odds data)
+- Fallback: renders "No distribution data available" when mean or std
+  unavailable
+- Responsive width via SVG viewBox
+
+Will pay dividends in Compare screen (W9.10) Player vs Defense mode.
+
+### New helper
+
+**`utils/props.ts`** — extracted `formatStatType` and
+`formatStatTypeShort` helpers. Same slug → display mapping used across
+Dashboard PropEdgesRail, GameDetail TopPropEdgesCard, and PlayerProp.
+Dashboard and GameDetail migrations from inline helper deferred to
+follow-up cleanup.
+
+### Backend gaps that surfaced
+
+Same as previously identified in ROADMAP §9.7:
+- Line context data (line, lean, confidence_tier, p_over) — blocked
+  on odds join
+- Situational splits data pending for many props
+- Player game history endpoint — not consumed yet in W9.9
+- Related props filter endpoint — not consumed yet
+
+### Design tension noted
+
+Prototype's PlayerProp had a right-side rail with "Why the model
+leans", line shopping mini-table, and related props sidebar. Our
+narrower app width doesn't accommodate a rail without cramping.
+Consistent with W9.7 lesson — same design constraint applies.
+Deferred right-rail elements to blocked ComingSoonCards on our
+main content flow.
+
+### Test coverage
+
+Existing 60 tests continue passing. No new tests added for PlayerProp
+components — coverage would be integration-level. Primitive tests
+from W9.5 provide indirect coverage of building blocks.
+
+### What's not shipped
+
+- No player game history chart (backend endpoint blocked, §9.7)
+- No line shopping mini-table (W7 blocked)
+- No related props sidebar (backend filter blocked, §9.7)
+- No "Why the model leans" reasoning (blocked on feature attribution)
+
+### Next
+
+Between workstreams. Options: W9.8 (backend enablers batch),
+W9.10 (Compare rebuild — largest remaining screen gap), or another
+polish sweep.
+
 ## 2026-07-07 — W9.7 Teams Split-View Rebuild
 
 Restructured `/teams` and `/teams/:abbr` from two separate screens

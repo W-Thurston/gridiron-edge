@@ -439,6 +439,10 @@ Step 5 audit confirmed all existing loaders comply.
   screen with optional URL param. `/teams?team=X` pattern preserves
   browsing context; back-navigation not required when browsing
   through teams.
+- **Composed prop screen pattern:** PlayerProp (W9.9) demonstrates
+  the pattern for composing prop + game + team metadata into a
+  single screen. Multiple endpoints join client-side. Same shape
+  can be applied to future prop-related work.
 
 **Local dev loop:**
 

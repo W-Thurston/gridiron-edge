@@ -218,6 +218,15 @@ postseason outlook, and 2 blocked placeholders. New `RatingChart`
 primitive supports inline W/L markers per week. See CHANGELOG.md for
 details.
 
+#### W9.9: PlayerProp Rebuild — ✅ COMPLETE (2026-07-07)
+
+Rebuilt PlayerProp screen from skeleton to prototype fidelity across
+8 substeps. Team-colored player hero band with prop summary callout
+card on right side. Below: distribution chart (new primitive),
+situational splits (Step 5 data), Player vs Defense table with WhyLink,
+5 blocked ComingSoonCards. New `DistributionChart` primitive available
+for W9.10 Compare. See CHANGELOG.md for details.
+
 See CHANGELOG.md for details.
 
 ### Active Workstream
@@ -890,6 +899,7 @@ that moment.
 
 | Date | Change |
 |---|---|
+| 2026-07-07 | **W9.9 complete.** PlayerProp Rebuild across 8 substeps in 4 tiers. Consumes existing data; new DistributionChart primitive extractable to Compare. |
 | 2026-07-07 | **W9.7 complete.** Teams Split-View Rebuild across 9 substeps in 4 tiers. Consolidated route structure. New RatingChart primitive. All 5 W9.5 primitives consumed. Cohort splits and postseason outlook composed from existing data. |
 | 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity across 9 substeps in 4 tiers. All 5 W9.5 primitives consumed heavily. Rebuild covers header composition, 3 main column cards, and 3 right-rail cards. |
 | 2026-07-04 | **W9.5 complete.** Dashboard now a real landing page. 5 cross-cutting primitives available. Team metadata reference consolidated. See CHANGELOG.md. |

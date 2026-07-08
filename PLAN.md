@@ -29,143 +29,58 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: W9.9 — PlayerProp Rebuild
-
-**Status:** Designing.
-
-### What we are building
-
-Rebuild `PlayerProp` screen (`/players/:propId`) from its current
-skeleton (identity card + 4-cell projection + 6 ComingSoonCards) to
-prototype fidelity. Full-width hero with player identity + prop
-summary callout; single column below with distribution chart,
-situational splits, player vs defense, and blocked placeholders.
-
-Sections rendered:
-- **Hero band:** team-colored gradient, big player mark, serif italic
-  name, inline identity stats
-- **Prop summary callout:** right side of hero — stat, line
-  placeholder, model mean, range, EV placeholder, slip button
-- **Below hero:** distribution chart (new primitive), situational
-  splits (Step 5 data), player vs defense (existing), blocked-section
-  placeholders
-
-**New primitive:**
-- `DistributionChart` — SVG density curve for prop distributions.
-  Renders Gaussian from mean + std. Extractable to Compare screen
-  (W9.10) later.
-
-### Why we are building it now
-
-Two motivations:
-
-1. **Pattern continuity.** W9.6 (GameDetail) and W9.7 (Teams
-   split-view) established the "screen rebuild consuming primitives +
-   backend composition" pattern. W9.9 continues the pattern before
-   we tackle Compare (W9.10) which is larger.
-
-2. **Data ready.** Situational splits from Step 5 render cleanly.
-   Player vs Defense (Step 6) mostly ships. Projection block (mean,
-   std, bounds) supports Gaussian distribution rendering. Same
-   "data exists, renderer doesn't" opportunity as Team Comparison
-   in W9.6.
-
-3. **Compound benefit.** DistributionChart primitive pays dividends
-   in W9.10 Compare (Player vs Defense mode). Building here means
-   Compare's substep count drops.
-
-#### Success criteria
-
-- PlayerProp `/players/:propId` renders as hero + single column
-  layout
-- Full-width hero with team-colored gradient, player mark, serif
-  italic name, inline identity stats
-- Prop summary callout on right side of hero with stat, line
-  placeholder, model mean, range, EV placeholder, slip button
-- Distribution chart shows density curve from `predicted_mean` +
-  `predicted_std`
-- Situational splits card renders 8 cohorts from Step 5
-  `situational_splits` field
-- Player vs Defense table renders 4 projection + 3 defense rows
-- Blocked sections shipped as ComingSoonCards
-- All quality gates pass
-
-### Locked architectural decisions
-
-| Decision | Choice |
-|---|---|
-| Layout | Full-width hero + single column below (matches W9.7 width lesson) |
-| Hero band | Team-colored gradient (same pattern as TeamsScreen) |
-| Prop summary | Right side of hero (with placeholders for blocked line/EV) |
-| Distribution chart | New primitive; Gaussian from mean + std |
-| Distribution shading | Skip over/under coloring (blocked on line data) |
-| Situational splits | 2-column list (label / value + sample size) |
-| Player vs Defense | Preserve existing structure, minor polish |
-| ComingSoonCards | Keep for blocked field_status fields |
-| WhyLink | Dot variants on Distribution + Player vs Defense headers |
-| Column layout | Single column below hero (prototype's 2-col doesn't fit our width) |
-
-### Prerequisite
-
-None. All backend data ships from existing endpoints. All W9.5
-primitives available.
-
-### Tiers
-
-**Tier 1 — Layout restructure (1 substep).**
-
-Rebuild layout skeleton: full-width hero + single column below.
-Preserve existing content in placeholder cards during transition.
-
-**Tier 2 — Hero header (2 substeps).**
-
-- 2a: Player hero band with team-colored gradient, big player mark,
-  serif italic name, inline identity stats
-- 2b: Prop summary callout on right side of hero
-
-**Tier 3 — Content sections (3 substeps).**
-
-- 3a: New `DistributionChart` primitive + integrate
-- 3b: Situational Splits card consuming Step 5 data
-- 3c: Player vs Defense polish (existing table + primitive
-  consistency)
-
-**Tier 4 — Placeholders + cleanup (2 substeps).**
-
-- 4a: ComingSoonCards for blocked sections
-- 4b: Cleanup + integration verification
-
-### Disconfirming evidence
-
-- **If situational_splits data structure differs from expected
-  shape** (some props may not have all 8 cohorts populated), we
-  render only populated cohorts and show "not available" for the
-  rest.
-- **If prop team abbreviation doesn't have colors in team metadata**
-  (some edge cases), fall back to grey. Standard `TeamMark` pattern.
-- **If distribution chart renders poorly for very small std values**
-  (< 5), we accept the visual and note as backlog item.
-- **If Player vs Defense structure change causes test breakage**,
-  scope adjustment during that substep.
-- **If width constraints force us to shrink some hero components**,
-  adjust proportions rather than layout — same lesson as W9.7.
-
-### Timeline
-
-Total: 8 substeps. Not tied to calendar; natural cadence.
-
-### Success artifacts
-
-By workstream close:
-
-- PlayerProp renders as real screen with 4 populated sections + 4-5
-  blocked placeholders
-- New `DistributionChart` primitive available for W9.10 Compare
-- All 5 W9.5 primitives consumed (heavy Pill + TeamMark; some WhyLink)
-- Established prop-screen composition patterns
-- Cleanup: no stale imports, dead code, or unused helpers
+### Current Workstream: (none — between workstreams)
 
 ### Recently Completed
+
+#### W9.9: PlayerProp Rebuild — ✅ COMPLETE (2026-07-07)
+
+Rebuilt PlayerProp (`/players/:propId`) from skeleton (identity card
++ 4-cell projection + 6 ComingSoonCards) to prototype fidelity in 8
+substeps across 4 tiers.
+
+**Delivered:**
+- Full-width player hero band with team-colored gradient (matches
+  TeamsScreen pattern)
+- Prop summary callout card on right side of hero: distinct card with
+  green accent border, stat label with game context ("MON vs SF"),
+  big em-dash for pending line, model mean + range on flex row,
+  pending markers for confidence + EV
+- "+ Bet slip" button outside the summary card
+- Distribution chart primitive (new): SVG Gaussian density curve
+  with 90% credible band shading, mean marker + label, x-axis
+  endpoints
+- Situational Splits card consuming Step 5 data: 8 cohorts in
+  canonical order with "X.X avg · N games" format
+- Polished Player vs Defense table with WhyLink dot in header
+- 5 blocked ComingSoonCards in 3-column grid
+
+**New primitive:**
+- `DistributionChart` — SVG probability density chart. Renders
+  Gaussian PDF from mean + std with 90% band shading, mean marker,
+  x-axis endpoints. Extractable to Compare screen (W9.10).
+
+**Helpers:**
+- `getOpponentFromGameId` — parse game_id string (inline, not
+  primitive)
+- `formatSeason` — "2025-2026" → "2025" (shared with TeamsScreen)
+- `formatStatType` + `formatStatTypeShort` — extracted to
+  `utils/props.ts` for reuse across Dashboard/GameDetail/PlayerProp
+
+**Preserved as blocked placeholders:**
+- Historical vs Opponent (pending)
+- Recent Form (pending)
+- Injury Status (blocked on §5.3)
+- Prop Reasoning (blocked on feature attribution)
+- Multi-Book Shopping (blocked on W7)
+
+**Established pattern:**
+- Composed player screens now consume prop + game + team metadata in
+  a single flow
+- Distribution chart primitive establishes the shape for future
+  probability visualizations (Compare's Player vs Defense mode)
+
+**W9.9 workstream complete.**
 
 #### W9.7: Teams Split-View Rebuild — ✅ COMPLETE (2026-07-07)
 
@@ -228,6 +143,7 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
+| 2026-07-07 | **W9.9 complete.** PlayerProp Rebuild across 8 substeps in 4 tiers. New DistributionChart primitive. Consumes situational_splits (Step 5) + prop + game + team metadata. Composed screen pattern established for future prop-related work. |
 | 2026-07-07 | **W9.9 PlayerProp Rebuild design.** Locked. 8 substeps across 4 tiers. Full-width hero + single column below. New DistributionChart primitive. Consumes situational_splits (Step 5) + player vs defense (Step 6). Column layout single (not 2-col — width constraint lesson from W9.7). |
 | 2026-07-07 | **W9.7 complete.** Teams Split-View Rebuild shipped in 9 substeps across 4 tiers. Single split-view screen with rankings + profile. New RatingChart primitive. All 5 W9.5 primitives consumed. |
 | 2026-07-07 | **W9.7 Teams Split-View Rebuild design.** Locked. 9 substeps across 4 tiers. Route consolidation, split-view layout, rankings table with tabs, team hero + 6 sections in right pane (blocked schedule/top players as placeholders). Consumes all 5 W9.5 primitives + Step 7c cohort_splits + /projections composition. |
