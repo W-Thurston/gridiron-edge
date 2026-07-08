@@ -271,11 +271,11 @@ export function PlayerProp() {
         )}
       </div>
 
-      {/* Scaffolded cards from PropDetail (moved into own layout in 4a) */}
+      {/* Blocked/pending section placeholders */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: "repeat(3, 1fr)",
           gap: 16,
         }}
       >
