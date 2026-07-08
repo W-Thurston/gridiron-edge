@@ -9,6 +9,7 @@ import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { useBetSlip } from "../context/BetSlipContext";
 import { formatStatType } from "../utils/props";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
+import { DistributionChart } from "../components/primitives/DistributionChart";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -128,8 +129,33 @@ export function PlayerProp() {
       />
 
 
-      {/* Distribution chart placeholder — Tier 3a replaces */}
-      <DistributionPlaceholder prop={prop} />
+      {/* Projection distribution */}
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 16,
+          }}
+        >
+          <div className="upper dim" style={{ fontSize: 10 }}>
+            Projection distribution
+          </div>
+          <div
+            className="mono dim2"
+            style={{ fontSize: 10 }}
+          >
+            90% credible band
+          </div>
+        </div>
+        <DistributionChart
+          mean={prop.projection?.predicted_mean}
+          std={prop.projection?.predicted_std}
+          lo={prop.projection?.lo_90}
+          hi={prop.projection?.hi_90}
+        />
+      </div>
 
       {/* Situational Splits placeholder — Tier 3b replaces */}
       <SectionPlaceholder title="Situational Splits" />
@@ -493,52 +519,6 @@ function formatSeason(season: string): string {
   return parts[0] ?? season;
 }
 
-/**
- * Distribution chart placeholder. Renders existing projection cells
- * until Tier 3a replaces with DistributionChart primitive.
- */
-function DistributionPlaceholder({
-  prop,
-}: {
-  prop: {
-    projection?: {
-      predicted_mean?: number | null;
-      predicted_std?: number | null;
-      lo_90?: number | null;
-      hi_90?: number | null;
-    } | null;
-  };
-}) {
-  return (
-    <div className="hm-card" style={{ padding: 24 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
-        Projection
-      </div>
-      {prop.projection ? (
-        <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
-          <ProjectionCell
-            label="Predicted Mean"
-            value={prop.projection.predicted_mean?.toFixed(1) ?? "—"}
-          />
-          <ProjectionCell
-            label="Std (Uncertainty)"
-            value={prop.projection.predicted_std?.toFixed(1) ?? "—"}
-          />
-          <ProjectionCell
-            label="10th %ile"
-            value={prop.projection.lo_90?.toFixed(0) ?? "—"}
-          />
-          <ProjectionCell
-            label="90th %ile"
-            value={prop.projection.hi_90?.toFixed(0) ?? "—"}
-          />
-        </div>
-      ) : (
-        <div className="dim mono">No projection available.</div>
-      )}
-    </div>
-  );
-}
 
 /**
  * Titled empty card for sections in-progress this workstream.
@@ -563,24 +543,6 @@ function SectionPlaceholder({ title }: { title: string }) {
   );
 }
 
-function ProjectionCell({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div style={{ minWidth: 100 }}>
-      <div className="upper dim2" style={{ fontSize: 10, marginBottom: 6 }}>
-        {label}
-      </div>
-      <div className="mono tnum" style={{ fontSize: 14 }}>
-        {value}
-      </div>
-    </div>
-  );
-}
 
 function CompareCell({
   value,
