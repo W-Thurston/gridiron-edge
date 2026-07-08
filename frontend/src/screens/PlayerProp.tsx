@@ -10,6 +10,7 @@ import { useBetSlip } from "../context/BetSlipContext";
 import { formatStatType } from "../utils/props";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { DistributionChart } from "../components/primitives/DistributionChart";
+import { WhyLink } from "../components/primitives/WhyLink";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -160,10 +161,24 @@ export function PlayerProp() {
       {/* Situational splits */}
       <SituationalSplitsCard situationalSplits={prop.situational_splits} />
 
-      {/* Player vs Defense (existing table, polished in 3c) */}
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Player vs Defense
+      {/* Player vs Defense */}
+      <div className="hm-card" style={{ padding: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <div className="upper dim" style={{ fontSize: 10 }}>
+            Player vs Defense
+          </div>
+          <WhyLink
+            dot
+            tone="info"
+            subject={{ kind: "prop_defense", propId: prop.prop_id }}
+          />
         </div>
         {compare && (compare.stats ?? []).length > 0 ? (
           <table
@@ -175,12 +190,46 @@ export function PlayerProp() {
             }}
           >
             <thead>
-              <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
-                <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>
+              <tr>
+                <th
+                  style={{
+                    padding: "6px 12px 6px 0",
+                    textAlign: "left",
+                    fontSize: 10,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontWeight: 400,
+                    color: "var(--ink-3)",
+                  }}
+                >
+                  Stat
+                </th>
+                <th
+                  style={{
+                    padding: "6px 12px 6px 0",
+                    textAlign: "right",
+                    fontSize: 10,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontWeight: 400,
+                    color: "var(--ink-3)",
+                  }}
+                >
                   Projection
                 </th>
-                <th style={{ padding: "8px 0", textAlign: "right" }}>Defense</th>
+                <th
+                  style={{
+                    padding: "6px 0",
+                    textAlign: "right",
+                    fontSize: 10,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontWeight: 400,
+                    color: "var(--ink-3)",
+                  }}
+                >
+                  Defense
+                </th>
               </tr>
             </thead>
             <tbody>
