@@ -5,6 +5,7 @@ import type { FieldStatus } from "../components/field-status/types";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
+import { useTeamByAbbr } from "../api/team_metadata_hook";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -86,8 +87,15 @@ export function PlayerProp() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {backNav}
 
-      {/* Full-width hero placeholder — Tier 2 replaces with real composition */}
-      <HeroPlaceholder prop={prop} />
+      {/* Player hero band */}
+      <PlayerHero
+        prop={{
+          player_name: prop.player_name,
+          position: prop.position,
+          team: prop.team,
+          season: prop.season,
+        }}
+      />
 
       {/* Distribution chart placeholder — Tier 3a replaces */}
       <DistributionPlaceholder prop={prop} />
@@ -191,52 +199,91 @@ export function PlayerProp() {
 }
 
 /**
- * Full-width hero placeholder. Tier 2 will replace with team-colored
- * player hero + prop summary callout composition.
+ * Player hero band. Team-colored vertical gradient, TeamMark on left,
+ * breadcrumb above serif player name. Same design language as TeamsScreen's
+ * TeamHeroBand.
+ *
+ * Prop summary callout (line, EV, slip button) added in Substep 2b as
+ * a right-side element within the hero.
  */
-function HeroPlaceholder({
+function PlayerHero({
   prop,
 }: {
   prop: {
-    prop_id: string;
     player_name: string;
     position: string;
     team: string;
-    stat_type: string;
     season?: string | null;
-    week?: number | null;
-    model_key: string;
   };
 }) {
+  const teamMetadata = useTeamByAbbr(prop.team);
+  const primaryColor = teamMetadata?.primary_color;
+
+  // Vertical gradient from team color top → var(--bg-1) bottom
+  const background = primaryColor
+    ? `linear-gradient(180deg, color-mix(in oklab, ${primaryColor} 30%, var(--bg)) 0%, var(--bg-1) 100%)`
+    : "var(--bg-1)";
+
+  // Format breadcrumb
+  const seasonPart = prop.season ? formatSeason(prop.season) : null;
+  const breadcrumbParts = [
+    prop.position,
+    prop.team,
+    seasonPart ? `${seasonPart} Season` : null,
+  ].filter((p): p is string => p != null);
+  const breadcrumb = breadcrumbParts.join(" · ");
+
   return (
-    <div className="hm-card" style={{ padding: 24 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-        Player Prop — {prop.prop_id}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          fontSize: 20,
-        }}
-      >
-        <TeamMark abbr={prop.team} />
-        <span>{prop.player_name}</span>
-        <span className="dim mono" style={{ fontSize: 14 }}>
-          {prop.position} · {prop.stat_type}
-        </span>
-      </div>
-      <div
-        className="mono dim"
-        style={{ fontSize: 12, marginTop: 12, display: "flex", gap: 16 }}
-      >
-        <span>Season: {prop.season ?? "—"}</span>
-        <span>Week: {prop.week ?? "—"}</span>
-        <span>Model: {prop.model_key}</span>
+    <div
+      className="hm-card"
+      style={{
+        padding: "24px 28px",
+        background,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        {/* Team mark on left */}
+        <TeamMark abbr={prop.team} size={56} />
+
+        {/* Player info on right */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Breadcrumb above name */}
+          <div
+            className="mono upper"
+            style={{
+              fontSize: 10.5,
+              color: "var(--ink-3)",
+              letterSpacing: "0.08em",
+              marginBottom: 4,
+            }}
+          >
+            {breadcrumb || "—"}
+          </div>
+
+          {/* Big serif player name */}
+          <div
+            style={{
+              fontFamily: "var(--f-serif)",
+              fontSize: 30,
+              fontWeight: 400,
+              color: "var(--ink)",
+              lineHeight: 1.1,
+            }}
+          >
+            {prop.player_name}
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Format season string. "2025-2026" → "2025".
+ */
+function formatSeason(season: string): string {
+  const parts = season.split("-");
+  return parts[0] ?? season;
 }
 
 /**
