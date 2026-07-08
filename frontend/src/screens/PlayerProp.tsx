@@ -6,9 +6,12 @@ import { TeamMark } from "../components/primitives/TeamMark";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
+import { useBetSlip } from "../context/BetSlipContext";
+import { formatStatType } from "../utils/props";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
+  const { legs, add } = useBetSlip();
   const propId = route.params.propId ?? null;
 
   const propResult = useProp(propId);
@@ -80,6 +83,22 @@ export function PlayerProp() {
     );
   }
 
+  // Bet slip integration
+  const legId = `player-prop-${prop.prop_id}`;
+  const isOnSlip = legs.some((l) => l.id === legId);
+  const handleAddSlip = () => {
+    if (isOnSlip) return;
+    add({
+      id: legId,
+      gameId: prop.prop_id,
+      market: "prop" as never,
+      side: "over" as "home" | "away" | "over" | "under",
+      odds: -110,
+      awayTeam: prop.team,
+      homeTeam: prop.team,
+    });
+  };
+
   const propStatus = prop._meta?.field_status;
   const compareStatus = compare?._meta?.field_status;
 
@@ -90,11 +109,16 @@ export function PlayerProp() {
       {/* Player hero band */}
       <PlayerHero
         prop={{
+          prop_id: prop.prop_id,
           player_name: prop.player_name,
           position: prop.position,
           team: prop.team,
           season: prop.season,
+          stat_type: prop.stat_type,
+          projection: prop.projection,
         }}
+        onAddSlip={handleAddSlip}
+        isOnSlip={isOnSlip}
       />
 
       {/* Distribution chart placeholder — Tier 3a replaces */}
@@ -200,21 +224,29 @@ export function PlayerProp() {
 
 /**
  * Player hero band. Team-colored vertical gradient, TeamMark on left,
- * breadcrumb above serif player name. Same design language as TeamsScreen's
- * TeamHeroBand.
- *
- * Prop summary callout (line, EV, slip button) added in Substep 2b as
- * a right-side element within the hero.
+ * breadcrumb above serif player name, prop summary callout on right.
+ * Same design language as TeamsScreen's TeamHeroBand.
  */
 function PlayerHero({
   prop,
+  onAddSlip,
+  isOnSlip,
 }: {
   prop: {
+    prop_id: string;
     player_name: string;
     position: string;
     team: string;
     season?: string | null;
+    stat_type: string;
+    projection?: {
+      predicted_mean?: number | null;
+      lo_90?: number | null;
+      hi_90?: number | null;
+    } | null;
   };
+  onAddSlip: () => void;
+  isOnSlip: boolean;
 }) {
   const teamMetadata = useTeamByAbbr(prop.team);
   const primaryColor = teamMetadata?.primary_color;
@@ -233,6 +265,11 @@ function PlayerHero({
   ].filter((p): p is string => p != null);
   const breadcrumb = breadcrumbParts.join(" · ");
 
+  const statLabel = formatStatType(prop.stat_type);
+  const modelMean = prop.projection?.predicted_mean;
+  const lo = prop.projection?.lo_90;
+  const hi = prop.projection?.hi_90;
+
   return (
     <div
       className="hm-card"
@@ -241,37 +278,136 @@ function PlayerHero({
         background,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-        {/* Team mark on left */}
-        <TeamMark abbr={prop.team} size={56} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 20,
+        }}
+      >
+        {/* Left: Team mark + player info */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 20,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          <TeamMark abbr={prop.team} size={56} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              className="mono upper"
+              style={{
+                fontSize: 10.5,
+                color: "var(--ink-3)",
+                letterSpacing: "0.08em",
+                marginBottom: 4,
+              }}
+            >
+              {breadcrumb || "—"}
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--f-serif)",
+                fontSize: 30,
+                fontWeight: 400,
+                color: "var(--ink)",
+                lineHeight: 1.1,
+              }}
+            >
+              {prop.player_name}
+            </div>
+          </div>
+        </div>
 
-        {/* Player info on right */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Breadcrumb above name */}
+        {/* Right: Prop summary callout */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 4,
+            minWidth: 180,
+          }}
+        >
           <div
-            className="mono upper"
+            className="upper dim"
             style={{
-              fontSize: 10.5,
+              fontSize: 9.5,
+              letterSpacing: "0.1em",
+              color: "var(--ink-4)",
+            }}
+          >
+            {statLabel}
+          </div>
+
+          {/* Line (pending — big em-dash) */}
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
               color: "var(--ink-3)",
-              letterSpacing: "0.08em",
+              fontFamily: "var(--f-mono)",
+            }}
+          >
+            —
+          </div>
+          <div
+            className="mono"
+            style={{
+              fontSize: 10,
+              color: "var(--ink-4)",
+              marginTop: -2,
               marginBottom: 4,
             }}
           >
-            {breadcrumb || "—"}
+            line pending
           </div>
 
-          {/* Big serif player name */}
-          <div
+          {/* Model + range */}
+          {modelMean != null && (
+            <div
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-3)" }}
+            >
+              Model{" "}
+              <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                {modelMean.toFixed(1)}
+              </span>
+            </div>
+          )}
+          {lo != null && hi != null && (
+            <div
+              className="mono"
+              style={{ fontSize: 10.5, color: "var(--ink-4)" }}
+            >
+              Range {lo.toFixed(0)}–{hi.toFixed(0)}
+            </div>
+          )}
+
+          {/* Slip button */}
+          <button
+            onClick={onAddSlip}
+            type="button"
+            disabled={isOnSlip}
             style={{
-              fontFamily: "var(--f-serif)",
-              fontSize: 30,
-              fontWeight: 400,
-              color: "var(--ink)",
-              lineHeight: 1.1,
+              padding: "6px 14px",
+              background: isOnSlip ? "var(--bg-3)" : "var(--pos)",
+              color: isOnSlip ? "var(--ink-4)" : "var(--bg)",
+              border: "none",
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--f-sans)",
+              cursor: isOnSlip ? "default" : "pointer",
+              marginTop: 6,
             }}
           >
-            {prop.player_name}
-          </div>
+            {isOnSlip ? "✓ On slip" : "+ Bet slip"}
+          </button>
         </div>
       </div>
     </div>
