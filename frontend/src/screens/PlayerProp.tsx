@@ -1,4 +1,4 @@
-import { useComparePlayer, useProp } from "../api/hooks";
+import { useComparePlayer, useProp, useGame } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -8,6 +8,7 @@ import { ErrorCard } from "../components/error/ErrorCard";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { useBetSlip } from "../context/BetSlipContext";
 import { formatStatType } from "../utils/props";
+import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -16,6 +17,7 @@ export function PlayerProp() {
 
   const propResult = useProp(propId);
   const compareResult = useComparePlayer(propId);
+  const gameResult = useGame(propResult.data?.game_id ?? null);
 
   if (!propId) {
     return (
@@ -71,6 +73,7 @@ export function PlayerProp() {
 
   const prop = propResult.data;
   const compare = compareResult.data;
+  const game = gameResult.data ?? null;
 
   if (!prop) {
     return (
@@ -119,7 +122,11 @@ export function PlayerProp() {
         }}
         onAddSlip={handleAddSlip}
         isOnSlip={isOnSlip}
+        gameOpponent={game && prop.team ? getOpponentFromGameId(prop.game_id, prop.team) : null}
+        gameDayOfWeek={game?.day_of_week ?? null}
+        confidenceTier={prop.line_context?.confidence_tier ?? null}
       />
+
 
       {/* Distribution chart placeholder — Tier 3a replaces */}
       <DistributionPlaceholder prop={prop} />
@@ -231,6 +238,9 @@ function PlayerHero({
   prop,
   onAddSlip,
   isOnSlip,
+  gameOpponent,
+  gameDayOfWeek,
+  confidenceTier,
 }: {
   prop: {
     prop_id: string;
@@ -247,6 +257,9 @@ function PlayerHero({
   };
   onAddSlip: () => void;
   isOnSlip: boolean;
+  gameOpponent?: string | null;
+  gameDayOfWeek?: string | null;
+  confidenceTier?: string | null;
 }) {
   const teamMetadata = useTeamByAbbr(prop.team);
   const primaryColor = teamMetadata?.primary_color;
@@ -323,87 +336,145 @@ function PlayerHero({
           </div>
         </div>
 
-        {/* Right: Prop summary callout */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 4,
-            minWidth: 180,
-          }}
-        >
-          <div
-            className="upper dim"
-            style={{
-              fontSize: 9.5,
-              letterSpacing: "0.1em",
-              color: "var(--ink-4)",
-            }}
-          >
-            {statLabel}
-          </div>
-
-          {/* Line (pending — big em-dash) */}
+        {/* Right: Prop summary card + slip button */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Prop summary card */}
           <div
             style={{
-              fontSize: 18,
-              fontWeight: 600,
-              color: "var(--ink-3)",
-              fontFamily: "var(--f-mono)",
+              background: "var(--bg-1)",
+              border: "1px solid var(--line-soft)",
+              borderLeft: "3px solid var(--pos)",
+              borderRadius: 6,
+              padding: "12px 20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              minWidth: 240,
             }}
           >
-            —
-          </div>
-          <div
-            className="mono"
-            style={{
-              fontSize: 10,
-              color: "var(--ink-4)",
-              marginTop: -2,
-              marginBottom: 4,
-            }}
-          >
-            line pending
-          </div>
-
-          {/* Model + range */}
-          {modelMean != null && (
+            {/* Header row */}
             <div
-              className="mono"
-              style={{ fontSize: 11, color: "var(--ink-3)" }}
+              className="mono upper"
+              style={{
+                fontSize: 9.5,
+                letterSpacing: "0.1em",
+                color: "var(--ink-3)",
+              }}
             >
-              Model{" "}
-              <span style={{ color: "var(--ink)", fontWeight: 500 }}>
-                {modelMean.toFixed(1)}
+              {statLabel}
+              {gameDayOfWeek && gameOpponent && (
+                <span style={{ color: "var(--ink-4)" }}>
+                  {" · "}
+                  {gameDayOfWeek.slice(0, 3)} vs {gameOpponent}
+                </span>
+              )}
+            </div>
+
+            {/* Line (pending — big em-dash) */}
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 600,
+                color: "var(--ink-3)",
+                fontFamily: "var(--f-mono)",
+                lineHeight: 1,
+                marginTop: 4,
+              }}
+            >
+              —{" "}
+              <span
+                className="mono"
+                style={{
+                  fontSize: 12,
+                  color: "var(--ink-4)",
+                  fontWeight: 400,
+                }}
+              >
+                (line pending)
               </span>
             </div>
-          )}
-          {lo != null && hi != null && (
-            <div
-              className="mono"
-              style={{ fontSize: 10.5, color: "var(--ink-4)" }}
-            >
-              Range {lo.toFixed(0)}–{hi.toFixed(0)}
-            </div>
-          )}
 
-          {/* Slip button */}
+            {/* Model + range on same line */}
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                marginTop: 4,
+                fontSize: 11,
+                color: "var(--ink-3)",
+              }}
+              className="mono"
+            >
+              {modelMean != null && (
+                <span>
+                  Model mean{" "}
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {modelMean.toFixed(1)}
+                  </span>
+                </span>
+              )}
+              {lo != null && hi != null && (
+                <span>
+                  Range{" "}
+                  <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                    {lo.toFixed(0)}–{hi.toFixed(0)}
+                  </span>
+                </span>
+              )}
+            </div>
+            {/* Confidence tier tag + EV */}
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {confidenceTier ? (
+                <ConfidenceTierPill tier={confidenceTier} />
+              ) : (
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    color: "var(--ink-4)",
+                    padding: "2px 6px",
+                    border: "1px solid var(--line-soft)",
+                    borderRadius: 3,
+                  }}
+                >
+                  Confidence pending
+                </span>
+              )}
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: "var(--ink-4)",
+                }}
+              >
+                EV pending
+              </span>
+            </div>
+          </div>
+
+          {/* Slip button — outside the summary card */}
           <button
             onClick={onAddSlip}
             type="button"
             disabled={isOnSlip}
             style={{
-              padding: "6px 14px",
+              padding: "10px 18px",
               background: isOnSlip ? "var(--bg-3)" : "var(--pos)",
               color: isOnSlip ? "var(--ink-4)" : "var(--bg)",
               border: "none",
               borderRadius: 4,
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 600,
               fontFamily: "var(--f-sans)",
               cursor: isOnSlip ? "default" : "pointer",
-              marginTop: 6,
+              whiteSpace: "nowrap",
             }}
           >
             {isOnSlip ? "✓ On slip" : "+ Bet slip"}
@@ -572,4 +643,23 @@ function ComingSoonStatus({ status }: { status: FieldStatus | undefined }) {
       placeholder=""
     />
   );
+}
+
+/**
+ * Parse a game_id and return the opponent's team abbreviation.
+ *
+ * game_id format: "2025_08_KAN_BAL" (season_week_away_home)
+ * If playerTeam matches one of the two teams, return the other.
+ * Otherwise return null.
+ */
+function getOpponentFromGameId(
+  gameId: string,
+  playerTeam: string,
+): string | null {
+  const parts = gameId.split("_");
+  if (parts.length < 4) return null;
+  const [, , away, home] = parts;
+  if (playerTeam === home) return away;
+  if (playerTeam === away) return home;
+  return null;
 }
