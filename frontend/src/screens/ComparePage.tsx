@@ -289,6 +289,14 @@ function MatchupSections({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Auto-generated narrative */}
+      <NarrativeBanner
+        teamA={teamA}
+        teamB={teamB}
+        cohortA={cohortA}
+        cohortB={cohortB}
+      />
+
       {/* When A has the ball */}
       <BallGroup
         title={`When ${teamA} has the ball`}
@@ -559,4 +567,122 @@ function formatNumericValue(v: number): string {
   // Elo-style ratings render as whole numbers, other numerics get one decimal.
   if (Math.abs(v) > 100) return v.toFixed(0);
   return v.toFixed(1);
+}
+
+type MatchupEdge = {
+  metric: MatchupMetric;
+  offTeam: string;
+  defTeam: string;
+  edge: number; // defRank - offRank; positive = offense favored
+};
+
+/**
+ * Find the biggest collision (largest rank-differential edge) for one
+ * direction. Returns null if no ranked metric available.
+ */
+function biggestCollision(
+  metrics: MatchupMetric[],
+  offCohort: Record<string, number>,
+  defCohort: Record<string, number>,
+  offTeam: string,
+  defTeam: string,
+): MatchupEdge | null {
+  let best: MatchupEdge | null = null;
+  for (const m of metrics) {
+    const offRank = offCohort[`rank_${m.off}`];
+    const defRank = defCohort[`rank_${m.def}`];
+    if (offRank == null || defRank == null) continue;
+    const edge = defRank - offRank; // high = strong offense vs weak defense
+    if (best == null || Math.abs(edge) > Math.abs(best.edge)) {
+      best = { metric: m, offTeam, defTeam, edge };
+    }
+  }
+  return best;
+}
+
+/** Rank-differential magnitude → descriptor word. */
+function edgeDescriptor(edge: number): string {
+  const mag = Math.abs(edge);
+  if (mag >= 15) return "Big edge";
+  if (mag >= 7) return "Edge";
+  if (mag >= 3) return "Slight edge";
+  return "Even";
+}
+
+/**
+ * Auto-generated narrative banner. Computes the biggest matchup collision
+ * in each direction from rank differentials and describes them in plain
+ * language. Updates with the selected cohort.
+ */
+function NarrativeBanner({
+  teamA,
+  teamB,
+  cohortA,
+  cohortB,
+}: {
+  teamA: string;
+  teamB: string;
+  cohortA: Record<string, number>;
+  cohortB: Record<string, number>;
+}) {
+  const aCollision = biggestCollision(
+    MATCHUP_METRICS,
+    cohortA,
+    cohortB,
+    teamA,
+    teamB,
+  );
+  const bCollision = biggestCollision(
+    MATCHUP_METRICS,
+    cohortB,
+    cohortA,
+    teamB,
+    teamA,
+  );
+
+  if (!aCollision && !bCollision) return null;
+
+  const describe = (c: MatchupEdge): string => {
+    const descriptor = edgeDescriptor(c.edge);
+    if (descriptor === "Even") {
+      return `${c.offTeam}'s ${c.metric.label.toLowerCase()} vs ${c.defTeam}'s defense — even matchup`;
+    }
+    const favored = c.edge > 0 ? c.offTeam : c.defTeam;
+    return `${c.offTeam}'s ${c.metric.label.toLowerCase()} vs ${c.defTeam}'s defense — ${descriptor} ${favored}`;
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        padding: "12px 14px",
+        marginBottom: 16,
+        background: "color-mix(in oklab, var(--info) 6%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--info) 20%, transparent)",
+        borderRadius: 6,
+        fontSize: 11.5,
+        lineHeight: 1.5,
+        color: "var(--ink-2)",
+      }}
+    >
+      <span style={{ color: "var(--info)", fontSize: 14, flexShrink: 0 }}>
+        ⌖
+      </span>
+      <div>
+        {aCollision && (
+          <div>
+            <span className="dim">Biggest collision: </span>
+            {describe(aCollision)}.
+          </div>
+        )}
+        {bCollision && (
+          <div style={{ marginTop: 2 }}>
+            <span className="dim">Other side: </span>
+            {describe(bCollision)}.
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
