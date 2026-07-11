@@ -25,7 +25,15 @@ export function ComparePage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        maxWidth: 920,
+        margin: "0 auto",
+      }}
+    >
       {/* Mode switcher */}
       <div style={{ display: "flex", gap: 6 }}>
         <Pill active={mode === "team"} onClick={() => setMode("team")}>
@@ -346,7 +354,9 @@ function extractCohort(
 type MatchupMetric = {
   off: string;
   def: string;
-  label: string;
+  title: string; // center title, e.g. "Run efficiency"
+  offLabel: string; // e.g. "Rush EPA / play"
+  defLabel: string; // e.g. "Rush EPA allowed / play"
   fmt: (v: number) => string;
 };
 
@@ -354,12 +364,140 @@ const epaFmt = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(3);
 const pctFmt = (v: number) => (v * 100).toFixed(1) + "%";
 
 const MATCHUP_METRICS: MatchupMetric[] = [
-  { off: "off_epa_per_play", def: "def_epa_per_play", label: "EPA / play", fmt: epaFmt },
-  { off: "off_pass_epa", def: "def_pass_epa", label: "Pass EPA", fmt: epaFmt },
-  { off: "off_rush_epa", def: "def_rush_epa", label: "Rush EPA", fmt: epaFmt },
-  { off: "off_third_down_pct", def: "def_third_down_pct", label: "3rd-down %", fmt: pctFmt },
-  { off: "off_redzone_td_pct", def: "def_redzone_td_pct", label: "Red-zone TD %", fmt: pctFmt },
+  {
+    off: "off_epa_per_play", def: "def_epa_per_play",
+    title: "Overall efficiency",
+    offLabel: "EPA / play", defLabel: "EPA allowed / play",
+    fmt: epaFmt,
+  },
+  {
+    off: "off_pass_epa", def: "def_pass_epa",
+    title: "Pass efficiency",
+    offLabel: "Pass EPA / play", defLabel: "Pass EPA allowed / play",
+    fmt: epaFmt,
+  },
+  {
+    off: "off_rush_epa", def: "def_rush_epa",
+    title: "Run efficiency",
+    offLabel: "Rush EPA / play", defLabel: "Rush EPA allowed / play",
+    fmt: epaFmt,
+  },
+  {
+    off: "off_third_down_pct", def: "def_third_down_pct",
+    title: "Third down",
+    offLabel: "3rd-down conv %", defLabel: "3rd-down allowed %",
+    fmt: pctFmt,
+  },
+  {
+    off: "off_redzone_td_pct", def: "def_redzone_td_pct",
+    title: "Red zone",
+    offLabel: "Red-zone TD %", defLabel: "Red-zone TD allowed %",
+    fmt: pctFmt,
+  },
 ];
+
+/** Ordinal suffix: 1 → "1st", 3 → "3rd", 16 → "16th". */
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+}
+
+/**
+ * Horizontal rank-fill bar. Fill fraction = (33 - rank) / 32, so rank 1
+ * is full and rank 32 is nearly empty. Anchored left or right so pairs
+ * of bars can mirror toward the center.
+ */
+function RankBar({
+  rank,
+  anchor,
+  color,
+}: {
+  rank: number | null | undefined;
+  anchor: "left" | "right";
+  color: string;
+}) {
+  const fill =
+    rank != null ? Math.max(0, Math.min(1, (33 - rank) / 32)) : 0;
+
+  const fillStyle: React.CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: `${fill * 100}%`,
+    background: color,
+    borderRadius: 3,
+  };
+  if (anchor === "left") fillStyle.left = 0;
+  else fillStyle.right = 0;
+
+  return (
+    <div
+      style={{
+        height: 6,
+        background: "var(--bg-3)",
+        position: "relative",
+        borderRadius: 3,
+      }}
+    >
+      <div style={fillStyle} />
+    </div>
+  );
+}
+
+/**
+ * Edge chip for the center column. Arrow points toward the favored
+ * side; shows team + descriptor. Green when there's a real edge, dim
+ * when even.
+ */
+function EdgeChip({
+  edge,
+  offTeam,
+  defTeam,
+}: {
+  edge: number;
+  offTeam: string;
+  defTeam: string;
+}) {
+  const descriptor = edgeDescriptor(edge);
+  if (descriptor === "Even") {
+    return (
+      <span
+        className="mono upper"
+        style={{
+          fontSize: 8.5,
+          color: "var(--ink-4)",
+          letterSpacing: "0.06em",
+        }}
+      >
+        — even —
+      </span>
+    );
+  }
+  const offenseFavored = edge > 0;
+  const favored = offenseFavored ? offTeam : defTeam;
+  const arrow = offenseFavored ? "◄" : "►";
+  return (
+    <span
+      className="mono upper"
+      style={{
+        fontSize: 8.5,
+        color: "var(--pos)",
+        background: "color-mix(in oklab, var(--pos) 12%, transparent)",
+        padding: "2px 6px",
+        borderRadius: 3,
+        letterSpacing: "0.05em",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {offenseFavored ? `${arrow} ${favored}` : `${favored} ${arrow}`}{" "}
+      {descriptor}
+    </span>
+  );
+}
+
+/** Shared 5-column grid template for matchup rows. */
+const MATCHUP_GRID = "120px 90px 150px 90px 120px";
 
 /** One directional group: offense metrics vs reciprocal defense-allowed. */
 function BallGroup({
@@ -379,7 +517,7 @@ function BallGroup({
 }) {
   return (
     <div>
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600 }}>{title}</div>
         <div className="dim mono" style={{ fontSize: 10.5 }}>
           {subtitle}
@@ -390,62 +528,131 @@ function BallGroup({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          gap: 12,
-          fontSize: 9.5,
+          gridTemplateColumns: MATCHUP_GRID,
+          gap: 10,
+          justifyContent: "center",
+          fontSize: 9,
           color: "var(--ink-4)",
           letterSpacing: "0.06em",
           textTransform: "uppercase",
-          marginBottom: 4,
+          marginBottom: 6,
+          alignItems: "center",
         }}
       >
-        <span style={{ textAlign: "left" }}>{offTeam} offense</span>
-        <span style={{ textAlign: "center" }}>matchup</span>
-        <span style={{ textAlign: "right" }}>{defTeam} defense</span>
+        <span style={{ textAlign: "right" }}>{offTeam} offense</span>
+        <span />
+        <span />
+        <span />
+        <span style={{ textAlign: "left" }}>{defTeam} defense</span>
       </div>
 
-      <div style={{ display: "grid", gap: 4 }}>
+      <div style={{ display: "grid", gap: 2 }}>
         {MATCHUP_METRICS.map((m, i) => {
           const offVal = offCohort[m.off];
           const defVal = defCohort[m.def];
+          const offRank = offCohort[`rank_${m.off}`];
+          const defRank = defCohort[`rank_${m.def}`];
+          const edge =
+            offRank != null && defRank != null ? defRank - offRank : 0;
+          const offColor = edge > 0 ? "var(--pos)" : "var(--ink-4)";
+          const defColor = edge < 0 ? "var(--pos)" : "var(--ink-4)";
+
           return (
             <div
-              key={m.off}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto 1fr",
-                gap: 12,
-                alignItems: "center",
-                padding: "8px 0",
-                borderTop: i === 0 ? "none" : "1px solid var(--line-soft)",
-                fontSize: 12,
-              }}
-            >
-              <span
-                className="mono tnum"
-                style={{ textAlign: "left", color: "var(--ink)" }}
-              >
-                {offVal != null ? m.fmt(offVal) : "—"}
-              </span>
-              <span
-                className="dim"
+                key={m.off}
                 style={{
-                  textAlign: "center",
-                  fontSize: 10,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  minWidth: 100,
+                  display: "grid",
+                  gridTemplateColumns: MATCHUP_GRID,
+                  gap: 10,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  padding: "10px 0",
+                  borderTop: i === 0 ? "none" : "1px solid var(--line-soft)",
                 }}
               >
-                {m.label}
-              </span>
-              <span
-                className="mono tnum"
-                style={{ textAlign: "right", color: "var(--ink-2)" }}
-              >
-                {defVal != null ? m.fmt(defVal) : "—"}
-              </span>
-            </div>
+                {/* Offense value + rank (same line) + sublabel */}
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      justifyContent: "flex-end",
+                      gap: 5,
+                    }}
+                  >
+                    <span
+                      className="mono tnum"
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: edge > 0 ? "var(--pos)" : "var(--ink)",
+                      }}
+                    >
+                      {offVal != null ? m.fmt(offVal) : "—"}
+                    </span>
+                    {offRank != null && (
+                      <span className="mono dim2" style={{ fontSize: 9.5 }}>
+                        {ordinal(offRank)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dim2" style={{ fontSize: 9, marginTop: 1 }}>
+                    {m.offLabel}
+                  </div>
+                </div>
+
+                {/* Offense bar */}
+                <RankBar rank={offRank} anchor="right" color={offColor} />
+
+                {/* Center: title + edge chip */}
+                <div style={{ textAlign: "center" }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "var(--ink-2)",
+                      marginBottom: 3,
+                    }}
+                  >
+                    {m.title}
+                  </div>
+                  <EdgeChip edge={edge} offTeam={offTeam} defTeam={defTeam} />
+                </div>
+
+                {/* Defense bar */}
+                <RankBar rank={defRank} anchor="left" color={defColor} />
+
+                {/* Defense value + rank (same line) + sublabel */}
+                <div style={{ textAlign: "left" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      justifyContent: "flex-start",
+                      gap: 5,
+                    }}
+                  >
+                    <span
+                      className="mono tnum"
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: edge < 0 ? "var(--pos)" : "var(--ink)",
+                      }}
+                    >
+                      {defVal != null ? m.fmt(defVal) : "—"}
+                    </span>
+                    {defRank != null && (
+                      <span className="mono dim2" style={{ fontSize: 9.5 }}>
+                        {ordinal(defRank)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="dim2" style={{ fontSize: 9, marginTop: 1 }}>
+                    {m.defLabel}
+                  </div>
+                </div>
+              </div>
           );
         })}
       </div>
@@ -453,7 +660,7 @@ function BallGroup({
   );
 }
 
-/** Neutral section: turnover_diff head-to-head. */
+/** Neutral section: turnover_diff head-to-head, same bar language. */
 function EvenFooting({
   cohortA,
   cohortB,
@@ -463,50 +670,91 @@ function EvenFooting({
 }) {
   const aVal = cohortA["turnover_diff"];
   const bVal = cohortB["turnover_diff"];
+  const aRank = cohortA["rank_turnover_diff"];
+  const bRank = cohortB["rank_turnover_diff"];
   const fmt = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(3);
+
+  // Lower rank wins (rank 1 = best). edge = bRank - aRank; positive = A better.
+  const edge = aRank != null && bRank != null ? bRank - aRank : 0;
+  const aColor = edge > 0 ? "var(--pos)" : "var(--ink-4)";
+  const bColor = edge < 0 ? "var(--pos)" : "var(--ink-4)";
 
   return (
     <div>
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600 }}>Even footing</div>
         <div className="dim mono" style={{ fontSize: 10.5 }}>
           Neutral metrics
         </div>
       </div>
+
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          gap: 12,
+          gridTemplateColumns: MATCHUP_GRID,
+          gap: 10,
+          justifyContent: "center",
           alignItems: "center",
-          padding: "8px 0",
-          fontSize: 12,
+          padding: "10px 0",
         }}
       >
-        <span
-          className="mono tnum"
-          style={{ textAlign: "left", color: "var(--ink)" }}
-        >
-          {aVal != null ? fmt(aVal) : "—"}
-        </span>
-        <span
-          className="dim"
+        <div
           style={{
-            textAlign: "center",
-            fontSize: 10,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            minWidth: 100,
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "flex-end",
+            gap: 5,
           }}
         >
+          <span
+            className="mono tnum"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: edge > 0 ? "var(--pos)" : "var(--ink)",
+            }}
+          >
+            {aVal != null ? fmt(aVal) : "—"}
+          </span>
+          {aRank != null && (
+            <span className="mono dim2" style={{ fontSize: 9.5 }}>
+              {ordinal(aRank)}
+            </span>
+          )}
+        </div>
+
+        <RankBar rank={aRank} anchor="right" color={aColor} />
+
+        <div className="dim" style={{ fontSize: 10, textAlign: "center" }}>
           Turnover diff
-        </span>
-        <span
-          className="mono tnum"
-          style={{ textAlign: "right", color: "var(--ink-2)" }}
+        </div>
+
+        <RankBar rank={bRank} anchor="left" color={bColor} />
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "flex-start",
+            gap: 5,
+          }}
         >
-          {bVal != null ? fmt(bVal) : "—"}
-        </span>
+          <span
+            className="mono tnum"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: edge < 0 ? "var(--pos)" : "var(--ink)",
+            }}
+          >
+            {bVal != null ? fmt(bVal) : "—"}
+          </span>
+          {bRank != null && (
+            <span className="mono dim2" style={{ fontSize: 9.5 }}>
+              {ordinal(bRank)}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -922,10 +1170,10 @@ function NarrativeBanner({
   const describe = (c: MatchupEdge): string => {
     const descriptor = edgeDescriptor(c.edge);
     if (descriptor === "Even") {
-      return `${c.offTeam}'s ${c.metric.label.toLowerCase()} vs ${c.defTeam}'s defense — even matchup`;
+      return `${c.offTeam}'s ${c.metric.title.toLowerCase()} vs ${c.defTeam}'s defense — even matchup`;
     }
     const favored = c.edge > 0 ? c.offTeam : c.defTeam;
-    return `${c.offTeam}'s ${c.metric.label.toLowerCase()} vs ${c.defTeam}'s defense — ${descriptor} ${favored}`;
+    return `${c.offTeam}'s ${c.metric.title.toLowerCase()} vs ${c.defTeam}'s defense — ${descriptor} ${favored}`;
   };
 
   return (
