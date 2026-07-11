@@ -23,6 +23,7 @@ def _make_logs() -> pd.DataFrame:
                 "week": 1,
                 "rushing_yards": 100.0,
                 "game_id": "2024_01_KC_BAL",
+                "is_home": True,  # BAL is HOME slot of 2024_01_KC_BAL
             },
             {
                 "player_id": "P1",
@@ -34,6 +35,7 @@ def _make_logs() -> pd.DataFrame:
                 "week": 2,
                 "rushing_yards": 80.0,
                 "game_id": "2024_02_BAL_SF",
+                "is_home": False,  # BAL is AWAY slot of 2024_02_BAL_SF
             },
             {
                 "player_id": "P1",
@@ -45,6 +47,7 @@ def _make_logs() -> pd.DataFrame:
                 "week": 3,
                 "rushing_yards": 120.0,
                 "game_id": "2024_03_CIN_BAL",
+                "is_home": True,  # BAL is HOME slot of 2024_03_CIN_BAL
             },
             {
                 "player_id": "P1",
@@ -56,6 +59,7 @@ def _make_logs() -> pd.DataFrame:
                 "week": 1,
                 "rushing_yards": 60.0,
                 "game_id": "2023_01_IND_TEN",
+                "is_home": True,
             },
         ]
     )
@@ -108,6 +112,19 @@ def test_rows_sorted_by_week_with_values(tmp_path: Path) -> None:
     assert weeks == [1, 2, 3]
     values = [r["value"] for r in result["rows"]]
     assert values == [100.0, 80.0, 120.0]
+
+
+def test_is_home_passed_through_from_column(tmp_path: Path) -> None:
+    from gridiron_edge.api.loaders import load_player_history
+
+    _write(tmp_path, _make_logs())
+    result = load_player_history(_Settings(tmp_path), player_id="P1", stat="rush_yards")
+    assert result is not None
+    by_week = {r["week"]: r for r in result["rows"]}
+    # is_home now read directly from the (fixed) column, not parsed.
+    assert by_week[1]["is_home"] is True  # BAL home vs KC
+    assert by_week[2]["is_home"] is False  # BAL away @ SF
+    assert by_week[3]["is_home"] is True  # BAL home vs CIN
 
 
 def test_limit_returns_last_n(tmp_path: Path) -> None:

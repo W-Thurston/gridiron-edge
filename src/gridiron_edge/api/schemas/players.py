@@ -21,6 +21,8 @@ class PlayerGameRow(BaseModel):
     week: int
     value: float | None = None
     opponent: str
+    game_id: str
+    is_home: bool
 
 
 class PlayerHistoryResponse(BaseListResponse[PlayerGameRow]):

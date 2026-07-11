@@ -73,17 +73,27 @@ def _join_game_id(df: DataFrame, schedule: DataFrame) -> DataFrame:
     """Join game_id from schedule onto player stats.
 
     Player stats have (season, week, team, opponent_team) but not a
-    reliable game_id. We join against the schedule twice - once assuming
-    the player's team is home, once assuming away - then coalesce.
+    reliable game_id. We join against the schedule twice — once assuming
+    the player's team is home, once assuming away — then coalesce.
 
     The opponent_team is included in the join key so postseason weeks
     (where multiple games may share a week label across different
     matchups in the same season) cannot accidentally pair a player with
     the wrong game. See ``player_stats/C1``.
+
+    IMPORTANT: df's index is reset to contiguous before the merges.
+    ``df.merge(...)`` returns a fresh 0..N-1 index; assigning that result
+    back onto a df with a non-contiguous index (from upstream dropna)
+    would misalign by index label, scrambling game_id across rows within
+    the same week. The full-matchup join key guarantees 1:1 merges, so a
+    contiguous df index makes the positional alignment correct.
     """
-    # Drop the unreliable game_id from player stats if present
+    # Drop the unreliable game_id from player stats if present.
     if "game_id" in df.columns:
         df = df.drop(columns=["game_id"])
+
+    # Reset to a contiguous index so merge-result Series align positionally.
+    df = df.reset_index(drop=True)
 
     # Join as home team (player's team is home, opponent is away).
     # pyrefly: ignore [bad-assignment]
@@ -104,6 +114,8 @@ def _join_game_id(df: DataFrame, schedule: DataFrame) -> DataFrame:
     )[["_gid_away"]]
 
     df["game_id"] = home_join["_gid_home"].combine_first(away_join["_gid_away"])
+    # is_home derives directly from which side matched (no game_id parsing).
+    df["is_home"] = home_join["_gid_home"].notna()
 
     matched: int = df["game_id"].notna().sum()
     total: int = len(df)
