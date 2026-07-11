@@ -2,20 +2,18 @@
 
 """Per-team cohort splits computation and persistence.
 
-Computes per-(team, cohort) aggregations of 8 metrics from
+Computes per-(team, cohort) aggregations of 11 metrics from
 epa_by_game.parquet, across 4 cohorts (season, l4, home, away),
 for the current season.
 
 Produces DataFrame with columns:
     team_abbr, cohort,
     off_epa_per_play, off_pass_epa, off_rush_epa,
-    def_epa_per_play, def_rush_epa,
-    off_third_down_pct, off_redzone_td_pct,
+    def_epa_per_play, def_pass_epa, def_rush_epa,
+    off_third_down_pct, def_third_down_pct,
+    off_redzone_td_pct, def_redzone_td_pct,
     turnover_diff, sample_size,
-    rank_off_epa_per_play, rank_off_pass_epa, rank_off_rush_epa,
-    rank_def_epa_per_play, rank_def_rush_epa,
-    rank_off_third_down_pct, rank_off_redzone_td_pct,
-    rank_turnover_diff
+    plus a rank_<metric> column per metric above.
 
 Ranks: 1 = best in cohort for that metric. Off metrics and
 turnover_diff: rank 1 = highest. Def metrics: rank 1 = lowest
@@ -44,9 +42,12 @@ METRICS: Final[dict[str, str]] = {
     "off_pass_epa": "desc",
     "off_rush_epa": "desc",
     "def_epa_per_play": "asc",
+    "def_pass_epa": "asc",
     "def_rush_epa": "asc",
     "off_third_down_pct": "desc",
+    "def_third_down_pct": "asc",
     "off_redzone_td_pct": "desc",
+    "def_redzone_td_pct": "asc",
     "turnover_diff": "desc",
 }
 
@@ -69,18 +70,22 @@ def compute_team_cohort_splits(
     if epa_df.empty:
         return _empty_splits_df()
 
-    required_metrics = {
+    required_metrics: set[str] = {
         "off_epa_per_play",
         "off_pass_epa",
         "off_rush_epa",
         "def_epa_per_play",
+        "def_pass_epa",
         "def_rush_epa",
         "off_third_down_pct",
+        "def_third_down_pct",
         "off_redzone_td_pct",
+        "def_redzone_td_pct",
         "off_turnover_rate",
         "def_turnover_rate",
     }
-    required_meta = {"game_id", "season", "week", "team"}
+
+    required_meta: set[str] = {"game_id", "season", "week", "team"}
 
     if not required_metrics.issubset(epa_df.columns):
         return _empty_splits_df()

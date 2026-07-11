@@ -38,9 +38,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.20,
                 "off_rush_epa": 0.05,
                 "def_epa_per_play": -0.10,
+                "def_pass_epa": -0.08,
                 "def_rush_epa": -0.05,
                 "off_third_down_pct": 0.45,
+                "def_third_down_pct": 0.38,
                 "off_redzone_td_pct": 0.60,
+                "def_redzone_td_pct": 0.50,
                 "off_turnover_rate": 0.02,
                 "def_turnover_rate": 0.05,
             },
@@ -53,9 +56,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.15,
                 "off_rush_epa": 0.00,
                 "def_epa_per_play": -0.05,
+                "def_pass_epa": -0.03,
                 "def_rush_epa": 0.00,
                 "off_third_down_pct": 0.40,
+                "def_third_down_pct": 0.42,
                 "off_redzone_td_pct": 0.50,
+                "def_redzone_td_pct": 0.55,
                 "off_turnover_rate": 0.05,
                 "def_turnover_rate": 0.02,
             },
@@ -69,9 +75,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.25,
                 "off_rush_epa": 0.10,
                 "def_epa_per_play": -0.15,
+                "def_pass_epa": -0.12,
                 "def_rush_epa": -0.10,
                 "off_third_down_pct": 0.50,
+                "def_third_down_pct": 0.35,
                 "off_redzone_td_pct": 0.70,
+                "def_redzone_td_pct": 0.45,
                 "off_turnover_rate": 0.01,
                 "def_turnover_rate": 0.06,
             },
@@ -84,9 +93,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.10,
                 "off_rush_epa": -0.05,
                 "def_epa_per_play": 0.00,
+                "def_pass_epa": 0.02,
                 "def_rush_epa": 0.05,
                 "off_third_down_pct": 0.35,
+                "def_third_down_pct": 0.45,
                 "off_redzone_td_pct": 0.45,
+                "def_redzone_td_pct": 0.60,
                 "off_turnover_rate": 0.06,
                 "def_turnover_rate": 0.01,
             },
@@ -100,9 +112,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.12,
                 "off_rush_epa": 0.05,
                 "def_epa_per_play": -0.05,
+                "def_pass_epa": -0.04,
                 "def_rush_epa": 0.00,
                 "off_third_down_pct": 0.42,
+                "def_third_down_pct": 0.40,
                 "off_redzone_td_pct": 0.55,
+                "def_redzone_td_pct": 0.52,
                 "off_turnover_rate": 0.03,
                 "def_turnover_rate": 0.04,
             },
@@ -115,9 +130,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.30,
                 "off_rush_epa": 0.15,
                 "def_epa_per_play": -0.20,
+                "def_pass_epa": -0.18,
                 "def_rush_epa": -0.15,
                 "off_third_down_pct": 0.55,
+                "def_third_down_pct": 0.32,
                 "off_redzone_td_pct": 0.75,
+                "def_redzone_td_pct": 0.40,
                 "off_turnover_rate": 0.02,
                 "def_turnover_rate": 0.07,
             },
@@ -131,9 +149,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.22,
                 "off_rush_epa": 0.08,
                 "def_epa_per_play": -0.12,
+                "def_pass_epa": -0.10,
                 "def_rush_epa": -0.08,
                 "off_third_down_pct": 0.48,
+                "def_third_down_pct": 0.37,
                 "off_redzone_td_pct": 0.65,
+                "def_redzone_td_pct": 0.48,
                 "off_turnover_rate": 0.02,
                 "def_turnover_rate": 0.06,
             },
@@ -146,9 +167,12 @@ def _make_epa_data() -> pd.DataFrame:
                 "off_pass_epa": 0.18,
                 "off_rush_epa": 0.02,
                 "def_epa_per_play": -0.08,
+                "def_pass_epa": -0.06,
                 "def_rush_epa": -0.02,
                 "off_third_down_pct": 0.42,
+                "def_third_down_pct": 0.41,
                 "off_redzone_td_pct": 0.55,
+                "def_redzone_td_pct": 0.54,
                 "off_turnover_rate": 0.04,
                 "def_turnover_rate": 0.03,
             },
@@ -377,3 +401,23 @@ class TestLoadTeamCohortSplits:
 
         result = load_team_cohort_splits(tmp_path)
         assert result.empty
+
+    def test_new_defensive_metrics_computed_and_ranked(self) -> None:
+        """def_pass_epa, def_third_down_pct, def_redzone_td_pct compute
+        and rank ascending (lower allowed = stingier = rank 1)."""
+        from gridiron_edge.evaluation.team_cohort_splits import (
+            compute_team_cohort_splits,
+        )
+
+        result = compute_team_cohort_splits(_make_epa_data(), LONG_TO_SHORT)
+        season = result.loc[result["cohort"] == "season", :]
+
+        # All three new metrics present as columns
+        assert "def_pass_epa" in result.columns
+        assert "def_third_down_pct" in result.columns
+        assert "def_redzone_td_pct" in result.columns
+        assert "rank_def_pass_epa" in result.columns
+
+        # BAL has the stingiest def_pass_epa (-0.18) → rank 1
+        by_team = dict(zip(season["team_abbr"], season["rank_def_pass_epa"], strict=False))
+        assert by_team["BAL"] == 1
