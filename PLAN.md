@@ -161,33 +161,7 @@ By workstream close:
 
 ## Paused Workstreams
 
-#### W9.10 — Compare Screen Rebuild — ⏸️ PAUSED (2026-07-01)
-
-**Paused after:** Substep 1a (mode switcher) + 2a (enhanced team pickers).
-Both shipped and verifiable against live data.
-
-**Blocked on:** Full pipeline run to populate the artifacts Compare
-depends on:
-- `team_cohort_splits.parquet` → Team vs Team matchup sections
-  (`/compare/teams` and `/teams/{abbr}` both return `cohort_splits: null`)
-- `opponent_allowed.parquet` → Player vs Defense stat rows
-  (`/compare/player/{prop_id}` defense rows all null, blocked
-  `opponent_allowed_by_position`)
-
-Confirmed empty via curl on 2026-07-01. Compare is the most
-data-dependent screen in the app — both modes' marquee features need
-these artifacts. Building against empty responses gives no visual
-verification.
-
-**Remaining substeps when resumed:**
-- 2b: Cohort strip + grouped matchup sections (needs cohort_splits)
-- 2c: Auto-generated narrative banner (needs cohort_splits)
-- 3a-3b: Player vs Defense mode (needs opponent_allowed)
-- 4a: Cleanup + close-out
-
-**Resume plan:** After the full pipeline run, do the W9.10 data-dependent
-build together with the deferred W9.8 audit sweep — same prerequisite
-(populated backend), same verify-against-real-data workflow.
+_(none currently paused)_
 
 ---
 
