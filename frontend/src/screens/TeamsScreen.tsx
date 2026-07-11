@@ -2,7 +2,6 @@ import { useState } from "react";
 
 import { useTeamProfile, useTeamRankings } from "../api/hooks";
 import { TeamMark } from "../components/primitives/TeamMark";
-import { PendingField } from "../components/field-status/PendingField";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";
 import { RecentResultsStrip } from "../components/teams/RecentResultsStrip";
@@ -11,6 +10,8 @@ import { ErrorCard } from "../components/error/ErrorCard";
 import { Pill } from "../components/primitives/Pill";
 import { RatingChart } from "../components/primitives/RatingChart";
 import { useProjections } from "../api/hooks";
+import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
+import { usePendingHighlight } from "../components/field-status/usePendingHighlight";
 
 /**
  * Consolidated split-view Teams screen. Left column shows rankings;
@@ -507,55 +508,12 @@ function ProfileColumn({
         <PostseasonOutlookCard teamAbbr={data.abbr} />
 
         {/* Top Players */}
-        <ScaffoldCard
-        title="Top Players"
-        status={fieldStatus?.top_players as FieldStatus | undefined}
+        <ComingSoonCard
+          title="Top Players"
+          status={fieldStatus?.top_players as FieldStatus | undefined}
         />
     </div>
     );
-}
-
-function ScaffoldCard({
-  title,
-  status,
-}: {
-  title: string;
-  status: FieldStatus | undefined;
-}) {
-  return (
-    <div className="hm-card" style={{ padding: 20 }}>
-      <div
-        className="upper dim"
-        style={{
-          fontSize: 10,
-          marginBottom: 12,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span>{title}</span>
-        {status === "pending" && <PendingField placeholder="" />}
-        {status && status !== "pending" && (
-          <BlockedField
-            blocker={status.blocker}
-            roadmap={status.roadmap}
-            placeholder=""
-          />
-        )}
-      </div>
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        Not yet available
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -1094,8 +1052,9 @@ function PostseasonRow({
  * enrichment with per-opponent difficulty index.
  */
 function ScheduleDifficultyPlaceholder() {
+  const highlight = usePendingHighlight();
   return (
-    <div className="hm-card" style={{ padding: 20 }}>
+    <div className="hm-card" style={{ padding: 20, ...highlight }}>
       <div
         className="upper dim"
         style={{

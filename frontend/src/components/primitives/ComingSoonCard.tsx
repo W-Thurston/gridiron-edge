@@ -1,6 +1,7 @@
 import { BlockedField } from "../field-status/BlockedField";
 import { PendingField } from "../field-status/PendingField";
 import type { FieldStatus } from "../field-status/types";
+import { usePendingHighlight } from "../field-status/usePendingHighlight";
 
 type ComingSoonCardProps = {
   title: string;
@@ -8,13 +9,27 @@ type ComingSoonCardProps = {
 };
 
 /**
- * Whole-card placeholder for a scaffolded GameDetail section.
- * Renders a card with the section title and a field-status indicator
- * showing why the card is empty.
+ * Whole-card placeholder for a scaffolded section. Renders the section
+ * title, a field-status badge (pending or blocked), and a "Not yet
+ * available" body.
+ *
+ * When dev panel highlight mode is on, the entire card lights up orange
+ * — the card IS the gap indicator.
+ *
+ * Consolidated from per-screen copies (GameDetail, PlayerProp,
+ * TeamsScreen) during W9.8 Substep 2b.
  */
 export function ComingSoonCard({ title, status }: ComingSoonCardProps) {
+  const highlight = usePendingHighlight();
+
   return (
-    <div className="hm-card" style={{ padding: 20 }}>
+    <div
+      className="hm-card"
+      style={{
+        padding: 20,
+        ...highlight,
+      }}
+    >
       <div
         className="upper dim"
         style={{

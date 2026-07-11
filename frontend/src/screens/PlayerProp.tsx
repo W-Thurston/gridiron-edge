@@ -11,6 +11,7 @@ import { formatStatType } from "../utils/props";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { DistributionChart } from "../components/primitives/DistributionChart";
 import { WhyLink } from "../components/primitives/WhyLink";
+import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -582,54 +583,6 @@ function CompareCell({
   if (!status) return <span className="dim2">—</span>;
   if (status === "pending") return <PendingField />;
   return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
-}
-
-function ComingSoonCard({
-  title,
-  status,
-}: {
-  title: string;
-  status: FieldStatus | undefined;
-}) {
-  return (
-    <div className="hm-card" style={{ padding: 20 }}>
-      <div
-        className="upper dim"
-        style={{
-          fontSize: 10,
-          marginBottom: 12,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span>{title}</span>
-        <ComingSoonStatus status={status} />
-      </div>
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        Not yet available
-      </div>
-    </div>
-  );
-}
-
-function ComingSoonStatus({ status }: { status: FieldStatus | undefined }) {
-  if (!status) return null;
-  if (status === "pending") return <PendingField placeholder="" />;
-  return (
-    <BlockedField
-      blocker={status.blocker}
-      roadmap={status.roadmap}
-      placeholder=""
-    />
-  );
 }
 
 /**

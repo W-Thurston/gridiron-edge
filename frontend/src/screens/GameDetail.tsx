@@ -4,7 +4,7 @@ import { useEdges, useGame, usePropsList } from "../api/hooks";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { ErrorCard } from "../components/error/ErrorCard";
 import type { FieldStatus } from "../components/field-status/types";
-import { ComingSoonCard } from "../components/games/ComingSoonCard";
+import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { WinProbBand } from "../components/games/WinProbBand";
 import { Pill } from "../components/primitives/Pill";
