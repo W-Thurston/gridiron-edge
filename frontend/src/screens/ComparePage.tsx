@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCompareTeams, useTeamProfile, usePropsList } from "../api/hooks";
+import { useCompareTeams, useTeamProfile, usePropsList,useComparePlayer } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -9,6 +9,7 @@ import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { formatStatType } from "../utils/props";
+import { DistributionChart } from "../components/primitives/DistributionChart";
 
 type CompareMode = "team" | "player";
 
@@ -578,26 +579,151 @@ function PlayerCompareMode() {
         </div>
       )}
 
-      {/* Comparison content (Tier 3b) */}
+      {/* Comparison content */}
       {!selectedProp && (
         <div className="dim mono" style={{ fontSize: 12 }}>
           Select a prop to compare against its opponent's defense.
         </div>
       )}
-      {selectedProp && (
-        <div
-          style={{
-            padding: 20,
-            textAlign: "center",
-            color: "var(--ink-4)",
-            fontSize: 12,
-          }}
-        >
-          Distribution + defense comparison coming in Tier 3b
-        </div>
-      )}
+      {selectedProp && <PlayerDefenseComparison propId={selectedProp.prop_id} />}
     </div>
   );
+}
+
+/**
+ * Fetches /compare/player/{prop_id} and renders the projection
+ * distribution + player-vs-defense stat rows.
+ */
+function PlayerDefenseComparison({ propId }: { propId: string }) {
+  const { data, isLoading, error, refetch } = useComparePlayer(propId);
+
+  if (isLoading) {
+    return <div className="dim" style={{ marginTop: 8 }}>Loading…</div>;
+  }
+  if (error) {
+    return (
+      <ErrorCard
+        error={error as Error}
+        onRetry={() => refetch()}
+        title="Couldn't load comparison"
+      />
+    );
+  }
+  if (!data) {
+    return (
+      <div className="dim mono" style={{ fontSize: 12 }}>
+        No comparison data available.
+      </div>
+    );
+  }
+
+  const stats = data.stats ?? [];
+  const fieldStatus = data._meta?.field_status;
+
+  // Extract distribution params from projection rows
+  const getProj = (key: string) =>
+    stats.find((s) => s.key === key)?.projection_value ?? null;
+  const mean = getProj("mean");
+  const std = getProj("std");
+  const lo = getProj("lo_90");
+  const hi = getProj("hi_90");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Distribution chart */}
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 12,
+          }}
+        >
+          <div className="upper dim" style={{ fontSize: 10 }}>
+            Projection distribution
+          </div>
+          <div className="mono dim2" style={{ fontSize: 10 }}>
+            90% credible band
+          </div>
+        </div>
+        <DistributionChart
+          mean={typeof mean === "number" ? mean : null}
+          std={typeof std === "number" ? std : null}
+          lo={typeof lo === "number" ? lo : null}
+          hi={typeof hi === "number" ? hi : null}
+        />
+      </div>
+
+      {/* Player vs Defense stat rows */}
+      <div>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+          Projection vs Defense
+        </div>
+        <table
+          className="mono tnum"
+          style={{
+            width: "100%",
+            fontSize: 12,
+            borderCollapse: "collapse",
+          }}
+        >
+          <thead>
+            <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
+              <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
+              <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>
+                Projection
+              </th>
+              <th style={{ padding: "8px 0", textAlign: "right" }}>Defense</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((row) => (
+              <tr
+                key={row.key}
+                style={{ borderTop: "1px solid var(--line-soft)" }}
+              >
+                <td
+                  style={{
+                    padding: "10px 12px 10px 0",
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  {row.label}
+                </td>
+                <td
+                  style={{ padding: "10px 12px 10px 0", textAlign: "right" }}
+                >
+                  <PlayerCompareCell value={row.projection_value} />
+                </td>
+                <td style={{ padding: "10px 0", textAlign: "right" }}>
+                  <PlayerCompareCell
+                    value={row.defense_value}
+                    status={fieldStatus?.[row.key] as FieldStatus | undefined}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PlayerCompareCell({
+  value,
+  status,
+}: {
+  value: number | string | null | undefined;
+  status?: FieldStatus | undefined;
+}) {
+  if (value != null && value !== "") {
+    return <>{typeof value === "number" ? value.toFixed(1) : value}</>;
+  }
+  if (!status) return <span className="dim2">—</span>;
+  if (status === "pending") return <PendingField />;
+  return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
 }
 
 /** Parse game_id into opponent abbrev given the player's team. */
