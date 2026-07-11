@@ -29,107 +29,151 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ---
 
-### Current Workstream: (none — between workstreams)
+### Current Workstream: W9.8 — Dev Panel + Pending Highlight Mode
 
-### Recently Completed
+**Status:** Designing.
 
-#### W9.9: PlayerProp Rebuild — ✅ COMPLETE (2026-07-07)
+### What we are building
 
-Rebuilt PlayerProp (`/players/:propId`) from skeleton (identity card
-+ 4-cell projection + 6 ComingSoonCards) to prototype fidelity in 8
-substeps across 4 tiers.
+A floating dev panel (summoned by a bottom-right corner button) that
+hosts development/verification tooling. First tool: a **Highlight
+Pending & Blocked** toggle. When on, every pending/blocked element
+across the app lights up in bright orange, making backend gaps
+instantly visible during a visual pass.
 
-**Delivered:**
-- Full-width player hero band with team-colored gradient (matches
-  TeamsScreen pattern)
-- Prop summary callout card on right side of hero: distinct card with
-  green accent border, stat label with game context ("MON vs SF"),
-  big em-dash for pending line, model mean + range on flex row,
-  pending markers for confidence + EV
-- "+ Bet slip" button outside the summary card
-- Distribution chart primitive (new): SVG Gaussian density curve
-  with 90% credible band shading, mean marker + label, x-axis
-  endpoints
-- Situational Splits card consuming Step 5 data: 8 cohorts in
-  canonical order with "X.X avg · N games" format
-- Polished Player vs Defense table with WhyLink dot in header
-- 5 blocked ComingSoonCards in 3-column grid
+The panel is a dev surface, not a user feature. It operationalizes
+the frontend-as-verification-surface principle (ROADMAP §3, principle
+6): the frontend only helps us see what's missing if the gaps are
+visible, not hidden.
 
-**New primitive:**
-- `DistributionChart` — SVG probability density chart. Renders
-  Gaussian PDF from mean + std with 90% band shading, mean marker,
-  x-axis endpoints. Extractable to Compare screen (W9.10).
+Alongside the toggle: an audit sweep across all built screens to
+ensure every silently-missing piece of information is surfaced with
+a visible pending/blocked marker — never skipped.
 
-**Helpers:**
-- `getOpponentFromGameId` — parse game_id string (inline, not
-  primitive)
-- `formatSeason` — "2025-2026" → "2025" (shared with TeamsScreen)
-- `formatStatType` + `formatStatTypeShort` — extracted to
-  `utils/props.ts` for reuse across Dashboard/GameDetail/PlayerProp
+### Why we are building it now
 
-**Preserved as blocked placeholders:**
-- Historical vs Opponent (pending)
-- Recent Form (pending)
-- Injury Status (blocked on §5.3)
-- Prop Reasoning (blocked on feature attribution)
-- Multi-Book Shopping (blocked on W7)
+The frontend exists at this stage as a verification surface — a way
+to *see* what the backend can't yet provide. That only works if gaps
+are visibly marked, not withheld. The near-miss on PlayerProp's
+confidence/EV fields (almost dropped, instead surfaced as "pending")
+is the canonical example of the discipline we want everywhere.
 
-**Established pattern:**
-- Composed player screens now consume prop + game + team metadata in
-  a single flow
-- Distribution chart primitive establishes the shape for future
-  probability visualizations (Compare's Player vs Defense mode)
+Building this toggle now, before more screen rebuilds:
+1. Changes how we build — every subsequent substep gets designed with
+   "does this register in highlight mode?"
+2. Makes the visual pass effortless — flip on, walk the app, see every
+   gap
+3. Retroactively audits everything already built (Dashboard,
+   GameDetail, TeamsScreen, PlayerProp, etc.)
 
-**W9.9 workstream complete.**
+Sequencing: toggle → audit sweep → then resume W9.10 (Compare) with
+the highlight discipline baked in.
 
-#### W9.7: Teams Split-View Rebuild — ✅ COMPLETE (2026-07-07)
+#### Success criteria
 
-Restructured `/teams` and `/teams/:abbr` into a consolidated split-view
-screen at `/teams` with optional `?team=X` param. Left column shows
-rankings; right column shows the selected team's profile with 6 real
-sections and 2 blocked placeholders. Completed in 9 substeps across
-4 tiers.
+- Floating dev panel button in bottom-right corner; opens/closes a
+  dev panel
+- Panel contains a "Highlight Pending & Blocked" toggle
+- Toggle state persisted to localStorage via new `DevPanelContext`
+- When highlight on: all pending/blocked elements light up with bright
+  orange outline + tint
+- When highlight off: zero visual change from current app
+- `PendingField`, `BlockedField`, `ComingSoonCard` all participate
+- New `PendingChip` primitive for inline pending-text cases; existing
+  ad-hoc inline markers retrofitted
+- Audit sweep completed: every built screen walked in highlight mode,
+  silently-missing items surfaced
+- All quality gates pass
 
-**Delivered:**
-- Single route `/teams` with `?team=X` param; auto-selects #1 team
-  when no param
-- Left column: rankings table (all 32 teams) with 5-tab strip
-  (Overall / Offense / Defense / ATS / Net Rating). Off/Def/ATS/Net
-  render blocked-state messaging.
-- Row selection: URL param sync (no navigation), green left border
-  + background tint for selected row, hover state
-- Rankings subheader shows "Wk N · model v4.2"
-- Right column sections:
-  - Team hero band with team-colored vertical gradient (180deg,
-    30% mix top → dark bottom)
-  - Rating chart (`RatingChart` primitive) with Y-axis grid, dots,
-    and inline W/L markers per week
-  - Situational Splits card with cohort switcher (Season/L4/Home/Away)
-    consuming `cohort_splits` from Step 7c
-  - Recent Results (existing `RecentResultsStrip`)
-  - Schedule Difficulty placeholder (blocked)
-  - Postseason Outlook composed from `/projections` with colored
-    progress bars per row
-  - Top Players placeholder (blocked)
+### Locked architectural decisions
 
-**New primitive:**
-- `RatingChart` — SVG line chart with Y-axis grid, data point dots,
-  X-axis labels, W/L outcome markers. Responsive via SVG viewBox.
+| Decision | Choice |
+|---|---|
+| State container | New `DevPanelContext` (localStorage-persisted) |
+| Toggle placement | Floating bottom-right button → opens dev panel |
+| Button visibility | Always visible for now (gate behind `import.meta.env.DEV` if app ever ships to users — noted as future consideration) |
+| Highlight mechanism | `usePendingHighlight()` hook returning styles (empty object when off) |
+| Highlight color | Dedicated `--highlight` CSS var (bright orange), separate from `--warn` to avoid collision with legitimate warn usage |
+| Retrofit targets | `PendingField`, `BlockedField`, `ComingSoonCard` |
+| New primitive | `PendingChip` for inline pending-text cases |
+| ComingSoonCard | Consolidate drifted per-screen copies into one shared primitive |
+| Panel scope v1 | Highlight toggle only; room to grow (field-status demo could return here later) |
 
-**Helpers:**
-- `stripCityPrefix` (matches GameDetail approach)
-- `expandDivisionLetter` (N → North, etc.)
-- `formatSeason` (2025-2026 → 2025)
+### Prerequisite
 
-**Preserved as blocked placeholders:**
-- Schedule Difficulty (upcoming_games backend enrichment)
-- Top Players (WAR feature attribution)
+None. Builds on existing AppState/context patterns and field-status
+components.
 
-**Deleted:**
-- Old `TeamRankings.tsx` and `TeamProfile.tsx` files consolidated
-  into single `TeamsScreen.tsx`
+### Tiers
 
-**W9.7 workstream complete.**
+**Tier 1 — Dev panel infrastructure (2 substeps).**
+
+- 1a: `DevPanelContext` with `highlightPending` boolean, localStorage
+  persistence, provider wired into app root. `--highlight` CSS var
+  defined.
+- 1b: Floating bottom-right button + dev panel shell. Button toggles
+  panel. Panel contains "Highlight Pending & Blocked" toggle. Styled
+  as a distinct utilitarian dev surface (not matching app cards).
+
+**Tier 2 — Highlight rendering (3 substeps).**
+
+- 2a: `usePendingHighlight()` hook + retrofit `PendingField` and
+  `BlockedField` to light up when highlight on.
+- 2b: Consolidate `ComingSoonCard` variants (GameDetail, PlayerProp,
+  TeamsScreen) into one shared `components/primitives/ComingSoonCard.tsx`;
+  retrofit for highlight support.
+- 2c: New `PendingChip` primitive + retrofit inline pending text
+  (confidence/EV/line pending on PlayerProp, SituationalSplits empty
+  states, etc.).
+
+**Tier 3 — Audit sweep (4 substeps).**
+
+Walk each built screen in highlight mode. Surface silently-missing
+items with markers. Produce punch-list; fix trivial items inline,
+note larger gaps.
+
+- 3a: Dashboard + GamesList
+- 3b: GameDetail
+- 3c: TeamsScreen
+- 3d: PlayerProp + PlayersExplorer + PlayoffProjections
+
+**Tier 4 — Cleanup + close-out (1 substep).**
+
+- 4a: Cleanup + workstream close-out.
+
+### Disconfirming evidence
+
+- **If ComingSoonCard copies have drifted significantly**, consolidation
+  may surface subtle behavior differences. Reconcile to the most
+  complete version; note any intentional per-screen variance.
+- **If the audit sweep reveals a screen has a large silently-missing
+  section** (not just a small inline gap), we note it as a follow-up
+  workstream item rather than fixing inline — keeps the sweep bounded.
+- **If `--highlight` orange clashes visually with team primary colors**
+  on team-colored surfaces (hero bands), the outline may need a
+  contrasting treatment (e.g., dashed border or inset shadow) rather
+  than solid orange. Adjust during Tier 2.
+- **If localStorage persistence of highlight mode causes confusion**
+  (user leaves it on, forgets), consider defaulting to off on each
+  session. Decide during 1a.
+
+### Timeline
+
+Total: ~9-10 substeps. Not tied to calendar; natural cadence.
+
+### Success artifacts
+
+By workstream close:
+
+- Floating dev panel available app-wide
+- Highlight toggle lights up all pending/blocked elements
+- `PendingChip` primitive + consolidated `ComingSoonCard`
+- Every built screen audited; silently-missing items surfaced
+- Discipline established for future screen work: pending things must
+  register in highlight mode
+- Punch-list of any larger gaps found during the sweep (for future
+  workstreams)
+`
 
 ---
 
@@ -143,7 +187,4 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| 2026-07-07 | **W9.9 complete.** PlayerProp Rebuild across 8 substeps in 4 tiers. New DistributionChart primitive. Consumes situational_splits (Step 5) + prop + game + team metadata. Composed screen pattern established for future prop-related work. |
-| 2026-07-07 | **W9.9 PlayerProp Rebuild design.** Locked. 8 substeps across 4 tiers. Full-width hero + single column below. New DistributionChart primitive. Consumes situational_splits (Step 5) + player vs defense (Step 6). Column layout single (not 2-col — width constraint lesson from W9.7). |
-| 2026-07-07 | **W9.7 complete.** Teams Split-View Rebuild shipped in 9 substeps across 4 tiers. Single split-view screen with rankings + profile. New RatingChart primitive. All 5 W9.5 primitives consumed. |
-| 2026-07-07 | **W9.7 Teams Split-View Rebuild design.** Locked. 9 substeps across 4 tiers. Route consolidation, split-view layout, rankings table with tabs, team hero + 6 sections in right pane (blocked schedule/top players as placeholders). Consumes all 5 W9.5 primitives + Step 7c cohort_splits + /projections composition. |
+| 2026-07-01 | **W9.8 Dev Panel + Pending Highlight Mode design.** Locked. ~9-10 substeps across 4 tiers. Floating dev panel with highlight toggle; retrofit field-status components + new PendingChip primitive; audit sweep across all built screens. Sequenced before W9.10 Compare so highlight discipline is baked in. |
