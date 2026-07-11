@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { AppStateProvider } from "../context/AppStateContext";
 import { BetSlipProvider } from "../context/BetSlipContext";
+import { DevPanelProvider } from "../context/DevPanelContext";
 import { NavProvider } from "../context/NavContext";
 
 /**
@@ -18,9 +19,11 @@ export function TestWrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AppStateProvider>
-        <BetSlipProvider>
-          <NavProvider>{children}</NavProvider>
-        </BetSlipProvider>
+        <DevPanelProvider>
+          <BetSlipProvider>
+            <NavProvider>{children}</NavProvider>
+          </BetSlipProvider>
+        </DevPanelProvider>
       </AppStateProvider>
     </QueryClientProvider>
   );

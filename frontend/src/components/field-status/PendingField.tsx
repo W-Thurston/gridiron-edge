@@ -1,3 +1,5 @@
+import { usePendingHighlight } from "./usePendingHighlight";
+
 type PendingFieldProps = {
   /** Optional custom placeholder. Defaults to em dash. */
   placeholder?: string;
@@ -9,6 +11,7 @@ type PendingFieldProps = {
  * future backend workstream (typically W8 Tier 3).
  */
 export function PendingField({ placeholder = "—" }: PendingFieldProps) {
+  const highlight = usePendingHighlight();
   return (
     <span
       title="Coming soon"
@@ -17,6 +20,7 @@ export function PendingField({ placeholder = "—" }: PendingFieldProps) {
         alignItems: "center",
         gap: 4,
         color: "var(--ink-4)",
+        ...highlight,
       }}
     >
       <span className="mono tnum">{placeholder}</span>

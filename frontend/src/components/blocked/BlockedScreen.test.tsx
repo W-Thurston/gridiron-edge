@@ -1,17 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { BlockedScreen } from "./BlockedScreen";
+import { TestWrapper } from "../../test/testWrapper";
 
 describe("BlockedScreen", () => {
   it("renders title, description, blocker, and roadmap", () => {
     render(
-      <BlockedScreen
-        title="Test Feature"
-        description="A test description."
-        blocker="test_blocker"
-        roadmap="W99"
-        requirements={["Requirement one", "Requirement two"]}
-      />,
+      <TestWrapper>
+        <BlockedScreen
+          title="Test Feature"
+          description="A test description."
+          blocker="test_blocker"
+          roadmap="W99"
+          requirements={["Requirement one", "Requirement two"]}
+        />
+      </TestWrapper>,
     );
 
     expect(screen.getByText("Test Feature")).toBeInTheDocument();

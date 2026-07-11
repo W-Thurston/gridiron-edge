@@ -1,3 +1,5 @@
+import { usePendingHighlight } from "./usePendingHighlight";
+
 type BlockedFieldProps = {
   blocker: string;
   roadmap: string;
@@ -15,6 +17,7 @@ export function BlockedField({
   roadmap,
   placeholder = "—",
 }: BlockedFieldProps) {
+  const highlight = usePendingHighlight();
   const tooltip = `Not available: ${blocker} (${roadmap})`;
   return (
     <span
@@ -24,6 +27,7 @@ export function BlockedField({
         alignItems: "center",
         gap: 4,
         color: "var(--ink-4)",
+        ...highlight,
       }}
     >
       <span className="mono tnum">{placeholder}</span>
