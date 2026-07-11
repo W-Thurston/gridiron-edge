@@ -211,10 +211,14 @@ function TeamCompareMode() {
   );
 }
 
+/** Grid template for summary rows: A value | stat label | B value. */
+const SUMMARY_GRID = "150px 200px 150px";
+
 /**
- * Collapsible summary card — the non-cohort stat table (rating/rank/
- * record/percentiles). Collapsed by default; secondary to the matchup
- * sections.
+ * Collapsible summary card — non-cohort stats (rating/rank/record/
+ * percentiles). Centered 3-column layout matching the matchup cards'
+ * team-left / team-right format, but without fill bars or collision
+ * coloring (these are parallel values, not collisions).
  */
 function SummaryCard({
   data,
@@ -259,65 +263,56 @@ function SummaryCard({
       </button>
 
       {open && (
-        <table
-          className="mono tnum"
-          style={{
-            width: "100%",
-            fontSize: 12,
-            borderCollapse: "collapse",
-            marginTop: 12,
-          }}
-        >
-          <thead>
-            <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-              <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
-              <th
-                style={{
-                  padding: "8px 12px 8px 0",
-                  textAlign: "right",
-                  fontWeight: 500,
-                  color: "var(--ink)",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <TeamMark abbr={data.team_a} />
-                  {data.team_a}
-                </span>
-              </th>
-              <th
-                style={{
-                  padding: "8px 0",
-                  textAlign: "right",
-                  fontWeight: 500,
-                  color: "var(--ink)",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <TeamMark abbr={data.team_b} />
-                  {data.team_b}
-                </span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data.stats ?? []).map((row) => (
-              <StatRowDisplay
+        <div style={{ marginTop: 12 }}>
+          {/* Team headers */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: SUMMARY_GRID,
+              gap: 10,
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            {/* Team A (right-aligned, name → mark) */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                justifyContent: "flex-end",
+                fontWeight: 500,
+                color: "var(--ink)",
+              }}
+            >
+              {data.team_a}
+              <TeamMark abbr={data.team_a} size={18} />
+            </span>
+            <span />
+            {/* Team B (left-aligned, mark → name) */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                justifyContent: "flex-start",
+                fontWeight: 500,
+                color: "var(--ink)",
+              }}
+            >
+              <TeamMark abbr={data.team_b} size={18} />
+              {data.team_b}
+            </span>
+          </div>
+
+          {/* Stat rows */}
+          <div style={{ display: "grid", gap: 2 }}>
+            {(data.stats ?? []).map((row, i) => (
+              <SummaryRow
                 key={row.key}
                 row={row}
+                first={i === 0}
                 status={
                   data._meta?.field_status?.[row.key] as
                     | FieldStatus
@@ -325,9 +320,75 @@ function SummaryCard({
                 }
               />
             ))}
-          </tbody>
-        </table>
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One summary stat row: A value (right) | centered stat label | B value
+ * (left). No bars/coloring — parallel values, not a collision.
+ */
+function SummaryRow({
+  row,
+  first,
+  status,
+}: {
+  row: {
+    key: string;
+    label: string;
+    team_a_value?: number | string | null;
+    team_b_value?: number | string | null;
+  };
+  first: boolean;
+  status: FieldStatus | undefined;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: SUMMARY_GRID,
+        gap: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "9px 0",
+        borderTop: first ? "none" : "1px solid var(--line-soft)",
+        fontSize: 12,
+      }}
+    >
+      {/* Team A value (right-aligned toward center) */}
+      <span
+        className="mono tnum"
+        style={{ textAlign: "right", color: "var(--ink)" }}
+      >
+        <CompareCell value={row.team_a_value} status={status} />
+      </span>
+
+      {/* Stat label (center) */}
+      <span
+        className="dim"
+        style={{
+          textAlign: "center",
+          fontSize: 10.5,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        {row.label}
+        <StatRowLabelStatus status={status} />
+      </span>
+
+      {/* Team B value (left-aligned toward center) */}
+      <span
+        className="mono tnum"
+        style={{ textAlign: "left", color: "var(--ink-2)" }}
+      >
+        <CompareCell value={row.team_b_value} status={status} />
+      </span>
     </div>
   );
 }
@@ -1021,44 +1082,6 @@ function getOpponentFromGameId(
   if (playerTeam === home) return away;
   if (playerTeam === away) return home;
   return null;
-}
-
-type StatRow = {
-  key: string;
-  label: string;
-  unit?: string | null;
-  team_a_value?: number | string | null;
-  team_b_value?: number | string | null;
-};
-
-function StatRowDisplay({
-  row,
-  status,
-}: {
-  row: StatRow;
-  status: FieldStatus | undefined;
-}) {
-  return (
-    <tr style={{ borderTop: "1px solid var(--line-soft)" }}>
-      <td
-        style={{
-          padding: "10px 12px 10px 0",
-          color: "var(--ink-2)",
-        }}
-      >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          {row.label}
-          <StatRowLabelStatus status={status} />
-        </span>
-      </td>
-      <td style={{ padding: "10px 12px 10px 0", textAlign: "right" }}>
-        <CompareCell value={row.team_a_value} status={status} />
-      </td>
-      <td style={{ padding: "10px 0", textAlign: "right" }}>
-        <CompareCell value={row.team_b_value} status={status} />
-      </td>
-    </tr>
-  );
 }
 
 function StatRowLabelStatus({ status }: { status: FieldStatus | undefined }) {
