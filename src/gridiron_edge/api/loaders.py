@@ -1017,3 +1017,41 @@ def team_metadata_lookup(settings: Settings) -> dict[str, dict]:
         }
         for _, row in df.iterrows()
     }
+
+
+def load_defense_allowed(
+    settings: Settings,
+    *,
+    team: str,
+    stat_type: str,
+) -> tuple[str, dict[str, dict]]:
+    """Load a team's allowed aggregates for a stat_type, all cohorts.
+
+    Derives the position from stat_type and reuses the opponent-allowed
+    filter. Keyed on team directly (not a prop) so arbitrary team +
+    stat_type combinations work for the Compare Player-vs-Defense
+    independent-team picker.
+
+    Args:
+        settings: API settings.
+        team: Defense's short team code (e.g. "SF").
+        stat_type: Stat family (e.g. "rb_rush_yards").
+
+    Returns:
+        Tuple of (position, cohorts_dict). position is "" if the
+        stat_type is unknown. cohorts_dict is cohort → aggregates,
+        empty if no rows match.
+    """
+    from gridiron_edge.evaluation.opponent_allowed import STAT_POSITION_MAP
+
+    position = STAT_POSITION_MAP.get(stat_type, "")
+    if not position:
+        return ("", {})
+
+    cohorts = load_opponent_allowed_for_prop(
+        settings,
+        opponent_team=team,
+        position=position,
+        stat_type=stat_type,
+    )
+    return (position, cohorts)
