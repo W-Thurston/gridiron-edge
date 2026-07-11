@@ -30,7 +30,10 @@
   --warn: oklch(0.80 0.15 78);         /* caution / uncertainty */
   --warn-dim: oklch(0.58 0.11 78);
   --info: oklch(0.74 0.13 240);        /* informational */
-  --accent: var(--pos);                /* default accent alias */
+  --accent: var(--pos);                  /* default accent alias */
+  --highlight: oklch(0.70 0.20 40);    /* dev panel pending/blocked highlight */
+
+
 
   /* ---------- Typography ---------- */
   --f-sans: "Geist", "Söhne", -apple-system, BlinkMacSystemFont,

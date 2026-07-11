@@ -5,6 +5,7 @@ import { TopNav } from "./components/chrome/TopNav";
 import { OfflineBanner } from "./components/error/OfflineBanner";
 import { AppStateProvider } from "./context/AppStateContext";
 import { BetSlipProvider } from "./context/BetSlipContext";
+import { DevPanelProvider } from "./context/DevPanelContext";
 import { NavProvider } from "./context/NavContext";
 import { Router } from "./Router";
 
@@ -12,17 +13,19 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppStateProvider>
-        <BetSlipProvider>
-          <NavProvider>
-            <div className="hm-frame">
-              <OfflineBanner />
-              <TopNav />
-              <main style={{ padding: 24, flex: 1 }}>
-                <Router />
-              </main>
-            </div>
-          </NavProvider>
-        </BetSlipProvider>
+        <DevPanelProvider>
+          <BetSlipProvider>
+            <NavProvider>
+              <div className="hm-frame">
+                <OfflineBanner />
+                <TopNav />
+                <main style={{ padding: 24, flex: 1 }}>
+                  <Router />
+                </main>
+              </div>
+            </NavProvider>
+          </BetSlipProvider>
+        </DevPanelProvider>
       </AppStateProvider>
     </QueryClientProvider>
   );
