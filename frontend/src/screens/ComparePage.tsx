@@ -1121,7 +1121,7 @@ function MatchupPlainlyCard({
 
           {rank != null && <RankLine rank={rank} />}
 
-          <VerdictCallout rank={rank} playerAvg={playerAvg} allowed={allowed} />
+          <VerdictCallout playerAvg={playerAvg} allowed={allowed} />
 
           {/* Player baseline comparison */}
           {playerAvg != null && (
@@ -1149,51 +1149,81 @@ function MatchupPlainlyCard({
   );
 }
 
-/** Rank line, colored by stinginess tier. */
+/** Rank line — general defensive context (not the player-specific verdict). */
 function RankLine({ rank }: { rank: number }) {
-  const color =
-    rank <= 10 ? "var(--neg)" : rank >= 23 ? "var(--pos)" : "var(--ink-2)";
+  const descriptor =
+    rank <= 10 ? "stingy" : rank >= 23 ? "generous" : "middle-of-pack";
   return (
-    <div className="mono" style={{ fontSize: 11, marginTop: 4, color }}>
-      Ranks {ordinal(rank)} of 32 vs the position
+    <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>
+      {ordinal(rank)} of 32 vs the position ({descriptor} overall)
     </div>
   );
 }
 
-/** Verdict callout: favorable / tough / neutral by rank tier. */
+/**
+ * Verdict for THIS player: driven by the baseline delta (defense-allowed
+ * vs the player's own average), not the defense's general rank. A defense
+ * allowing MORE than the player's norm is a favorable spot (expect over);
+ * allowing LESS is tough (expect under). Rank is shown separately as
+ * general context.
+ *
+ * Deadband: within ±8% of the player's average → Neutral.
+ */
 function VerdictCallout({
-  rank,
   playerAvg,
   allowed,
 }: {
-  rank: number | null;
   playerAvg: number | null;
   allowed: number;
 }) {
-  let verdict: string;
-  let color: string;
-  let bg: string;
-
-  if (rank != null && rank <= 10) {
-    verdict = "Tough spot";
-    color = "var(--neg)";
-    bg = "color-mix(in oklab, var(--neg) 10%, transparent)";
-  } else if (rank != null && rank >= 23) {
-    verdict = "Favorable spot";
-    color = "var(--pos)";
-    bg = "color-mix(in oklab, var(--pos) 10%, transparent)";
-  } else {
-    verdict = "Neutral matchup";
-    color = "var(--ink-2)";
-    bg = "var(--bg-2)";
+  // Without a player baseline we can't judge favorable/tough for them.
+  if (playerAvg == null || playerAvg === 0) {
+    return (
+      <div
+        style={{
+          marginTop: 12,
+          padding: "10px 12px",
+          borderRadius: 6,
+          background: "var(--bg-2)",
+          borderLeft: "3px solid var(--ink-3)",
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>
+          Neutral matchup
+        </div>
+        <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>
+          No player baseline to compare against.
+        </div>
+      </div>
+    );
   }
 
-  const detail =
-    playerAvg != null
-      ? allowed > playerAvg
-        ? "This defense allows more than the player's norm."
-        : "This defense allows less than the player's norm."
-      : "";
+  const delta = allowed - playerAvg;
+  const relative = delta / playerAvg;
+  const deadband = 0.08;
+
+  let verdict: string;
+  let detail: string;
+  let color: string;
+
+  if (relative > deadband) {
+    verdict = "Favorable spot";
+    detail = "This defense allows more than the player's norm — lean over.";
+    color = "var(--pos)";
+  } else if (relative < -deadband) {
+    verdict = "Tough spot";
+    detail = "This defense allows less than the player's norm — lean under.";
+    color = "var(--neg)";
+  } else {
+    verdict = "Neutral matchup";
+    detail = "This defense allows about what the player averages.";
+    color = "var(--ink-2)";
+  }
+
+  const bg =
+    color === "var(--ink-2)"
+      ? "var(--bg-2)"
+      : `color-mix(in oklab, ${color} 10%, transparent)`;
 
   return (
     <div
@@ -1206,11 +1236,9 @@ function VerdictCallout({
       }}
     >
       <div style={{ fontSize: 12, fontWeight: 600, color }}>{verdict}</div>
-      {detail && (
-        <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>
-          {detail}
-        </div>
-      )}
+      <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>
+        {detail}
+      </div>
     </div>
   );
 }
@@ -1255,7 +1283,7 @@ function ComparisonTable({
             <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>
               Def allowed
             </th>
-            <th style={{ padding: "6px 0", textAlign: "right" }}>Rank</th>
+            <th style={{ padding: "6px 0", textAlign: "right" }}>Def rank</th>
           </tr>
         </thead>
         <tbody>
