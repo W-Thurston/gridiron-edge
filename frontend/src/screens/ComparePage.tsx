@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCompareTeams, useTeamProfile, usePropsList,useComparePlayer } from "../api/hooks";
+import { useCompareTeams, useTeamProfile, usePlayersList } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -8,8 +8,7 @@ import { Pill } from "../components/primitives/Pill";
 import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
-import { formatStatType } from "../utils/props";
-import { DistributionChart } from "../components/primitives/DistributionChart";
+import { usePendingHighlight } from "../components/field-status/usePendingHighlight";
 
 type CompareMode = "team" | "player";
 
@@ -821,268 +820,342 @@ function EvenFooting({
   );
 }
 
+type PlayerStatOption = { label: string; statKey: string; statType: string };
+
+const POSITION_STATS: Record<string, PlayerStatOption[]> = {
+  QB: [
+    { label: "Passing", statKey: "pass_yards", statType: "qb_pass_yards" },
+    { label: "Rushing", statKey: "rush_yards", statType: "qb_rush_yards" },
+  ],
+  RB: [{ label: "Rushing", statKey: "rush_yards", statType: "rb_rush_yards" }],
+  WR: [{ label: "Receiving", statKey: "rec_yards", statType: "wr_rec_yards" }],
+  TE: [{ label: "Receiving", statKey: "rec_yards", statType: "te_rec_yards" }],
+  FB: [{ label: "Rushing", statKey: "rush_yards", statType: "rb_rush_yards" }],
+};
+
+type PlayerSplitKey =
+  | "season" | "l4" | "home" | "away"
+  | "vs_winning" | "vs_losing" | "vs_top10";
+
+const PLAYER_SPLITS: { key: PlayerSplitKey; label: string; pending: boolean }[] = [
+  { key: "season", label: "Season", pending: false },
+  { key: "l4", label: "Last 4", pending: false },
+  { key: "home", label: "Home", pending: false },
+  { key: "away", label: "Away", pending: false },
+  { key: "vs_winning", label: "vs Winning", pending: true },
+  { key: "vs_losing", label: "vs Losing", pending: true },
+  { key: "vs_top10", label: "vs Top-10", pending: true },
+];
+
 /**
- * Player vs Defense comparison mode. Placeholder — Tier 3 builds the
- * player + defense pickers, DistributionChart, and stat rows.
+ * Player vs Defense mode. Independent player / stat-category / team
+ * pickers (mirroring Team-vs-Team), a 7-split strip (4 live + 3 pending),
+ * and placeholder sections for the bar chart (C2) and matchup card +
+ * comparison table (C3).
  */
 function PlayerCompareMode() {
   const { route, navigate } = useNav();
-  const selectedPropId = route.params.prop_id ?? "";
+  const playersResult = usePlayersList({});
+  const players = playersResult.data?.items ?? [];
 
-  const propsList = usePropsList({});
-  const props = propsList.data?.items ?? [];
+  const playerId = route.params.player_id ?? "";
+  const statKey = route.params.stat ?? "";
+  const team = route.params.team ?? "";
+  const split = (route.params.split ?? "season") as PlayerSplitKey;
 
-  const setPropId = (propId: string) => {
-    const params: Record<string, string> = { mode: "player" };
-    if (propId) params.prop_id = propId;
-    navigate("/compare", params);
+  const selectedPlayer = players.find((p) => p.player_id === playerId) ?? null;
+  const statOptions = selectedPlayer
+    ? (POSITION_STATS[selectedPlayer.position] ?? [])
+    : [];
+  const selectedStat = statOptions.find((s) => s.statKey === statKey) ?? null;
+
+  const setParams = (patch: Record<string, string>) => {
+    const next: Record<string, string> = {
+      mode: "player",
+      ...(playerId && { player_id: playerId }),
+      ...(statKey && { stat: statKey }),
+      ...(team && { team }),
+      split,
+      ...patch,
+    };
+    // Drop empties so the URL stays clean.
+    for (const k of Object.keys(next)) if (!next[k]) delete next[k];
+    navigate("/compare", next);
   };
 
-  const selectedProp = props.find((p) => p.prop_id === selectedPropId) ?? null;
-  const opponent = selectedProp
-    ? getOpponentFromGameId(selectedProp.game_id, selectedProp.team)
-    : null;
+  const onSelectPlayer = (id: string) => {
+    // Reset stat when player changes (position may differ).
+    const p = players.find((x) => x.player_id === id);
+    const firstStat = p ? (POSITION_STATS[p.position]?.[0]?.statKey ?? "") : "";
+    setParams({ player_id: id, stat: firstStat });
+  };
+
+  const ready = selectedPlayer && selectedStat && team;
 
   return (
-    <div className="hm-card" style={{ padding: 24 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-        Player vs Defense
-      </div>
-
-      {/* Prop picker */}
-      <div style={{ marginBottom: 16 }}>
-        <span className="upper dim2" style={{ fontSize: 9 }}>
-          Prop
-        </span>
-        <select
-          value={selectedPropId}
-          onChange={(e) => setPropId(e.target.value)}
-          style={{
-            display: "block",
-            marginTop: 4,
-            background: "var(--bg-1)",
-            color: "var(--ink)",
-            border: "1px solid var(--line-soft)",
-            borderRadius: 5,
-            padding: "6px 10px",
-            fontSize: 12,
-            fontFamily: "var(--f-sans)",
-            minWidth: 320,
-          }}
-        >
-          <option value="">Select a prop…</option>
-          {props.map((p) => (
-            <option key={p.prop_id} value={p.prop_id}>
-              {p.player_name} · {formatStatType(p.stat_type)} ({p.team})
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Derived matchup header */}
-      {selectedProp && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "12px 0",
-            borderTop: "1px solid var(--line-soft)",
-            marginBottom: 8,
-          }}
-        >
-          <TeamMark abbr={selectedProp.team} size={28} />
-          <div>
-            <div style={{ fontWeight: 500 }}>{selectedProp.player_name}</div>
-            <div className="mono dim" style={{ fontSize: 11 }}>
-              {formatStatType(selectedProp.stat_type)} · {selectedProp.position}
-            </div>
-          </div>
-          <span
-            className="serif"
-            style={{
-              fontSize: 18,
-              fontStyle: "italic",
-              color: "var(--ink-3)",
-              margin: "0 8px",
-            }}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Pickers row */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(260px, 360px) auto minmax(200px, 300px)",
+          gap: 16,
+          alignItems: "stretch",
+          justifyContent: "center",
+        }}
+      >
+        {/* Left card: player + stat */}
+        <div className="hm-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <span className="upper dim2" style={{ fontSize: 9 }}>Player</span>
+          <PlayerCombobox
+            players={players}
+            selected={selectedPlayer}
+            onSelect={onSelectPlayer}
+          />
+          <span className="upper dim2" style={{ fontSize: 9, marginTop: 4 }}>Stat</span>
+          <select
+            value={statKey}
+            disabled={!selectedPlayer}
+            onChange={(e) => setParams({ stat: e.target.value })}
+            style={selectStyle}
           >
+            {statOptions.length === 0 && <option value="">—</option>}
+            {statOptions.map((s) => (
+              <option key={s.statKey} value={s.statKey}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Center vs */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span className="serif" style={{ fontSize: 20, fontStyle: "italic", color: "var(--ink-2)" }}>
             vs
           </span>
-          {opponent ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <TeamMark abbr={opponent} size={28} />
-              <div className="mono dim" style={{ fontSize: 11 }}>
-                {opponent} defense
-              </div>
+        </div>
+
+        {/* Right card: team */}
+        <div className="hm-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <span className="upper dim2" style={{ fontSize: 9 }}>Defense</span>
+          <select
+            value={team}
+            onChange={(e) => setParams({ team: e.target.value })}
+            style={selectStyle}
+          >
+            {PLAYER_TEAMS.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+          {team && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <TeamMark abbr={team} size={28} />
+              <span className="mono dim" style={{ fontSize: 11 }}>{team} defense</span>
             </div>
-          ) : (
-            <span className="dim mono" style={{ fontSize: 11 }}>
-              defense
-            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Split strip */}
+      {ready && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "0 4px" }}>
+          <span className="upper dim2" style={{ fontSize: 9, marginRight: 6 }}>Split</span>
+          {PLAYER_SPLITS.map((s) =>
+            s.pending ? (
+              <PendingSplitPill key={s.key} label={s.label} />
+            ) : (
+              <Pill
+                key={s.key}
+                active={split === s.key}
+                onClick={() => setParams({ split: s.key })}
+              >
+                {s.label}
+              </Pill>
+            ),
           )}
         </div>
       )}
 
-      {/* Comparison content */}
-      {!selectedProp && (
-        <div className="dim mono" style={{ fontSize: 12 }}>
-          Select a prop to compare against its opponent's defense.
+      {/* Empty state */}
+      {!ready && (
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="dim mono" style={{ fontSize: 12 }}>
+            Select a player, stat, and defense to compare.
+          </div>
         </div>
       )}
-      {selectedProp && <PlayerDefenseComparison propId={selectedProp.prop_id} />}
+
+      {/* Placeholders — C2 bar chart, C3 matchup card + table */}
+      {ready && (
+        <>
+          <div className="hm-card" style={{ padding: 20 }}>
+            <div className="upper dim" style={{ fontSize: 10, marginBottom: 8 }}>
+              {selectedPlayer.player_name} · {selectedStat.label} vs {team}
+            </div>
+            <div style={{ padding: 20, textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
+              Per-game bar chart — coming in C2
+            </div>
+          </div>
+          <div className="hm-card" style={{ padding: 20 }}>
+            <div style={{ padding: 20, textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
+              "The matchup, plainly" + comparison table — coming in C3
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/**
- * Fetches /compare/player/{prop_id} and renders the projection
- * distribution + player-vs-defense stat rows.
- */
-function PlayerDefenseComparison({ propId }: { propId: string }) {
-  const { data, isLoading, error, refetch } = useComparePlayer(propId);
+/** Searchable player combobox: text input + client-filtered result list. */
+function PlayerCombobox({
+  players,
+  selected,
+  onSelect,
+}: {
+  players: { player_id: string; player_name: string; position: string; team: string }[];
+  selected: { player_id: string; player_name: string; position: string; team: string } | null;
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
 
-  if (isLoading) {
-    return <div className="dim" style={{ marginTop: 8 }}>Loading…</div>;
-  }
-  if (error) {
-    return (
-      <ErrorCard
-        error={error as Error}
-        onRetry={() => refetch()}
-        title="Couldn't load comparison"
-      />
-    );
-  }
-  if (!data) {
-    return (
-      <div className="dim mono" style={{ fontSize: 12 }}>
-        No comparison data available.
-      </div>
-    );
-  }
-
-  const stats = data.stats ?? [];
-  const fieldStatus = data._meta?.field_status;
-
-  // Extract distribution params from projection rows
-  const getProj = (key: string) =>
-    stats.find((s) => s.key === key)?.projection_value ?? null;
-  const mean = getProj("mean");
-  const std = getProj("std");
-  const lo = getProj("lo_90");
-  const hi = getProj("hi_90");
+  const filtered = query.trim()
+    ? players
+        .filter((p) => p.player_name.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 50)
+    : players.slice(0, 50);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Distribution chart */}
-      <div>
+    <div style={{ position: "relative" }}>
+      <input
+        type="text"
+        value={open ? query : (selected ? `${selected.player_name} (${selected.position} · ${selected.team})` : query)}
+        placeholder="Search player…"
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        style={selectStyle}
+      />
+      {open && (
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            marginBottom: 12,
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            marginTop: 2,
+            maxHeight: 240,
+            overflowY: "auto",
+            background: "var(--bg-2)",
+            border: "1px solid var(--line-soft)",
+            borderRadius: 5,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
           }}
         >
-          <div className="upper dim" style={{ fontSize: 10 }}>
-            Projection distribution
-          </div>
-          <div className="mono dim2" style={{ fontSize: 10 }}>
-            90% credible band
-          </div>
+          {filtered.length === 0 && (
+            <div className="dim mono" style={{ padding: "8px 10px", fontSize: 11 }}>No match.</div>
+          )}
+          {filtered.map((p) => (
+            <button
+              key={p.player_id}
+              type="button"
+              onClick={() => { onSelect(p.player_id); setOpen(false); setQuery(""); }}
+              style={{
+                display: "flex",
+                width: "100%",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 10px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                font: "inherit",
+                color: "var(--ink)",
+                textAlign: "left",
+              }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <span style={{ fontSize: 12 }}>{p.player_name}</span>
+              <span className="mono dim2" style={{ fontSize: 10 }}>{p.position} · {p.team}</span>
+            </button>
+          ))}
         </div>
-        <DistributionChart
-          mean={typeof mean === "number" ? mean : null}
-          std={typeof std === "number" ? std : null}
-          lo={typeof lo === "number" ? lo : null}
-          hi={typeof hi === "number" ? hi : null}
-        />
-      </div>
-
-      {/* Player vs Defense stat rows */}
-      <div>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Projection vs Defense
-        </div>
-        <table
-          className="mono tnum"
-          style={{
-            width: "100%",
-            fontSize: 12,
-            borderCollapse: "collapse",
-          }}
-        >
-          <thead>
-            <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-              <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
-              <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>
-                Projection
-              </th>
-              <th style={{ padding: "8px 0", textAlign: "right" }}>Defense</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.map((row) => (
-              <tr
-                key={row.key}
-                style={{ borderTop: "1px solid var(--line-soft)" }}
-              >
-                <td
-                  style={{
-                    padding: "10px 12px 10px 0",
-                    color: "var(--ink-2)",
-                  }}
-                >
-                  {row.label}
-                </td>
-                <td
-                  style={{ padding: "10px 12px 10px 0", textAlign: "right" }}
-                >
-                  <PlayerCompareCell value={row.projection_value} />
-                </td>
-                <td style={{ padding: "10px 0", textAlign: "right" }}>
-                  <PlayerCompareCell
-                    value={row.defense_value}
-                    status={fieldStatus?.[row.key] as FieldStatus | undefined}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }
 
-function PlayerCompareCell({
-  value,
-  status,
-}: {
-  value: number | string | null | undefined;
-  status?: FieldStatus | undefined;
-}) {
-  if (value != null && value !== "") {
-    return <>{typeof value === "number" ? value.toFixed(1) : value}</>;
-  }
-  if (!status) return <span className="dim2">—</span>;
-  if (status === "pending") return <PendingField />;
-  return <BlockedField blocker={status.blocker} roadmap={status.roadmap} />;
+/** Pending (non-clickable) split pill — participates in highlight mode. */
+function PendingSplitPill({ label }: { label: string }) {
+  const highlight = usePendingHighlight();
+  return (
+    <span
+      className="mono"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 10px",
+        fontSize: 11,
+        color: "var(--ink-4)",
+        border: "1px solid var(--line-soft)",
+        borderRadius: 4,
+        cursor: "not-allowed",
+        ...highlight,
+      }}
+      title="Split pending backend support"
+    >
+      {label}
+      <span style={{ fontSize: 8 }}>⏳</span>
+    </span>
+  );
 }
 
-/** Parse game_id into opponent abbrev given the player's team. */
-function getOpponentFromGameId(
-  gameId: string,
-  playerTeam: string,
-): string | null {
-  const parts = gameId.split("_");
-  if (parts.length < 4) return null;
-  const [, , away, home] = parts;
-  if (playerTeam === home) return away;
-  if (playerTeam === away) return home;
-  return null;
-}
+const selectStyle: React.CSSProperties = {
+  background: "var(--bg-1)",
+  color: "var(--ink)",
+  border: "1px solid var(--line-soft)",
+  borderRadius: 5,
+  padding: "6px 10px",
+  fontSize: 12,
+  fontFamily: "var(--f-sans)",
+  width: "100%",
+};
+
+const PLAYER_TEAMS = [
+  { value: "", label: "Select defense…" },
+  { value: "ARI", label: "Arizona Cardinals" },
+  { value: "ATL", label: "Atlanta Falcons" },
+  { value: "BAL", label: "Baltimore Ravens" },
+  { value: "BUF", label: "Buffalo Bills" },
+  { value: "CAR", label: "Carolina Panthers" },
+  { value: "CHI", label: "Chicago Bears" },
+  { value: "CIN", label: "Cincinnati Bengals" },
+  { value: "CLE", label: "Cleveland Browns" },
+  { value: "DAL", label: "Dallas Cowboys" },
+  { value: "DEN", label: "Denver Broncos" },
+  { value: "DET", label: "Detroit Lions" },
+  { value: "GB", label: "Green Bay Packers" },
+  { value: "HOU", label: "Houston Texans" },
+  { value: "IND", label: "Indianapolis Colts" },
+  { value: "JAC", label: "Jacksonville Jaguars" },
+  { value: "KAN", label: "Kansas City Chiefs" },
+  { value: "LAC", label: "Los Angeles Chargers" },
+  { value: "LAR", label: "Los Angeles Rams" },
+  { value: "LV", label: "Las Vegas Raiders" },
+  { value: "MIA", label: "Miami Dolphins" },
+  { value: "MIN", label: "Minnesota Vikings" },
+  { value: "NE", label: "New England Patriots" },
+  { value: "NO", label: "New Orleans Saints" },
+  { value: "NYG", label: "New York Giants" },
+  { value: "NYJ", label: "New York Jets" },
+  { value: "PHI", label: "Philadelphia Eagles" },
+  { value: "PIT", label: "Pittsburgh Steelers" },
+  { value: "SEA", label: "Seattle Seahawks" },
+  { value: "SF", label: "San Francisco 49ers" },
+  { value: "TB", label: "Tampa Bay Buccaneers" },
+  { value: "TEN", label: "Tennessee Titans" },
+  { value: "WAS", label: "Washington Commanders" },
+] as const;
 
 function StatRowLabelStatus({ status }: { status: FieldStatus | undefined }) {
   if (!status) return null;

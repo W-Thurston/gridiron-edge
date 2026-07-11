@@ -1006,6 +1006,56 @@
         "title": "CurveBucket",
         "type": "object"
       },
+      "DefenseAllowedResponse": {
+        "additionalProperties": false,
+        "description": "Per-defense allowed aggregates for one (team, position, stat_type).\n\nReturns all cohorts (season/l4/home/away) so the frontend split\nswitcher can toggle without refetching. Each cohort maps to\n{avg_allowed, sample_size, rank_against_position}.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "cohorts": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nested {cohort: {avg_allowed, sample_size, rank_against_position}}. None if no data for this (team, position, stat_type).",
+            "title": "Cohorts"
+          },
+          "position": {
+            "default": "",
+            "description": "Position the stat_type applies to; empty if unknown.",
+            "title": "Position",
+            "type": "string"
+          },
+          "stat_type": {
+            "title": "Stat Type",
+            "type": "string"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team",
+          "stat_type"
+        ],
+        "title": "DefenseAllowedResponse",
+        "type": "object"
+      },
       "DrivePoint": {
         "additionalProperties": false,
         "description": "A single drive entry in the drive chart.",
@@ -2887,6 +2937,147 @@
         "title": "NewsItem",
         "type": "object"
       },
+      "PlayerGameRow": {
+        "additionalProperties": false,
+        "description": "One game's value for a player's chosen stat.\n\nSufficient for a per-game bar chart or sparkline: the week, the stat\nvalue that game, the opponent, and home/away context.",
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "is_home": {
+            "title": "Is Home",
+            "type": "boolean"
+          },
+          "opponent": {
+            "title": "Opponent",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "week",
+          "opponent",
+          "game_id",
+          "is_home"
+        ],
+        "title": "PlayerGameRow",
+        "type": "object"
+      },
+      "PlayerHistoryResponse": {
+        "additionalProperties": false,
+        "description": "Response for GET /players/{player_id}/history.\n\nPer-game series for one (player, stat, season). Bars don't vary by\nany cohort/split \u2014 this is the player's raw game-by-game production.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/PlayerGameRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "default": "",
+            "description": "Display name; empty if player_id not found.",
+            "title": "Player Name",
+            "type": "string"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Season the series covers (int year, e.g. 2024).",
+            "title": "Season"
+          },
+          "stat": {
+            "description": "Requested stat key, e.g. 'rush_yards'.",
+            "title": "Stat",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "required": [
+          "player_id",
+          "stat"
+        ],
+        "title": "PlayerHistoryResponse",
+        "type": "object"
+      },
+      "PlayerListRow": {
+        "additionalProperties": false,
+        "description": "One player in the /players roster list.",
+        "properties": {
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "title": "Player Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          }
+        },
+        "required": [
+          "player_id",
+          "player_name",
+          "position",
+          "team"
+        ],
+        "title": "PlayerListRow",
+        "type": "object"
+      },
       "PlayerVsDefenseRow": {
         "additionalProperties": false,
         "description": "A single row in the player-vs-defense comparison table.\n\n``projection_value`` is populated from the champion model's archive\nrow. ``defense_value`` is null in T2 \u2014 blocked pending\nopponent-allowed-by-position aggregation (ROADMAP \u00a79 Tier 3).",
@@ -2953,6 +3144,57 @@
           "label"
         ],
         "title": "PlayerVsDefenseRow",
+        "type": "object"
+      },
+      "PlayersListResponse": {
+        "additionalProperties": false,
+        "description": "Response for GET /players. Skill players active in the season.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/PlayerListRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Season the roster covers (int year).",
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "PlayersListResponse",
         "type": "object"
       },
       "PortfolioSplits": {
@@ -5465,6 +5707,60 @@
         ]
       }
     },
+    "/defense/{team}/allowed": {
+      "get": {
+        "description": "Return a team's allowed aggregates for a stat_type, all cohorts.\n\nPowers the Compare Player-vs-Defense bar chart's team-allowed\naverage line + the \"matchup, plainly\" verdict card, keyed on an\narbitrary team (independent of any specific prop/game).\n\n- Unknown stat_type: 200 with position \"\" + cohorts null.\n- Team/stat with no data: 200 with cohorts null, field_status\n  marking the opponent-allowed blocker.",
+        "operationId": "get_defense_allowed_defense__team__allowed_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team",
+            "required": true,
+            "schema": {
+              "title": "Team",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stat family, e.g. 'rb_rush_yards', 'wr_rec_yards'.",
+            "in": "query",
+            "name": "stat_type",
+            "required": true,
+            "schema": {
+              "description": "Stat family, e.g. 'rb_rush_yards', 'wr_rec_yards'.",
+              "title": "Stat Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenseAllowedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Defense Allowed",
+        "tags": [
+          "defense"
+        ]
+      }
+    },
     "/edges": {
       "get": {
         "description": "Return ranked edges for (season, week) using the champion model.\n\n- Missing champion manifest: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_CHAMPION_MANIFEST.\n- Missing odds snapshot: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_ODDS_AVAILABLE.\n- No predictions or no positive-EV edges: 200 with empty list, no\n  field_status (legitimate empty state).",
@@ -6127,6 +6423,148 @@
         "summary": "Alerts relevant to active positions.",
         "tags": [
           "news"
+        ]
+      }
+    },
+    "/players": {
+      "get": {
+        "description": "Return skill players active in a season (for the Compare picker).",
+        "operationId": "list_players_players_get",
+        "parameters": [
+          {
+            "description": "Season int (e.g. 2025). Defaults to latest.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season int (e.g. 2025). Defaults to latest.",
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayersListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Players",
+        "tags": [
+          "players"
+        ]
+      }
+    },
+    "/players/{player_id}/history": {
+      "get": {
+        "description": "Return a player's per-game stat series for one season.\n\nPowers per-game bar charts (Compare Player-vs-Defense), the\nPlayerProp 12-game history chart, and the PlayersExplorer L6\nsparkline.\n\n- Unknown stat key: 404 (lists valid keys).\n- Player not found / no rows for season: 404.",
+        "operationId": "get_player_history_players__player_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "player_id",
+            "required": true,
+            "schema": {
+              "title": "Player Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stat key, e.g. 'rush_yards', 'rec_yards', 'pass_yards'.",
+            "in": "query",
+            "name": "stat",
+            "required": true,
+            "schema": {
+              "description": "Stat key, e.g. 'rush_yards', 'rec_yards', 'pass_yards'.",
+              "title": "Stat",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Season int (e.g. 2024). Defaults to player's latest.",
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Season int (e.g. 2024). Defaults to player's latest.",
+              "title": "Season"
+            }
+          },
+          {
+            "description": "Return only the last N games (most recent weeks).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return only the last N games (most recent weeks).",
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Player History",
+        "tags": [
+          "players"
         ]
       }
     },

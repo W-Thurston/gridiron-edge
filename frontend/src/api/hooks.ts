@@ -308,3 +308,22 @@ export function useEdges(params: {
     },
   });
 }
+
+/**
+ * Fetches the skill-player roster for a season (Compare player picker).
+ * Season optional — API defaults to latest.
+ */
+export function usePlayersList(params: { season?: number } = {}) {
+  return useQuery({
+    queryKey: ["players", params],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/players", {
+        params: { query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+  });
+}
