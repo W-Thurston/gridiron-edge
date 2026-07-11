@@ -438,6 +438,61 @@ def load_player_history(
     }
 
 
+def load_players_list(
+    settings: Settings,
+    *,
+    season: int | None = None,
+) -> dict | None:
+    """Load skill players active in a season, deduped to latest team.
+
+    Reads player_game_logs.parquet, filters to skill positions + REG
+    season, and takes each player's most-recent game row for their
+    current team/position/name. Sorted by name.
+
+    Args:
+        settings: API settings.
+        season: Season int; defaults to the latest present in the logs.
+
+    Returns:
+        Dict {season, rows: [{player_id, player_name, position, team}]}.
+        None if the logs are missing/empty.
+    """
+    logs_path: Path = settings.repo_root / "data" / "cleaned" / "player_game_logs.parquet"
+    if not logs_path.exists():
+        return None
+
+    df: DataFrame = pd.read_parquet(logs_path)
+    if df.empty:
+        return None
+
+    if "season_type" in df.columns:
+        df = df.loc[df["season_type"] == "REG", :]
+    if "is_skill" in df.columns:
+        df = df.loc[df["is_skill"], :]
+    if df.empty:
+        return None
+
+    resolved_season: int = season if season is not None else int(df["season"].max())
+    scope = df.loc[df["season"] == resolved_season, :]
+    if scope.empty:
+        return None
+
+    # Each player's most-recent game row = current team/position/name.
+    latest = scope.sort_values(["player_id", "week"]).groupby("player_id", group_keys=False).tail(1)
+
+    rows: list[dict] = [
+        {
+            "player_id": str(r["player_id"]),
+            "player_name": str(r["player_name"]),
+            "position": str(r["position"]),
+            "team": str(r["team"]),
+        }
+        for _, r in latest.sort_values("player_name").iterrows()
+    ]
+
+    return {"season": resolved_season, "rows": rows}
+
+
 def _is_home_from_game_id(game_id: str, team: str) -> bool:
     """Home if team matches the HOME slot of 'YYYY_WW_AWAY_HOME'."""
     parts = game_id.split("_")

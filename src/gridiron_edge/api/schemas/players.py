@@ -25,6 +25,26 @@ class PlayerGameRow(BaseModel):
     is_home: bool
 
 
+class PlayerListRow(BaseModel):
+    """One player in the /players roster list."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    player_id: str
+    player_name: str
+    position: str
+    team: str
+
+
+class PlayersListResponse(BaseListResponse[PlayerListRow]):
+    """Response for GET /players. Skill players active in the season."""
+
+    season: int | None = Field(
+        default=None,
+        description="Season the roster covers (int year).",
+    )
+
+
 class PlayerHistoryResponse(BaseListResponse[PlayerGameRow]):
     """Response for GET /players/{player_id}/history.
 

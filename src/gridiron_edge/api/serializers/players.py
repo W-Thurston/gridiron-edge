@@ -7,6 +7,8 @@ from __future__ import annotations
 from gridiron_edge.api.schemas.players import (
     PlayerGameRow,
     PlayerHistoryResponse,
+    PlayerListRow,
+    PlayersListResponse,
 )
 
 
@@ -37,6 +39,25 @@ def serialize_player_history(payload: dict) -> PlayerHistoryResponse:
         player_id=str(payload["player_id"]),
         player_name=str(payload.get("player_name", "")),
         stat=str(payload["stat"]),
+        season=payload.get("season"),
+        items=items,
+        total=len(items),
+    )
+
+
+def serialize_players_list(payload: dict) -> PlayersListResponse:
+    """Convert a load_players_list payload into the response schema."""
+    rows = payload.get("rows", [])
+    items = [
+        PlayerListRow(
+            player_id=str(r["player_id"]),
+            player_name=str(r["player_name"]),
+            position=str(r["position"]),
+            team=str(r["team"]),
+        )
+        for r in rows
+    ]
+    return PlayersListResponse(
         season=payload.get("season"),
         items=items,
         total=len(items),
