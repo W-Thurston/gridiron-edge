@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCompareTeams, useTeamProfile } from "../api/hooks";
+import { useCompareTeams, useTeamProfile, usePropsList } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -8,6 +8,7 @@ import { Pill } from "../components/primitives/Pill";
 import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
+import { formatStatType } from "../utils/props";
 
 type CompareMode = "team" | "player";
 
@@ -479,23 +480,137 @@ function EvenFooting({
  * player + defense pickers, DistributionChart, and stat rows.
  */
 function PlayerCompareMode() {
+  const { route, navigate } = useNav();
+  const selectedPropId = route.params.prop_id ?? "";
+
+  const propsList = usePropsList({});
+  const props = propsList.data?.items ?? [];
+
+  const setPropId = (propId: string) => {
+    const params: Record<string, string> = { mode: "player" };
+    if (propId) params.prop_id = propId;
+    navigate("/compare", params);
+  };
+
+  const selectedProp = props.find((p) => p.prop_id === selectedPropId) ?? null;
+  const opponent = selectedProp
+    ? getOpponentFromGameId(selectedProp.game_id, selectedProp.team)
+    : null;
+
   return (
     <div className="hm-card" style={{ padding: 24 }}>
       <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
         Player vs Defense
       </div>
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        Coming in Tier 3
+
+      {/* Prop picker */}
+      <div style={{ marginBottom: 16 }}>
+        <span className="upper dim2" style={{ fontSize: 9 }}>
+          Prop
+        </span>
+        <select
+          value={selectedPropId}
+          onChange={(e) => setPropId(e.target.value)}
+          style={{
+            display: "block",
+            marginTop: 4,
+            background: "var(--bg-1)",
+            color: "var(--ink)",
+            border: "1px solid var(--line-soft)",
+            borderRadius: 5,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontFamily: "var(--f-sans)",
+            minWidth: 320,
+          }}
+        >
+          <option value="">Select a prop…</option>
+          {props.map((p) => (
+            <option key={p.prop_id} value={p.prop_id}>
+              {p.player_name} · {formatStatType(p.stat_type)} ({p.team})
+            </option>
+          ))}
+        </select>
       </div>
+
+      {/* Derived matchup header */}
+      {selectedProp && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 0",
+            borderTop: "1px solid var(--line-soft)",
+            marginBottom: 8,
+          }}
+        >
+          <TeamMark abbr={selectedProp.team} size={28} />
+          <div>
+            <div style={{ fontWeight: 500 }}>{selectedProp.player_name}</div>
+            <div className="mono dim" style={{ fontSize: 11 }}>
+              {formatStatType(selectedProp.stat_type)} · {selectedProp.position}
+            </div>
+          </div>
+          <span
+            className="serif"
+            style={{
+              fontSize: 18,
+              fontStyle: "italic",
+              color: "var(--ink-3)",
+              margin: "0 8px",
+            }}
+          >
+            vs
+          </span>
+          {opponent ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TeamMark abbr={opponent} size={28} />
+              <div className="mono dim" style={{ fontSize: 11 }}>
+                {opponent} defense
+              </div>
+            </div>
+          ) : (
+            <span className="dim mono" style={{ fontSize: 11 }}>
+              defense
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Comparison content (Tier 3b) */}
+      {!selectedProp && (
+        <div className="dim mono" style={{ fontSize: 12 }}>
+          Select a prop to compare against its opponent's defense.
+        </div>
+      )}
+      {selectedProp && (
+        <div
+          style={{
+            padding: 20,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          Distribution + defense comparison coming in Tier 3b
+        </div>
+      )}
     </div>
   );
+}
+
+/** Parse game_id into opponent abbrev given the player's team. */
+function getOpponentFromGameId(
+  gameId: string,
+  playerTeam: string,
+): string | null {
+  const parts = gameId.split("_");
+  if (parts.length < 4) return null;
+  const [, , away, home] = parts;
+  if (playerTeam === home) return away;
+  if (playerTeam === away) return home;
+  return null;
 }
 
 type StatRow = {
