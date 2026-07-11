@@ -73,9 +73,10 @@ export function TeamPicker({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr auto 1fr",
+        gridTemplateColumns: "minmax(240px, 340px) auto minmax(240px, 340px)",
         gap: 16,
         alignItems: "stretch",
+        justifyContent: "center",
       }}
     >
       <PickerCard

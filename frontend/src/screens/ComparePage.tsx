@@ -77,51 +77,44 @@ function TeamCompareMode() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Header card: pickers + cohort strip */}
-      <div className="hm-card" style={{ padding: 24 }}>
-        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-          Team Comparison
-        </div>
+      {/* Team pickers (float directly — no outer card wrapper) */}
+      <TeamPicker
+        teamA={teamA}
+        teamB={teamB}
+        onTeamAChange={setTeamA}
+        onTeamBChange={setTeamB}
+      />
 
-        <TeamPicker
-          teamA={teamA}
-          teamB={teamB}
-          onTeamAChange={setTeamA}
-          onTeamBChange={setTeamB}
-        />
-
-        {bothSelected && data && (
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              marginTop: 16,
-              paddingTop: 16,
-              borderTop: "1px solid var(--line-soft)",
-              alignItems: "center",
-            }}
-          >
-            <span className="upper dim2" style={{ fontSize: 9, marginRight: 6 }}>
-              Cohort
-            </span>
-            {COHORT_TABS.map((tab) => (
-              <Pill
-                key={tab.key}
-                active={cohort === tab.key}
-                onClick={() => setCohort(tab.key)}
-              >
-                {tab.label}
-              </Pill>
-            ))}
-            <span
-              className="mono dim2"
-              style={{ fontSize: 10, marginLeft: "auto" }}
+      {/* Cohort strip (floating, below pickers) */}
+      {bothSelected && data && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+            padding: "0 4px",
+          }}
+        >
+          <span className="upper dim2" style={{ fontSize: 9, marginRight: 6 }}>
+            Cohort
+          </span>
+          {COHORT_TABS.map((tab) => (
+            <Pill
+              key={tab.key}
+              active={cohort === tab.key}
+              onClick={() => setCohort(tab.key)}
             >
-              Season: {data.season ?? "—"}
-            </span>
-          </div>
-        )}
-      </div>
+              {tab.label}
+            </Pill>
+          ))}
+          <span
+            className="mono dim2"
+            style={{ fontSize: 10, marginLeft: "auto" }}
+          >
+            Season: {data.season ?? "—"}
+          </span>
+        </div>
+      )}
 
       {/* Empty / loading / error states */}
       {!bothSelected && (
