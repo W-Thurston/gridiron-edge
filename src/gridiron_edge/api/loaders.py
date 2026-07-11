@@ -134,11 +134,20 @@ def load_team_name_map(settings: Settings) -> dict[str, str]:
 
 
 def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
-    """Resolve the current (season, week) from the games table.
+    """Resolve the current (season, week) for default views.
 
-    Uses the latest completed game. Returns ("", 0) if games is empty.
+    Normally the latest completed game. But when the completed archive
+    ends on a season-ending game (week 22 = Super Bowl) and an upcoming
+    schedule exists, prefer the upcoming schedule's earliest week — so
+    the offseason lands on next season's Week 1 rather than replaying the
+    just-finished Super Bowl.
+
+    Returns ("", 0) if games is empty.
     """
-    from gridiron_edge.datasets.loaders import load_games
+    from gridiron_edge.datasets.loaders import (
+        load_games,
+        load_schedule_upcoming,
+    )
 
     games = load_games(settings.repo_root)
     if games.empty:
@@ -146,7 +155,26 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
 
     games_sorted = games.sort_values(["YEAR", "WEEK_NUM"])
     latest = games_sorted.iloc[-1]
-    return (str(latest["YEAR"]), int(latest["WEEK_NUM"]))
+    latest_season = str(latest["YEAR"])
+    latest_week = int(latest["WEEK_NUM"])
+
+    # Season complete (SB played) → look forward to the upcoming slate.
+    if latest_week >= 22:
+        try:
+            upcoming = load_schedule_upcoming(settings.repo_root)
+        except FileNotFoundError:
+            upcoming = None
+
+        if upcoming is not None and not upcoming.empty:
+            # Upcoming schedule columns: confirm the season/week columns.
+            season_col = next((c for c in ("YEAR", "season") if c in upcoming.columns), None)
+            week_col = next((c for c in ("WEEK_NUM", "week") if c in upcoming.columns), None)
+            if season_col and week_col:
+                up_sorted = upcoming.sort_values([season_col, week_col])
+                up_first = up_sorted.iloc[0]
+                return (str(up_first[season_col]), int(up_first[week_col]))
+
+    return (latest_season, latest_week)
 
 
 def compute_elo_deltas(
