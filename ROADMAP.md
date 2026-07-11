@@ -59,15 +59,22 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Prop CLI | ✅ Complete | All commands archive- or artifact-driven, no retraining at use time |
 | Audit remediation | ✅ Complete | Units 1-11 (~100 findings), 4 cross-cutting patterns, architectural cleanup |
 | Deep code review (Tier 4 sweep) | ✅ Complete | 30 backlog items closed; 2 real bugs surfaced and fixed |
+| API serving layer (W8) | ✅ Complete | 16 endpoints, Pydantic-validated, field_status placeholder convention, champion resolution wired |
+| Frontend app (W9) | ✅ Complete | Vite + React + TS; all screens render; typed openapi-fetch + React Query |
+| Frontend fidelity arc (W9.5–W9.10) | ✅ Mostly complete | Dashboard, GameDetail, Teams split-view, PlayerProp rebuilt; 5 shared primitives + DistributionChart + RatingChart; dev-panel highlight mode. Compare (W9.10) in progress. |
+| Cohort splits (11 metrics) | ✅ Complete | Team cohort splits season/l4/home/away with off+def reciprocal pairs; per-prop situational splits; opponent-allowed by position |
 
 ### What's Missing
 
 | Area | Status | Impact |
 |---|---|---|
-| Model ensemble | ❌ Not started | Using individual models only, no weighted combination |
-| Multi-book odds ingestion | ❌ Not started | Can't compare books, can't shop lines |
-| Injury/news feed | ❌ Not started | No injury data; blocks W4.5 scenario engine |
+| Model ensemble | ❌ Not started | Individual models only; no weighted combination |
+| Multi-book odds ingestion | ❌ Not started | Blocks line shopping, book selectors, real bet-slip odds, per-week book lines |
+| Injury/news feed | ❌ Not started | Blocks W4.5 scenario engine + injury UI fields |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
+| Player game-history endpoint | ❌ Not started | Blocks Compare Player-vs-Defense bar chart, PlayerProp 12-game chart, PlayersExplorer L6 sparkline |
+| Off/def rating decomposition | ❌ Not started | Blocks off/def ranking tabs, Compare Off/Def mini-stats |
+| Frontend prototype-fidelity backlog | 🟡 Partial | ~180 catalogued items in §9.7/§9.8; core screens done, polish + blocked-on-data items remain |
 
 ### Known Blockers
 
@@ -227,11 +234,63 @@ situational splits (Step 5 data), Player vs Defense table with WhyLink,
 5 blocked ComingSoonCards. New `DistributionChart` primitive available
 for W9.10 Compare. See CHANGELOG.md for details.
 
+#### W9.8: Dev Panel + Pending Highlight Mode — ✅ COMPLETE (mechanism; audit deferred, 2026-07-01)
+
+Floating bottom-right dev panel with a Highlight Pending & Blocked
+toggle. When on, every pending/blocked element lights up orange so
+backend gaps are visible during a visual pass.
+
+**Delivered:** `DevPanelContext` + `--highlight` var (Tier 1);
+`usePendingHighlight` hook, retrofit of `PendingField`/`BlockedField`,
+consolidated `ComingSoonCard`, new `PendingChip` primitive (Tier 2).
+
+**Deferred:** Tier 3 audit sweep — walking every screen in highlight
+mode requires fully-populated backend data to distinguish frontend
+gaps from unpopulated fields. Tracked in §9 deferred tasks.
+
+#### Frontend Fidelity Arc (W9.5–W9.10) — framing note
+
+W9.5 through W9.10 form a coherent push: rebuild each prototype screen
+to fidelity, consuming a shared primitive set (Pill, WhyLink, TeamMark-
+with-colors, Spark, TeamHero, DistributionChart, RatingChart) and the
+W9.8 highlight discipline. W9.5–W9.9 complete; W9.10 (Compare) active.
+
 See CHANGELOG.md for details.
 
 ### Active Workstream
 
+#### W9.10: Compare Screen Rebuild — 🟡 ACTIVE
 
+Two-mode matchup surface: Team vs Team + Player vs Defense.
+
+**Team vs Team — ✅ complete.** Mode switcher, mirrored team pickers +
+swap, cohort strip, narrative card, collapsible summary card, three
+matchup cards with mirrored ranking-bar collision rows (offense value
+↔ reciprocal defense-allowed, edge chips, descriptive sublabels,
+title-style metric names), centered layout. Backed by an 11-metric
+cohort_splits expansion (added def_pass_epa, def_third_down_pct,
+def_redzone_td_pct so every offensive metric has its reciprocal).
+
+**Player vs Defense — 🟡 redesign in progress.** Being reworked to
+mirror Team-vs-Team: independent player / stat / team pickers, 7-split
+strip (season/l4/home/away/vs-winning/vs-losing/vs-top-10), a per-game
+bar chart (player's stat per game + team-allowed average line + book
+line), and a "matchup, plainly" verdict card.
+
+**Blocked on backend (immediate next work — Path C):**
+1. `/players/{player_id}/history?stat=` endpoint — per-game stat values
+   from `player_game_logs.parquet` (data exists; expose it). Powers the
+   bar chart centerpiece. Also unblocks PlayerProp 12-game chart +
+   PlayersExplorer L6 sparkline (§9.7 P0 item).
+2. Expand `opponent_allowed` splits from 2 (season/l5) to 7
+   (season/l4/home/away/vs-winning/vs-losing/vs-top-10) — mirrors the
+   team_cohort_splits expansion pattern.
+
+Book line + over/under bar coloring remain deferred (blocked on odds,
+W7) — marked pending per highlight discipline.
+
+**Deferred within W9.10:** Change 6 (sortable rows by category/edge +
+drag-to-reorder) — P2, §9.8. Only build if missed.
 
 ### Future Workstreams (ordered by current priority)
 
@@ -295,11 +354,11 @@ See CHANGELOG.md for details.
 
 **Current:** Parquet + CSV, file-based, CLI-driven.
 
-**Recommendation:** Stay with files through W8. Re-evaluate during W9 when concrete API query patterns emerge. Migrate to SQLite or PostgreSQL when:
-- The API layer needs to serve concurrent requests
-- The portfolio/bet ledger needs transactional integrity
-- Query patterns require joins that are awkward in pandas
-- Multi-user access is added
+**Status:** Files held through W8/W9 as planned; no complex pandas
+merge chains emerged in the API layer (serializers read pre-computed
+artifacts per D21). **Decision: stay file-based.** Re-evaluate only if
+multi-user access, concurrency, or transactional bet-ledger integrity
+becomes a real requirement.
 
 **Practical trigger:** If during W9 wiring you find yourself writing complex pandas merge chains in the API layer to answer a single request, that's the cue.
 
@@ -350,8 +409,8 @@ Current packages, with W8/W9 additions noted:
   - `betting/` ✅
   - `cli/` ✅ (including `_composites.py`, `weekly_predict.py`, `post_week.py`, `full_retrain.py`, `verify.py`)
   - `core/` ✅
-  - **`api/` — PLANNED (W8)**
-  - **frontend lives outside `src/` — PLANNED (W9)**
+  - `api/` ✅ (W8)
+  - frontend lives outside `src/` at `frontend/` ✅ (W9)
   - `scenario/` — PLANNED (W4.5)
 
 ---
@@ -388,6 +447,7 @@ W13 ✅
 W8 (API) ✅
 │
 ├── W9 (Frontend) ✅
+│   └── W9.5–W9.9 ✅ (fidelity arc) · W9.10 🟡 (Compare, active)
 │
 ├── W12 (Ensemble) 🟢 planned
 │
@@ -398,12 +458,13 @@ W8 (API) ✅
 ```
 
 
-**Current position:** W8 workstream complete (2026-07-04). All three tiers shipped. Frontend consumes API end-to-end. Between-workstreams pause. Path forward:
-- **W12 (Model Ensemble)** — available. Combines existing champion models into a weighted ensemble.
-- **W4.5 (Scenario Engine)** — blocked on §5.3 injury data source decision.
-- **W7 (Multi-Book Line Shopping)** — blocked on §5.2 odds source decision.
-- **W10 (Real-Time)** — deferred until W7/W12 stabilize.
-- **W8 off/def decomposition** — orphan Tier 3 item; could revisit as a small standalone workstream.
+**Current position:** Backend + API + frontend all shipped. Frontend fidelity arc (W9.5–W9.10) rebuilt the core screens; W9.10 (Compare) active with Player-vs-Defense blocked on two backend endpoints (player game-history + opponent-allowed splits expansion — the immediate next work). Path forward after W9.10:
+- **Frontend polish backlog** (§9.7/§9.8) — pull P0/P1 items per-screen.
+- **Pending-highlight audit sweep** (§9 deferred) — now unblocked (data populated).
+- **W12 (Model Ensemble)** — soft-blocked on §9.2 walk-forward bug.
+- **W4.5 (Scenario)** — blocked on §5.3 injury data.
+- **W7 (Multi-Book)** — blocked on §5.2 odds source; unblocks many deferred UI items.
+- **W10 (Real-Time)** — deferred.
 
 
 ---
@@ -422,7 +483,10 @@ W8 (API) ✅
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned (delivered with M4.5 + auth) |
 | **M6: Live game day experience** | Real-time win prob, live edges, hedge suggestions during a game. | W10 | Planned |
 
-**M4.5 is the next north star.** It's both a usability milestone and a quality-assurance step: the act of seeing every output side-by-side will surface bugs the CLI hides.
+**M4.5 ✅ achieved.** The visual verification surface now exists and is
+actively used — the dev-panel highlight mode operationalizes it. Next
+milestone north star is **M4 (multi-book line shopping)** or **M5
+(friends can use it, needs auth)**, both gated on W7 / auth respectively.
 
 ---
 ## 9. Known Issues & Backlog
@@ -913,26 +977,6 @@ Blocked on: full backend data population (next pipeline run).
 
 | Date | Change |
 |---|---|
-| 2026-07-07 | **W9.9 complete.** PlayerProp Rebuild across 8 substeps in 4 tiers. Consumes existing data; new DistributionChart primitive extractable to Compare. |
-| 2026-07-07 | **W9.7 complete.** Teams Split-View Rebuild across 9 substeps in 4 tiers. Consolidated route structure. New RatingChart primitive. All 5 W9.5 primitives consumed. Cohort splits and postseason outlook composed from existing data. |
-| 2026-07-07 | **W9.6 complete.** GameDetail Full Fidelity across 9 substeps in 4 tiers. All 5 W9.5 primitives consumed heavily. Rebuild covers header composition, 3 main column cards, and 3 right-rail cards. |
-| 2026-07-04 | **W9.5 complete.** Dashboard now a real landing page. 5 cross-cutting primitives available. Team metadata reference consolidated. See CHANGELOG.md. |
-| 2026-07-05 | **Prototype vs. implementation audit complete.** Systematic screen-by-screen comparison of 16 screens against the frontend prototype. Findings consolidated into §9.7 (W8 backend hygiene backlog, ~90 items) and §9.8 (W9 frontend polish backlog, ~90 items). PROTOTYPE_AUDIT.md retired. Not blocking any active workstream — items pulled from these lists as future work. |
-| 2026-07-04 | **W8 workstream complete.** All three tiers shipped: Tier 1 skeleton + blocked stubs, Tier 2 populated endpoints (16), Tier 3 additive datasets (7). Frontend (W9) consumes API end-to-end. |
-| 2026-07-03 | **W9 complete; W8 Tier 3 opens.** ROADMAP restructured to reflect current state: W9 moved to Completed section; W8 elevated to sole Active workstream with Tier 3 additive datasets as the work. §6 dependency graph redrawn; §1.1 "What's Working" and "What's Missing" tables updated. |
-| 2026-07-03 | **W9 complete.** Frontend consumes the API end-to-end; all 20 prototype screens render. Vite + React + TypeScript at `frontend/`. Every populated field shows real data; every scaffolded field surfaces `field_status`; every error state consistent. M4.5 milestone achieved. Path forward: W8 Tier 3 additive datasets, prioritized by W9 feedback on which field_status states most impact the UX. |
-| 2026-07-03 | **W9 Tier 2 complete.** All 12 API-consuming screens wired end-to-end. Real data flows for populated fields; `field_status` renders structured null states for pending/blocked fields. Tier 3 (blocked screens + polish) opens next. |
-| 2026-07-02 | **W9 Tier 1 complete.** Frontend client infrastructure shipped in seven substeps. Vite + React + TypeScript + `openapi-fetch` + React Query loop works end-to-end against the local API. Backend hygiene item added to §9.6 (season type inconsistency across endpoints). W9 Tier 2 (populated screens) opens next. |
-| 2026-07-01 | **W8 Tier 2 complete.** Eight steps shipped over ~1 month. 16 endpoints populated with real data. Tier 3 additive datasets designing; kickoff waits for W9 feedback on priority. W9 (Frontend) unblocked. |
-| 2026-07-01 | **W13 complete.** Runtime Champion Resolution shipped in full: manifest + resolver (Tier 1), full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3). §9.6 D21 Deviations row for runtime champion resolution updated to Resolved. W8 (API) unpauses at Tier 2 Step 5. |
-| 2026-07-01 | **W13 Tier 2 complete.** Manifest writer, three selectors, full-retrain promote-champions stage, baseline-report annotation, --write-manifest CLI flags on both game and prop sides. §9.6 D21 Deviations row updated to Resolved. Tier 3 (CLI consumer refactor) opens. |
-| 2026-06-23 | **Document restructure.** PLAN.md now scoped to the active workstream only; future workstream candidates, real-bugs backlog, investigations, and operational items migrated to new ROADMAP.md §9 Known Issues & Backlog. Added backend-gaps-surfaced-by-prototype subsection to §9 with W8 Tier 2 disposition per item. M4.5 reworded to reflect prototype-driven verification framing. Current-position callout updated to mark W8 active. |
-| 2026-06-23 | **Resync with PLAN.md.** Marked W4.1 (Composite CLI) and W5.5 (Deep Code Review / Tier 4 sweep) complete. M1.6 marked achieved. Set W8 (API) as active workstream with W9 (Frontend) sequential after. Added M4.5 milestone for visual output verification. Reordered future workstreams by current value-density: W8 → W9 → {W12, W4.5, W7} → W10. Added §5.3 as explicit blocker for W4.5. Updated §6 dependency graph and "Current position" callout. Added Principle 6.5 (frontend-as-verification-surface). Cleaned §1 to reflect composite CLI, calibration persistence, and pipeline staleness detection as shipped capabilities. |
-| 2026-06-22 | **Workstream 5 (Tier 4 cleanup) complete.** 30 ambient hygiene items closed. Two real bugs fixed. Remaining items reclassified as workstream candidates. TIER_4_BACKLOG.md retired. |
-| 2026-06-21 | **Audit remediation (W3.5) complete.** ~100 findings closed across 11 audit units, 4 cross-cutting patterns. W4.1 (Composite CLI Workflows) added. M1.6 milestone added. |
-| 2026-06-10 | **W4 mostly complete. M3 achieved.** Player data pipeline, 5 prop models, post-processing enrichment, evaluation metrics, archive, CLI. |
-| 2026-06-03 | Champion/challenger model refactor complete. Temporal CV fix (TimeSeriesSplit). 3 unversioned champions replace 10 versioned variants. M1.5 achieved. |
-| 2026-06-03 | **v2 refresh.** Updated §1, marked W1–W6 complete in §4, added W11 (later removed) and W12, updated §5.4, redrew §6, marked M1/M2 achieved, added M1.5. |
-| 2026-05-30 | Initial version — created from prototype review + gap analysis. |
+| 2026-07-11 | **ROADMAP audit + cleanup.** Recorded W9.8 (dev panel) + W9.10 (Compare, active) which were missing. Updated §1 Working/Missing to post-frontend reality. Filled §4 Active with W9.10 + the Player-vs-Defense backend work (player-history endpoint + opponent-allowed splits expansion) as immediate next. Marked §5.1/§5.4 file-storage + api/frontend as shipped. Redrew §6 current position. Reframed M4.5 as achieved. |
 
 ***

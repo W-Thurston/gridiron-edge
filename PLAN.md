@@ -31,131 +31,123 @@ Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside th
 
 ### Current Workstream: W9.10 — Compare Screen Rebuild
 
-**Status:** Designing.
+**Status:** Active. Team vs Team complete; Player vs Defense redesign
+paused on backend endpoints (the immediate next work).
 
 ### What we are building
 
-Rebuild the Compare screen (`/compare`) from its current flat 3-column
-stat table to a two-mode matchup surface: Team vs Team and Player vs
-Defense. Mode switcher at top; cohort control strip; grouped matchup
-sections; auto-generated narrative banner.
+Two-mode matchup surface at `/compare`: Team vs Team and Player vs
+Defense. Mode switcher, cohort/split controls, and prototype-aligned
+layout consuming cohort splits, opponent-allowed, and player history.
 
-We won't reach full prototype fidelity (its 24-stat × 6-cohort universe
-needs backend expansion). But we ship a significantly better Compare
-with existing data: Step 7 cohort splits (8 metrics × 4 cohorts) drive
-Team vs Team; Step 6 opponent-allowed + W9.9's DistributionChart drive
-Player vs Defense.
+### Progress
 
-Every pending/blocked element uses the W9.8 highlight primitives, so
-Compare auto-participates in the deferred audit sweep.
+**Tier 1 — Restructure + mode switcher — ✅ complete.**
+Pill mode switcher, URL sync (`?mode=team|player`), layout skeleton.
 
-### Why we are building it now
+**Tier 2 — Team vs Team mode — ✅ complete (incl. prototype alignment).**
+- Enhanced team pickers with team colors + rating + record + swap;
+  mirrored inward-facing identity (name→logo / logo→name), width-
+  constrained and centered
+- Cohort strip (Season/L4/Home/Away)
+- Separate cards: floating pickers → narrative card → collapsible
+  summary card (centered team-left/team-right) → three matchup cards
+- Matchup rows: 5-column center-aligned with mirrored rank-fill bars
+  (rank 1 = full, fills toward center), edge chips (arrow + team +
+  descriptor), value+rank inline, descriptive sublabels ("Rush EPA /
+  play" vs "Rush EPA allowed / play"), title-style metric names
+  ("Run efficiency")
+- Auto-narrative card computing biggest collision per direction from
+  rank differentials
+- Backed by an 11-metric cohort_splits expansion: added def_pass_epa,
+  def_third_down_pct, def_redzone_td_pct so every offensive metric has
+  its reciprocal defensive-allowed pair
 
-Compare is the largest single-screen gap in the app and the most
-conceptually distinct — it embodies the platform's "see the raw
-materials, draw your own conclusion" philosophy. Two use cases
-(team matchups, player-vs-defense) share the screen deliberately.
+**Tier 3 — Player vs Defense mode — 🟡 redesign, paused on backend.**
+Redesigned to mirror Team vs Team (per 2026-07-01 spec + prototype
+screenshot). Independent player / stat-category / team pickers; a
+7-split strip (season / l4 / home / away / vs-winning / vs-losing /
+vs-top-10); a per-game bar chart as the centerpiece; a "matchup,
+plainly" verdict card; a comparison table.
 
-Building it now:
-- Consumes W9.9's DistributionChart primitive (Player vs Defense mode)
-- Consumes Step 6 + Step 7 data already shipping
-- Applies the highlight discipline from W9.8 throughout
-- Closes the last major screen-rebuild before we'd need real backend
-  expansion for further fidelity
+**Tier 4 — Cleanup + close-out — pending.**
 
-#### Success criteria
+### Immediate next work — Tier B (backend, Path C)
 
-- Mode switcher: Team vs Team / Player vs Defense (Pill-based)
-- URL syncs `?mode=team|player`
-- **Team vs Team mode:**
-  - Enhanced team pickers (team colors + rating + record) with swap button
-  - Cohort control strip (Season/L4/Home/Away)
-  - Grouped matchup sections: "When A has ball" / "When B has ball" /
-    "Even footing" consuming Step 7 cohort splits
-  - Auto-generated narrative banner computed from stat differences
-- **Player vs Defense mode:**
-  - Player + defense pickers
-  - DistributionChart for the prop's projection
-  - Player-vs-Defense stat rows (existing table)
-- All pending/blocked elements use highlight primitives
-- All quality gates pass
+Player vs Defense's centerpiece (per-game bar chart) and split options
+are blocked on backend artifacts that don't exist yet. Build these two
+endpoints/expansions first, then resume the frontend rebuild:
+
+**B1 — Player game-history endpoint.**
+`GET /players/{player_id}/history?stat=<stat>&limit=<n>` returning
+per-game values `[{week, value, opponent, game_id}, ...]` for the
+season. Data already exists in `player_game_logs.parquet` — this
+exposes it. Powers the bar chart. Also unblocks §9.7 P0 items
+(PlayerProp 12-game chart, PlayersExplorer L6 sparkline).
+
+**B2 — Opponent-allowed splits expansion.**
+Expand `opponent_allowed` aggregation from 2 splits (season, l5) to 7
+(season / l4 / home / away / vs-winning / vs-losing / vs-top-10),
+mirroring the team_cohort_splits expansion pattern. Powers the split
+strip's team-allowed average line.
+
+### Then — Tier C (Player vs Defense frontend rebuild)
+
+Rebuild the mode against B1/B2 data:
+- Pickers: player + stat-category (same row, left card) + team (right
+  card), mirroring Team-vs-Team card layout
+- Split strip (7 splits via Pill)
+- **Bar chart** (replaces the DistributionChart in this mode): player's
+  chosen stat per game across the season (bars don't change with split);
+  team's split-average as a solid horizontal line; book line as dashed
+  (pending — blocked on odds); bar over/under coloring (pending — odds)
+- **"The matchup, plainly"** verdict card: team allows X to the position,
+  ranks Y of 32, favorable/unfavorable vs our projection
+- Comparison table (keep current; consider centering to match Team mode)
 
 ### Locked architectural decisions
 
 | Decision | Choice |
 |---|---|
 | Modes | Both Team vs Team + Player vs Defense |
-| Layout | Prototype's sectional structure, stacked single-column (width lesson from W9.7/W9.9) |
+| Layout | Sectional cards, stacked single-column (width lesson W9.7/W9.9) |
 | Mode switcher | Pill-based, URL-synced `?mode=` |
-| Team vs Team grouping | "When A has ball" / "When B has ball" / "Even footing" |
-| Team pickers | Enhanced with colors + rating + record + swap button |
-| Cohort switcher | Pill row, 4 cohorts (Season/L4/Home/Away) |
-| Narrative banner | Computed dynamically from cohort split differences |
-| Player vs Defense chart | DistributionChart primitive (from W9.9) |
-| Player vs Defense table | Preserve existing structure |
-| Drag-reorder rows | Skip (deferred polish) |
-| Highlight discipline | All pending/blocked via W9.8 primitives |
+| Team vs Team | Complete: mirrored pickers, cohort strip, narrative + summary + 3 matchup cards, ranking-bar collision rows |
+| Cohort metrics | 11-metric cohort_splits (offense + reciprocal defense pairs) |
+| Player-vs-Defense pickers | Independent player / stat-category / team (not a single prop_id) |
+| Player-vs-Defense splits | 7 (season/l4/home/away/vs-winning/vs-losing/vs-top-10) |
+| Player-vs-Defense centerpiece | Per-game bar chart (not DistributionChart) — bars = player's stat per game; solid line = team-allowed split avg; dashed line = book line (pending) |
+| Player selection source | Derive from `/props` (dedupe by player); stat categories filtered to what the player has |
+| Book line + O/U coloring | Deferred (blocked on odds, W7); marked pending per highlight discipline |
+| Drag-reorder + sort (Change 6) | Deferred (P2, §9.8) |
 
-### Prerequisite
+### Blocked / deferred within W9.10
 
-None. Step 6 + Step 7 data ships. DistributionChart primitive available.
-All W9.5 primitives + W9.8 highlight mechanism in place.
-
-### Tiers
-
-**Tier 1 — Restructure + mode switcher (1 substep).**
-
-- 1a: Layout restructure. Mode switcher (Pill) with URL sync. Retain
-  existing content in placeholder sections during rebuild.
-
-**Tier 2 — Team vs Team mode (4 substeps).**
-
-- 2a: Enhanced team pickers (colors + rating + record) + swap button.
-- 2b: Cohort control strip (4 Pills).
-- 2c: Grouped matchup sections consuming Step 7 cohort splits.
-- 2d: Auto-generated narrative banner computed from data.
-
-**Tier 3 — Player vs Defense mode (2 substeps).**
-
-- 3a: Player + defense pickers.
-- 3b: DistributionChart integration + player-vs-defense stat rows.
-
-**Tier 4 — Cleanup + close-out (1 substep).**
-
-- 4a: Cleanup + workstream close-out prep.
+- **B1/B2 backend** — immediate next work; everything in Tier C waits on it
+- **Book line + over/under bar coloring** — blocked on odds (W7); render as pending
+- **Change 6 (sort by category/edge + drag-reorder)** — P2, deferred; build only if missed
 
 ### Disconfirming evidence
 
-- **Backend cohort splits are only 8 metrics, not the prototype's 24.**
-  "When A has ball" sections will have fewer rows. Render what we have;
-  mark absent metric categories with highlight primitives if we want
-  them visible as gaps.
-- **Defensive-side matchup data:** Step 7 gives each team its own
-  off/def metrics, but not opponent-specific matchup pairs. "When A has
-  ball" compares A's offense vs B's defense using the two teams' cohort
-  splits — works, but isn't a true opponent-adjusted collision.
-- **Player vs Defense mode needs a player picker sourced from `/props`.**
-  If the props list is large, picker UX may need search/filter. Start
-  simple (dropdown), enhance if needed.
-- **Width constraint:** prototype's player mode is a 2-column
-  (game-log hero + verdict rail). Ours stacks single-column. Same lesson
-  as W9.7/W9.9.
-- **Auto-narrative could produce awkward phrasing** for edge cases (ties,
-  missing data). Guard with fallback text.
+- **Player-history data completeness:** `player_game_logs.parquet` was
+  last refreshed Jun 10 (stale vs Jul 5 game-side data). Bar chart may
+  miss the final playoff weeks for some players. Acceptable for
+  verification; note if completeness matters for real use.
+- **7-split expansion cost:** vs-winning / vs-losing / vs-top-10 require
+  opponent-record and opponent-rank context at aggregation time — more
+  than the simple home/away partition. Confirm the source data supports
+  it before promising all 7; ship the subset we can compute and mark
+  the rest pending.
+- **Stat-category → stat_type mapping:** QBs have pass + rush; RBs have
+  rush + rec. Picker filters to categories the player actually has data
+  for.
+- **Width constraint:** single-column, matching the Team-vs-Team layout;
+  Compare page centered at max-width.
 
 ### Timeline
 
-Total: ~8 substeps. Not tied to calendar.
-
-### Success artifacts
-
-By workstream close:
-- Compare renders two working modes
-- Enhanced team pickers with visual identity
-- Grouped matchup sections + auto-narrative
-- Player vs Defense mode with DistributionChart
-- All W9.5 primitives + DistributionChart + highlight primitives consumed
-- Compare no longer the biggest screen gap
+Team vs Team complete. Remaining: B1 + B2 (backend) → Tier C (frontend
+rebuild) → Tier 4 (cleanup + close-out). Roughly 6–9 substeps.
 
 ---
 
@@ -169,4 +161,5 @@ _(none currently paused)_
 
 | Date | Change |
 |------|--------|
-| 2026-07-01 | **W9.10 Compare Screen Rebuild design.** Locked. ~8 substeps across 4 tiers. Two modes (Team vs Team + Player vs Defense). Team mode: enhanced pickers, cohort strip, grouped matchup sections, auto-narrative. Player mode: DistributionChart + defense stat rows. Highlight discipline baked in from W9.8. |
+| 2026-07-11 | **W9.10 status resync.** Team vs Team complete (incl. six prototype-alignment adjustments + 11-metric cohort_splits expansion). Player vs Defense redesigned to mirror Team mode (independent player/stat/team pickers, 7-split strip, per-game bar chart centerpiece, "matchup plainly" card). Paused on backend: B1 player-history endpoint + B2 opponent-allowed splits expansion (Path C). Book line / O-U coloring deferred (odds); Change 6 deferred (P2). |
+| 2026-07-11 | **W9.10 Compare Screen Rebuild design.** Locked. ~8 substeps across 4 tiers. Two modes (Team vs Team + Player vs Defense). Team mode: enhanced pickers, cohort strip, grouped matchup sections, auto-narrative. Player mode: DistributionChart + defense stat rows. Highlight discipline baked in from W9.8. |
