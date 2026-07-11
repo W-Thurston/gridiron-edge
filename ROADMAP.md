@@ -846,6 +846,20 @@ Future frontend workstreams (call them W9.5, W9.6, or per-screen
 revamps) will pull from this list based on what's most valuable at
 that moment.
 
+### Deferred task: Pending-highlight audit sweep
+
+After the next full-retrain pipeline run populates all backend data,
+walk every built screen with dev-panel Highlight mode ON. For each
+silently-missing element (shows blank/em-dash but doesn't light up),
+add a PendingChip / ComingSoonCard / field_status marker. Produces a
+punch-list of any larger gaps for follow-up.
+
+Screens to walk: Dashboard, GamesList, GameDetail, TeamsScreen,
+PlayerProp, PlayersExplorer, PlayoffProjections, Compare, BetSlip,
+Bankroll.
+
+Blocked on: full backend data population (next pipeline run).
+
 ### Backlog (from 2026-07-06 audit)
 
 - [ ] Games trainer: introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring
