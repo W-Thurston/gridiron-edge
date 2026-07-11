@@ -102,6 +102,7 @@ def create_app() -> FastAPI:
         live,
         model,
         news,
+        players,
         portfolio,
         projections,
         prop_reasoning,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(live.router)
     app.include_router(model.router)
     app.include_router(news.router)
+    app.include_router(players.router)
     app.include_router(portfolio.router)
     app.include_router(projections.router)
     app.include_router(prop_reasoning.router)

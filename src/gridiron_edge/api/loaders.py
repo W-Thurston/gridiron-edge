@@ -338,6 +338,117 @@ def load_prop_situational_splits(
     return result
 
 
+# Maps friendly stat keys → player_game_logs.parquet column names.
+# Extend as views need more stats (rush_tds, receptions, pass_tds, ...).
+_PLAYER_STAT_COLUMNS: dict[str, str] = {
+    "pass_yards": "passing_yards",
+    "rush_yards": "rushing_yards",
+    "rec_yards": "receiving_yards",
+}
+
+
+def player_stat_columns() -> list:
+    """Return the valid stat keys for the player-history endpoint."""
+    return list(_PLAYER_STAT_COLUMNS.keys())
+
+
+def load_player_history(
+    settings: Settings,
+    *,
+    player_id: str,
+    stat: str,
+    season: int | None = None,
+    limit: int | None = None,
+) -> dict | None:
+    """Load a player's per-game stat series for one season.
+
+    Reads player_game_logs.parquet, filters to the player + season
+    (regular season only), and projects the one stat column mapped from
+    the ``stat`` key. Bars are raw per-game values — no cohort filtering.
+
+    Args:
+        settings: API settings, source of repo_root.
+        player_id: Player identifier (e.g. "00-0039793").
+        stat: Friendly stat key (e.g. "rush_yards"). Must be a key of
+            ``_PLAYER_STAT_COLUMNS``.
+        season: Season int (e.g. 2024). Defaults to the player's latest
+            season present in the logs.
+        limit: If set, return only the last N games (most recent weeks).
+
+    Returns:
+        Dict with keys: player_id, player_name, stat, season, rows
+        (list of {week, value, opponent, game_id, is_home}). Rows sorted
+        by week ascending. Returns None if the stat key is unknown or
+        the player has no rows.
+
+    Notes:
+        player_game_logs season is an int (1999..2024) and the logs are
+        stale relative to game-side data. The endpoint defaults to the
+        latest season the *player* actually has, not the league-current
+        season.
+    """
+    column = _PLAYER_STAT_COLUMNS.get(stat)
+    if column is None:
+        return None
+
+    logs_path: Path = settings.repo_root / "data" / "cleaned" / "player_game_logs.parquet"
+    if not logs_path.exists():
+        return None
+
+    df: DataFrame = pd.read_parquet(logs_path)
+    player_rows = df.loc[df["player_id"] == player_id, :]
+    if player_rows.empty:
+        return None
+
+    # Regular season only for a clean weekly series.
+    if "season_type" in player_rows.columns:
+        player_rows = player_rows.loc[player_rows["season_type"] == "REG", :]
+    if player_rows.empty:
+        return None
+
+    # Default season = the player's latest season present.
+    resolved_season: int = season if season is not None else int(player_rows["season"].max())
+    season_rows = player_rows.loc[player_rows["season"] == resolved_season, :].sort_values("week")
+    if season_rows.empty:
+        return None
+
+    if limit is not None and limit > 0:
+        season_rows = season_rows.tail(limit)
+
+    player_name = str(season_rows.iloc[0]["player_name"])
+
+    rows: list[dict] = []
+    for _, r in season_rows.iterrows():
+        game_id = str(r["game_id"])
+        team = str(r["team"])
+        opponent = str(r["opponent_team"])
+        rows.append(
+            {
+                "week": int(r["week"]),
+                "value": _none_if_nan_float(r[column]),
+                "opponent": opponent,
+                "game_id": game_id,
+                "is_home": _is_home_from_game_id(game_id, team),
+            }
+        )
+
+    return {
+        "player_id": player_id,
+        "player_name": player_name,
+        "stat": stat,
+        "season": resolved_season,
+        "rows": rows,
+    }
+
+
+def _is_home_from_game_id(game_id: str, team: str) -> bool:
+    """Home if team matches the HOME slot of 'YYYY_WW_AWAY_HOME'."""
+    parts = game_id.split("_")
+    if len(parts) != 4:
+        return False
+    return parts[3] == team
+
+
 def _none_if_nan_int(v: Any) -> int | None:  # noqa: ANN401
     """Return int or None for NaN."""
     if pd.isna(v):
