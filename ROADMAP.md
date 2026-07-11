@@ -255,42 +255,25 @@ to fidelity, consuming a shared primitive set (Pill, WhyLink, TeamMark-
 with-colors, Spark, TeamHero, DistributionChart, RatingChart) and the
 W9.8 highlight discipline. W9.5–W9.9 complete; W9.10 (Compare) active.
 
+#### W9.10: Compare Screen Rebuild — ✅ COMPLETE (2026-07-01)
+
+Two-mode matchup surface (Team vs Team + Player vs Defense), prototype-
+aligned. Team mode: mirrored pickers, cohort strip, narrative/summary/
+matchup cards with ranking-bar collision rows (11-metric cohort_splits
+with reciprocal off/def pairs). Player mode: independent player/stat/
+team pickers, per-game bar chart with moving team-allowed line,
+baseline-driven verdict + by-split table. Backed by 4 new backend
+endpoints (B1–B4: player-history, 4-cohort opponent-allowed, defense-
+by-team, players roster) + a root-cause game_id scramble fix. See
+CHANGELOG.md.
+
 See CHANGELOG.md for details.
+
 
 ### Active Workstream
 
-#### W9.10: Compare Screen Rebuild — 🟡 ACTIVE
+_(none — between workstreams)_
 
-Two-mode matchup surface: Team vs Team + Player vs Defense.
-
-**Team vs Team — ✅ complete.** Mode switcher, mirrored team pickers +
-swap, cohort strip, narrative card, collapsible summary card, three
-matchup cards with mirrored ranking-bar collision rows (offense value
-↔ reciprocal defense-allowed, edge chips, descriptive sublabels,
-title-style metric names), centered layout. Backed by an 11-metric
-cohort_splits expansion (added def_pass_epa, def_third_down_pct,
-def_redzone_td_pct so every offensive metric has its reciprocal).
-
-**Player vs Defense — 🟡 redesign in progress.** Being reworked to
-mirror Team-vs-Team: independent player / stat / team pickers, 7-split
-strip (season/l4/home/away/vs-winning/vs-losing/vs-top-10), a per-game
-bar chart (player's stat per game + team-allowed average line + book
-line), and a "matchup, plainly" verdict card.
-
-**Blocked on backend (immediate next work — Path C):**
-1. `/players/{player_id}/history?stat=` endpoint — per-game stat values
-   from `player_game_logs.parquet` (data exists; expose it). Powers the
-   bar chart centerpiece. Also unblocks PlayerProp 12-game chart +
-   PlayersExplorer L6 sparkline (§9.7 P0 item).
-2. Expand `opponent_allowed` splits from 2 (season/l5) to 7
-   (season/l4/home/away/vs-winning/vs-losing/vs-top-10) — mirrors the
-   team_cohort_splits expansion pattern.
-
-Book line + over/under bar coloring remain deferred (blocked on odds,
-W7) — marked pending per highlight discipline.
-
-**Deferred within W9.10:** Change 6 (sortable rows by category/edge +
-drag-to-reorder) — P2, §9.8. Only build if missed.
 
 ### Future Workstreams (ordered by current priority)
 
@@ -978,6 +961,7 @@ Blocked on: full backend data population (next pipeline run).
 
 | Date | Change |
 |---|---|
+| 2026-07-01 | **W9.10 complete.** Compare Screen Rebuild — both modes shipped. New backend B1–B4 (player-history endpoint, 4-cohort opponent-allowed, defense-by-team, players roster). game_id scramble bug fixed at root in transform/clean/player_stats.py. |
 | 2026-07-11 | **ROADMAP audit + cleanup.** Recorded W9.8 (dev panel) + W9.10 (Compare, active) which were missing. Updated §1 Working/Missing to post-frontend reality. Filled §4 Active with W9.10 + the Player-vs-Defense backend work (player-history endpoint + opponent-allowed splits expansion) as immediate next. Marked §5.1/§5.4 file-storage + api/frontend as shipped. Redrew §6 current position. Reframed M4.5 as achieved. |
 
 ***

@@ -443,6 +443,11 @@ Step 5 audit confirmed all existing loaders comply.
   the pattern for composing prop + game + team metadata into a
   single screen. Multiple endpoints join client-side. Same shape
   can be applied to future prop-related work.
+- **Independent-selection compare pattern:** Compare Player-vs-Defense
+  (W9.10) selects player/stat/team independently (not a bundled
+  prop_id), composing B1 (player history) + B3 (defense-by-team) client-
+  side. When a screen needs arbitrary cross-entity comparison, prefer
+  dedicated list/detail endpoints over a bundled composite id.
 
 **Local dev loop:**
 

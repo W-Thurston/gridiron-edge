@@ -3,6 +3,98 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-01 — W9.10 Compare Screen Rebuild
+
+Two-mode matchup surface at `/compare`. Both modes prototype-aligned
+against real, pipeline-populated data.
+
+### Team vs Team
+
+- Mode switcher (Pill, URL-synced `?mode=`)
+- Mirrored team pickers (name→logo / logo→name, inward-facing) + swap
+  button, width-constrained + centered
+- Cohort strip (Season/L4/Home/Away)
+- Separate cards: floating pickers → narrative → collapsible summary
+  (centered team-left/right) → three matchup cards
+- Matchup rows: 5-column center-aligned, mirrored rank-fill bars
+  (rank 1 = full, filling toward center), edge chips (arrow + team +
+  descriptor), value+rank inline, descriptive sublabels, title-style
+  metric names
+- Auto-narrative card (biggest collision per direction from rank diffs)
+- 11-metric cohort_splits expansion: added def_pass_epa,
+  def_third_down_pct, def_redzone_td_pct so every offensive metric has
+  its reciprocal defensive-allowed pair
+
+### Player vs Defense
+
+- Independent player / stat-category / team selection (retired the
+  prop_id model)
+- Searchable player combobox (client-filtered `/players` roster)
+- Stat category derived from player position (each option carries B1
+  statKey + B3 stat_type)
+- Team dropdown (all 32, independent)
+- 7-split strip: Season/L4/Home/Away live + vs-Winning/Losing/Top-10
+  pending (non-clickable, highlight-marked)
+- Per-game bar chart (new BarChart primitive): player's stat as bars
+  (B1) + team split-average as a solid reference line (B3) that moves
+  with the split while bars stay static
+- "Matchup, plainly" verdict card: big avg-allowed, rank-as-context
+  line, baseline-driven verdict (defense-allowed vs player's own
+  average → Favorable/Tough/Neutral, lean over/under), quantified delta
+- By-split comparison table: player avg (from bars, per split) vs
+  defense-allowed + Def rank across 4 live splits; 3 pending rows
+
+### Backend (Path C — built to unblock the frontend)
+
+- **B1** — `GET /players/{id}/history?stat=&season=&limit=`: per-game
+  stat series from player_game_logs. **Also fixed a root-cause game_id
+  scramble** — `_join_game_id` assigned merge-result Series onto a
+  non-contiguous index (upstream dropna), scrambling game_id to same-
+  week neighbors. Fix: reset_index before the 1:1 merges; derive
+  trustworthy is_home. Regenerated logs; re-ran props compute-splits
+  (had aggregated against wrong game contexts).
+- **B2** — opponent_allowed expanded {season, l5} → {season, l4, home,
+  away}. Home/away is the DEFENSE's perspective (inverse of offensive
+  player is_home).
+- **B3** — `GET /defense/{team}/allowed?stat_type=`: per-team allowed
+  aggregates (all cohorts), keyed on arbitrary team (independent-team
+  picker needs this; /compare/player is prop-keyed).
+- **B4** — `GET /players?season=`: skill-player roster for the picker,
+  deduped to latest team.
+
+### New primitives
+
+- **BarChart** — SVG bars + Y-grid + solid horizontal reference line
+  with value tag. Reusable (PlayerProp game-log chart is a future
+  consumer).
+
+DistributionChart retired from Compare (BarChart replaced it); still
+used by PlayerProp.
+
+### Prototype-alignment adjustments (Team mode)
+
+Six post-build refinements per side-by-side review: keep cards (not
+floating), mirrored inward team icons, narrative as separate card,
+collapsible summary card, centered ranking-bar comparison rows, three
+separate matchup cards. Plus: value+rank inline, descriptive sublabels,
+title-style center metric names, shortened fill bars, centered page
+(max-width), grid centering within cards.
+
+### Deferred
+
+- Book line + O/U bar coloring — odds (W7); legend PendingChip, no
+  fake line
+- vs-winning / vs-losing / vs-top-10 splits — 3 pending pills + table
+  rows (medium backend: opponent-record + self-ranking)
+- Change 6 (sortable matchup rows by category/edge + drag-reorder) —
+  P2, §9.8; build only if missed
+
+### Substep arc
+
+Tier 1 (mode switcher) → Tier 2 (Team vs Team + 6 alignment
+adjustments) → backend B1–B4 (+ game_id fix) → C1 (pickers/strip) →
+C2 (bar chart) → C3 (verdict + table) → C4 (cleanup + close-out).
+
 ## 2026-07-07 — W9.9 PlayerProp Rebuild
 
 Rebuilt PlayerProp screen (`/players/:propId`) from skeleton with 6
