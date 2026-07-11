@@ -1,3 +1,8 @@
+import { useTeamRankings } from "../../api/hooks";
+import { useTeamByAbbr } from "../../api/team_metadata_hook";
+import { PendingField } from "../field-status/PendingField";
+import { TeamMark } from "../primitives/TeamMark";
+
 type TeamPickerProps = {
   teamA: string;
   teamB: string;
@@ -41,56 +46,210 @@ const TEAMS = [
   { value: "WAS", label: "Washington Commanders" },
 ] as const;
 
+/**
+ * Enhanced team picker. Two picker cards (team-colored mark, dropdown,
+ * rating, record, pending-marked Off/Def stats) framing a center swap
+ * button. External API preserved: teamA/teamB + onChange callbacks.
+ */
 export function TeamPicker({
   teamA,
   teamB,
   onTeamAChange,
   onTeamBChange,
 }: TeamPickerProps) {
+  const rankings = useTeamRankings();
+  const items = rankings.data?.items ?? [];
+
+  const findTeam = (abbr: string) =>
+    items.find((t) => t.abbr === abbr) ?? null;
+
+  const swap = () => {
+    const prevA = teamA;
+    onTeamAChange(teamB);
+    onTeamBChange(prevA);
+  };
+
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span className="upper dim2" style={{ fontSize: 9 }}>
-          Team A
-        </span>
-        <select
-          value={teamA}
-          onChange={(e) => onTeamAChange(e.target.value)}
-          style={selectStyle}
-        >
-          {TEAMS.map((team) => (
-            <option key={team.value} value={team.value}>
-              {team.label}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto 1fr",
+        gap: 16,
+        alignItems: "stretch",
+      }}
+    >
+      <PickerCard
+        label="Team A"
+        selected={teamA}
+        onChange={onTeamAChange}
+        ranking={findTeam(teamA)}
+      />
+
+      {/* Center: vs + swap */}
       <div
-        className="mono dim"
         style={{
-          fontSize: 14,
-          alignSelf: "flex-end",
-          marginBottom: 6,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
         }}
       >
-        vs
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span className="upper dim2" style={{ fontSize: 9 }}>
-          Team B
-        </span>
-        <select
-          value={teamB}
-          onChange={(e) => onTeamBChange(e.target.value)}
-          style={selectStyle}
+        <span
+          className="serif"
+          style={{ fontSize: 20, fontStyle: "italic", color: "var(--ink-2)" }}
         >
-          {TEAMS.map((team) => (
-            <option key={team.value} value={team.value}>
-              {team.label}
-            </option>
-          ))}
-        </select>
+          vs
+        </span>
+        <button
+          type="button"
+          onClick={swap}
+          aria-label="Swap teams"
+          title="Swap teams"
+          disabled={!teamA && !teamB}
+          style={{
+            background: "transparent",
+            border: "1px solid var(--line-soft)",
+            borderRadius: 4,
+            padding: "4px 8px",
+            cursor: teamA || teamB ? "pointer" : "not-allowed",
+            color: "var(--ink-3)",
+            fontSize: 14,
+            fontFamily: "var(--f-mono)",
+            lineHeight: 1,
+          }}
+        >
+          ⇄
+        </button>
       </div>
+
+      <PickerCard
+        label="Team B"
+        selected={teamB}
+        onChange={onTeamBChange}
+        ranking={findTeam(teamB)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Single team picker card: dropdown + (when selected) team-colored mark,
+ * name, rating, record, and pending-marked Off/Def stats.
+ */
+function PickerCard({
+  label,
+  selected,
+  onChange,
+  ranking,
+}: {
+  label: string;
+  selected: string;
+  onChange: (value: string) => void;
+  ranking: {
+    abbr: string;
+    name: string;
+    rating?: number | null;
+    rank?: number | null;
+    record?: { wins: number; losses: number; ties: number } | null;
+  } | null;
+}) {
+  const metadata = useTeamByAbbr(selected);
+  const primaryColor = metadata?.primary_color;
+
+  const background = primaryColor
+    ? `linear-gradient(180deg, color-mix(in oklab, ${primaryColor} 22%, var(--bg-1)) 0%, var(--bg-1) 100%)`
+    : "var(--bg-1)";
+
+  const recordText = ranking?.record
+    ? `${ranking.record.wins}-${ranking.record.losses}${
+        ranking.record.ties > 0 ? `-${ranking.record.ties}` : ""
+      }`
+    : null;
+
+  return (
+    <div
+      className="hm-card"
+      style={{
+        padding: 16,
+        background: selected ? background : "var(--bg-1)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <span className="upper dim2" style={{ fontSize: 9 }}>
+        {label}
+      </span>
+
+      {/* Dropdown */}
+      <select
+        value={selected}
+        onChange={(e) => onChange(e.target.value)}
+        style={selectStyle}
+      >
+        {TEAMS.map((team) => (
+          <option key={team.value} value={team.value}>
+            {team.label}
+          </option>
+        ))}
+      </select>
+
+      {/* Team identity when selected */}
+      {selected && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <TeamMark abbr={selected} size={36} />
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>
+              {ranking?.name ?? selected}
+            </div>
+            <div
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}
+            >
+              {recordText && <>{recordText}</>}
+              {ranking?.rating != null && (
+                <>
+                  {recordText && " · "}
+                  Rating{" "}
+                  <span style={{ color: "var(--ink)" }}>
+                    {ranking.rating.toFixed(0)}
+                  </span>
+                </>
+              )}
+              {ranking?.rank != null && (
+                <>
+                  {" · "}#{ranking.rank}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Off/Def mini-stats (pending — off/def decomposition blocked) */}
+      {selected && (
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            fontSize: 10,
+            color: "var(--ink-4)",
+          }}
+          className="mono"
+        >
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            Off <PendingField placeholder="" />
+          </span>
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            Def <PendingField placeholder="" />
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -103,5 +262,5 @@ const selectStyle: React.CSSProperties = {
   padding: "4px 8px",
   fontSize: 12,
   fontFamily: "var(--f-sans)",
-  minWidth: 180,
+  width: "100%",
 };
