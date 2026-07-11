@@ -882,7 +882,7 @@ def load_opponent_allowed_for_prop(
         {
             "season": {"avg_allowed": 275.0, "sample_size": 2,
                        "rank_against_position": 3},
-            "l5": {"avg_allowed": 275.0, "sample_size": 2,
+            "l4": {"avg_allowed": 275.0, "sample_size": 2,
                    "rank_against_position": 3},
         }
     """

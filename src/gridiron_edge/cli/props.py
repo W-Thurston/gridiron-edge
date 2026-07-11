@@ -859,7 +859,7 @@ def compute_opponent_allowed_cmd() -> None:
 
     For each (opponent_team, position, stat_type) combination in the
     current season, computes:
-        - Mean stat allowed (across season and l5 rolling cohorts)
+        - Mean stat allowed (across season and l4 rolling cohorts)
         - Sample size (number of games)
         - Rank against position (1 = stingiest, 32 = most generous)
 
@@ -868,7 +868,7 @@ def compute_opponent_allowed_cmd() -> None:
 
     Consumed by `/compare/player/{prop_id}` to populate the 3
     defense-side rows: avg_allowed, rank_against_position, and
-    last_5_games_avg (from the l5 cohort).
+    last_4_games_avg (from the l4 cohort).
     """
     import pandas as pd
 

@@ -289,11 +289,11 @@ def serialize_compare_player(
             defense_value=_get_defense_stat(opponent_allowed, "season", "rank_against_position"),
         ),
         PlayerVsDefenseRow(
-            key="last_5_games_avg",
-            label="Defense: L5 Avg Allowed",
+            key="last_4_games_avg",
+            label="Defense: L4 Avg Allowed",
             unit="yards",
             projection_value=None,
-            defense_value=_get_defense_stat(opponent_allowed, "l5", "avg_allowed"),
+            defense_value=_get_defense_stat(opponent_allowed, "l4", "avg_allowed"),
         ),
         PlayerVsDefenseRow(
             key="red_zone_rate_allowed",
@@ -323,7 +323,7 @@ def serialize_compare_player(
             *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
         )
         meta = meta.with_blocked(
-            "last_5_games_avg",
+            "last_4_games_avg",
             *Unavailable.OPPONENT_ALLOWED_BY_POSITION,
         )
 

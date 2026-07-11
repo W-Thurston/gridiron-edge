@@ -450,7 +450,7 @@ class TestComparePlayerRoute:
         for defense_key in (
             "avg_allowed",
             "rank_against_position",
-            "last_5_games_avg",
+            "last_4_games_avg",
             "red_zone_rate_allowed",
         ):
             row = by_key[defense_key]
@@ -474,7 +474,7 @@ class TestComparePlayerRoute:
         for defense_key in (
             "avg_allowed",
             "rank_against_position",
-            "last_5_games_avg",
+            "last_4_games_avg",
             "red_zone_rate_allowed",
         ):
             assert status[defense_key]["blocker"] == "opponent_allowed_by_position"
@@ -644,7 +644,7 @@ class TestComparePlayerOpponentAllowed:
                     "opponent_team": "LAC",
                     "position": "QB",
                     "stat_type": "qb_pass_yards",
-                    "cohort": "l5",
+                    "cohort": "l4",
                     "avg_allowed": 265.0,
                     "sample_size": 5,
                     "rank_against_position": 2,
@@ -660,7 +660,7 @@ class TestComparePlayerOpponentAllowed:
         by_key = {row["key"]: row for row in body["stats"]}
         assert by_key["avg_allowed"]["defense_value"] == 275.0
         assert by_key["rank_against_position"]["defense_value"] == 3
-        assert by_key["last_5_games_avg"]["defense_value"] == 265.0
+        assert by_key["last_4_games_avg"]["defense_value"] == 265.0
         assert by_key["red_zone_rate_allowed"]["defense_value"] is None
 
     def test_missing_artifact_leaves_rows_blocked(
@@ -679,7 +679,7 @@ class TestComparePlayerOpponentAllowed:
         status = body["_meta"]["field_status"]
         assert status.get("avg_allowed") is not None
         assert status.get("rank_against_position") is not None
-        assert status.get("last_5_games_avg") is not None
+        assert status.get("last_4_games_avg") is not None
 
 
 class TestCompareTeamsCohortSplits:

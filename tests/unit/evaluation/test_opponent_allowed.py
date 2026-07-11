@@ -39,6 +39,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 300,
                 "rushing_yards": 20,
                 "receiving_yards": 0,
+                "is_home": True,
             },
             {
                 "player_id": "P2",
@@ -52,6 +53,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 240,
                 "rushing_yards": 15,
                 "receiving_yards": 0,
+                "is_home": False,
             },
             # Game 2: KC vs BAL.
             {
@@ -66,6 +68,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 200,
                 "rushing_yards": 10,
                 "receiving_yards": 0,
+                "is_home": True,
             },
             {
                 "player_id": "P2",
@@ -79,6 +82,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 280,
                 "rushing_yards": 12,
                 "receiving_yards": 0,
+                "is_home": True,
             },
             # Game 3: KC vs LAC.
             {
@@ -93,6 +97,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 250,
                 "rushing_yards": 15,
                 "receiving_yards": 0,
+                "is_home": True,
             },
             {
                 "player_id": "P2",
@@ -106,6 +111,7 @@ def _make_player_game_logs() -> pd.DataFrame:
                 "passing_yards": 220,
                 "rushing_yards": 10,
                 "receiving_yards": 0,
+                "is_home": False,
             },
         ]
     )
@@ -184,25 +190,56 @@ class TestComputeOpponentAllowed:
         assert ranks["LAC"] == 3
         assert ranks["BUF"] == 4
 
-    def test_l5_cohort_uses_last_5_games(self) -> None:
+    def test_l4_cohort_present(self) -> None:
         from gridiron_edge.evaluation.opponent_allowed import (
             compute_opponent_allowed,
         )
 
         result = compute_opponent_allowed(_make_player_game_logs())
 
-        # In our fixture, each defense plays only 2 or 1 games.
-        # L5 falls back to what's available.
-        lac_qb_l5 = result.loc[
+        # LAC played 2 games vs QBs; both within the l4 window.
+        lac_qb_l4 = result.loc[
             (result["opponent_team"] == "LAC")
             & (result["stat_type"] == "qb_pass_yards")
-            & (result["cohort"] == "l5"),
+            & (result["cohort"] == "l4"),
             :,
         ]
-        assert len(lac_qb_l5) == 1
-        # LAC played 2 games; all are within L5 window
-        assert lac_qb_l5.iloc[0]["avg_allowed"] == 275.0
-        assert lac_qb_l5.iloc[0]["sample_size"] == 2
+        assert len(lac_qb_l4) == 1
+        assert lac_qb_l4.iloc[0]["avg_allowed"] == 275.0
+        assert lac_qb_l4.iloc[0]["sample_size"] == 2
+
+    def test_home_away_split_is_defense_perspective(self) -> None:
+        """Defense home/away is the inverse of the offensive player's is_home."""
+        from gridiron_edge.evaluation.opponent_allowed import (
+            compute_opponent_allowed,
+        )
+
+        result = compute_opponent_allowed(_make_player_game_logs())
+
+        # KC defended 3 QB games, all with KC as the HOME team
+        # (game_ids 2024_01_LAC_KC, 2024_02_BAL_KC, 2024_03_LAC_KC).
+        # From the offense's perspective, opponents were AWAY (is_home=False),
+        # so KC's DEFENSE home cohort should hold all of them.
+        kc_qb_home = result.loc[
+            (result["opponent_team"] == "KC")
+            & (result["stat_type"] == "qb_pass_yards")
+            & (result["cohort"] == "home"),
+            :,
+        ]
+        # KC defense faced QBs at home in games 1 and 3 (LAC's Herbert:
+        # 240, 220). Game 2 opponent was BAL's QB — but BAL isn't in the
+        # fixture as an offense vs KC, so KC-defense QB games = 2.
+        assert len(kc_qb_home) == 1
+        assert kc_qb_home.iloc[0]["avg_allowed"] == 230.0  # (240+220)/2
+
+        # KC never defended a QB game on the road in the fixture.
+        kc_qb_away = result.loc[
+            (result["opponent_team"] == "KC")
+            & (result["stat_type"] == "qb_pass_yards")
+            & (result["cohort"] == "away"),
+            :,
+        ]
+        assert kc_qb_away.empty
 
     def test_only_latest_season_included(self) -> None:
         """Older seasons are ignored."""

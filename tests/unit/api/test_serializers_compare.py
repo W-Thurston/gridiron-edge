@@ -224,7 +224,7 @@ class TestSerializeComparePlayerOpponentAllowed:
 
         opponent_allowed = {
             "season": {"avg_allowed": 275.0, "sample_size": 5, "rank_against_position": 3},
-            "l5": {"avg_allowed": 265.0, "sample_size": 5, "rank_against_position": 2},
+            "l4": {"avg_allowed": 265.0, "sample_size": 5, "rank_against_position": 2},
         }
 
         result = serialize_compare_player(
@@ -235,9 +235,7 @@ class TestSerializeComparePlayerOpponentAllowed:
         by_key = {row.key: row for row in result.stats}
         assert by_key["avg_allowed"].defense_value == 275.0
         assert by_key["rank_against_position"].defense_value == 3
-        assert by_key["last_5_games_avg"].defense_value == 265.0
-        # red_zone_rate_allowed always null.
-        assert by_key["red_zone_rate_allowed"].defense_value is None
+        assert by_key["last_4_games_avg"].defense_value == 265.0
 
     def test_removes_blocker_when_data_present(self) -> None:
         from gridiron_edge.api.serializers.compare import serialize_compare_player
@@ -255,7 +253,7 @@ class TestSerializeComparePlayerOpponentAllowed:
         # 3 defense rows no longer blocked.
         assert "avg_allowed" not in fs
         assert "rank_against_position" not in fs
-        assert "last_5_games_avg" not in fs
+        assert "last_4_games_avg" not in fs
         # red_zone_rate_allowed still blocked.
         assert "red_zone_rate_allowed" in fs
 
@@ -267,7 +265,7 @@ class TestSerializeComparePlayerOpponentAllowed:
         fs = result.response_meta.field_status
         assert "avg_allowed" in fs
         assert "rank_against_position" in fs
-        assert "last_5_games_avg" in fs
+        assert "last_4_games_avg" in fs
         assert "red_zone_rate_allowed" in fs
 
     def test_empty_dict_leaves_blockers_intact(self) -> None:
@@ -278,7 +276,7 @@ class TestSerializeComparePlayerOpponentAllowed:
         fs = result.response_meta.field_status
         assert "avg_allowed" in fs
         assert "rank_against_position" in fs
-        assert "last_5_games_avg" in fs
+        assert "last_4_games_avg" in fs
 
 
 class TestCompareTeamsCohortSplits:
