@@ -8,6 +8,7 @@ import { BetSlipProvider } from "./context/BetSlipContext";
 import { DevPanelProvider } from "./context/DevPanelContext";
 import { NavProvider } from "./context/NavContext";
 import { Router } from "./Router";
+import { DevPanel } from "./components/dev/DevPanel";
 
 function App() {
   return (
@@ -17,12 +18,13 @@ function App() {
           <BetSlipProvider>
             <NavProvider>
               <div className="hm-frame">
-                <OfflineBanner />
-                <TopNav />
-                <main style={{ padding: 24, flex: 1 }}>
-                  <Router />
-                </main>
-              </div>
+              <OfflineBanner />
+              <TopNav />
+              <main style={{ padding: 24, flex: 1 }}>
+                <Router />
+              </main>
+            </div>
+            <DevPanel />
             </NavProvider>
           </BetSlipProvider>
         </DevPanelProvider>
