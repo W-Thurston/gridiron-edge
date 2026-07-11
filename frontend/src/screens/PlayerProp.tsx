@@ -12,6 +12,7 @@ import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { DistributionChart } from "../components/primitives/DistributionChart";
 import { WhyLink } from "../components/primitives/WhyLink";
 import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
+import { PendingChip } from "../components/field-status/PendingChip";
 
 export function PlayerProp() {
   const { route, navigate } = useNav();
@@ -458,6 +459,7 @@ function PlayerHero({
               }}
             >
               —{" "}
+              <PendingChip>(line pending)</PendingChip>
               <span
                 className="mono"
                 style={{
@@ -510,28 +512,9 @@ function PlayerHero({
               {confidenceTier ? (
                 <ConfidenceTierPill tier={confidenceTier} />
               ) : (
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 10,
-                    color: "var(--ink-4)",
-                    padding: "2px 6px",
-                    border: "1px solid var(--line-soft)",
-                    borderRadius: 3,
-                  }}
-                >
-                  Confidence pending
-                </span>
+                <PendingChip>Confidence pending</PendingChip>
               )}
-              <span
-                className="mono"
-                style={{
-                  fontSize: 10,
-                  color: "var(--ink-4)",
-                }}
-              >
-                EV pending
-              </span>
+              <PendingChip>EV pending</PendingChip>
             </div>
           </div>
 
@@ -650,16 +633,16 @@ function SituationalSplitsCard({
         {!hasData && <PendingField placeholder="" />}
       </div>
 
+
       {!hasData ? (
         <div
           style={{
             padding: 20,
             textAlign: "center",
-            color: "var(--ink-4)",
             fontSize: 12,
           }}
         >
-          Splits data not yet available for this prop.
+          <PendingChip>Splits data not yet available for this prop.</PendingChip>
         </div>
       ) : (
         <div style={{ display: "grid", gap: 4 }}>
