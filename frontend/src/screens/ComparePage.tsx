@@ -4,11 +4,47 @@ import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { TeamMark } from "../components/primitives/TeamMark";
+import { Pill } from "../components/primitives/Pill";
 import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 
+type CompareMode = "team" | "player";
+
 export function ComparePage() {
+  const { route, navigate } = useNav();
+  const mode: CompareMode = route.params.mode === "player" ? "player" : "team";
+
+  const setMode = (newMode: CompareMode) => {
+    const params: Record<string, string> = { mode: newMode };
+    if (route.params.team_a) params.team_a = route.params.team_a;
+    if (route.params.team_b) params.team_b = route.params.team_b;
+    navigate("/compare", params);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Mode switcher */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <Pill active={mode === "team"} onClick={() => setMode("team")}>
+          Team vs Team
+        </Pill>
+        <Pill active={mode === "player"} onClick={() => setMode("player")}>
+          Player vs Defense
+        </Pill>
+      </div>
+
+      {/* Mode content */}
+      {mode === "team" ? <TeamCompareMode /> : <PlayerCompareMode />}
+    </div>
+  );
+}
+
+/**
+ * Team vs Team comparison mode. Preserves existing pickers + stat table.
+ * Tier 2 rebuilds internals into grouped matchup sections + narrative.
+ */
+function TeamCompareMode() {
   const { route, navigate } = useNav();
   const initialTeamA = route.params.team_a ?? "";
   const initialTeamB = route.params.team_b ?? "";
@@ -16,9 +52,9 @@ export function ComparePage() {
   const [teamA, setTeamA] = useState(initialTeamA);
   const [teamB, setTeamB] = useState(initialTeamB);
 
-  // Sync selections to URL for bookmarking.
+  // Sync selections to URL for bookmarking (preserve mode param).
   useEffect(() => {
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = { mode: "team" };
     if (teamA) params.team_a = teamA;
     if (teamB) params.team_b = teamB;
     navigate("/compare", params);
@@ -58,17 +94,13 @@ export function ComparePage() {
         <ErrorCard
           error={error}
           onRetry={() => refetch()}
-          title="Couldn't load games"
+          title="Couldn't load comparison"
         />
       )}
 
-
       {bothSelected && data && (
         <div>
-          <div
-            className="mono dim"
-            style={{ fontSize: 11, marginBottom: 12 }}
-          >
+          <div className="mono dim" style={{ fontSize: 11, marginBottom: 12 }}>
             Season: {data.season ?? "—"}
           </div>
 
@@ -141,6 +173,30 @@ export function ComparePage() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Player vs Defense comparison mode. Placeholder — Tier 3 builds the
+ * player + defense pickers, DistributionChart, and stat rows.
+ */
+function PlayerCompareMode() {
+  return (
+    <div className="hm-card" style={{ padding: 24 }}>
+      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+        Player vs Defense
+      </div>
+      <div
+        style={{
+          padding: 20,
+          textAlign: "center",
+          color: "var(--ink-4)",
+          fontSize: 12,
+        }}
+      >
+        Coming in Tier 3
+      </div>
     </div>
   );
 }
