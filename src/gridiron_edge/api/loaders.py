@@ -515,6 +515,56 @@ def _none_if_nan_float(v: Any) -> float | None:  # noqa: ANN401
     return float(v)  # type: ignore[arg-type]
 
 
+# Upcoming weeks only ever have elo predictions (trained models need a
+# feature matrix that doesn't exist for unplayed games). When the champion
+# has no rows for a (season, week), fall back to elo so upcoming weeks
+# still serve.
+_UPCOMING_FALLBACK_MODEL_TYPE: str = "elo"
+
+
+def _resolve_win_prob_archive(
+    settings: Settings,
+    *,
+    season: str | None,
+    week: int | None,
+) -> tuple[DataFrame, str]:
+    """Load win_prob predictions, champion-first with an elo fallback.
+
+    Returns (archive, model_type_used). Tries the current champion; if
+    that yields no rows for the requested scope (e.g. an upcoming week,
+    which only elo can predict), retries with elo. Empty frame + champion
+    type if neither has rows.
+    """
+    from gridiron_edge.evaluation.archive import load_prediction_log
+    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
+
+    _, champion_type = resolve_current_champion("win_prob", repo=settings.repo_root)
+
+    archive: DataFrame = load_prediction_log(
+        season=season,
+        week=week,
+        model_name="win_prob",
+        model_type=champion_type,
+        repo=settings.repo_root,
+    )
+    if not archive.empty:
+        return archive, champion_type
+
+    # Champion has no rows for this scope — try elo (upcoming-week model).
+    if champion_type != _UPCOMING_FALLBACK_MODEL_TYPE:
+        fallback: DataFrame = load_prediction_log(
+            season=season,
+            week=week,
+            model_name="win_prob",
+            model_type=_UPCOMING_FALLBACK_MODEL_TYPE,
+            repo=settings.repo_root,
+        )
+        if not fallback.empty:
+            return fallback, _UPCOMING_FALLBACK_MODEL_TYPE
+
+    return archive, champion_type  # empty
+
+
 def load_games_for_week(
     settings: Settings,
     *,
@@ -547,19 +597,7 @@ def load_games_for_week(
         ChampionNotFoundError: If the champion manifest is missing or
             has no win_prob entry.
     """
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
-
-    _, model_type = resolve_current_champion("win_prob", repo=settings.repo_root)
-
-    archive: DataFrame = load_prediction_log(
-        season=season,
-        week=week,
-        model_name="win_prob",
-        model_type=model_type,
-        repo=settings.repo_root,
-    )
-
+    archive, _ = _resolve_win_prob_archive(settings, season=season, week=week)
     if archive.empty:
         return archive
 
@@ -594,17 +632,19 @@ def load_game(
     from gridiron_edge.evaluation.archive import load_prediction_log
     from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
 
-    _, model_type = resolve_current_champion("win_prob", repo=settings.repo_root)
+    _, champion_type = resolve_current_champion("win_prob", repo=settings.repo_root)
 
-    archive: DataFrame = load_prediction_log(
-        model_name="win_prob",
-        model_type=model_type,
-        repo=settings.repo_root,
-    )
-    if archive.empty:
-        return None
-    archive = archive.loc[archive["game_id"] == game_id, :].copy()
+    def _load_for_game(mtype: str) -> DataFrame:
+        a = load_prediction_log(
+            model_name="win_prob",
+            model_type=mtype,
+            repo=settings.repo_root,
+        )
+        return a.loc[a["game_id"] == game_id, :].copy() if not a.empty else a
 
+    archive = _load_for_game(champion_type)
+    if archive.empty and champion_type != _UPCOMING_FALLBACK_MODEL_TYPE:
+        archive = _load_for_game(_UPCOMING_FALLBACK_MODEL_TYPE)
     if archive.empty:
         return None
 

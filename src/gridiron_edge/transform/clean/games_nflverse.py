@@ -88,6 +88,60 @@ from gridiron_edge.transform.clean._nflverse_common import (
 
 logger: Logger = logging.getLogger(__name__)
 
+_GAMES_COLUMNS: list[str] = [
+    "GAME_ID",
+    "WEEK_NUM",
+    "GAME_DAY_OF_WEEK",
+    "GAME_DATE",
+    "GAMETIME",
+    "WINNER",
+    "GAME_LOCATION",
+    "LOSER",
+    "BOXSCORE_LINK",
+    "PTS_WINNER",
+    "PTS_LOSER",
+    "YARDS_WINNER",
+    "TURNOVERS_WINNER",
+    "YARDS_LOSER",
+    "TURNOVERS_LOSER",
+    "YEAR",
+    "STADIUM",
+    "ROOF",
+    "SURFACE",
+    "VEGAS_LINE",
+    "OVER_UNDER",
+    "FAVORITED",
+    "WIN_OR_TIE",
+    "DIV_GAME",
+]
+
+
+def _handle_empty_games(out_path: Path) -> Path:
+    """Handle the no-completed-games case without clobbering history.
+
+    Offseason / upcoming-season fetches filter to zero completed games.
+    If a populated history table already exists, refuse to overwrite it
+    (leave intact, warn). Otherwise write the empty schema (first run).
+    """
+    if out_path.exists():
+        try:
+            existing = pd.read_csv(out_path)
+        except (pd.errors.EmptyDataError, OSError):
+            existing = pd.DataFrame()
+        if not existing.empty:
+            logger.warning(
+                "clean-games produced 0 completed games but existing "
+                "history has %d rows — refusing to overwrite (offseason / "
+                "upcoming-season fetch?). Existing table left intact.",
+                len(existing),
+            )
+            return out_path
+
+    logger.info("No completed games found and no existing history — writing empty games schema.")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(columns=_GAMES_COLUMNS).to_csv(out_path, index=False)
+    return out_path
+
 
 def clean_nflverse_games(
     *,
@@ -132,39 +186,7 @@ def clean_nflverse_games(
     logger.info("Processing %d completed games", len(df))
 
     if df.empty:
-        logger.info("No completed games found in raw file - season may not have started.")
-        out_path: Path = dataset_path(resolved_repo, "games")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        empty = pd.DataFrame(
-            columns=[
-                "GAME_ID",
-                "WEEK_NUM",
-                "GAME_DAY_OF_WEEK",
-                "GAME_DATE",
-                "GAMETIME",
-                "WINNER",
-                "GAME_LOCATION",
-                "LOSER",
-                "BOXSCORE_LINK",
-                "PTS_WINNER",
-                "PTS_LOSER",
-                "YARDS_WINNER",
-                "TURNOVERS_WINNER",
-                "YARDS_LOSER",
-                "TURNOVERS_LOSER",
-                "YEAR",
-                "STADIUM",
-                "ROOF",
-                "SURFACE",
-                "VEGAS_LINE",
-                "OVER_UNDER",
-                "FAVORITED",
-                "WIN_OR_TIE",
-                "DIV_GAME",
-            ]
-        )
-        empty.to_csv(out_path, index=False)
-        return out_path
+        return _handle_empty_games(dataset_path(resolved_repo, "games"))
 
     # --- Normalise week numbers ---
     # REG games have integer weeks; postseason game_types map to 19-22.

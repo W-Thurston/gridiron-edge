@@ -74,7 +74,7 @@ def build_elo_state_table_all_years(
     elo_dict: dict[tuple[str, str, int], float] = dict(result.elo)
 
     nfl_years: list[str] = _build_years(games)
-    if nfl_years[-1] not in sorted_years:
+    if nfl_years and nfl_years[-1] not in sorted_years:
         next_year: str = nfl_years[-1]
         prev_year: str = sorted_years[-1]
         for team in teams_by_year.get(prev_year, set()):
@@ -113,5 +113,12 @@ def update_elo_state_incremental(
     *,
     cfg: EloTableConfig | None = None,
 ) -> pd.DataFrame:
-    """Incrementally update an existing Elo state table with new game results."""
+    """Incrementally update an existing Elo state table with new game results.
+
+    No new completed games (e.g., offseason — prior season already baked in,
+    next season not yet played) → existing state is already current; return
+    it unchanged.
+    """
+    if games.empty:
+        return elo_state_existing
     return build_elo_state_table_all_years(games, cfg=cfg)
