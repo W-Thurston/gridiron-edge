@@ -110,19 +110,6 @@ def test_rows_sorted_by_week_with_values(tmp_path: Path) -> None:
     assert values == [100.0, 80.0, 120.0]
 
 
-def test_is_home_parsed_from_game_id(tmp_path: Path) -> None:
-    from gridiron_edge.api.loaders import load_player_history
-
-    _write(tmp_path, _make_logs())
-    result = load_player_history(_Settings(tmp_path), player_id="P1", stat="rush_yards")
-    assert result is not None
-    by_week = {r["week"]: r for r in result["rows"]}
-    # Week 1: 2024_01_KC_BAL → home = BAL (player team) → is_home True
-    assert by_week[1]["is_home"] is True
-    # Week 2: 2024_02_BAL_SF → home = SF, player team BAL → is_home False
-    assert by_week[2]["is_home"] is False
-
-
 def test_limit_returns_last_n(tmp_path: Path) -> None:
     from gridiron_edge.api.loaders import load_player_history
 

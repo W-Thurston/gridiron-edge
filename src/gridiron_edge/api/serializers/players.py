@@ -27,8 +27,6 @@ def serialize_player_history(payload: dict) -> PlayerHistoryResponse:
             week=int(r["week"]),
             value=r.get("value"),
             opponent=str(r["opponent"]),
-            game_id=str(r["game_id"]),
-            is_home=bool(r["is_home"]),
         )
         for r in rows
     ]

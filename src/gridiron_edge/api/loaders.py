@@ -419,16 +419,12 @@ def load_player_history(
 
     rows: list[dict] = []
     for _, r in season_rows.iterrows():
-        game_id = str(r["game_id"])
-        team = str(r["team"])
         opponent = str(r["opponent_team"])
         rows.append(
             {
                 "week": int(r["week"]),
                 "value": _none_if_nan_float(r[column]),
                 "opponent": opponent,
-                "game_id": game_id,
-                "is_home": _is_home_from_game_id(game_id, team),
             }
         )
 
