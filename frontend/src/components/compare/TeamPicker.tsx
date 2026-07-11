@@ -83,6 +83,7 @@ export function TeamPicker({
         selected={teamA}
         onChange={onTeamAChange}
         ranking={findTeam(teamA)}
+        orientation="right"
       />
 
       {/* Center: vs + swap */}
@@ -128,6 +129,7 @@ export function TeamPicker({
         selected={teamB}
         onChange={onTeamBChange}
         ranking={findTeam(teamB)}
+        orientation="left"
       />
     </div>
   );
@@ -136,12 +138,19 @@ export function TeamPicker({
 /**
  * Single team picker card: dropdown + (when selected) team-colored mark,
  * name, rating, record, and pending-marked Off/Def stats.
+ *
+ * Orientation mirrors the card's content toward the center:
+ * - "right" (Team A): label + text right-aligned, identity reads
+ *   name → logo (logo on the inside/right edge)
+ * - "left" (Team B): label + text left-aligned, identity reads
+ *   logo → name (logo on the inside/left edge)
  */
 function PickerCard({
   label,
   selected,
   onChange,
   ranking,
+  orientation,
 }: {
   label: string;
   selected: string;
@@ -153,6 +162,7 @@ function PickerCard({
     rank?: number | null;
     record?: { wins: number; losses: number; ties: number } | null;
   } | null;
+  orientation: "left" | "right";
 }) {
   const metadata = useTeamByAbbr(selected);
   const primaryColor = metadata?.primary_color;
@@ -167,6 +177,9 @@ function PickerCard({
       }`
     : null;
 
+  const alignRight = orientation === "right";
+  const textAlign = alignRight ? "right" : "left";
+
   return (
     <div
       className="hm-card"
@@ -176,6 +189,7 @@ function PickerCard({
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        textAlign,
       }}
     >
       <span className="upper dim2" style={{ fontSize: 9 }}>
@@ -195,11 +209,19 @@ function PickerCard({
         ))}
       </select>
 
-      {/* Team identity when selected */}
+      {/* Team identity when selected — mirrored by orientation */}
       {selected && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexDirection: alignRight ? "row-reverse" : "row",
+            justifyContent: alignRight ? "flex-start" : "flex-start",
+          }}
+        >
           <TeamMark abbr={selected} size={36} />
-          <div>
+          <div style={{ textAlign }}>
             <div style={{ fontWeight: 500, fontSize: 13 }}>
               {ranking?.name ?? selected}
             </div>
@@ -235,6 +257,7 @@ function PickerCard({
             gap: 16,
             fontSize: 10,
             color: "var(--ink-4)",
+            justifyContent: alignRight ? "flex-end" : "flex-start",
           }}
           className="mono"
         >
