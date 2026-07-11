@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useCompareTeams, useTeamProfile, usePlayersList } from "../api/hooks";
+import { useCompareTeams, useTeamProfile, usePlayersList, usePlayerHistory, useDefenseAllowed } from "../api/hooks";
 import { BlockedField } from "../components/field-status/BlockedField";
 import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -9,6 +9,8 @@ import { TeamPicker } from "../components/compare/TeamPicker";
 import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { usePendingHighlight } from "../components/field-status/usePendingHighlight";
+import { BarChart } from "../components/primitives/BarChart";
+import { PendingChip } from "../components/field-status/PendingChip";
 
 type CompareMode = "team" | "player";
 
@@ -986,20 +988,106 @@ function PlayerCompareMode() {
       {/* Placeholders — C2 bar chart, C3 matchup card + table */}
       {ready && (
         <>
-          <div className="hm-card" style={{ padding: 20 }}>
-            <div className="upper dim" style={{ fontSize: 10, marginBottom: 8 }}>
-              {selectedPlayer.player_name} · {selectedStat.label} vs {team}
-            </div>
-            <div style={{ padding: 20, textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
-              Per-game bar chart — coming in C2
-            </div>
-          </div>
+          <PlayerBarChartCard
+            playerId={selectedPlayer.player_id}
+            playerName={selectedPlayer.player_name}
+            statLabel={selectedStat.label}
+            statKey={selectedStat.statKey}
+            statType={selectedStat.statType}
+            team={team}
+            split={split}
+          />
           <div className="hm-card" style={{ padding: 20 }}>
             <div style={{ padding: 20, textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
               "The matchup, plainly" + comparison table — coming in C3
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * C2 — per-game bar chart. Bars = player's stat per game (B1); solid
+ * reference line = team's split-average allowed (B3, moves with split);
+ * book line pending (odds).
+ */
+function PlayerBarChartCard({
+  playerId,
+  playerName,
+  statLabel,
+  statKey,
+  statType,
+  team,
+  split,
+}: {
+  playerId: string;
+  playerName: string;
+  statLabel: string;
+  statKey: string;
+  statType: string;
+  team: string;
+  split: PlayerSplitKey;
+}) {
+  const history = usePlayerHistory(playerId, { stat: statKey });
+  const defense = useDefenseAllowed(team, { stat_type: statType });
+
+  const bars = (history.data?.items ?? []).map((g) => ({
+    label: String(g.week),
+    value: g.value ?? null,
+  }));
+
+  // Team-allowed average for the selected split (client-side pick).
+  const cohorts = defense.data?.cohorts as
+    | Record<string, { avg_allowed?: number | null }>
+    | null
+    | undefined;
+  // Pending splits (vs_winning/losing/top10) have no cohort → null line.
+  const refValue = cohorts?.[split]?.avg_allowed ?? null;
+
+  const loading = history.isLoading || defense.isLoading;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 12,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          {playerName} · {statLabel} · per game
+        </div>
+        <div
+          className="mono dim2"
+          style={{
+            fontSize: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <span style={{ color: "var(--info)" }}>
+            — {team} allowed ({split})
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ opacity: 0.5 }}>- -</span>
+            <PendingChip>book line pending</PendingChip>
+          </span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="dim" style={{ padding: 20 }}>Loading…</div>
+      ) : (
+        <BarChart
+          bars={bars}
+          referenceValue={refValue}
+          referenceLabel="allowed"
+        />
       )}
     </div>
   );

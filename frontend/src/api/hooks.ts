@@ -327,3 +327,49 @@ export function usePlayersList(params: { season?: number } = {}) {
     },
   });
 }
+
+/**
+ * Fetches a player's per-game stat history for one season (bar chart).
+ */
+export function usePlayerHistory(
+  playerId: string | null,
+  params: { stat: string; season?: number; limit?: number },
+) {
+  return useQuery({
+    queryKey: ["player-history", playerId, params],
+    queryFn: async () => {
+      if (!playerId) throw new Error("playerId required");
+      const { data, error } = await apiClient.GET("/players/{player_id}/history", {
+        params: { path: { player_id: playerId }, query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: playerId !== null && !!params.stat,
+  });
+}
+
+/**
+ * Fetches a team's allowed aggregates for a stat_type (all cohorts).
+ */
+export function useDefenseAllowed(
+  team: string | null,
+  params: { stat_type: string },
+) {
+  return useQuery({
+    queryKey: ["defense-allowed", team, params],
+    queryFn: async () => {
+      if (!team) throw new Error("team required");
+      const { data, error } = await apiClient.GET("/defense/{team}/allowed", {
+        params: { path: { team }, query: params },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: team !== null && !!params.stat_type,
+  });
+}
