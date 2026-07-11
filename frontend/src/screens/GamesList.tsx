@@ -16,6 +16,16 @@ export function GamesList() {
     navigate("/games", { gameId });
   };
 
+  // Sort by date (ISO strings sort lexically), then game_id as a stable
+  // tiebreaker. Time-of-day sort is pending kick_time (ROADMAP §9.7 P0);
+  // the API currently exposes game_date only.
+  const sortedItems = [...(data?.items ?? [])].sort((a, b) => {
+    const da = a.game_date ?? "";
+    const db = b.game_date ?? "";
+    if (da !== db) return da < db ? -1 : 1;
+    return a.game_id < b.game_id ? -1 : a.game_id > b.game_id ? 1 : 0;
+  });
+
   return (
     <div>
       <div
@@ -41,13 +51,13 @@ export function GamesList() {
           />
         )}
 
-        {data && (data.items ?? []).length === 0 && (
+        {data && sortedItems.length === 0 && (
           <div className="dim mono" style={{ fontSize: 12 }}>
             No games found for this week.
           </div>
         )}
 
-        {data && (data.items ?? []).length > 0 && (
+        {data && sortedItems.length > 0 && (
           <table
             className="mono tnum"
             style={{
@@ -58,7 +68,7 @@ export function GamesList() {
           >
             <thead>
               <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px 8px 0" }}>Date</th>
+                <th style={{ padding: "8px 12px 8px 0" }}>Date ↑</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Matchup</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Home WP</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Band</th>
@@ -68,7 +78,7 @@ export function GamesList() {
               </tr>
             </thead>
             <tbody>
-              {(data.items ?? []).map((game) => (
+              {sortedItems.map((game) => (
                 <tr
                   key={game.game_id}
                   className="proj-row"

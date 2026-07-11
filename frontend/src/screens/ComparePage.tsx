@@ -1087,8 +1087,22 @@ function MatchupPlainlyCard({
 
   return (
     <div className="hm-card" style={{ padding: 20 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
-        The matchup, plainly
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 16,
+        }}
+      >
+        <div className="upper dim" style={{ fontSize: 10 }}>
+          The matchup, plainly
+        </div>
+        {history.data?.season != null && (
+          <span className="mono dim2" style={{ fontSize: 9 }}>
+            {history.data.season}-{history.data.season + 1}
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -1381,6 +1395,11 @@ function PlayerBarChartCard({
       >
         <div className="upper dim" style={{ fontSize: 10 }}>
           {playerName} · {statLabel} · per game
+          {history.data?.season != null && (
+            <span className="mono dim2" style={{ marginLeft: 8, fontSize: 9 }}>
+              {history.data.season}-{history.data.season + 1} season
+            </span>
+          )}
         </div>
         <div
           className="mono dim2"
