@@ -997,13 +997,306 @@ function PlayerCompareMode() {
             team={team}
             split={split}
           />
-          <div className="hm-card" style={{ padding: 20 }}>
-            <div style={{ padding: 20, textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
-              "The matchup, plainly" + comparison table — coming in C3
-            </div>
-          </div>
+          <MatchupPlainlyCard
+            playerId={selectedPlayer.player_id}
+            playerName={selectedPlayer.player_name}
+            statLabel={selectedStat.label}
+            statKey={selectedStat.statKey}
+            statType={selectedStat.statType}
+            team={team}
+            split={split}
+          />
         </>
       )}
+    </div>
+  );
+}
+
+type CohortAllowed = {
+  avg_allowed?: number | null;
+  sample_size?: number | null;
+  rank_against_position?: number | null;
+};
+
+/** Mean of numeric values, or null if none. */
+function mean(vals: (number | null | undefined)[]): number | null {
+  const nums = vals.filter((v): v is number => typeof v === "number");
+  if (nums.length === 0) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+/** Player's stat average for a given live split, from B1 game rows. */
+function playerAvgForSplit(
+  games: { week: number; value: number | null; is_home: boolean }[],
+  split: PlayerSplitKey,
+): number | null {
+  if (split === "season") return mean(games.map((g) => g.value));
+  if (split === "l4") {
+    const last4 = [...games].sort((a, b) => a.week - b.week).slice(-4);
+    return mean(last4.map((g) => g.value));
+  }
+  if (split === "home") return mean(games.filter((g) => g.is_home).map((g) => g.value));
+  if (split === "away") return mean(games.filter((g) => !g.is_home).map((g) => g.value));
+  return null; // pending splits
+}
+
+/**
+ * C3 — "The matchup, plainly" verdict card + comparison table.
+ *
+ * Verdict from defense rank tier + a player-baseline comparison. Table
+ * shows player avg (from B1 bars, per split) vs defense-allowed + rank
+ * (from B3) across the 4 live splits; 3 pending splits marked.
+ */
+function MatchupPlainlyCard({
+  playerId,
+  playerName,
+  statLabel,
+  statKey,
+  statType,
+  team,
+  split,
+}: {
+  playerId: string;
+  playerName: string;
+  statLabel: string;
+  statKey: string;
+  statType: string;
+  team: string;
+  split: PlayerSplitKey;
+}) {
+  const history = usePlayerHistory(playerId, { stat: statKey });
+  const defense = useDefenseAllowed(team, { stat_type: statType });
+
+  const games = (history.data?.items ?? []).map((g) => ({
+    week: g.week,
+    value: g.value ?? null,
+    is_home: Boolean(g.is_home),
+  }));
+
+  const cohorts = defense.data?.cohorts as
+    | Record<string, CohortAllowed>
+    | null
+    | undefined;
+
+  const current = cohorts?.[split];
+  const allowed = current?.avg_allowed ?? null;
+  const rank = current?.rank_against_position ?? null;
+  const playerAvg = playerAvgForSplit(games, split);
+
+  const loading = history.isLoading || defense.isLoading;
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
+        The matchup, plainly
+      </div>
+
+      {loading ? (
+        <div className="dim" style={{ padding: 12 }}>Loading…</div>
+      ) : allowed == null ? (
+        <div
+          style={{
+            padding: 16,
+            textAlign: "center",
+            color: "var(--ink-4)",
+            fontSize: 12,
+          }}
+        >
+          No defense-allowed data for this split.
+        </div>
+      ) : (
+        <>
+          {/* Big number + rank + verdict */}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span
+              className="mono tnum"
+              style={{ fontSize: 30, fontWeight: 600, color: "var(--ink)" }}
+            >
+              {allowed.toFixed(1)}
+            </span>
+            <span className="dim" style={{ fontSize: 12 }}>
+              {statLabel.toLowerCase()} allowed
+            </span>
+          </div>
+
+          {rank != null && <RankLine rank={rank} />}
+
+          <VerdictCallout rank={rank} playerAvg={playerAvg} allowed={allowed} />
+
+          {/* Player baseline comparison */}
+          {playerAvg != null && (
+            <div
+              className="mono"
+              style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 10 }}
+            >
+              {playerName} averages{" "}
+              <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                {playerAvg.toFixed(1)}
+              </span>{" "}
+              ({split}); this defense allows{" "}
+              <span style={{ color: "var(--ink)", fontWeight: 500 }}>
+                {allowed.toFixed(1)}
+              </span>{" "}
+              <DeltaTag delta={allowed - playerAvg} />
+            </div>
+          )}
+
+          {/* Comparison table across splits */}
+          <ComparisonTable games={games} cohorts={cohorts ?? null} playerName={playerName} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Rank line, colored by stinginess tier. */
+function RankLine({ rank }: { rank: number }) {
+  const color =
+    rank <= 10 ? "var(--neg)" : rank >= 23 ? "var(--pos)" : "var(--ink-2)";
+  return (
+    <div className="mono" style={{ fontSize: 11, marginTop: 4, color }}>
+      Ranks {ordinal(rank)} of 32 vs the position
+    </div>
+  );
+}
+
+/** Verdict callout: favorable / tough / neutral by rank tier. */
+function VerdictCallout({
+  rank,
+  playerAvg,
+  allowed,
+}: {
+  rank: number | null;
+  playerAvg: number | null;
+  allowed: number;
+}) {
+  let verdict: string;
+  let color: string;
+  let bg: string;
+
+  if (rank != null && rank <= 10) {
+    verdict = "Tough spot";
+    color = "var(--neg)";
+    bg = "color-mix(in oklab, var(--neg) 10%, transparent)";
+  } else if (rank != null && rank >= 23) {
+    verdict = "Favorable spot";
+    color = "var(--pos)";
+    bg = "color-mix(in oklab, var(--pos) 10%, transparent)";
+  } else {
+    verdict = "Neutral matchup";
+    color = "var(--ink-2)";
+    bg = "var(--bg-2)";
+  }
+
+  const detail =
+    playerAvg != null
+      ? allowed > playerAvg
+        ? "This defense allows more than the player's norm."
+        : "This defense allows less than the player's norm."
+      : "";
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: "10px 12px",
+        borderRadius: 6,
+        background: bg,
+        borderLeft: `3px solid ${color}`,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color }}>{verdict}</div>
+      {detail && (
+        <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>
+          {detail}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Signed delta tag (allowed − player avg). */
+function DeltaTag({ delta }: { delta: number }) {
+  const positive = delta >= 0;
+  const color = positive ? "var(--pos)" : "var(--neg)";
+  return (
+    <span className="mono tnum" style={{ color, fontWeight: 500 }}>
+      ({positive ? "+" : ""}
+      {delta.toFixed(1)} vs norm)
+    </span>
+  );
+}
+
+/** Comparison table: player avg vs defense-allowed + rank, per split. */
+function ComparisonTable({
+  games,
+  cohorts,
+  playerName,
+}: {
+  games: { week: number; value: number | null; is_home: boolean }[];
+  cohorts: Record<string, CohortAllowed> | null;
+  playerName: string;
+}) {
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="upper dim" style={{ fontSize: 10, marginBottom: 10 }}>
+        By split
+      </div>
+      <table
+        className="mono tnum"
+        style={{ width: "100%", fontSize: 11.5, borderCollapse: "collapse" }}
+      >
+        <thead>
+          <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
+            <th style={{ padding: "6px 12px 6px 0" }}>Split</th>
+            <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>
+              {playerName}
+            </th>
+            <th style={{ padding: "6px 12px 6px 0", textAlign: "right" }}>
+              Def allowed
+            </th>
+            <th style={{ padding: "6px 0", textAlign: "right" }}>Rank</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PLAYER_SPLITS.map((s, i) => {
+            const first = i === 0;
+            const border = first ? "none" : "1px solid var(--line-soft)";
+            if (s.pending) {
+              return (
+                <tr key={s.key} style={{ borderTop: border }}>
+                  <td style={{ padding: "7px 12px 7px 0", color: "var(--ink-2)" }}>
+                    {s.label}
+                  </td>
+                  <td colSpan={3} style={{ padding: "7px 0", textAlign: "right" }}>
+                    <PendingChip>pending</PendingChip>
+                  </td>
+                </tr>
+              );
+            }
+            const pAvg = playerAvgForSplit(games, s.key);
+            const c = cohorts?.[s.key];
+            const allowed = c?.avg_allowed ?? null;
+            const rank = c?.rank_against_position ?? null;
+            return (
+              <tr key={s.key} style={{ borderTop: border }}>
+                <td style={{ padding: "7px 12px 7px 0", color: "var(--ink-2)" }}>
+                  {s.label}
+                </td>
+                <td style={{ padding: "7px 12px 7px 0", textAlign: "right", color: "var(--ink)" }}>
+                  {pAvg != null ? pAvg.toFixed(1) : "—"}
+                </td>
+                <td style={{ padding: "7px 12px 7px 0", textAlign: "right", color: "var(--info)" }}>
+                  {allowed != null ? allowed.toFixed(1) : "—"}
+                </td>
+                <td style={{ padding: "7px 0", textAlign: "right", color: "var(--ink-3)" }}>
+                  {rank != null ? ordinal(rank) : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
