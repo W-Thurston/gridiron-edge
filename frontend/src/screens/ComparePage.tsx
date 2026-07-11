@@ -72,127 +72,36 @@ function TeamCompareMode() {
   const profileB = useTeamProfile(teamB || null);
 
   const bothSelected = teamA && teamB;
+  const cohortA = extractCohort(profileA.data?.cohort_splits, cohort);
+  const cohortB = extractCohort(profileB.data?.cohort_splits, cohort);
 
   return (
-    <div className="hm-card" style={{ padding: 24 }}>
-      <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
-        Team Comparison
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Header card: pickers + cohort strip */}
+      <div className="hm-card" style={{ padding: 24 }}>
+        <div className="upper dim" style={{ fontSize: 10, marginBottom: 12 }}>
+          Team Comparison
+        </div>
 
-      <div style={{ marginBottom: 16 }}>
         <TeamPicker
           teamA={teamA}
           teamB={teamB}
           onTeamAChange={setTeamA}
           onTeamBChange={setTeamB}
         />
-      </div>
 
-      {!bothSelected && (
-        <div className="dim mono" style={{ fontSize: 12 }}>
-          Select two teams to compare.
-        </div>
-      )}
-
-      {bothSelected && isLoading && <div className="dim">Loading…</div>}
-      {bothSelected && error && (
-        <ErrorCard
-          error={error}
-          onRetry={() => refetch()}
-          title="Couldn't load comparison"
-        />
-      )}
-
-      {bothSelected && data && (
-        <div>
-          <div className="mono dim" style={{ fontSize: 11, marginBottom: 12 }}>
-            Season: {data.season ?? "—"}
-          </div>
-
-          {/* Summary stat table (rating/rank/record — non-cohort) */}
-          <table
-            className="mono tnum"
-            style={{
-              width: "100%",
-              fontSize: 12,
-              borderCollapse: "collapse",
-              marginBottom: 24,
-            }}
-          >
-            <thead>
-              <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-                <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
-                <th
-                  style={{
-                    padding: "8px 12px 8px 0",
-                    textAlign: "right",
-                    fontWeight: 500,
-                    color: "var(--ink)",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <TeamMark abbr={data.team_a} />
-                    {data.team_a}
-                  </span>
-                </th>
-                <th
-                  style={{
-                    padding: "8px 0",
-                    textAlign: "right",
-                    fontWeight: 500,
-                    color: "var(--ink)",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <TeamMark abbr={data.team_b} />
-                    {data.team_b}
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.stats ?? []).map((row) => (
-                <StatRowDisplay
-                  key={row.key}
-                  row={row}
-                  status={
-                    data._meta?.field_status?.[row.key] as
-                      | FieldStatus
-                      | undefined
-                  }
-                />
-              ))}
-            </tbody>
-          </table>
-
-          {/* Cohort strip */}
+        {bothSelected && data && (
           <div
             style={{
               display: "flex",
               gap: 6,
-              marginBottom: 16,
-              paddingBottom: 12,
-              borderBottom: "1px solid var(--line-soft)",
+              marginTop: 16,
+              paddingTop: 16,
+              borderTop: "1px solid var(--line-soft)",
+              alignItems: "center",
             }}
           >
-            <span
-              className="upper dim2"
-              style={{ fontSize: 9, alignSelf: "center", marginRight: 6 }}
-            >
+            <span className="upper dim2" style={{ fontSize: 9, marginRight: 6 }}>
               Cohort
             </span>
             {COHORT_TABS.map((tab) => (
@@ -204,16 +113,219 @@ function TeamCompareMode() {
                 {tab.label}
               </Pill>
             ))}
+            <span
+              className="mono dim2"
+              style={{ fontSize: 10, marginLeft: "auto" }}
+            >
+              Season: {data.season ?? "—"}
+            </span>
           </div>
+        )}
+      </div>
 
-          {/* Matchup sections */}
-          <MatchupSections
-            teamA={data.team_a}
-            teamB={data.team_b}
-            cohortA={extractCohort(profileA.data?.cohort_splits, cohort)}
-            cohortB={extractCohort(profileB.data?.cohort_splits, cohort)}
-          />
+      {/* Empty / loading / error states */}
+      {!bothSelected && (
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="dim mono" style={{ fontSize: 12 }}>
+            Select two teams to compare.
+          </div>
         </div>
+      )}
+
+      {bothSelected && isLoading && (
+        <div className="hm-card" style={{ padding: 24 }}>
+          <div className="dim">Loading…</div>
+        </div>
+      )}
+
+      {bothSelected && error && (
+        <ErrorCard
+          error={error}
+          onRetry={() => refetch()}
+          title="Couldn't load comparison"
+        />
+      )}
+
+      {/* Content cards */}
+      {bothSelected && data && (
+        <>
+          {/* Narrative card */}
+          {cohortA && cohortB && (
+            <div className="hm-card" style={{ padding: 20 }}>
+              <NarrativeBanner
+                teamA={data.team_a}
+                teamB={data.team_b}
+                cohortA={cohortA}
+                cohortB={cohortB}
+              />
+            </div>
+          )}
+
+          {/* Collapsible summary card */}
+          <SummaryCard data={data} />
+
+          {/* Matchup cards */}
+          {cohortA && cohortB ? (
+            <>
+              <div className="hm-card" style={{ padding: 20 }}>
+                <BallGroup
+                  title={`When ${data.team_a} has the ball`}
+                  subtitle={`${data.team_a} offense vs ${data.team_b} defense`}
+                  offCohort={cohortA}
+                  defCohort={cohortB}
+                  offTeam={data.team_a}
+                  defTeam={data.team_b}
+                />
+              </div>
+              <div className="hm-card" style={{ padding: 20 }}>
+                <BallGroup
+                  title={`When ${data.team_b} has the ball`}
+                  subtitle={`${data.team_b} offense vs ${data.team_a} defense`}
+                  offCohort={cohortB}
+                  defCohort={cohortA}
+                  offTeam={data.team_b}
+                  defTeam={data.team_a}
+                />
+              </div>
+              <div className="hm-card" style={{ padding: 20 }}>
+                <EvenFooting cohortA={cohortA} cohortB={cohortB} />
+              </div>
+            </>
+          ) : (
+            <div className="hm-card" style={{ padding: 24 }}>
+              <div
+                style={{
+                  textAlign: "center",
+                  color: "var(--ink-4)",
+                  fontSize: 12,
+                }}
+              >
+                No cohort split data for this selection.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Collapsible summary card — the non-cohort stat table (rating/rank/
+ * record/percentiles). Collapsed by default; secondary to the matchup
+ * sections.
+ */
+function SummaryCard({
+  data,
+}: {
+  data: {
+    team_a: string;
+    team_b: string;
+    stats?: Array<{
+      key: string;
+      label: string;
+      team_a_value?: number | string | null;
+      team_b_value?: number | string | null;
+    }> | null;
+    _meta?: { field_status?: Record<string, unknown> } | null;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="hm-card" style={{ padding: 20 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          font: "inherit",
+        }}
+      >
+        <span className="upper dim" style={{ fontSize: 10 }}>
+          Summary Stats
+        </span>
+        <span className="mono dim2" style={{ fontSize: 12 }}>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+
+      {open && (
+        <table
+          className="mono tnum"
+          style={{
+            width: "100%",
+            fontSize: 12,
+            borderCollapse: "collapse",
+            marginTop: 12,
+          }}
+        >
+          <thead>
+            <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
+              <th style={{ padding: "8px 12px 8px 0" }}>Stat</th>
+              <th
+                style={{
+                  padding: "8px 12px 8px 0",
+                  textAlign: "right",
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <TeamMark abbr={data.team_a} />
+                  {data.team_a}
+                </span>
+              </th>
+              <th
+                style={{
+                  padding: "8px 0",
+                  textAlign: "right",
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <TeamMark abbr={data.team_b} />
+                  {data.team_b}
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data.stats ?? []).map((row) => (
+              <StatRowDisplay
+                key={row.key}
+                row={row}
+                status={
+                  data._meta?.field_status?.[row.key] as
+                    | FieldStatus
+                    | undefined
+                }
+              />
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
@@ -255,75 +367,6 @@ const MATCHUP_METRICS: MatchupMetric[] = [
   { off: "off_third_down_pct", def: "def_third_down_pct", label: "3rd-down %", fmt: pctFmt },
   { off: "off_redzone_td_pct", def: "def_redzone_td_pct", label: "Red-zone TD %", fmt: pctFmt },
 ];
-
-/**
- * Three grouped matchup sections: When A has ball (A off vs B def),
- * When B has ball (B off vs A def), Even footing (turnover_diff).
- *
- * Each collision row shows the offensive value on one side and the
- * reciprocal defensive-allowed value on the other.
- */
-function MatchupSections({
-  teamA,
-  teamB,
-  cohortA,
-  cohortB,
-}: {
-  teamA: string;
-  teamB: string;
-  cohortA: Record<string, number> | null;
-  cohortB: Record<string, number> | null;
-}) {
-  if (!cohortA || !cohortB) {
-    return (
-      <div
-        style={{
-          padding: 20,
-          textAlign: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        No cohort split data for this selection.
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Auto-generated narrative */}
-      <NarrativeBanner
-        teamA={teamA}
-        teamB={teamB}
-        cohortA={cohortA}
-        cohortB={cohortB}
-      />
-
-      {/* When A has the ball */}
-      <BallGroup
-        title={`When ${teamA} has the ball`}
-        subtitle={`${teamA} offense vs ${teamB} defense`}
-        offCohort={cohortA}
-        defCohort={cohortB}
-        offTeam={teamA}
-        defTeam={teamB}
-      />
-
-      {/* When B has the ball */}
-      <BallGroup
-        title={`When ${teamB} has the ball`}
-        subtitle={`${teamB} offense vs ${teamA} defense`}
-        offCohort={cohortB}
-        defCohort={cohortA}
-        offTeam={teamB}
-        defTeam={teamA}
-      />
-
-      {/* Even footing */}
-      <EvenFooting cohortA={cohortA} cohortB={cohortB} />
-    </div>
-  );
-}
 
 /** One directional group: offense metrics vs reciprocal defense-allowed. */
 function BallGroup({
@@ -897,11 +940,6 @@ function NarrativeBanner({
       style={{
         display: "flex",
         gap: 10,
-        padding: "12px 14px",
-        marginBottom: 16,
-        background: "color-mix(in oklab, var(--info) 6%, transparent)",
-        border: "1px solid color-mix(in oklab, var(--info) 20%, transparent)",
-        borderRadius: 6,
         fontSize: 11.5,
         lineHeight: 1.5,
         color: "var(--ink-2)",
