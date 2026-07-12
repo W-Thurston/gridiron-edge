@@ -38,7 +38,7 @@ How everything works right now. Assumes you know what the project does - see [RE
 | Bankroll management | `gridiron_edge.betting.bankroll` - transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
 | Performance analytics | `gridiron_edge.betting.performance` - pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
 | Betting CLI | `gridiron_edge.cli.betting` - 8 commands: log, settle, list, summary, balance, export, deposit, with |
-| Player stats ingest | `gridiron_edge.ingest.nflverse` (nflreadpy player game logs, 1999–2024) |
+| Player stats ingest | `gridiron_edge.ingest.nflverse` (nflreadpy player game logs, 1999–2025) |
 | Player stats cleaning | `gridiron_edge.transform.clean.player_stats` |
 | Player feature engineering | `gridiron_edge.features.player` - rolling, matchup, usage, game_context, builder, _columns |
 | Prop model training | `gridiron_edge.models.prop_prediction` - base (PropTrainer), qb_pass_yards, qb_rush_yards, rb_rush_yards, wr_rec_yards, te_rec_yards |
@@ -50,6 +50,7 @@ How everything works right now. Assumes you know what the project does - see [RE
 | API schemas | `gridiron_edge.api.schemas` — Pydantic v2, `frozen=True`, `extra="forbid"`, `_meta` envelope via `_base.BaseResponse` |
 | API serializers | `gridiron_edge.api.serializers` — hand-written per D17, owns `_meta.field_status` per D18 |
 | API routes | `gridiron_edge.api.routes` — FastAPI, exception translation for `ChampionNotFoundError` / `OddsUnavailableError` |
+| API player/defense routes (W9.10) | `gridiron_edge.api.routes.players`, `...routes.defense` — `/players` roster, `/players/{id}/history`, `/defense/{team}/allowed` |
 | API exceptions | `gridiron_edge.api.exceptions` — data-state signals from loaders to routes |
 | Frontend | `frontend/` — Vite + React + TypeScript, consumes API via generated `openapi-fetch` client and React Query hooks |
 | Frontend design system | `frontend/src/index.css` — OKLCH dark theme ported from prototype; `frontend/src/design-decisions.md` documents the aesthetic blend |
@@ -57,8 +58,8 @@ How everything works right now. Assumes you know what the project does - see [RE
 | Frontend testing | Vitest + React Testing Library; smoke tests at `frontend/src/**/*.test.tsx` |
 | Percentile ranking pass | `gridiron_edge.evaluation.percentiles` — per-team percentile ranks over 4 stats |
 | Situational splits (props) | `gridiron_edge.evaluation.situational_splits` — per-player, 8 cohorts, from player game logs |
-| Opponent-allowed aggregates | `gridiron_edge.evaluation.opponent_allowed` — per-opponent-position stat aggregations |
-| Team cohort splits | `gridiron_edge.evaluation.team_cohort_splits` — 4 cohorts × 8 metrics from EPA data |
+| Opponent-allowed aggregates | `gridiron_edge.evaluation.opponent_allowed` — per-(opponent, position, stat) stat allowed, 4 cohorts (season/l4/home/away), defense-perspective home/away |
+| Team cohort splits | `gridiron_edge.evaluation.team_cohort_splits` — 4 cohorts × 11 metrics (off + reciprocal def pairs) from EPA data |
 
 ---
 
@@ -87,25 +88,33 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
 | `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
 | `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
-| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, Spark, TeamHero) — used across many screens |
+| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart) — used across many screens |
 | `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
+| `frontend/src/components/compare/` | Compare-specific components (TeamPicker) | | `frontend/src/components/dev/` | Dev panel (floating highlight-mode toggle, W9.8) |
+| `frontend/src/components/field-status/` | PendingField, BlockedField, FieldValue, PendingChip, ComingSoonCard, usePendingHighlight |
 
 **Data layout:**
 
 ```
 data/
-  raw/          nflverse Parquet files (games, upcoming schedule, PBP)
-    /player_stats/    per-season player game logs (Parquet)
-  cleaned/      Canonical CSVs (games, schedule, Elo state, stadiums)
-    /player_game_logs.parquet   cleaned player stats
-  modeling/     Feature matrix (base + full, Parquet)
+  raw/                                    nflverse Parquet files (games, upcoming schedule, PBP)
+    /player_stats/                        per-season player game logs (Parquet)
+  cleaned/                                Canonical CSVs (games, schedule, Elo state, stadiums)
+    /player_game_logs.parquet             cleaned player stats
+  modeling/                               Feature matrix (base + full, Parquet)
   output/
-    predictions/{year}/          week_NN_predictions.png + .html + .csv
+    predictions/{year}/                   week_NN_predictions.png + .html + .csv
     predictions/predictions_log.parquet   prediction archive (all models)
-    rankings/                    elo_rankings_{year}_wkNN.csv
-    sim/                         playoff probability tables
+    champions/champions.json              current champion per model_name (W13)
+    rankings/                             elo_rankings_{year}_wkNN.csv
+    rankings/percentiles/                 per-team percentile ranks (from sim)
+    rankings/team_cohort_splits.parquet   4-cohort × 11-metric team splits
+    sim/                                  playoff probability tables
+    temp/projections_summary.csv + projections_metadata.json sim
     props/
-      prop_predictions_log.parquet   prop prediction archive (all models)
+      prop_predictions_log.parquet            prop prediction archive (all models)
+      opponent_allowed.parquet                per-defense-position allowed, 4 cohorts
+      situational_splits/{stat_type}.parquet  per-player prop splits
   odds/
     dk_odds_log.parquet          Full historical ledger (all pulls)
     dk_odds_current.parquet      Latest pull snapshot (for viz)
@@ -268,6 +277,21 @@ NaN handling is deferred to the trainer (not the builder) because the
 trainer has position context to determine which features have reasonable
 coverage. Features with >50% NaN for the filtered position are dropped.
 
+### player_game_logs game_id join (reset_index landmine)
+
+`transform/clean/player_stats.py::_join_game_id` attaches `game_id` via a
+dual schedule merge (player team as home / as away, coalesced). It MUST
+`reset_index(drop=True)` before the merges: upstream `dropna` leaves a
+non-contiguous index, and assigning a fresh-indexed merge result back
+onto that df aligns by *index label*, scrambling `game_id` to same-week
+neighbors (the week matches but the teams are wrong — a nasty, silent
+corruption). `is_home` is derived from which join side matched, not
+parsed from `game_id`.
+
+Fixed 2026-07-12. If you touch this join, keep the reset_index and the
+1:1 matchup key `(season, week, team, opponent_team)`. Regression test in
+`tests/unit/.../test_player_stats*`.
+
 #### Prop models use HOLDOUT_SEASONS, consistent with game models
 
 PropTrainer.train() parses HOLDOUT_SEASONS ("2023-2024" → int 2023) for
@@ -362,6 +386,28 @@ not migrated to the resolver:
 
 These callsites carry inline comments explaining the intent.
 
+###### Champion→elo fallback for upcoming weeks (W9.10)
+
+The games API resolves the `win_prob` champion first, then falls back to
+`elo` when the champion has no archived rows for the requested
+`(season, week)`. This is not a workaround — it reflects a structural
+reality:
+
+- Trained models (logistic/rf/xgb) predict from the modeling file, which
+  is built from **completed** games only. They cannot predict upcoming
+  (unplayed) weeks — no feature rows exist.
+- Elo predicts from the Elo state table, which **carries forward** (a
+  team's rating exists before it plays). Elo is the *only* model that can
+  predict an upcoming week.
+- `weekly-predict`'s `predict-week` stage therefore archives upcoming
+  weeks under `model_type="elo"` by design (via `build_predictions_df`).
+
+So for an upcoming week the champion (e.g. logistic) has zero rows and
+the fallback serves elo. Completed weeks still serve the champion
+(backfilled). Fallback lives in `api/loaders.py::load_games_for_week`
+and `load_game`. Trained-model predictions for upcoming weeks would
+require an upcoming-week feature matrix — a future workstream (ROADMAP §9).
+
 #### Temporal CV for model training
 
 All model families use TimeSeriesSplit(n_splits=5) for cross-validation
@@ -425,10 +471,18 @@ Step 5 audit confirmed all existing loaders comply.
   contract; regenerating the schema catches breaking changes at build
   time.
 - **Shared primitives pattern:** Cross-domain components live in
-  `components/primitives/`. When building a new screen, look here first
-  before creating scoped components. Primitives available: Pill,
-  WhyLink, TeamMark (with team colors via React Query cache), Spark,
-  TeamHero.
+  `components/primitives/`. Look here first before creating scoped
+  components; do not reinvent. Inventory:
+  - `Pill` — filter/tab toggle
+  - `WhyLink` — explainability affordance (labeled + dot modes)
+  - `TeamMark` — team-colored abbrev chip (color via team-metadata cache)
+  - `TeamHero` — team identity block (mark + city + serif name + record)
+  - `Spark` — generic sparkline
+  - `RatingChart` — line chart w/ Y-grid + inline W/L markers
+  - `DistributionChart` — Gaussian density (mean + std) w/ 90% band
+  - `BarChart` — per-game bars + solid reference line (team-allowed avg)
+  - `PendingChip` — inline "X pending" marker (highlight-aware)
+  - `ComingSoonCard` — whole-card blocked/pending placeholder
 - **Composed screens pattern:** GameDetail (W9.6) demonstrated the
   pattern for composing multiple endpoints into a single screen. Each
   card in a screen might consume 1-3 different API endpoints. Use
@@ -448,6 +502,27 @@ Step 5 audit confirmed all existing loaders comply.
   prop_id), composing B1 (player history) + B3 (defense-by-team) client-
   side. When a screen needs arbitrary cross-entity comparison, prefer
   dedicated list/detail endpoints over a bundled composite id.
+- **Field-status discipline (never silently skip).** Every field the UI
+  wants but the backend can't yet fill must render *visibly* as pending
+  or blocked — never omitted, never a bare em-dash without a marker.
+  Route through `PendingField` / `BlockedField` / `FieldValue` /
+  `PendingChip` / `ComingSoonCard`. All read the dev-panel highlight
+  context so gaps light up on demand. This is what makes the frontend a
+  real verification surface: if a gap isn't marked, highlight mode can't
+  catch it.
+- **Dev panel + highlight mode (W9.8).** Floating bottom-right "DEV"
+  button (`components/dev/`) opens a panel with a "Highlight Pending &
+  Blocked" toggle. On → every pending/blocked element outlines in orange
+  (`--highlight`) for a visual gap-audit pass. State in `DevPanelContext`
+  (localStorage). The panel deliberately does NOT close on click-outside
+  (you flip highlight on, then walk the app). Keep new pending/blocked UI
+  wired through the field-status primitives so it participates.
+- **Layout width lesson.** The prototype assumes ~1400px full-screen;
+  our app is a centered ~920px container. Full-width two-column layouts
+  (main + rail, 80/20 splits) do NOT fit — reverted twice (W9.7, W9.9).
+  Default to a full-width hero + single-column stack below, page centered
+  at max-width. Reach for two columns only within genuinely generous
+  width.
 
 **Local dev loop:**
 
@@ -585,6 +660,10 @@ model.train(games, repo=repo)      dispatches to model-specific trainer
             Promotes if Brier improves ≥ 0.002, ECE doesn't degrade > 0.01,
             AUC doesn't degrade > 0.01.  --force overrides gates.
 ```
+> Note: diagrams below predate W13 and use `model_version` as shorthand.
+> The live identity is the composite `(model_name, model_type)` — e.g.
+> `win_prob` + `random_forest`. See "Archive migration" and the W13
+> champion subsection for the current contract.
 
 **Total model training** follows the same pattern but:
 - Target is `actual_total` (PTS_WINNER + PTS_LOSER) instead of `RESULT`
@@ -660,12 +739,12 @@ predict_games(model_version, feature_fn, repo)
 #### Backfill & Evaluation
 
 ```
-gridiron evaluate backfill --model-version random_forest_v3
+gridiron evaluate backfill --model-name win_prob --model-type random_forest
     |
     v
 backfill_model(model_version)
     |
-    |-- PredictorRegistry.get(model_version) -> predictor instance
+    |-- PredictorRegistry.get(model_version) → resolve via (model_name, model_type)
     |
     |-- predictor.predict_historical(games)
     |       -> enriched predictions DataFrame (21 columns)
@@ -673,7 +752,7 @@ backfill_model(model_version)
     |
     +-- write_archive_rows(predictions)
             -> data/output/predictions/predictions_log.parquet
-            Deduplicates on (game_id, model_version)
+            Deduplicates on (game_id, model_name, model_type)
             Most recent prediction wins
 
 gridiron evaluate select-model
@@ -686,11 +765,11 @@ gridiron evaluate select-model
 
 #### Archive Schema
 
-The prediction archive (`predictions_log.parquet`) has 21 columns:
+The prediction archive (`predictions_log.parquet`) has 22 columns:
 
 | Group | Columns |
 |-------|---------|
-| **Identity** | `predicted_at`, `is_backfilled`, `model_version`, `season`, `week`, `game_id`, `game_date`, `away_team`, `home_team` |
+| **Identity** | `predicted_at`, `is_backfilled`, `model_name`, `model_type`, `season`, `week`, `game_id`, `game_date`, `away_team`, `home_team` |
 | **Ratings** | `away_elo`, `home_elo` |
 | **Predictions** | `away_win_prob`, `home_win_prob` |
 | **Enrichment** | `model_spread`, `model_total`, `projected_home_score`, `projected_away_score`, `margin_std`, `win_prob_lo`, `win_prob_hi`, `confidence_tier` |
@@ -766,6 +845,16 @@ uv run gridiron run-data-pipeline
 
 Runs all stages. Re-fetches current season games + upcoming schedule,
 incremental Elo fit, rebuilds features.
+
+### Offseason / pre-season Week 1 predictions
+
+To populate the frontend with upcoming Week 1 before the season starts,
+skip the odds-dependent stages (no odds exist for a future week):
+
+```bash
+uv run gridiron weekly-predict --week 1 --season 2026-2027 \
+  --skip fetch-odds --skip generate-edges
+```
 
 ### Post-week archive (Monday)
 
@@ -887,6 +976,9 @@ is now exposed as a CLI command (added during W5.5).
 | `data/raw/player_stats/player_stats_{season}.parquet` | Per-season player game logs from nflreadpy |
 | `data/cleaned/player_game_logs.parquet` | Cleaned player stats (138K rows, deduped) |
 | `data/output/props/prop_predictions_log.parquet` | Prop prediction archive - dedup on (game_id, player_id, stat_type, model_name, model_type) |
+| `data/output/champions/champions.json` | Current champion per model_name (W13) |
+| `data/output/props/opponent_allowed.parquet` | Per-(opponent, position, stat) allowed, 4 cohorts |
+| `data/output/rankings/team_cohort_splits.parquet` | 4-cohort × 11-metric team splits |
 
 ---
 
@@ -932,6 +1024,9 @@ is now exposed as a CLI command (added during W5.5).
 | API schema base | `api/schemas/_base.py` — `BaseResponse`, `BaseListResponse` |
 | Response meta + placeholder slugs | `api/meta.py` — `ResponseMeta`, `Blocker`, `Unavailable` |
 | Prop ID decode | `api/_prop_id.py` |
+| API players routes (roster + history) | `api/routes/players.py` |
+| API defense-allowed route | `api/routes/defense.py` |
+| Player history / defense loaders | `api/loaders.py` (load_player_history, load_players_list, load_defense_allowed) |
 | Frontend chrome (TopNav, SubNav, Breadcrumb) | `frontend/src/components/chrome/` |
 | Frontend field-status primitives | `frontend/src/components/field-status/` |
 | Frontend API client | `frontend/src/api/client.ts`, `frontend/src/api/hooks.ts` |
@@ -1004,18 +1099,11 @@ uv run pytest --cov --cov-report=term-missing  # with coverage report
 
 ---
 
-### Coverage baseline (as of W0 completion)
+### Coverage baseline
 
-412 tests | 40.04% line coverage | threshold: `fail_under = 40`
+500+ tests across the three-tier pyramid; `fail_under = 40` floor in pyproject. Coverage skews high on core business logic (features, datasets, evaluation/metrics, ratings/elo/core: 80–100%), moderate on integration-heavy modules (pipeline, archive, backfill), and low on deferred surfaces (sim kernels, viz, CLI, model training). Ratchet `fail_under` up as workstreams add tests.
 
-| Tier | Coverage | Modules |
-|------|----------|---------|
-| **Core business logic** | 80-100% | features/*, datasets/*, core/*, evaluation/metrics, ratings/elo/core |
-| **Integration-heavy** | 40-80% | pipeline, archive, backfill, diagnostics, odds/store, artifact |
-| **Deferred** | 0-30% | sim/*, viz/*, CLI, model training, draftkings, elo predictor, ETL |
-
-**Strategy:** Ratchet `fail_under` up as workstreams add tests for their modules.
-Each workstream is expected to bring its modules to 80%+ coverage.
+Run `uv run pytest --cov --cov-report=term-missing` for the current numbers — treat any hardcoded percentage here as illustrative, not authoritative.
 
 ---
 
@@ -1032,6 +1120,30 @@ Bernabeu · Caesars Superdome · Estadio Banorte · EverBank Stadium · FC Bayer
 ### Off-season `current_nfl_season()`
 
 Returns `year - 1` when `month < 6`. In May 2026 it returns 2025, treating you as if in the 2025-2026 season. Pass `--season 2026` or `--upcoming-season 2026` explicitly when fetching 2026-2027 data.
+
+### Offseason / pre-Week-1 data coverage
+
+Once the prior season completes, the default view resolves to the
+upcoming season's Week 1 (`resolve_current_season_week` prefers the
+upcoming schedule when the completed archive ends on week ≥ 22). In this
+state, coverage is intentionally partial — this is correct, not broken:
+
+- **Games:** served by **Elo only** — win probability populated;
+  `model_spread` / `model_total` / projected scores are **null** (those
+  need trained-model post-processing, which needs a feature matrix that
+  only exists for completed games).
+- **Champion→elo fallback:** the games API resolves the win_prob champion
+  first, falls back to elo when the champion has no rows for the week.
+  Upcoming weeks only ever have elo predictions. (See §7 W13 subsection.)
+- **Props + edges:** empty for upcoming weeks (prop models need features;
+  edges need odds — neither exists pre-week).
+- **Compare Player-vs-Defense:** shows the **prior completed season**
+  (labeled) — an empty upcoming season would have no bars to chart.
+- **Rating charts:** a single point until games play. **Records:** 0-0.
+
+Trained-model game/prop predictions for upcoming weeks require an
+upcoming-week feature matrix — a future workstream (ROADMAP §9).
+Elo-in-offseason is the reasonable default.
 
 ### Sim requires a populated upcoming schedule
 

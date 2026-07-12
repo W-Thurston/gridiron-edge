@@ -85,6 +85,7 @@ biggest screen gap.
 
 | Date | Change |
 |------|--------|
-| 2026-07-11 | **W9.10 complete.** Both Compare modes shipped. Player-vs-Defense rebuilt with independent pickers + per-game bar chart + baseline-driven verdict, on new backend B1–B4 (player-history, 4-cohort opponent-allowed, defense-by-team, players roster). Fixed game_id scramble at root. |
-| 2026-07-11 | **W9.10 status resync.** Team vs Team complete (incl. six prototype-alignment adjustments + 11-metric cohort_splits expansion). Player vs Defense redesigned to mirror Team mode (independent player/stat/team pickers, 7-split strip, per-game bar chart centerpiece, "matchup plainly" card). Paused on backend: B1 player-history endpoint + B2 opponent-allowed splits expansion (Path C). Book line / O-U coloring deferred (odds); Change 6 deferred (P2). |
-| 2026-07-11 | **W9.10 Compare Screen Rebuild design.** Locked. ~8 substeps across 4 tiers. Two modes (Team vs Team + Player vs Defense). Team mode: enhanced pickers, cohort strip, grouped matchup sections, auto-narrative. Player mode: DistributionChart + defense stat rows. Highlight discipline baked in from W9.8. |
+| 2026-07-12 | **Doc-sync pass + PLAN reset.** Normalized planning docs after the frontend arc; PLAN reset to between-workstreams with a next-candidates list (audit sweep recommended). |
+| 2026-07-11 | **W9.10 complete.** Both Compare modes shipped on backend B1–B4. Fixed game_id scramble, clean-games clobber, Elo empty-games crash; added champion→elo fallback + upcoming-Week-1 season resolver. |
+| 2026-07-11 | **W9.10 status resync.** Team vs Team complete (6 alignment adjustments + 11-metric cohort_splits). Player vs Defense redesigned to independent pickers + bar chart + baseline verdict. |
+| 2026-07-11 | **W9.10 design locked.** Two modes; highlight discipline baked in from W9.8. |

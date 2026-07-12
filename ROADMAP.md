@@ -50,7 +50,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Composite CLI workflows | ✅ Complete | `weekly-predict`, `post-week`, `full-retrain`, `verify` — shared stage abstraction, soft-fail semantics, dependency validation |
 | Code quality | ✅ Excellent | Ruff, pyrefly, three-tier test pyramid, pre-commit + pre-push hooks |
 | Testing infrastructure | ✅ Complete | 500+ tests, auto-markers, shared fixtures, MiniRepoBuilder |
-| Player data ingestion | ✅ Solid | nflreadpy player game logs (1999–2024), 138K rows, 42 cols per row |
+| Player data ingestion | ✅ Solid | nflreadpy player game logs (1999–2025), 138K rows, 42 cols per row |
 | Player feature engineering | ✅ Solid | Rolling stats (L3/L6), matchup (28 cols), usage (6 cols), game context (6 cols) |
 | Player prop models | ✅ Solid (5 models) | ElasticNet + RF + XGB across 5 stat families with archive-driven champion selection |
 | Prop post-processing | ✅ Complete | predicted_std, 90% intervals, P(over), lean, confidence tiers |
@@ -61,7 +61,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Deep code review (Tier 4 sweep) | ✅ Complete | 30 backlog items closed; 2 real bugs surfaced and fixed |
 | API serving layer (W8) | ✅ Complete | 16 endpoints, Pydantic-validated, field_status placeholder convention, champion resolution wired |
 | Frontend app (W9) | ✅ Complete | Vite + React + TS; all screens render; typed openapi-fetch + React Query |
-| Frontend fidelity arc (W9.5–W9.10) | ✅ Mostly complete | Dashboard, GameDetail, Teams split-view, PlayerProp rebuilt; 5 shared primitives + DistributionChart + RatingChart; dev-panel highlight mode. Compare (W9.10) in progress. |
+| Frontend fidelity arc (W9.5–W9.10) | ✅ Complete | Dashboard, GameDetail, Teams split-view, PlayerProp, Compare (both modes) rebuilt; primitives: Pill, WhyLink, TeamMark-w/colors, Spark, TeamHero, DistributionChart, RatingChart, BarChart; dev-panel highlight mode |
 | Cohort splits (11 metrics) | ✅ Complete | Team cohort splits season/l4/home/away with off+def reciprocal pairs; per-prop situational splits; opponent-allowed by position |
 
 ### What's Missing
@@ -72,16 +72,15 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Multi-book odds ingestion | ❌ Not started | Blocks line shopping, book selectors, real bet-slip odds, per-week book lines |
 | Injury/news feed | ❌ Not started | Blocks W4.5 scenario engine + injury UI fields |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
-| Player game-history endpoint | ❌ Not started | Blocks Compare Player-vs-Defense bar chart, PlayerProp 12-game chart, PlayersExplorer L6 sparkline |
 | Off/def rating decomposition | ❌ Not started | Blocks off/def ranking tabs, Compare Off/Def mini-stats |
-| Frontend prototype-fidelity backlog | 🟡 Partial | ~180 catalogued items in §9.7/§9.8; core screens done, polish + blocked-on-data items remain |
+| Frontend prototype-fidelity backlog | 🟡 Partial | §9.7 (backend gaps) + §9.8 (frontend polish); core screens done, PlayoffProjections + BetSlip rebuilds + blocked-on-data items remain |
 
 ### Known Blockers
 
 None at the workstream level. Two operational items tracked in PLAN.md:
 
 - **DraftKings API 403 (bot detection):** `weekly-predict` soft-fails gracefully when this happens; historical odds ledger and game_id resolver work independently.
-- **Walk-forward backfill on single-season expanded-feature windows:** Real bug, fix needed before W12 (Model Ensemble) can do a clean Brier comparison. Fix listed in PLAN.md "Real Bugs Surfaced."
+- **Walk-forward backfill on single-season expanded-feature windows:** Real bug, fix needed before W12 (Model Ensemble) can do a clean Brier comparison. Fix tracked in ROADMAP §9.2.
 
 ---
 
@@ -96,7 +95,7 @@ Gridiron Edge becomes a **complete NFL decision-support platform** that:
 5. ✅ **Recommends stake sizing** using Kelly criterion and bankroll awareness
 6. ✅ **Tracks betting performance** with CLV, ROI, P/L splits, and Kelly adherence
 7. **Surfaces real-time information** (injuries, line moves, weather) that affects edge calculations
-8. **Serves all of the above** through an API and eventually a frontend
+8. ✅ **Serves all of the above** through an API and eventually a frontend
 
 The platform is built for personal use first (you + friends), with architecture that could support commercial access later.
 
@@ -124,148 +123,36 @@ Each workstream is a **major capability area** that can be broken into smaller t
 
 ### Completed Workstreams
 
-#### W1: Quick Wins & Unblocking — ✅ COMPLETE
-Fixed DK unicode minus bug, built game_id resolver, validated end-to-end odds joins. See CHANGELOG.md for details.
+Full detail in CHANGELOG.md + DECISIONS.md. One-line summaries here.
 
-#### W2: Richer Game Model Outputs — ✅ COMPLETE
-Spread derivation (probit + per-model sigma calibration), total points model, projected scores, 90% uncertainty bands, confidence tiers. See CHANGELOG.md for details.
+| WS | Summary | Date | Milestone |
+|---|---|---|---|
+| W1 | Quick wins: DK unicode-minus fix, game_id resolver, odds joins | — | |
+| W2 | Richer game outputs: spread, total model, uncertainty bands, tiers | — | |
+| W3 | Market math: odds_math, kelly (pure-math, no scipy) | — | |
+| W3.5 | Audit remediation: ~100 findings, composite identity, canonical Elo sim (D1–D12) | 2026-06-21 | |
+| W4 | Player data + 5 prop models + archive + CLI | 2026-06-10 | M3 |
+| W4.1 | Composite CLI: weekly-predict, post-week, full-retrain, verify | — | M1.6 |
+| W5 | Edge engine: ML/spread/total edges, recommendations, CLV | — | M1 |
+| W5.5 | Deep code review: 30 backlog items, 2 bugs fixed | 2026-06-22 | |
+| W6 | Portfolio + bet tracking: ledger, bankroll, performance, 8 CLI cmds | — | M2 |
+| W13 | Runtime champion resolution: manifest + resolver, `--model-type auto` (D21-adjacent) | 2026-07-01 | |
+| W8 | API serving layer: 16 endpoints, field_status convention (D13–D21) | 2026-07-04 | |
+| W9 | Frontend: Vite+React+TS, all screens render, openapi-fetch + React Query | 2026-07-03 | M4.5 |
 
-#### W3: Market Intelligence Foundation — ✅ COMPLETE
-Pure-math market package: odds_math.py, kelly.py. Power devig via bisection, no scipy dependency. See CHANGELOG.md for details.
+**Frontend fidelity arc (W9.5–W9.10)** — rebuilt core screens to
+prototype fidelity on a shared primitive set + the W9.8 highlight
+discipline. Primitives: Pill, WhyLink, TeamMark-colors, Spark, TeamHero,
+RatingChart, DistributionChart, BarChart, PendingChip, ComingSoonCard.
 
-#### W3.5: Audit Remediation — ✅ COMPLETE
-Closed ~100 findings from `audit_2026_06_18.md` across 11 audit units, plus 4 cross-cutting patterns. Major outcomes:
-
-- **Identity unification:** `(model_name, model_type)` composite identity flows through every persistence layer.
-- **Elo simulator:** Single canonical history simulator drives both the state table and the tuner.
-- **Task-discriminated metadata:** Metrics live in a single dict on `BaseModelMetadata`.
-- **Vectorization:** All audit-flagged per-row apply patterns eliminated.
-- **CLI ergonomics:** Stage staleness warnings, calibration health flags, archive-driven prop CLI, enum-based string constants.
-
-See DECISIONS.md D1–D12 for architectural decisions.
-
-#### W4: Player Data & First Prop Models — ✅ COMPLETE
-Player game logs (nflreadpy, 1999–2024), 4 player feature modules, 5 prop models (QB pass/rush yards, RB rush yards, WR rec yards, TE rec yards), PropTrainer base class, post-processing enrichment, prop archive, prop CLI. M3 achieved. See CHANGELOG.md for details.
-
-#### W4.1: Composite CLI Workflows — ✅ COMPLETE
-Four composite commands wrap related single-purpose commands into complete workflows: `weekly-predict`, `post-week`, `full-retrain`, `verify`. Shared infrastructure in `cli/_composites.py` provides stage abstraction, dependency validation, soft-fail semantics, and consolidated summary rendering. M1.6 achieved.
-
-#### W5: Edge Engine — ✅ COMPLETE
-Edge calculation (moneyline, spread, total), recommendations builder, CLV analysis, CLI commands. See CHANGELOG.md for details.
-
-#### W5.5: Deep Code Review + Test Suite Review — ✅ COMPLETE
-Multi-session opportunistic cleanup that closed 30 backlog items and surfaced two real bugs that were fixed during the sweep. See CHANGELOG.md for details.
-
-#### W6: Portfolio & Bet Tracking — ✅ COMPLETE
-Bet ledger, bankroll management (decoupled), performance analytics, 8 CLI commands. Full round-trip validated. M2 achieved. See CHANGELOG.md for details.
-
-#### W13: Runtime Champion Resolution — ✅ COMPLETE (2026-07-01)
-Static manifest artifact at `data/output/champions/champions.json` written by `full-retrain`. `resolve_current_champion(model_name)` reads from it. CLI consumers migrated to `--model-type auto` pattern. Unblocks all downstream champion-only consumption paths.
-
-**Scope:** manifest schema + reader API (Tier 1), writer + full-retrain integration + manual-override flags (Tier 2), CLI consumer migration + intentional-Elo annotations (Tier 3).
-
-**Discovered as a mid-tier scope elevation from W8** when the API needed runtime champion resolution to serve `/games`, `/edges`, `/props`.
-
-See CHANGELOG.md for details.
-
-#### W9: Frontend — ✅ COMPLETE (2026-07-03)
-Vite + React + TypeScript app at `frontend/` consuming the 16-endpoint API end-to-end. All 20 prototype-referenced screens render. 12 screens consume the API; 4 are blocked-screen placeholders with full blocker context; 4 are client-side (Onboarding, Settings, Tools, BetSlip).
-
-**Architecture established:** Data flows via `openapi-fetch` typed client wrapped in per-endpoint React Query hooks. Three-Context state model (AppState, BetSlip, Nav) with localStorage persistence. Shared field-status primitives (`<PendingField />`, `<BlockedField />`, `<FieldValue />`) compose consistently. Consistent error UX via `<ErrorCard />` and global `<OfflineBanner />`.
-
-**Unlocks:** M4.5 achieved (visual verification of full output set). W8 Tier 3 additive dataset priority now discoverable — the frontend has surfaced which pending/blocked states matter most.
-
-#### W8: API Serving Layer — ✅ COMPLETE (2026-07-04)
-
-**Goal:** Expose analytics outputs through a REST API so a frontend (or other consumers) can access them, and so the full slate of outputs becomes visually verifiable in one place.
-
-**Delivered (2026-07-04):**
-- ✅ 16 endpoints returning populated data with Pydantic-validated responses (Tier 2).
-- ✅ 7 additive datasets computed by dedicated modules, persisted to `data/output/`, and consumed via loader→serializer→route pattern (Tier 3).
-- ✅ Placeholder convention (D14) applied consistently: null + `_meta.field_status` for anything not yet populated.
-- ✅ Champion resolution flows manifest → loader → serializer → route for game and prop endpoints.
-- ✅ Testing infrastructure: `MiniRepoBuilder` extended with 4+ W8-specific methods; integration tests via FastAPI `dependency_overrides`.
-
-**Remaining scope items** (each in a future workstream):
-- Off/def rating decomposition (Elo variants or EPA-derived, real modeling work).
-- Feature attribution / swing factors / prop reasoning (feature-attribution workstream).
-- Injury data source and downstream fields (ROADMAP §5.3).
-- Multi-book odds / line shopping fields (W7).
-- Live game state fields (W10).
-- PBP-derived aggregations for red_zone_rate_allowed and similar (future workstream).
-
-**Unlocks:** W9 (Frontend) consumes end-to-end. Future workstreams (W12, W4.5, W7, W10) can proceed independently.
-
-#### W9.5: Dashboard Rebuild + Cross-Cutting Primitives — ✅ COMPLETE (2026-07-04)
-
-Small workstream between W8 close-out and next major work. Shipped 11
-substeps: team metadata backend patch and CSV consolidation (Tier 1),
-5 shared primitives (Pill, WhyLink, TeamMark-with-colors, Spark, TeamHero)
-(Tier 2), 4 Dashboard sections + integration (Tier 3). Also consolidated
-NFL_long_to_short_name.csv and NFL_conference_division.csv into
-NFL_team_metadata.csv. See CHANGELOG.md for details.
-
-#### W9.6: GameDetail Full Fidelity — ✅ COMPLETE (2026-07-07)
-
-Rebuilt GameDetail from skeleton to prototype fidelity across 9
-substeps. Full-width game header with team-colored TeamHero + kick +
-model lean callout. Main column: Lines & Fair Value table (Model +
-Recommendation rows populated), Win Probability card, Team Comparison
-card (consumes Step 7c team_comparison field). Right rail: Top Prop
-Edges card + placeholder cards for blocked sections (Swing Factors,
-Injuries). See CHANGELOG.md for details.
-
-#### W9.7: Teams Split-View Rebuild — ✅ COMPLETE (2026-07-07)
-
-Restructured `/teams` and `/teams/:abbr` into consolidated split-view
-screen at `/teams` with optional `?team=X` param. Left column rankings
-table with 5-tab strip (Overall + 4 blocked); right column profile
-with team hero band, rating chart, situational splits, recent results,
-postseason outlook, and 2 blocked placeholders. New `RatingChart`
-primitive supports inline W/L markers per week. See CHANGELOG.md for
-details.
-
-#### W9.9: PlayerProp Rebuild — ✅ COMPLETE (2026-07-07)
-
-Rebuilt PlayerProp screen from skeleton to prototype fidelity across
-8 substeps. Team-colored player hero band with prop summary callout
-card on right side. Below: distribution chart (new primitive),
-situational splits (Step 5 data), Player vs Defense table with WhyLink,
-5 blocked ComingSoonCards. New `DistributionChart` primitive available
-for W9.10 Compare. See CHANGELOG.md for details.
-
-#### W9.8: Dev Panel + Pending Highlight Mode — ✅ COMPLETE (mechanism; audit deferred, 2026-07-01)
-
-Floating bottom-right dev panel with a Highlight Pending & Blocked
-toggle. When on, every pending/blocked element lights up orange so
-backend gaps are visible during a visual pass.
-
-**Delivered:** `DevPanelContext` + `--highlight` var (Tier 1);
-`usePendingHighlight` hook, retrofit of `PendingField`/`BlockedField`,
-consolidated `ComingSoonCard`, new `PendingChip` primitive (Tier 2).
-
-**Deferred:** Tier 3 audit sweep — walking every screen in highlight
-mode requires fully-populated backend data to distinguish frontend
-gaps from unpopulated fields. Tracked in §9 deferred tasks.
-
-#### Frontend Fidelity Arc (W9.5–W9.10) — framing note
-
-W9.5 through W9.10 form a coherent push: rebuild each prototype screen
-to fidelity, consuming a shared primitive set (Pill, WhyLink, TeamMark-
-with-colors, Spark, TeamHero, DistributionChart, RatingChart) and the
-W9.8 highlight discipline. W9.5–W9.9 complete; W9.10 (Compare) active.
-
-#### W9.10: Compare Screen Rebuild — ✅ COMPLETE (2026-07-01)
-
-Two-mode matchup surface (Team vs Team + Player vs Defense), prototype-
-aligned. Team mode: mirrored pickers, cohort strip, narrative/summary/
-matchup cards with ranking-bar collision rows (11-metric cohort_splits
-with reciprocal off/def pairs). Player mode: independent player/stat/
-team pickers, per-game bar chart with moving team-allowed line,
-baseline-driven verdict + by-split table. Backed by 4 new backend
-endpoints (B1–B4: player-history, 4-cohort opponent-allowed, defense-
-by-team, players roster) + a root-cause game_id scramble fix. See
-CHANGELOG.md.
+| WS | Summary | Date |
+|---|---|---|
+| W9.5 | Dashboard rebuild + 5 primitives + team-metadata CSV consolidation | 2026-07-04 |
+| W9.6 | GameDetail full fidelity (hero, lines, win-prob, team-comparison) | 2026-07-07 |
+| W9.7 | Teams split-view (`/teams?team=X`) + RatingChart | 2026-07-07 |
+| W9.8 | Dev panel + pending-highlight mode (audit deferred → §9) | 2026-07-11 |
+| W9.9 | PlayerProp rebuild + DistributionChart | 2026-07-07 |
+| W9.10 | Compare both modes + backend B1–B4 + game_id fix + offseason-readiness | 2026-07-11 |
 
 See CHANGELOG.md for details.
 
@@ -342,8 +229,6 @@ merge chains emerged in the API layer (serializers read pre-computed
 artifacts per D21). **Decision: stay file-based.** Re-evaluate only if
 multi-user access, concurrency, or transactional bet-ledger integrity
 becomes a real requirement.
-
-**Practical trigger:** If during W9 wiring you find yourself writing complex pandas merge chains in the API layer to answer a single request, that's the cue.
 
 ### 5.2 Odds Data Source
 
@@ -430,7 +315,7 @@ W13 ✅
 W8 (API) ✅
 │
 ├── W9 (Frontend) ✅
-│   └── W9.5–W9.9 ✅ (fidelity arc) · W9.10 🟡 (Compare, active)
+│   └── W9.5–W9.9 ✅ (fidelity arc) · W9.10 ✅ (Compare)
 │
 ├── W12 (Ensemble) 🟢 planned
 │
@@ -441,14 +326,14 @@ W8 (API) ✅
 ```
 
 
-**Current position:** Backend + API + frontend all shipped. Frontend fidelity arc (W9.5–W9.10) rebuilt the core screens; W9.10 (Compare) active with Player-vs-Defense blocked on two backend endpoints (player game-history + opponent-allowed splits expansion — the immediate next work). Path forward after W9.10:
-- **Frontend polish backlog** (§9.7/§9.8) — pull P0/P1 items per-screen.
-- **Pending-highlight audit sweep** (§9 deferred) — now unblocked (data populated).
-- **W12 (Model Ensemble)** — soft-blocked on §9.2 walk-forward bug.
-- **W4.5 (Scenario)** — blocked on §5.3 injury data.
-- **W7 (Multi-Book)** — blocked on §5.2 odds source; unblocks many deferred UI items.
-- **W10 (Real-Time)** — deferred.
-
+**Current position:** Frontend fidelity arc (W9.5–W9.10) complete — all
+core screens rebuilt, both Compare modes shipped, backend B1–B4 built.
+Between workstreams. Path forward:
+- **Pending-highlight audit sweep** (§9 deferred) — now unblocked; capstone of the highlight work.
+- **Frontend polish backlog** (§9.7/§9.8) — pull P0/P1 per-screen.
+- **Upcoming-week feature matrix** (§9 new note) — trained-model game + prop predictions for upcoming weeks.
+- **W12 (Ensemble)** — soft-blocked on §9.2 walk-forward bug.
+- **W4.5 (Scenario)** — §5.3 injury data. **W7 (Multi-Book)** — §5.2 odds. **W10 (Real-Time)** — deferred.
 
 ---
 
@@ -475,6 +360,7 @@ milestone north star is **M4 (multi-book line shopping)** or **M5
 ## 9. Known Issues & Backlog
 
 Items that are not active workstreams but need tracking. Sources: surfaced during W5.5 Tier 4 cleanup, and progressively added as W8 placeholders surface backend gaps.
+(§9.5 removed 2026-07-12 — superseded by §9.7/§9.8.)
 
 ### 9.1 Testing Infrastructure
 
@@ -495,8 +381,10 @@ Items that are not active workstreams but need tracking. Sources: surfaced durin
 |---|---|---|
 | Walk-forward backfill produces no valid pipeline for single-season windows with expanded feature sets | `models/game_prediction/base.py::_run_hp_search` (root cause) and `evaluation/backfill.py::_walk_forward_one_season` (calling site) | Single-season walk-forward fails because filtered training data falls below `MIN_CV_TRAIN_ROWS` for expanded feature sets. Also: `_run_hp_search` does not forward `train_through_season` to `_prepare_window`. Fix options: (A) lower threshold for walk-forward, (B) fill expanded-feature NaN with neutral values, (C) force walk-forward to use combined feature set. **Soft-blocks W12 (clean Brier comparison).** |
 | `GameModelMetadata` constructor rejects keyword arguments used by `tests/integration/test_model_train_predict.py::TestArtifactRoundtrip` | `models/base.py::GameModelMetadata` (likely) and `tests/integration/test_model_train_predict.py` | Four artifact round-trip tests fail with `TypeError: GameModelMetadata.__init__() got an unexpected keyword argument ...`. Surfaced when running the full pre-push test suite during W8 Tier 1 close-out. Likely a refactor-vs-test drift introduced during W3.7 (Game Model Refactor, 2026-06-18) when `BaseModelMetadata` / `GameModelMetadata` / `PropModelMetadata` were split. Fix is either updating the test fixtures to match the current metadata constructor or restoring the dropped keyword for backward compatibility — decide based on whether the dropped keyword is intentionally gone. |
-| player_game_logs `game_id` misaligned with player rows | `transform/clean/player_stats.py::_join_game_id` | **FIXED (2026-07-01).** Root cause: merge-result Series assigned back onto a df with non-contiguous index (from upstream dropna), aligning by index label and scrambling game_id to same-week neighbors. Fix: `reset_index(drop=True)` before the 1:1 matchup-keyed merges so positional alignment holds; also derive trustworthy `is_home` from which join side matched. Regenerated player_game_logs + re-ran props compute-splits (which had aggregated against wrong game contexts). |
-| clean-games overwrites full history when scoped to a season with no completed games | transform/clean games + pipeline fetch scoping | Running weekly-predict/run-data-pipeline scoped to an upcoming season (offseason) fetches 0 completed games and clean-games writes the (empty) result over NFL_wk_by_wk_cleaned.csv, clobbering full history. Elo incremental fit then crashes on empty games (IndexError in _build_years). Guard added for the Elo crash; the clobber itself needs clean-games to upsert/merge by season rather than replace, or fetch to refuse writing an empty season over existing history. |
+| player_game_logs `game_id` misaligned with player rows | `transform/clean/player_stats.py::_join_game_id` | **FIXED (2026-07-11).** Root cause: merge-result Series assigned back onto a df with non-contiguous index (from upstream dropna), aligning by index label and scrambling game_id to same-week neighbors. Fix: `reset_index(drop=True)` before the 1:1 matchup-keyed merges so positional alignment holds; also derive trustworthy `is_home` from which join side matched. Regenerated player_game_logs + re-ran props compute-splits (which had aggregated against wrong game contexts). |
+| clean-games clobbered full history with empty offseason result | transform/clean/games_nflverse.py `if df.empty` branch | **FIXED (2026-07-11).** weekly-predict scoped to an upcoming season fetched 0 completed games; the empty branch wrote a header-only CSV over NFL_wk_by_wk_cleaned.csv, wiping 1999→2025 (7277→1 rows). Restored via --all-years fetch+clean. Fix: empty branch refuses to overwrite populated existing history (warns, leaves intact); still writes empty schema on genuine first run. Extracted to _handle_empty_games helper. |
+| Elo incremental fit crashed on empty games | ratings/elo/table.py::update_elo_state_incremental / build_elo_state_table_all_years | **FIXED (2026-07-11).** _build_years([]) → nfl_years[-1] IndexError when no completed games (offseason). Fix: empty-games short-circuit returns existing state unchanged; guarded the nfl_years access. |
+| predict-week is elo-only; API champion→elo fallback for upcoming weeks | cli/weekly_predict.py::_stage_predict_week (elo-only by design); api/loaders.py::load_games_for_week + load_game (fallback shipped) | **RESOLVED via fallback (2026-07-11), deeper option deferred.** predict-week uses build_predictions_df (Elo-state-based) → archives win_prob under model_type="elo". The champion is logistic, so the games API (champion-first) found no rows for a freshly-predicted upcoming week → empty. Root cause: trained models predict from the modeling file (feature matrix), which is built from *completed* games only — so logistic/rf/xgb structurally cannot predict upcoming weeks; only Elo (carries forward, no feature matrix) can. Shipped fix: API resolves champion-first, falls back to elo when the champion has no rows for the (season, week). Correct by design — Elo is the right upcoming-week model (trained-model features like rolling EPA don't exist for a new season's Week 1). Deeper option (build an upcoming-week feature matrix so trained models predict upcoming weeks) = the §9 upcoming-feature-matrix note. |
 
 ### 9.3 Investigations
 
@@ -512,27 +400,6 @@ Items that are not active workstreams but need tracking. Sources: surfaced durin
 | Weather: missing stadium entries for 2026-2027 international games | 12 stadiums need lat/lon/altitude in `NFL_stadium_reference.csv`. Listed in HANDOFF.md. Data entry task. |
 | Model calibration values pre-date current modeling file | `_MODEL_SIGMAS` and `_MODEL_MARGIN_STDS` hardcoded fallbacks calibrated against older modeling file. `full-retrain` composite now persists current values to disk via the calibration registry; next full-retrain run supersedes the fallbacks. |
 | `verify --strict` not exercised in CI | Once a real CI surface exists, `gridiron verify --strict` should be the gate. |
-
-### 9.5 Backend gaps surfaced by the prototype
-
-Drives W8 Tier 2 work and post-W8 prioritization. These are gaps between what the prototype expects and what the platform currently produces. Items either get folded into W8 Tier 2, deferred here, or escalated to a future workstream.
-
-| Item | Surfaced in (screen) | W8 disposition |
-|---|---|---|
-| Per-stat league-wide percentile ranking | Compare, Team Detail | W8 Tier 2 |
-| Off/def rating decomposition | Team Rankings | W8 Tier 2 |
-| Weekly Elo snapshot persistence | Team Detail rating trend, Projections delta | W8 Tier 2 |
-| Opponent-allowed-by-position aggregation | Player vs Defense, Player Prop | W8 Tier 2 |
-| Cohort splits per team (season, L4, home, away, vs winning, vs top-10) | Compare, Game Detail | W8 Tier 2 (limited splits ship; full set deferred) |
-| Cohort splits per prop (indoor/outdoor, favored/underdog, vs top-10 def) | Player Prop | W8 Tier 2 (limited splits ship; full set deferred) |
-| Feature attribution / per-factor prediction decomposition | Swing Factors, Explain waterfall, Prop reasoning | Deferred — future workstream (likely paired with W12 or W4.5) |
-| Comparables retrieval (nearest-neighbor over historical games) | Explain comparables | Deferred — future workstream |
-| Historical line movement | Line Drilldown chart | Deferred — folds into W7 |
-| Game-day metadata (network, venue text, storylines) | Game cards, Game Detail header | Deferred — likely static config file rather than a workstream |
-| Injury / lineup / news ingest | Game Detail injuries, News Wire | Blocked on ROADMAP §5.3 injury data source decision; unblocks W4.5 |
-| Live game state ingest | Live screen | Blocks on W10 |
-| WAR (Wins Above Replacement) per player | Team Detail top-players panel | Deferred — significant ML work, not currently prioritized |
-| Multi-book odds | Line shopping, Prop shop sub-resource, Arbitrage / Middle tools | Blocks on W7 |
 
 ---
 
@@ -579,7 +446,7 @@ those workstreams inline.
 | Rating history with uncertainty band `{week, rating, lo, hi}` | P2 | Requires Elo uncertainty estimation |
 | Off/def rating decomposition | Blocked | Real modeling work; deferred workstream |
 | Situational splits by down/quarter/etc. | Blocked | PBP-derived; deferred workstream |
-| Top players by WAR | Blocked | Significant ML work; ROADMAP §9.5 |
+| Top players by WAR | Blocked | Significant ML work; deferred workstream |
 
 #### Game-related data gaps
 
@@ -613,7 +480,7 @@ those workstreams inline.
 
 | Item | Priority | Notes |
 |---|---|---|
-| `/players/{player_id}/history?stat=&limit=` — game log endpoint | P0 | Powers L6 sparkline in PlayersExplorer + 12-game history chart in PlayerProp |
+| `/players/{player_id}/history?stat=&limit=` — game log endpoint | P0 | Powers L6 sparkline in PlayersExplorer + 12-game history chart in PlayerProp ✅ shipped (B1)|
 | Player season averages endpoint | P1 | For PlayerProp header stats (Pass yds/g, Rush yds/g) |
 | `PropSummary.related_props[]` (via `?team=&exclude_prop_id=` filter) | P1 | For PlayerProp related props sidebar |
 | Stat display names ("Pass Yds" vs "qb_pass_yards") | P2 | Frontend or backend mapping |
@@ -644,7 +511,7 @@ those workstreams inline.
 |---|---|---|
 | ~12 additional team metrics per cohort (yardage, red zone %, third down %, pressure rate, takeaways) | P1 | Prototype has 24 metrics vs our 8 (Step 7 shipped 8) |
 | Percentile per metric per cohort (not just for 4 stats) | P1 | Extends Step 2 percentile pass |
-| `vs_winning` and `vs_top_10` cohorts | P1 | Extends Step 7 cohorts (currently 4: season/l4/home/away) |
+| `vs_winning` and `vs_top_10` cohorts | P1 | Extends Step 7 cohorts (currently 4: season/l4/home/away) (4 shipped; vs-winning/vs-losing/vs-top-10 still deferred — need opponent-record + self-ranking passes). |
 | Matchup edges per dimension on `/compare/teams` | P1 | Derived from percentile diff per side |
 | Special teams EPA metric | P2 | Requires PBP work |
 | Penalties/game metric | P2 | Requires PBP work |
@@ -668,232 +535,137 @@ those workstreams inline.
 
 ---
 
-### 9.8 W9 frontend polish backlog (surfaced by prototype audit)
+### 9.8 W9 frontend polish backlog
 
-Frontend implementation gaps between prototype fidelity and current
-shipped code. Same audit source (2026-07-04). Same priority framework.
+Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original
+audit 2026-07-04; **pruned 2026-07-12** to remove everything shipped in
+the arc. Priority: P0 = blocks screen use, P1 = significant value, P2 =
+polish. "Blocked" = waiting on a named workstream.
 
-Items grouped by:
-1. Shared primitives (used across many screens)
-2. Chart components (mostly new)
-3. Chrome and layout patterns
-4. Per-screen sections
+> Shipped in W9.5–W9.10 and removed from this list: all five original
+> primitives (Pill, WhyLink, TeamMark-colors, Spark, TeamHero), the chart
+> primitives (RatingChart, DistributionChart, BarChart), Dashboard
+> sections, GameDetail rebuild, PlayerProp rebuild, Teams split-view,
+> Compare both modes, split-view + composed-screen layout patterns.
+> See ROADMAP §4 (arc) + HANDOFF §7 (primitive inventory).
 
-#### Shared primitives (used across many screens)
-
-| Item | Priority | Notes |
-|---|---|---|
-| `Pill` — shared filter toggle button | P0 | Every screen with filters inlines its own |
-| `WhyLink` — explainability entry point (labeled + dot modes) | P0 | Missing entirely; used across ~10 screens in prototype |
-| `TeamMark` with team primary color background | P0 | Currently uses `--bg-3` grey; big visual identity gap |
-| `Spark` — generic sparkline | P1 | Currently only exists as team-scoped `RatingHistorySparkline` |
-| `ProbBand` — generic version of WinProbBand with tick labels + color/height props | P1 | |
-| `ConfPill` with descriptive labels ("Higher confidence" vs "High") | P1 | Currently just "High/Moderate/Low" |
-| `Pct` — signed percentage renderer with pos/neg coloring | P2 | Frontend helper; currently formatted inline |
-| `Segmented` — mode/split switcher (used by Compare, Tools, others) | P2 | |
-
-#### Chart components (new)
+#### Shared primitives (remaining)
 
 | Item | Priority | Notes |
 |---|---|---|
-| `BankrollCurve` with projected band | P1 | Extends current BalanceCurve with dashed projection line + filled uncertainty band + "Today" marker |
-| `DistributionChart` — SVG density curve overlay | P1 | Used by PlayerProp (projected distribution) and Explain (simulated outcomes) |
-| `HistoryChart` — bar chart with hit/miss coloring | P1 | Used by PlayerProp (12-game history) |
-| `GameLog` — SVG bar chart with book line + defense line overlays | P1 | Used by Compare player mode |
-| `RatingChart` — line chart with uncertainty band + axis grid | P2 | Used by TeamProfile |
-| `WinProbChart` — line chart with drive-event markers | Blocked on W10 | Used by LiveGame |
-| `LineMovementChart` — line chart of odds over time | Blocked on W7 | Used by LineShopping drilldown |
-| `Waterfall` — factor contribution visualization | Blocked on feature attribution | Used by Explain |
-| Variance preview distribution bars | P2 | Used by Tools Kelly calculator |
-| Correlation heat map grid | P2 | Used by Tools + BetSlip SGP mode |
+| `ProbBand` — generic WinProbBand w/ tick labels + color/height props | P1 | |
+| `ConfPill` descriptive labels ("Higher confidence" vs "High") | P2 | |
+| `Pct` — signed percentage renderer w/ pos/neg coloring | P2 | Currently inline |
+| `Segmented` — mode/split switcher (extract from Compare's inline pills) | P2 | |
 
-#### Chrome and layout patterns
+#### Chart components (remaining)
 
 | Item | Priority | Notes |
 |---|---|---|
-| SubNav filter pills (day, category, market, position, etc.) | P0 | Currently inlined per screen; needs shared pattern |
-| Split-view layout (e.g., TeamRankings + TeamProfile side-by-side) | P0 | Currently separate routes |
-| Two-column layout (main / rail) — most screens need this | P0 | Currently single-column stacks on GameDetail, PlayerProp, Bankroll |
-| Header band with hero identity + big number + action buttons | P1 | Used by Bankroll, GameDetail, PlayerProp, TeamProfile |
-| `TeamHero` component (mark + city + name serif + record + rating) | P1 | Used by GameDetail, TeamProfile |
-| Sidebar navigation with sub-sections (Settings, potentially Bankroll views) | P1 | Currently flat single view |
+| `BankrollCurve` w/ projected band | P1 | Dashed projection + uncertainty band + "Today" marker |
+| `WinProbChart` — line w/ drive-event markers | Blocked on W10 | LiveGame |
+| `LineMovementChart` — odds over time | Blocked on W7 | LineShopping drilldown |
+| `Waterfall` + comparables retrieval | Blocked on feature attribution / nearest-neighbor retrieval | Explain screen |
+| Correlation heat-map grid | Blocked on `/edges/correlations` | Tools + BetSlip SGP |
 
-#### Per-screen missing sections
 
-**Dashboard (`/today`)** — currently a debug scaffold; essentially unbuilt
+#### Per-screen remaining sections
 
-| Item | Priority | Notes |
-|---|---|---|
-| Featured matchups grid (3 game cards) | P0 | Blocking primary landing page use |
-| Model edges table with tab filters | P0 | Powers Model edges rail |
-| Model performance rail (sparkline + big number) | P0 | Blocked on model performance history endpoint |
-| Player prop edges rail (5-row compact list) | P0 | |
-| Multi-sport SubNav pills | P2 | Data only NFL anyway |
-| Remove API verification and field-status demo cards | P1 | Or move to `/debug` route |
-
-**GameDetail (`/games/:id`)**
+**PlayoffProjections (`/projections`)** — not yet rebuilt in the arc
 
 | Item | Priority | Notes |
 |---|---|---|
-| Two-column layout (65% main / 35% rail) | P0 | Currently single-column stack |
-| Full-width game header with `TeamHero` + kick/venue/weather center + model lean + action buttons | P0 | Currently minimal header |
-| Team comparison card that consumes `team_comparison` field (already populated via Step 7c) | P0 | Data ships; renderer doesn't |
-| Lines & model fair value table | P1 | Partial (model side works, market side blocked on W7) |
-| Win probability card with projected score + caveat callout | P1 | |
-| Top prop edges card (compose from `/props` filtered to game_id) | P1 | |
-| Swing factors card | Blocked on feature attribution | |
-| Injuries card | Blocked on §5.3 | |
-| "Add to bet slip" and "★ Track" buttons in header | P2 | Track blocked; slip integration works |
+| `HeatCell` w/ sequential color intensity per probability | P0 | Defines the screen's visual language |
+| Sortable column headers w/ active-state UI | P0 | |
+| Trend badge w/ colored background | P1 | |
+| Conference filter pills (AFC/NFC/All) | P1 | |
+| Model metadata block (version, seed, run time) | P1 | In sidecar |
+| Row click → team profile nav | P2 | |
 
-**PlayerProp (`/players/:id`)**
+**BetSlip (`/betslip`)** — not yet rebuilt
 
 | Item | Priority | Notes |
 |---|---|---|
-| Player hero header (team-colored mark + serif italic name + season stats row) | P0 | Currently minimal card |
-| Two-column layout | P0 | |
-| Distribution chart (Gaussian density from mean + std) | P0 | Data exists |
-| Situational splits card that consumes `situational_splits` field (already populated via Step 5) | P0 | Data ships; renderer doesn't |
-| History bar chart (12-game log) | P1 | Blocked on player history endpoint |
-| Related props sidebar | P1 | Blocked on related-props filter |
-| "Why the model leans" reasoning column | Blocked on feature attribution | |
-| Line shopping mini-table | Blocked on W7 | |
+| Kelly stake suggestion card w/ "Use" button | P0 | `utils/odds.ts` has `kelly()` |
+| Bankroll % indicator on stake input | P0 | AppState has bankroll |
+| EV row on payout summary | P0 | Needs combined model prob (`cover_prob`, §9.7 P0) |
+| Round-robin mode (`choose(n,k)`) | P1 | Pure frontend |
+| Teaser mode (±6/6.5/7) | P1 | Needs teaser pricing |
+| LegCard enhanced (numbered, model comparison, EV/conf pills) | P1 | |
+| Quick stake buttons | P1 | |
+| SGP correlation warning | Blocked on `/edges/correlations` | |
+| Live line-movement banner / book selector | Blocked on W7 | |
 
-**TeamRankings + TeamProfile (`/teams`, `/teams/:abbr`)**
-
-| Item | Priority | Notes |
-|---|---|---|
-| Split-view restructure (rankings + profile in one route) | P0 | Major restructure |
-| Team hero band with team primary color background | P0 | |
-| Rating chart with uncertainty band | P1 | Enhance current sparkline |
-| Cohort splits table with colored percentile bars | P1 | Data exists via Step 7 |
-| Schedule difficulty visualization (7 upcoming week blocks) | P1 | Blocked on upcoming_games backend |
-| Postseason outlook rows | P1 | Blocked on postseason_outlook backend |
-| Top players by WAR list with colored bars | Blocked on WAR | |
-| Ranking table off/def tabs | Blocked on off/def decomposition | |
-
-**Compare (`/compare`)** — largest single frontend gap
+**GamesList (`/games`)** — table shipped; card layout pending
 
 | Item | Priority | Notes |
 |---|---|---|
-| Mode switcher (Team vs Team / Player vs Defense) | P0 | |
-| Split control strip (6 cohort pills) | P0 | Currently no cohort switcher |
-| Three grouped sections layout ("When A has ball" / "When B has ball" / "Even footing") | P0 | Currently flat table |
-| `TaleRow` with colored percentile bars + `AdvChip` edge indicator | P0 | Defines the visual identity |
-| Enhanced `TeamPicker` with team colors + Off/Def mini-stat bars | P1 | |
-| Auto-generated matchup narrative banner | P1 | Frontend computation on percentile diffs |
-| Player vs Defense mode with `GameLog` chart | P1 | Blocked on player history endpoint |
-| Drag-and-drop row reordering | P2 | Pure frontend |
-| Sort by edge / sort by category buttons | P2 | |
-
-**PlayoffProjections (`/projections`)**
-
-| Item | Priority | Notes |
-|---|---|---|
-| `HeatCell` component with sequential color intensity per probability | P0 | Defines the screen's visual language |
-| Sortable column headers with active-state UI | P0 | |
-| Trend badge with colored background (green/red/neutral) | P1 | |
-| Conference filter pills (AFC/NFC/All) in SubNav | P1 | |
-| Model metadata top-right block (version, seed, run time) | P1 | Data available in sidecar |
-| Heat scale gradient bar in footer legend | P2 | |
-| Row click → team profile navigation | P2 | |
-
-**BetSlip (`/betslip`)**
-
-| Item | Priority | Notes |
-|---|---|---|
-| Kelly stake suggestion card with "Use" button | P0 | Data path exists (`utils/odds.ts` has `kelly()`) |
-| Bankroll % indicator on stake input | P0 | AppStateContext has bankroll |
-| EV row on payout summary | P0 | Needs combined model prob from legs |
-| SGP mode + correlation warning | P1 | Blocked on `/edges/correlations` |
-| Round-robin mode with subs count via `choose(n, k)` | P1 | Pure frontend math |
-| Teaser mode with ±6/6.5/7 pt options | P1 | Needs teaser pricing logic |
-| LegCard enhanced (numbered, model comparison, EV pill, conf pill) | P1 | |
-| Quick stake buttons ($10/$25/$50/$100/$250) | P1 | |
-| Live line-movement alert banner | Blocked on W7 | |
-| Book selector at bottom of slip | Blocked on W7 | |
-
-**GamesList (`/games`)**
-
-| Item | Priority | Notes |
-|---|---|---|
-| Rich card layout instead of table row | P1 | Card shows: kick, network, weather, teams, spread/total/ML, WP, band, model lean, actions |
+| Rich card layout (kick, teams, spread/total/ML, WP, band, lean, actions) | P1 | |
 | Filter pills (day, has-edge, primetime, weather) | P1 | |
-| Network badge per row | P1 | Blocked on `tv_network` backend |
-| Weather alert indicator per row | P1 | Blocked on `weather_text` backend |
 | "+ Slip" button per row | P1 | |
+| Network / weather-alert badges per row | Blocked | `tv_network` / `weather_text` backend |
+| Time-of-day sort | Blocked | `kick_time` backend (§9.7 P0); date-sort shipped |
 
-**PlayersExplorer (`/players`)**
+**PlayersExplorer (`/players`)** — table shipped; compare rail pending
 
 | Item | Priority | Notes |
 |---|---|---|
-| Compare checkbox column with star toggle | P0 | Enables the compare rail |
-| Compare rail on right side with selected props | P0 | |
-| L6 sparkline column | P1 | Blocked on player history endpoint |
-| Colored stat/lean cells (green OVER, red UNDER) | P1 | Blocked on line context |
-| Filter pills in SubNav instead of inline FilterBar | P2 | |
+| Compare checkbox + rail (selected props) | P0 | |
+| L6 sparkline column | P1 | **Unblocked by B1** (player-history); use `Spark` + `usePlayerHistory` |
+| Colored stat/lean cells | Blocked on line context (odds) | |
 | Sort by EV | P2 | |
 
-**Tools (`/tools`)**
+**Tools (`/tools`)** — 3-tool grid shipped; 6-tab pending
 
 | Item | Priority | Notes |
 |---|---|---|
-| Tab switcher for 6 tools (Kelly, Hedge, Arb, Corr, Devig, Middle) | P0 | Currently 3-tool grid layout |
+| Tab switcher for 6 tools | P0 | |
 | Hedge calculator | P1 | Pure frontend math |
 | Devig calculator | P1 | Pure frontend math |
-| Middle finder (empty state until W7 lands) | P1 | Blocked on W7 |
-| Slider component for percentage inputs | P1 | Used by Kelly + Model tuning |
-| Variance preview distribution bars | P2 | Adds depth to Kelly output |
-| Correlation heat map | Blocked on correlations endpoint | |
-| Arbitrage finder table | Blocked on W7 | |
+| Slider component | P1 | Kelly + model tuning |
+| Middle finder / Arbitrage table | Blocked on W7 | |
 
-**Settings (`/settings`)**
+**Settings (`/settings`)** — single view; sidebar pending
 
 | Item | Priority | Notes |
 |---|---|---|
-| Sidebar layout with 8 sections | P0 | Currently single view |
-| Connected books section | P1 | Blocked on OAuth story (out of scope for now) |
-| Alerts & notifications with 7 toggles + channel indicators | P1 | Blocked on server-side pref storage |
-| Model tuning section with 5 sliders | P1 | Blocked on server-side model retuning endpoint |
-| Responsible play limits section | P1 | Blocked on server-side enforcement |
-| Data & export section (CSV, PDF, delete) | P2 | |
-| Display preferences enhanced (theme, density, tone) | P2 | Client-side |
+| Sidebar layout (8 sections) | P0 | |
+| Data & export (CSV/PDF/delete) | P2 | |
+| Display prefs (theme, density, tone) | P2 | Client-side |
+| Connected books / alerts / model-tuning / limits | Blocked | OAuth / server-side pref storage |
 
 **Onboarding (`/onboarding`)**
 
 | Item | Priority | Notes |
 |---|---|---|
-| Sports selection step + betting style tier | P1 | Missing step; multi-sport not shipping |
-| Books connection step | P1 | Blocked on OAuth |
-| Tone preview step | P1 | Client-side preference |
-| Progress bar instead of dots | P2 | |
-| Skip link (upper right) | P2 | |
-| Kelly explanation callout on bankroll step | P2 | |
+| Tone preview step | P1 | Client-side |
+| Progress bar, skip link, Kelly callout | P2 | |
+| Sports selection / books connection | Blocked | Multi-sport not shipping / OAuth |
 
-#### Cross-cutting interaction patterns
+**GameDetail / PlayerProp / TeamsScreen / Compare** — rebuilt in the arc.
+Remaining items are blocked-only:
+- GameDetail: Swing factors (feature attribution), Injuries (§5.3), market-side lines (W7)
+- PlayerProp: "why the model leans" (feature attribution), related-props sidebar (backend filter), line-shopping (W7)
+- TeamsScreen: schedule-difficulty (upcoming_games backend), WAR top-players, off/def ranking tabs (off/def decomposition)
+- Compare: vs-winning/losing/top-10 splits (opponent-record + self-ranking), book line + O/U coloring (W7), Change 6 sortable/drag rows (P2)
+
+#### Cross-cutting patterns (remaining)
 
 | Item | Priority | Notes |
 |---|---|---|
-| Row-click nav pattern (used across many list screens) | P0 | Partially wired |
-| Filter pill component (shared) | P0 | See §9.8 Pill primitive |
-| Sortable table headers (shared) | P1 | Used by Projections, GamesList, PlayersExplorer, Bankroll |
-| Drag-and-drop reorder (used by Compare) | P2 | Pure frontend |
-| Cohort/mode switcher pattern (used by Compare, Bankroll) | P2 | See Segmented primitive |
-| Slider input (used by Tools, Settings) | P2 | |
+| Sortable table headers (shared) | P1 | Projections, GamesList, PlayersExplorer, Bankroll |
+| Slider input (shared) | P2 | Tools, Settings |
 
-#### Priority summary
+#### Priority summary (post-prune)
 
-- **P0 items:** ~35. Blocking meaningful use of one or more screens. Most valuable next work.
-- **P1 items:** ~50. Adds significant value to partially-shipped screens.
-- **P2 items:** ~30. Polish and nice-to-have.
-- **Blocked items:** ~25. Waiting on named workstreams (W7, W10, §5.3, feature attribution).
+- **P0:** ~10 — mostly PlayoffProjections + BetSlip (the two unrebuilt screens)
+- **P1:** ~20 — per-screen enhancements + remaining primitives/charts
+- **P2:** ~10 — polish
+- **Blocked:** ~20 — W7, W10, §5.3, feature attribution, OAuth
 
-Total estimated substeps to reach prototype fidelity across all
-screens: **~80-100 substeps.**
-
-Not all of these need to happen. This is a comprehensive backlog.
-Future frontend workstreams (call them W9.5, W9.6, or per-screen
-revamps) will pull from this list based on what's most valuable at
-that moment.
+The two biggest remaining frontend chunks are **PlayoffProjections** and
+**BetSlip** rebuilds (neither touched in the W9.5–W9.10 arc). Everything
+else is per-screen polish or blocked on a named workstream.
 
 ### Deferred task: Pending-highlight audit sweep
 
@@ -907,7 +679,30 @@ Screens to walk: Dashboard, GamesList, GameDetail, TeamsScreen,
 PlayerProp, PlayersExplorer, PlayoffProjections, Compare, BetSlip,
 Bankroll.
 
-Blocked on: full backend data population (next pipeline run).
+Status: **Unblocked (2026-07-11)** — pipeline populated cohort splits,
+opponent-allowed, situational splits, projections. Ready to run. This
+is a natural next frontend task (capstone of the W9.8 highlight work).
+
+### Future note: Upcoming-week feature matrix
+
+Trained models (logistic/rf/xgb game models; all prop models) predict
+from the modeling file / prop feature tables, both built from *completed*
+games. So they cannot predict upcoming (unplayed) weeks — no feature
+rows exist. Consequences observed 2026-07-11 (offseason):
+- Games serve **elo only** for upcoming weeks (WP populated; spread/
+  total/projected-score null — those come from trained-model post-proc).
+- **Props + edges empty** for upcoming weeks (prop models + odds absent).
+
+To get trained-model projections for upcoming weeks: build an
+upcoming-week feature matrix (fold the upcoming schedule into
+build-features, compute per-game features for unplayed games — many
+rolling features are thin/undefined for Week 1 of a new season), then
+run the champion predict path + prop projections against it.
+
+Optional / medium workstream. Elo-in-offseason is a reasonable default;
+this is only worth building if trained-model upcoming projections are
+wanted pre-season (more useful mid-season, where rolling features exist
+for the next unplayed week).
 
 ### Backlog (from 2026-07-06 audit)
 
@@ -962,7 +757,9 @@ Blocked on: full backend data population (next pipeline run).
 
 | Date | Change |
 |---|---|
-| 2026-07-01 | **W9.10 complete.** Compare Screen Rebuild — both modes shipped. New backend B1–B4 (player-history endpoint, 4-cohort opponent-allowed, defense-by-team, players roster). game_id scramble bug fixed at root in transform/clean/player_stats.py. |
+| 2026-07-12 | **ROADMAP trim + straggler fix.** Collapsed §4 completed workstreams to table (W1–W8, W13). Deleted §9.5 (superseded by §9.7/§9.8). Gutted §9.8 to genuine remainders (struck shipped W9.5–W9.10 items). Marked B1 player-history shipped in §9.7. Fixed 07-01→07-11 date stragglers; player logs 1999→2025; PLAN cross-ref. |
+| 2026-07-12 | **Post-session cleanup + offseason-readiness findings.** Marked §9.2 clean-games clobber + Elo empty-games crash FIXED. Updated audit-sweep note to Unblocked. §1 frontend-arc → Complete (both Compare modes, BarChart); removed shipped player-history from What's Missing. §6 graph + Current position → W9.10 complete, between workstreams. Added findings: predict-week elo-only + champion→elo API fallback; upcoming-week feature-matrix future note. Marked B1–B4 shipped in §9.7. |
+| 2026-07-11 | **W9.10 complete.** Compare Screen Rebuild — both modes shipped. New backend B1–B4 (player-history endpoint, 4-cohort opponent-allowed, defense-by-team, players roster). game_id scramble bug fixed at root in transform/clean/player_stats.py. |
 | 2026-07-11 | **ROADMAP audit + cleanup.** Recorded W9.8 (dev panel) + W9.10 (Compare, active) which were missing. Updated §1 Working/Missing to post-frontend reality. Filled §4 Active with W9.10 + the Player-vs-Defense backend work (player-history endpoint + opponent-allowed splits expansion) as immediate next. Marked §5.1/§5.4 file-storage + api/frontend as shipped. Redrew §6 current position. Reframed M4.5 as achieved. |
 
 ***

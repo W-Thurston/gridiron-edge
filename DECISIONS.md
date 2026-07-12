@@ -7,6 +7,83 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D22. Elo is the canonical upcoming-week model; games API falls back champion→elo
+
+**Date:** 2026-07-12
+**Workstream:** W9.10 (Compare) — surfaced during offseason-readiness work
+**Status:** Accepted
+
+### Decision
+
+For **upcoming (unplayed) weeks**, the platform serves **Elo** win-prob
+predictions. The games API resolves the `win_prob` champion first, then
+**falls back to `elo`** when the champion has no archived rows for the
+requested `(season, week)`. `weekly-predict`'s `predict-week` stage
+archives upcoming weeks under `model_type="elo"` by design.
+
+### Context
+
+Trained models (logistic / random_forest / xgboost) predict from the
+modeling file — a feature matrix built **only from completed games**.
+They structurally cannot predict an upcoming week: no feature rows exist
+for unplayed games (and many rolling features — e.g. L3 EPA — are
+undefined for Week 1 of a new season). Elo, by contrast, predicts from
+the Elo state table, which **carries a rating forward** before a team
+plays. Elo is therefore the *only* model that can predict an upcoming
+week without new machinery.
+
+This surfaced in the offseason: with the 2026-2027 season not yet played,
+`/games?season=2026-2027&week=1` returned empty — the champion
+(logistic) had zero rows for the week, and the API filtered strictly by
+champion. The frontend showed nothing (or the prior Super Bowl).
+
+Three options:
+
+1. **Fall back champion→elo for upcoming weeks** (chosen). Small loader
+   change; serves the only predictions that exist.
+2. **Build an upcoming-week feature matrix** so trained models predict
+   upcoming weeks. Real workstream: fold the upcoming schedule into
+   `build-features`, compute per-game features for unplayed games, run
+   the champion predict path. Deferred — worth it only if trained-model
+   upcoming projections are wanted (more useful mid-season, where
+   rolling features exist for the next unplayed week).
+3. **Serve empty for upcoming weeks.** Rejected — the frontend is a
+   verification surface; showing nothing is strictly worse than showing
+   the Elo signal that genuinely exists.
+
+Option 1 is not a workaround — Elo is the *correct* upcoming-week signal,
+especially for Week 1 where trained-model features are thin-to-undefined.
+
+### Consequences
+
+- Games serve Elo for upcoming weeks: win probability populates;
+  `model_spread` / `model_total` / projected scores are null (they come
+  from trained-model post-processing, absent for upcoming weeks) and are
+  marked via `field_status` per D14.
+- Completed weeks still serve the champion (backfilled). The fallback
+  only triggers when the champion has no rows for the scope.
+- Consistent with D21: the fallback reads a static artifact (the archive)
+  and picks a `model_type` filter — no request-time compute.
+- `resolve_current_season_week` prefers the upcoming schedule's earliest
+  week once the completed archive ends on a season-ender (week ≥ 22), so
+  the default view lands on the upcoming Week 1 rather than replaying the
+  final completed game.
+- Fallback lives in `api/loaders.py::load_games_for_week` + `load_game`.
+
+### Disconfirming evidence (when to revisit)
+
+- If trained-model projections for upcoming weeks become genuinely
+  wanted (e.g. mid-season next-week edges), build the upcoming-week
+  feature matrix (Option 2) and predict under the champion — the
+  fallback then only covers Week 1 / true cold-starts.
+
+### References
+
+- HANDOFF.md → §7 W13 champion subsection (champion→elo fallback) + offseason data-coverage
+- ROADMAP.md §9 (upcoming-week feature matrix future note)
+- `api/loaders.py::load_games_for_week`, `load_game`
+- DECISIONS.md D21 (serialization boundary — this is consistent with it)
+
 ## D21. API layer is a serialization boundary, not a compute boundary
 
 **Date:** 2026-07-01 (Tier 2, W8)
