@@ -159,7 +159,20 @@ See CHANGELOG.md for details.
 
 ### Active Workstream
 
-_(none — between workstreams)_
+#### W9.11: Screen Completion — 🟡 DESIGNING
+
+**Goal:** Finish the core-screen set. Two screens were untouched by the W9.5–W9.10 fidelity arc (PlayoffProjections, BetSlip); rebuild both, and first cash in the deferred W9.8 highlight audit sweep to surface any remaining gaps across all screens.
+
+**Tiers (high-level — deep design per tier at start):**
+- **Tier 0 — Pending-highlight audit sweep.** Walk every built screen in highlight mode; mark silently-missing gaps (§9 deferred task). Also surfaces exactly what the two rebuilds need.
+- **Tier 1 — PlayoffProjections rebuild.** HeatCell (sequential color intensity), sortable headers, trend badges, conference pills, model-metadata block. (§9.8)
+- **Tier 2 — BetSlip rebuild.** Kelly stake card, bankroll % indicator, EV row, enhanced LegCard, quick-stake buttons. SGP correlation + book selector deferred (blocked on `/edges/correlations` + W7). (§9.8)
+
+**Ready:** No external unblock. All data paths exist (Kelly/EV via `utils/odds.ts` + AppState bankroll; projections via `/projections`).
+
+**Unlocks:** Every core screen rebuilt → frontend fidelity arc fully closed.
+
+**Deferred within W9.11:** SGP correlation warnings, book selector (W7 odds); anything needing live/multi-book data.
 
 
 ### Future Workstreams (ordered by current priority)
@@ -224,11 +237,7 @@ _(none — between workstreams)_
 
 **Current:** Parquet + CSV, file-based, CLI-driven.
 
-**Status:** Files held through W8/W9 as planned; no complex pandas
-merge chains emerged in the API layer (serializers read pre-computed
-artifacts per D21). **Decision: stay file-based.** Re-evaluate only if
-multi-user access, concurrency, or transactional bet-ledger integrity
-becomes a real requirement.
+**Status:** Files held through W8/W9 as planned; no complex pandas merge chains emerged in the API layer (serializers read pre-computed artifacts per D21). **Decision: stay file-based.** Re-evaluate only if multi-user access, concurrency, or transactional bet-ledger integrity becomes a real requirement.
 
 ### 5.2 Odds Data Source
 
@@ -326,9 +335,7 @@ W8 (API) ✅
 ```
 
 
-**Current position:** Frontend fidelity arc (W9.5–W9.10) complete — all
-core screens rebuilt, both Compare modes shipped, backend B1–B4 built.
-Between workstreams. Path forward:
+**Current position:** Frontend fidelity arc (W9.5–W9.10) complete — all core screens rebuilt, both Compare modes shipped, backend B1–B4 built. Between workstreams. Path forward:
 - **Pending-highlight audit sweep** (§9 deferred) — now unblocked; capstone of the highlight work.
 - **Frontend polish backlog** (§9.7/§9.8) — pull P0/P1 per-screen.
 - **Upcoming-week feature matrix** (§9 new note) — trained-model game + prop predictions for upcoming weeks.
@@ -351,10 +358,7 @@ Between workstreams. Path forward:
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned (delivered with M4.5 + auth) |
 | **M6: Live game day experience** | Real-time win prob, live edges, hedge suggestions during a game. | W10 | Planned |
 
-**M4.5 ✅ achieved.** The visual verification surface now exists and is
-actively used — the dev-panel highlight mode operationalizes it. Next
-milestone north star is **M4 (multi-book line shopping)** or **M5
-(friends can use it, needs auth)**, both gated on W7 / auth respectively.
+**M4.5 ✅ achieved.** The visual verification surface now exists and is actively used — the dev-panel highlight mode operationalizes it. Next milestone north star is **M4 (multi-book line shopping)** or **M5 (friends can use it, needs auth)**, both gated on W7 / auth respectively.
 
 ---
 ## 9. Known Issues & Backlog
@@ -417,17 +421,9 @@ Per D21, the API layer is a serialization boundary — every response reads from
 
 ### 9.7 W8 backend hygiene backlog (surfaced by prototype audit)
 
-Gaps between what the frontend prototype expects and what our API
-returns today. Surfaced during the 2026-07-04 systematic
-prototype-vs-implementation audit. Items are prioritized by
-user-visible impact per the audit findings; P0 = blocks a screen
-from being usable, P1 = adds significant value to a partially-shipped
-screen, P2 = polish or nice-to-have.
+Gaps between what the frontend prototype expects and what our API returns today. Surfaced during the 2026-07-04 systematic prototype-vs-implementation audit. Items are prioritized by user-visible impact per the audit findings; P0 = blocks a screen from being usable, P1 = adds significant value to a partially-shipped screen, P2 = polish or nice-to-have.
 
-**Not blocking any specific active workstream.** Items are pulled from
-this list as future work (per-screen or per-domain), not as a monolithic
-"W8 Tier 4" tier. Deferred items blocked on other workstreams reference
-those workstreams inline.
+**Not blocking any specific active workstream.** Items are pulled from this list as future work (per-screen or per-domain), not as a monolithic "W8 Tier 4" tier. Deferred items blocked on other workstreams reference those workstreams inline.
 
 #### Team-related data gaps
 
@@ -537,10 +533,7 @@ those workstreams inline.
 
 ### 9.8 W9 frontend polish backlog
 
-Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original
-audit 2026-07-04; **pruned 2026-07-12** to remove everything shipped in
-the arc. Priority: P0 = blocks screen use, P1 = significant value, P2 =
-polish. "Blocked" = waiting on a named workstream.
+Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original audit 2026-07-04; **pruned 2026-07-12** to remove everything shipped in the arc. Priority: P0 = blocks screen use, P1 = significant value, P2 = polish. "Blocked" = waiting on a named workstream.
 
 > Shipped in W9.5–W9.10 and removed from this list: all five original
 > primitives (Pill, WhyLink, TeamMark-colors, Spark, TeamHero), the chart
@@ -663,93 +656,45 @@ Remaining items are blocked-only:
 - **P2:** ~10 — polish
 - **Blocked:** ~20 — W7, W10, §5.3, feature attribution, OAuth
 
-The two biggest remaining frontend chunks are **PlayoffProjections** and
-**BetSlip** rebuilds (neither touched in the W9.5–W9.10 arc). Everything
-else is per-screen polish or blocked on a named workstream.
+The two biggest remaining frontend chunks are **PlayoffProjections** and **BetSlip** rebuilds (neither touched in the W9.5–W9.10 arc). Everything else is per-screen polish or blocked on a named workstream.
 
 ### Deferred task: Pending-highlight audit sweep
 
-After the next full-retrain pipeline run populates all backend data,
-walk every built screen with dev-panel Highlight mode ON. For each
-silently-missing element (shows blank/em-dash but doesn't light up),
-add a PendingChip / ComingSoonCard / field_status marker. Produces a
-punch-list of any larger gaps for follow-up.
+After the next full-retrain pipeline run populates all backend data, walk every built screen with dev-panel Highlight mode ON. For each silently-missing element (shows blank/em-dash but doesn't light up), add a PendingChip / ComingSoonCard / field_status marker. Produces a punch-list of any larger gaps for follow-up.
 
-Screens to walk: Dashboard, GamesList, GameDetail, TeamsScreen,
-PlayerProp, PlayersExplorer, PlayoffProjections, Compare, BetSlip,
-Bankroll.
+Screens to walk: Dashboard, GamesList, GameDetail, TeamsScreen, PlayerProp, PlayersExplorer, PlayoffProjections, Compare, BetSlip, Bankroll.
 
-Status: **Unblocked (2026-07-11)** — pipeline populated cohort splits,
-opponent-allowed, situational splits, projections. Ready to run. This
-is a natural next frontend task (capstone of the W9.8 highlight work).
+Status: **Unblocked (2026-07-11)** — pipeline populated cohort splits, opponent-allowed, situational splits, projections. Ready to run. This is a natural next frontend task (capstone of the W9.8 highlight work).
 
 ### Future note: Upcoming-week feature matrix
 
-Trained models (logistic/rf/xgb game models; all prop models) predict
-from the modeling file / prop feature tables, both built from *completed*
-games. So they cannot predict upcoming (unplayed) weeks — no feature
-rows exist. Consequences observed 2026-07-11 (offseason):
-- Games serve **elo only** for upcoming weeks (WP populated; spread/
-  total/projected-score null — those come from trained-model post-proc).
+Trained models (logistic/rf/xgb game models; all prop models) predict from the modeling file / prop feature tables, both built from *completed* games. So they cannot predict upcoming (unplayed) weeks — no feature rows exist. Consequences observed 2026-07-11 (offseason):
+- Games serve **elo only** for upcoming weeks (WP populated; spread/total/projected-score null — those come from trained-model post-proc).
 - **Props + edges empty** for upcoming weeks (prop models + odds absent).
 
-To get trained-model projections for upcoming weeks: build an
-upcoming-week feature matrix (fold the upcoming schedule into
-build-features, compute per-game features for unplayed games — many
-rolling features are thin/undefined for Week 1 of a new season), then
-run the champion predict path + prop projections against it.
+To get trained-model projections for upcoming weeks: build an upcoming-week feature matrix (fold the upcoming schedule into build-features, compute per-game features for unplayed games — many rolling features are thin/undefined for Week 1 of a new season), then run the champion predict path + prop projections against it.
 
-Optional / medium workstream. Elo-in-offseason is a reasonable default;
-this is only worth building if trained-model upcoming projections are
-wanted pre-season (more useful mid-season, where rolling features exist
-for the next unplayed week).
+Optional / medium workstream. Elo-in-offseason is a reasonable default; this is only worth building if trained-model upcoming projections are wanted pre-season (more useful mid-season, where rolling features exist for the next unplayed week).
 
 ### Backlog (from 2026-07-06 audit)
 
-- [ ] Games trainer: introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring
-      the prop-side pattern. Would enforce `meta.feature_columns` as the source of
-      truth at predict time, making the fit/predict feature contract explicit
-      rather than conventional. Callers in `evaluation/backfill.py` and any future
-      game predictor path would use it.
+- [ ] Games trainer: introduce `GamesTrainer.predict_with_meta(df, meta)` mirroring the prop-side pattern. Would enforce `meta.feature_columns` as the source of truth at predict time, making the fit/predict feature contract explicit rather than conventional. Callers in `evaluation/backfill.py` and any future game predictor path would use it.
 
-- [ ] Games trainer: metadata records `feature_columns` from the spec, not from
-      the actual fit. If `feature_fn` and `spec.feature_set.feature_names` ever
-      disagree, the metadata lies about what the model was fit on. Verify they
-      match at metadata-build time, or record from actual `x_train.columns`.
+- [ ] Games trainer: metadata records `feature_columns` from the spec, not from the actual fit. If `feature_fn` and `spec.feature_set.feature_names` ever disagree, the metadata lies about what the model was fit on. Verify they match at metadata-build time, or record from actual `x_train.columns`.
 
-- [ ] Games trainer: audit `feature_fn` implementations for cross-slice
-      dependencies. `_filter_for_walk_forward` re-splits pre-computed features,
-      which assumes feature construction is purely row-local (no aggregate
-      statistics over the training pool).
+- [ ] Games trainer: audit `feature_fn` implementations for cross-slice dependencies. `_filter_for_walk_forward` re-splits pre-computed features, which assumes feature construction is purely row-local (no aggregate statistics over the training pool).
 
-- [ ] Games trainer: `MIN_CV_TRAIN_ROWS = 4000` is a fixed default that walk-forward
-      overrides. Consider scaling with training-pool size (e.g. `min(4000, N // 3)`)
-      so callers don't need to know the guard exists.
+- [ ] Games trainer: `MIN_CV_TRAIN_ROWS = 4000` is a fixed default that walk-forward overrides. Consider scaling with training-pool size (e.g. `min(4000, N // 3)`) so callers don't need to know the guard exists.
 
-- [ ] Prop trainer: 50% NaN threshold is porous at era boundaries (see
-      passing_cpoe on qb_pass_yards). Consider tighter threshold, per-era feature
-      sets, or imputation policy. Decide before making claims about prop
-      dashboard historical coverage.
+- [ ] Prop trainer: 50% NaN threshold is porous at era boundaries (see passing_cpoe on qb_pass_yards). Consider tighter threshold, per-era feature sets, or imputation policy. Decide before making claims about prop dashboard historical coverage.
 
-- [ ] `full-retrain --only` semantics: `--only` treats unlisted stages as
-      "must not run", which blocks partial-resume workflows where completed
-      stages aren't in the `--only` list. Consider making `--only` accept a
-      dependency-satisfying stage, or improve the error to suggest
-      `--assume-done`.
+- [ ] `full-retrain --only` semantics: `--only` treats unlisted stages as "must not run", which blocks partial-resume workflows where completed stages aren't in the `--only` list. Consider making `--only` accept a dependency-satisfying stage, or improve the error to suggest `--assume-done`.
 
-- [ ] Composite dependency graph: consider treating "artifact on disk" as
-      satisfying a dependency, so partial resumes don't require explicit
-      `--assume-done` flags.
+- [ ] Composite dependency graph: consider treating "artifact on disk" as satisfying a dependency, so partial resumes don't require explicit `--assume-done` flags.
 
-- [ ] 2026 PBP fetch warning: `_stage_refresh_all_data` requests PBP for the
-      current season and gets a warning that the source only supports through
-      2025. Clamp to the max available season instead of failing softly.
+- [ ] 2026 PBP fetch warning: `_stage_refresh_all_data` requests PBP for the current season and gets a warning that the source only supports through 2025. Clamp to the max available season instead of failing softly.
 
-- [ ] `_parse_baseline_report` extracted zero-valued cells for the previous
-  report's win_prob_logistic row, causing the delta to display as the raw
-  current value with a `+` sign rather than a proper delta or an em-dash.
-  Investigate whether the parser is misaligning columns or if 0.0 is being
-  produced where None is expected.
+- [ ] `_parse_baseline_report` extracted zero-valued cells for the previous report's win_prob_logistic row, causing the delta to display as the raw current value with a `+` sign rather than a proper delta or an em-dash. Investigate whether the parser is misaligning columns or if 0.0 is being produced where None is expected.
 
 ---
 
@@ -757,6 +702,7 @@ for the next unplayed week).
 
 | Date | Change |
 |---|---|
+| 2026-07-12 | **W9.11 opened (Screen Completion).** Audit sweep → PlayoffProjections → BetSlip. Finishes the core-screen set. Ways-of-Working codified in PLAN.md. |
 | 2026-07-12 | **ROADMAP trim + straggler fix.** Collapsed §4 completed workstreams to table (W1–W8, W13). Deleted §9.5 (superseded by §9.7/§9.8). Gutted §9.8 to genuine remainders (struck shipped W9.5–W9.10 items). Marked B1 player-history shipped in §9.7. Fixed 07-01→07-11 date stragglers; player logs 1999→2025; PLAN cross-ref. |
 | 2026-07-12 | **Post-session cleanup + offseason-readiness findings.** Marked §9.2 clean-games clobber + Elo empty-games crash FIXED. Updated audit-sweep note to Unblocked. §1 frontend-arc → Complete (both Compare modes, BarChart); removed shipped player-history from What's Missing. §6 graph + Current position → W9.10 complete, between workstreams. Added findings: predict-week elo-only + champion→elo API fallback; upcoming-week feature-matrix future note. Marked B1–B4 shipped in §9.7. |
 | 2026-07-11 | **W9.10 complete.** Compare Screen Rebuild — both modes shipped. New backend B1–B4 (player-history endpoint, 4-cohort opponent-allowed, defense-by-team, players roster). game_id scramble bug fixed at root in transform/clean/player_stats.py. |

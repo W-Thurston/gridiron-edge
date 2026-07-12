@@ -27,6 +27,28 @@
 
 Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside the planning docs (PLAN, ROADMAP, DECISIONS, CHANGELOG) — never in source code, comments, or commit subjects.
 
+## Ways of Working
+
+How we operate in every session. A new thread should read this first.
+
+1. **Confirm before building — never assume code exists or looks a certain way.** Before writing or modifying anything, verify the current state. Prefer over-confirming: it's cheaper to paste five files than to rebuild something that already existed and discover the drift later. Use grep to locate; ask the user to run commands or paste files. Assumptions are the #1 source of rework and format drift.
+
+2. **Grep first, then read.** Locate with `grep -rn`, then request the specific file(s) or function(s). Ask the user to run the grep/curl and paste results rather than guessing at signatures, schemas, or data.
+
+3. **Design before implementing, at two levels.**
+   - **ROADMAP-level (high-level):** lock the workstream shape — what, why, tiers, success criteria — before touching code.
+   - **Subsection-level (deep):** before each tier/substep, a focused design block with locked decisions, then implement.
+
+4. **PLAN.md tracks the active work.** After ROADMAP design, expand the workstream into PLAN.md as a checklist. Check items off as completed.
+
+5. **Commit small units as you go.** Each substep is its own commit with a clear message. Quality gates (`ruff` + `pyrefly` + unit tests, or `pnpm build && pnpm test:run` for frontend) pass before each commit.
+
+6. **Section close-out ritual.** When a section/tier completes: clean its detail out of PLAN.md (collapse to a one-line summary or remove), check the item off in ROADMAP.md, and either continue to the next subsection or repeat the full design→plan→build→close loop for the next big chunk.
+
+7. **Verify against real data.** After backend/data changes, confirm via curl or a Python one-liner against the actual artifact — don't trust the code path alone.
+
+8. **Note on dates:** the assistant's system clock may report an earlier date than reality. Trust commit timestamps and the user; when in doubt, ask.
+
 ---
 
 ### Current Workstream header to (none — between workstreams)
@@ -41,43 +63,23 @@ _(none currently paused)_
 
 #### W9.10: Compare Screen Rebuild — ✅ COMPLETE (2026-07-01)
 
-Two-mode matchup surface. **Team vs Team** and **Player vs Defense**,
-both prototype-aligned against real data.
+Two-mode matchup surface. **Team vs Team** and **Player vs Defense**, both prototype-aligned against real data.
 
-**Team vs Team:** mirrored team pickers + swap, cohort strip, narrative
-card, collapsible summary card, three matchup cards with mirrored
-ranking-bar collision rows (offense value ↔ reciprocal defense-allowed,
-edge chips, descriptive sublabels, title-style metric names). Backed by
-an 11-metric cohort_splits expansion (added def_pass_epa,
-def_third_down_pct, def_redzone_td_pct for reciprocal pairs).
+**Team vs Team:** mirrored team pickers + swap, cohort strip, narrative card, collapsible summary card, three matchup cards with mirrored ranking-bar collision rows (offense value ↔ reciprocal defense-allowed, edge chips, descriptive sublabels, title-style metric names). Backed by an 11-metric cohort_splits expansion (added def_pass_epa, def_third_down_pct, def_redzone_td_pct for reciprocal pairs).
 
-**Player vs Defense:** independent player / stat-category / team pickers
-(searchable player combobox), 7-split strip (4 live + 3 pending), a
-per-game bar chart (player's stat as bars + team split-average as a
-moving reference line), and a "matchup, plainly" verdict card +
-by-split comparison table. Verdict is baseline-driven (defense-allowed
-vs player's own average → lean over/under), with rank as general
-context.
+**Player vs Defense:** independent player / stat-category / team pickers (searchable player combobox), 7-split strip (4 live + 3 pending), a per-game bar chart (player's stat as bars + team split-average as a moving reference line), and a "matchup, plainly" verdict card + by-split comparison table. Verdict is baseline-driven (defense-allowed vs player's own average → lean over/under), with rank as general context.
 
 **Backend built to unblock it (Path C):**
-- B1: `/players/{id}/history` (per-game series). Also fixed a root-cause
-  game_id scramble in player_game_logs (`_join_game_id` index
-  misalignment) and derived trustworthy is_home.
-- B2: opponent_allowed expanded to 4 cohorts (season/l4/home/away,
-  defense-perspective).
-- B3: `/defense/{team}/allowed` (per-team allowed, all cohorts) for
-  arbitrary-team selection.
+- B1: `/players/{id}/history` (per-game series). Also fixed a root-cause game_id scramble in player_game_logs (`_join_game_id` index misalignment) and derived trustworthy is_home.
+- B2: opponent_allowed expanded to 4 cohorts (season/l4/home/away, defense-perspective).
+- B3: `/defense/{team}/allowed` (per-team allowed, all cohorts) for arbitrary-team selection.
 - B4: `/players` roster list for the picker.
 
-**New primitives:** BarChart (bars + reference line). DistributionChart
-retired from Compare (still used by PlayerProp).
+**New primitives:** BarChart (bars + reference line). DistributionChart retired from Compare (still used by PlayerProp).
 
-**Deferred:** book line + O/U bar coloring (odds, W7); vs-winning/
-vs-losing/vs-top-10 splits (3 pending pills); Change 6 (sortable + drag
-matchup rows, P2). All marked pending per highlight discipline.
+**Deferred:** book line + O/U bar coloring (odds, W7); vs-winning/ vs-losing/vs-top-10 splits (3 pending pills); Change 6 (sortable + drag matchup rows, P2). All marked pending per highlight discipline.
 
-**W9.10 complete.** Both Compare modes shipped; Compare no longer the
-biggest screen gap.
+**W9.10 complete.** Both Compare modes shipped; Compare no longer the biggest screen gap.
 
 ---
 
