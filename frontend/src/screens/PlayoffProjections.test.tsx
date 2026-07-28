@@ -81,6 +81,8 @@ const teamMetadataData = {
   _meta: {
     field_status: {},
   },
+  season: "2026-2027",
+  as_of_week: 1,
   items: [
     {
       abbr: "SEA",
@@ -91,6 +93,13 @@ const teamMetadataData = {
       division: "W",
       primary_color: "#002244",
       secondary_color: "#69BE28",
+      rating: 1621.45,
+      rank: 1,
+      record: {
+        wins: 0,
+        losses: 0,
+        ties: 0,
+      },
     },
     {
       abbr: "BUF",
@@ -101,6 +110,13 @@ const teamMetadataData = {
       division: "E",
       primary_color: "#00338D",
       secondary_color: "#C60C30",
+      rating: 1602.51,
+      rank: 2,
+      record: {
+        wins: 0,
+        losses: 0,
+        ties: 0,
+      },
     },
     {
       abbr: "PHI",
@@ -111,6 +127,13 @@ const teamMetadataData = {
       division: "E",
       primary_color: "#004C54",
       secondary_color: "#A5ACAF",
+      rating: 1592.88,
+      rank: 3,
+      record: {
+        wins: 0,
+        losses: 0,
+        ties: 0,
+      },
     },
   ],
   total: 3,
@@ -164,10 +187,15 @@ describe("PlayoffProjections", () => {
     expect(
       screen.getByText("Playoff Projections"),
     ).toBeInTheDocument();
-    expect(screen.getByText("2026-2027")).toBeInTheDocument();
+
+    expect(
+      screen.getByText("2026-2027 · As of Week 1"),
+    ).toBeInTheDocument();
+
     expect(
       screen.getByText("10,000 simulations"),
     ).toBeInTheDocument();
+
     expect(screen.getByText(/^Computed /)).toBeInTheDocument();
   });
 
@@ -231,64 +259,175 @@ describe("PlayoffProjections", () => {
     );
     });
 
-  it("filters by conference while preserving the active table", async () => {
+  it("filters by conference while preserving the active sort", async () => {
     const user = userEvent.setup();
     renderScreen();
 
-    await user.click(
-      screen.getByRole("button", { name: "AFC" }),
-    );
+    const conferenceSelect =
+      screen.getByLabelText("Conference");
+    const divisionSelect =
+      screen.getByLabelText("Division");
+
+    expect(conferenceSelect).toHaveValue("ALL");
+    expect(divisionSelect).toBeDisabled();
+
+    await user.selectOptions(conferenceSelect, "AFC");
+
+    expect(conferenceSelect).toHaveValue("AFC");
+    expect(divisionSelect).toBeEnabled();
+    expect(divisionSelect).toHaveValue("ALL");
 
     expect(
       screen.getByRole("button", { name: "Buffalo Bills" }),
     ).toBeInTheDocument();
+
     expect(
-      screen.queryByRole("button", { name: "Seattle Seahawks" }),
+      screen.queryByRole("button", {
+        name: "Seattle Seahawks",
+      }),
     ).not.toBeInTheDocument();
+
     expect(
       screen.queryByRole("button", {
         name: "Philadelphia Eagles",
       }),
     ).not.toBeInTheDocument();
+
     expect(screen.getByText("1 of 3 teams")).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "NFC" }),
-    );
+    expect(
+      screen
+        .getByRole("button", { name: "Sort by Win SB" })
+        .closest("th"),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    await user.selectOptions(conferenceSelect, "NFC");
 
     expect(
-      screen.getByRole("button", { name: "Seattle Seahawks" }),
+      screen.getByRole("button", {
+        name: "Seattle Seahawks",
+      }),
     ).toBeInTheDocument();
+
     expect(
       screen.getByRole("button", {
         name: "Philadelphia Eagles",
       }),
     ).toBeInTheDocument();
+
     expect(
-      screen.queryByRole("button", { name: "Buffalo Bills" }),
+      screen.queryByRole("button", {
+        name: "Buffalo Bills",
+      }),
     ).not.toBeInTheDocument();
+
     expect(screen.getByText("2 of 3 teams")).toBeInTheDocument();
   });
 
-  it("renders conference, division, and probability heat values", () => {
+  it("renders team context, current records, and full-cell probability values", () => {
     renderScreen();
 
     expect(screen.getByText("NFC West")).toBeInTheDocument();
     expect(screen.getByText("AFC East")).toBeInTheDocument();
 
+    expect(screen.getByText("1621")).toBeInTheDocument();
+    expect(screen.getByText("1603")).toBeInTheDocument();
+    expect(screen.getByText("1593")).toBeInTheDocument();
+
+    expect(screen.getAllByText("0-0")).toHaveLength(3);
+
     expect(
-      screen.getByLabelText(
-        "Seattle Seahawks make playoffs: 78.0%",
-      ),
+      screen.getByRole("cell", {
+        name: "Seattle Seahawks make playoffs: 78.0%",
+      }),
     ).toBeInTheDocument();
+
     expect(
-      screen.getByLabelText(
-        "Seattle Seahawks win Super Bowl: 10.0%",
+      screen.getByRole("cell", {
+        name: "Seattle Seahawks win Super Bowl: 10.0%",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("enables and resets the division filter with conference selection", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const conferenceSelect =
+      screen.getByLabelText("Conference");
+    const divisionSelect =
+      screen.getByLabelText("Division");
+
+    expect(divisionSelect).toBeDisabled();
+
+    await user.selectOptions(conferenceSelect, "NFC");
+    expect(divisionSelect).toBeEnabled();
+
+    await user.selectOptions(divisionSelect, "E");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Philadelphia Eagles",
+      }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Seattle Seahawks",
+      }),
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByText("1 of 3 teams")).toBeInTheDocument();
+
+    await user.selectOptions(conferenceSelect, "AFC");
+
+    expect(divisionSelect).toHaveValue("ALL");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Buffalo Bills",
+      }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(conferenceSelect, "ALL");
+
+    expect(divisionSelect).toHaveValue("ALL");
+    expect(divisionSelect).toBeDisabled();
+    expect(screen.getByText("3 of 3 teams")).toBeInTheDocument();
+  });
+
+  it("renders a quiet Week 1 Elo state with one explanatory caveat", () => {
+    renderScreen();
+
+    expect(
+      screen.getAllByLabelText(
+        "Elo delta not applicable in Week 1",
+      ),
+    ).toHaveLength(3);
+
+    expect(
+      screen.queryByTitle(
+        "Not available: no_prior_snapshot (data)",
+      ),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.getByText(
+        "1-week Elo change begins after Week 1.",
       ),
     ).toBeInTheDocument();
   });
 
-  it("renders the Week 1 Elo delta as unavailable", () => {
+  it("retains unavailable warnings for missing Elo deltas after Week 1", () => {
+    mockedUseTeamMetadata.mockReturnValue({
+      data: {
+        ...teamMetadataData,
+        as_of_week: 2,
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useTeamMetadata>);
+
     renderScreen();
 
     expect(
@@ -299,7 +438,7 @@ describe("PlayoffProjections", () => {
 
     expect(
       screen.getByText(
-        "Elo movement unavailable without a prior snapshot",
+        "Elo movement unavailable without a prior snapshot.",
       ),
     ).toBeInTheDocument();
   });
@@ -315,6 +454,39 @@ describe("PlayoffProjections", () => {
     );
 
     expect(window.location.hash).toBe("#/teams?team=SEA");
+  });
+
+  it("sorts by current Elo", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const eloSort = screen.getByRole("button", {
+      name: "Sort by Elo",
+    });
+
+    await user.click(eloSort);
+
+    expect(tableTeamNames()).toEqual([
+      "Seattle Seahawks",
+      "Buffalo Bills",
+      "Philadelphia Eagles",
+    ]);
+
+    expect(
+      eloSort.closest("th"),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    await user.click(eloSort);
+
+    expect(tableTeamNames()).toEqual([
+      "Philadelphia Eagles",
+      "Buffalo Bills",
+      "Seattle Seahawks",
+    ]);
+
+    expect(
+      eloSort.closest("th"),
+    ).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("keeps rows with missing metadata visible under All", () => {
@@ -383,6 +555,69 @@ describe("PlayoffProjections", () => {
 
     expect(
       screen.getByText("Couldn't load projections"),
+    ).toBeInTheDocument();
+  });
+  it("sorts populated Elo deltas while keeping the dedicated column", async () => {
+    const user = userEvent.setup();
+
+    mockedUseProjections.mockReturnValue({
+      data: {
+        ...projectionsData,
+        _meta: {
+          field_status: {
+            "items.clinched": "pending",
+            "items.eliminated": "pending",
+          },
+        },
+        items: [
+          {
+            ...projectionsData.items[0],
+            elo_delta: 8,
+          },
+          {
+            ...projectionsData.items[1],
+            elo_delta: -4,
+          },
+          {
+            ...projectionsData.items[2],
+            elo_delta: 2,
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjections>);
+
+    mockedUseTeamMetadata.mockReturnValue({
+      data: {
+        ...teamMetadataData,
+        as_of_week: 2,
+      },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useTeamMetadata>);
+
+    renderScreen();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Sort by Elo Δ",
+      }),
+    );
+
+    expect(tableTeamNames()).toEqual([
+      "Seattle Seahawks",
+      "Philadelphia Eagles",
+      "Buffalo Bills",
+    ]);
+
+    expect(
+      screen.getByLabelText("Elo delta +8"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByLabelText("Elo delta -4"),
     ).toBeInTheDocument();
   });
 });

@@ -163,17 +163,18 @@ Rebuild `/projections` as a compact, sortable simulation-probability surface usi
 - [x] Run the full frontend build and test suite.
 - [x] Convert HeatCell from inset pill to full table-cell heat fill.
 - [x] Update HeatCell tests for table-cell semantics.
-- [ ] Replace conference pills with dependent conference/division selects.
-- [ ] Add current Elo from the existing `/teams` composition.
-- [ ] Add current record from the existing `/teams` composition.
-- [ ] Add `/teams.as_of_week` beside the season metadata.
-- [ ] Move Elo delta into a dedicated sortable column.
-- [ ] Suppress repeated no-prior-snapshot warnings during Week 1.
-- [ ] Add a single Week 1 Elo-delta caveat to the legend.
-- [ ] Update PlayoffProjections screen tests.
-- [ ] Verify the revised continuous heat matrix against the original static-table visual language.
-- [ ] Run `pnpm build && pnpm test:run`.
-- [ ] Commit the refinement in small units.
+- [x] Replace conference pills with dependent conference/division selects.
+- [x] Add current Elo from the existing `/teams` composition.
+- [x] Add current record from the existing `/teams` composition.
+- [x] Add `/teams.as_of_week` beside the season metadata.
+- [x] Move Elo delta into a dedicated sortable column.
+- [x] Suppress repeated no-prior-snapshot warnings during Week 1.
+- [x] Add a single Week 1 Elo-delta caveat to the legend.
+- [x] Update PlayoffProjections screen tests.
+- [x] Verify the revised continuous heat matrix against the original
+      static-table visual language.
+- [x] Run `pnpm build && pnpm test:run`.
+- [x] Commit the projections context/filter refinement.
 - [ ] Repository-wide Ruff: pre-existing PLR0917 findings remain outside W9.11 scope; track separately rather than refactoring unrelated APIs, CLI entrypoints, tests, and Numba simulation signatures.
 - [ ] Collapse Tier 1 detail in PLAN.md to a completion summary.
 - [ ] Mark Tier 1 complete in ROADMAP.md.

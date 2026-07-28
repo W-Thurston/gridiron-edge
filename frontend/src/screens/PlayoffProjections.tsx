@@ -7,7 +7,6 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { StatusPill } from "../components/projections/StatusPill";
 import { HeatCell } from "../components/primitives/HeatCell";
-import { Pill } from "../components/primitives/Pill";
 import {
   SortableHeader,
   type SortDirection,
@@ -16,9 +15,12 @@ import { TeamMark } from "../components/primitives/TeamMark";
 import { useNav } from "../context/NavContext";
 
 type ConferenceFilter = "ALL" | "AFC" | "NFC";
+type DivisionFilter = "ALL" | "N" | "S" | "E" | "W";
 
 type SortKey =
   | "team"
+  | "elo"
+  | "elo_delta"
   | "avg_wins"
   | "make_playoffs"
   | "reach_div"
@@ -46,6 +48,8 @@ export function PlayoffProjections() {
 
   const [conference, setConference] =
     useState<ConferenceFilter>("ALL");
+  const [division, setDivision] =
+    useState<DivisionFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("win_sb");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("desc");
@@ -67,8 +71,22 @@ export function PlayoffProjections() {
     );
 
     const filtered = rows.filter(({ metadata }) => {
-      if (conference === "ALL") return true;
-      return metadata?.conference === conference;
+      if (conference === "ALL") {
+        return division === "ALL";
+      }
+
+      if (metadata?.conference !== conference) {
+        return false;
+      }
+
+      if (
+        division !== "ALL" &&
+        metadata?.division !== division
+      ) {
+        return false;
+      }
+
+      return true;
     });
 
     return filtered.toSorted((a, b) =>
@@ -77,6 +95,7 @@ export function PlayoffProjections() {
   }, [
     conference,
     data?.items,
+    division,
     metadataByAbbr,
     sortDirection,
     sortKey,
@@ -92,6 +111,19 @@ export function PlayoffProjections() {
 
     setSortKey(nextKey);
     setSortDirection(nextKey === "team" ? "asc" : "desc");
+  };
+
+  const handleConferenceChange = (
+    nextConference: ConferenceFilter,
+  ) => {
+    setConference(nextConference);
+    setDivision("ALL");
+  };
+
+  const handleDivisionChange = (
+    nextDivision: DivisionFilter,
+  ) => {
+    setDivision(nextDivision);
   };
 
   const fieldStatus = data?._meta?.field_status;
@@ -130,6 +162,7 @@ export function PlayoffProjections() {
 
         <SimulationMetadata
           season={data?.season}
+          asOfWeek={teamMetadata?.as_of_week}
           computedAt={data?.computed_at}
           nSimulations={data?.n_simulations}
           nSimulationsStatus={
@@ -149,18 +182,43 @@ export function PlayoffProjections() {
         }}
       >
         <div
-          aria-label="Conference filter"
-          style={{ display: "flex", gap: 6 }}
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
         >
-          {(["ALL", "AFC", "NFC"] as const).map((value) => (
-            <Pill
-              key={value}
-              active={conference === value}
-              onClick={() => setConference(value)}
-            >
-              {value === "ALL" ? "All" : value}
-            </Pill>
-          ))}
+          <FilterSelect
+            id="projections-conference"
+            label="Conference"
+            value={conference}
+            onChange={(value) =>
+              handleConferenceChange(value as ConferenceFilter)
+            }
+            options={[
+              { value: "ALL", label: "All Conferences" },
+              { value: "AFC", label: "AFC" },
+              { value: "NFC", label: "NFC" },
+            ]}
+          />
+
+          <FilterSelect
+            id="projections-division"
+            label="Division"
+            value={division}
+            disabled={conference === "ALL"}
+            onChange={(value) =>
+              handleDivisionChange(value as DivisionFilter)
+            }
+            options={[
+              { value: "ALL", label: "All Divisions" },
+              { value: "N", label: "North" },
+              { value: "S", label: "South" },
+              { value: "E", label: "East" },
+              { value: "W", label: "West" },
+            ]}
+          />
         </div>
 
         {data && (
@@ -193,7 +251,7 @@ export function PlayoffProjections() {
               className="mono tnum"
               style={{
                 width: "100%",
-                minWidth: 810,
+                minWidth: 1080,
                 fontSize: 12,
                 borderCollapse: "collapse",
               }}
@@ -206,6 +264,33 @@ export function PlayoffProjections() {
                     direction={sortDirection}
                     onClick={() => handleSort("team")}
                   />
+                  <SortableHeader
+                    label="Elo"
+                    active={sortKey === "elo"}
+                    direction={sortDirection}
+                    align="right"
+                    onClick={() => handleSort("elo")}
+                  />
+
+                  <SortableHeader
+                    label="Elo Δ"
+                    active={sortKey === "elo_delta"}
+                    direction={sortDirection}
+                    align="right"
+                    onClick={() => handleSort("elo_delta")}
+                  />
+
+                  <th
+                    scope="col"
+                    style={{
+                      padding: "8px 12px 8px 0",
+                      textAlign: "right",
+                      color: "var(--ink-3)",
+                      fontWeight: 400,
+                    }}
+                  >
+                    Record
+                  </th>
                   <SortableHeader
                     label="Avg Wins"
                     active={sortKey === "avg_wins"}
@@ -264,26 +349,39 @@ export function PlayoffProjections() {
                       <TeamIdentity
                         projection={projection}
                         metadata={metadata}
-                        eloStatus={
-                          fieldStatus?.["items.elo_delta"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                        clinchedStatus={
-                          fieldStatus?.["items.clinched"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                        eliminatedStatus={
-                          fieldStatus?.["items.eliminated"] as
-                            | FieldStatus
-                            | undefined
-                        }
                         onNavigate={() =>
                           navigate("/teams", {
                             team: projection.abbr,
                           })
                         }
+                      />
+                    </td>
+                    <td
+                      style={{
+                        padding: "10px 12px 10px 0",
+                        textAlign: "right",
+                        color: "var(--ink-2)",
+                      }}
+                    >
+                      {metadata?.rating != null
+                        ? Math.round(metadata.rating)
+                        : "N/A"}
+                    </td>
+
+                    <td
+                      style={{
+                        padding: "10px 12px 10px 0",
+                        textAlign: "right",
+                      }}
+                    >
+                      <EloDelta
+                        value={projection.elo_delta}
+                        status={
+                          fieldStatus?.["items.elo_delta"] as
+                            | FieldStatus
+                            | undefined
+                        }
+                        asOfWeek={teamMetadata?.as_of_week}
                       />
                     </td>
 
@@ -294,10 +392,19 @@ export function PlayoffProjections() {
                         color: "var(--ink-2)",
                       }}
                     >
+                      {formatRecord(metadata?.record)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "10px 12px 10px 0",
+                        textAlign: "right",
+                        color: "var(--ink-2)",
+                      }}
+                    >
                       {projection.avg_wins?.toFixed(1) ?? "N/A"}
                     </td>
 
-                    <ProbabilityCell
+                    <HeatCell
                       value={projection.make_playoffs}
                       label={`${projection.name} make playoffs`}
                       status={
@@ -307,7 +414,7 @@ export function PlayoffProjections() {
                       }
                     />
 
-                    <ProbabilityCell
+                    <HeatCell
                       value={projection.reach_div}
                       label={`${projection.name} reach divisional round`}
                       status={
@@ -317,7 +424,7 @@ export function PlayoffProjections() {
                       }
                     />
 
-                    <ProbabilityCell
+                    <HeatCell
                       value={projection.reach_conf}
                       label={`${projection.name} reach conference championship`}
                       status={
@@ -327,7 +434,7 @@ export function PlayoffProjections() {
                       }
                     />
 
-                    <ProbabilityCell
+                    <HeatCell
                       value={projection.reach_sb}
                       label={`${projection.name} reach Super Bowl`}
                       status={
@@ -337,7 +444,7 @@ export function PlayoffProjections() {
                       }
                     />
 
-                    <ProbabilityCell
+                    <HeatCell
                       value={projection.win_sb}
                       label={`${projection.name} win Super Bowl`}
                       status={
@@ -353,6 +460,7 @@ export function PlayoffProjections() {
           </div>
 
           <ProjectionLegend
+            asOfWeek={teamMetadata?.as_of_week}
             eloStatus={
               fieldStatus?.["items.elo_delta"] as
                 | FieldStatus
@@ -370,38 +478,13 @@ export function PlayoffProjections() {
   );
 }
 
-function ProbabilityCell({
-  value,
-  label,
-  status,
-}: {
-  value: number | null | undefined;
-  label: string;
-  status?: FieldStatus;
-}) {
-  return (
-    <td
-      style={{
-        padding: "10px 12px 10px 0",
-        textAlign: "right",
-      }}
-    >
-      <HeatCell value={value} label={label} status={status} />
-    </td>
-  );
-}
-
 function TeamIdentity({
   projection,
   metadata,
-  eloStatus,
   onNavigate,
 }: {
   projection: ProjectionItem;
   metadata: TeamMetadataItem | undefined;
-  eloStatus?: FieldStatus;
-  clinchedStatus?: FieldStatus;
-  eliminatedStatus?: FieldStatus;
   onNavigate: () => void;
 }) {
   const division = formatDivision(
@@ -452,11 +535,6 @@ function TeamIdentity({
         >
           <span>{division ?? "Metadata unavailable"}</span>
 
-          <EloDelta
-            value={projection.elo_delta}
-            status={eloStatus}
-          />
-
           <StatusPill
             clinched={projection.clinched}
             eliminated={projection.eliminated}
@@ -470,11 +548,26 @@ function TeamIdentity({
 function EloDelta({
   value,
   status,
+  asOfWeek,
 }: {
   value: number | null | undefined;
   status?: FieldStatus;
+  asOfWeek: number | null | undefined;
 }) {
   if (value == null) {
+    if (asOfWeek === 1) {
+      return (
+        <span
+          className="mono tnum"
+          title="1-week Elo change begins after Week 1"
+          aria-label="Elo delta not applicable in Week 1"
+          style={{ color: "var(--ink-4)" }}
+        >
+          —
+        </span>
+      );
+    }
+
     if (status === "pending") {
       return <PendingField placeholder="Elo Δ" />;
     }
@@ -490,8 +583,12 @@ function EloDelta({
     }
 
     return (
-      <span title="Elo delta not available">
-        Elo Δ N/A
+      <span
+        className="mono tnum"
+        title="Elo delta not available"
+        style={{ color: "var(--ink-4)" }}
+      >
+        N/A
       </span>
     );
   }
@@ -503,36 +600,44 @@ function EloDelta({
         ? "var(--neg)"
         : "var(--ink-3)";
 
-  const signed = value > 0 ? `+${value.toFixed(0)}` : value.toFixed(0);
+  const background =
+    value > 0
+      ? "color-mix(in oklab, var(--pos) 14%, transparent)"
+      : value < 0
+        ? "color-mix(in oklab, var(--neg) 14%, transparent)"
+        : "var(--bg-2)";
+
+  const signed =
+    value > 0 ? `+${value.toFixed(0)}` : value.toFixed(0);
 
   return (
     <span
       className="mono tnum"
       aria-label={`Elo delta ${signed}`}
       style={{
+        display: "inline-flex",
+        justifyContent: "center",
+        minWidth: 30,
         color,
-        padding: "1px 4px",
-        borderRadius: 3,
-        background:
-          value > 0
-            ? "color-mix(in oklab, var(--pos) 10%, transparent)"
-            : value < 0
-              ? "color-mix(in oklab, var(--neg) 10%, transparent)"
-              : "var(--bg-2)",
+        padding: "2px 5px",
+        borderRadius: 4,
+        background,
       }}
     >
-      Elo {signed}
+      {signed}
     </span>
   );
 }
 
 function SimulationMetadata({
   season,
+  asOfWeek,
   computedAt,
   nSimulations,
   nSimulationsStatus,
 }: {
   season: string | null | undefined;
+  asOfWeek: number | null | undefined;
   computedAt: string | null | undefined;
   nSimulations: number | null | undefined;
   nSimulationsStatus?: FieldStatus;
@@ -549,7 +654,10 @@ function SimulationMetadata({
         fontSize: 10,
       }}
     >
-      <span>{season ?? "Season unavailable"}</span>
+      <span>
+        {season ?? "Season unavailable"}
+        {asOfWeek != null ? ` · As of Week ${asOfWeek}` : ""}
+      </span>
 
       <span>
         {nSimulations != null ? (
@@ -573,9 +681,11 @@ function SimulationMetadata({
 }
 
 function ProjectionLegend({
+  asOfWeek,
   eloStatus,
   clinchedStatus,
 }: {
+  asOfWeek: number | null | undefined;
   eloStatus?: FieldStatus;
   clinchedStatus?: FieldStatus;
 }) {
@@ -614,9 +724,11 @@ function ProjectionLegend({
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {eloStatus && (
-          <span>Elo movement unavailable without a prior snapshot</span>
-        )}
+        {asOfWeek === 1 ? (
+          <span>1-week Elo change begins after Week 1.</span>
+        ) : eloStatus ? (
+          <span>Elo movement unavailable without a prior snapshot.</span>
+        ) : null}
         {clinchedStatus === "pending" && (
           <span>Clinched / eliminated status pending</span>
         )}
@@ -638,15 +750,50 @@ function compareRows(
     return direction === "asc" ? comparison : -comparison;
   }
 
-  const aValue = a.projection[sortKey];
-  const bValue = b.projection[sortKey];
+  const aValue = getSortableValue(a, sortKey);
+  const bValue = getSortableValue(b, sortKey);
 
   if (aValue == null && bValue == null) return 0;
   if (aValue == null) return 1;
   if (bValue == null) return -1;
 
-  const comparison = Number(aValue) - Number(bValue);
+  const comparison = aValue - bValue;
   return direction === "asc" ? comparison : -comparison;
+}
+
+function getSortableValue(
+  row: EnrichedProjection,
+  sortKey: Exclude<SortKey, "team">,
+): number | null {
+  if (sortKey === "elo") {
+    return row.metadata?.rating ?? null;
+  }
+
+  return row.projection[sortKey] ?? null;
+}
+
+function formatRecord(
+  record:
+    | {
+        wins?: number | null;
+        losses?: number | null;
+        ties?: number | null;
+      }
+    | null
+    | undefined,
+): string {
+  if (
+    record?.wins == null ||
+    record.losses == null
+  ) {
+    return "N/A";
+  }
+
+  if ((record.ties ?? 0) > 0) {
+    return `${record.wins}-${record.losses}-${record.ties}`;
+  }
+
+  return `${record.wins}-${record.losses}`;
 }
 
 function formatDivision(
@@ -679,4 +826,69 @@ function formatComputedAt(
     dateStyle: "medium",
     timeStyle: "short",
   })}`;
+}
+
+function FilterSelect({
+  id,
+  label,
+  value,
+  options,
+  disabled = false,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: Array<{
+    value: string;
+    label: string;
+  }>;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        fontSize: 10,
+        color: disabled
+          ? "var(--ink-4)"
+          : "var(--ink-3)",
+      }}
+    >
+      <span className="upper">{label}</span>
+
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        style={{
+          minWidth: 138,
+          padding: "6px 28px 6px 8px",
+          border: "1px solid var(--line-soft)",
+          borderRadius: 4,
+          background: "var(--bg-2)",
+          color: disabled
+            ? "var(--ink-4)"
+            : "var(--ink-2)",
+          fontFamily: "var(--f-sans)",
+          fontSize: 11,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {options.map((option) => (
+          <option
+            key={option.value}
+            value={option.value}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
