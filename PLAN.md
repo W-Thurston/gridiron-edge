@@ -112,12 +112,12 @@ regular-season game.
 
 ##### A. Teams / projections sibling navigation
 
-- [ ] Add shared `TeamViewSwitcher`.
-- [ ] Add focused navigation and active-state tests.
-- [ ] Add the switcher above `TeamsScreen`.
-- [ ] Add the switcher above `PlayoffProjections`.
-- [ ] Run `pnpm build && pnpm test:run`.
-- [ ] Commit the sibling-navigation unit.
+- [x] Add shared `TeamViewSwitcher`.
+- [x] Add focused navigation and active-state tests.
+- [x] Add the switcher above `TeamsScreen`.
+- [x] Add the switcher above `PlayoffProjections`.
+- [x] Run `pnpm build && pnpm test:run`.
+- [x] Commit the sibling-navigation unit.
 
 ##### B. Weekly-grid API contract
 
