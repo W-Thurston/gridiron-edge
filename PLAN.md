@@ -105,22 +105,22 @@ Rebuild `/projections` as a compact, sortable simulation-probability surface usi
 - [x] Run backend quality gates:
       `ruff`, `pyrefly`, and targeted projections tests.
 - [x] Verify the real `/projections` response with curl.
-- [ ] Commit the contract/status correction as one unit.
+- [x] Commit the contract/status correction as one unit.
 
 ##### 3. Shared table primitives
 
-- [ ] Add `HeatCell`.
-- [ ] Use a fixed absolute probability scale and theme-native `color-mix`.
-- [ ] Add accessible stage/value labeling.
-- [ ] Format zero, whole percentages, and positive sub-1% values distinctly.
-- [ ] Make null rendering status-aware.
-- [ ] Add focused `HeatCell` tests.
-- [ ] Add `SortableHeader`.
-- [ ] Render the interaction as a button within the header.
-- [ ] Expose inactive, ascending, and descending states with `aria-sort`.
-- [ ] Add focused `SortableHeader` tests.
-- [ ] Run `pnpm build && pnpm test:run`.
-- [ ] Commit the primitives as one unit.
+- [x] Add `HeatCell`.
+- [x] Use a fixed absolute probability scale and theme-native `color-mix`.
+- [x] Add accessible stage/value labeling.
+- [x] Format zero, whole percentages, and positive sub-1% values distinctly.
+- [x] Make null rendering status-aware.
+- [x] Add focused `HeatCell` tests.
+- [x] Add `SortableHeader`.
+- [x] Render the interaction as a button within the header.
+- [x] Expose inactive, ascending, and descending states with `aria-sort`.
+- [x] Add focused `SortableHeader` tests.
+- [x] Run `pnpm build && pnpm test:run`.
+- [x] Commit the primitives as one unit.
 
 ##### 4. Screen composition and interactions
 
