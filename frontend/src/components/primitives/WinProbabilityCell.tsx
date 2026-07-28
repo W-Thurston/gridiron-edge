@@ -292,6 +292,7 @@ function CellTooltip({
         backgroundColor: "var(--bg-1)",
         color: "var(--ink-2)",
         boxShadow: "0 6px 18px rgb(0 0 0 / 35%)",
+        textAlign: "center",
         pointerEvents: "none",
       }}
     >

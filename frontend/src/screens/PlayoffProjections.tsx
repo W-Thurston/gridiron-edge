@@ -693,7 +693,7 @@ function WeeklyOutcomesGrid({
                   minWidth: 220,
                   padding: "8px 12px",
                   textAlign: "left",
-                  background: "var(--bg)",
+                  backgroundColor: "var(--bg-1)",
                   color: "var(--ink-3)",
                   borderRight:
                     "1px solid var(--line)",
@@ -788,7 +788,7 @@ function WeeklyOutcomesGrid({
                     zIndex: 3,
                     minWidth: 220,
                     padding: "10px 14px 10px 0",
-                    background: "var(--bg)",
+                    backgroundColor: "var(--bg-1)",
                     borderRight:
                       "1px solid var(--line)",
                   }}
