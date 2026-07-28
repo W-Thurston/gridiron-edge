@@ -122,32 +122,33 @@ regular-season game.
 ##### B. Weekly-grid API contract
 
 - [x] Inspect completed-games columns and current outcome conventions.
-- [x] Verify weekly probability behavior for played weeks, projected weeks, ties, and byes.
 - [x] Add projections-grid schemas.
 - [x] Add static loader composition from season grid, schedule, actuals, and team mappings.
+- [x] Verify and test weekly probability behavior for played wins, losses, ties, projected games, and byes.
 - [x] Add hand-written serializer and `_meta.field_status` behavior.
-- [ ] Add `/projections/grid` route.
-- [ ] Test played win/loss/tie, projected game, bye, and missing data.
-- [ ] Regenerate `api-schema.json` and the TypeScript client schema.
-- [ ] Verify the real preseason response.
-- [ ] Run backend and frontend contract gates.
+- [x] Add `/projections/grid` route.
+- [x] Add route integration coverage.
+- [x] Regenerate `api-schema.json` and the TypeScript client schema.
+- [x] Verify the real preseason response.
+- [x] Run backend and frontend contract gates.
 - [x] Commit the grid schema contract.
 - [x] Commit the grid source-loader unit.
 - [x] Commit the grid serializer unit.
-- [ ] Commit the route/generated-contract unit.
+- [x] Commit the route/generated-contract unit.
 
 ##### C. Weekly-grid frontend
 
-- [ ] Add full-cell `WinProbabilityCell` with a fixed diverging scale.
-- [ ] Add accessible hover/focus game-detail treatment.
+- [x] Add the `/projections/grid` React Query hook.
+- [x] Add full-cell `WinProbabilityCell` with a fixed diverging scale.
+- [x] Add accessible hover/focus game-detail treatment.
 - [ ] Add Playoff Chances / Weekly Outcomes local view selection.
 - [ ] Add grouped Played Games / Projected Games headers.
 - [ ] Add the played/projected boundary.
 - [ ] Add sticky or visually anchored Team column if needed after visual review.
-- [ ] Render BYE distinctly from a zero-percent game.
+- [x] Render BYE distinctly from a zero-percent game.
 - [ ] Reuse conference and dependent division filtering.
 - [ ] Test all-projected preseason and mixed played/projected fixtures.
-- [ ] Run `pnpm build && pnpm test:run`.
+- [x] Run primitive-focused and full frontend quality gates.
 - [ ] Complete a real-data visual pass.
 - [ ] Re-close Tier 1 documentation.
 

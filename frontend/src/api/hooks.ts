@@ -112,6 +112,25 @@ export function useProjections() {
   });
 }
 /**
+ * Fetches the regular-season weekly win-probability grid.
+ */
+export function useProjectionGrid() {
+  return useQuery({
+    queryKey: ["projection-grid"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET(
+        "/projections/grid",
+      );
+
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+
+      return data;
+    },
+  });
+}
+/**
  * Fetches the props list.
  */
 export function usePropsList(
