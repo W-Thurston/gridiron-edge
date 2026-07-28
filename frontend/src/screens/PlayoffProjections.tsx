@@ -84,7 +84,7 @@ export function PlayoffProjections() {
                 <ColumnHeader
                   label="1w Δ"
                   status={
-                    data._meta?.field_status?.["items.week_over_week_delta"] as
+                    data._meta?.field_status?.["items.elo_delta"] as
                       | FieldStatus
                       | undefined
                   }

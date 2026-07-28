@@ -51,7 +51,117 @@ How we operate in every session. A new thread should read this first.
 
 ---
 
-### Current Workstream header to (none — between workstreams)
+## Current Workstream
+
+### W9.11 — Screen Completion
+
+#### Tier 1 — PlayoffProjections rebuild — ACTIVE
+
+**Goal**
+
+Rebuild `/projections` as a compact, sortable simulation-probability surface using the verified projection artifact and shared team metadata. Preserve the semantics of the real data, fit the established centered layout, and make every missing state explicit.
+
+**Verified inputs**
+
+- `projections_summary.csv` contains 32 teams and only:
+  `TEAM`, `AVG_WINS`, `P_MAKE_PLAYOFFS`, `P_REACH_DIV`, `P_REACH_CONF`, `P_REACH_SB`, `P_WIN_SB`.
+- `/projections` additionally exposes season, computed time, simulation count, Elo movement, and pending clinched/eliminated fields.
+- Team conference, division, city/name, and colors are available through the shared `/teams` metadata cache.
+- No existing HeatCell or sortable-header primitive exists.
+- Routing is custom through NavContext.
+- Tier 0 pending-highlight audit is deferred until after both remaining screen rebuilds.
+
+**Locked decisions**
+
+- Keep `AVG_WINS` as average wins; do not derive a discrete projected record.
+- Rename `week_over_week_delta` to `elo_delta`.
+- Treat the delta as Elo rating-point movement, never probability movement.
+- Default sort: Win SB descending. Nulls always last.
+- Visible columns: Team, Avg Wins, Playoffs, Div. Round, Conf. Champ., Make SB, Win SB.
+- Fold conference/division, Elo delta, and real status pills into team identity.
+- Use a fixed 0–1 heat scale across all probability cells.
+- Display only truthful run metadata: season, simulation count, computed time.
+- Preserve every postseason stage on narrow screens through horizontal overflow.
+- Follow the existing NavContext navigation pattern for team-profile links.
+
+##### 1. Documentation synchronization
+
+- [ ] Update ROADMAP §4 W9.11 execution order to Tier 1 → Tier 2 → deferred Tier 0.
+- [ ] Correct ROADMAP §9.7 projections data assumptions.
+- [ ] Replace ROADMAP §9.8 PlayoffProjections remainder with the locked scope.
+- [ ] Update ROADMAP §6 current position.
+- [ ] Add the 2026-07-28 ROADMAP document-changelog entry.
+- [ ] Commit the ROADMAP/PLAN design synchronization as one documentation-only unit.
+
+##### 2. Contract semantics and status metadata
+
+- [x] Grep all exact uses of `week_over_week_delta`.
+- [x] Inspect `api/meta.py` for the established unavailable classification.
+- [x] Rename the public projection field to `elo_delta` across schema, serializer, generated client, frontend consumer, and tests.
+- [x] Correct stale serializer comments about `n_simulations` and universal delta population.
+- [x] Mark `items.elo_delta` unavailable when the projection response contains no usable prior-week Elo deltas.
+- [x] Preserve populated-delta behavior without an unavailable marker.
+- [x] Define and test the partial-null fallback without silently rendering null.
+- [x] Run backend quality gates:
+      `ruff`, `pyrefly`, and targeted projections tests.
+- [x] Verify the real `/projections` response with curl.
+- [ ] Commit the contract/status correction as one unit.
+
+##### 3. Shared table primitives
+
+- [ ] Add `HeatCell`.
+- [ ] Use a fixed absolute probability scale and theme-native `color-mix`.
+- [ ] Add accessible stage/value labeling.
+- [ ] Format zero, whole percentages, and positive sub-1% values distinctly.
+- [ ] Make null rendering status-aware.
+- [ ] Add focused `HeatCell` tests.
+- [ ] Add `SortableHeader`.
+- [ ] Render the interaction as a button within the header.
+- [ ] Expose inactive, ascending, and descending states with `aria-sort`.
+- [ ] Add focused `SortableHeader` tests.
+- [ ] Run `pnpm build && pnpm test:run`.
+- [ ] Commit the primitives as one unit.
+
+##### 4. Screen composition and interactions
+
+- [ ] Inspect NavContext and an existing team-selection callsite before wiring navigation.
+- [ ] Rebuild the screen header and explanatory copy.
+- [ ] Add the simulation-run metadata cluster.
+- [ ] Add All / AFC / NFC filters using `Pill`.
+- [ ] Memoize team metadata by abbreviation.
+- [ ] Enrich team identity with conference and division.
+- [ ] Add local sort state and immutable filter/sort derivation.
+- [ ] Implement default Win SB descending order.
+- [ ] Implement useful first-click direction and active-column toggling.
+- [ ] Keep null values last in both directions.
+- [ ] Render the five probability columns through `HeatCell`.
+- [ ] Render average wins to one decimal.
+- [ ] Add compact positive/negative/neutral Elo-delta treatment.
+- [ ] Surface no-prior-week Elo state visibly.
+- [ ] Preserve real clinched/eliminated pills and explain globally pending status.
+- [ ] Add team-profile navigation through the established custom-router pattern.
+- [ ] Correct the ErrorCard title to “Couldn't load projections.”
+- [ ] Preserve actionable empty-state copy.
+- [ ] Add horizontal overflow without silently hiding probability stages.
+- [ ] Add screen tests for sorting, filtering, metadata, missing metadata, Elo states, status pills, navigation, error, and empty results.
+- [ ] Run `pnpm build && pnpm test:run`.
+- [ ] Commit the screen rebuild as one unit.
+
+##### 5. Real-data verification and Tier close-out
+
+- [ ] Run the API and frontend against the populated projections artifact.
+- [ ] Verify all 32 teams under the All filter.
+- [ ] Verify AFC and NFC subsets against team metadata.
+- [ ] Verify each sortable column in both directions.
+- [ ] Verify Week 1 Elo unavailability in normal and highlight modes.
+- [ ] Verify heat-cell readability across low and high probabilities.
+- [ ] Verify the normal centered layout and a narrow viewport.
+- [ ] Verify keyboard operation for filters, sort headers, and team navigation.
+- [ ] Run final frontend and targeted backend quality gates.
+- [ ] Collapse Tier 1 detail in PLAN.md to a completion summary.
+- [ ] Mark Tier 1 complete in ROADMAP.md.
+- [ ] Add CHANGELOG and HANDOFF updates if the final primitive inventory or public API contract changed.
+- [ ] Commit the Tier 1 close-out documentation.
 
 ---
 

@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import pandas as pd
+from pandas import DataFrame
 
-from gridiron_edge.api.schemas.projections import ProjectionsList
+from gridiron_edge.api.schemas.projections import ProjectionsList, TeamProjectionRow
 from gridiron_edge.api.serializers.projections import serialize_projections
 
 LONG_TO_SHORT = {
@@ -27,6 +28,7 @@ def _make_df() -> pd.DataFrame:
                 "P_REACH_CONF": 0.3274,
                 "P_REACH_SB": 0.1866,
                 "P_WIN_SB": 0.1038,
+                "elo_delta": 12.0,
             },
             {
                 "TEAM": "BUF",
@@ -36,6 +38,7 @@ def _make_df() -> pd.DataFrame:
                 "P_REACH_CONF": 0.2747,
                 "P_REACH_SB": 0.1582,
                 "P_WIN_SB": 0.0875,
+                "elo_delta": -4.0,
             },
         ],
     )
@@ -71,8 +74,9 @@ class TestSerializeProjections:
         assert result.items[0].name == "Seattle Seahawks"
         assert result.items[0].win_sb == 0.1038
         assert result.items[0].make_playoffs == 0.7762
+        assert result.items[0].elo_delta == 12.0
 
-    def test_marks_pending_and_blocked_fields(self) -> None:
+    def test_marks_pending_status_fields(self) -> None:
         result: ProjectionsList = serialize_projections(
             _make_df(),
             LONG_TO_SHORT,
@@ -143,3 +147,49 @@ class TestNSimulations:
         )
         fs = result.response_meta.field_status
         assert "n_simulations" not in fs
+
+    def test_populated_elo_delta_has_no_unavailable_status(self) -> None:
+        result: ProjectionsList = serialize_projections(
+            _make_df(),
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=10000,
+        )
+
+        assert "items.elo_delta" not in result.response_meta.field_status
+
+    def test_all_null_elo_deltas_mark_no_prior_snapshot(self) -> None:
+        df: DataFrame = _make_df()
+        df["elo_delta"] = None
+
+        result = serialize_projections(
+            df,
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=10000,
+        )
+
+        status = result.response_meta.field_status["items.elo_delta"]
+        assert status.status == "blocked"
+        assert status.blocker == "no_prior_snapshot"
+        assert status.roadmap == "data"
+        assert all(item.elo_delta is None for item in result.items)
+
+    def test_partial_null_elo_deltas_do_not_mark_entire_field_unavailable(self) -> None:
+        df: DataFrame = _make_df()
+        df.loc[df["TEAM"] == "BUF", "elo_delta"] = None
+
+        result: ProjectionsList = serialize_projections(
+            df,
+            LONG_TO_SHORT,
+            "2025-2026",
+            None,
+            n_simulations=10000,
+        )
+
+        assert "items.elo_delta" not in result.response_meta.field_status
+        by_team: dict[str, TeamProjectionRow] = {item.abbr: item for item in result.items}
+        assert by_team["SEA"].elo_delta == 12.0
+        assert by_team["BUF"].elo_delta is None

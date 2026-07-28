@@ -159,21 +159,48 @@ See CHANGELOG.md for details.
 
 ### Active Workstream
 
-#### W9.11: Screen Completion — 🟡 DESIGNING
+##### W9.11: Screen Completion — 🟡 ACTIVE
 
-**Goal:** Finish the core-screen set. Two screens were untouched by the W9.5–W9.10 fidelity arc (PlayoffProjections, BetSlip); rebuild both, and first cash in the deferred W9.8 highlight audit sweep to surface any remaining gaps across all screens.
+**Goal:** Finish the core-screen set by rebuilding PlayoffProjections and
+BetSlip against verified real data and the shared primitive set established
+during W9.5–W9.10, then complete the deferred pending-highlight audit across
+the final frontend surface.
 
-**Tiers (high-level — deep design per tier at start):**
-- **Tier 0 — Pending-highlight audit sweep.** Walk every built screen in highlight mode; mark silently-missing gaps (§9 deferred task). Also surfaces exactly what the two rebuilds need.
-- **Tier 1 — PlayoffProjections rebuild.** HeatCell (sequential color intensity), sortable headers, trend badges, conference pills, model-metadata block. (§9.8)
-- **Tier 2 — BetSlip rebuild.** Kelly stake card, bankroll % indicator, EV row, enhanced LegCard, quick-stake buttons. SGP correlation + book selector deferred (blocked on `/edges/correlations` + W7). (§9.8)
+**Execution order:**
 
-**Ready:** No external unblock. All data paths exist (Kelly/EV via `utils/odds.ts` + AppState bankroll; projections via `/projections`).
+- **Tier 1 — PlayoffProjections rebuild — ACTIVE.** Build a compact, sortable
+  simulation-probability table using sequential HeatCell treatment. Add
+  All / AFC / NFC filters and conference/division context from shared team
+  metadata. Preserve AVG_WINS as the canonical season-result projection.
+  Label the existing movement field explicitly as Elo delta and surface
+  Week 1/no-prior-week absence visibly. Show truthful simulation-run metadata
+  (season, simulation count, computed time), status context, and team-profile
+  navigation.
 
-**Unlocks:** Every core screen rebuilt → frontend fidelity arc fully closed.
+- **Tier 2 — BetSlip rebuild.** Rebuild the slip around verified existing
+  probability, bankroll, stake, payout, and EV inputs. Target a Kelly suggestion
+  card, bankroll-percentage indicator, EV summary, enhanced leg presentation,
+  and quick-stake controls. Lock exact scope only after inspecting the current
+  BetSlip, AppState, odds utilities, and edge-row contract.
 
-**Deferred within W9.11:** SGP correlation warnings, book selector (W7 odds); anything needing live/multi-book data.
+- **Tier 0 — Pending-highlight audit sweep — DEFERRED CAPSTONE.** After both
+  remaining screen rebuilds, walk every built screen with Highlight mode
+  enabled. Classify each silently missing field as pending, blocked,
+  unavailable, or defective; route it through the established field-status
+  primitives and record larger follow-up gaps.
 
+**Ready:** Tier 1 has no external dependency. Tier 2 requires a contract
+verification pass before deep design; combined EV must not be assumed available
+until the current edge/slip data path is confirmed.
+
+**Unlocks:** Every core screen rebuilt and the frontend fidelity arc closed with
+the pending-highlight discipline applied across the complete final surface.
+
+**Deferred within W9.11:** True week-over-week playoff-probability movement
+(requires persisted simulation snapshots); richer simulation provenance such as
+model/config identity, random seed, and elapsed duration; SGP correlation
+warnings, book selection, and line movement; anything requiring live or
+multi-book data.
 
 ### Future Workstreams (ordered by current priority)
 
@@ -335,12 +362,16 @@ W8 (API) ✅
 ```
 
 
-**Current position:** Frontend fidelity arc (W9.5–W9.10) complete — all core screens rebuilt, both Compare modes shipped, backend B1–B4 built. Between workstreams. Path forward:
-- **Pending-highlight audit sweep** (§9 deferred) — now unblocked; capstone of the highlight work.
-- **Frontend polish backlog** (§9.7/§9.8) — pull P0/P1 per-screen.
-- **Upcoming-week feature matrix** (§9 new note) — trained-model game + prop predictions for upcoming weeks.
-- **W12 (Ensemble)** — soft-blocked on §9.2 walk-forward bug.
-- **W4.5 (Scenario)** — §5.3 injury data. **W7 (Multi-Book)** — §5.2 odds. **W10 (Real-Time)** — deferred.
+**Current position:** W9.11 Screen Completion is active. Tier 1
+PlayoffProjections has completed its verification and deep-design pass and is
+the current implementation target.
+
+- Active: Tier 1 — synchronize ROADMAP, create the PLAN checklist, then rebuild
+  PlayoffProjections in small verified commits.
+- Next: Tier 2 — verify the current BetSlip probability/EV/bankroll contract
+  before deep design.
+- Final capstone: Tier 0 — pending-highlight audit across the completed frontend
+  surface.
 
 ---
 
@@ -461,16 +492,17 @@ Gaps between what the frontend prototype expects and what our API returns today.
 | Injuries data | Blocked on §5.3 | Injury data source decision |
 | Swing factors | Blocked on feature attribution | Deferred workstream |
 
-#### Projections-related gaps
+##### Projections-related gaps
 
 | Item | Priority | Notes |
-|---|---|---|
-| `TeamProjectionRow.rating` (currently need cross-endpoint join) | P1 | Composed from `/teams` |
-| `TeamProjectionRow.trend` (currently need cross-endpoint join) | P1 | Same |
-| `TeamProjectionRow.current_record` | P1 | For "Curr." column |
-| `TeamProjectionRow.projected_record` (derived from `avg_wins`) | P1 | Format like "14-3" |
-| `TeamProjectionRow.conference` / `division` | P1 | For filter pills + Division column |
-| `ProjectionsList.model_version` + `random_seed` on envelope | P2 | Metadata already in sidecar |
+|---|---:|---|
+| Conference / division composition | P1 | Available through the existing shared team-metadata cache; do not duplicate static metadata into the simulation artifact. W9.11 Tier 1. |
+| Elo delta contract and unavailable state | P1 | `/projections` computes current-week Elo minus prior same-season week. Rename the ambiguous response field to `elo_delta`, label it explicitly, and surface Week 1 as unavailable rather than a silent em dash. W9.11 Tier 1. |
+| Current record | Deferred | Not present in `projections_summary.csv`; add only through a verified source and deliberate composition path. |
+| Average-wins presentation | P1 | `AVG_WINS` is the canonical season-result projection. Do not manufacture a discrete projected record from an expectation. W9.11 Tier 1. |
+| Simulation provenance | P2 | The current response supports season, simulation count, and computed time. Model/config identity, random seed, and elapsed duration require a richer metadata sidecar. |
+| True week-over-week projection movement | Deferred | Requires persisted prior simulation summaries and like-for-like comparison. The existing delta is Elo movement, not playoff-probability movement. |
+
 
 #### Prop-related gaps
 
@@ -564,16 +596,18 @@ Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original audit 2026
 
 #### Per-screen remaining sections
 
-**PlayoffProjections (`/projections`)** — not yet rebuilt in the arc
+**PlayoffProjections (/projections)** — W9.11 Tier 1 active
 
 | Item | Priority | Notes |
-|---|---|---|
-| `HeatCell` w/ sequential color intensity per probability | P0 | Defines the screen's visual language |
-| Sortable column headers w/ active-state UI | P0 | |
-| Trend badge w/ colored background | P1 | |
-| Conference filter pills (AFC/NFC/All) | P1 | |
-| Model metadata block (version, seed, run time) | P1 | In sidecar |
-| Row click → team profile nav | P2 | |
+|---|---:|---|
+| HeatCell with sequential probability intensity | P0 | Fixed absolute 0–1 scale across all five postseason stages; numeric value remains primary. |
+| Sortable headers with explicit active direction | P0 | Shared accessible primitive; default Win SB descending; nulls always last. |
+| All / AFC / NFC filters | P1 | Reuse Pill and compose conference from shared team metadata. |
+| Conference / division team context | P1 | Render compactly within team identity to preserve the centered layout. |
+| Elo delta badge | P1 | Rename ambiguous contract field, label explicitly as Elo movement, and provide an unavailable state when no prior same-season week exists. |
+| Simulation-run metadata | P1 | Season, simulation count, and computed time only. Do not fabricate model version, seed, or runtime. |
+| Status and heat context | P2 | Explain probability intensity and the globally pending clinched/eliminated fields without repeating pending chips on every row. |
+| Team-profile navigation | P2 | Follow the existing NavContext pattern and route to `/teams?team={abbr}`. |
 
 **BetSlip (`/betslip`)** — not yet rebuilt
 
@@ -702,6 +736,8 @@ Optional / medium workstream. Elo-in-offseason is a reasonable default; this is 
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | **W9.11 Tier 1 design locked.** Moved PlayoffProjections ahead of the deferred audit sweep. Verified the seven-column simulation artifact, metadata sidecar, `/projections` schema/serializer/route, shared team metadata, Pill, custom routing, and design tokens. Preserved AVG_WINS as the canonical projection; clarified movement as Elo delta; limited run metadata to season/simulation count/computed time; locked HeatCell, sorting, conference filters, compact 920px table structure, and accessible team navigation. |
+| 2026-07-28 | **W9.11 design resync.** Updated PlayoffProjections scope after verifying the real `/projections` response, `projections_summary.csv`, metadata sidecar, loader, and team-metadata path. Preserved `AVG_WINS` as the canonical projection; clarified trend as Elo delta; replaced speculative model metadata with truthful simulation-run metadata; deferred true probability movement and fabricated projected records. Marked BetSlip scope contract-dependent pending its deep-design verification pass. |
 | 2026-07-12 | **W9.11 opened (Screen Completion).** Audit sweep → PlayoffProjections → BetSlip. Finishes the core-screen set. Ways-of-Working codified in PLAN.md. |
 | 2026-07-12 | **ROADMAP trim + straggler fix.** Collapsed §4 completed workstreams to table (W1–W8, W13). Deleted §9.5 (superseded by §9.7/§9.8). Gutted §9.8 to genuine remainders (struck shipped W9.5–W9.10 items). Marked B1 player-history shipped in §9.7. Fixed 07-01→07-11 date stragglers; player logs 1999→2025; PLAN cross-ref. |
 | 2026-07-12 | **Post-session cleanup + offseason-readiness findings.** Marked §9.2 clean-games clobber + Elo empty-games crash FIXED. Updated audit-sweep note to Unblocked. §1 frontend-arc → Complete (both Compare modes, BarChart); removed shipped player-history from What's Missing. §6 graph + Current position → W9.10 complete, between workstreams. Added findings: predict-week elo-only + champion→elo API fallback; upcoming-week feature-matrix future note. Marked B1–B4 shipped in §9.7. |

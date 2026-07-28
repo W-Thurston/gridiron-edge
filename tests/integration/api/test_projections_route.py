@@ -1,12 +1,11 @@
 # tests/integration/api/test_projections_route.py
 
-"""Integration tests for /projections route with delta computation
-(W8 Tier 3 Substep 1a).
-"""
+"""Integration tests for the projections route and Elo-delta enrichment."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -55,8 +54,8 @@ def _make_minimal_games_df() -> pd.DataFrame:
     )
 
 
-class TestProjectionsDelta:
-    """Cover week_over_week_delta populated from Elo state (Substep 1a)."""
+class TestProjectionsEloDelta:
+    """Cover Elo-delta enrichment from the latest two weeks of Elo state."""
 
     def test_populates_delta_from_elo_state(
         self,
@@ -104,7 +103,7 @@ class TestProjectionsDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KC",
+                    "TEAM": "KAN",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -129,8 +128,9 @@ class TestProjectionsDelta:
         assert response.status_code == 200
         body = response.json()
         by_team = {item["abbr"]: item for item in body["items"]}
-        assert by_team["KC"]["week_over_week_delta"] == 15.0
-        assert by_team["LAC"]["week_over_week_delta"] == -8.0
+        assert by_team["KAN"]["elo_delta"] == 15.0
+        assert by_team["LAC"]["elo_delta"] == -8.0
+        assert "items.elo_delta" not in body["_meta"]["field_status"]
 
     def test_week_1_returns_null_deltas(
         self,
@@ -165,7 +165,7 @@ class TestProjectionsDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KC",
+                    "TEAM": "KAN",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -180,15 +180,21 @@ class TestProjectionsDelta:
         body = response.json()
 
         for item in body["items"]:
-            assert item["week_over_week_delta"] is None
+            assert item["elo_delta"] is None
 
-    def test_no_longer_marks_delta_as_blocked(
+        status = body["_meta"]["field_status"]["items.elo_delta"]
+        assert status == {
+            "status": "blocked",
+            "blocker": "no_prior_snapshot",
+            "roadmap": "data",
+        }
+
+    def test_populated_delta_has_no_unavailable_status(
         self,
         client: TestClient,
         tmp_path: Path,
     ) -> None:
-        """The field_status for week_over_week_delta should be gone
-        now that we populate the field."""
+        """A usable prior-week snapshot needs no unavailable marker."""
         elo_state = pd.DataFrame(
             [
                 {
@@ -217,7 +223,7 @@ class TestProjectionsDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KC",
+                    "TEAM": "KAN",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -232,8 +238,8 @@ class TestProjectionsDelta:
         body = response.json()
         status = body["_meta"]["field_status"]
 
-        # Key should not exist since we removed the blocker.
-        assert "items.week_over_week_delta" not in status
+        # A usable prior-week snapshot needs no unavailable marker.
+        assert "items.elo_delta" not in status
 
 
 class TestNSimulationsMetadata:
@@ -242,8 +248,6 @@ class TestNSimulationsMetadata:
         client: TestClient,
         tmp_path: Path,
     ) -> None:
-        import json
-
         elo_state = pd.DataFrame(
             [
                 {
@@ -265,7 +269,7 @@ class TestNSimulationsMetadata:
             tmp_path,
             [
                 {
-                    "TEAM": "KC",
+                    "TEAM": "KAN",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -317,7 +321,7 @@ class TestNSimulationsMetadata:
             tmp_path,
             [
                 {
-                    "TEAM": "KC",
+                    "TEAM": "KAN",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,

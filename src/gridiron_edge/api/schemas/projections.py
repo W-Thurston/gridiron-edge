@@ -37,7 +37,10 @@ class TeamProjectionRow(BaseModel):
         default=None,
         description="P(wins Super Bowl)",
     )
-    week_over_week_delta: float | None = None
+    elo_delta: float | None = Field(
+        default=None,
+        description="Change in Elo rating from the prior week in the same season.",
+    )
     clinched: bool | None = None
     eliminated: bool | None = None
 

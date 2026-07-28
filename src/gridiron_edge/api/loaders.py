@@ -250,7 +250,7 @@ def load_projections_summary_df(
 
     Reads projections_summary.csv and joins per-team Elo delta from the
     Elo state table (prior NFL week within same season). Populates the
-    ``week_over_week_delta`` column on the returned DataFrame.
+    ``elo_delta`` column on the returned DataFrame.
 
     Returns:
         Tuple of (dataframe, csv_mtime_iso, n_simulations).
@@ -287,7 +287,7 @@ def load_projections_summary_df(
     deltas: DataFrame = compute_elo_deltas(elo_state, long_to_short)
 
     if deltas.empty:
-        df["week_over_week_delta"] = None
+        df["elo_delta"] = None
     else:
         df = df.merge(
             deltas,
@@ -295,8 +295,7 @@ def load_projections_summary_df(
             right_on="team_abbr",
             how="left",
         )
-        df["week_over_week_delta"] = df["elo_delta"]
-        df = df.drop(columns=["team_abbr", "elo_delta"], errors="ignore")
+        df = df.drop(columns=["team_abbr"], errors="ignore")
 
     return df, mtime, n_simulations
 

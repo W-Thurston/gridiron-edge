@@ -45,7 +45,7 @@ def serialize_projections(
         P_REACH_CONF → reach_conf
         P_REACH_SB → reach_sb
         P_WIN_SB → win_sb
-        week_over_week_delta → week_over_week_delta  (Elo change from prior week)
+        elo_delta → elo_delta  (Elo rating change from prior same-season week)
     """
     # Invert long_to_short for name resolution: {abbr → long_name}
     short_to_long: dict[str, str] = {v: k for k, v in long_to_short.items()}
@@ -77,16 +77,23 @@ def serialize_projections(
             reach_conf=_none_if_nan(row.get("P_REACH_CONF")),
             reach_sb=_none_if_nan(row.get("P_REACH_SB")),
             win_sb=_none_if_nan(row.get("P_WIN_SB")),
-            week_over_week_delta=_none_if_nan(row.get("week_over_week_delta")),
+            elo_delta=_none_if_nan(row.get("elo_delta")),
         )
         for _, row in df_sorted.iterrows()
     ]
 
-    # Response-level pending fields (n_simulations still not populated).
-    # Row-level pending: clinched, eliminated remain pending.
-    # week_over_week_delta is now populated; no longer marked as blocked.
+    # Clinched and eliminated remain pending for every projection row.
     meta = meta.with_pending("items.clinched")
     meta = meta.with_pending("items.eliminated")
+
+    # Elo movement requires a prior week in the same season. Week 1 and
+    # equivalent no-history states therefore have no prior snapshot.
+    elo_delta = df_sorted.get("elo_delta")
+    if elo_delta is None or not elo_delta.notna().any():
+        meta = meta.with_blocked(
+            "items.elo_delta",
+            *Unavailable.NO_PRIOR_SNAPSHOT,
+        )
 
     return ProjectionsList(
         season=season,

@@ -5060,6 +5060,18 @@
             ],
             "title": "Eliminated"
           },
+          "elo_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change in Elo rating from the prior week in the same season.",
+            "title": "Elo Delta"
+          },
           "make_playoffs": {
             "anyOf": [
               {
@@ -5111,17 +5123,6 @@
             ],
             "description": "P(reaches Super Bowl)",
             "title": "Reach Sb"
-          },
-          "week_over_week_delta": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Week Over Week Delta"
           },
           "win_sb": {
             "anyOf": [
