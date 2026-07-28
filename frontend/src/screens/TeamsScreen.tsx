@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { useTeamProfile, useTeamRankings } from "../api/hooks";
+import { TeamViewSwitcher } from "../components/teams/TeamViewSwitcher";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { BlockedField } from "../components/field-status/BlockedField";
 import type { FieldStatus } from "../components/field-status/types";
@@ -36,24 +37,36 @@ export function TeamsScreen() {
   const profileResult = useTeamProfile(selectedAbbr);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "5fr 11fr", gap: 16 }}>
-      {/* Left column: Rankings */}
-      <RankingsColumn
-        rankings={rankings}
-        isLoading={rankingsResult.isLoading}
-        error={rankingsResult.error as Error | null}
-        onRetry={() => rankingsResult.refetch()}
-        selectedAbbr={selectedAbbr}
-        onSelectTeam={(abbr) => navigate("/teams", { team: abbr })}
-        asOfWeek={rankingsResult.data?.as_of_week}
-      />
+    <div>
+      <TeamViewSwitcher active="rankings" />
 
-      {/* Right column: Team profile */}
-      <ProfileColumn
-        abbr={selectedAbbr}
-        result={profileResult}
-      />
-    </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "5fr 11fr",
+          gap: 16,
+        }}
+      >
+        {/* Left column: Rankings */}
+        <RankingsColumn
+          rankings={rankings}
+          isLoading={rankingsResult.isLoading}
+          error={rankingsResult.error as Error | null}
+          onRetry={() => rankingsResult.refetch()}
+          selectedAbbr={selectedAbbr}
+          onSelectTeam={(abbr) =>
+            navigate("/teams", { team: abbr })
+          }
+          asOfWeek={rankingsResult.data?.as_of_week}
+        />
+
+        {/* Right column: Team profile */}
+        <ProfileColumn
+          abbr={selectedAbbr}
+          result={profileResult}
+        />
+      </div>
+  *</div>
   );
 }
 

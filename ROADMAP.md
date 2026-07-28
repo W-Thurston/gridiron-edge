@@ -176,6 +176,14 @@ the final frontend surface.
   treatment, and team-profile navigation. Composes the existing `/projections`
   and `/teams` static contracts; no request-time computation added.
 
+- **Tier 1 follow-up — Projections navigation and weekly outcomes — ACTIVE.**
+  Add an explicit Team Rankings / Playoff Projections sibling switcher and a
+  Weekly Outcomes view. The weekly grid composes the existing season-grid,
+  schedule, completed-results, and team-state artifacts into percentage-based
+  Week 1–18 cells with a red-neutral-green scale, played/projected grouping,
+  bye handling, accessible matchup details, and shared conference/division
+  filters.
+
 - **Tier 2 — BetSlip rebuild — NEXT.** Rebuild the slip around verified existing
   probability, bankroll, stake, payout, and EV inputs. Target a Kelly suggestion
   card, bankroll-percentage indicator, EV summary, enhanced leg presentation,

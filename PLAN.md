@@ -83,6 +83,72 @@ Verified against the real 32-team Week 1 artifact. All targeted backend gates,
 frontend build, and frontend tests pass. Repository-wide Ruff still reports
 pre-existing PLR0917 findings outside this workstream.
 
+#### Tier 1 follow-up — Projections navigation and weekly outcomes — ACTIVE
+
+**Goal**
+
+Connect Team Rankings and Playoff Projections as sibling views, then add a
+league-wide weekly schedule grid that displays each team's chance to win every
+regular-season game.
+
+**Locked decisions**
+
+- Add a shared Team Rankings / Playoff Projections switcher to both screens.
+- Add Weekly Outcomes as a local view within Playoff Projections.
+- Weekly rows are teams; columns are Weeks 1–18.
+- Scheduled-game cells display win probability, not W/L labels.
+- Weekly probability color uses a diverging red → neutral → green scale
+  centered at 50%.
+- Bye weeks render as explicit neutral BYE cells.
+- Played and projected games are divided through grouped headers and a
+  stronger vertical boundary.
+- Tooltips use the row team's perspective: `vs.` for home, `at` for away.
+- Tooltip details include opponent, week, date, time, played/projected state,
+  and actual result when available.
+- Conference and dependent division filtering is shared across projections
+  views.
+- The grid is a static artifact composition; the API does not run simulation
+  or perform new model computation.
+
+##### A. Teams / projections sibling navigation
+
+- [ ] Add shared `TeamViewSwitcher`.
+- [ ] Add focused navigation and active-state tests.
+- [ ] Add the switcher above `TeamsScreen`.
+- [ ] Add the switcher above `PlayoffProjections`.
+- [ ] Run `pnpm build && pnpm test:run`.
+- [ ] Commit the sibling-navigation unit.
+
+##### B. Weekly-grid API contract
+
+- [ ] Inspect completed-games columns and current outcome conventions.
+- [ ] Verify weekly probability behavior for played weeks, projected weeks,
+      ties, and byes.
+- [ ] Add projections-grid schemas.
+- [ ] Add static loader composition from season grid, schedule, actuals, and
+      team mappings.
+- [ ] Add hand-written serializer and `_meta.field_status` behavior.
+- [ ] Add `/projections/grid` route.
+- [ ] Test played win/loss/tie, projected game, bye, and missing data.
+- [ ] Regenerate `api-schema.json` and the TypeScript client schema.
+- [ ] Verify the real preseason response.
+- [ ] Run backend and frontend contract gates.
+- [ ] Commit the grid-contract unit.
+
+##### C. Weekly-grid frontend
+
+- [ ] Add full-cell `WinProbabilityCell` with a fixed diverging scale.
+- [ ] Add accessible hover/focus game-detail treatment.
+- [ ] Add Playoff Chances / Weekly Outcomes local view selection.
+- [ ] Add grouped Played Games / Projected Games headers.
+- [ ] Add the played/projected boundary.
+- [ ] Add sticky or visually anchored Team column if needed after visual review.
+- [ ] Render BYE distinctly from a zero-percent game.
+- [ ] Reuse conference and dependent division filtering.
+- [ ] Test all-projected preseason and mixed played/projected fixtures.
+- [ ] Run `pnpm build && pnpm test:run`.
+- [ ] Complete a real-data visual pass.
+- [ ] Re-close Tier 1 documentation.
 
 ---
 

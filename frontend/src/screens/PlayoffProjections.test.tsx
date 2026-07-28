@@ -185,8 +185,15 @@ describe("PlayoffProjections", () => {
     renderScreen();
 
     expect(
-      screen.getByText("Playoff Projections"),
+      screen.getByRole("button", {
+        name: "Playoff Projections",
+        current: "page",
+      }),
     ).toBeInTheDocument();
+
+    expect(
+      screen.getAllByText("Playoff Projections"),
+    ).toHaveLength(2);
 
     expect(
       screen.getByText("2026-2027 · As of Week 1"),

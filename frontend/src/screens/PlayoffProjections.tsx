@@ -7,6 +7,7 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { StatusPill } from "../components/projections/StatusPill";
 import { HeatCell } from "../components/primitives/HeatCell";
+import { TeamViewSwitcher } from "../components/teams/TeamViewSwitcher";
 import {
   SortableHeader,
   type SortDirection,
@@ -129,351 +130,355 @@ export function PlayoffProjections() {
   const fieldStatus = data?._meta?.field_status;
 
   return (
-    <div className="hm-card" style={{ padding: 24 }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 24,
-          marginBottom: 18,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div
-            className="upper dim"
-            style={{ fontSize: 10, marginBottom: 5 }}
-          >
-            Playoff Projections
-          </div>
-          <div
-            className="serif"
-            style={{
-              color: "var(--ink-2)",
-              fontSize: 20,
-              fontStyle: "italic",
-            }}
-          >
-            Monte Carlo estimates for each team’s path through the
-            postseason.
-          </div>
-        </div>
+    <div>
+      <TeamViewSwitcher active="projections" />
 
-        <SimulationMetadata
-          season={data?.season}
-          asOfWeek={teamMetadata?.as_of_week}
-          computedAt={data?.computed_at}
-          nSimulations={data?.n_simulations}
-          nSimulationsStatus={
-            fieldStatus?.n_simulations as FieldStatus | undefined
-          }
-        />
-      </header>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 14,
-          flexWrap: "wrap",
-        }}
-      >
-        <div
+      <div className="hm-card" style={{ padding: 24 }}>
+        <header
           style={{
             display: "flex",
-            alignItems: "flex-end",
-            gap: 10,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 24,
+            marginBottom: 18,
             flexWrap: "wrap",
           }}
         >
-          <FilterSelect
-            id="projections-conference"
-            label="Conference"
-            value={conference}
-            onChange={(value) =>
-              handleConferenceChange(value as ConferenceFilter)
-            }
-            options={[
-              { value: "ALL", label: "All Conferences" },
-              { value: "AFC", label: "AFC" },
-              { value: "NFC", label: "NFC" },
-            ]}
-          />
-
-          <FilterSelect
-            id="projections-division"
-            label="Division"
-            value={division}
-            disabled={conference === "ALL"}
-            onChange={(value) =>
-              handleDivisionChange(value as DivisionFilter)
-            }
-            options={[
-              { value: "ALL", label: "All Divisions" },
-              { value: "N", label: "North" },
-              { value: "S", label: "South" },
-              { value: "E", label: "East" },
-              { value: "W", label: "West" },
-            ]}
-          />
-        </div>
-
-        {data && (
-          <div className="mono dim" style={{ fontSize: 10 }}>
-            {visibleRows.length} of {data.total ?? data.items?.length ?? 0} teams
-          </div>
-        )}
-      </div>
-
-      {isLoading && <div className="dim">Loading…</div>}
-
-      {error && (
-        <ErrorCard
-          error={error}
-          onRetry={() => refetch()}
-          title="Couldn't load projections"
-        />
-      )}
-
-      {data && (data.items ?? []).length === 0 && (
-        <div className="dim mono" style={{ fontSize: 12 }}>
-          No projections found. Run `gridiron sim run` to populate.
-        </div>
-      )}
-
-      {data && (data.items ?? []).length > 0 && (
-        <>
-          <div style={{ overflowX: "auto" }}>
-            <table
-              className="mono tnum"
+          <div>
+            <div
+              className="upper dim"
+              style={{ fontSize: 10, marginBottom: 5 }}
+            >
+              Playoff Projections
+            </div>
+            <div
+              className="serif"
               style={{
-                width: "100%",
-                minWidth: 1080,
-                fontSize: 12,
-                borderCollapse: "collapse",
+                color: "var(--ink-2)",
+                fontSize: 20,
+                fontStyle: "italic",
               }}
             >
-              <thead>
-                <tr>
-                  <SortableHeader
-                    label="Team"
-                    active={sortKey === "team"}
-                    direction={sortDirection}
-                    onClick={() => handleSort("team")}
-                  />
-                  <SortableHeader
-                    label="Elo"
-                    active={sortKey === "elo"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("elo")}
-                  />
+              Monte Carlo estimates for each team’s path through the
+              postseason.
+            </div>
+          </div>
 
-                  <SortableHeader
-                    label="Elo Δ"
-                    active={sortKey === "elo_delta"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("elo_delta")}
-                  />
+          <SimulationMetadata
+            season={data?.season}
+            asOfWeek={teamMetadata?.as_of_week}
+            computedAt={data?.computed_at}
+            nSimulations={data?.n_simulations}
+            nSimulationsStatus={
+              fieldStatus?.n_simulations as FieldStatus | undefined
+            }
+          />
+        </header>
 
-                  <th
-                    scope="col"
-                    style={{
-                      padding: "8px 12px 8px 0",
-                      textAlign: "right",
-                      color: "var(--ink-3)",
-                      fontWeight: 400,
-                    }}
-                  >
-                    Record
-                  </th>
-                  <SortableHeader
-                    label="Avg Wins"
-                    active={sortKey === "avg_wins"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("avg_wins")}
-                  />
-                  <SortableHeader
-                    label="Playoffs"
-                    active={sortKey === "make_playoffs"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("make_playoffs")}
-                  />
-                  <SortableHeader
-                    label="Div. Round"
-                    active={sortKey === "reach_div"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("reach_div")}
-                  />
-                  <SortableHeader
-                    label="Conf. Champ."
-                    active={sortKey === "reach_conf"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("reach_conf")}
-                  />
-                  <SortableHeader
-                    label="Make SB"
-                    active={sortKey === "reach_sb"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("reach_sb")}
-                  />
-                  <SortableHeader
-                    label="Win SB"
-                    active={sortKey === "win_sb"}
-                    direction={sortDirection}
-                    align="right"
-                    onClick={() => handleSort("win_sb")}
-                  />
-                </tr>
-              </thead>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 14,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <FilterSelect
+              id="projections-conference"
+              label="Conference"
+              value={conference}
+              onChange={(value) =>
+                handleConferenceChange(value as ConferenceFilter)
+              }
+              options={[
+                { value: "ALL", label: "All Conferences" },
+                { value: "AFC", label: "AFC" },
+                { value: "NFC", label: "NFC" },
+              ]}
+            />
 
-              <tbody>
-                {visibleRows.map(({ projection, metadata }) => (
-                  <tr
-                    key={projection.abbr}
-                    className="proj-row"
-                    style={{
-                      borderTop: "1px solid var(--line-soft)",
-                    }}
-                  >
-                    <td style={{ padding: "10px 14px 10px 0" }}>
-                      <TeamIdentity
-                        projection={projection}
-                        metadata={metadata}
-                        onNavigate={() =>
-                          navigate("/teams", {
-                            team: projection.abbr,
-                          })
-                        }
-                      />
-                    </td>
-                    <td
+            <FilterSelect
+              id="projections-division"
+              label="Division"
+              value={division}
+              disabled={conference === "ALL"}
+              onChange={(value) =>
+                handleDivisionChange(value as DivisionFilter)
+              }
+              options={[
+                { value: "ALL", label: "All Divisions" },
+                { value: "N", label: "North" },
+                { value: "S", label: "South" },
+                { value: "E", label: "East" },
+                { value: "W", label: "West" },
+              ]}
+            />
+          </div>
+
+          {data && (
+            <div className="mono dim" style={{ fontSize: 10 }}>
+              {visibleRows.length} of {data.total ?? data.items?.length ?? 0} teams
+            </div>
+          )}
+        </div>
+
+        {isLoading && <div className="dim">Loading…</div>}
+
+        {error && (
+          <ErrorCard
+            error={error}
+            onRetry={() => refetch()}
+            title="Couldn't load projections"
+          />
+        )}
+
+        {data && (data.items ?? []).length === 0 && (
+          <div className="dim mono" style={{ fontSize: 12 }}>
+            No projections found. Run `gridiron sim run` to populate.
+          </div>
+        )}
+
+        {data && (data.items ?? []).length > 0 && (
+          <>
+            <div style={{ overflowX: "auto" }}>
+              <table
+                className="mono tnum"
+                style={{
+                  width: "100%",
+                  minWidth: 1080,
+                  fontSize: 12,
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <SortableHeader
+                      label="Team"
+                      active={sortKey === "team"}
+                      direction={sortDirection}
+                      onClick={() => handleSort("team")}
+                    />
+                    <SortableHeader
+                      label="Elo"
+                      active={sortKey === "elo"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("elo")}
+                    />
+
+                    <SortableHeader
+                      label="Elo Δ"
+                      active={sortKey === "elo_delta"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("elo_delta")}
+                    />
+
+                    <th
+                      scope="col"
                       style={{
-                        padding: "10px 12px 10px 0",
+                        padding: "8px 12px 8px 0",
                         textAlign: "right",
-                        color: "var(--ink-2)",
+                        color: "var(--ink-3)",
+                        fontWeight: 400,
                       }}
                     >
-                      {metadata?.rating != null
-                        ? Math.round(metadata.rating)
-                        : "N/A"}
-                    </td>
+                      Record
+                    </th>
+                    <SortableHeader
+                      label="Avg Wins"
+                      active={sortKey === "avg_wins"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("avg_wins")}
+                    />
+                    <SortableHeader
+                      label="Playoffs"
+                      active={sortKey === "make_playoffs"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("make_playoffs")}
+                    />
+                    <SortableHeader
+                      label="Div. Round"
+                      active={sortKey === "reach_div"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("reach_div")}
+                    />
+                    <SortableHeader
+                      label="Conf. Champ."
+                      active={sortKey === "reach_conf"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("reach_conf")}
+                    />
+                    <SortableHeader
+                      label="Make SB"
+                      active={sortKey === "reach_sb"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("reach_sb")}
+                    />
+                    <SortableHeader
+                      label="Win SB"
+                      active={sortKey === "win_sb"}
+                      direction={sortDirection}
+                      align="right"
+                      onClick={() => handleSort("win_sb")}
+                    />
+                  </tr>
+                </thead>
 
-                    <td
+                <tbody>
+                  {visibleRows.map(({ projection, metadata }) => (
+                    <tr
+                      key={projection.abbr}
+                      className="proj-row"
                       style={{
-                        padding: "10px 12px 10px 0",
-                        textAlign: "right",
+                        borderTop: "1px solid var(--line-soft)",
                       }}
                     >
-                      <EloDelta
-                        value={projection.elo_delta}
+                      <td style={{ padding: "10px 14px 10px 0" }}>
+                        <TeamIdentity
+                          projection={projection}
+                          metadata={metadata}
+                          onNavigate={() =>
+                            navigate("/teams", {
+                              team: projection.abbr,
+                            })
+                          }
+                        />
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px 12px 10px 0",
+                          textAlign: "right",
+                          color: "var(--ink-2)",
+                        }}
+                      >
+                        {metadata?.rating != null
+                          ? Math.round(metadata.rating)
+                          : "N/A"}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "10px 12px 10px 0",
+                          textAlign: "right",
+                        }}
+                      >
+                        <EloDelta
+                          value={projection.elo_delta}
+                          status={
+                            fieldStatus?.["items.elo_delta"] as
+                              | FieldStatus
+                              | undefined
+                          }
+                          asOfWeek={teamMetadata?.as_of_week}
+                        />
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "10px 12px 10px 0",
+                          textAlign: "right",
+                          color: "var(--ink-2)",
+                        }}
+                      >
+                        {formatRecord(metadata?.record)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px 12px 10px 0",
+                          textAlign: "right",
+                          color: "var(--ink-2)",
+                        }}
+                      >
+                        {projection.avg_wins?.toFixed(1) ?? "N/A"}
+                      </td>
+
+                      <HeatCell
+                        value={projection.make_playoffs}
+                        label={`${projection.name} make playoffs`}
                         status={
-                          fieldStatus?.["items.elo_delta"] as
+                          fieldStatus?.["items.make_playoffs"] as
                             | FieldStatus
                             | undefined
                         }
-                        asOfWeek={teamMetadata?.as_of_week}
                       />
-                    </td>
 
-                    <td
-                      style={{
-                        padding: "10px 12px 10px 0",
-                        textAlign: "right",
-                        color: "var(--ink-2)",
-                      }}
-                    >
-                      {formatRecord(metadata?.record)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "10px 12px 10px 0",
-                        textAlign: "right",
-                        color: "var(--ink-2)",
-                      }}
-                    >
-                      {projection.avg_wins?.toFixed(1) ?? "N/A"}
-                    </td>
+                      <HeatCell
+                        value={projection.reach_div}
+                        label={`${projection.name} reach divisional round`}
+                        status={
+                          fieldStatus?.["items.reach_div"] as
+                            | FieldStatus
+                            | undefined
+                        }
+                      />
 
-                    <HeatCell
-                      value={projection.make_playoffs}
-                      label={`${projection.name} make playoffs`}
-                      status={
-                        fieldStatus?.["items.make_playoffs"] as
-                          | FieldStatus
-                          | undefined
-                      }
-                    />
+                      <HeatCell
+                        value={projection.reach_conf}
+                        label={`${projection.name} reach conference championship`}
+                        status={
+                          fieldStatus?.["items.reach_conf"] as
+                            | FieldStatus
+                            | undefined
+                        }
+                      />
 
-                    <HeatCell
-                      value={projection.reach_div}
-                      label={`${projection.name} reach divisional round`}
-                      status={
-                        fieldStatus?.["items.reach_div"] as
-                          | FieldStatus
-                          | undefined
-                      }
-                    />
+                      <HeatCell
+                        value={projection.reach_sb}
+                        label={`${projection.name} reach Super Bowl`}
+                        status={
+                          fieldStatus?.["items.reach_sb"] as
+                            | FieldStatus
+                            | undefined
+                        }
+                      />
 
-                    <HeatCell
-                      value={projection.reach_conf}
-                      label={`${projection.name} reach conference championship`}
-                      status={
-                        fieldStatus?.["items.reach_conf"] as
-                          | FieldStatus
-                          | undefined
-                      }
-                    />
+                      <HeatCell
+                        value={projection.win_sb}
+                        label={`${projection.name} win Super Bowl`}
+                        status={
+                          fieldStatus?.["items.win_sb"] as
+                            | FieldStatus
+                            | undefined
+                        }
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-                    <HeatCell
-                      value={projection.reach_sb}
-                      label={`${projection.name} reach Super Bowl`}
-                      status={
-                        fieldStatus?.["items.reach_sb"] as
-                          | FieldStatus
-                          | undefined
-                      }
-                    />
-
-                    <HeatCell
-                      value={projection.win_sb}
-                      label={`${projection.name} win Super Bowl`}
-                      status={
-                        fieldStatus?.["items.win_sb"] as
-                          | FieldStatus
-                          | undefined
-                      }
-                    />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <ProjectionLegend
-            asOfWeek={teamMetadata?.as_of_week}
-            eloStatus={
-              fieldStatus?.["items.elo_delta"] as
-                | FieldStatus
-                | undefined
-            }
-            clinchedStatus={
-              fieldStatus?.["items.clinched"] as
-                | FieldStatus
-                | undefined
-            }
-          />
-        </>
-      )}
+            <ProjectionLegend
+              asOfWeek={teamMetadata?.as_of_week}
+              eloStatus={
+                fieldStatus?.["items.elo_delta"] as
+                  | FieldStatus
+                  | undefined
+              }
+              clinchedStatus={
+                fieldStatus?.["items.clinched"] as
+                  | FieldStatus
+                  | undefined
+              }
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 }
