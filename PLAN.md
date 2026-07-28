@@ -121,12 +121,10 @@ regular-season game.
 
 ##### B. Weekly-grid API contract
 
-- [ ] Inspect completed-games columns and current outcome conventions.
-- [ ] Verify weekly probability behavior for played weeks, projected weeks,
-      ties, and byes.
-- [ ] Add projections-grid schemas.
-- [ ] Add static loader composition from season grid, schedule, actuals, and
-      team mappings.
+- [x] Inspect completed-games columns and current outcome conventions.
+- [x] Verify weekly probability behavior for played weeks, projected weeks, ties, and byes.
+- [x] Add projections-grid schemas.
+- [ ] Add static loader composition from season grid, schedule, actuals, and team mappings.
 - [ ] Add hand-written serializer and `_meta.field_status` behavior.
 - [ ] Add `/projections/grid` route.
 - [ ] Test played win/loss/tie, projected game, bye, and missing data.

@@ -17,6 +17,7 @@ from gridiron_edge.api.loaders import (
     load_bankroll_txns_df,
     load_bets_df,
     load_current_bankroll,
+    load_projection_grid_data,
     resolve_current_week,
 )
 from gridiron_edge.core.settings import Settings
@@ -1054,7 +1055,7 @@ class TestLoadProp:
 
 
 class TestComputeEloDeltas:
-    """Cover compute_elo_deltas helper (W8 Tier 3 Substep 1a)."""
+    """Cover current-versus-prior-week Elo delta computation."""
 
     def _long_to_short(self) -> dict[str, str]:
         return {
@@ -1219,3 +1220,306 @@ class TestComputeEloDeltas:
         assert len(result) == 1
         assert result.iloc[0]["team_abbr"] == "Mystery Team"
         assert result.iloc[0]["elo_delta"] == 10.0
+
+
+class TestLoadProjectionGridData:
+    def _schedule(self) -> DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "WEEK_NUM": 1,
+                    "GAME_DAY_OF_WEEK": "Sunday",
+                    "GAME_DATE": "2026-09-13",
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "GAMETIME": "13:00:00",
+                    "YEAR": "2026-2027",
+                    "GAME_ID": "2026_01_BUF_SEA",
+                },
+                {
+                    "WEEK_NUM": 19,
+                    "GAME_DAY_OF_WEEK": "Sunday",
+                    "GAME_DATE": "2027-01-17",
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "GAMETIME": "13:00:00",
+                    "YEAR": "2026-2027",
+                    "GAME_ID": "2026_19_BUF_SEA",
+                },
+            ]
+        )
+
+    def _games(self) -> DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2025_18_BUF_SEA",
+                    "YEAR": "2025-2026",
+                    "WEEK_NUM": 18,
+                    "WINNER": "Seattle Seahawks",
+                    "LOSER": "Buffalo Bills",
+                    "WIN_OR_TIE": 1.0,
+                },
+                {
+                    "GAME_ID": "2026_01_BUF_SEA",
+                    "YEAR": "2026-2027",
+                    "WEEK_NUM": 1,
+                    "WINNER": "Seattle Seahawks",
+                    "LOSER": "Buffalo Bills",
+                    "WIN_OR_TIE": 1.0,
+                },
+                {
+                    "GAME_ID": "2026_19_BUF_SEA",
+                    "YEAR": "2026-2027",
+                    "WEEK_NUM": 19,
+                    "WINNER": "Seattle Seahawks",
+                    "LOSER": "Buffalo Bills",
+                    "WIN_OR_TIE": 1.0,
+                },
+            ]
+        )
+
+    def _mapping(self) -> DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "NFL_LONG_NAME": "Seattle Seahawks",
+                    "NFL_SHORT_NAME": "SEA",
+                },
+                {
+                    "NFL_LONG_NAME": "Buffalo Bills",
+                    "NFL_SHORT_NAME": "BUF",
+                },
+            ]
+        )
+
+    def _write_probabilities(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        output_dir = tmp_path / "data" / "output" / "temp"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        pd.DataFrame(
+            [
+                {
+                    "TEAM": "SEA",
+                    "W01_WIN_P": 0.64,
+                    "W02_WIN_P": 0.0,
+                },
+                {
+                    "TEAM": "BUF",
+                    "W01_WIN_P": 0.36,
+                    "W02_WIN_P": 0.58,
+                },
+            ]
+        ).to_csv(
+            output_dir / "season_grid.csv",
+            index=False,
+        )
+
+    def test_loads_preseason_sources(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        self._write_probabilities(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                return_value=self._schedule(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.season == "2026-2027"
+        assert result.completed_through_week == 0
+        assert result.schedule_available is True
+        assert len(result.probabilities) == 2
+
+        # Week 19 is outside the regular-season grid.
+        assert result.schedule["WEEK_NUM"].tolist() == [1]
+
+        assert result.games.empty
+        assert result.long_to_short == {
+            "Seattle Seahawks": "SEA",
+            "Buffalo Bills": "BUF",
+        }
+
+    def test_filters_games_to_grid_season_and_regular_season(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        self._write_probabilities(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                return_value=self._schedule(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.completed_through_week == 1
+        assert result.games["YEAR"].unique().tolist() == ["2026-2027"]
+        assert result.games["WEEK_NUM"].tolist() == [1]
+
+    def test_missing_probability_artifact_returns_empty_frame(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                return_value=self._schedule(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.probabilities.empty
+        assert result.schedule_available is True
+        assert result.season == "2026-2027"
+
+    def test_missing_schedule_is_distinct_from_bye_source(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        self._write_probabilities(tmp_path)
+
+        games = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2025_22_SEA_BUF",
+                    "YEAR": "2025-2026",
+                    "WEEK_NUM": 22,
+                    "WINNER": "Seattle Seahawks",
+                    "LOSER": "Buffalo Bills",
+                    "WIN_OR_TIE": 1.0,
+                },
+            ]
+        )
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                side_effect=FileNotFoundError,
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=games,
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.schedule.empty
+        assert result.schedule_available is False
+        assert result.season == "2025-2026"
+        assert result.completed_through_week == 0
+
+    def test_missing_games_still_loads_projected_sources(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        self._write_probabilities(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                return_value=self._schedule(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                side_effect=FileNotFoundError,
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.season == "2026-2027"
+        assert result.games.empty
+        assert result.completed_through_week == 0
+        assert result.schedule_available is True
+
+    def test_selects_latest_schedule_season(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        self._write_probabilities(tmp_path)
+
+        schedule = pd.concat(
+            [
+                self._schedule(),
+                pd.DataFrame(
+                    [
+                        {
+                            "WEEK_NUM": 1,
+                            "GAME_DAY_OF_WEEK": "Sunday",
+                            "GAME_DATE": "2025-09-07",
+                            "AWAY_TEAM": "Seattle Seahawks",
+                            "HOME_TEAM": "Buffalo Bills",
+                            "GAMETIME": "13:00:00",
+                            "YEAR": "2025-2026",
+                            "GAME_ID": "2025_01_SEA_BUF",
+                        },
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                return_value=schedule,
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_teams_long_short",
+                return_value=self._mapping(),
+            ),
+        ):
+            result = load_projection_grid_data(settings)
+
+        assert result.season == "2026-2027"
+        assert result.schedule["YEAR"].unique().tolist() == ["2026-2027"]

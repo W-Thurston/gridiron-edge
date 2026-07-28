@@ -13,6 +13,7 @@ never used from the API path.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -177,6 +178,24 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
     return (latest_season, latest_week)
 
 
+@dataclass(frozen=True)
+class ProjectionGridData:
+    """Static sources needed to serialize the weekly projection grid.
+
+    The loader reads and season-scopes source artifacts only. It does not
+    classify team-week states, infer byes, or construct API response rows;
+    those responsibilities belong to the projections serializer.
+    """
+
+    probabilities: DataFrame
+    schedule: DataFrame
+    games: DataFrame
+    long_to_short: dict[str, str]
+    season: str
+    completed_through_week: int
+    schedule_available: bool
+
+
 def compute_elo_deltas(
     elo_state: DataFrame,
     long_to_short: dict[str, str],
@@ -298,6 +317,90 @@ def load_projections_summary_df(
         df = df.drop(columns=["team_abbr"], errors="ignore")
 
     return df, mtime, n_simulations
+
+
+def load_projection_grid_data(
+    settings: Settings,
+) -> ProjectionGridData:
+    """Load and season-scope the static weekly-grid source artifacts.
+
+    Sources:
+        - ``data/output/temp/season_grid.csv`` for Week 1-18 win
+          probabilities.
+        - The cleaned upcoming schedule for matchup, venue perspective,
+          date, time, and confirmed bye detection.
+        - The cleaned games dataset for completed regular-season results.
+        - The unified team-name mapping for long-name to abbreviation
+          resolution.
+
+    This function performs file loading and season scoping only. It does
+    not construct the 32 x 18 response, classify byes, or infer actual
+    outcomes.
+
+    Missing probability, schedule, or games artifacts are treated as
+    unavailable source states rather than fatal API errors.
+
+    Returns:
+        A ``ProjectionGridData`` container with season-scoped sources.
+    """
+    from gridiron_edge.datasets.loaders import (
+        load_games,
+        load_schedule_upcoming,
+    )
+
+    probability_path = settings.repo_root / "data" / "output" / "temp" / "season_grid.csv"
+
+    probabilities = pd.read_csv(probability_path) if probability_path.exists() else pd.DataFrame()
+
+    schedule_available = True
+    try:
+        schedule = load_schedule_upcoming(settings.repo_root)
+    except FileNotFoundError:
+        schedule = pd.DataFrame()
+        schedule_available = False
+
+    season = ""
+    if not schedule.empty and "YEAR" in schedule.columns:
+        season_values = schedule["YEAR"].dropna().astype(str)
+        if not season_values.empty:
+            season = sorted(season_values.unique())[-1]
+
+    if not season:
+        try:
+            season, _ = resolve_current_season_week(settings)
+        except FileNotFoundError:
+            season = ""
+
+    if not schedule.empty and season and {"YEAR", "WEEK_NUM"}.issubset(schedule.columns):
+        schedule = schedule.loc[
+            (schedule["YEAR"].astype(str) == season) & schedule["WEEK_NUM"].between(1, 18)
+        ].copy()
+    elif not schedule.empty:
+        schedule = pd.DataFrame()
+
+    try:
+        games = load_games(settings.repo_root)
+    except FileNotFoundError:
+        games = pd.DataFrame()
+
+    if not games.empty and season and {"YEAR", "WEEK_NUM"}.issubset(games.columns):
+        games = games.loc[
+            (games["YEAR"].astype(str) == season) & games["WEEK_NUM"].between(1, 18)
+        ].copy()
+    elif not games.empty:
+        games = pd.DataFrame()
+
+    completed_through_week = 0 if games.empty else int(games["WEEK_NUM"].max())
+
+    return ProjectionGridData(
+        probabilities=probabilities,
+        schedule=schedule,
+        games=games,
+        long_to_short=load_team_name_map(settings),
+        season=season,
+        completed_through_week=completed_through_week,
+        schedule_available=schedule_available,
+    )
 
 
 def load_team_percentiles_df(
