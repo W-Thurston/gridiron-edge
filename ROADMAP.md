@@ -168,16 +168,15 @@ the final frontend surface.
 
 **Execution order:**
 
-- **Tier 1 — PlayoffProjections rebuild — ACTIVE.** Build a compact, sortable
-  simulation-probability table using sequential HeatCell treatment. Add
-  All / AFC / NFC filters and conference/division context from shared team
-  metadata. Preserve AVG_WINS as the canonical season-result projection.
-  Label the existing movement field explicitly as Elo delta and surface
-  Week 1/no-prior-week absence visibly. Show truthful simulation-run metadata
-  (season, simulation count, computed time), status context, and team-profile
-  navigation.
+- **Tier 1 — PlayoffProjections rebuild — ✅ COMPLETE (2026-07-28).**
+  Rebuilt the screen as a live counterpart to the original static playoff
+  table: full-cell postseason probability heat matrix, accessible sorting,
+  dependent conference/division filters, current Elo and record context,
+  explicit Elo movement, as-of-week/run metadata, Week 1-aware unavailable
+  treatment, and team-profile navigation. Composes the existing `/projections`
+  and `/teams` static contracts; no request-time computation added.
 
-- **Tier 2 — BetSlip rebuild.** Rebuild the slip around verified existing
+- **Tier 2 — BetSlip rebuild — NEXT.** Rebuild the slip around verified existing
   probability, bankroll, stake, payout, and EV inputs. Target a Kelly suggestion
   card, bankroll-percentage indicator, EV summary, enhanced leg presentation,
   and quick-stake controls. Lock exact scope only after inspecting the current
@@ -362,16 +361,14 @@ W8 (API) ✅
 ```
 
 
-**Current position:** W9.11 Screen Completion is active. Tier 1
-PlayoffProjections has completed its verification and deep-design pass and is
-the current implementation target.
+**Current position:** W9.11 Tier 1 PlayoffProjections is complete and verified
+against the real 32-team artifact.
 
-- Active: Tier 1 — synchronize ROADMAP, create the PLAN checklist, then rebuild
-  PlayoffProjections in small verified commits.
-- Next: Tier 2 — verify the current BetSlip probability/EV/bankroll contract
-  before deep design.
-- Final capstone: Tier 0 — pending-highlight audit across the completed frontend
-  surface.
+- Next: Tier 2 — inspect and lock the current BetSlip probability, EV,
+  bankroll, stake, and payout contracts before deep design.
+- Final W9.11 capstone: Tier 0 — pending-highlight audit across the completed
+  frontend surface.
+
 
 ---
 
@@ -730,12 +727,25 @@ Optional / medium workstream. Elo-in-offseason is a reasonable default; this is 
 
 - [ ] `_parse_baseline_report` extracted zero-valued cells for the previous report's win_prob_logistic row, causing the delta to display as the raw current value with a `+` sign rather than a proper delta or an em-dash. Investigate whether the parser is misaligning columns or if 0.0 is being produced where None is expected.
 
+### Tooling configuration hygiene
+
+- **Ruff configuration cleanup — P2.** Remove the retired `ANN101` ignore and
+  decide how repository-wide `PLR0917` should be handled. The current full
+  Ruff run reports existing functions with more than five positional
+  parameters across FastAPI/Typer entrypoints, Numba simulation kernels,
+  serializers, domain functions, fixture builders, and patch-injected tests.
+  Evaluate targeted per-file exclusions for framework- or JIT-constrained
+  callsites versus a dedicated keyword-only/signature-refactor pass. These
+  findings predate W9.11 and should not be remediated opportunistically inside
+  frontend workstreams.
+
 ---
 
 ## 10. Changelog for This Document
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | **W9.11 Tier 1 complete.** Rebuilt PlayoffProjections with a full-cell probability heat matrix, accessible sorting, dependent conference/division selectors, current Elo and record context, explicit Elo-delta semantics, as-of-week metadata, Week 1-aware unavailable treatment, and team-profile navigation. Composed existing `/projections` and `/teams` contracts without adding request-time computation. Verified against the real 32-team artifact. |
 | 2026-07-28 | **W9.11 Tier 1 design locked.** Moved PlayoffProjections ahead of the deferred audit sweep. Verified the seven-column simulation artifact, metadata sidecar, `/projections` schema/serializer/route, shared team metadata, Pill, custom routing, and design tokens. Preserved AVG_WINS as the canonical projection; clarified movement as Elo delta; limited run metadata to season/simulation count/computed time; locked HeatCell, sorting, conference filters, compact 920px table structure, and accessible team navigation. |
 | 2026-07-28 | **W9.11 design resync.** Updated PlayoffProjections scope after verifying the real `/projections` response, `projections_summary.csv`, metadata sidecar, loader, and team-metadata path. Preserved `AVG_WINS` as the canonical projection; clarified trend as Elo delta; replaced speculative model metadata with truthful simulation-run metadata; deferred true probability movement and fabricated projected records. Marked BetSlip scope contract-dependent pending its deep-design verification pass. |
 | 2026-07-12 | **W9.11 opened (Screen Completion).** Audit sweep → PlayoffProjections → BetSlip. Finishes the core-screen set. Ways-of-Working codified in PLAN.md. |

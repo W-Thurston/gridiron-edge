@@ -3,6 +3,47 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-28 — PlayoffProjections rebuild
+
+Rebuilt the playoff-projections screen as a live, interactive counterpart to
+the original static playoff table.
+
+### API contract
+
+- Renamed `week_over_week_delta` to the semantically explicit `elo_delta`.
+- Added `items.elo_delta = no_prior_snapshot` status metadata when no usable
+  prior same-season Elo snapshot exists.
+- Preserved partial-null behavior without incorrectly marking the entire field
+  unavailable.
+- Regenerated `api-schema.json` and the TypeScript API schema.
+
+### Frontend
+
+- Added `HeatCell`, using a fixed absolute 0–1 probability scale and full-cell
+  heat coloring.
+- Added accessible `SortableHeader` with explicit active direction.
+- Added sortable columns for team, current Elo, Elo delta, average wins, and
+  every postseason probability stage.
+- Added dependent conference and division selectors.
+- Composed current Elo, current record, conference, division, colors, and
+  as-of week from the existing `/teams` response.
+- Added season, as-of-week, simulation-count, and computed-time context.
+- Replaced repeated Week 1 Elo warnings with quiet row placeholders and one
+  explanatory legend caveat.
+- Preserved warnings for unexpected missing Elo deltas after Week 1.
+- Added team navigation to `/teams?team={abbr}`.
+- Preserved all postseason stages at narrow widths through horizontal overflow.
+
+### Verification
+
+- Verified all 32 teams against the real Week 1 projections artifact.
+- Verified 16-team conference filters and four-team division filters.
+- Verified sorting, filter resets, team navigation, continuous heat treatment,
+  Week 1 Elo handling, narrow-width behavior, and highlight mode.
+- Frontend build and test suite pass.
+- Targeted projections backend tests, Ruff checks, and Pyrefly pass.
+
+
 ## 2026-07-01 — W9.10 Compare Screen Rebuild
 
 Two-mode matchup surface at `/compare`. Both modes prototype-aligned

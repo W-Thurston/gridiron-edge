@@ -55,131 +55,34 @@ How we operate in every session. A new thread should read this first.
 
 ### W9.11 — Screen Completion
 
-#### Tier 1 — PlayoffProjections rebuild — ACTIVE
+#### Tier 1 — PlayoffProjections rebuild — ✅ COMPLETE (2026-07-28)
 
-**Goal**
+Rebuilt `/projections` as a sortable, filterable simulation-probability
+surface grounded in the existing projections and team-state contracts.
 
-Rebuild `/projections` as a compact, sortable simulation-probability surface using the verified projection artifact and shared team metadata. Preserve the semantics of the real data, fit the established centered layout, and make every missing state explicit.
+Shipped:
 
-**Verified inputs**
+- Full-cell fixed-scale HeatCell probability matrix across all five postseason
+  stages.
+- Accessible SortableHeader primitive with active direction and nulls-last
+  behavior.
+- All-conference / AFC / NFC filtering with a dependent
+  North / South / East / West division selector.
+- Current Elo, one-week Elo adjustment, current record, average wins, and
+  conference/division context.
+- Season, as-of week, simulation count, and computed-time metadata.
+- Explicit `elo_delta` API naming in place of the ambiguous
+  `week_over_week_delta`.
+- Expected Week 1 Elo-delta absence shown quietly with one explanatory legend
+  caveat; unexpected later-season absence remains highlight-aware.
+- Team-profile navigation through the existing NavContext route.
+- Horizontal overflow preserving every postseason stage on narrow viewports.
+- Comprehensive primitive, API-contract, serializer, route, and screen tests.
 
-- `projections_summary.csv` contains 32 teams and only:
-  `TEAM`, `AVG_WINS`, `P_MAKE_PLAYOFFS`, `P_REACH_DIV`, `P_REACH_CONF`, `P_REACH_SB`, `P_WIN_SB`.
-- `/projections` additionally exposes season, computed time, simulation count, Elo movement, and pending clinched/eliminated fields.
-- Team conference, division, city/name, and colors are available through the shared `/teams` metadata cache.
-- No existing HeatCell or sortable-header primitive exists.
-- Routing is custom through NavContext.
-- Tier 0 pending-highlight audit is deferred until after both remaining screen rebuilds.
+Verified against the real 32-team Week 1 artifact. All targeted backend gates,
+frontend build, and frontend tests pass. Repository-wide Ruff still reports
+pre-existing PLR0917 findings outside this workstream.
 
-**Locked decisions**
-
-- Keep `AVG_WINS` as average wins; do not derive a discrete projected record.
-- Rename `week_over_week_delta` to `elo_delta`.
-- Treat the delta as Elo rating-point movement, never probability movement.
-- Default sort: Win SB descending. Nulls always last.
-- Visible columns: Team, Avg Wins, Playoffs, Div. Round, Conf. Champ., Make SB, Win SB.
-- Fold conference/division, Elo delta, and real status pills into team identity.
-- Use a fixed 0–1 heat scale across all probability cells.
-- Display only truthful run metadata: season, simulation count, computed time.
-- Preserve every postseason stage on narrow screens through horizontal overflow.
-- Follow the existing NavContext navigation pattern for team-profile links.
-
-##### 1. Documentation synchronization
-
-- [ ] Update ROADMAP §4 W9.11 execution order to Tier 1 → Tier 2 → deferred Tier 0.
-- [ ] Correct ROADMAP §9.7 projections data assumptions.
-- [ ] Replace ROADMAP §9.8 PlayoffProjections remainder with the locked scope.
-- [ ] Update ROADMAP §6 current position.
-- [ ] Add the 2026-07-28 ROADMAP document-changelog entry.
-- [ ] Commit the ROADMAP/PLAN design synchronization as one documentation-only unit.
-
-##### 2. Contract semantics and status metadata
-
-- [x] Grep all exact uses of `week_over_week_delta`.
-- [x] Inspect `api/meta.py` for the established unavailable classification.
-- [x] Rename the public projection field to `elo_delta` across schema, serializer, generated client, frontend consumer, and tests.
-- [x] Correct stale serializer comments about `n_simulations` and universal delta population.
-- [x] Mark `items.elo_delta` unavailable when the projection response contains no usable prior-week Elo deltas.
-- [x] Preserve populated-delta behavior without an unavailable marker.
-- [x] Define and test the partial-null fallback without silently rendering null.
-- [x] Run backend quality gates:
-      `ruff`, `pyrefly`, and targeted projections tests.
-- [x] Verify the real `/projections` response with curl.
-- [x] Commit the contract/status correction as one unit.
-
-##### 3. Shared table primitives
-
-- [x] Add `HeatCell`.
-- [x] Use a fixed absolute probability scale and theme-native `color-mix`.
-- [x] Add accessible stage/value labeling.
-- [x] Format zero, whole percentages, and positive sub-1% values distinctly.
-- [x] Make null rendering status-aware.
-- [x] Add focused `HeatCell` tests.
-- [x] Add `SortableHeader`.
-- [x] Render the interaction as a button within the header.
-- [x] Expose inactive, ascending, and descending states with `aria-sort`.
-- [x] Add focused `SortableHeader` tests.
-- [x] Run `pnpm build && pnpm test:run`.
-- [x] Commit the primitives as one unit.
-
-##### 4. Screen composition and interactions
-
-- [x] Inspect NavContext and an existing team-selection callsite before wiring navigation.
-- [x] Rebuild the screen header and explanatory copy.
-- [x] Add the simulation-run metadata cluster.
-- [x] Add All / AFC / NFC filters using `Pill`.
-- [x] Memoize team metadata by abbreviation.
-- [x] Enrich team identity with conference and division.
-- [x] Add local sort state and immutable filter/sort derivation.
-- [x] Implement default Win SB descending order.
-- [x] Implement useful first-click direction and active-column toggling.
-- [x] Keep null values last in both directions.
-- [x] Render the five probability columns through `HeatCell`.
-- [x] Render average wins to one decimal.
-- [x] Add compact positive/negative/neutral Elo-delta treatment.
-- [x] Surface no-prior-week Elo state visibly.
-- [x] Preserve real clinched/eliminated pills and explain globally pending status.
-- [x] Add team-profile navigation through the established custom-router pattern.
-- [x] Correct the ErrorCard title to “Couldn't load projections.”
-- [x] Preserve actionable empty-state copy.
-- [x] Add horizontal overflow without silently hiding probability stages.
-- [x] Add screen tests for sorting, filtering, metadata, missing metadata, Elo states, status pills, navigation, error, and empty results.
-- [x] Run `pnpm build && pnpm test:run`.
-- [x] Commit the screen rebuild as one unit.
-
-##### 5. Real-data verification and Tier close-out
-
-- [x] Run the API and frontend against the populated projections artifact.
-- [x] Verify all 32 teams under the All filter.
-- [x] Verify AFC and NFC subsets against team metadata.
-- [x] Verify each sortable column in both directions.
-- [x] Verify Week 1 Elo unavailability in normal and highlight modes.
-- [x] Verify heat-cell readability across low and high probabilities.
-- [x] Verify the normal centered layout and a narrow viewport.
-- [x] Verify keyboard operation for filters, sort headers, and team navigation.
-- [x] Run targeted Ruff checks for all Python files changed by Tier 1.
-- [x] Run Pyrefly.
-- [x] Run targeted projections backend tests.
-- [x] Run the full frontend build and test suite.
-- [x] Convert HeatCell from inset pill to full table-cell heat fill.
-- [x] Update HeatCell tests for table-cell semantics.
-- [x] Replace conference pills with dependent conference/division selects.
-- [x] Add current Elo from the existing `/teams` composition.
-- [x] Add current record from the existing `/teams` composition.
-- [x] Add `/teams.as_of_week` beside the season metadata.
-- [x] Move Elo delta into a dedicated sortable column.
-- [x] Suppress repeated no-prior-snapshot warnings during Week 1.
-- [x] Add a single Week 1 Elo-delta caveat to the legend.
-- [x] Update PlayoffProjections screen tests.
-- [x] Verify the revised continuous heat matrix against the original
-      static-table visual language.
-- [x] Run `pnpm build && pnpm test:run`.
-- [x] Commit the projections context/filter refinement.
-- [ ] Repository-wide Ruff: pre-existing PLR0917 findings remain outside W9.11 scope; track separately rather than refactoring unrelated APIs, CLI entrypoints, tests, and Numba simulation signatures.
-- [ ] Collapse Tier 1 detail in PLAN.md to a completion summary.
-- [ ] Mark Tier 1 complete in ROADMAP.md.
-- [ ] Add CHANGELOG and HANDOFF updates if the final primitive inventory or public API contract changed.
-- [ ] Commit the Tier 1 close-out documentation.
 
 ---
 

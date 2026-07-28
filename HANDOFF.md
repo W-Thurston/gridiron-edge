@@ -88,7 +88,7 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
 | `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
 | `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
-| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart) — used across many screens |
+| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart, HeatCell, SortableHeader) — used across many screens |
 | `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
 | `frontend/src/components/compare/` | Compare-specific components (TeamPicker) | | `frontend/src/components/dev/` | Dev panel (floating highlight-mode toggle, W9.8) |
 | `frontend/src/components/field-status/` | PendingField, BlockedField, FieldValue, PendingChip, ComingSoonCard, usePendingHighlight |
@@ -145,6 +145,21 @@ Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
 ---
 
 ## Key design decisions
+
+### Playoff projections compose simulation and team-state contracts
+
+`/projections` owns simulation outputs: average wins, five postseason-stage
+probabilities, Elo delta, run metadata, and future clinched/eliminated state.
+
+The PlayoffProjections screen composes `/projections` with the cached `/teams`
+collection for current Elo, current record, conference, division, colors, and
+as-of week. This avoids duplicating current team state in the simulation
+artifact and preserves the API as a static serialization boundary.
+
+The public movement field is `elo_delta`, defined as current Elo minus the
+prior same-season week's Elo. At Week 1, the absent prior snapshot is expected:
+rows show a quiet placeholder and the screen explains the condition once in
+the legend. Missing deltas after Week 1 remain visibly unavailable.
 
 ### EPA aggregation is the single PBP funnel
 
@@ -483,6 +498,8 @@ Step 5 audit confirmed all existing loaders comply.
   - `BarChart` — per-game bars + solid reference line (team-allowed avg)
   - `PendingChip` — inline "X pending" marker (highlight-aware)
   - `ComingSoonCard` — whole-card blocked/pending placeholder
+  - `HeatCell` — table-cell probability renderer with fixed absolute 0–1 heat intensity, accessible numerical labeling, and field-status-aware null states.
+  - `SortableHeader` — accessible sortable `<th>` primitive with caller-managed active key/direction and `aria-sort`.
 - **Composed screens pattern:** GameDetail (W9.6) demonstrated the
   pattern for composing multiple endpoints into a single screen. Each
   card in a screen might consume 1-3 different API endpoints. Use
