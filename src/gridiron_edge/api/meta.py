@@ -144,6 +144,7 @@ class Unavailable:
     NO_ODDS_AVAILABLE: tuple[str, str] = ("no_odds_available", "data")
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
     NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
+    NO_SCHEDULE_DATA: tuple[str, str] = ("no_schedule_data", "data")
     NO_STREAK_ACTIVITY: tuple[str, str] = ("no_streak_activity", "data")
     OFF_DEF_DECOMPOSITION: tuple[str, str] = ("off_def_decomposition", "data")
     PERIOD_NOT_REQUESTED: tuple[str, str] = ("period_not_requested", "request")

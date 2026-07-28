@@ -7,8 +7,15 @@ from __future__ import annotations
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.api.schemas.projections import ProjectionsList, TeamProjectionRow
-from gridiron_edge.api.serializers.projections import serialize_projections
+from gridiron_edge.api.loaders import ProjectionGridData
+from gridiron_edge.api.schemas.projections import (
+    ProjectionsList,
+    TeamProjectionRow,
+)
+from gridiron_edge.api.serializers.projections import (
+    serialize_projection_grid,
+    serialize_projections,
+)
 
 LONG_TO_SHORT = {
     "Seattle Seahawks": "SEA",
@@ -193,3 +200,198 @@ class TestNSimulations:
         by_team: dict[str, TeamProjectionRow] = {item.abbr: item for item in result.items}
         assert by_team["SEA"].elo_delta == 12.0
         assert by_team["BUF"].elo_delta is None
+
+
+class TestSerializeProjectionGrid:
+    def _probabilities(self) -> pd.DataFrame:
+        rows = [
+            {
+                "TEAM": "SEA",
+                "W01_WIN_P": 1.0,
+                "W02_WIN_P": 0.64,
+                "W03_WIN_P": 0.0,
+                "W04_WIN_P": 0.0,
+            },
+            {
+                "TEAM": "BUF",
+                "W01_WIN_P": 0.0,
+                "W02_WIN_P": 0.36,
+                "W03_WIN_P": 0.0,
+                "W04_WIN_P": 0.0,
+            },
+        ]
+
+        for row in rows:
+            for week in range(5, 19):
+                row[f"W{week:02d}_WIN_P"] = 0.5
+
+        return pd.DataFrame(rows)
+
+    def _schedule(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "WEEK_NUM": 1,
+                    "GAME_DATE": "2026-09-13",
+                    "GAMETIME": "13:00:00",
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "YEAR": "2026-2027",
+                    "GAME_ID": "2026_01_BUF_SEA",
+                },
+                {
+                    "WEEK_NUM": 2,
+                    "GAME_DATE": "2026-09-20",
+                    "GAMETIME": "16:25:00",
+                    "AWAY_TEAM": "Seattle Seahawks",
+                    "HOME_TEAM": "Buffalo Bills",
+                    "YEAR": "2026-2027",
+                    "GAME_ID": "2026_02_SEA_BUF",
+                },
+                {
+                    "WEEK_NUM": 4,
+                    "GAME_DATE": "2026-10-04",
+                    "GAMETIME": "13:00:00",
+                    "AWAY_TEAM": "Seattle Seahawks",
+                    "HOME_TEAM": "Buffalo Bills",
+                    "YEAR": "2026-2027",
+                    "GAME_ID": "2026_04_SEA_BUF",
+                },
+            ]
+        )
+
+    def _data(
+        self,
+        *,
+        probabilities: pd.DataFrame | None = None,
+        schedule: pd.DataFrame | None = None,
+        games: pd.DataFrame | None = None,
+        schedule_available: bool = True,
+        completed_through_week: int = 1,
+    ) -> ProjectionGridData:
+        return ProjectionGridData(
+            probabilities=(self._probabilities() if probabilities is None else probabilities),
+            schedule=(self._schedule() if schedule is None else schedule),
+            games=(
+                pd.DataFrame(
+                    [
+                        {
+                            "GAME_ID": "2026_01_BUF_SEA",
+                            "WINNER": "Seattle Seahawks",
+                            "LOSER": "Buffalo Bills",
+                            "WIN_OR_TIE": 1.0,
+                        }
+                    ]
+                )
+                if games is None
+                else games
+            ),
+            long_to_short={
+                "Seattle Seahawks": "SEA",
+                "Buffalo Bills": "BUF",
+            },
+            season="2026-2027",
+            completed_through_week=completed_through_week,
+            schedule_available=schedule_available,
+        )
+
+    def test_serializes_played_projected_and_bye_states(self) -> None:
+        result = serialize_projection_grid(self._data())
+
+        assert result.total == 2
+        assert result.completed_through_week == 1
+
+        by_team = {row.abbr: row for row in result.items}
+        sea = by_team["SEA"]
+
+        assert sea.weeks[0].state == "played"
+        assert sea.weeks[0].actual_result == "W"
+        assert sea.weeks[0].win_probability == 1.0
+        assert sea.weeks[0].opponent == "BUF"
+        assert sea.weeks[0].is_home is True
+
+        assert sea.weeks[1].state == "projected"
+        assert sea.weeks[1].win_probability == 0.64
+        assert sea.weeks[1].opponent == "BUF"
+        assert sea.weeks[1].is_home is False
+
+        # No Week 3 schedule row confirms a bye, despite the artifact's 0.0.
+        assert sea.weeks[2].state == "bye"
+        assert sea.weeks[2].win_probability is None
+
+    def test_serializes_played_loss(self) -> None:
+        result = serialize_projection_grid(self._data())
+
+        by_team = {row.abbr: row for row in result.items}
+        buf = by_team["BUF"]
+
+        assert buf.weeks[0].state == "played"
+        assert buf.weeks[0].actual_result == "L"
+        assert buf.weeks[0].win_probability == 0.0
+
+    def test_serializes_played_tie_for_both_teams(self) -> None:
+        games = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2026_01_BUF_SEA",
+                    "WINNER": "Seattle Seahawks",
+                    "LOSER": "Buffalo Bills",
+                    "WIN_OR_TIE": 0.5,
+                }
+            ]
+        )
+
+        result = serialize_projection_grid(self._data(games=games))
+
+        assert {row.weeks[0].actual_result for row in result.items} == {"T"}
+
+    def test_scheduled_week_without_probability_is_unavailable(self) -> None:
+        probabilities = self._probabilities().drop(columns=["W04_WIN_P"])
+
+        result = serialize_projection_grid(self._data(probabilities=probabilities))
+
+        sea = next(row for row in result.items if row.abbr == "SEA")
+
+        assert sea.weeks[3].state == "unavailable"
+        assert sea.weeks[3].opponent == "BUF"
+        assert sea.weeks[3].win_probability is None
+
+    def test_missing_schedule_does_not_create_byes(self) -> None:
+        result = serialize_projection_grid(
+            self._data(
+                schedule=pd.DataFrame(),
+                schedule_available=False,
+            )
+        )
+
+        assert all(week.state == "unavailable" for row in result.items for week in row.weeks)
+
+        status = result.response_meta.field_status["items.weeks"]
+        assert status.status == "blocked"
+        assert status.blocker == "no_schedule_data"
+        assert status.roadmap == "data"
+
+    def test_empty_probabilities_marks_items_unavailable(self) -> None:
+        result = serialize_projection_grid(self._data(probabilities=pd.DataFrame()))
+
+        assert result.items == []
+        assert result.total == 0
+
+        status = result.response_meta.field_status["items"]
+        assert status.status == "blocked"
+        assert status.blocker == "no_projections_data"
+
+    def test_unknown_team_name_falls_back_to_abbreviation(self) -> None:
+        probabilities = self._probabilities().iloc[[0]].copy()
+        probabilities.loc[:, "TEAM"] = "XXX"
+
+        result = serialize_projection_grid(
+            self._data(
+                probabilities=probabilities,
+                schedule=pd.DataFrame(),
+                schedule_available=False,
+            )
+        )
+
+        assert result.items[0].abbr == "XXX"
+        assert result.items[0].name == "XXX"
