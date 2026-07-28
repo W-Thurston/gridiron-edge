@@ -141,14 +141,14 @@ regular-season game.
 - [x] Add the `/projections/grid` React Query hook.
 - [x] Add full-cell `WinProbabilityCell` with a fixed diverging scale.
 - [x] Add accessible hover/focus game-detail treatment.
-- [ ] Add Playoff Chances / Weekly Outcomes local view selection.
-- [ ] Add grouped Played Games / Projected Games headers.
-- [ ] Add the played/projected boundary.
-- [ ] Add sticky or visually anchored Team column if needed after visual review.
+- [x] Add Playoff Chances / Weekly Outcomes local view selection.
+- [x] Add grouped Played Games / Projected Games headers.
+- [x] Add the played/projected boundary.
+- [x] Add a sticky Team column.
 - [x] Render BYE distinctly from a zero-percent game.
-- [ ] Reuse conference and dependent division filtering.
-- [ ] Test all-projected preseason and mixed played/projected fixtures.
-- [x] Run primitive-focused and full frontend quality gates.
+- [x] Reuse conference and dependent division filtering.
+- [x] Test all-projected preseason and mixed played/projected fixtures.
+- [x] Run focused and full frontend quality gates.
 - [ ] Complete a real-data visual pass.
 - [ ] Re-close Tier 1 documentation.
 

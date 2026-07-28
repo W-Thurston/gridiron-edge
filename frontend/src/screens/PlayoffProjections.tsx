@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useProjections } from "../api/hooks";
+import { useProjectionGrid, useProjections } from "../api/hooks";
 import { useTeamMetadata } from "../api/team_metadata_hook";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { BlockedField } from "../components/field-status/BlockedField";
@@ -7,6 +7,7 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { StatusPill } from "../components/projections/StatusPill";
 import { HeatCell } from "../components/primitives/HeatCell";
+import { WinProbabilityCell } from "../components/primitives/WinProbabilityCell";
 import { TeamViewSwitcher } from "../components/teams/TeamViewSwitcher";
 import {
   SortableHeader,
@@ -17,6 +18,7 @@ import { useNav } from "../context/NavContext";
 
 type ConferenceFilter = "ALL" | "AFC" | "NFC";
 type DivisionFilter = "ALL" | "N" | "S" | "E" | "W";
+type ProjectionView = "chances" | "weekly";
 
 type SortKey =
   | "team"
@@ -33,6 +35,14 @@ type ProjectionItem = NonNullable<
   NonNullable<ReturnType<typeof useProjections>["data"]>["items"]
 >[number];
 
+type ProjectionGridData = NonNullable<
+  ReturnType<typeof useProjectionGrid>["data"]
+>;
+
+type ProjectionGridTeam = NonNullable<
+  ProjectionGridData["items"]
+>[number];
+
 type TeamMetadataItem = NonNullable<
   NonNullable<ReturnType<typeof useTeamMetadata>["data"]>["items"]
 >[number];
@@ -42,11 +52,24 @@ type EnrichedProjection = {
   metadata: TeamMetadataItem | undefined;
 };
 
+type EnrichedWeeklyProjection = {
+  projection: ProjectionGridTeam;
+  metadata: TeamMetadataItem | undefined;
+};
+
 export function PlayoffProjections() {
   const { data, isLoading, error, refetch } = useProjections();
+  const {
+    data: gridData,
+    isLoading: isGridLoading,
+    error: gridError,
+    refetch: refetchGrid,
+  } = useProjectionGrid();
   const { data: teamMetadata } = useTeamMetadata();
   const { navigate } = useNav();
 
+  const [view, setView] =
+    useState<ProjectionView>("chances");
   const [conference, setConference] =
     useState<ConferenceFilter>("ALL");
   const [division, setDivision] =
@@ -71,24 +94,13 @@ export function PlayoffProjections() {
       }),
     );
 
-    const filtered = rows.filter(({ metadata }) => {
-      if (conference === "ALL") {
-        return division === "ALL";
-      }
-
-      if (metadata?.conference !== conference) {
-        return false;
-      }
-
-      if (
-        division !== "ALL" &&
-        metadata?.division !== division
-      ) {
-        return false;
-      }
-
-      return true;
-    });
+    const filtered = rows.filter(({ metadata }) =>
+      matchesTeamFilters(
+        metadata,
+        conference,
+        division,
+      ),
+    );
 
     return filtered.toSorted((a, b) =>
       compareRows(a, b, sortKey, sortDirection),
@@ -100,6 +112,28 @@ export function PlayoffProjections() {
     metadataByAbbr,
     sortDirection,
     sortKey,
+  ]);
+
+  const visibleWeeklyRows = useMemo(() => {
+    const rows: EnrichedWeeklyProjection[] = (
+      gridData?.items ?? []
+    ).map((projection) => ({
+      projection,
+      metadata: metadataByAbbr.get(projection.abbr),
+    }));
+
+    return rows.filter(({ metadata }) =>
+      matchesTeamFilters(
+        metadata,
+        conference,
+        division,
+      ),
+    );
+  }, [
+    conference,
+    division,
+    gridData?.items,
+    metadataByAbbr,
   ]);
 
   const handleSort = (nextKey: SortKey) => {
@@ -174,6 +208,33 @@ export function PlayoffProjections() {
             }
           />
         </header>
+        <nav
+          aria-label="Projection views"
+          style={{
+            display: "flex",
+            gap: 4,
+            marginBottom: 14,
+            padding: 3,
+            width: "fit-content",
+            border: "1px solid var(--line-soft)",
+            borderRadius: 5,
+            background: "var(--bg-1)",
+          }}
+        >
+          <ProjectionViewButton
+            active={view === "chances"}
+            onClick={() => setView("chances")}
+          >
+            Playoff Chances
+          </ProjectionViewButton>
+
+          <ProjectionViewButton
+            active={view === "weekly"}
+            onClick={() => setView("weekly")}
+          >
+            Weekly Outcomes
+          </ProjectionViewButton>
+        </nav>
 
         <div
           style={{
@@ -225,260 +286,701 @@ export function PlayoffProjections() {
             />
           </div>
 
-          {data && (
+          {view === "chances" && data && (
             <div className="mono dim" style={{ fontSize: 10 }}>
-              {visibleRows.length} of {data.total ?? data.items?.length ?? 0} teams
+              {visibleRows.length} of{" "}
+              {data.total ?? data.items?.length ?? 0} teams
+            </div>
+          )}
+
+          {view === "weekly" && gridData && (
+            <div className="mono dim" style={{ fontSize: 10 }}>
+              {visibleWeeklyRows.length} of{" "}
+              {gridData.total ?? gridData.items?.length ?? 0} teams
             </div>
           )}
         </div>
-
-        {isLoading && <div className="dim">Loading…</div>}
-
-        {error && (
-          <ErrorCard
-            error={error}
-            onRetry={() => refetch()}
-            title="Couldn't load projections"
-          />
-        )}
-
-        {data && (data.items ?? []).length === 0 && (
-          <div className="dim mono" style={{ fontSize: 12 }}>
-            No projections found. Run `gridiron sim run` to populate.
-          </div>
-        )}
-
-        {data && (data.items ?? []).length > 0 && (
+        {view === "chances" && (
           <>
-            <div style={{ overflowX: "auto" }}>
-              <table
-                className="mono tnum"
-                style={{
-                  width: "100%",
-                  minWidth: 1080,
-                  fontSize: 12,
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead>
-                  <tr>
-                    <SortableHeader
-                      label="Team"
-                      active={sortKey === "team"}
-                      direction={sortDirection}
-                      onClick={() => handleSort("team")}
-                    />
-                    <SortableHeader
-                      label="Elo"
-                      active={sortKey === "elo"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("elo")}
-                    />
+            {isLoading && <div className="dim">Loading…</div>}
 
-                    <SortableHeader
-                      label="Elo Δ"
-                      active={sortKey === "elo_delta"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("elo_delta")}
-                    />
+            {error && (
+              <ErrorCard
+                error={error}
+                onRetry={() => refetch()}
+                title="Couldn't load projections"
+              />
+            )}
 
-                    <th
-                      scope="col"
-                      style={{
-                        padding: "8px 12px 8px 0",
-                        textAlign: "right",
-                        color: "var(--ink-3)",
-                        fontWeight: 400,
-                      }}
-                    >
-                      Record
-                    </th>
-                    <SortableHeader
-                      label="Avg Wins"
-                      active={sortKey === "avg_wins"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("avg_wins")}
-                    />
-                    <SortableHeader
-                      label="Playoffs"
-                      active={sortKey === "make_playoffs"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("make_playoffs")}
-                    />
-                    <SortableHeader
-                      label="Div. Round"
-                      active={sortKey === "reach_div"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("reach_div")}
-                    />
-                    <SortableHeader
-                      label="Conf. Champ."
-                      active={sortKey === "reach_conf"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("reach_conf")}
-                    />
-                    <SortableHeader
-                      label="Make SB"
-                      active={sortKey === "reach_sb"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("reach_sb")}
-                    />
-                    <SortableHeader
-                      label="Win SB"
-                      active={sortKey === "win_sb"}
-                      direction={sortDirection}
-                      align="right"
-                      onClick={() => handleSort("win_sb")}
-                    />
-                  </tr>
-                </thead>
+            {data && (data.items ?? []).length === 0 && (
+              <div className="dim mono" style={{ fontSize: 12 }}>
+                No projections found. Run `gridiron sim run` to populate.
+              </div>
+            )}
 
-                <tbody>
-                  {visibleRows.map(({ projection, metadata }) => (
-                    <tr
-                      key={projection.abbr}
-                      className="proj-row"
-                      style={{
-                        borderTop: "1px solid var(--line-soft)",
-                      }}
-                    >
-                      <td style={{ padding: "10px 14px 10px 0" }}>
-                        <TeamIdentity
-                          projection={projection}
-                          metadata={metadata}
-                          onNavigate={() =>
-                            navigate("/teams", {
-                              team: projection.abbr,
-                            })
-                          }
-                        />
-                      </td>
-                      <td
+          {data && (data.items ?? []).length > 0 && (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  className="mono tnum"
+                  style={{
+                    width: "100%",
+                    minWidth: 1080,
+                    fontSize: 12,
+                    borderCollapse: "collapse",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <SortableHeader
+                        label="Team"
+                        active={sortKey === "team"}
+                        direction={sortDirection}
+                        onClick={() => handleSort("team")}
+                      />
+                      <SortableHeader
+                        label="Elo"
+                        active={sortKey === "elo"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("elo")}
+                      />
+
+                      <SortableHeader
+                        label="Elo Δ"
+                        active={sortKey === "elo_delta"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("elo_delta")}
+                      />
+
+                      <th
+                        scope="col"
                         style={{
-                          padding: "10px 12px 10px 0",
+                          padding: "8px 12px 8px 0",
                           textAlign: "right",
-                          color: "var(--ink-2)",
+                          color: "var(--ink-3)",
+                          fontWeight: 400,
                         }}
                       >
-                        {metadata?.rating != null
-                          ? Math.round(metadata.rating)
-                          : "N/A"}
-                      </td>
+                        Record
+                      </th>
+                      <SortableHeader
+                        label="Avg Wins"
+                        active={sortKey === "avg_wins"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("avg_wins")}
+                      />
+                      <SortableHeader
+                        label="Playoffs"
+                        active={sortKey === "make_playoffs"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("make_playoffs")}
+                      />
+                      <SortableHeader
+                        label="Div. Round"
+                        active={sortKey === "reach_div"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("reach_div")}
+                      />
+                      <SortableHeader
+                        label="Conf. Champ."
+                        active={sortKey === "reach_conf"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("reach_conf")}
+                      />
+                      <SortableHeader
+                        label="Make SB"
+                        active={sortKey === "reach_sb"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("reach_sb")}
+                      />
+                      <SortableHeader
+                        label="Win SB"
+                        active={sortKey === "win_sb"}
+                        direction={sortDirection}
+                        align="right"
+                        onClick={() => handleSort("win_sb")}
+                      />
+                    </tr>
+                  </thead>
 
-                      <td
+                  <tbody>
+                    {visibleRows.map(({ projection, metadata }) => (
+                      <tr
+                        key={projection.abbr}
+                        className="proj-row"
                         style={{
-                          padding: "10px 12px 10px 0",
-                          textAlign: "right",
+                          borderTop: "1px solid var(--line-soft)",
                         }}
                       >
-                        <EloDelta
-                          value={projection.elo_delta}
+                        <td style={{ padding: "10px 14px 10px 0" }}>
+                          <TeamIdentity
+                            projection={projection}
+                            metadata={metadata}
+                            onNavigate={() =>
+                              navigate("/teams", {
+                                team: projection.abbr,
+                              })
+                            }
+                          />
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px 10px 0",
+                            textAlign: "right",
+                            color: "var(--ink-2)",
+                          }}
+                        >
+                          {metadata?.rating != null
+                            ? Math.round(metadata.rating)
+                            : "N/A"}
+                        </td>
+
+                        <td
+                          style={{
+                            padding: "10px 12px 10px 0",
+                            textAlign: "right",
+                          }}
+                        >
+                          <EloDelta
+                            value={projection.elo_delta}
+                            status={
+                              fieldStatus?.["items.elo_delta"] as
+                                | FieldStatus
+                                | undefined
+                            }
+                            asOfWeek={teamMetadata?.as_of_week}
+                          />
+                        </td>
+
+                        <td
+                          style={{
+                            padding: "10px 12px 10px 0",
+                            textAlign: "right",
+                            color: "var(--ink-2)",
+                          }}
+                        >
+                          {formatRecord(metadata?.record)}
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px 10px 0",
+                            textAlign: "right",
+                            color: "var(--ink-2)",
+                          }}
+                        >
+                          {projection.avg_wins?.toFixed(1) ?? "N/A"}
+                        </td>
+
+                        <HeatCell
+                          value={projection.make_playoffs}
+                          label={`${projection.name} make playoffs`}
                           status={
-                            fieldStatus?.["items.elo_delta"] as
+                            fieldStatus?.["items.make_playoffs"] as
                               | FieldStatus
                               | undefined
                           }
-                          asOfWeek={teamMetadata?.as_of_week}
                         />
-                      </td>
 
-                      <td
-                        style={{
-                          padding: "10px 12px 10px 0",
-                          textAlign: "right",
-                          color: "var(--ink-2)",
-                        }}
-                      >
-                        {formatRecord(metadata?.record)}
-                      </td>
-                      <td
-                        style={{
-                          padding: "10px 12px 10px 0",
-                          textAlign: "right",
-                          color: "var(--ink-2)",
-                        }}
-                      >
-                        {projection.avg_wins?.toFixed(1) ?? "N/A"}
-                      </td>
+                        <HeatCell
+                          value={projection.reach_div}
+                          label={`${projection.name} reach divisional round`}
+                          status={
+                            fieldStatus?.["items.reach_div"] as
+                              | FieldStatus
+                              | undefined
+                          }
+                        />
 
-                      <HeatCell
-                        value={projection.make_playoffs}
-                        label={`${projection.name} make playoffs`}
-                        status={
-                          fieldStatus?.["items.make_playoffs"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                      />
+                        <HeatCell
+                          value={projection.reach_conf}
+                          label={`${projection.name} reach conference championship`}
+                          status={
+                            fieldStatus?.["items.reach_conf"] as
+                              | FieldStatus
+                              | undefined
+                          }
+                        />
 
-                      <HeatCell
-                        value={projection.reach_div}
-                        label={`${projection.name} reach divisional round`}
-                        status={
-                          fieldStatus?.["items.reach_div"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                      />
+                        <HeatCell
+                          value={projection.reach_sb}
+                          label={`${projection.name} reach Super Bowl`}
+                          status={
+                            fieldStatus?.["items.reach_sb"] as
+                              | FieldStatus
+                              | undefined
+                          }
+                        />
 
-                      <HeatCell
-                        value={projection.reach_conf}
-                        label={`${projection.name} reach conference championship`}
-                        status={
-                          fieldStatus?.["items.reach_conf"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                      />
+                        <HeatCell
+                          value={projection.win_sb}
+                          label={`${projection.name} win Super Bowl`}
+                          status={
+                            fieldStatus?.["items.win_sb"] as
+                              | FieldStatus
+                              | undefined
+                          }
+                        />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                      <HeatCell
-                        value={projection.reach_sb}
-                        label={`${projection.name} reach Super Bowl`}
-                        status={
-                          fieldStatus?.["items.reach_sb"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                      />
-
-                      <HeatCell
-                        value={projection.win_sb}
-                        label={`${projection.name} win Super Bowl`}
-                        status={
-                          fieldStatus?.["items.win_sb"] as
-                            | FieldStatus
-                            | undefined
-                        }
-                      />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ProjectionLegend
+                asOfWeek={teamMetadata?.as_of_week}
+                eloStatus={
+                  fieldStatus?.["items.elo_delta"] as
+                    | FieldStatus
+                    | undefined
+                }
+                clinchedStatus={
+                  fieldStatus?.["items.clinched"] as
+                    | FieldStatus
+                    | undefined
+                }
+              />
+            </>
+          )}
+        </>
+      )}
+      {view === "weekly" && (
+        <>
+          {isGridLoading && (
+            <div className="dim">
+              Loading weekly projections…
             </div>
+          )}
 
-            <ProjectionLegend
-              asOfWeek={teamMetadata?.as_of_week}
-              eloStatus={
-                fieldStatus?.["items.elo_delta"] as
-                  | FieldStatus
-                  | undefined
-              }
-              clinchedStatus={
-                fieldStatus?.["items.clinched"] as
-                  | FieldStatus
-                  | undefined
-              }
+          {gridError && (
+            <ErrorCard
+              error={gridError}
+              onRetry={() => refetchGrid()}
+              title="Couldn't load weekly projections"
             />
-          </>
-        )}
+          )}
+
+          {gridData &&
+            (gridData.items ?? []).length === 0 && (
+              <div
+                className="dim mono"
+                style={{ fontSize: 12 }}
+              >
+                No weekly projection grid found. Run `gridiron sim run`
+                to populate.
+              </div>
+            )}
+
+          {gridData &&
+            (gridData.items ?? []).length > 0 && (
+              <WeeklyOutcomesGrid
+                data={gridData}
+                rows={visibleWeeklyRows}
+                metadataByAbbr={metadataByAbbr}
+                weeklyStatus={
+                  gridData._meta?.field_status?.[
+                    "items.weeks"
+                  ] as FieldStatus | undefined
+                }
+                onNavigateTeam={(abbr) =>
+                  navigate("/teams", { team: abbr })
+                }
+              />
+            )}
+        </>
+      )}
       </div>
+    </div>
+  );
+}
+
+function ProjectionViewButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
+        padding: "5px 11px",
+        border: 0,
+        borderRadius: 3,
+        background: active
+          ? "var(--pos)"
+          : "transparent",
+        color: active
+          ? "var(--bg)"
+          : "var(--ink-3)",
+        fontFamily: "var(--f-sans)",
+        fontSize: 11,
+        cursor: active ? "default" : "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function WeeklyOutcomesGrid({
+  data,
+  rows,
+  metadataByAbbr,
+  weeklyStatus,
+  onNavigateTeam,
+}: {
+  data: ProjectionGridData;
+  rows: EnrichedWeeklyProjection[];
+  metadataByAbbr: Map<string, TeamMetadataItem>;
+  weeklyStatus?: FieldStatus;
+  onNavigateTeam: (abbr: string) => void;
+}) {
+  const completedThroughWeek =
+    data.completed_through_week;
+  const regularSeasonWeeks =
+    data.regular_season_weeks;
+
+  const playedWeekCount = Math.min(
+    completedThroughWeek,
+    regularSeasonWeeks,
+  );
+  const projectedWeekCount =
+    regularSeasonWeeks - playedWeekCount;
+
+  const firstProjectedWeek =
+    playedWeekCount > 0 &&
+    playedWeekCount < regularSeasonWeeks
+      ? playedWeekCount + 1
+      : null;
+
+  return (
+    <>
+      <div style={{ overflowX: "auto" }}>
+        <table
+          className="mono tnum"
+          style={{
+            width: "100%",
+            minWidth:
+              220 + regularSeasonWeeks * 54,
+            fontSize: 11,
+            borderCollapse: "collapse",
+          }}
+        >
+          <thead>
+            <tr>
+              <th
+                scope="col"
+                rowSpan={2}
+                style={{
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 4,
+                  minWidth: 220,
+                  padding: "8px 12px",
+                  textAlign: "left",
+                  background: "var(--bg)",
+                  color: "var(--ink-3)",
+                  borderRight:
+                    "1px solid var(--line)",
+                }}
+              >
+                Team
+              </th>
+
+              {playedWeekCount > 0 && (
+                <th
+                  scope="colgroup"
+                  colSpan={playedWeekCount}
+                  style={{
+                    padding: "7px 8px",
+                    textAlign: "center",
+                    color: "var(--ink-3)",
+                    borderBottom:
+                      "1px solid var(--line-soft)",
+                  }}
+                >
+                  Played Games
+                </th>
+              )}
+
+              {projectedWeekCount > 0 && (
+                <th
+                  scope="colgroup"
+                  colSpan={projectedWeekCount}
+                  style={{
+                    padding: "7px 8px",
+                    textAlign: "center",
+                    color: "var(--ink-3)",
+                    borderBottom:
+                      "1px solid var(--line-soft)",
+                    borderLeft:
+                      playedWeekCount > 0
+                        ? "2px solid var(--line)"
+                        : undefined,
+                  }}
+                >
+                  Projected Games
+                </th>
+              )}
+            </tr>
+
+            <tr>
+              {Array.from(
+                { length: regularSeasonWeeks },
+                (_, index) => index + 1,
+              ).map((week) => {
+                const boundary =
+                  week === firstProjectedWeek;
+
+                return (
+                  <th
+                    key={week}
+                    scope="col"
+                    style={{
+                      minWidth: 54,
+                      padding: "6px 4px",
+                      textAlign: "center",
+                      color: "var(--ink-4)",
+                      borderLeftWidth: boundary
+                        ? 2
+                        : 1,
+                      borderLeftStyle: "solid",
+                      borderLeftColor: boundary
+                        ? "var(--line)"
+                        : "var(--line-soft)",
+                    }}
+                  >
+                    W{week}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map(({ projection, metadata }) => (
+              <tr
+                key={projection.abbr}
+                style={{
+                  borderTop:
+                    "1px solid var(--line-soft)",
+                }}
+              >
+                <td
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 3,
+                    minWidth: 220,
+                    padding: "8px 12px",
+                    background: "var(--bg)",
+                    borderRight:
+                      "1px solid var(--line)",
+                  }}
+                >
+                  <WeeklyTeamIdentity
+                    projection={projection}
+                    metadata={metadata}
+                    onNavigate={() =>
+                      onNavigateTeam(projection.abbr)
+                    }
+                  />
+                </td>
+
+                {projection.weeks.map((week) => {
+                  const opponentName =
+                    week.opponent == null
+                      ? null
+                      : metadataByAbbr.get(
+                          week.opponent,
+                        )?.name ??
+                        week.opponent;
+
+                  return (
+                    <WinProbabilityCell
+                      key={week.week}
+                      teamName={projection.name}
+                      week={week.week}
+                      state={week.state}
+                      opponent={opponentName}
+                      isHome={week.is_home}
+                      gameDate={week.game_date}
+                      gameTime={week.game_time}
+                      winProbability={
+                        week.win_probability
+                      }
+                      actualResult={
+                        week.actual_result
+                      }
+                      status={weeklyStatus}
+                      boundary={
+                        week.week ===
+                        firstProjectedWeek
+                      }
+                    />
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <WeeklyOutcomesLegend
+        completedThroughWeek={
+          completedThroughWeek
+        }
+      />
+    </>
+  );
+}
+
+function WeeklyTeamIdentity({
+  projection,
+  metadata,
+  onNavigate,
+}: {
+  projection: ProjectionGridTeam;
+  metadata: TeamMetadataItem | undefined;
+  onNavigate: () => void;
+}) {
+  const division = formatDivision(
+    metadata?.conference,
+    metadata?.division,
+  );
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <TeamMark abbr={projection.abbr} />
+
+      <div style={{ minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={onNavigate}
+          style={{
+            display: "block",
+            padding: 0,
+            border: 0,
+            background: "transparent",
+            color: "var(--ink-2)",
+            font: "inherit",
+            textAlign: "left",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {projection.name}
+        </button>
+
+        <div
+          style={{
+            marginTop: 2,
+            color: "var(--ink-4)",
+            fontSize: 9,
+          }}
+        >
+          {division ?? "Metadata unavailable"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyOutcomesLegend({
+  completedThroughWeek,
+}: {
+  completedThroughWeek: number;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 16,
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop:
+          "1px solid var(--line-soft)",
+        color: "var(--ink-4)",
+        fontSize: 10,
+        flexWrap: "wrap",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+        }}
+      >
+        <span>Lower chance to win</span>
+
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18,
+            height: 8,
+            borderRadius: 2,
+            background:
+              "color-mix(in oklab, var(--neg) 34%, transparent)",
+          }}
+        />
+
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18,
+            height: 8,
+            borderRadius: 2,
+            background: "var(--bg-2)",
+          }}
+        />
+
+        <span
+          aria-hidden="true"
+          style={{
+            width: 18,
+            height: 8,
+            borderRadius: 2,
+            background:
+              "color-mix(in oklab, var(--pos) 34%, transparent)",
+          }}
+        />
+
+        <span>Higher chance to win</span>
+      </div>
+
+      {completedThroughWeek === 0 ? (
+        <span>
+          Season has not started — all games are
+          projected.
+        </span>
+      ) : (
+        <span>
+          Played games show fixed outcomes from the
+          current simulation artifact; projected games
+          show simulated chance to win.
+        </span>
+      )}
     </div>
   );
 }
@@ -740,6 +1242,29 @@ function ProjectionLegend({
       </div>
     </div>
   );
+}
+
+function matchesTeamFilters(
+  metadata: TeamMetadataItem | undefined,
+  conference: ConferenceFilter,
+  division: DivisionFilter,
+): boolean {
+  if (conference === "ALL") {
+    return division === "ALL";
+  }
+
+  if (metadata?.conference !== conference) {
+    return false;
+  }
+
+  if (
+    division !== "ALL" &&
+    metadata.division !== division
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function compareRows(

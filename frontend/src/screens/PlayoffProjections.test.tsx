@@ -1,14 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useProjections } from "../api/hooks";
+import { useProjectionGrid, useProjections } from "../api/hooks";
 import { useTeamMetadata } from "../api/team_metadata_hook";
 import { TestWrapper } from "../test/testWrapper";
 import { PlayoffProjections } from "./PlayoffProjections";
 
 vi.mock("../api/hooks", () => ({
+  useProjectionGrid: vi.fn(),
   useProjections: vi.fn(),
 }));
+
 
 vi.mock("../api/team_metadata_hook", () => ({
   useTeamMetadata: vi.fn(),
@@ -16,6 +18,8 @@ vi.mock("../api/team_metadata_hook", () => ({
 }));
 
 const mockedUseProjections = vi.mocked(useProjections);
+const mockedUseProjectionGrid =
+  vi.mocked(useProjectionGrid);
 const mockedUseTeamMetadata = vi.mocked(useTeamMetadata);
 
 const projectionsData = {
@@ -86,7 +90,7 @@ const teamMetadataData = {
   items: [
     {
       abbr: "SEA",
-      name: "Seahawks",
+      name: "Seattle Seahawks",
       city: "Seattle",
       long_name: "Seattle Seahawks",
       conference: "NFC",
@@ -103,7 +107,7 @@ const teamMetadataData = {
     },
     {
       abbr: "BUF",
-      name: "Bills",
+      name: "Buffalo Bills",
       city: "Buffalo",
       long_name: "Buffalo Bills",
       conference: "AFC",
@@ -120,7 +124,7 @@ const teamMetadataData = {
     },
     {
       abbr: "PHI",
-      name: "Eagles",
+      name: "Philadelphia Eagles",
       city: "Philadelphia",
       long_name: "Philadelphia Eagles",
       conference: "NFC",
@@ -139,6 +143,113 @@ const teamMetadataData = {
   total: 3,
 };
 
+function makeProjectedWeek({
+  week,
+  opponent,
+  isHome,
+  winProbability,
+}: {
+  week: number;
+  opponent: string;
+  isHome: boolean;
+  winProbability: number;
+}) {
+  return {
+    week,
+    state: "projected" as const,
+    opponent,
+    is_home: isHome,
+    game_id: `2026_${String(week).padStart(2, "0")}_TEST`,
+    game_date: `2026-09-${String(
+      Math.min(week + 8, 28),
+    ).padStart(2, "0")}`,
+    game_time: "13:00:00",
+    win_probability: winProbability,
+    actual_result: null,
+  };
+}
+
+function makeByeWeek(week: number) {
+  return {
+    week,
+    state: "bye" as const,
+    opponent: null,
+    is_home: null,
+    game_id: null,
+    game_date: null,
+    game_time: null,
+    win_probability: null,
+    actual_result: null,
+  };
+}
+
+function makeTeamWeeks({
+  opponent,
+  baseProbability,
+  byeWeek,
+}: {
+  opponent: string;
+  baseProbability: number;
+  byeWeek: number;
+}) {
+  return Array.from({ length: 18 }, (_, index) => {
+    const week = index + 1;
+
+    if (week === byeWeek) {
+      return makeByeWeek(week);
+    }
+
+    return makeProjectedWeek({
+      week,
+      opponent,
+      isHome: week % 2 === 1,
+      winProbability: Math.min(
+        0.95,
+        baseProbability + index * 0.005,
+      ),
+    });
+  });
+}
+
+const projectionGridData = {
+  _meta: {
+    field_status: {},
+  },
+  season: "2026-2027",
+  completed_through_week: 0,
+  regular_season_weeks: 18,
+  items: [
+    {
+      abbr: "SEA",
+      name: "Seattle Seahawks",
+      weeks: makeTeamWeeks({
+        opponent: "BUF",
+        baseProbability: 0.64,
+        byeWeek: 7,
+      }),
+    },
+    {
+      abbr: "BUF",
+      name: "Buffalo Bills",
+      weeks: makeTeamWeeks({
+        opponent: "SEA",
+        baseProbability: 0.36,
+        byeWeek: 11,
+      }),
+    },
+    {
+      abbr: "PHI",
+      name: "Philadelphia Eagles",
+      weeks: makeTeamWeeks({
+        opponent: "SEA",
+        baseProbability: 0.58,
+        byeWeek: 5,
+      }),
+    },
+  ],
+  total: 3,
+};
+
 function mockLoadedData() {
   mockedUseProjections.mockReturnValue({
     data: projectionsData,
@@ -146,6 +257,13 @@ function mockLoadedData() {
     error: null,
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof useProjections>);
+
+  mockedUseProjectionGrid.mockReturnValue({
+    data: projectionGridData,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useProjectionGrid>);
 
   mockedUseTeamMetadata.mockReturnValue({
     data: teamMetadataData,
@@ -159,6 +277,16 @@ function renderScreen() {
     <TestWrapper>
       <PlayoffProjections />
     </TestWrapper>,
+  );
+}
+
+async function openWeeklyOutcomes(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(
+    screen.getByRole("button", {
+      name: "Weekly Outcomes",
+    }),
   );
 }
 
@@ -206,24 +334,48 @@ describe("PlayoffProjections", () => {
     expect(screen.getByText(/^Computed /)).toBeInTheDocument();
   });
 
+  it("defaults to the Playoff Chances view", () => {
+    renderScreen();
+
+    expect(
+      screen.getByRole("button", {
+        name: "Playoff Chances",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Weekly Outcomes",
+      }),
+    ).toHaveAttribute("aria-pressed", "false");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Sort by Win SB",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("defaults to Win SB descending", () => {
     renderScreen();
 
     expect(tableTeamNames()).toEqual([
-        "Seattle Seahawks",
-        "Buffalo Bills",
-        "Philadelphia Eagles",
+      "Seattle Seahawks",
+      "Buffalo Bills",
+      "Philadelphia Eagles",
     ]);
 
     const winSuperBowlHeader = screen
-        .getByRole("button", { name: "Sort by Win SB" })
-        .closest("th");
+      .getByRole("button", {
+        name: "Sort by Win SB",
+      })
+      .closest("th");
 
     expect(winSuperBowlHeader).toHaveAttribute(
-        "aria-sort",
-        "descending",
+      "aria-sort",
+      "descending",
     );
-    });
+  });
 
   it("sorts team names ascending on first selection", async () => {
     const user = userEvent.setup();
@@ -245,26 +397,28 @@ describe("PlayoffProjections", () => {
     renderScreen();
 
     const winSuperBowlSort = screen.getByRole("button", {
-        name: "Sort by Win SB",
+      name: "Sort by Win SB",
     });
 
     await user.click(winSuperBowlSort);
 
     expect(tableTeamNames()).toEqual([
-        "Philadelphia Eagles",
-        "Buffalo Bills",
-        "Seattle Seahawks",
+      "Philadelphia Eagles",
+      "Buffalo Bills",
+      "Seattle Seahawks",
     ]);
 
     const winSuperBowlHeader = screen
-        .getByRole("button", { name: "Sort by Win SB" })
-        .closest("th");
+      .getByRole("button", {
+        name: "Sort by Win SB",
+      })
+      .closest("th");
 
     expect(winSuperBowlHeader).toHaveAttribute(
-        "aria-sort",
-        "ascending",
+      "aria-sort",
+      "ascending",
     );
-    });
+  });
 
   it("filters by conference while preserving the active sort", async () => {
     const user = userEvent.setup();
@@ -625,6 +779,308 @@ describe("PlayoffProjections", () => {
 
     expect(
       screen.getByLabelText("Elo delta -4"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the all-projected preseason weekly grid", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByRole("button", {
+        name: "Weekly Outcomes",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Sort by Win SB",
+      }),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.queryByText("Played Games"),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.getByText("Projected Games"),
+    ).toBeInTheDocument();
+
+    for (let week = 1; week <= 18; week += 1) {
+      expect(
+        screen.getByRole("columnheader", {
+          name: `W${week}`,
+        }),
+      ).toBeInTheDocument();
+    }
+
+    expect(
+      screen.getByText(
+        "Season has not started — all games are projected.",
+      ),
+    ).toBeInTheDocument();
+  });
+  it("renders weekly percentages and confirmed byes distinctly", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByRole("button", {
+        name: /Seattle Seahawks vs\. Buffalo Bills · Week 1 ·/,
+      }),
+    ).toHaveTextContent("64%");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Seattle Seahawks, Week 7: Bye",
+      }),
+    ).toHaveTextContent("BYE");
+
+    const seattleRow = screen
+      .getByRole("button", {
+        name: "Seattle Seahawks",
+      })
+      .closest("tr");
+
+    expect(seattleRow).not.toBeNull();
+
+    if (seattleRow) {
+      expect(
+        within(seattleRow).queryByText("0%"),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it("applies conference filtering to Weekly Outcomes", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    await user.selectOptions(
+      screen.getByLabelText("Conference"),
+      "AFC",
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Buffalo Bills",
+      }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Seattle Seahawks",
+      }),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Philadelphia Eagles",
+      }),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.getByText("1 of 3 teams"),
+    ).toBeInTheDocument();
+  });
+  it("applies dependent division filtering to Weekly Outcomes", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    const conferenceSelect =
+      screen.getByLabelText("Conference");
+    const divisionSelect =
+      screen.getByLabelText("Division");
+
+    await user.selectOptions(conferenceSelect, "NFC");
+    await user.selectOptions(divisionSelect, "E");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Philadelphia Eagles",
+      }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Seattle Seahawks",
+      }),
+    ).not.toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Buffalo Bills",
+      }),
+    ).not.toBeInTheDocument();
+  });
+  it("preserves filters while switching projection views", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const conferenceSelect =
+      screen.getByLabelText("Conference");
+    const divisionSelect =
+      screen.getByLabelText("Division");
+
+    await user.selectOptions(conferenceSelect, "NFC");
+    await user.selectOptions(divisionSelect, "E");
+
+    await openWeeklyOutcomes(user);
+
+    expect(conferenceSelect).toHaveValue("NFC");
+    expect(divisionSelect).toHaveValue("E");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Playoff Chances",
+      }),
+    );
+
+    expect(conferenceSelect).toHaveValue("NFC");
+    expect(divisionSelect).toHaveValue("E");
+
+    expect(
+      screen.getByRole("button", {
+        name: "Philadelphia Eagles",
+      }),
+    ).toBeInTheDocument();
+  });
+  it("renders played and projected groups with a boundary", async () => {
+    const user = userEvent.setup();
+
+    const mixedWeeks =
+      projectionGridData.items[0].weeks.map((week) => {
+        if (week.week === 1) {
+          return {
+            ...week,
+            state: "played" as const,
+            win_probability: 1,
+            actual_result: "W" as const,
+          };
+        }
+
+        return week;
+      });
+
+    mockedUseProjectionGrid.mockReturnValue({
+      data: {
+        ...projectionGridData,
+        completed_through_week: 1,
+        items: [
+          {
+            ...projectionGridData.items[0],
+            weeks: mixedWeeks,
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectionGrid>);
+
+    renderScreen();
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByText("Played Games"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText("Projected Games"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("button", {
+        name: /Played — win/,
+      }),
+    ).toBeInTheDocument();
+
+    const weekTwoHeader = screen.getByRole(
+      "columnheader",
+      { name: "W2" },
+    );
+
+    expect(weekTwoHeader).toHaveStyle({
+      borderLeftWidth: "2px",
+      borderLeftStyle: "solid",
+    });
+
+    expect(
+      screen.getByText(
+        /Played games show fixed outcomes/,
+      ),
+    ).toBeInTheDocument();
+  });
+  it("scopes weekly loading state to Weekly Outcomes", async () => {
+    const user = userEvent.setup();
+
+    mockedUseProjectionGrid.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectionGrid>);
+
+    renderScreen();
+
+    expect(
+      screen.queryByText("Loading weekly projections…"),
+    ).not.toBeInTheDocument();
+
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByText("Loading weekly projections…"),
+    ).toBeInTheDocument();
+  });
+  it("renders weekly-grid-specific error copy", async () => {
+    const user = userEvent.setup();
+
+    mockedUseProjectionGrid.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("Unavailable"),
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectionGrid>);
+
+    renderScreen();
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByText(
+        "Couldn't load weekly projections",
+      ),
+    ).toBeInTheDocument();
+  });
+  it("renders the weekly-grid empty state", async () => {
+    const user = userEvent.setup();
+
+    mockedUseProjectionGrid.mockReturnValue({
+      data: {
+        ...projectionGridData,
+        items: [],
+        total: 0,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectionGrid>);
+
+    renderScreen();
+    await openWeeklyOutcomes(user);
+
+    expect(
+      screen.getByText(
+        /No weekly projection grid found/,
+      ),
     ).toBeInTheDocument();
   });
 });
