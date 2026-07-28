@@ -1,10 +1,31 @@
-import { useId, useState } from "react";
+import {
+  forwardRef,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { BlockedField } from "../field-status/BlockedField";
 import { PendingField } from "../field-status/PendingField";
 import type { FieldStatus } from "../field-status/types";
 
 type WeeklyState = "played" | "projected" | "bye" | "unavailable";
 type ActualResult = "W" | "L" | "T";
+
+type TooltipDetails = {
+  matchup: string;
+  schedule: string;
+  outcome: string;
+  accessibleLabel: string;
+};
+
+type TooltipPosition = {
+  left: number;
+  top: number;
+  width: number;
+  placement: "above" | "below";
+};
 
 type WinProbabilityCellProps = {
   teamName: string;
@@ -20,6 +41,11 @@ type WinProbabilityCellProps = {
   boundary?: boolean;
 };
 
+const TOOLTIP_WIDTH = 360;
+const TOOLTIP_GAP = 8;
+const VIEWPORT_MARGIN = 8;
+const APPROXIMATE_TOOLTIP_HEIGHT = 82;
+
 /**
  * Full table cell for a team's weekly chance to win.
  *
@@ -27,8 +53,8 @@ type WinProbabilityCellProps = {
  * Lower probabilities blend toward the negative token, higher
  * probabilities blend toward the positive token, and 50% is neutral.
  *
- * Matchup details are available through both pointer hover and keyboard
- * focus. Bye and unavailable states remain distinct from a 0% chance.
+ * Matchup details are available through pointer hover and keyboard focus.
+ * The tooltip is portaled to the viewport so scroll containers cannot clip it.
  */
 export function WinProbabilityCell({
   teamName,
@@ -44,43 +70,76 @@ export function WinProbabilityCell({
   boundary = false,
 }: WinProbabilityCellProps) {
   const tooltipId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [tooltipPosition, setTooltipPosition] =
+    useState<TooltipPosition | null>(null);
 
   const borderLeftWidth = boundary ? 2 : 1;
   const borderLeftColor = boundary
     ? "var(--line)"
     : "var(--line-soft)";
 
-  if (state === "bye") {
-    const details = `${teamName}, Week ${week}: Bye`;
+  const details = buildDetails({
+    teamName,
+    week,
+    state,
+    opponent,
+    isHome,
+    gameDate,
+    gameTime,
+    winProbability,
+    actualResult,
+  });
 
-    return (
-      <td
-        className="mono tnum"
-        style={{
-          position: "relative",
-          padding: 0,
-          textAlign: "center",
-          borderLeftWidth,
-          borderLeftStyle: "solid",
-          borderLeftColor,
-          background: "var(--bg-2)",
-          color: "var(--ink-4)",
-        }}
-      >
-        <CellButton
-          ariaLabel={details}
-          tooltipId={tooltipId}
-          onOpenChange={setDetailsOpen}
-        >
-          BYE
-        </CellButton>
-        {detailsOpen && <CellTooltip id={tooltipId}>{details}</CellTooltip>}
-      </td>
-    );
-  }
+  useLayoutEffect(() => {
+    if (!detailsOpen || !triggerRef.current) {
+      setTooltipPosition(null);
+      return;
+    }
 
-  if (state === "unavailable" || winProbability == null) {
+    const updatePosition = () => {
+      if (!triggerRef.current) return;
+
+      const rect = triggerRef.current.getBoundingClientRect();
+      const width = Math.min(
+        TOOLTIP_WIDTH,
+        window.innerWidth - VIEWPORT_MARGIN * 2,
+      );
+      const centeredLeft =
+        rect.left + rect.width / 2 - width / 2;
+      const maxLeft = Math.max(
+        VIEWPORT_MARGIN,
+        window.innerWidth - width - VIEWPORT_MARGIN,
+      );
+      const left = Math.min(
+        Math.max(centeredLeft, VIEWPORT_MARGIN),
+        maxLeft,
+      );
+      const hasRoomAbove =
+        rect.top >= APPROXIMATE_TOOLTIP_HEIGHT + TOOLTIP_GAP;
+
+      setTooltipPosition({
+        left,
+        top: hasRoomAbove
+          ? rect.top - TOOLTIP_GAP
+          : rect.bottom + TOOLTIP_GAP,
+        width,
+        placement: hasRoomAbove ? "above" : "below",
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [detailsOpen]);
+
+  if (state === "unavailable" || (state !== "bye" && winProbability == null)) {
     return (
       <td
         style={{
@@ -109,27 +168,17 @@ export function WinProbabilityCell({
     );
   }
 
-  const bounded = Math.min(1, Math.max(0, winProbability));
+  const isBye = state === "bye";
+  const bounded = Math.min(1, Math.max(0, winProbability ?? 0));
   const distance = Math.abs(bounded - 0.5) / 0.5;
   const intensity = 6 + distance * 34;
   const colorToken = bounded < 0.5 ? "var(--neg)" : "var(--pos)";
-  const background =
-    bounded === 0.5
+  const background = isBye
+    ? "var(--bg-2)"
+    : bounded === 0.5
       ? "var(--bg-2)"
       : `color-mix(in oklab, ${colorToken} ${intensity}%, transparent)`;
-
-  const display = formatProbability(winProbability);
-  const details = buildDetails({
-    teamName,
-    week,
-    state,
-    opponent,
-    isHome,
-    gameDate,
-    gameTime,
-    winProbability,
-    actualResult,
-  });
+  const display = isBye ? "BYE" : formatProbability(winProbability ?? 0);
 
   return (
     <td
@@ -142,34 +191,52 @@ export function WinProbabilityCell({
         borderLeftStyle: "solid",
         borderLeftColor,
         background,
-        color: "var(--ink)",
+        color: isBye ? "var(--ink-4)" : "var(--ink)",
       }}
     >
       <CellButton
-        ariaLabel={details}
+        ref={triggerRef}
+        ariaLabel={details?.accessibleLabel ?? `${teamName}, Week ${week}`}
         tooltipId={tooltipId}
         onOpenChange={setDetailsOpen}
       >
         {display}
       </CellButton>
-      {detailsOpen && <CellTooltip id={tooltipId}>{details}</CellTooltip>}
+
+      {detailsOpen && details && tooltipPosition
+        ? createPortal(
+            <CellTooltip
+              id={tooltipId}
+              details={details}
+              position={tooltipPosition}
+            />,
+            document.body,
+          )
+        : null}
     </td>
   );
 }
 
-function CellButton({
-  ariaLabel,
-  tooltipId,
-  children,
-  onOpenChange,
-}: {
-  ariaLabel: string;
-  tooltipId: string;
-  children: string;
-  onOpenChange: (open: boolean) => void;
-}) {
+const CellButton = forwardRef<
+  HTMLButtonElement,
+  {
+    ariaLabel: string;
+    tooltipId: string;
+    children: string;
+    onOpenChange: (open: boolean) => void;
+  }
+>(function CellButton(
+  {
+    ariaLabel,
+    tooltipId,
+    children,
+    onOpenChange,
+  },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={ariaLabel}
       aria-describedby={tooltipId}
@@ -184,7 +251,7 @@ function CellButton({
         height: "100%",
         padding: "9px 7px",
         border: 0,
-        background: "transparent",
+        backgroundColor: "transparent",
         color: "inherit",
         font: "inherit",
         cursor: "help",
@@ -193,37 +260,69 @@ function CellButton({
       {children}
     </button>
   );
-}
+});
 
-function CellTooltip({ id, children }: { id: string; children: string }) {
+function CellTooltip({
+  id,
+  details,
+  position,
+}: {
+  id: string;
+  details: TooltipDetails;
+  position: TooltipPosition;
+}) {
   return (
-    <span
+    <div
       id={id}
       role="tooltip"
-      className="mono"
+      data-placement={position.placement}
       style={{
-        position: "absolute",
-        zIndex: 20,
-        left: "50%",
-        bottom: "calc(100% + 6px)",
-        transform: "translateX(-50%)",
-        width: "max-content",
-        maxWidth: 260,
-        padding: "7px 9px",
+        position: "fixed",
+        zIndex: 1000,
+        left: position.left,
+        top: position.top,
+        transform:
+          position.placement === "above"
+            ? "translateY(-100%)"
+            : undefined,
+        width: position.width,
+        padding: "9px 11px",
         border: "1px solid var(--line)",
         borderRadius: 4,
-        background: "var(--bg)",
+        backgroundColor: "var(--bg-1)",
         color: "var(--ink-2)",
         boxShadow: "0 6px 18px rgb(0 0 0 / 35%)",
-        fontSize: 10,
-        lineHeight: 1.45,
-        textAlign: "left",
-        whiteSpace: "normal",
         pointerEvents: "none",
       }}
     >
-      {children}
-    </span>
+      <div
+        title={details.matchup}
+        style={{
+          color: "var(--ink)",
+          fontFamily: "var(--f-sans)",
+          fontSize: 12,
+          fontWeight: 650,
+          lineHeight: 1.35,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {details.matchup}
+      </div>
+      <div
+        className="mono dim"
+        style={{ marginTop: 3, fontSize: 10, lineHeight: 1.4 }}
+      >
+        {details.schedule}
+      </div>
+      <div
+        className="mono"
+        style={{ marginTop: 3, fontSize: 10, lineHeight: 1.4 }}
+      >
+        {details.outcome}
+      </div>
+    </div>
   );
 }
 
@@ -240,68 +339,82 @@ function buildDetails({
 }: {
   teamName: string;
   week: number;
-  state: "played" | "projected";
+  state: WeeklyState;
   opponent?: string | null;
   isHome?: boolean | null;
   gameDate?: string | null;
   gameTime?: string | null;
-  winProbability: number;
+  winProbability?: number | null;
   actualResult?: ActualResult | null;
-}): string {
+}): TooltipDetails | null {
+  if (state === "unavailable") return null;
+
+  if (state === "bye") {
+    return {
+      matchup: teamName,
+      schedule: `Week ${week}`,
+      outcome: "Bye",
+      accessibleLabel: `${teamName}, Week ${week}: Bye`,
+    };
+  }
+
   const matchup =
     opponent && isHome != null
       ? `${teamName} ${isHome ? "vs." : "at"} ${opponent}`
       : teamName;
-
-  const parts = [matchup, `Week ${week}`];
   const dateTime = formatDateTime(gameDate, gameTime);
-
-  if (dateTime) {
-    parts.push(dateTime);
-  }
+  const schedule = [`Week ${week}`, dateTime]
+    .filter(Boolean)
+    .join(" · ");
 
   if (state === "played") {
-    parts.push(
-      actualResult ? `Played — ${formatActualResult(actualResult)}` : "Played",
-    );
-  } else {
-    parts.push(`${formatAccessibleProbability(winProbability)} chance to win`);
-    parts.push("Projected");
+    const resultText = actualResult
+      ? formatActualResult(actualResult)
+      : null;
+    const outcome = resultText ? `Played · ${resultText}` : "Played";
+
+    return {
+      matchup,
+      schedule,
+      outcome,
+      accessibleLabel: [matchup, `Week ${week}`, "Played", resultText]
+        .filter(Boolean)
+        .join(", "),
+    };
   }
 
-  return parts.join(" · ");
+  const probabilityText = formatAccessibleProbability(winProbability ?? 0);
+
+  return {
+    matchup,
+    schedule,
+    outcome: `Projected · ${probabilityText} chance to win`,
+    accessibleLabel: [
+      matchup,
+      `Week ${week}`,
+      "Projected",
+      `${probabilityText} chance to win`,
+    ].join(", "),
+  };
 }
 
 function formatProbability(value: number): string {
   const percentage = value * 100;
-
-  if (value > 0 && percentage < 0.5) {
-    return "<1%";
-  }
-
+  if (value > 0 && percentage < 0.5) return "<1%";
   return `${Math.round(percentage)}%`;
 }
 
 function formatAccessibleProbability(value: number): string {
   const percentage = value * 100;
-
-  if (percentage === 0 || percentage >= 1) {
-    return `${percentage.toFixed(1)}%`;
-  }
-
-  return `${percentage.toFixed(2)}%`;
+  return percentage === 0 || percentage >= 1
+    ? `${percentage.toFixed(1)}%`
+    : `${percentage.toFixed(2)}%`;
 }
 
 function formatActualResult(result: ActualResult): string {
-  if (result === "W") {
-    return "win";
-  }
-
-  if (result === "L") {
-    return "loss";
-  }
-
-  return "tie";
+  if (result === "W") return "Win";
+  if (result === "L") return "Loss";
+  return "Tie";
 }
 
 function formatDateTime(
@@ -312,7 +425,6 @@ function formatDateTime(
 
   if (gameDate) {
     const date = new Date(`${gameDate}T00:00:00Z`);
-
     if (!Number.isNaN(date.getTime())) {
       parts.push(
         date.toLocaleDateString(undefined, {
@@ -326,18 +438,12 @@ function formatDateTime(
   }
 
   const formattedTime = formatGameTime(gameTime);
-
-  if (formattedTime) {
-    parts.push(formattedTime);
-  }
-
+  if (formattedTime) parts.push(formattedTime);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function formatGameTime(gameTime?: string | null): string | null {
-  if (!gameTime) {
-    return null;
-  }
+  if (!gameTime) return null;
 
   const [hourText, minuteText] = gameTime.split(":");
   const hour = Number(hourText);
@@ -356,6 +462,5 @@ function formatGameTime(gameTime?: string | null): string | null {
 
   const period = hour >= 12 ? "PM" : "AM";
   const displayHour = hour % 12 || 12;
-
   return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
 }

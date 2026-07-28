@@ -1,6 +1,7 @@
 import {
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -58,7 +59,7 @@ describe("WinProbabilityCell", () => {
         name: /Seattle Seahawks vs\. Buffalo Bills/,
       }),
     ).toHaveAccessibleName(
-      /64\.0% chance to win · Projected/,
+      "Seattle Seahawks vs. Buffalo Bills, Week 1, Projected, 64.0% chance to win",
     );
   });
 
@@ -91,17 +92,27 @@ describe("WinProbabilityCell", () => {
 
     await user.hover(cellButton);
 
-    expect(
-      screen.getByRole("tooltip"),
-    ).toHaveTextContent(
-      "Seattle Seahawks vs. Buffalo Bills",
-    );
+    const tooltip = screen.getByRole("tooltip");
 
     expect(
-      screen.getByRole("tooltip"),
-    ).toHaveTextContent(
-      "Sep 9, 2026 · 8:20 PM",
-    );
+      within(tooltip).getByText(
+        "Seattle Seahawks vs. Buffalo Bills",
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      within(tooltip).getByText(
+        "Week 1 · Sep 9, 2026 · 8:20 PM",
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      within(tooltip).getByText(
+        "Projected · 64.0% chance to win",
+      ),
+    ).toBeInTheDocument();
+
+    expect(tooltip.parentElement).toBe(document.body);
 
     await user.unhover(cellButton);
 
@@ -133,6 +144,56 @@ describe("WinProbabilityCell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("portals and clamps a tooltip near the top-right viewport edge", async () => {
+    const user = userEvent.setup();
+
+    const rectSpy = vi
+      .spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      )
+      .mockReturnValue({
+        top: 12,
+        bottom: 48,
+        left: 1180,
+        right: 1230,
+        width: 50,
+        height: 36,
+        x: 1180,
+        y: 12,
+        toJSON: () => ({}),
+      });
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+
+    renderCell();
+
+    await user.hover(
+      screen.getByRole("button", {
+        name: /Seattle Seahawks vs\. Buffalo Bills/,
+      }),
+    );
+
+    const tooltip = screen.getByRole("tooltip");
+
+    expect(tooltip.parentElement).toBe(document.body);
+    expect(tooltip).toHaveAttribute(
+      "data-placement",
+      "below",
+    );
+    expect(tooltip).toHaveStyle({
+      position: "fixed",
+      left: "912px",
+      top: "56px",
+      width: "360px",
+    });
+
+    rectSpy.mockRestore();
+  });
+
   it("renders played result context", () => {
     renderCell({
       state: "played",
@@ -144,7 +205,7 @@ describe("WinProbabilityCell", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Played — win/,
+        name: /Played, Win/,
       }),
     ).toBeInTheDocument();
   });

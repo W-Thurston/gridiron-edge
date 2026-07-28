@@ -830,7 +830,7 @@ describe("PlayoffProjections", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Seattle Seahawks vs\. Buffalo Bills · Week 1 ·/,
+        name: /Seattle Seahawks vs\. Buffalo Bills, Week 1, Projected, 64\.0% chance to win/,
       }),
     ).toHaveTextContent("64%");
 
@@ -920,6 +920,7 @@ describe("PlayoffProjections", () => {
       }),
     ).not.toBeInTheDocument();
   });
+
   it("preserves filters while switching projection views", async () => {
     const user = userEvent.setup();
     renderScreen();
@@ -952,6 +953,50 @@ describe("PlayoffProjections", () => {
       }),
     ).toBeInTheDocument();
   });
+
+  it("uses the same team identity content in both projection views", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const playoffTeamButton = screen.getByRole(
+      "button",
+      {
+        name: "Seattle Seahawks",
+      },
+    );
+
+    const playoffTeamRow =
+      playoffTeamButton.closest("tr");
+
+    expect(playoffTeamRow).not.toBeNull();
+
+    if (playoffTeamRow) {
+      expect(
+        within(playoffTeamRow).getByText("NFC West"),
+      ).toBeInTheDocument();
+    }
+
+    await openWeeklyOutcomes(user);
+
+    const weeklyTeamButton = screen.getByRole(
+      "button",
+      {
+        name: "Seattle Seahawks",
+      },
+    );
+
+    const weeklyTeamRow =
+      weeklyTeamButton.closest("tr");
+
+    expect(weeklyTeamRow).not.toBeNull();
+
+    if (weeklyTeamRow) {
+      expect(
+        within(weeklyTeamRow).getByText("NFC West"),
+      ).toBeInTheDocument();
+    }
+  });
+
   it("renders played and projected groups with a boundary", async () => {
     const user = userEvent.setup();
 
@@ -999,7 +1044,7 @@ describe("PlayoffProjections", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Played — win/,
+        name: /Seattle Seahawks vs\. Buffalo Bills, Week 1, Played, Win/,
       }),
     ).toBeInTheDocument();
 

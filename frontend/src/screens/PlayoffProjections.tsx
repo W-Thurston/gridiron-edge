@@ -420,9 +420,12 @@ export function PlayoffProjections() {
                         }}
                       >
                         <td style={{ padding: "10px 14px 10px 0" }}>
-                          <TeamIdentity
-                            projection={projection}
+                          <ProjectionTeamIdentity
+                            abbr={projection.abbr}
+                            name={projection.name}
                             metadata={metadata}
+                            clinched={projection.clinched}
+                            eliminated={projection.eliminated}
                             onNavigate={() =>
                               navigate("/teams", {
                                 team: projection.abbr,
@@ -618,7 +621,7 @@ function ProjectionViewButton({
         padding: "5px 11px",
         border: 0,
         borderRadius: 3,
-        background: active
+        backgroundColor: active
           ? "var(--pos)"
           : "transparent",
         color: active
@@ -784,14 +787,15 @@ function WeeklyOutcomesGrid({
                     left: 0,
                     zIndex: 3,
                     minWidth: 220,
-                    padding: "8px 12px",
+                    padding: "10px 14px 10px 0",
                     background: "var(--bg)",
                     borderRight:
                       "1px solid var(--line)",
                   }}
                 >
-                  <WeeklyTeamIdentity
-                    projection={projection}
+                  <ProjectionTeamIdentity
+                    abbr={projection.abbr}
+                    name={projection.name}
                     metadata={metadata}
                     onNavigate={() =>
                       onNavigateTeam(projection.abbr)
@@ -844,63 +848,6 @@ function WeeklyOutcomesGrid({
         }
       />
     </>
-  );
-}
-
-function WeeklyTeamIdentity({
-  projection,
-  metadata,
-  onNavigate,
-}: {
-  projection: ProjectionGridTeam;
-  metadata: TeamMetadataItem | undefined;
-  onNavigate: () => void;
-}) {
-  const division = formatDivision(
-    metadata?.conference,
-    metadata?.division,
-  );
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-      }}
-    >
-      <TeamMark abbr={projection.abbr} />
-
-      <div style={{ minWidth: 0 }}>
-        <button
-          type="button"
-          onClick={onNavigate}
-          style={{
-            display: "block",
-            padding: 0,
-            border: 0,
-            background: "transparent",
-            color: "var(--ink-2)",
-            font: "inherit",
-            textAlign: "left",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {projection.name}
-        </button>
-
-        <div
-          style={{
-            marginTop: 2,
-            color: "var(--ink-4)",
-            fontSize: 9,
-          }}
-        >
-          {division ?? "Metadata unavailable"}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -985,13 +932,19 @@ function WeeklyOutcomesLegend({
   );
 }
 
-function TeamIdentity({
-  projection,
+function ProjectionTeamIdentity({
+  abbr,
+  name,
   metadata,
+  clinched,
+  eliminated,
   onNavigate,
 }: {
-  projection: ProjectionItem;
+  abbr: string;
+  name: string;
   metadata: TeamMetadataItem | undefined;
+  clinched?: boolean | null;
+  eliminated?: boolean | null;
   onNavigate: () => void;
 }) {
   const division = formatDivision(
@@ -1008,7 +961,7 @@ function TeamIdentity({
         minWidth: 210,
       }}
     >
-      <TeamMark abbr={projection.abbr} />
+      <TeamMark abbr={abbr} />
 
       <div style={{ minWidth: 0, flex: 1 }}>
         <button
@@ -1019,14 +972,14 @@ function TeamIdentity({
             width: "100%",
             padding: 0,
             border: 0,
-            background: "transparent",
+            backgroundColor: "transparent",
             color: "var(--ink-2)",
             font: "inherit",
             textAlign: "left",
             cursor: "pointer",
           }}
         >
-          {projection.name}
+          {name}
         </button>
 
         <div
@@ -1040,11 +993,13 @@ function TeamIdentity({
             fontSize: 10,
           }}
         >
-          <span>{division ?? "Metadata unavailable"}</span>
+          <span>
+            {division ?? "Metadata unavailable"}
+          </span>
 
           <StatusPill
-            clinched={projection.clinched}
-            eliminated={projection.eliminated}
+            clinched={clinched}
+            eliminated={eliminated}
           />
         </div>
       </div>

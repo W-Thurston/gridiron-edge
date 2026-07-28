@@ -152,6 +152,22 @@ regular-season game.
 - [ ] Complete a real-data visual pass.
 - [ ] Re-close Tier 1 documentation.
 
+##### D. Weekly-grid visual refinement
+
+- [x] Render weekly tooltips through a viewport-level portal.
+- [x] Clamp tooltip positioning at the top, left, and right viewport edges.
+- [x] Format tooltip content as matchup, schedule, and outcome rows.
+- [x] Preserve game details through both hover and keyboard focus.
+- [x] Replace separate team identity implementations with one shared
+      projections-team identity.
+- [x] Use identical team-column content styling across Playoff Chances and
+      Weekly Outcomes.
+- [x] Defer probability-cell texture pending color-vision review; percentages
+      and accessible labels remain the primary non-color encoding.
+- [x] Update primitive and screen tests.
+- [x] Run `pnpm build && pnpm test:run`.
+- [ ] Repeat the real-data visual pass.
+
 ---
 
 ## Paused Workstreams
