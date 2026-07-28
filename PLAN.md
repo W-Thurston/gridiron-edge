@@ -125,13 +125,16 @@ regular-season game.
 - [x] Verify weekly probability behavior for played weeks, projected weeks, ties, and byes.
 - [x] Add projections-grid schemas.
 - [x] Add static loader composition from season grid, schedule, actuals, and team mappings.
-- [ ] Add hand-written serializer and `_meta.field_status` behavior.
+- [x] Add hand-written serializer and `_meta.field_status` behavior.
 - [ ] Add `/projections/grid` route.
 - [ ] Test played win/loss/tie, projected game, bye, and missing data.
 - [ ] Regenerate `api-schema.json` and the TypeScript client schema.
 - [ ] Verify the real preseason response.
 - [ ] Run backend and frontend contract gates.
-- [ ] Commit the grid-contract unit.
+- [x] Commit the grid schema contract.
+- [x] Commit the grid source-loader unit.
+- [x] Commit the grid serializer unit.
+- [ ] Commit the route/generated-contract unit.
 
 ##### C. Weekly-grid frontend
 

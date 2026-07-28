@@ -8,14 +8,30 @@ from fastapi import APIRouter, Query
 
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.loaders import (
+    load_projection_grid_data,
     load_projections_summary_df,
     load_team_name_map,
     resolve_current_season_week,
 )
-from gridiron_edge.api.schemas.projections import ProjectionsList
-from gridiron_edge.api.serializers.projections import serialize_projections
+from gridiron_edge.api.schemas.projections import (
+    ProjectionGridResponse,
+    ProjectionsList,
+)
+from gridiron_edge.api.serializers.projections import (
+    serialize_projection_grid,
+    serialize_projections,
+)
 
 router = APIRouter(prefix="/projections", tags=["projections"])
+
+
+@router.get("/grid", response_model=ProjectionGridResponse)
+def get_projection_grid(
+    settings: SettingsDep,
+) -> ProjectionGridResponse:
+    """Return weekly regular-season win probabilities for all teams."""
+    data = load_projection_grid_data(settings)
+    return serialize_projection_grid(data)
 
 
 @router.get("", response_model=ProjectionsList)

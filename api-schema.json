@@ -3665,6 +3665,211 @@
         "title": "ProjectionBlock",
         "type": "object"
       },
+      "ProjectionGridResponse": {
+        "additionalProperties": false,
+        "description": "Response for GET /projections/grid.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "completed_through_week": {
+            "default": 0,
+            "description": "Last completed regular-season week. Zero means no regular-season games have been completed.",
+            "maximum": 18.0,
+            "minimum": 0.0,
+            "title": "Completed Through Week",
+            "type": "integer"
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGridTeam"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "regular_season_weeks": {
+            "default": 18,
+            "minimum": 1.0,
+            "title": "Regular Season Weeks",
+            "type": "integer"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "ProjectionGridResponse",
+        "type": "object"
+      },
+      "ProjectionGridTeam": {
+        "additionalProperties": false,
+        "description": "One team's complete regular-season weekly projection row.",
+        "properties": {
+          "abbr": {
+            "title": "Abbr",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weeks": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGridWeek"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "abbr",
+          "name",
+          "weeks"
+        ],
+        "title": "ProjectionGridTeam",
+        "type": "object"
+      },
+      "ProjectionGridWeek": {
+        "additionalProperties": false,
+        "description": "One team's schedule and outcome context for one regular-season week.",
+        "properties": {
+          "actual_result": {
+            "anyOf": [
+              {
+                "enum": [
+                  "W",
+                  "L",
+                  "T"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Result"
+          },
+          "game_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Date"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "game_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Time"
+          },
+          "is_home": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Home"
+          },
+          "opponent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opponent"
+          },
+          "state": {
+            "enum": [
+              "played",
+              "projected",
+              "bye",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "week": {
+            "maximum": 18.0,
+            "minimum": 1.0,
+            "title": "Week",
+            "type": "integer"
+          },
+          "win_probability": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team win probability for the week. For played games, the current simulation artifact contains the fixed outcome rather than an archived pregame forecast.",
+            "title": "Win Probability"
+          }
+        },
+        "required": [
+          "week",
+          "state"
+        ],
+        "title": "ProjectionGridWeek",
+        "type": "object"
+      },
       "ProjectionsList": {
         "additionalProperties": false,
         "description": "Response for GET /projections.",
@@ -6810,6 +7015,28 @@
           }
         },
         "summary": "Get Projections",
+        "tags": [
+          "projections"
+        ]
+      }
+    },
+    "/projections/grid": {
+      "get": {
+        "description": "Return weekly regular-season win probabilities for all teams.",
+        "operationId": "get_projection_grid_projections_grid_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionGridResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Projection Grid",
         "tags": [
           "projections"
         ]
