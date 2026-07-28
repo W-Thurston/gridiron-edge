@@ -124,28 +124,28 @@ Rebuild `/projections` as a compact, sortable simulation-probability surface usi
 
 ##### 4. Screen composition and interactions
 
-- [ ] Inspect NavContext and an existing team-selection callsite before wiring navigation.
-- [ ] Rebuild the screen header and explanatory copy.
-- [ ] Add the simulation-run metadata cluster.
-- [ ] Add All / AFC / NFC filters using `Pill`.
-- [ ] Memoize team metadata by abbreviation.
-- [ ] Enrich team identity with conference and division.
-- [ ] Add local sort state and immutable filter/sort derivation.
-- [ ] Implement default Win SB descending order.
-- [ ] Implement useful first-click direction and active-column toggling.
-- [ ] Keep null values last in both directions.
-- [ ] Render the five probability columns through `HeatCell`.
-- [ ] Render average wins to one decimal.
-- [ ] Add compact positive/negative/neutral Elo-delta treatment.
-- [ ] Surface no-prior-week Elo state visibly.
-- [ ] Preserve real clinched/eliminated pills and explain globally pending status.
-- [ ] Add team-profile navigation through the established custom-router pattern.
-- [ ] Correct the ErrorCard title to “Couldn't load projections.”
-- [ ] Preserve actionable empty-state copy.
-- [ ] Add horizontal overflow without silently hiding probability stages.
-- [ ] Add screen tests for sorting, filtering, metadata, missing metadata, Elo states, status pills, navigation, error, and empty results.
-- [ ] Run `pnpm build && pnpm test:run`.
-- [ ] Commit the screen rebuild as one unit.
+- [x] Inspect NavContext and an existing team-selection callsite before wiring navigation.
+- [x] Rebuild the screen header and explanatory copy.
+- [x] Add the simulation-run metadata cluster.
+- [x] Add All / AFC / NFC filters using `Pill`.
+- [x] Memoize team metadata by abbreviation.
+- [x] Enrich team identity with conference and division.
+- [x] Add local sort state and immutable filter/sort derivation.
+- [x] Implement default Win SB descending order.
+- [x] Implement useful first-click direction and active-column toggling.
+- [x] Keep null values last in both directions.
+- [x] Render the five probability columns through `HeatCell`.
+- [x] Render average wins to one decimal.
+- [x] Add compact positive/negative/neutral Elo-delta treatment.
+- [x] Surface no-prior-week Elo state visibly.
+- [x] Preserve real clinched/eliminated pills and explain globally pending status.
+- [x] Add team-profile navigation through the established custom-router pattern.
+- [x] Correct the ErrorCard title to “Couldn't load projections.”
+- [x] Preserve actionable empty-state copy.
+- [x] Add horizontal overflow without silently hiding probability stages.
+- [x] Add screen tests for sorting, filtering, metadata, missing metadata, Elo states, status pills, navigation, error, and empty results.
+- [x] Run `pnpm build && pnpm test:run`.
+- [x] Commit the screen rebuild as one unit.
 
 ##### 5. Real-data verification and Tier close-out
 

@@ -1,4 +1,4 @@
-type SortDirection = "asc" | "desc";
+export type SortDirection = "asc" | "desc";
 
 type SortableHeaderProps = {
   label: string;
@@ -32,9 +32,7 @@ export function SortableHeader({
       scope="col"
       aria-sort={ariaSort}
       style={{
-        padding: align === "right"
-          ? "8px 12px 8px 0"
-          : "8px 12px 8px 0",
+        padding: "8px 12px 8px 0",
         textAlign: align,
       }}
     >
