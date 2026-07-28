@@ -149,15 +149,32 @@ Rebuild `/projections` as a compact, sortable simulation-probability surface usi
 
 ##### 5. Real-data verification and Tier close-out
 
-- [ ] Run the API and frontend against the populated projections artifact.
-- [ ] Verify all 32 teams under the All filter.
-- [ ] Verify AFC and NFC subsets against team metadata.
-- [ ] Verify each sortable column in both directions.
-- [ ] Verify Week 1 Elo unavailability in normal and highlight modes.
-- [ ] Verify heat-cell readability across low and high probabilities.
-- [ ] Verify the normal centered layout and a narrow viewport.
-- [ ] Verify keyboard operation for filters, sort headers, and team navigation.
-- [ ] Run final frontend and targeted backend quality gates.
+- [x] Run the API and frontend against the populated projections artifact.
+- [x] Verify all 32 teams under the All filter.
+- [x] Verify AFC and NFC subsets against team metadata.
+- [x] Verify each sortable column in both directions.
+- [x] Verify Week 1 Elo unavailability in normal and highlight modes.
+- [x] Verify heat-cell readability across low and high probabilities.
+- [x] Verify the normal centered layout and a narrow viewport.
+- [x] Verify keyboard operation for filters, sort headers, and team navigation.
+- [x] Run targeted Ruff checks for all Python files changed by Tier 1.
+- [x] Run Pyrefly.
+- [x] Run targeted projections backend tests.
+- [x] Run the full frontend build and test suite.
+- [x] Convert HeatCell from inset pill to full table-cell heat fill.
+- [x] Update HeatCell tests for table-cell semantics.
+- [ ] Replace conference pills with dependent conference/division selects.
+- [ ] Add current Elo from the existing `/teams` composition.
+- [ ] Add current record from the existing `/teams` composition.
+- [ ] Add `/teams.as_of_week` beside the season metadata.
+- [ ] Move Elo delta into a dedicated sortable column.
+- [ ] Suppress repeated no-prior-snapshot warnings during Week 1.
+- [ ] Add a single Week 1 Elo-delta caveat to the legend.
+- [ ] Update PlayoffProjections screen tests.
+- [ ] Verify the revised continuous heat matrix against the original static-table visual language.
+- [ ] Run `pnpm build && pnpm test:run`.
+- [ ] Commit the refinement in small units.
+- [ ] Repository-wide Ruff: pre-existing PLR0917 findings remain outside W9.11 scope; track separately rather than refactoring unrelated APIs, CLI entrypoints, tests, and Numba simulation signatures.
 - [ ] Collapse Tier 1 detail in PLAN.md to a completion summary.
 - [ ] Mark Tier 1 complete in ROADMAP.md.
 - [ ] Add CHANGELOG and HANDOFF updates if the final primitive inventory or public API contract changed.

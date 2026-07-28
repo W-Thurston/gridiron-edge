@@ -9,35 +9,42 @@ type HeatCellProps = {
 };
 
 /**
- * Renders a normalized probability using a fixed 0–1 heat scale.
+ * Table cell for a normalized probability using a fixed 0–1 heat scale.
  *
- * The numeric value remains the primary encoding; background intensity
- * provides a consistent secondary comparison across probability columns.
+ * The numeric value remains the primary encoding. The background fills
+ * the entire table cell so probability columns form a continuous matrix.
  */
-export function HeatCell({ value, label, status }: HeatCellProps) {
+export function HeatCell({
+  value,
+  label,
+  status,
+}: HeatCellProps) {
   if (value == null) {
-    if (status === "pending") {
-      return <PendingField />;
-    }
-
-    if (status) {
-      return (
-        <BlockedField
-          blocker={status.blocker}
-          roadmap={status.roadmap}
-        />
-      );
-    }
-
     return (
-      <span
-        className="mono tnum"
-        title={`${label}: not available`}
-        aria-label={`${label}: not available`}
-        style={{ color: "var(--ink-4)" }}
+      <td
+        style={{
+          padding: "10px 12px",
+          textAlign: "right",
+          color: "var(--ink-4)",
+        }}
       >
-        N/A
-      </span>
+        {status === "pending" ? (
+          <PendingField />
+        ) : status ? (
+          <BlockedField
+            blocker={status.blocker}
+            roadmap={status.roadmap}
+          />
+        ) : (
+          <span
+            className="mono tnum"
+            title={`${label}: not available`}
+            aria-label={`${label}: not available`}
+          >
+            N/A
+          </span>
+        )}
+      </td>
     );
   }
 
@@ -46,21 +53,18 @@ export function HeatCell({ value, label, status }: HeatCellProps) {
   const display = formatProbability(value);
 
   return (
-    <span
+    <td
       className="mono tnum"
       aria-label={`${label}: ${formatAccessibleProbability(value)}`}
       style={{
-        display: "inline-flex",
-        minWidth: 44,
-        justifyContent: "flex-end",
-        padding: "4px 6px",
-        borderRadius: 4,
+        padding: "10px 12px",
+        textAlign: "right",
         color: "var(--ink)",
         background: `color-mix(in oklab, var(--pos) ${intensity}%, transparent)`,
       }}
     >
       {display}
-    </span>
+    </td>
   );
 }
 
