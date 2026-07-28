@@ -73,7 +73,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Injury/news feed | ❌ Not started | Blocks W4.5 scenario engine + injury UI fields |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
 | Off/def rating decomposition | ❌ Not started | Blocks off/def ranking tabs, Compare Off/Def mini-stats |
-| Frontend prototype-fidelity backlog | 🟡 Partial | §9.7 (backend gaps) + §9.8 (frontend polish); core screens done, PlayoffProjections + BetSlip rebuilds + blocked-on-data items remain |
+| Frontend prototype-fidelity backlog | 🟡 Partial | §9.7 (backend gaps) + §9.8 (frontend polish); core screens done, BetSlip rebuild + blocked-on-data items remain; PlayoffProjections and Weekly Outcomes are complete. |
 
 ### Known Blockers
 
@@ -176,7 +176,7 @@ the final frontend surface.
   treatment, and team-profile navigation. Composes the existing `/projections`
   and `/teams` static contracts; no request-time computation added.
 
-- **Tier 1 follow-up — Projections navigation and weekly outcomes — ACTIVE.**
+- **Tier 1 follow-up — Projections navigation and weekly outcomes — ✅ COMPLETE (2026-07-28).**
   Add an explicit Team Rankings / Playoff Projections sibling switcher and a
   Weekly Outcomes view. The weekly grid composes the existing season-grid,
   schedule, completed-results, and team-state artifacts into percentage-based
@@ -184,7 +184,7 @@ the final frontend surface.
   bye handling, accessible matchup details, and shared conference/division
   filters.
 
-- **Tier 2 — BetSlip rebuild — NEXT.** Rebuild the slip around verified existing
+- **Tier 2 — BetSlip rebuild — ACTIVE.** Rebuild the slip around verified existing
   probability, bankroll, stake, payout, and EV inputs. Target a Kelly suggestion
   card, bankroll-percentage indicator, EV summary, enhanced leg presentation,
   and quick-stake controls. Lock exact scope only after inspecting the current
@@ -369,11 +369,13 @@ W8 (API) ✅
 ```
 
 
-**Current position:** W9.11 Tier 1 PlayoffProjections is complete and verified
-against the real 32-team artifact.
+**Current position:** W9.11 Tier 1 PlayoffProjections and its navigation /
+Weekly Outcomes follow-up are complete and verified against the real 32-team
+2026–2027 preseason artifact.
 
 - Next: Tier 2 — inspect and lock the current BetSlip probability, EV,
-  bankroll, stake, and payout contracts before deep design.
+  bankroll, stake, payout, sportsbook, and persistence contracts before deep
+  design.
 - Final W9.11 capstone: Tier 0 — pending-highlight audit across the completed
   frontend surface.
 
@@ -753,6 +755,7 @@ Optional / medium workstream. Elo-in-offseason is a reasonable default; this is 
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | **W9.11 Tier 1 follow-up complete.** Added Team Rankings / Playoff Projections sibling navigation and a Weekly Outcomes view backed by the static `/projections/grid` contract. Shipped played/projected grouping, Week 1–18 diverging probability cells, BYE handling, shared filters and team identity, viewport-portaled accessible matchup tooltips, generated contracts, comprehensive tests, and real-data verification. Tier 2 BetSlip is next; Tier 0 remains the final capstone. |
 | 2026-07-28 | **W9.11 Tier 1 complete.** Rebuilt PlayoffProjections with a full-cell probability heat matrix, accessible sorting, dependent conference/division selectors, current Elo and record context, explicit Elo-delta semantics, as-of-week metadata, Week 1-aware unavailable treatment, and team-profile navigation. Composed existing `/projections` and `/teams` contracts without adding request-time computation. Verified against the real 32-team artifact. |
 | 2026-07-28 | **W9.11 Tier 1 design locked.** Moved PlayoffProjections ahead of the deferred audit sweep. Verified the seven-column simulation artifact, metadata sidecar, `/projections` schema/serializer/route, shared team metadata, Pill, custom routing, and design tokens. Preserved AVG_WINS as the canonical projection; clarified movement as Elo delta; limited run metadata to season/simulation count/computed time; locked HeatCell, sorting, conference filters, compact 920px table structure, and accessible team navigation. |
 | 2026-07-28 | **W9.11 design resync.** Updated PlayoffProjections scope after verifying the real `/projections` response, `projections_summary.csv`, metadata sidecar, loader, and team-metadata path. Preserved `AVG_WINS` as the canonical projection; clarified trend as Elo delta; replaced speculative model metadata with truthful simulation-run metadata; deferred true probability movement and fabricated projected records. Marked BetSlip scope contract-dependent pending its deep-design verification pass. |

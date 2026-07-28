@@ -83,93 +83,39 @@ Verified against the real 32-team Week 1 artifact. All targeted backend gates,
 frontend build, and frontend tests pass. Repository-wide Ruff still reports
 pre-existing PLR0917 findings outside this workstream.
 
-#### Tier 1 follow-up — Projections navigation and weekly outcomes — ACTIVE
+#### Tier 1 follow-up — Projections navigation and weekly outcomes — ✅ COMPLETE (2026-07-28)
 
-**Goal**
+Extended the PlayoffProjections rebuild with explicit sibling navigation
+between Team Rankings and Playoff Projections and a league-wide Weekly
+Outcomes view.
 
-Connect Team Rankings and Playoff Projections as sibling views, then add a
-league-wide weekly schedule grid that displays each team's chance to win every
-regular-season game.
+Shipped:
 
-**Locked decisions**
+- Shared Team Rankings / Playoff Projections navigation on both screens.
+- Static `GET /projections/grid` contract composed from the weekly simulation
+  grid, schedule, completed results, and unified team mappings.
+- Explicit played, projected, bye, and unavailable weekly states.
+- Full-cell Week 1–18 win-probability matrix using a fixed diverging
+  red-neutral-green scale centered at 50%.
+- Grouped Played Games / Projected Games headers with a clear transition
+  boundary.
+- Sticky team column using the same team identity and surface treatment as the
+  Playoff Chances view.
+- Conference and dependent division filtering shared across both projections
+  views, with selections preserved while switching views.
+- Viewport-portaled matchup tooltips with top/left/right edge clamping,
+  responsive width, and centered matchup, schedule, and outcome rows.
+- Pointer-hover and keyboard-focus access to opponent, home/away perspective,
+  week, date, time, probability, state, and actual result.
+- Explicit BYE treatment distinct from a zero-percent game.
+- Generated OpenAPI and TypeScript contracts for the new endpoint.
 
-- Add a shared Team Rankings / Playoff Projections switcher to both screens.
-- Add Weekly Outcomes as a local view within Playoff Projections.
-- Weekly rows are teams; columns are Weeks 1–18.
-- Scheduled-game cells display win probability, not W/L labels.
-- Weekly probability color uses a diverging red → neutral → green scale
-  centered at 50%.
-- Bye weeks render as explicit neutral BYE cells.
-- Played and projected games are divided through grouped headers and a
-  stronger vertical boundary.
-- Tooltips use the row team's perspective: `vs.` for home, `at` for away.
-- Tooltip details include opponent, week, date, time, played/projected state,
-  and actual result when available.
-- Conference and dependent division filtering is shared across projections
-  views.
-- The grid is a static artifact composition; the API does not run simulation
-  or perform new model computation.
+Verified against the real 32-team 2026–2027 preseason artifact. Backend and
+frontend quality gates pass, and the final real-data visual review is clean.
 
-##### A. Teams / projections sibling navigation
-
-- [x] Add shared `TeamViewSwitcher`.
-- [x] Add focused navigation and active-state tests.
-- [x] Add the switcher above `TeamsScreen`.
-- [x] Add the switcher above `PlayoffProjections`.
-- [x] Run `pnpm build && pnpm test:run`.
-- [x] Commit the sibling-navigation unit.
-
-##### B. Weekly-grid API contract
-
-- [x] Inspect completed-games columns and current outcome conventions.
-- [x] Add projections-grid schemas.
-- [x] Add static loader composition from season grid, schedule, actuals, and team mappings.
-- [x] Verify and test weekly probability behavior for played wins, losses, ties, projected games, and byes.
-- [x] Add hand-written serializer and `_meta.field_status` behavior.
-- [x] Add `/projections/grid` route.
-- [x] Add route integration coverage.
-- [x] Regenerate `api-schema.json` and the TypeScript client schema.
-- [x] Verify the real preseason response.
-- [x] Run backend and frontend contract gates.
-- [x] Commit the grid schema contract.
-- [x] Commit the grid source-loader unit.
-- [x] Commit the grid serializer unit.
-- [x] Commit the route/generated-contract unit.
-
-##### C. Weekly-grid frontend
-
-- [x] Add the `/projections/grid` React Query hook.
-- [x] Add full-cell `WinProbabilityCell` with a fixed diverging scale.
-- [x] Add accessible hover/focus game-detail treatment.
-- [x] Add Playoff Chances / Weekly Outcomes local view selection.
-- [x] Add grouped Played Games / Projected Games headers.
-- [x] Add the played/projected boundary.
-- [x] Add a sticky Team column.
-- [x] Render BYE distinctly from a zero-percent game.
-- [x] Reuse conference and dependent division filtering.
-- [x] Test all-projected preseason and mixed played/projected fixtures.
-- [x] Run focused and full frontend quality gates.
-- [ ] Complete a real-data visual pass.
-- [ ] Re-close Tier 1 documentation.
-
-##### D. Weekly-grid visual refinement
-
-- [x] Render weekly tooltips through a viewport-level portal.
-- [x] Clamp tooltip positioning at the top, left, and right viewport edges.
-- [x] Format tooltip content as matchup, schedule, and outcome rows.
-- [x] Increase tooltip readability and accommodate long team names.
-- [x] Center tooltip content.
-- [x] Preserve game details through both hover and keyboard focus.
-- [x] Replace separate team identity implementations with one shared
-      projections-team identity.
-- [x] Use identical team-column content styling across Playoff Chances and
-      Weekly Outcomes.
-- [x] Match the Weekly Outcomes sticky team column to the default card surface.
-- [x] Defer probability-cell texture pending color-vision review; percentages
-      and accessible labels remain the primary non-color encoding.
-- [x] Update primitive and screen tests.
-- [x] Run `pnpm build && pnpm test:run`.
-- [x] Repeat the real-data visual pass.
+Probability-cell texture remains deferred pending color-vision review because
+numeric percentages, explicit bye states, grouped headers, and accessible
+labels already provide non-color encodings.
 
 ---
 
@@ -205,6 +151,7 @@ Two-mode matchup surface. **Team vs Team** and **Player vs Defense**, both proto
 
 | Date | Change |
 |------|--------|
+| 2026-07-28 | Closed the PlayoffProjections navigation and Weekly Outcomes follow-up after real-data verification. |
 | 2026-07-12 | **Doc-sync pass + PLAN reset.** Normalized planning docs after the frontend arc; PLAN reset to between-workstreams with a next-candidates list (audit sweep recommended). |
 | 2026-07-11 | **W9.10 complete.** Both Compare modes shipped on backend B1–B4. Fixed game_id scramble, clean-games clobber, Elo empty-games crash; added champion→elo fallback + upcoming-Week-1 season resolver. |
 | 2026-07-11 | **W9.10 status resync.** Team vs Team complete (6 alignment adjustments + 11-metric cohort_splits). Player vs Defense redesigned to independent pickers + bar chart + baseline verdict. |

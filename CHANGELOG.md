@@ -3,6 +3,85 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-28 — PlayoffProjections navigation and Weekly Outcomes
+
+Extended the PlayoffProjections rebuild with explicit navigation from Team
+Rankings and a league-wide weekly schedule-probability matrix.
+
+### Navigation
+
+- Added a shared Team Rankings / Playoff Projections sibling switcher.
+- Added the switcher above both screens with active-page semantics and route
+  coverage.
+- Preserved `/teams?team={abbr}` navigation from both projections views.
+
+### Weekly Outcomes API
+
+- Added `GET /projections/grid`.
+- Added frozen Pydantic schemas for the response, team rows, and weekly states.
+- Added a static source container and loader for:
+  - `data/output/temp/season_grid.csv`;
+  - the cleaned upcoming schedule;
+  - completed regular-season games;
+  - unified long-name / abbreviation mappings.
+- Added hand-written serialization for played, projected, bye, and unavailable
+  states.
+- Added opponent, home/away perspective, game ID, date, time, weekly win
+  probability, actual W/L/T result, and `completed_through_week`.
+- Determined byes from schedule membership rather than treating a
+  `Wxx_WIN_P == 0` artifact value as a bye or loss.
+- Added `no_schedule_data` field-status metadata.
+- Regenerated `api-schema.json` and `frontend/src/api/schema.ts`.
+
+### Weekly Outcomes frontend
+
+- Added the `useProjectionGrid` React Query hook.
+- Added `WinProbabilityCell`, a full-table-cell primitive using a fixed
+  diverging red-neutral-green scale centered at 50%.
+- Added Playoff Chances / Weekly Outcomes local views.
+- Added Week 1–18 rows with:
+  - grouped Played Games / Projected Games headers;
+  - a clear played/projected boundary;
+  - explicit BYE cells;
+  - a sticky Team column;
+  - shared conference and dependent division filters.
+- Preserved filters while switching local views.
+- Reused one team-identity implementation across Playoff Chances and Weekly
+  Outcomes.
+
+### Matchup details and accessibility
+
+- Added pointer-hover and keyboard-focus matchup details.
+- Portaled tooltips to `document.body` so the horizontal-scroll container does
+  not clip them.
+- Added viewport clamping at top, left, and right edges.
+- Added responsive tooltip width for long team names.
+- Formatted tooltips as three centered rows:
+  - team matchup;
+  - week, date, and time;
+  - projected chance to win or played result.
+- Kept numeric percentages, explicit BYE labels, grouped headers, and
+  accessible names as non-color encodings.
+
+### Verification
+
+- Verified the real response contains 32 teams and 18 weekly entries per team
+  for the 2026–2027 preseason artifact.
+- Verified `completed_through_week = 0` in the preseason state.
+- Verified scheduled games include opponent, venue perspective, date, time,
+  and probability.
+- Verified Arizona Week 14 is a confirmed BYE with null probability rather
+  than a zero-percent game.
+- Verified conference and division filtering, local-view state persistence,
+  played/projected grouping, sticky team identity, tooltip edge behavior,
+  keyboard access, narrow-width scrolling, and long matchup names.
+- Backend quality gates, frontend build, focused tests, and the full frontend
+  test suite pass.
+
+### Deferred
+
+- Probability-cell texture remains deferred pending color-vision review.
+
 ## 2026-07-28 — PlayoffProjections rebuild
 
 Rebuilt the playoff-projections screen as a live, interactive counterpart to

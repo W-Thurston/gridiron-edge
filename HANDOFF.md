@@ -88,7 +88,7 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
 | `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
 | `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
-| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart, HeatCell, SortableHeader) — used across many screens |
+| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart, HeatCell, SortableHeader, WinProbabilityCell) — used across many screens |
 | `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
 | `frontend/src/components/compare/` | Compare-specific components (TeamPicker) | | `frontend/src/components/dev/` | Dev panel (floating highlight-mode toggle, W9.8) |
 | `frontend/src/components/field-status/` | PendingField, BlockedField, FieldValue, PendingChip, ComingSoonCard, usePendingHighlight |
@@ -110,7 +110,9 @@ data/
     rankings/percentiles/                 per-team percentile ranks (from sim)
     rankings/team_cohort_splits.parquet   4-cohort × 11-metric team splits
     sim/                                  playoff probability tables
-    temp/projections_summary.csv + projections_metadata.json sim
+    temp/projections_summary.csv
+    temp/projections_metadata.json
+    temp/season_grid.csv
     props/
       prop_predictions_log.parquet            prop prediction archive (all models)
       opponent_allowed.parquet                per-defense-position allowed, 4 cohorts
@@ -146,20 +148,59 @@ Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
 
 ## Key design decisions
 
-### Playoff projections compose simulation and team-state contracts
+### Playoff projections compose static simulation and team-state contracts
 
-`/projections` owns simulation outputs: average wins, five postseason-stage
-probabilities, Elo delta, run metadata, and future clinched/eliminated state.
+`/projections` owns postseason simulation outputs: average wins, five
+postseason-stage probabilities, Elo delta, run metadata, and future
+clinched/eliminated state.
 
-The PlayoffProjections screen composes `/projections` with the cached `/teams`
+The Playoff Chances view composes `/projections` with the cached `/teams`
 collection for current Elo, current record, conference, division, colors, and
-as-of week. This avoids duplicating current team state in the simulation
-artifact and preserves the API as a static serialization boundary.
+as-of week. Current team state is not duplicated into the simulation artifact.
 
-The public movement field is `elo_delta`, defined as current Elo minus the
-prior same-season week's Elo. At Week 1, the absent prior snapshot is expected:
-rows show a quiet placeholder and the screen explains the condition once in
-the legend. Missing deltas after Week 1 remain visibly unavailable.
+- `GET /projections/grid` — league-wide Week 1–18 team win-probability matrix
+  with played/projected/bye/unavailable state, schedule context, and completed
+  boundary.
+
+- `data/output/temp/season_grid.csv`;
+- the cleaned upcoming schedule;
+- completed regular-season games;
+- the unified long-name / abbreviation mapping.
+
+The serializer constructs one Week 1–18 row per team and classifies each week
+as `played`, `projected`, `bye`, or `unavailable`.
+
+A zero weekly probability does not identify a bye. Bye classification requires
+an available schedule and confirmed absence of a scheduled game for that team
+and week. If the schedule source is unavailable, weekly states are unavailable
+rather than silently rendered as byes.
+
+`completed_through_week` is the last completed regular-season week, capped to
+Weeks 1–18. It is distinct from `/teams.as_of_week`: during the 2026–2027
+preseason, the team collection reports Week 1 context while the weekly grid
+correctly reports `completed_through_week = 0`.
+
+For played games, the weekly probability is the current simulation artifact's
+fixed result, not an archived pregame forecast. `actual_result` preserves W/L/T
+semantics. Projected games expose the simulated chance to win.
+
+The frontend provides two local views:
+
+- Playoff Chances — sortable postseason probability table.
+- Weekly Outcomes — Week 1–18 diverging probability matrix.
+
+Both views share the same conference/division filters and team identity.
+Weekly Outcomes keeps the Team column sticky. Matchup tooltips are portaled to
+the viewport, clamped at screen edges, and available through hover and keyboard
+focus.
+
+The public Elo movement field remains `elo_delta`, defined as current Elo
+minus the prior same-season week's Elo. At Week 1, the absent prior snapshot is
+expected and is explained once rather than repeated as a row-level warning.
+
+These endpoints preserve the API as a static serialization boundary: request
+handling reads existing artifacts and does not run simulation or model
+computation.
 
 ### EPA aggregation is the single PBP funnel
 
@@ -500,6 +541,7 @@ Step 5 audit confirmed all existing loaders comply.
   - `ComingSoonCard` — whole-card blocked/pending placeholder
   - `HeatCell` — table-cell probability renderer with fixed absolute 0–1 heat intensity, accessible numerical labeling, and field-status-aware null states.
   - `SortableHeader` — accessible sortable `<th>` primitive with caller-managed active key/direction and `aria-sort`.
+  - `WinProbabilityCell` — full-table-cell weekly win probability renderer with a fixed diverging scale centered at 50%, explicit bye/unavailable states, and viewport-portaled hover/focus matchup details.
 - **Composed screens pattern:** GameDetail (W9.6) demonstrated the
   pattern for composing multiple endpoints into a single screen. Each
   card in a screen might consume 1-3 different API endpoints. Use
