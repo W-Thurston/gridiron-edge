@@ -48,6 +48,13 @@ Rankings and a league-wide weekly schedule-probability matrix.
 - Preserved filters while switching local views.
 - Reused one team-identity implementation across Playoff Chances and Weekly
   Outcomes.
+- Added sortable Team and Week 1–18 headers.
+- Week sorting cycles from highest chance to win, to lowest chance to win, to
+  default team-name order.
+- BYE and unavailable rows remain last in both probability directions.
+- Equal probabilities use team name as a deterministic tiebreaker.
+- Weekly sorting is applied after conference/division filtering and remains
+  independent from the Playoff Chances sort.
 
 ### Matchup details and accessibility
 
@@ -77,6 +84,9 @@ Rankings and a league-wide weekly schedule-probability matrix.
   keyboard access, narrow-width scrolling, and long matchup names.
 - Backend quality gates, frontend build, focused tests, and the full frontend
   test suite pass.
+- Verified ascending/descending weekly probability sorting, three-state reset,
+  bye-last behavior, filtered sorting, accessible sort metadata, and sort-state
+  persistence across local views.
 
 ### Deferred
 

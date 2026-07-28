@@ -202,6 +202,13 @@ These endpoints preserve the API as a static serialization boundary: request
 handling reads existing artifacts and does not run simulation or model
 computation.
 
+The Team and Week 1–18 headers are sortable. Week headers cycle through
+descending win probability, ascending win probability, and default team-name
+ordering. Confirmed byes and unavailable values remain last in either numeric
+direction; equal probabilities fall back to team-name ascending. Weekly sort
+state is independent from the Playoff Chances table and persists while
+switching local views.
+
 ### EPA aggregation is the single PBP funnel
 
 All PBP-derived game-level features flow through **one transform**:

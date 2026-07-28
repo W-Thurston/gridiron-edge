@@ -19,6 +19,16 @@ import { useNav } from "../context/NavContext";
 type ConferenceFilter = "ALL" | "AFC" | "NFC";
 type DivisionFilter = "ALL" | "N" | "S" | "E" | "W";
 type ProjectionView = "chances" | "weekly";
+type WeeklySort =
+  | {
+      key: "team";
+      direction: SortDirection;
+    }
+  | {
+      key: "week";
+      week: number;
+      direction: SortDirection;
+    };
 
 type SortKey =
   | "team"
@@ -70,6 +80,11 @@ export function PlayoffProjections() {
 
   const [view, setView] =
     useState<ProjectionView>("chances");
+  const [weeklySort, setWeeklySort] =
+    useState<WeeklySort>({
+      key: "team",
+      direction: "asc",
+    });
   const [conference, setConference] =
     useState<ConferenceFilter>("ALL");
   const [division, setDivision] =
@@ -122,18 +137,23 @@ export function PlayoffProjections() {
       metadata: metadataByAbbr.get(projection.abbr),
     }));
 
-    return rows.filter(({ metadata }) =>
+    const filtered = rows.filter(({ metadata }) =>
       matchesTeamFilters(
         metadata,
         conference,
         division,
       ),
     );
+
+    return filtered.toSorted((a, b) =>
+      compareWeeklyRows(a, b, weeklySort),
+    );
   }, [
     conference,
     division,
     gridData?.items,
     metadataByAbbr,
+    weeklySort,
   ]);
 
   const handleSort = (nextKey: SortKey) => {
@@ -146,6 +166,57 @@ export function PlayoffProjections() {
 
     setSortKey(nextKey);
     setSortDirection(nextKey === "team" ? "asc" : "desc");
+  };
+
+  const handleWeeklySort = (
+    nextKey: "team" | number,
+  ) => {
+    if (nextKey === "team") {
+      setWeeklySort((current) => {
+        if (current.key !== "team") {
+          return {
+            key: "team",
+            direction: "asc",
+          };
+        }
+
+        return {
+          key: "team",
+          direction:
+            current.direction === "asc"
+              ? "desc"
+              : "asc",
+        };
+      });
+
+      return;
+    }
+
+    setWeeklySort((current) => {
+      if (
+        current.key !== "week" ||
+        current.week !== nextKey
+      ) {
+        return {
+          key: "week",
+          week: nextKey,
+          direction: "desc",
+        };
+      }
+
+      if (current.direction === "desc") {
+        return {
+          key: "week",
+          week: nextKey,
+          direction: "asc",
+        };
+      }
+
+      return {
+        key: "team",
+        direction: "asc",
+      };
+    });
   };
 
   const handleConferenceChange = (
@@ -586,6 +657,8 @@ export function PlayoffProjections() {
                 data={gridData}
                 rows={visibleWeeklyRows}
                 metadataByAbbr={metadataByAbbr}
+                weeklySort={weeklySort}
+                onSort={handleWeeklySort}
                 weeklyStatus={
                   gridData._meta?.field_status?.[
                     "items.weeks"
@@ -637,17 +710,76 @@ function ProjectionViewButton({
   );
 }
 
+function WeeklySortButton({
+  label,
+  accessibleLabel,
+  active,
+  direction,
+  align,
+  onClick,
+}: {
+  label: string;
+  accessibleLabel?: string;
+  active: boolean;
+  direction?: SortDirection;
+  align: "left" | "center";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={accessibleLabel ?? `Sort by ${label}`}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent:
+          align === "center"
+            ? "center"
+            : "flex-start",
+        gap: 4,
+        width: "100%",
+        minHeight: 31,
+        padding:
+          align === "center"
+            ? "6px 4px"
+            : "8px 12px",
+        border: 0,
+        backgroundColor: "transparent",
+        color: active
+          ? "var(--ink-2)"
+          : "var(--ink-4)",
+        font: "inherit",
+        textAlign: align,
+        cursor: "pointer",
+      }}
+    >
+      <span>{label}</span>
+
+      {active && direction && (
+        <span aria-hidden="true">
+          {direction === "asc" ? "↑" : "↓"}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function WeeklyOutcomesGrid({
   data,
   rows,
   metadataByAbbr,
+  weeklySort,
   weeklyStatus,
+  onSort,
   onNavigateTeam,
 }: {
   data: ProjectionGridData;
   rows: EnrichedWeeklyProjection[];
   metadataByAbbr: Map<string, TeamMetadataItem>;
+  weeklySort: WeeklySort;
   weeklyStatus?: FieldStatus;
+  onSort: (key: "team" | number) => void;
   onNavigateTeam: (abbr: string) => void;
 }) {
   const completedThroughWeek =
@@ -686,12 +818,19 @@ function WeeklyOutcomesGrid({
               <th
                 scope="col"
                 rowSpan={2}
+                aria-sort={
+                  weeklySort.key === "team"
+                    ? weeklySort.direction === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
                 style={{
                   position: "sticky",
                   left: 0,
                   zIndex: 4,
                   minWidth: 220,
-                  padding: "8px 12px",
+                  padding: 0,
                   textAlign: "left",
                   backgroundColor: "var(--bg-1)",
                   color: "var(--ink-3)",
@@ -699,7 +838,17 @@ function WeeklyOutcomesGrid({
                     "1px solid var(--line)",
                 }}
               >
-                Team
+                <WeeklySortButton
+                  label="Team"
+                  active={weeklySort.key === "team"}
+                  direction={
+                    weeklySort.key === "team"
+                      ? weeklySort.direction
+                      : undefined
+                  }
+                  align="left"
+                  onClick={() => onSort("team")}
+                />
               </th>
 
               {playedWeekCount > 0 && (
@@ -747,13 +896,24 @@ function WeeklyOutcomesGrid({
                 const boundary =
                   week === firstProjectedWeek;
 
+                const active =
+                  weeklySort.key === "week" &&
+                  weeklySort.week === week;
+
                 return (
                   <th
                     key={week}
                     scope="col"
+                    aria-sort={
+                      active
+                        ? weeklySort.direction === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
                     style={{
                       minWidth: 54,
-                      padding: "6px 4px",
+                      padding: 0,
                       textAlign: "center",
                       color: "var(--ink-4)",
                       borderLeftWidth: boundary
@@ -765,9 +925,21 @@ function WeeklyOutcomesGrid({
                         : "var(--line-soft)",
                     }}
                   >
-                    W{week}
+                    <WeeklySortButton
+                      label={`W${week}`}
+                      accessibleLabel={`Sort by Week ${week} win probability`}
+                      active={active}
+                      direction={
+                        active
+                          ? weeklySort.direction
+                          : undefined
+                      }
+                      align="center"
+                      onClick={() => onSort(week)}
+                    />
                   </th>
                 );
+
               })}
             </tr>
           </thead>
@@ -1244,6 +1416,77 @@ function compareRows(
 
   const comparison = aValue - bValue;
   return direction === "asc" ? comparison : -comparison;
+}
+
+function compareWeeklyRows(
+  a: EnrichedWeeklyProjection,
+  b: EnrichedWeeklyProjection,
+  sort: WeeklySort,
+): number {
+  const nameComparison =
+    a.projection.name.localeCompare(
+      b.projection.name,
+    );
+
+  if (sort.key === "team") {
+    return sort.direction === "asc"
+      ? nameComparison
+      : -nameComparison;
+  }
+
+  const aValue = getWeeklySortValue(
+    a,
+    sort.week,
+  );
+  const bValue = getWeeklySortValue(
+    b,
+    sort.week,
+  );
+
+  if (aValue == null && bValue == null) {
+    return nameComparison;
+  }
+
+  if (aValue == null) {
+    return 1;
+  }
+
+  if (bValue == null) {
+    return -1;
+  }
+
+  const comparison = aValue - bValue;
+
+  if (comparison === 0) {
+    return nameComparison;
+  }
+
+  return sort.direction === "asc"
+    ? comparison
+    : -comparison;
+}
+
+function getWeeklySortValue(
+  row: EnrichedWeeklyProjection,
+  weekNumber: number,
+): number | null {
+  const week = row.projection.weeks.find(
+    (candidate) =>
+      candidate.week === weekNumber,
+  );
+
+  if (
+    !week ||
+    (
+      week.state !== "played" &&
+      week.state !== "projected"
+    ) ||
+    week.win_probability == null
+  ) {
+    return null;
+  }
+
+  return week.win_probability;
 }
 
 function getSortableValue(

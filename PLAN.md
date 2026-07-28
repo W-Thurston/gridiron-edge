@@ -109,6 +109,9 @@ Shipped:
   week, date, time, probability, state, and actual result.
 - Explicit BYE treatment distinct from a zero-percent game.
 - Generated OpenAPI and TypeScript contracts for the new endpoint.
+- Sortable Team and Week 1–18 columns, with three-state weekly sorting
+  (highest probability, lowest probability, then team-name order) and
+  bye/unavailable rows always last.
 
 Verified against the real 32-team 2026–2027 preseason artifact. Backend and
 frontend quality gates pass, and the final real-data visual review is clean.

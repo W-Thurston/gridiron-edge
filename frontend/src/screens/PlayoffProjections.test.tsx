@@ -290,6 +290,24 @@ async function openWeeklyOutcomes(
   );
 }
 
+function weeklyTeamNames(): string[] {
+  const table = screen.getByRole("table");
+  const rows = within(table)
+    .getAllByRole("row")
+    .slice(2);
+
+  return rows.map((row) => {
+    const teamButton = within(row).getByRole(
+      "button",
+      {
+        name: /^(Seattle Seahawks|Buffalo Bills|Philadelphia Eagles)$/,
+      },
+    );
+
+    return teamButton.textContent ?? "";
+  });
+}
+
 function tableTeamNames(): string[] {
   const rows = screen.getAllByRole("row").slice(1);
 
@@ -995,6 +1013,184 @@ describe("PlayoffProjections", () => {
         within(weeklyTeamRow).getByText("NFC West"),
       ).toBeInTheDocument();
     }
+  });
+
+  it("defaults Weekly Outcomes to team-name ascending", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    expect(weeklyTeamNames()).toEqual([
+      "Buffalo Bills",
+      "Philadelphia Eagles",
+      "Seattle Seahawks",
+    ]);
+
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Sort by Team",
+        })
+        .closest("th"),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("cycles a week through descending, ascending, and team order", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    const weekOneSort = screen.getByRole(
+      "button",
+      {
+        name: "Sort by Week 1 win probability",
+      },
+    );
+
+    await user.click(weekOneSort);
+
+    expect(weeklyTeamNames()).toEqual([
+      "Seattle Seahawks",
+      "Philadelphia Eagles",
+      "Buffalo Bills",
+    ]);
+
+    expect(
+      weekOneSort.closest("th"),
+    ).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+
+    await user.click(weekOneSort);
+
+    expect(weeklyTeamNames()).toEqual([
+      "Buffalo Bills",
+      "Philadelphia Eagles",
+      "Seattle Seahawks",
+    ]);
+
+    expect(
+      weekOneSort.closest("th"),
+    ).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+
+    await user.click(weekOneSort);
+
+    expect(weeklyTeamNames()).toEqual([
+      "Buffalo Bills",
+      "Philadelphia Eagles",
+      "Seattle Seahawks",
+    ]);
+
+    expect(
+      weekOneSort.closest("th"),
+    ).toHaveAttribute(
+      "aria-sort",
+      "none",
+    );
+
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Sort by Team",
+        })
+        .closest("th"),
+    ).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("keeps a bye last in both week-sort directions", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    const weekSevenSort = screen.getByRole(
+      "button",
+      {
+        name: "Sort by Week 7 win probability",
+      },
+    );
+
+    await user.click(weekSevenSort);
+
+    expect(
+      weeklyTeamNames().at(-1),
+    ).toBe("Seattle Seahawks");
+
+    await user.click(weekSevenSort);
+
+    expect(
+      weeklyTeamNames().at(-1),
+    ).toBe("Seattle Seahawks");
+  });
+
+  it("sorts weekly probabilities after conference filtering", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    await user.selectOptions(
+      screen.getByLabelText("Conference"),
+      "NFC",
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Sort by Week 1 win probability",
+      }),
+    );
+
+    expect(weeklyTeamNames()).toEqual([
+      "Seattle Seahawks",
+      "Philadelphia Eagles",
+    ]);
+  });
+
+  it("preserves weekly sorting while switching projection views", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await openWeeklyOutcomes(user);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Sort by Week 1 win probability",
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Playoff Chances",
+      }),
+    );
+
+    await openWeeklyOutcomes(user);
+
+    expect(weeklyTeamNames()).toEqual([
+      "Seattle Seahawks",
+      "Philadelphia Eagles",
+      "Buffalo Bills",
+    ]);
+
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Sort by Week 1 win probability",
+        })
+        .closest("th"),
+    ).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
   });
 
   it("renders played and projected groups with a boundary", async () => {
