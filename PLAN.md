@@ -412,6 +412,28 @@ multipliers to `[0, 1]`, defaults to quarter-Kelly, and prevents silent source
 fallback. React persistence, portfolio loading, and BetSlip integration remain
 isolated to the next unit.
 
+#### F2b. Add persisted tracked/what-if sizing orchestration — ✅ COMPLETE
+
+- [x] Load the tracked bankroll from `/portfolio/summary`.
+- [x] Preserve zero as a valid tracked bankroll.
+- [x] Load and validate `hm-betslip-sizing-v1`.
+- [x] Fall back to the default tracked quarter-Kelly preference for malformed persisted state.
+- [x] Resolve tracked, what-if, or unavailable bankroll provenance.
+- [x] Expose tracked-bankroll loading and error state.
+- [x] Add validated mode, what-if bankroll, and Kelly-multiplier updates.
+- [x] Persist valid sizing-preference changes.
+- [x] Prevent silent source fallback.
+- [x] Keep the legacy AppState bankroll outside BetSlip sizing resolution.
+- [x] Add focused loading, persistence, source-resolution, update, error, and zero-value coverage.
+- [x] Run the frontend build and full test suite.
+- [x] Commit the sizing-hook unit.
+
+The query-aware sizing hook now combines the tracked portfolio bankroll with
+the versioned tracked/what-if preference. It exposes the effective bankroll,
+its explicit provenance, the Kelly multiplier, and tracked loading/error state
+without consulting the legacy AppState bankroll. Live BetSlip integration
+remains isolated to F2c.
+
 ### G. Rebuild the BetSlip presentation
 
 - [ ] Preserve the Available Edges / BetSlip decision-workspace structure where
