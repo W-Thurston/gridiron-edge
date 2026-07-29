@@ -88,6 +88,11 @@ describe("BetSlip", () => {
       });
 
       render(<BetSlip />);
+      expect(
+        screen.getByTestId(
+          "betslip-layout",
+        ),
+      ).toHaveClass("betslip-layout");
 
       expect(
         screen.getByTestId(

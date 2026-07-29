@@ -7,12 +7,8 @@ export function BetSlip() {
 
   return (
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns:
-          "minmax(0, 3fr) minmax(320px, 2fr)",
-        gap: 16,
-      }}
+      className="betslip-layout"
+      data-testid="betslip-layout"
     >
       <EdgesTable
         bankroll={sizing.bankroll}

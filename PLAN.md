@@ -554,6 +554,33 @@ and Kelly remain unavailable because leg correlation is not modeled. The
 interface explicitly states that Gridiron Edge does not execute sportsbook
 wagers.
 
+#### G3a. Polish the responsive edge workspace — ✅ COMPLETE
+
+- [x] Add a stable responsive class for the BetSlip decision workspace.
+- [x] Preserve the two-column Available Edges / Bet Slip layout on wide screens.
+- [x] Stack the two workspace panels at narrow widths.
+- [x] Allow workspace children to shrink without forcing page overflow.
+- [x] Reduce card padding on small screens.
+- [x] Add a horizontally scrollable Available Edges table region.
+- [x] Preserve readable table columns on narrow screens.
+- [x] Add an accessible table caption.
+- [x] Add column-header scopes.
+- [x] Add row-header semantics to matchup cells.
+- [x] Replace array-index row keys with canonical wager IDs.
+- [x] Add wager-specific accessible labels to Add actions.
+- [x] Add an announced loading status.
+- [x] Add concise staging guidance.
+- [x] Improve empty-state guidance while preserving pending and blocked states.
+- [x] Add focused layout, table-semantics, action-label, and empty-state tests.
+- [x] Run the frontend build and full test suite.
+- [x] Commit the responsive edge-workspace unit.
+
+The BetSlip route now uses a CSS-driven responsive workspace that preserves the
+two-column decision layout on wide screens and stacks the panels at narrow
+widths. Available Edges remains readable through a focusable horizontal-scroll
+region and now exposes complete table semantics, canonical row identity,
+wager-specific Add labels, and clearer staging guidance.
+
 ### H. Optional recorded-bet workflow
 
 This section requires separate backend design and is not required to complete

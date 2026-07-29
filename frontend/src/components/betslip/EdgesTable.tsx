@@ -49,7 +49,11 @@ export function EdgesTable({
           marginBottom: 16,
         }}
       >
-        <div className="upper dim" style={{ fontSize: 10 }}>
+        <div
+          id="available-edges-heading"
+          className="upper dim"
+          style={{ fontSize: 10 }}
+        >
           Available Edges
         </div>
         {data && (
@@ -58,8 +62,28 @@ export function EdgesTable({
           </div>
         )}
       </div>
+      <div
+        className="mono dim2"
+        style={{
+          marginBottom: 14,
+          fontSize: 10,
+          lineHeight: 1.5,
+        }}
+      >
+        Stage a model edge, then adjust
+        current odds and proposed stake in
+        the Bet Slip.
+      </div>
 
-      {isLoading && <div className="dim">Loading…</div>}
+      {isLoading && (
+        <div
+          className="dim"
+          role="status"
+          aria-live="polite"
+        >
+          Loading edges…
+        </div>
+      )}
 
       {error && (
         <ErrorCard
@@ -75,26 +99,91 @@ export function EdgesTable({
       )}
 
       {data && (data.items ?? []).length > 0 && (
+      <div
+        className="betslip-edges-scroll"
+        role="region"
+        aria-labelledby="available-edges-heading"
+        tabIndex={0}
+      >
         <table
-          className="mono tnum"
+          className="betslip-edges-table mono tnum"
           style={{
-            width: "100%",
             fontSize: 12,
-            borderCollapse: "collapse",
           }}
         >
+          <caption className="betslip-edges-caption">
+            Available model edges that can
+            be staged in the Bet Slip
+          </caption>
           <thead>
-            <tr style={{ color: "var(--ink-3)", textAlign: "left" }}>
-              <th style={{ padding: "8px 12px 8px 0" }}>Matchup</th>
-              <th style={{ padding: "8px 12px 8px 0" }}>Market</th>
-              <th style={{ padding: "8px 12px 8px 0" }}>Side</th>
-              <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>EV</th>
-              <th style={{ padding: "8px 12px 8px 0" }}>Strength</th>
-              <th style={{ padding: "8px 0" }}></th>
+            <tr
+              style={{
+                color: "var(--ink-3)",
+                textAlign: "left",
+              }}
+            >
+              <th
+                scope="col"
+                style={{
+                  padding:
+                    "8px 12px 8px 0",
+                }}
+              >
+                Matchup
+              </th>
+
+              <th
+                scope="col"
+                style={{
+                  padding:
+                    "8px 12px 8px 0",
+                }}
+              >
+                Market
+              </th>
+
+              <th
+                scope="col"
+                style={{
+                  padding:
+                    "8px 12px 8px 0",
+                }}
+              >
+                Side
+              </th>
+
+              <th
+                scope="col"
+                style={{
+                  padding:
+                    "8px 12px 8px 0",
+                  textAlign: "right",
+                }}
+              >
+                EV
+              </th>
+
+              <th
+                scope="col"
+                style={{
+                  padding:
+                    "8px 12px 8px 0",
+                }}
+              >
+                Strength
+              </th>
+
+              <th
+                scope="col"
+                aria-label="Bet Slip action"
+                style={{
+                  padding: "8px 0",
+                }}
+              />
             </tr>
           </thead>
           <tbody>
-            {(data.items ?? []).map((edge, i) => {
+            {(data.items ?? []).map((edge) => {
               const legId = buildGameBetLegId({
                 gameId: edge.game_id,
                 market:
@@ -117,10 +206,18 @@ export function EdgesTable({
               const alreadyAdded = legIds.has(legId);
               return (
                 <tr
-                  key={i}
+                  key={legId}
                   style={{ borderTop: "1px solid var(--line-soft)" }}
                 >
-                  <td style={{ padding: "10px 12px 10px 0" }}>
+                  <th
+                    scope="row"
+                    style={{
+                      padding:
+                        "10px 12px 10px 0",
+                      textAlign: "left",
+                      fontWeight: 400,
+                    }}
+                  >
                     <span
                       style={{
                         display: "inline-flex",
@@ -132,7 +229,7 @@ export function EdgesTable({
                       <span className="dim">@</span>
                       <TeamMark abbr={edge.home_team} />
                     </span>
-                  </td>
+                  </th>
                   <td style={{ padding: "10px 12px 10px 0" }}>
                     {edge.market_type}
                   </td>
@@ -157,6 +254,11 @@ export function EdgesTable({
                   <td style={{ padding: "10px 0" }}>
                     <AddButton
                       disabled={alreadyAdded}
+                      label={
+                        alreadyAdded
+                          ? `${edge.market_type} ${edge.side} for ${edge.away_team} at ${edge.home_team} is already on the Bet Slip`
+                          : `Add ${edge.market_type} ${edge.side} for ${edge.away_team} at ${edge.home_team} to the Bet Slip`
+                      }
                       onClick={() =>
                         add(
                           createGameBetLeg({
@@ -178,7 +280,8 @@ export function EdgesTable({
             })}
           </tbody>
         </table>
-      )}
+      </div>
+    )}
     </div>
   );
 }
@@ -197,6 +300,19 @@ function ListEmptyState({ status }: { status: FieldStatus | undefined }) {
       >
         No edges available.
       </div>
+      <div
+        className="mono dim2"
+        style={{
+          marginBottom: 8,
+          fontSize: 10,
+          lineHeight: 1.5,
+        }}
+      >
+        When model edges are available,
+        stage one here for current-price,
+        EV, Kelly, and payout analysis.
+      </div>
+
       {status === "pending" && (
         <div style={{ display: "inline-block" }}>
           <PendingField />
@@ -249,14 +365,18 @@ function EdgeStrengthPill({ strength }: { strength: string }) {
 
 function AddButton({
   disabled,
+  label,
   onClick,
 }: {
   disabled: boolean;
+  label: string;
   onClick: () => void;
 }) {
   return (
     <button
+      type="button"
       disabled={disabled}
+      aria-label={label}
       onClick={onClick}
       style={{
         background: disabled ? "var(--bg-2)" : "var(--pos)",
