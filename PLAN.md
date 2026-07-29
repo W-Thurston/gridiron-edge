@@ -501,6 +501,31 @@ current odds and proposed stake, then derives current EV, Kelly, break-even,
 payout, and profit through the pure analysis contract. Props remain visibly
 unpriced until a current price is entered.
 
+#### G2a. Define aggregate single/parlay summary behavior — ✅ COMPLETE
+
+- [x] Add a pure discriminated single/parlay summary model.
+- [x] Require current odds and proposed stake for every single leg.
+- [x] Sum complete single-leg stakes, payouts, and profits.
+- [x] Block all aggregate single economics when any leg is incomplete.
+- [x] Preserve zero as a valid proposed stake.
+- [x] Require current odds for every parlay leg.
+- [x] Require a separate explicit parlay stake.
+- [x] Calculate quoted combined decimal and American parlay odds.
+- [x] Calculate quoted parlay payout and profit.
+- [x] Ignore per-leg proposed stakes in parlay mode.
+- [x] Preserve zero as a valid parlay stake.
+- [x] Keep combined parlay probability, EV, and Kelly explicitly unavailable.
+- [x] Add empty, complete, incomplete, zero-value, and mixed game/prop coverage.
+- [x] Run the frontend build and full test suite.
+- [x] Commit the aggregate-summary model unit.
+
+The aggregate summary model now reports single-wager economics only when every
+staged leg has current odds and a proposed stake. Parlay mode uses a separate
+stake and calculates quoted combined odds, payout, and profit only when every
+leg is priced. Combined parlay model probability, EV, and Kelly remain
+explicitly unavailable because leg correlation is not modeled.
+
+
 ### H. Optional recorded-bet workflow
 
 This section requires separate backend design and is not required to complete
