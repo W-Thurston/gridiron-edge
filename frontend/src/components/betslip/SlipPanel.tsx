@@ -1,20 +1,26 @@
 import { useState } from "react";
 import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
-import type { BetLeg } from "../../context/BetSlipContext";
 import type { BetSlipSizingResult } from "../../hooks/useBetSlipSizing";
 import {
   americanToDecimal,
   formatOdds,
 } from "../../utils/odds";
-import { TeamMark } from "../primitives/TeamMark";
+import { BetLegCard } from "./BetLegCard";
 
 export function SlipPanel({
   sizing,
 }: {
   sizing: BetSlipSizingResult;
 }) {
-  const { legs, mode, setMode, remove, clear } = useBetSlip();
+  const {
+    legs,
+    mode,
+    setMode,
+    updateDraft,
+    remove,
+    clear,
+  } = useBetSlip();
   const { state } = useAppState();
   const [stake, setStake] = useState(25);
 
@@ -110,14 +116,55 @@ export function SlipPanel({
         </div>
       ) : (
         <>
-          {/* Legs */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {/* Staged wagers */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
             {legs.map((leg) => (
-              <LegRow
+              <BetLegCard
                 key={leg.id}
                 leg={leg}
-                oddsFormat={state.oddsFormat}
-                onRemove={() => remove(leg.id)}
+                oddsFormat={
+                  state.oddsFormat
+                }
+                bankroll={sizing.bankroll}
+                kellyMultiplier={
+                  sizing.kellyMultiplier
+                }
+                onUpdateCurrentOdds={(
+                  currentAmericanOdds,
+                ) =>
+                  updateDraft(leg.id, {
+                    currentAmericanOdds,
+                  })
+                }
+                onUpdateProposedStake={(
+                  proposedStake,
+                ) =>
+                  updateDraft(leg.id, {
+                    proposedStake,
+                  })
+                }
+                onUpdateSportsbook={(
+                  sportsbook,
+                ) =>
+                  updateDraft(leg.id, {
+                    sportsbook,
+                  })
+                }
+                onUpdateNote={(note) =>
+                  updateDraft(leg.id, {
+                    note,
+                  })
+                }
+                onRemove={() =>
+                  remove(leg.id)
+                }
               />
             ))}
           </div>
@@ -527,188 +574,6 @@ function SizingControls({
             loaded.
           </div>
         )}
-    </div>
-  );
-}
-
-function LegRow({
-  leg,
-  oddsFormat,
-  onRemove,
-}: {
-  leg: BetLeg;
-  oddsFormat:
-    | "american"
-    | "decimal";
-  onRemove: () => void;
-}) {
-  const currentAmericanOdds =
-    leg.draft.currentAmericanOdds;
-
-  return (
-    <div
-      style={{
-        padding: 10,
-        backgroundColor:
-          "var(--bg-1)",
-        border:
-          "1px solid var(--line-soft)",
-        borderRadius: 5,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent:
-            "space-between",
-          alignItems: "flex-start",
-          gap: 8,
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-          }}
-        >
-          {leg.kind === "game" ? (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 4,
-                  fontSize: 11,
-                }}
-              >
-                <TeamMark
-                  abbr={leg.awayTeam}
-                />
-
-                <span className="dim">
-                  @
-                </span>
-
-                <TeamMark
-                  abbr={leg.homeTeam}
-                />
-              </div>
-
-              <div
-                className="mono"
-                style={{
-                  fontSize: 11,
-                  color:
-                    "var(--ink-2)",
-                }}
-              >
-                {leg.market} ·{" "}
-                {leg.side}
-                {leg.line != null
-                  ? ` · ${leg.line}`
-                  : ""}
-              </div>
-            </>
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 4,
-                  fontSize: 11,
-                }}
-              >
-                <TeamMark
-                  abbr={leg.team}
-                />
-
-                <span
-                  style={{
-                    color:
-                      "var(--ink-2)",
-                  }}
-                >
-                  {leg.playerName}
-                </span>
-              </div>
-
-              <div
-                className="mono"
-                style={{
-                  fontSize: 11,
-                  color:
-                    "var(--ink-2)",
-                }}
-              >
-                {leg.statType} ·{" "}
-                {leg.side}
-                {leg.line != null
-                  ? ` · ${leg.line}`
-                  : ""}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          {currentAmericanOdds == null ? (
-            <span
-              className="mono"
-              style={{
-                fontSize: 10,
-                color: "var(--warn)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Price unavailable
-            </span>
-          ) : (
-            <span
-              className="mono tnum"
-              style={{
-                fontSize: 12,
-                color:
-                  "var(--ink-2)",
-              }}
-            >
-              {formatOdds(
-                currentAmericanOdds,
-                oddsFormat,
-              )}
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove bet leg"
-            title="Remove leg"
-            style={{
-              backgroundColor:
-                "transparent",
-              border: "none",
-              padding: "0 4px",
-              cursor: "pointer",
-              font: "inherit",
-              fontSize: 14,
-              color:
-                "var(--ink-3)",
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

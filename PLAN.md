@@ -474,29 +474,32 @@ backend.
 
 ### G. Rebuild the BetSlip presentation — 🔵 ACTIVE
 
-- [ ] Preserve the Available Edges / BetSlip decision-workspace structure where
-      useful.
-- [ ] Add clear empty-state guidance.
-- [ ] Render game and prop legs with distinct identity treatments.
-- [ ] Show reference price.
-- [ ] Add editable current price.
-- [ ] Show price-unavailable state without substituting a price.
-- [ ] Show model probability or fair value.
-- [ ] Show model break-even/minimum acceptable price.
-- [ ] Show reference EV and current what-if EV.
-- [ ] Show edge strength.
-- [ ] Show full-Kelly fraction.
-- [ ] Show multiplier-adjusted suggested stake.
-- [ ] Add editable proposed stake.
-- [ ] Show payout and profit only when calculable.
-- [ ] Explain why a calculation is unavailable.
-- [ ] Retain remove-leg and clear-slip actions.
-- [ ] Preserve singles/parlay mode.
-- [ ] Add parlay correlation caveat.
-- [ ] Do not render a fake Place Bet action.
-- [ ] Add responsive/narrow-width behavior.
-- [ ] Add keyboard and accessible-label coverage.
-- [ ] Commit the BetSlip presentation unit.
+#### G1. Rebuild staged-wager decision cards — ✅ COMPLETE
+
+- [x] Replace compact game-only rows with discriminated game and prop cards.
+- [x] Show immutable reference price beside editable current price.
+- [x] Show model identity and probability.
+- [x] Show model break-even price.
+- [x] Show positive-EV threshold status.
+- [x] Show reference and recalculated current EV.
+- [x] Show edge strength.
+- [x] Show current full-Kelly fraction.
+- [x] Show multiplier-adjusted suggested stake.
+- [x] Add editable proposed stake.
+- [x] Show single-leg payout and profit when calculable.
+- [x] Represent unpriced prop reference data explicitly.
+- [x] Add optional manual sportsbook and draft-note inputs.
+- [x] Route all editable values through validated draft updates.
+- [x] Preserve remove-leg behavior.
+- [x] Add focused game, prop, editing, unavailable-state, and accessibility coverage.
+- [x] Run the frontend build, focused tests, and full suite.
+- [x] Commit the staged-wager card unit.
+
+Each staged wager is now a decision-support card rather than a compact display
+row. The card separates immutable reference recommendation context from editable
+current odds and proposed stake, then derives current EV, Kelly, break-even,
+payout, and profit through the pure analysis contract. Props remain visibly
+unpriced until a current price is entered.
 
 ### H. Optional recorded-bet workflow
 
