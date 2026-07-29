@@ -3,6 +3,134 @@
 What has been built and when. Newest first.
 
 ---
+## 2026-07-29 — BetSlip decision-support rebuild
+
+Rebuilt BetSlip from a prototype staging panel into a provenance-aware,
+model-informed wager-shortlisting and what-if analysis workspace.
+
+### Edge and sizing API contract
+
+- Added required `american_odds` to edge-report rows and preserved the exact
+  offered price used by the model calculation.
+- Kept `market_value` semantically distinct from sportsbook price.
+- Added response-level bankroll and Kelly-multiplier provenance.
+- Removed the hidden `$1,000` bankroll default from `/edges`.
+- Made bankroll optional for edge generation:
+  - EV and full-Kelly fraction remain available without a bankroll;
+  - `kelly_stake` remains null when no dollar-sizing basis is supplied.
+- Preserved zero as a valid bankroll.
+- Constrained bankroll to nonnegative values and Kelly multiplier to `[0, 1]`.
+- Regenerated OpenAPI and TypeScript contracts.
+
+### BetLeg v2
+
+- Added a versioned discriminated union for game wagers and prop
+  interests/wagers.
+- Added canonical producer-independent IDs for game and prop selections.
+- Separated immutable recommendation provenance from editable draft inputs.
+- Preserved:
+  - reference price;
+  - model identity and probability;
+  - reference EV and edge strength;
+  - full-Kelly fraction;
+  - reference Kelly stake;
+  - reference bankroll and multiplier basis.
+- Added editable current odds, proposed stake, sportsbook, and notes.
+- Represented props without fabricated prices.
+- Added strict runtime parsing and pure constructors from generated API types.
+- Added guarded helpers for current EV, implied probability, break-even price,
+  price quality, Kelly, suggested stake, payout, and profit.
+
+### Persistence and producer migration
+
+- Added validated v2 local persistence for legs and single/parlay mode.
+- Added a separate versioned sizing preference.
+- Rejected malformed persisted legs individually.
+- Ignored untrusted legacy prototype storage.
+- Migrated all live producers:
+  - Available Edges;
+  - Dashboard Featured Matchups;
+  - Dashboard Model Edges;
+  - Dashboard Prop Edges;
+  - GameDetail Model Lean;
+  - GameDetail Top Prop Edges;
+  - PlayerProp.
+- Removed production placeholder `-110` prices.
+- Removed prop type escapes.
+- Removed producer-specific wager IDs.
+- Prevented missing or `No Edge` prop leans from defaulting to Over.
+- Preserved producer source as metadata rather than wager identity.
+
+### Bankroll provenance
+
+- Added tracked and explicit what-if bankroll modes.
+- Preferred `/portfolio/summary.bankroll` for tracked sizing.
+- Preserved an empty bankroll ledger as a valid `$0.00` tracked bankroll.
+- Kept unavailable portfolio data distinct from a zero bankroll.
+- Prevented silent fallback between tracked, what-if, and legacy AppState
+  values.
+- Added a persisted Kelly multiplier with quarter-Kelly as the default.
+- Shared one resolved sizing basis between `/edges` and staged-wager analysis.
+- Relabeled the legacy AppState bankroll as a standalone calculator value in
+  Settings and Onboarding.
+
+### Decision-support presentation
+
+- Replaced compact rows with game and prop decision cards.
+- Added immutable reference values beside editable current values.
+- Added current EV, break-even price, price-status, full-Kelly, suggested stake,
+  proposed stake, payout, and profit.
+- Added optional manual sportsbook and draft-note fields.
+- Added truthful unavailable states for missing price, probability, bankroll,
+  and stake inputs.
+- Added complete/incomplete singles summaries using each leg's proposed stake.
+- Added separate parlay stake, quoted combined odds, payout, and profit.
+- Kept combined parlay probability, EV, and Kelly unavailable because
+  correlation is not modeled.
+- Added an explicit parlay-correlation caveat.
+- Retained remove-leg and clear-slip actions.
+- Explicitly stated that Gridiron Edge does not place sportsbook wagers.
+
+### Responsive behavior and accessibility
+
+- Added a responsive two-column decision workspace that stacks at narrow
+  widths.
+- Added a keyboard-focusable horizontal-scroll region for Available Edges.
+- Added table caption, column scopes, row scopes, and canonical row keys.
+- Added wager-specific Add and remove labels.
+- Added unique per-leg IDs and labels for odds, stake, sportsbook, and notes.
+- Added pressed-state semantics for wager and bankroll modes.
+- Added politely announced aggregate-summary updates.
+- Added structured empty-slip guidance.
+
+### Verification
+
+- Added focused coverage for:
+  - exact price and sizing serialization;
+  - canonical IDs and parser rejection;
+  - persistence and malformed-storage recovery;
+  - producer-independent deduplication;
+  - current-price EV and Kelly behavior;
+  - tracked, what-if, zero, unavailable, and invalid bankroll states;
+  - priced games and unpriced props;
+  - complete and incomplete singles;
+  - complete and incomplete parlays;
+  - no-execution behavior;
+  - responsive classes and accessibility semantics.
+- Backend and frontend quality gates pass.
+- A staged-wager real-data visual review remains deferred because `/edges`
+  currently returns no available recommendations. No synthetic production edge
+  path or fabricated wager data was introduced for that review.
+
+### Deferred
+
+- Recorded-bet write API and ledger coupling.
+- `Record Bet` frontend workflow.
+- Draft-slip and recorded-bet export.
+- Multi-book odds ingestion and line shopping.
+- Real-data staged-wager visual verification when edge recommendations are
+  available.
+
 ## 2026-07-28 — PlayoffProjections navigation and Weekly Outcomes
 
 Extended the PlayoffProjections rebuild with explicit navigation from Team

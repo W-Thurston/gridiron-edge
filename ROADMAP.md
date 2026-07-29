@@ -73,7 +73,7 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Injury/news feed | ❌ Not started | Blocks W4.5 scenario engine + injury UI fields |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
 | Off/def rating decomposition | ❌ Not started | Blocks off/def ranking tabs, Compare Off/Def mini-stats |
-| Frontend prototype-fidelity backlog | 🟡 Partial | §9.7 (backend gaps) + §9.8 (frontend polish); core screens done, BetSlip rebuild + blocked-on-data items remain; PlayoffProjections and Weekly Outcomes are complete. |
+| Frontend prototype-fidelity backlog | 🟡 Partial | Core-screen rebuilds are complete, including PlayoffProjections, Weekly Outcomes, and BetSlip. Remaining work is the W9.11 Tier 0 audit plus independently tracked backend/data gaps and bounded frontend polish. |
 
 ### Known Blockers
 
@@ -184,21 +184,27 @@ the final frontend surface.
   bye handling, accessible matchup details, and shared conference/division
   filters.
 
-- **Tier 2 — BetSlip rebuild — ACTIVE.** Rebuild the slip around verified existing
-  probability, bankroll, stake, payout, and EV inputs. Target a Kelly suggestion
-  card, bankroll-percentage indicator, EV summary, enhanced leg presentation,
-  and quick-stake controls. Lock exact scope only after inspecting the current
-  BetSlip, AppState, odds utilities, and edge-row contract.
+- **Tier 2 — BetSlip decision-support rebuild — ✅ COMPLETE (2026-07-29).**
+  Rebuilt the draft slip around canonical game/prop identities, immutable
+  recommendation snapshots, editable current odds and stakes, explicit tracked
+  or what-if bankroll provenance, guarded EV/Kelly/payout calculations, truthful
+  unpriced props, complete/incomplete singles, quoted parlay economics, and an
+  explicit no-sportsbook-execution boundary. Removed fabricated producer
+  prices, prop type escapes, producer-specific IDs, and the hidden `/edges`
+  bankroll default. Added responsive and accessible Available Edges and staged
+  wager surfaces. A real-data staged-wager visual pass remains operationally
+  deferred because `/edges` currently returns no recommendations.
 
-- **Tier 0 — Pending-highlight audit sweep — DEFERRED CAPSTONE.** After both
-  remaining screen rebuilds, walk every built screen with Highlight mode
-  enabled. Classify each silently missing field as pending, blocked,
-  unavailable, or defective; route it through the established field-status
-  primitives and record larger follow-up gaps.
+- **Tier 0 — Final pending-highlight and frontend consistency audit — ACTIVE.**
+  Walk the completed frontend surface with pending highlighting on and off,
+  resolve bounded presentation defects, and move genuine backend/data gaps to
+  the appropriate roadmap sections. Complete the deferred BetSlip staged-wager
+  visual pass when real edge recommendations are available.
 
-**Ready:** Tier 1 has no external dependency. Tier 2 requires a contract
-verification pass before deep design; combined EV must not be assumed available
-until the current edge/slip data path is confirmed.
+**Ready:** Tier 0 can begin immediately. The BetSlip staged-wager portion of
+the audit remains operationally blocked until `/edges` returns a real
+recommendation, but the broader pending-highlight and consistency audit does
+not depend on that data.
 
 **Unlocks:** Every core screen rebuilt and the frontend fidelity arc closed with
 the pending-highlight discipline applied across the complete final surface.
@@ -373,9 +379,9 @@ W8 (API) ✅
 Weekly Outcomes follow-up are complete and verified against the real 32-team
 2026–2027 preseason artifact.
 
-- Next: Tier 2 — inspect and lock the current BetSlip probability, EV,
-  bankroll, stake, payout, sportsbook, and persistence contracts before deep
-  design.
+- Next: W9.11 Tier 0 — complete the pending-highlight and final frontend
+  consistency audit. The BetSlip real-data staged-wager review remains deferred
+  until `/edges` returns an available recommendation.
 - Final W9.11 capstone: Tier 0 — pending-highlight audit across the completed
   frontend surface.
 
@@ -559,6 +565,15 @@ Gaps between what the frontend prototype expects and what our API returns today.
 | `/edges/correlations?game_id=` endpoint | P1 | Powers SGP correlation warning + parlay correlation matrix in Tools |
 | Line movement history | Blocked on W7 | Powers "moved -0.5" indicators + live alerts |
 | Book-level odds per game/market | Blocked on W7 | Powers book selector at bottom of slip |
+- **Recorded-bet write workflow:** Optional future backend design. Requires an
+  approved request contract, duplicate protection, bankroll transaction
+  coupling, partial-failure semantics, and an explicit `Record Bet` action.
+  This is not sportsbook execution.
+- **Draft or recorded-bet export:** Draft-slip CSV can be designed
+  independently. Recorded-bet export depends on the write workflow.
+- **Real-data staged-wager visual review:** Deferred until `/edges` returns at
+  least one real recommendation. Do not introduce fabricated production prices
+  or a permanent demo path solely to satisfy this review.
 
 #### Dashboard data gaps
 
@@ -616,19 +631,23 @@ Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original audit 2026
 | Status and heat context | P2 | Explain probability intensity and the globally pending clinched/eliminated fields without repeating pending chips on every row. |
 | Team-profile navigation | P2 | Follow the existing NavContext pattern and route to `/teams?team={abbr}`. |
 
-**BetSlip (`/betslip`)** — not yet rebuilt
+**BetSlip (`/betslip`)** — ✅ rebuilt 2026-07-29
 
-| Item | Priority | Notes |
-|---|---|---|
-| Kelly stake suggestion card w/ "Use" button | P0 | `utils/odds.ts` has `kelly()` |
-| Bankroll % indicator on stake input | P0 | AppState has bankroll |
-| EV row on payout summary | P0 | Needs combined model prob (`cover_prob`, §9.7 P0) |
-| Round-robin mode (`choose(n,k)`) | P1 | Pure frontend |
-| Teaser mode (±6/6.5/7) | P1 | Needs teaser pricing |
-| LegCard enhanced (numbered, model comparison, EV/conf pills) | P1 | |
-| Quick stake buttons | P1 | |
-| SGP correlation warning | Blocked on `/edges/correlations` | |
-| Live line-movement banner / book selector | Blocked on W7 | |
+- ✅ Canonical game and prop draft identities.
+- ✅ Immutable reference recommendation provenance.
+- ✅ Editable current odds, proposed stake, sportsbook, and notes.
+- ✅ Guarded break-even, EV, Kelly, payout, and profit calculations.
+- ✅ Explicit tracked/what-if bankroll source and Kelly multiplier.
+- ✅ Truthful unpriced prop interests.
+- ✅ Complete/incomplete singles summaries.
+- ✅ Quoted parlay payout with correlation caveat.
+- ✅ Responsive workspace, scrollable Available Edges table, and accessible
+  wager-specific controls.
+- ✅ Explicit no-sportsbook-execution language.
+- ⏸️ Real-data staged-wager visual review blocked until `/edges` returns an
+  available recommendation.
+- 🔜 Recorded-bet writes and export remain optional future workflows.
+- 🔜 Multi-book current-price sourcing remains owned by W7.
 
 **GamesList (`/games`)** — table shipped; card layout pending
 
@@ -692,12 +711,14 @@ Remaining items are blocked-only:
 
 #### Priority summary (post-prune)
 
-- **P0:** ~10 — mostly PlayoffProjections + BetSlip (the two unrebuilt screens)
+- **P0:** W9.11 Tier 0 pending-highlight and final frontend consistency audit.
 - **P1:** ~20 — per-screen enhancements + remaining primitives/charts
 - **P2:** ~10 — polish
 - **Blocked:** ~20 — W7, W10, §5.3, feature attribution, OAuth
 
-The two biggest remaining frontend chunks are **PlayoffProjections** and **BetSlip** rebuilds (neither touched in the W9.5–W9.10 arc). Everything else is per-screen polish or blocked on a named workstream.
+PlayoffProjections, Weekly Outcomes, and BetSlip are rebuilt. Remaining
+frontend work is the W9.11 Tier 0 audit, bounded per-screen polish, and items
+blocked on named backend or data workstreams.
 
 ### Deferred task: Pending-highlight audit sweep
 
@@ -755,6 +776,7 @@ Optional / medium workstream. Elo-in-offseason is a reasonable default; this is 
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | **W9.11 Tier 2 complete.** Rebuilt BetSlip as a canonical, provenance-aware decision-support workspace with exact edge prices, validated game/prop draft state, editable current odds and stakes, tracked/what-if bankroll sizing, guarded EV/Kelly/payout calculations, truthful unpriced props, single/parlay summaries, responsive layout, and accessibility coverage. Removed fabricated producer prices and the hidden `/edges` bankroll default. The staged-wager real-data visual pass remains deferred because no edge recommendations are currently available. Tier 0 is next. |
 | 2026-07-28 | **W9.11 Tier 1 follow-up complete.** Added Team Rankings / Playoff Projections sibling navigation and a Weekly Outcomes view backed by the static `/projections/grid` contract. Shipped played/projected grouping, Week 1–18 diverging probability cells, BYE handling, shared filters and team identity, viewport-portaled accessible matchup tooltips, generated contracts, comprehensive tests, and real-data verification. Tier 2 BetSlip is next; Tier 0 remains the final capstone. |
 | 2026-07-28 | **W9.11 Tier 1 complete.** Rebuilt PlayoffProjections with a full-cell probability heat matrix, accessible sorting, dependent conference/division selectors, current Elo and record context, explicit Elo-delta semantics, as-of-week metadata, Week 1-aware unavailable treatment, and team-profile navigation. Composed existing `/projections` and `/teams` contracts without adding request-time computation. Verified against the real 32-team artifact. |
 | 2026-07-28 | **W9.11 Tier 1 design locked.** Moved PlayoffProjections ahead of the deferred audit sweep. Verified the seven-column simulation artifact, metadata sidecar, `/projections` schema/serializer/route, shared team metadata, Pill, custom routing, and design tokens. Preserved AVG_WINS as the canonical projection; clarified movement as Elo delta; limited run metadata to season/simulation count/computed time; locked HeatCell, sorting, conference filters, compact 920px table structure, and accessible team navigation. |

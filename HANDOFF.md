@@ -54,7 +54,7 @@ How everything works right now. Assumes you know what the project does - see [RE
 | API exceptions | `gridiron_edge.api.exceptions` — data-state signals from loaders to routes |
 | Frontend | `frontend/` — Vite + React + TypeScript, consumes API via generated `openapi-fetch` client and React Query hooks |
 | Frontend design system | `frontend/src/index.css` — OKLCH dark theme ported from prototype; `frontend/src/design-decisions.md` documents the aesthetic blend |
-| Frontend state | Three React Contexts (`frontend/src/context/`): AppState (odds format, bankroll, alerts), BetSlip (legs + mode), Nav (route + params) |
+| Frontend state | React Contexts for AppState, validated BetSlip v2 draft legs/mode, and Nav; persisted tracked/what-if BetSlip sizing is owned by `useBetSlipSizing` |
 | Frontend testing | Vitest + React Testing Library; smoke tests at `frontend/src/**/*.test.tsx` |
 | Percentile ranking pass | `gridiron_edge.evaluation.percentiles` — per-team percentile ranks over 4 stats |
 | Situational splits (props) | `gridiron_edge.evaluation.situational_splits` — per-player, 8 cohorts, from player game logs |
@@ -90,6 +90,11 @@ How everything works right now. Assumes you know what the project does - see [RE
 | `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
 | `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart, HeatCell, SortableHeader, WinProbabilityCell) — used across many screens |
 | `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
+| `frontend/src/components/betslip/` | Available Edges, staged-wager decision cards, sizing controls, and single/parlay summaries |
+| `frontend/src/utils/betLegs.ts` | BetLeg v2 types, canonical IDs, constructors, runtime parsers, and per-leg calculations |
+| `frontend/src/utils/betSlipSizing.ts` | Pure tracked/what-if sizing preference and bankroll-source resolution |
+| `frontend/src/utils/betSlipSummary.ts` | Pure complete/incomplete single and quoted-parlay aggregation |
+| `frontend/src/hooks/useBetSlipSizing.ts` | Persisted sizing preference combined with tracked `/portfolio/summary` bankroll |
 | `frontend/src/components/compare/` | Compare-specific components (TeamPicker) | | `frontend/src/components/dev/` | Dev panel (floating highlight-mode toggle, W9.8) |
 | `frontend/src/components/field-status/` | PendingField, BlockedField, FieldValue, PendingChip, ComingSoonCard, usePendingHighlight |
 
@@ -513,9 +518,11 @@ Step 5 audit confirmed all existing loaders comply.
 - **Data fetching:** React Query wrapping `openapi-fetch`. Types
   generated from checked-in `api-schema.json` — regenerate via
   `pnpm gen:api` (frontend) after any API surface change.
-- **State model:** Three React Contexts (Nav, BetSlip, AppState) matching
-  the prototype's design. Persistence to localStorage
-  (bankroll, bet slip, odds format) and sessionStorage (current route).
+- **State model:** Nav and AppState retain the general frontend shell state.
+  BetSlip uses a validated v2 context for canonical draft legs and single/parlay
+  mode. `useBetSlipSizing` separately combines the tracked portfolio bankroll
+  with a persisted tracked/what-if preference. Persistence uses versioned
+  localStorage keys; malformed and legacy BetSlip state is not trusted.
 - **Field-status rendering:** All D14 metadata surfaces via shared
   primitives — `<PendingField />`, `<BlockedField />`, `<FieldValue />`.
   Never inline; consistent visual language across screens.
@@ -601,6 +608,164 @@ cd frontend
 pnpm dev
 ```
 App runs at http://localhost:5173 and reads from http://localhost:8000.
+
+#### BetSlip is a draft decision-support boundary
+
+BetSlip is a temporary wager-shortlisting and what-if analysis workspace. It is
+not the betting ledger and does not place sportsbook wagers.
+
+##### State boundaries
+
+BetLeg v2 is a discriminated union:
+
+- `kind: "game"` for moneyline, spread, and total selections;
+- `kind: "prop"` for player-prop interests or priced prop wagers.
+
+Every leg contains:
+
+- canonical producer-independent wager identity;
+- producer source metadata;
+- immutable recommendation provenance;
+- editable draft values.
+
+Immutable recommendation provenance includes:
+
+- reference American price;
+- model key and probability or applicable model context;
+- reference market/model values;
+- reference EV and edge strength;
+- reference full-Kelly fraction;
+- reference Kelly stake;
+- reference bankroll and Kelly multiplier.
+
+Editable draft values include:
+
+- current American odds;
+- proposed stake;
+- optional manually entered sportsbook;
+- optional note.
+
+Current-price edits never modify the stored recommendation snapshot.
+
+##### Persistence
+
+BetSlip persistence keys:
+
+```text
+hm-betslip-v2
+hm-betslip-mode-v2
+hm-betslip-sizing-v1
+```
+
+Stored legs are parsed individually through the strict v2 runtime parser. Malformed legs are discarded. Invalid runtime updates preserve the previous valid leg. Legacy prototype state is intentionally ignored because it may contain fabricated prices, invalid prop variants, incorrect identifiers, or producer-specific IDs.
+
+Canonical identity
+
+Canonical IDs describe the wager rather than the screen that produced it.
+
+Game identity includes:
+
+game ID
+market
+side
+applicable line
+
+
+Prop identity includes:
+
+prop ID
+side
+applicable line
+
+
+Producer source is metadata and does not participate in identity. The same wager therefore deduplicates across Dashboard, GameDetail, PlayerProp, and the Available Edges table.
+
+Price and calculation behavior
+
+referenceAmericanOdds is immutable recommendation history.
+
+currentAmericanOdds is the editable what-if or currently observed price. Current price drives:
+
+implied probability;
+current modeled EV;
+comparison with model break-even price;
+current full-Kelly fraction;
+suggested Kelly dollars;
+payout and profit.
+
+Missing current price blocks price-dependent outputs. Missing model probability still allows price and payout calculations but blocks EV, break-even, and Kelly. Missing bankroll blocks suggested dollars but not the dimensionless full-Kelly fraction.
+
+Props remain explicitly unpriced until a current price is supplied. No producer substitutes a default sportsbook price.
+
+Bankroll and Kelly provenance
+
+Tracked sizing uses:
+
+GET /portfolio/summary
+
+
+A ledger with no transactions has a valid tracked bankroll of $0.00. A failed or unavailable portfolio response has no resolved bankroll and remains distinct from zero.
+
+BetSlip also supports an explicitly selected what-if bankroll. It never silently falls back:
+
+tracked mode does not use the what-if amount when tracked data is unavailable;
+what-if mode does not use the tracked amount when its manual value is absent;
+neither mode uses the legacy AppState calculator bankroll.
+
+Kelly multiplier is explicit, persisted, constrained to [0, 1], and defaults to 0.25.
+
+The BetSlip screen resolves sizing once and passes the same bankroll and multiplier to:
+
+the /edges query;
+staged-wager current analysis.
+
+Newly staged game legs preserve the bankroll and multiplier echoed by the backend response as their immutable recommendation basis.
+
+/edges dollar-sizing behavior
+
+The /edges bankroll query parameter is optional.
+
+When bankroll is omitted:
+
+edge rows remain available;
+EV remains available;
+full-Kelly fraction remains available;
+response bankroll is null;
+kelly_stake is null.
+
+A supplied zero bankroll is valid and produces zero-dollar sizing. Bankroll is constrained to nonnegative values and Kelly multiplier to [0, 1] at the HTTP boundary and again at the report boundary.
+
+Singles and parlays
+
+Singles aggregate only when every staged leg has:
+
+current odds;
+proposed stake.
+
+If any leg is incomplete, total proposed stake, payout, and profit are all unavailable. An incomplete leg is never silently omitted.
+
+Parlays use a separate parlay stake and require current odds for every leg. Parlay output includes only:
+
+quoted combined odds;
+quoted payout;
+quoted profit.
+
+Combined model probability, EV, and Kelly remain unavailable because leg correlation is not modeled.
+
+Presentation and accessibility
+
+The /betslip route is a responsive two-panel workspace:
+
+Available Edges | Bet Slip
+
+
+At narrow widths, the panels stack and internal metric grids collapse to one column. Available Edges remains horizontally scrollable.
+
+Editable controls and analytical sections use wager-specific accessible names. Single/Parlay and Tracked/What-if controls expose pressed state. Aggregate summary changes are announced politely. The interface contains no Place Bet action and states that Gridiron Edge does not place sportsbook wagers.
+
+Operational verification note
+
+The staged-wager real-data visual pass remains deferred because /edges currently returns no available recommendations. Automated coverage exercises priced game legs, unpriced props, manual current odds, threshold behavior, Kelly sizing, singles, parlays, incomplete states, responsive classes, and accessibility semantics. Complete the real-data pass when the normal prediction, odds, and edge pipeline produces at least one recommendation.
 
 ---
 

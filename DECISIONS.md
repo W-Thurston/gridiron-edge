@@ -7,6 +7,103 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D23. BetSlip is a draft decision workspace with immutable recommendation provenance
+
+**Date:** 2026-07-29
+
+### Decision
+
+BetSlip is a temporary decision-support workspace, not a sportsbook execution
+surface and not the authoritative betting ledger.
+
+Each staged selection uses a versioned discriminated BetLeg with:
+
+- canonical producer-independent wager identity;
+- immutable recommendation provenance;
+- editable draft inputs.
+
+Recommendation provenance records the model, reference price, reference
+probability/value context, EV, edge strength, full-Kelly fraction, dollar Kelly
+stake, bankroll, and Kelly multiplier available when the recommendation was
+created.
+
+Draft inputs record current odds, proposed stake, optional sportsbook text, and
+notes. Editing draft inputs never mutates recommendation history.
+
+### Price discipline
+
+No producer may fabricate a sportsbook price.
+
+Game edges preserve the exact `american_odds` returned by `/edges`. Prop
+interests remain unpriced until a current price is manually entered or a future
+verified odds source supplies one.
+
+`market_value` is not a replacement for sportsbook odds. It retains its
+market-specific meaning.
+
+### Bankroll discipline
+
+Dollar Kelly sizing requires an explicit bankroll basis.
+
+`/edges` does not substitute a hidden bankroll when the query omits one.
+Without bankroll, edge rows, EV, and full-Kelly fraction remain available while
+`kelly_stake` remains null.
+
+Tracked BetSlip sizing prefers `/portfolio/summary.bankroll`. A what-if
+bankroll is allowed only as an explicitly selected source. Tracked, what-if,
+unavailable, and zero bankroll states remain distinct. BetSlip does not fall
+back to the legacy AppState calculator bankroll.
+
+### Aggregate discipline
+
+Singles report aggregate stake, payout, and profit only when every staged leg
+has current odds and a proposed stake.
+
+Parlays report quoted combined odds, payout, and profit only when every leg is
+priced and an explicit parlay stake exists.
+
+BetSlip does not report combined parlay model probability, EV, or Kelly because
+leg correlation is not modeled.
+
+### Persistence discipline
+
+BetSlip and sizing persistence are versioned and runtime-validated. Malformed
+legs or sizing state are rejected. Legacy prototype state is ignored rather
+than migrated because it may contain fabricated prices, invalid prop variants,
+incorrect identifiers, or producer-specific IDs.
+
+### Consequences
+
+- The same wager deduplicates across producer screens.
+- Recommendation history remains auditable after current odds change.
+- Missing price, probability, bankroll, or stake inputs produce explicit
+  unavailable states instead of inferred values.
+- BetSlip can support later draft export without implying execution.
+- A future `Record Bet` workflow requires a separate backend design for ledger
+  writes, duplicate protection, bankroll transactions, and partial failures.
+- Multi-book line shopping remains a separate odds-ingestion capability.
+- The interface must not render a `Place Bet` action.
+
+### Revisit triggers
+
+Revisit this decision if:
+
+- a verified multi-book odds contract supplies current prop and game prices;
+- a deliberately approved recorded-bet write API is added;
+- correlation-aware parlay probability and EV models are implemented;
+- local storage is replaced by authenticated server-side draft persistence.
+
+### References
+
+- `frontend/src/utils/betLegs.ts`
+- `frontend/src/utils/betSlipSizing.ts`
+- `frontend/src/utils/betSlipSummary.ts`
+- `frontend/src/context/BetSlipContext.tsx`
+- `frontend/src/hooks/useBetSlipSizing.ts`
+- `frontend/src/components/betslip/`
+- `src/gridiron_edge/api/routes/edges.py`
+- `src/gridiron_edge/market/recommendations.py`
+
 ## D22. Elo is the canonical upcoming-week model; games API falls back champion→elo
 
 **Date:** 2026-07-12
