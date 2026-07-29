@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from fastapi import Response
 from fastapi.testclient import TestClient
 import pandas as pd
 import pytest
@@ -26,6 +27,7 @@ class _FakeSettings:
 
 
 def _make_prediction(
+    *,
     game_id: str = "2026_01_KC_LAC",
     model_type: str = "elo",
     home_team: str = "Los Angeles Chargers",
@@ -193,7 +195,7 @@ class TestListEdgesRoute:
         client: TestClient,
         tmp_path: Path,
     ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
+        predictions = pd.DataFrame([_make_prediction(game_id="2026_01_KC_LAC")])
         (
             MiniRepoBuilder(tmp_path)
             .with_games(_make_games_df())
@@ -202,10 +204,23 @@ class TestListEdgesRoute:
             .with_odds_snapshot(_make_odds_snapshot())
         )
 
-        response = client.get("/edges?season=2026-2027&week=1")
+        response: Response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                "bankroll": 2500.0,
+                "kelly_multiplier": 0.1,
+            },
+        )
 
         assert response.status_code == 200
         body = response.json()
+
+        assert body["bankroll"] == 2500.0
+        assert body["kelly_multiplier"] == 0.1
+        assert body["items"][0]["american_odds"] != 0
+
         assert body["season"] == "2026-2027"
         assert body["week"] == 1
         assert body["min_ev"] == 0.0
@@ -235,7 +250,15 @@ class TestListEdgesRoute:
             .with_odds_snapshot(_make_odds_snapshot())
         )
 
-        response = client.get("/edges?season=2026-2027&week=1")
+        response: Response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                "bankroll": 2500.0,
+                "kelly_multiplier": 0.1,
+            },
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -244,6 +267,9 @@ class TestListEdgesRoute:
         status = body["_meta"]["field_status"]["items"]
         assert status["status"] == "blocked"
         assert status["blocker"] == "no_champion_manifest"
+        assert body["items"] == []
+        assert body["bankroll"] == 2500.0
+        assert body["kelly_multiplier"] == 0.1
 
     def test_missing_odds_returns_field_status(
         self,
@@ -260,7 +286,15 @@ class TestListEdgesRoute:
             # no with_odds_snapshot
         )
 
-        response = client.get("/edges?season=2026-2027&week=1")
+        response: Response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                "bankroll": 2500.0,
+                "kelly_multiplier": 0.1,
+            },
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -269,6 +303,9 @@ class TestListEdgesRoute:
         status = body["_meta"]["field_status"]["items"]
         assert status["status"] == "blocked"
         assert status["blocker"] == "no_odds_available"
+        assert body["items"] == []
+        assert body["bankroll"] == 2500.0
+        assert body["kelly_multiplier"] == 0.1
 
     def test_empty_predictions_returns_empty_no_field_status(
         self,
@@ -286,7 +323,7 @@ class TestListEdgesRoute:
                 pd.DataFrame(
                     [
                         _make_prediction(
-                            "2026_01_KC_LAC",
+                            game_id="2026_01_KC_LAC",
                             # week 2 — different from what we query for
                         )
                     ]
@@ -295,7 +332,15 @@ class TestListEdgesRoute:
             .with_odds_snapshot(_make_odds_snapshot())
         )
 
-        response = client.get("/edges?season=2026-2027&week=1")
+        response: Response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                "bankroll": 2500.0,
+                "kelly_multiplier": 0.1,
+            },
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -308,3 +353,6 @@ class TestListEdgesRoute:
             or "field_status" not in body["_meta"]
             or "items" not in body["_meta"].get("field_status", {})
         )
+        assert body["items"] == []
+        assert body["bankroll"] == 2500.0
+        assert body["kelly_multiplier"] == 0.1

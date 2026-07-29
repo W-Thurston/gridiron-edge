@@ -24,6 +24,7 @@ def _valid_edge_row() -> dict:
         "side": "away",
         "model_value": 0.30,
         "market_value": 0.37,
+        "american_odds": -110,
         "point_edge": None,
         "cover_prob": None,
         "ev": 0.045,
@@ -42,6 +43,7 @@ class TestEdgeRow:
             model_key="win_prob_elo",
             market_type="moneyline",
             side="away",
+            american_odds=125,
             ev=0.02,
             edge_strength="weak",
         )
@@ -49,6 +51,7 @@ class TestEdgeRow:
         assert row.point_edge is None
         assert row.cover_prob is None
         assert row.kelly_stake is None
+        assert row.american_odds == 125
 
     def test_full_moneyline_row(self) -> None:
         row = EdgeRow(**_valid_edge_row())
@@ -58,6 +61,7 @@ class TestEdgeRow:
         assert row.cover_prob is None
         assert row.ev == 0.045
         assert row.edge_strength == "moderate"
+        assert row.american_odds == -110
 
     def test_full_spread_row(self) -> None:
         row = EdgeRow(
@@ -67,6 +71,7 @@ class TestEdgeRow:
                 "side": "home",
                 "model_value": -7.0,
                 "market_value": -3.5,
+                "american_odds": -108,
                 "point_edge": -3.5,
                 "cover_prob": 0.62,
             }
@@ -74,6 +79,8 @@ class TestEdgeRow:
         assert row.market_type == "spread"
         assert row.point_edge == -3.5
         assert row.cover_prob == 0.62
+        assert row.market_value == -3.5
+        assert row.american_odds == -108
 
     def test_full_total_row(self) -> None:
         row = EdgeRow(
@@ -83,6 +90,7 @@ class TestEdgeRow:
                 "side": "over",
                 "model_value": 50.0,
                 "market_value": 44.0,
+                "american_odds": 102,
                 "point_edge": 6.0,
                 "cover_prob": 0.68,
             }
@@ -90,6 +98,8 @@ class TestEdgeRow:
         assert row.market_type == "total"
         assert row.point_edge == 6.0
         assert row.cover_prob == 0.68
+        assert row.market_value == 44.0
+        assert row.american_odds == 102
 
     def test_rejects_missing_required_fields(self) -> None:
         with pytest.raises(ValidationError):
@@ -125,20 +135,31 @@ class TestEdgeList:
         assert response.week is None
         assert response.min_ev is None
         assert response.response_meta is None
+        assert response.bankroll is None
+        assert response.kelly_multiplier is None
 
     def test_with_edges(self) -> None:
         response = EdgeList(
             items=[
                 EdgeRow(**_valid_edge_row()),
-                EdgeRow(**{**_valid_edge_row(), "game_id": "2026_01_BUF_MIA"}),
+                EdgeRow(
+                    **{
+                        **_valid_edge_row(),
+                        "game_id": "2026_01_BUF_MIA",
+                    }
+                ),
             ],
             season="2026-2027",
             week=1,
             min_ev=0.02,
+            bankroll=2500.0,
+            kelly_multiplier=0.1,
         )
         assert len(response.items) == 2
         assert response.season == "2026-2027"
         assert response.min_ev == 0.02
+        assert response.bankroll == 2500.0
+        assert response.kelly_multiplier == 0.1
 
     def test_min_ev_zero_preserved(self) -> None:
         response = EdgeList(items=[], min_ev=0.0)

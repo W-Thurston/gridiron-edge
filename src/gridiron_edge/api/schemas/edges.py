@@ -46,7 +46,17 @@ class EdgeRow(BaseModel):
         description="'home', 'away', 'over', or 'under'.",
     )
     model_value: float | None = None
-    market_value: float | None = None
+    market_value: float | None = Field(
+        default=None,
+        description=(
+            "Market context value: no-vig implied probability for "
+            "moneyline, home-team spread for spread, or market total "
+            "for total."
+        ),
+    )
+    american_odds: int = Field(
+        description=("American price used to calculate EV and Kelly for this edge."),
+    )
     point_edge: float | None = Field(
         default=None,
         description="Points of edge (spread/total). Null for moneyline.",
@@ -73,4 +83,13 @@ class EdgeList(BaseListResponse[EdgeRow]):
     min_ev: float | None = Field(
         default=None,
         description="Minimum EV threshold applied to the report.",
+    )
+    bankroll: float | None = Field(
+        default=None,
+        description=("Bankroll basis used to calculate kelly_stake."),
+    )
+
+    kelly_multiplier: float | None = Field(
+        default=None,
+        description=("Fraction of full Kelly applied when calculating kelly_stake."),
     )

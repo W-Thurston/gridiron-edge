@@ -58,6 +58,7 @@ _REPORT_COLUMNS: list[str] = [
     "side",
     "model_value",
     "market_value",
+    "american_odds",
     "point_edge",
     "cover_prob",
     "ev",
@@ -383,6 +384,7 @@ def build_edge_report(
                 edge_row["point_edge"] = edge.point_edge
                 edge_row["cover_prob"] = edge.cover_prob
 
+            edge_row["american_odds"] = edge.odds
             edge_row["ev"] = edge.ev
             edge_row["edge_strength"] = classify_edge_strength(edge.ev)
             edge_row["kelly_frac"] = edge.kelly_frac

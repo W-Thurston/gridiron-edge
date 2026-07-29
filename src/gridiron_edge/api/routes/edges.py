@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from pandas import DataFrame
 
 from gridiron_edge.api.deps import SettingsDep
 from gridiron_edge.api.exceptions import OddsUnavailableError
@@ -33,6 +34,7 @@ def _resolve_scope(
 @router.get("", response_model=EdgeList)
 def list_edges(
     settings: SettingsDep,
+    *,
     season: str | None = Query(
         default=None,
         description="Season, e.g. '2026-2027'. Defaults to current.",
@@ -66,7 +68,7 @@ def list_edges(
     resolved_season, resolved_week = _resolve_scope(settings, season, week)
 
     try:
-        rows = load_edges_for_week(
+        rows: DataFrame = load_edges_for_week(
             settings,
             season=resolved_season,
             week=resolved_week,
@@ -75,7 +77,7 @@ def list_edges(
             kelly_multiplier=kelly_multiplier,
         )
     except ChampionNotFoundError:
-        meta = ResponseMeta().with_blocked(
+        meta: ResponseMeta = ResponseMeta().with_blocked(
             "items",
             *Unavailable.NO_CHAMPION_MANIFEST,
         )
@@ -83,9 +85,11 @@ def list_edges(
             season=resolved_season,
             week=resolved_week,
             min_ev=min_ev,
+            bankroll=bankroll,
+            kelly_multiplier=kelly_multiplier,
             items=[],
             total=0,
-            response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
+            response_meta=meta,  # pyrefly: ignore [unexpected-keyword]
         )
     except OddsUnavailableError:
         meta = ResponseMeta().with_blocked(
@@ -96,9 +100,11 @@ def list_edges(
             season=resolved_season,
             week=resolved_week,
             min_ev=min_ev,
+            bankroll=bankroll,
+            kelly_multiplier=kelly_multiplier,
             items=[],
             total=0,
-            response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
+            response_meta=meta,  # pyrefly: ignore [unexpected-keyword]
         )
 
     return serialize_edges_list(
@@ -106,4 +112,6 @@ def list_edges(
         season=resolved_season,
         week=resolved_week,
         min_ev=min_ev,
+        bankroll=bankroll,
+        kelly_multiplier=kelly_multiplier,
     )

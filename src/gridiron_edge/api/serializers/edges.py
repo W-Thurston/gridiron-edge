@@ -45,6 +45,7 @@ def _row_to_edge(row: dict) -> EdgeRow:
         side=str(row["side"]),
         model_value=_none_if_nan(row.get("model_value")),
         market_value=_none_if_nan(row.get("market_value")),
+        american_odds=int(row["american_odds"]),
         point_edge=_none_if_nan(row.get("point_edge")),
         cover_prob=_none_if_nan(row.get("cover_prob")),
         ev=float(row["ev"]),
@@ -60,6 +61,8 @@ def serialize_edges_list(
     season: str | None,
     week: int | None,
     min_ev: float | None,
+    bankroll: float | None,
+    kelly_multiplier: float | None,
 ) -> EdgeList:
     """Build the /edges list response from a loader DataFrame.
 
@@ -67,11 +70,13 @@ def serialize_edges_list(
     ChampionNotFoundError / OddsUnavailableError translation to
     field_status; this serializer covers only the happy-path shape.
     """
-    items = [_row_to_edge(r.to_dict()) for _, r in rows.iterrows()]
+    items: list[EdgeRow] = [_row_to_edge(r.to_dict()) for _, r in rows.iterrows()]
     return EdgeList(
         items=items,
         total=len(items),
         season=season,
         week=week,
         min_ev=min_ev,
+        bankroll=bankroll,
+        kelly_multiplier=kelly_multiplier,
     )

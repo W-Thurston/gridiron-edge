@@ -26,6 +26,7 @@ from gridiron_edge.market.recommendations import (
 
 
 def _make_long_odds(
+    *,
     game_id: str = "2026_01_KC_LAC",
     ml_home: float = -150.0,
     ml_away: float = 130.0,
@@ -129,6 +130,7 @@ def _make_long_odds(
 
 
 def _make_predictions(
+    *,
     game_id: str = "2026_01_KC_LAC",
     home_win_prob: float = 0.65,
     model_spread: float = -4.5,
@@ -410,6 +412,23 @@ class TestBuildEdgeReport:
         for col in _REPORT_COLUMNS:
             assert col in report.columns, f"Missing column: {col}"
 
+        moneyline = report.loc[report["market_type"] == "moneyline"].iloc[0]
+
+        assert 0.0 < moneyline["market_value"] < 1.0
+        assert abs(moneyline["american_odds"]) >= 100
+
+        spread = report.loc[report["market_type"] == "spread"].iloc[0]
+
+        assert spread["market_value"] == pytest.approx(-3.0)
+        assert spread["american_odds"] == -110
+
+        total = report.loc[report["market_type"] == "total"].iloc[0]
+
+        assert total["market_value"] == pytest.approx(45.0)
+        assert total["american_odds"] == -110
+
+        assert "american_odds" in report.columns
+
     def test_kelly_stake_calculation(self) -> None:
         """kelly_stake = bankroll * kelly_multiplier * kelly_frac, capped."""
         preds: DataFrame = _make_predictions(home_win_prob=0.70)
@@ -449,6 +468,38 @@ class TestBuildEdgeReport:
         assert len(report) == 0
         for col in _REPORT_COLUMNS:
             assert col in report.columns
+
+    def test_preserves_price_used_for_each_edge(self) -> None:
+        predictions: DataFrame = _make_predictions()
+        odds: DataFrame = _make_long_odds(
+            ml_home=-151.0,
+            ml_away=131.0,
+            spread_odds_home=-107.0,
+            spread_odds_away=-113.0,
+            over_odds=-104.0,
+            under_odds=-116.0,
+        )
+
+        report: DataFrame = build_edge_report(
+            predictions,
+            odds,
+            margin_std=13.5,
+            total_std=14.0,
+        )
+
+        expected_prices: dict[tuple[str, str], int] = {
+            ("moneyline", "home"): -151,
+            ("moneyline", "away"): 131,
+            ("spread", "home"): -107,
+            ("spread", "away"): -113,
+            ("total", "over"): -104,
+            ("total", "under"): -116,
+        }
+
+        assert not report.empty
+
+        for row in report.itertuples(index=False):
+            assert row.american_odds == expected_prices[(row.market_type, row.side)]
 
 
 # ---------------------------------------------------------------------------
