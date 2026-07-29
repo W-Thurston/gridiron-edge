@@ -367,7 +367,18 @@ multiplier-adjusted suggested dollars, payout, and profit. Bankroll and Kelly
 multiplier remain explicit inputs so their authoritative source can be resolved
 independently in Section F.
 
-### F. Lock bankroll behavior — 🔵 ACTIVE
+### F. Lock bankroll behavior — ✅ COMPLETE
+
+- [x] Use `/portfolio/summary.bankroll` as the preferred tracked bankroll.
+- [x] Define behavior when the ledger bankroll is unavailable.
+- [x] Decide whether to allow a clearly labeled what-if bankroll override.
+- [x] Pass explicit bankroll and Kelly multiplier to `/edges`.
+- [x] Ensure `kelly_stake` and displayed bankroll use the same basis.
+- [x] Relabel or remove the legacy AppState bankroll to prevent ambiguity.
+- [x] Surface bankroll source in the BetSlip.
+- [x] Add bankroll-loading, fallback, and mismatch tests.
+- [x] Commit the bankroll-contract unit.
+
 #### F1. Require an explicit bankroll for edge dollar sizing — ✅ COMPLETE
 
 - [x] Remove the hidden `$1,000` bankroll default from `/edges`.
@@ -434,7 +445,34 @@ its explicit provenance, the Kelly multiplier, and tracked loading/error state
 without consulting the legacy AppState bankroll. Live BetSlip integration
 remains isolated to F2c.
 
-### G. Rebuild the BetSlip presentation
+#### F2c. Integrate sizing provenance into the live BetSlip — ✅ COMPLETE
+
+- [x] Extend `useEdges()` with optional bankroll and Kelly-multiplier query parameters.
+- [x] Resolve sizing once at the BetSlip screen boundary.
+- [x] Pass the same effective bankroll and Kelly multiplier to edge generation and slip analysis.
+- [x] Omit bankroll from `/edges` requests when sizing is unavailable.
+- [x] Preserve zero as an explicit bankroll.
+- [x] Preserve backend-returned bankroll and multiplier as immutable recommendation provenance on newly staged legs.
+- [x] Surface tracked, what-if, and unavailable bankroll sources.
+- [x] Add minimal tracked/what-if source controls.
+- [x] Add a validated what-if bankroll input.
+- [x] Add an explicit Kelly-multiplier selector.
+- [x] Surface tracked-bankroll loading and error states.
+- [x] Keep the legacy AppState bankroll outside the BetSlip sizing path.
+- [x] Relabel AppState bankroll as a standalone calculator value in Settings and Onboarding.
+- [x] Add focused screen, edge-query, sizing-hook, and Settings coverage.
+- [x] Verify no hidden bankroll fallback or substitution remains.
+- [x] Run the frontend build, focused tests, and full test suite.
+- [x] Commit the live sizing-integration unit.
+
+The BetSlip now resolves one explicit sizing basis and shares it between edge
+generation and staged-wager analysis. Tracked portfolio bankroll is preferred,
+what-if sizing requires an intentional override, and unavailable sizing remains
+unavailable without falling back to AppState or a hidden default. Newly staged
+recommendations retain the exact bankroll and Kelly multiplier returned by the
+backend.
+
+### G. Rebuild the BetSlip presentation — 🔵 ACTIVE
 
 - [ ] Preserve the Available Edges / BetSlip decision-workspace structure where
       useful.

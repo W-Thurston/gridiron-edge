@@ -263,7 +263,7 @@ function BankrollStep({
           marginBottom: 12,
         }}
       >
-        Starting bankroll?
+        Calculator bankroll?
       </h2>
       <p
         style={{
@@ -272,7 +272,7 @@ function BankrollStep({
           marginBottom: 32,
         }}
       >
-        Used for Kelly stake sizing. Adjust anytime in Settings.
+        Used as a local what-if value in standalone calculation tools. BetSlip uses tracked portfolio bankroll unless you select a what-if override.
       </p>
 
       <div

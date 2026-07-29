@@ -8,7 +8,11 @@ export function Settings() {
   const { navigate } = useNav();
 
   const handleReset = () => {
-    if (confirm("Reset all app state? This clears bankroll, bet slip, odds format, and onboarding.")) {
+    if (
+      confirm(
+        "Reset all app state? This clears calculator bankroll, BetSlip data, odds format, and onboarding.",
+      )
+    ) {
       localStorage.clear();
       sessionStorage.clear();
       // Force reload so all providers re-initialize from defaults.
@@ -39,8 +43,8 @@ export function Settings() {
         />
 
         <SettingsRow
-          label="Bankroll"
-          description="Current bankroll used for Kelly stake sizing."
+          label="Calculator Bankroll"
+          description="Local what-if value used by standalone calculation tools. BetSlip uses tracked portfolio bankroll unless a what-if override is selected."
           control={
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span className="mono dim">$</span>

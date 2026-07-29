@@ -7,8 +7,32 @@ import { useBetSlip } from "../../context/BetSlipContext";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
 import { ErrorCard } from "../../components/error/ErrorCard";
 
-export function EdgesTable() {
-  const { data, isLoading, error, refetch } = useEdges();
+export function EdgesTable({
+  bankroll,
+  kellyMultiplier,
+}: {
+  bankroll: number | null;
+  kellyMultiplier: number;
+}) {
+  const edgeParams =
+    bankroll == null
+      ? {
+          kelly_multiplier:
+            kellyMultiplier,
+        }
+      : {
+          bankroll,
+          kelly_multiplier:
+            kellyMultiplier,
+        };
+
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+  } = useEdges(edgeParams);
+
   const { legs, add } = useBetSlip();
 
   const legIds = new Set(legs.map((l) => l.id));

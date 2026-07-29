@@ -11,8 +11,31 @@ describe("Settings", () => {
         <Settings />
       </TestWrapper>,
     );
-    expect(screen.getByText("Odds Format")).toBeInTheDocument();
-    expect(screen.getByText("Bankroll")).toBeInTheDocument();
+    expect(
+      screen.getByText("Odds Format"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(
+        "Calculator Bankroll",
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(
+        /Local what-if value used by standalone calculation tools/,
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText("Alerts"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(
+        "Reset Everything",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Alerts")).toBeInTheDocument();
     expect(screen.getByText("Reset Everything")).toBeInTheDocument();
   });

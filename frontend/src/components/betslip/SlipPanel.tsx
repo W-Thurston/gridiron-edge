@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
-import type { BetLeg, } from "../../context/BetSlipContext";
-import { americanToDecimal, formatOdds } from "../../utils/odds";
+import type { BetLeg } from "../../context/BetSlipContext";
+import type { BetSlipSizingResult } from "../../hooks/useBetSlipSizing";
+import {
+  americanToDecimal,
+  formatOdds,
+} from "../../utils/odds";
 import { TeamMark } from "../primitives/TeamMark";
 
-export function SlipPanel() {
+export function SlipPanel({
+  sizing,
+}: {
+  sizing: BetSlipSizingResult;
+}) {
   const { legs, mode, setMode, remove, clear } = useBetSlip();
   const { state } = useAppState();
   const [stake, setStake] = useState(25);
@@ -86,7 +94,10 @@ export function SlipPanel() {
         </div>
       </div>
 
+      <SizingControls sizing={sizing} />
+
       {legs.length === 0 ? (
+
         <div
           style={{
             padding: 32,
@@ -236,6 +247,286 @@ export function SlipPanel() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SizingControls({
+  sizing,
+}: {
+  sizing: BetSlipSizingResult;
+}) {
+  const sourceLabel =
+    sizing.bankrollSource === "tracked"
+      ? "Tracked portfolio"
+      : sizing.bankrollSource ===
+          "what-if"
+        ? "What-if"
+        : "Unavailable";
+
+  const bankrollLabel =
+    sizing.isTrackedBankrollLoading &&
+    sizing.bankrollMode === "tracked"
+      ? "Loading…"
+      : sizing.bankroll == null
+        ? "Unavailable"
+        : `$${sizing.bankroll.toFixed(2)}`;
+
+  return (
+    <div
+      style={{
+        padding: 12,
+        marginBottom: 16,
+        backgroundColor: "var(--bg-2)",
+        border:
+          "1px solid var(--line-soft)",
+        borderRadius: 5,
+      }}
+    >
+      <div
+        className="upper dim2"
+        style={{
+          fontSize: 9,
+          marginBottom: 8,
+        }}
+      >
+        Sizing Basis
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 10,
+        }}
+      >
+        <ModeButton
+          label="Tracked"
+          active={
+            sizing.bankrollMode ===
+            "tracked"
+          }
+          onClick={() =>
+            sizing.setBankrollMode(
+              "tracked",
+            )
+          }
+        />
+
+        <ModeButton
+          label="What-if"
+          active={
+            sizing.bankrollMode ===
+            "what-if"
+          }
+          onClick={() =>
+            sizing.setBankrollMode(
+              "what-if",
+            )
+          }
+        />
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "1fr 1fr",
+          gap: 12,
+          marginBottom: 10,
+        }}
+      >
+        <div>
+          <div
+            className="upper dim2"
+            style={{
+              fontSize: 9,
+              marginBottom: 4,
+            }}
+          >
+            Bankroll
+          </div>
+
+          <div
+            className="mono tnum"
+            style={{
+              fontSize: 12,
+              color:
+                sizing.bankroll == null
+                  ? "var(--warn)"
+                  : "var(--ink-2)",
+            }}
+          >
+            {bankrollLabel}
+          </div>
+        </div>
+
+        <div>
+          <div
+            className="upper dim2"
+            style={{
+              fontSize: 9,
+              marginBottom: 4,
+            }}
+          >
+            Source
+          </div>
+
+          <div
+            className="mono"
+            style={{
+              fontSize: 12,
+              color:
+                sizing.bankrollSource ===
+                "unavailable"
+                  ? "var(--warn)"
+                  : "var(--ink-2)",
+            }}
+          >
+            {sourceLabel}
+          </div>
+        </div>
+      </div>
+
+      {sizing.bankrollMode ===
+        "what-if" && (
+        <div
+          style={{
+            marginBottom: 10,
+          }}
+        >
+          <label
+            htmlFor="betslip-what-if-bankroll"
+            className="upper dim2"
+            style={{
+              display: "block",
+              fontSize: 9,
+              marginBottom: 4,
+            }}
+          >
+            What-if bankroll
+          </label>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span className="mono dim">
+              $
+            </span>
+
+            <input
+              id="betslip-what-if-bankroll"
+              type="number"
+              min={0}
+              step={100}
+              value={
+                sizing.whatIfBankroll ??
+                ""
+              }
+              onChange={(event) => {
+                const value =
+                  event.target.value;
+
+                sizing.setWhatIfBankroll(
+                  value === ""
+                    ? null
+                    : Number(value),
+                );
+              }}
+              style={{
+                width: 120,
+                padding: "6px 8px",
+                backgroundColor:
+                  "var(--bg-1)",
+                color: "var(--ink)",
+                border:
+                  "1px solid var(--line-soft)",
+                borderRadius: 4,
+                fontFamily:
+                  "var(--f-mono)",
+                fontVariantNumeric:
+                  "tabular-nums",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label
+          htmlFor="betslip-kelly-multiplier"
+          className="upper dim2"
+          style={{
+            display: "block",
+            fontSize: 9,
+            marginBottom: 4,
+          }}
+        >
+          Kelly multiplier
+        </label>
+
+        <select
+          id="betslip-kelly-multiplier"
+          value={String(
+            sizing.kellyMultiplier,
+          )}
+          onChange={(event) =>
+            sizing.setKellyMultiplier(
+              Number(
+                event.target.value,
+              ),
+            )
+          }
+          style={{
+            width: "100%",
+            padding: "6px 8px",
+            backgroundColor:
+              "var(--bg-1)",
+            color: "var(--ink)",
+            border:
+              "1px solid var(--line-soft)",
+            borderRadius: 4,
+            fontFamily:
+              "var(--f-mono)",
+          }}
+        >
+          <option value="0.1">
+            0.10× Kelly
+          </option>
+
+          <option value="0.25">
+            0.25× Kelly
+          </option>
+
+          <option value="0.5">
+            0.50× Kelly
+          </option>
+
+          <option value="1">
+            1.00× Kelly
+          </option>
+        </select>
+      </div>
+
+      {sizing.trackedBankrollError &&
+        sizing.bankrollMode ===
+          "tracked" && (
+          <div
+            className="mono"
+            style={{
+              marginTop: 8,
+              fontSize: 10,
+              color: "var(--warn)",
+            }}
+          >
+            Tracked bankroll could not be
+            loaded.
+          </div>
+        )}
     </div>
   );
 }
