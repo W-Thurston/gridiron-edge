@@ -89,6 +89,16 @@ export type BetCalculation = {
   fullKellyFraction: number | null;
 };
 
+export type BetLegAnalysis = {
+  reference: BetCalculation | null;
+  current: BetCalculation | null;
+  breakEvenAmericanOdds: number | null;
+  currentPriceIsAcceptable: boolean | null;
+  suggestedStake: number | null;
+  payout: number | null;
+  profit: number | null;
+};
+
 const SOURCES = new Set<BetLegSource>([
   "betslip-edges",
   "dashboard-featured",
@@ -320,6 +330,88 @@ export function isPriceAtLeastAsGood(
   const threshold = parseAmericanOdds(thresholdAmericanOdds);
   if (current == null || threshold == null) return false;
   return americanToDecimal(current) >= americanToDecimal(threshold);
+}
+
+export function analyzeBetLeg({
+  leg,
+  bankroll,
+  kellyMultiplier,
+}: {
+  leg: BetLeg;
+  bankroll: number | null;
+  kellyMultiplier: number | null;
+}): BetLegAnalysis {
+  const modelProbability =
+    leg.recommendation
+      .referenceModelProbability;
+
+  const reference =
+    calculateBetMetrics({
+      americanOdds:
+        leg.recommendation
+          .referenceAmericanOdds,
+      modelProbability,
+    });
+
+  const current =
+    calculateBetMetrics({
+      americanOdds:
+        leg.draft.currentAmericanOdds,
+      modelProbability,
+    });
+
+  const breakEvenAmericanOdds =
+    modelBreakEvenAmericanOdds(
+      modelProbability,
+    );
+
+  const currentPriceIsAcceptable =
+    leg.draft.currentAmericanOdds ==
+      null ||
+    breakEvenAmericanOdds == null
+      ? null
+      : isPriceAtLeastAsGood(
+          leg.draft.currentAmericanOdds,
+          breakEvenAmericanOdds,
+        );
+
+  const validBankroll =
+    nonnegativeOrNull(bankroll);
+
+  const validKellyMultiplier =
+    nonnegativeOrNull(
+      kellyMultiplier,
+    );
+
+  const suggestedStake =
+    current?.fullKellyFraction ==
+      null ||
+    validBankroll == null ||
+    validKellyMultiplier == null
+      ? null
+      : validBankroll *
+        validKellyMultiplier *
+        current.fullKellyFraction;
+
+  const payoutResult =
+    calculatePayout({
+      americanOdds:
+        leg.draft.currentAmericanOdds,
+      stake:
+        leg.draft.proposedStake,
+    });
+
+  return {
+    reference,
+    current,
+    breakEvenAmericanOdds,
+    currentPriceIsAcceptable,
+    suggestedStake,
+    payout:
+      payoutResult?.payout ?? null,
+    profit:
+      payoutResult?.profit ?? null,
+  };
 }
 
 export function propSideFromLean(

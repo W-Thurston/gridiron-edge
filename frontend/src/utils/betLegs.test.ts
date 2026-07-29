@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { components } from "../api/schema";
 import {
+  analyzeBetLeg,
   buildGameBetLegId,
   buildPropBetLegId,
   calculateBetMetrics,
@@ -11,12 +12,11 @@ import {
   modelBreakEvenAmericanOdds,
   parseBetLegsV2,
   parseBetLegV2,
+  propSideFromLean,
   type BetLegSource,
   type GameBetLeg,
   type PropBetLeg,
-  propSideFromLean,
 } from "./betLegs";
-
 type EdgeApiRow = components["schemas"]["EdgeRow"];
 type PropSummaryApi = components["schemas"]["PropSummary"];
 
@@ -372,6 +372,274 @@ describe("bet calculations", () => {
     expect(isPriceAtLeastAsGood(-130, -124)).toBe(false);
     expect(isPriceAtLeastAsGood(130, 120)).toBe(true);
     expect(isPriceAtLeastAsGood(110, 120)).toBe(false);
+  });
+});
+
+describe("analyzeBetLeg", () => {
+  it("keeps reference and current calculations separate", () => {
+    const leg = gameLeg({
+      draft: {
+        ...gameLeg().draft,
+        currentAmericanOdds: -125,
+      },
+    });
+
+    const analysis = analyzeBetLeg({
+      leg,
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.reference
+        ?.decimalOdds,
+    ).toBeCloseTo(1.9090909);
+
+    expect(
+      analysis.current
+        ?.decimalOdds,
+    ).toBeCloseTo(1.8);
+
+    expect(
+      analysis.reference
+        ?.expectedValue,
+    ).toBeCloseTo(0.1072727);
+
+    expect(
+      analysis.current
+        ?.expectedValue,
+    ).toBeCloseTo(0.044);
+  });
+
+  it("calculates the model break-even price", () => {
+    const analysis = analyzeBetLeg({
+      leg: gameLeg(),
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.breakEvenAmericanOdds,
+    ).toBe(-138);
+  });
+
+  it("identifies whether the current price remains acceptable", () => {
+    const acceptable = analyzeBetLeg({
+      leg: gameLeg({
+        draft: {
+          ...gameLeg().draft,
+          currentAmericanOdds: -125,
+        },
+      }),
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    const unacceptable = analyzeBetLeg({
+      leg: gameLeg({
+        draft: {
+          ...gameLeg().draft,
+          currentAmericanOdds: -150,
+        },
+      }),
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      acceptable.currentPriceIsAcceptable,
+    ).toBe(true);
+
+    expect(
+      unacceptable.currentPriceIsAcceptable,
+    ).toBe(false);
+  });
+
+  it("calculates multiplier-adjusted Kelly dollars", () => {
+    const analysis = analyzeBetLeg({
+      leg: gameLeg(),
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.current
+        ?.fullKellyFraction,
+    ).toBeCloseTo(0.118);
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeCloseTo(29.5);
+  });
+
+  it("keeps proposed stake separate from suggested stake", () => {
+    const leg = gameLeg({
+      draft: {
+        ...gameLeg().draft,
+        proposedStake: 50,
+      },
+    });
+
+    const analysis = analyzeBetLeg({
+      leg,
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeCloseTo(29.5);
+
+    expect(
+      analysis.payout,
+    ).toBeCloseTo(95.454545);
+
+    expect(
+      analysis.profit,
+    ).toBeCloseTo(45.454545);
+  });
+
+  it("blocks price-dependent calculations when current price is missing", () => {
+    const leg = gameLeg({
+      draft: {
+        ...gameLeg().draft,
+        currentAmericanOdds: null,
+        proposedStake: 50,
+      },
+    });
+
+    const analysis = analyzeBetLeg({
+      leg,
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.reference,
+    ).not.toBeNull();
+
+    expect(
+      analysis.current,
+    ).toBeNull();
+
+    expect(
+      analysis.currentPriceIsAcceptable,
+    ).toBeNull();
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeNull();
+
+    expect(
+      analysis.payout,
+    ).toBeNull();
+
+    expect(
+      analysis.profit,
+    ).toBeNull();
+  });
+
+  it("blocks EV and Kelly when model probability is missing", () => {
+    const analysis = analyzeBetLeg({
+      leg: propLeg({
+        draft: {
+          ...propLeg().draft,
+          currentAmericanOdds: -110,
+          proposedStake: 25,
+        },
+        recommendation: {
+          ...propLeg().recommendation,
+          referenceModelProbability:
+            null,
+        },
+      }),
+      bankroll: 2500,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.current
+        ?.decimalOdds,
+    ).toBeCloseTo(1.9090909);
+
+    expect(
+      analysis.current
+        ?.impliedProbability,
+    ).toBeCloseTo(0.5238095);
+
+    expect(
+      analysis.current
+        ?.expectedValue,
+    ).toBeNull();
+
+    expect(
+      analysis.current
+        ?.fullKellyFraction,
+    ).toBeNull();
+
+    expect(
+      analysis.breakEvenAmericanOdds,
+    ).toBeNull();
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeNull();
+
+    expect(
+      analysis.payout,
+    ).toBeCloseTo(47.7272727);
+  });
+
+  it("blocks dollar sizing without an explicit bankroll", () => {
+    const analysis = analyzeBetLeg({
+      leg: gameLeg(),
+      bankroll: null,
+      kellyMultiplier: 0.1,
+    });
+
+    expect(
+      analysis.current
+        ?.fullKellyFraction,
+    ).not.toBeNull();
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeNull();
+  });
+
+  it("blocks dollar sizing without an explicit Kelly multiplier", () => {
+    const analysis = analyzeBetLeg({
+      leg: gameLeg(),
+      bankroll: 2500,
+      kellyMultiplier: null,
+    });
+
+    expect(
+      analysis.current
+        ?.fullKellyFraction,
+    ).not.toBeNull();
+
+    expect(
+      analysis.suggestedStake,
+    ).toBeNull();
+  });
+
+  it("preserves zero bankroll and zero multiplier as valid inputs", () => {
+    expect(
+      analyzeBetLeg({
+        leg: gameLeg(),
+        bankroll: 0,
+        kellyMultiplier: 0.1,
+      }).suggestedStake,
+    ).toBe(0);
+
+    expect(
+      analyzeBetLeg({
+        leg: gameLeg(),
+        bankroll: 2500,
+        kellyMultiplier: 0,
+      }).suggestedStake,
+    ).toBe(0);
   });
 });
 

@@ -8,10 +8,14 @@ import type { ReactNode } from "react";
 import {
   parseBetLegsV2,
   parseBetLegV2,
+  type BetDraftInputs,
   type BetLeg,
 } from "../utils/betLegs";
 
 export type { BetLeg } from "../utils/betLegs";
+
+export type BetDraftUpdate =
+  Partial<BetDraftInputs>;
 
 export type BetSlipMode = "single" | "parlay";
 
@@ -19,9 +23,15 @@ type BetSlipContextValue = {
   legs: BetLeg[];
   mode: BetSlipMode;
   add: (leg: BetLeg) => void;
+  updateDraft: (
+    id: string,
+    update: BetDraftUpdate,
+  ) => void;
   remove: (id: string) => void;
   clear: () => void;
-  setMode: (mode: BetSlipMode) => void;
+  setMode: (
+    mode: BetSlipMode,
+  ) => void;
 };
 
 const BetSlipContext = createContext<
@@ -121,6 +131,32 @@ export function BetSlipProvider({
     });
   };
 
+  const updateDraft = (
+    id: string,
+    update: BetDraftUpdate,
+  ) => {
+    setLegs((previous) =>
+      previous.map((leg) => {
+        if (leg.id !== id) {
+          return leg;
+        }
+
+        const candidate: BetLeg = {
+          ...leg,
+          draft: {
+            ...leg.draft,
+            ...update,
+          },
+        };
+
+        return (
+          parseBetLegV2(candidate) ??
+          leg
+        );
+      }),
+    );
+  };
+
   const remove = (id: string) => {
     setLegs((previous) =>
       previous.filter(
@@ -141,6 +177,7 @@ export function BetSlipProvider({
         legs,
         mode,
         add,
+        updateDraft,
         remove,
         clear,
         setMode,
