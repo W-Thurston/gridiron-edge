@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { BetLeg } from "../../context/BetSlipContext";
 import {
   analyzeBetLeg,
@@ -47,6 +48,10 @@ export function BetLegCard({
   onUpdateNote,
   onRemove,
 }: BetLegCardProps) {
+  const fieldIdPrefix = useId();
+  const accessibleLegLabel =
+    legLabel(leg);
+
   const analysis = analyzeBetLeg({
     leg,
     bankroll,
@@ -55,7 +60,7 @@ export function BetLegCard({
 
   return (
     <article
-      aria-label={legLabel(leg)}
+      aria-label={accessibleLegLabel}
       style={{
         padding: 14,
         backgroundColor: "var(--bg-1)",
@@ -75,6 +80,10 @@ export function BetLegCard({
         leg={leg}
         analysis={analysis}
         oddsFormat={oddsFormat}
+        fieldId={`${fieldIdPrefix}-current-odds`}
+        accessibleLegLabel={
+          accessibleLegLabel
+        }
         onUpdateCurrentOdds={
           onUpdateCurrentOdds
         }
@@ -92,6 +101,10 @@ export function BetLegCard({
       <StakeSection
         leg={leg}
         analysis={analysis}
+        fieldId={`${fieldIdPrefix}-proposed-stake`}
+        accessibleLegLabel={
+          accessibleLegLabel
+        }
         onUpdateProposedStake={
           onUpdateProposedStake
         }
@@ -99,6 +112,11 @@ export function BetLegCard({
 
       <DraftDetails
         leg={leg}
+        sportsbookId={`${fieldIdPrefix}-sportsbook`}
+        noteId={`${fieldIdPrefix}-note`}
+        accessibleLegLabel={
+          accessibleLegLabel
+        }
         onUpdateSportsbook={
           onUpdateSportsbook
         }
@@ -246,11 +264,15 @@ function PriceSection({
   leg,
   analysis,
   oddsFormat,
+  fieldId,
+  accessibleLegLabel,
   onUpdateCurrentOdds,
 }: {
   leg: BetLeg;
   analysis: BetLegAnalysis;
   oddsFormat: OddsFormat;
+  fieldId: string;
+  accessibleLegLabel: string;
   onUpdateCurrentOdds: (
     value: number | null,
   ) => void;
@@ -264,12 +286,9 @@ function PriceSection({
 
   return (
     <section
-      aria-label="Price comparison"
+      aria-label={`Price comparison for ${accessibleLegLabel}`}
+      className="betslip-card-grid"
       style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(2, minmax(0, 1fr))",
-        gap: 10,
         marginBottom: 12,
       }}
     >
@@ -290,6 +309,8 @@ function PriceSection({
 
       <FieldBlock label="Current price">
         <AmericanOddsInput
+          id={fieldId}
+          label={`Current American odds for ${accessibleLegLabel}`}
           value={currentOdds}
           onChange={
             onUpdateCurrentOdds
@@ -341,12 +362,11 @@ function ModelSection({
 
   return (
     <section
-      aria-label="Model analysis"
+      aria-label={`Model analysis for ${legLabel(
+        leg,
+      )}`}
+      className="betslip-card-grid"
       style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(2, minmax(0, 1fr))",
-        gap: 10,
         marginBottom: 12,
         padding: 10,
         backgroundColor: "var(--bg-2)",
@@ -464,27 +484,30 @@ function ModelSection({
 function StakeSection({
   leg,
   analysis,
+  fieldId,
+  accessibleLegLabel,
   onUpdateProposedStake,
 }: {
   leg: BetLeg;
   analysis: BetLegAnalysis;
+  fieldId: string;
+  accessibleLegLabel: string;
   onUpdateProposedStake: (
     value: number | null,
   ) => void;
 }) {
   return (
     <section
-      aria-label="Stake and payout"
+      aria-label={`Stake and payout for ${accessibleLegLabel}`}
+      className="betslip-card-grid betslip-card-grid--stake"
       style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(3, minmax(0, 1fr))",
-        gap: 10,
         marginBottom: 12,
       }}
     >
       <FieldBlock label="Your proposed stake">
         <MoneyInput
+          id={fieldId}
+          label={`Proposed stake for ${accessibleLegLabel}`}
           value={
             leg.draft.proposedStake
           }
@@ -521,10 +544,16 @@ function StakeSection({
 
 function DraftDetails({
   leg,
+  sportsbookId,
+  noteId,
+  accessibleLegLabel,
   onUpdateSportsbook,
   onUpdateNote,
 }: {
   leg: BetLeg;
+  sportsbookId: string;
+  noteId: string;
+  accessibleLegLabel: string;
   onUpdateSportsbook: (
     value: string | null,
   ) => void;
@@ -552,11 +581,14 @@ function DraftDetails({
         }}
       >
         <label
+          htmlFor={sportsbookId}
           className="upper dim2"
           style={{ fontSize: 9 }}
         >
-          Sportsbook
+          Sportsbook for{" "}
+          {accessibleLegLabel}
           <input
+            id={sportsbookId}
             type="text"
             value={
               leg.draft.sportsbook ??
@@ -575,11 +607,13 @@ function DraftDetails({
         </label>
 
         <label
+          htmlFor={noteId}
           className="upper dim2"
           style={{ fontSize: 9 }}
         >
-          Note
+          Note for {accessibleLegLabel}
           <textarea
+            id={noteId}
             value={leg.draft.note ?? ""}
             placeholder="Optional draft note"
             rows={2}
@@ -602,9 +636,13 @@ function DraftDetails({
 }
 
 function AmericanOddsInput({
+  id,
+  label,
   value,
   onChange,
 }: {
+  id: string;
+  label: string;
   value: number | null;
   onChange: (
     value: number | null,
@@ -612,7 +650,8 @@ function AmericanOddsInput({
 }) {
   return (
     <input
-      aria-label="Current American odds"
+      id={id}
+      aria-label={label}
       type="number"
       step={1}
       value={value ?? ""}
@@ -630,9 +669,13 @@ function AmericanOddsInput({
 }
 
 function MoneyInput({
+  id,
+  label,
   value,
   onChange,
 }: {
+  id: string;
+  label: string;
   value: number | null;
   onChange: (
     value: number | null,
@@ -651,7 +694,8 @@ function MoneyInput({
       </span>
 
       <input
-        aria-label="Proposed stake"
+        id={id}
+        aria-label={label}
         type="number"
         min={0}
         step={5}

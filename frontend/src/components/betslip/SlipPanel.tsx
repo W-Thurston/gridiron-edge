@@ -73,14 +73,84 @@ export function SlipPanel({
       {legs.length === 0 ? (
 
         <div
+          aria-label="Empty Bet Slip"
           style={{
-            padding: 32,
+            padding: "28px 20px",
             textAlign: "center",
             color: "var(--ink-3)",
             fontSize: 13,
           }}
         >
-          Your bet slip is empty. Add edges from the table to stage bets.
+          <div
+            style={{
+              color: "var(--ink-2)",
+              fontWeight: 500,
+            }}
+          >
+            Your Bet Slip is empty.
+          </div>
+
+          <div
+            className="mono dim2"
+            style={{
+              marginTop: 6,
+              fontSize: 10,
+              lineHeight: 1.5,
+            }}
+          >
+            Stage an edge or prop interest,
+            then review current-price and
+            stake scenarios here.
+          </div>
+
+          <ol className="betslip-empty-steps">
+            <li className="betslip-empty-step">
+              <span className="betslip-empty-step-number">
+                1
+              </span>
+
+              <span>
+                Add a model edge from
+                Available Edges or another
+                analysis screen.
+              </span>
+            </li>
+
+            <li className="betslip-empty-step">
+              <span className="betslip-empty-step-number">
+                2
+              </span>
+
+              <span>
+                Enter or adjust current odds
+                and a proposed stake.
+              </span>
+            </li>
+
+            <li className="betslip-empty-step">
+              <span className="betslip-empty-step-number">
+                3
+              </span>
+
+              <span>
+                Review EV, Kelly, payout, and
+                profit before recording a
+                wager elsewhere.
+              </span>
+            </li>
+          </ol>
+
+          <div
+            className="mono dim2"
+            style={{
+              marginTop: 14,
+              fontSize: 9,
+            }}
+          >
+            Props may require manual current
+            odds. Gridiron Edge does not place
+            sportsbook wagers.
+          </div>
         </div>
       ) : (
         <>
@@ -208,6 +278,8 @@ function AggregateSummary({
   return (
     <section
       aria-label="Bet slip summary"
+      aria-live="polite"
+      aria-atomic="true"
       style={{
         padding: 16,
         marginBottom: 12,
@@ -271,14 +343,7 @@ function SingleSummaryMetrics({
   >;
 }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(3, minmax(0, 1fr))",
-        gap: 12,
-      }}
-    >
+    <div className="betslip-summary-grid">
       <SummaryMetric
         label="Total proposed stake"
         value={formatMoney(
@@ -328,11 +393,8 @@ function ParlaySummaryMetrics({
   return (
     <>
       <div
+        className="betslip-summary-grid betslip-summary-grid--parlay"
         style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(2, minmax(0, 1fr))",
-          gap: 12,
           marginBottom: 12,
         }}
       >
@@ -726,15 +788,7 @@ function SizingControls({
         />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "1fr 1fr",
-          gap: 12,
-          marginBottom: 10,
-        }}
-      >
+      <div className="betslip-sizing-grid">
         <div>
           <div
             className="upper dim2"
@@ -943,8 +997,10 @@ function ModeButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={active}
       style={{
         background: active ? "var(--pos)" : "transparent",
         color: active ? "var(--bg)" : disabled ? "var(--ink-4)" : "var(--ink-2)",

@@ -472,7 +472,7 @@ unavailable without falling back to AppState or a hidden default. Newly staged
 recommendations retain the exact bankroll and Kelly multiplier returned by the
 backend.
 
-### G. Rebuild the BetSlip presentation — 🔵 ACTIVE
+### G. Rebuild the BetSlip presentation — ✅ COMPLETE
 
 #### G1. Rebuild staged-wager decision cards — ✅ COMPLETE
 
@@ -580,6 +580,35 @@ two-column decision layout on wide screens and stacks the panels at narrow
 widths. Available Edges remains readable through a focusable horizontal-scroll
 region and now exposes complete table semantics, canonical row identity,
 wager-specific Add labels, and clearer staging guidance.
+
+#### G3b. Finish responsive and accessible BetSlip presentation — ✅ COMPLETE
+
+- [x] Make price-comparison grids responsive.
+- [x] Make model-analysis grids responsive.
+- [x] Make stake-and-payout grids responsive.
+- [x] Make single and parlay summary grids responsive.
+- [x] Make bankroll-sizing metrics responsive.
+- [x] Add structured empty-slip workflow guidance.
+- [x] Explain that props may require manually entered current odds.
+- [x] Preserve the no-sportsbook-execution boundary in the empty state.
+- [x] Add unique per-leg IDs and labels for current odds.
+- [x] Add unique per-leg IDs and labels for proposed stake.
+- [x] Add unique per-leg IDs and labels for sportsbook.
+- [x] Add unique per-leg IDs and labels for notes.
+- [x] Add wager-specific labels to price, analysis, and stake sections.
+- [x] Add pressed-state semantics to Single/Parlay controls.
+- [x] Add pressed-state semantics to Tracked/What-if controls.
+- [x] Announce aggregate summary updates politely.
+- [x] Remove accidental visible markup introduced during the rebuild.
+- [x] Add focused responsive-class, field-label, empty-state, pressed-state, and live-summary coverage.
+- [x] Run the frontend build, focused tests, and full suite.
+- [x] Commit the final presentation unit.
+
+The BetSlip decision workspace now adapts from a dense desktop layout to a
+single-column narrow layout without changing calculation behavior. Every
+editable field is uniquely associated with its staged wager, mode controls
+expose pressed state, aggregate changes are announced politely, and the empty
+state explains the complete staging and what-if workflow.
 
 ### H. Optional recorded-bet workflow
 

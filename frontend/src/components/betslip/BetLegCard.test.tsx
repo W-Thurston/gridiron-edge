@@ -145,6 +145,25 @@ function renderCard({
 
 describe("BetLegCard", () => {
   it(
+    "uses wager-specific field labels",
+    () => {
+      renderCard();
+
+      expect(
+        screen.getByLabelText(
+          "Current American odds for KC at LAC moneyline away",
+        ),
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByLabelText(
+          "Proposed stake for KC at LAC moneyline away",
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it(
     "shows immutable reference and current game analysis",
     () => {
       renderCard();
@@ -178,7 +197,7 @@ describe("BetLegCard", () => {
 
         fireEvent.change(
         screen.getByLabelText(
-            "Current American odds",
+          "Current American odds for KC at LAC moneyline away",
         ),
         {
             target: {
@@ -202,7 +221,7 @@ describe("BetLegCard", () => {
 
         fireEvent.change(
         screen.getByLabelText(
-            "Current American odds",
+          "Current American odds for KC at LAC moneyline away",
         ),
         {
             target: {
@@ -226,7 +245,7 @@ describe("BetLegCard", () => {
 
         fireEvent.change(
         screen.getByLabelText(
-            "Proposed stake",
+          "Proposed stake for KC at LAC moneyline away",
         ),
         {
             target: {
@@ -272,7 +291,7 @@ describe("BetLegCard", () => {
 
       expect(
         screen.getByLabelText(
-          "Current American odds",
+          "Current American odds for Patrick Mahomes Passing Yards over",
         ),
       ).toHaveValue(null);
     },
@@ -287,7 +306,7 @@ describe("BetLegCard", () => {
 
         const analysisSection =
         screen.getByLabelText(
-            "Model analysis",
+          "Model analysis for KC at LAC moneyline away",
         );
 
         expect(
@@ -314,8 +333,8 @@ describe("BetLegCard", () => {
         );
 
         fireEvent.change(
-        screen.getByPlaceholderText(
-            "Optional manual entry",
+        screen.getByLabelText(
+          "Sportsbook for KC at LAC moneyline away",
         ),
         {
             target: {
@@ -325,8 +344,8 @@ describe("BetLegCard", () => {
         );
 
         fireEvent.change(
-        screen.getByPlaceholderText(
-            "Optional draft note",
+        screen.getByLabelText(
+          "Note for KC at LAC moneyline away",
         ),
         {
             target: {

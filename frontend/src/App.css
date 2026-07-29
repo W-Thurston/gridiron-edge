@@ -59,3 +59,77 @@
     padding: 16px !important;
   }
 }
+
+/* BetSlip panel grids */
+.betslip-card-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.betslip-card-grid--stake {
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+}
+
+.betslip-summary-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.betslip-summary-grid--parlay {
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+}
+
+.betslip-sizing-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.betslip-empty-steps {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+  margin: 16px auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.betslip-empty-step {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.betslip-empty-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 9px;
+}
+
+@media (max-width: 640px) {
+  .betslip-card-grid,
+  .betslip-card-grid--stake,
+  .betslip-summary-grid,
+  .betslip-summary-grid--parlay,
+  .betslip-sizing-grid {
+    grid-template-columns:
+      minmax(0, 1fr);
+  }
+}

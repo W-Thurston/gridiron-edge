@@ -228,6 +228,16 @@ describe("SlipPanel summary", () => {
           "Bet slip summary",
         );
 
+      expect(summary).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+
+      expect(summary).toHaveAttribute(
+        "aria-atomic",
+        "true",
+      );
+
       expect(summary).toHaveTextContent(
         "Singles Summary",
       );
@@ -493,10 +503,98 @@ describe("SlipPanel summary", () => {
       );
 
       expect(
-        screen.getByText(
-          /Your bet slip is empty/,
+        screen.getByLabelText(
+          "Empty Bet Slip",
         ),
-      ).toBeInTheDocument();
+      ).toHaveTextContent(
+        "Your Bet Slip is empty.",
+      );
     },
   );
+
+  it(
+    "explains the empty-slip workflow",
+    () => {
+      renderPanel();
+
+      const emptyState =
+        screen.getByLabelText(
+          "Empty Bet Slip",
+        );
+
+      expect(emptyState).toHaveTextContent(
+        "Add a model edge from Available Edges",
+      );
+
+      expect(emptyState).toHaveTextContent(
+        "Enter or adjust current odds and a proposed stake",
+      );
+
+      expect(emptyState).toHaveTextContent(
+        "Props may require manual current odds",
+      );
+
+      expect(emptyState).toHaveTextContent(
+        "does not place sportsbook wagers",
+      );
+    },
+  );
+
+  it(
+    "exposes pressed state for wager and bankroll modes",
+    async () => {
+      const user = userEvent.setup();
+
+      renderPanel();
+
+      const singleButton =
+        screen.getByRole("button", {
+          name: "Single",
+        });
+
+      const parlayButton =
+        screen.getByRole("button", {
+          name: "Parlay",
+        });
+
+      const trackedButton =
+        screen.getByRole("button", {
+          name: "Tracked",
+        });
+
+      const whatIfButton =
+        screen.getByRole("button", {
+          name: "What-if",
+        });
+
+      expect(singleButton).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      expect(parlayButton).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+
+      expect(trackedButton).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      expect(whatIfButton).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+
+      await user.click(whatIfButton);
+
+      expect(
+        sizing.setBankrollMode,
+      ).toHaveBeenCalledWith(
+        "what-if",
+      );
+    },
+  );
+
 });
