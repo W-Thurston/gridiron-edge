@@ -3,10 +3,15 @@ import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
 import type { BetSlipSizingResult } from "../../hooks/useBetSlipSizing";
 import {
-  americanToDecimal,
   formatOdds,
 } from "../../utils/odds";
+import {
+  summarizeBetSlip,
+  type BetSlipSummary,
+  type IncompleteBetSlipReason,
+} from "../../utils/betSlipSummary";
 import { BetLegCard } from "./BetLegCard";
+
 
 export function SlipPanel({
   sizing,
@@ -21,56 +26,19 @@ export function SlipPanel({
     remove,
     clear,
   } = useBetSlip();
+
   const { state } = useAppState();
-  const [stake, setStake] = useState(25);
 
-  const allPriced = legs.every(
-    (leg) =>
-      leg.draft.currentAmericanOdds !=
-      null,
-  );
+  const [
+    parlayStake,
+    setParlayStake,
+  ] = useState<number | null>(25);
 
-  const combinedDecimal =
-    mode === "parlay" &&
-    allPriced
-      ? legs.reduce(
-          (product, leg) =>
-            product *
-            americanToDecimal(
-              leg.draft
-                .currentAmericanOdds as number,
-            ),
-          1,
-        )
-      : null;
-
-  const totalStake =
-    mode === "parlay"
-      ? stake
-      : stake * legs.length;
-
-  const potentialPayout =
-    !allPriced
-      ? null
-      : mode === "parlay"
-        ? stake *
-          (combinedDecimal ?? 0)
-        : legs.reduce(
-            (sum, leg) =>
-              sum +
-              stake *
-                americanToDecimal(
-                  leg.draft
-                    .currentAmericanOdds as number,
-                ),
-            0,
-          );
-
-  const potentialProfit =
-    potentialPayout == null
-      ? null
-      : potentialPayout -
-        totalStake;
+  const summary = summarizeBetSlip({
+    legs,
+    mode,
+    parlayStake,
+  });
 
   return (
     <div className="hm-card" style={{ padding: 24 }}>
@@ -169,133 +137,517 @@ export function SlipPanel({
             ))}
           </div>
 
-          {/* Stake input */}
-          <div style={{ marginBottom: 16 }}>
-            <div className="upper dim2" style={{ fontSize: 9, marginBottom: 6 }}>
-              {mode === "parlay" ? "Parlay Stake" : "Stake per Bet"}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span className="mono dim">$</span>
-              <input
-                type="number"
-                value={stake}
-                onChange={(e) => setStake(Number(e.target.value) || 0)}
-                min={0}
-                step={5}
-                style={{
-                  background: "var(--bg-1)",
-                  color: "var(--ink)",
-                  border: "1px solid var(--line-soft)",
-                  borderRadius: 5,
-                  padding: "6px 10px",
-                  fontSize: 14,
-                  fontFamily: "var(--f-mono)",
-                  fontVariantNumeric: "tabular-nums",
-                  width: 100,
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Totals */}
-          <div
-            style={{
-              padding: 16,
-              background: "var(--bg-2)",
-              borderRadius: 5,
-              marginBottom: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
-              {mode === "parlay" && (
-                <MetricLine
-                  label="Combined Odds"
-                  value={
-                    <span className="mono tnum">
-                      {combinedDecimal == null
-                        ? "Unavailable"
-                        : formatOdds(
-                            decimalToAmerican(
-                              combinedDecimal,
-                            ),
-                            state.oddsFormat,
-                          )}
-                    </span>
-                  }
-                />
-              )}
-              <MetricLine
-                label="Total Stake"
-                value={
-                  <span className="mono tnum">
-                    ${totalStake.toFixed(2)}
-                  </span>
-                }
-              />
-              <MetricLine
-                label="Potential Payout"
-                value={
-                  <span
-                    className={
-                      potentialPayout == null
-                        ? "mono tnum dim"
-                        : "mono tnum pos"
-                    }
-                  >
-                    {potentialPayout == null
-                      ? "Unavailable"
-                      : `$${potentialPayout.toFixed(2)}`}
-                  </span>
-                }
-              />
-              <MetricLine
-                label="Potential Profit"
-                value={
-                  <span
-                    className={
-                      potentialProfit == null
-                        ? "mono tnum dim"
-                        : "mono tnum pos"
-                    }
-                  >
-                    {potentialProfit == null
-                      ? "Unavailable"
-                      : `${potentialProfit >= 0 ? "+" : ""}$${potentialProfit.toFixed(2)}`}
-                  </span>
-                }
-              />
-            </div>
-          </div>
+          {/* Aggregate summary */}
+          <AggregateSummary
+            summary={summary}
+            oddsFormat={state.oddsFormat}
+            parlayStake={parlayStake}
+            onUpdateParlayStake={
+              setParlayStake
+            }
+          />
 
           {/* Actions */}
-          <div style={{ display: "flex", gap: 8 }}>
+          <div>
             <button
+              type="button"
               onClick={clear}
               style={{
-                background: "transparent",
+                width: "100%",
+                backgroundColor:
+                  "transparent",
                 color: "var(--ink-3)",
-                border: "1px solid var(--line-soft)",
+                border:
+                  "1px solid var(--line-soft)",
                 borderRadius: 4,
-                padding: "6px 12px",
+                padding: "7px 12px",
                 fontSize: 12,
                 fontFamily: "var(--f-sans)",
                 cursor: "pointer",
-                flex: 1,
               }}
             >
               Clear Slip
             </button>
+
+            <div
+              className="mono dim2"
+              style={{
+                marginTop: 10,
+                fontSize: 9,
+                lineHeight: 1.5,
+                textAlign: "center",
+              }}
+            >
+              Gridiron Edge provides
+              decision-support calculations
+              and does not place sportsbook
+              wagers.
+            </div>
           </div>
         </>
       )}
     </div>
   );
+}
+
+function AggregateSummary({
+  summary,
+  oddsFormat,
+  parlayStake,
+  onUpdateParlayStake,
+}: {
+  summary: BetSlipSummary;
+  oddsFormat:
+    | "american"
+    | "decimal";
+  parlayStake: number | null;
+  onUpdateParlayStake: (
+    value: number | null,
+  ) => void;
+}) {
+  return (
+    <section
+      aria-label="Bet slip summary"
+      style={{
+        padding: 16,
+        marginBottom: 12,
+        backgroundColor:
+          "var(--bg-2)",
+        border:
+          "1px solid var(--line-soft)",
+        borderRadius: 5,
+      }}
+    >
+      <div
+        className="upper dim2"
+        style={{
+          marginBottom: 10,
+          fontSize: 9,
+        }}
+      >
+        {summary.mode === "single"
+          ? "Singles Summary"
+          : "Parlay Summary"}
+      </div>
+
+      {summary.mode === "parlay" && (
+        <ParlayStakeInput
+          value={parlayStake}
+          onChange={
+            onUpdateParlayStake
+          }
+        />
+      )}
+
+      {!summary.isComplete && (
+        <IncompleteSummary
+          reasons={
+            summary.incompleteReasons
+          }
+          mode={summary.mode}
+        />
+      )}
+
+      {summary.mode === "single" ? (
+        <SingleSummaryMetrics
+          summary={summary}
+        />
+      ) : (
+        <ParlaySummaryMetrics
+          summary={summary}
+          oddsFormat={oddsFormat}
+        />
+      )}
+    </section>
+  );
+}
+
+function SingleSummaryMetrics({
+  summary,
+}: {
+  summary: Extract<
+    BetSlipSummary,
+    { mode: "single" }
+  >;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "repeat(3, minmax(0, 1fr))",
+        gap: 12,
+      }}
+    >
+      <SummaryMetric
+        label="Total proposed stake"
+        value={formatMoney(
+          summary.totalStake,
+        )}
+      />
+
+      <SummaryMetric
+        label="Potential payout"
+        value={formatMoney(
+          summary.potentialPayout,
+        )}
+        positive={
+          summary.potentialPayout !=
+          null
+        }
+      />
+
+      <SummaryMetric
+        label="Potential profit"
+        value={formatMoney(
+          summary.potentialProfit,
+          true,
+        )}
+        positive={
+          summary.potentialProfit !=
+            null &&
+          summary.potentialProfit >= 0
+        }
+      />
+    </div>
+  );
+}
+
+function ParlaySummaryMetrics({
+  summary,
+  oddsFormat,
+}: {
+  summary: Extract<
+    BetSlipSummary,
+    { mode: "parlay" }
+  >;
+  oddsFormat:
+    | "american"
+    | "decimal";
+}) {
+  return (
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(2, minmax(0, 1fr))",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <SummaryMetric
+          label="Combined quoted odds"
+          value={
+            summary
+              .combinedAmericanOdds ==
+            null
+              ? null
+              : formatOdds(
+                  summary
+                    .combinedAmericanOdds,
+                  oddsFormat,
+                )
+          }
+        />
+
+        <SummaryMetric
+          label="Parlay stake"
+          value={formatMoney(
+            summary.parlayStake,
+          )}
+        />
+
+        <SummaryMetric
+          label="Potential payout"
+          value={formatMoney(
+            summary.potentialPayout,
+          )}
+          positive={
+            summary.potentialPayout !=
+            null
+          }
+        />
+
+        <SummaryMetric
+          label="Potential profit"
+          value={formatMoney(
+            summary.potentialProfit,
+            true,
+          )}
+          positive={
+            summary.potentialProfit !=
+              null &&
+            summary.potentialProfit >= 0
+          }
+        />
+      </div>
+
+      <div
+        style={{
+          padding: 10,
+          backgroundColor:
+            "var(--bg-1)",
+          borderRadius: 4,
+        }}
+      >
+        <div
+          className="mono"
+          style={{
+            marginBottom: 5,
+            fontSize: 10,
+            color: "var(--warn)",
+          }}
+        >
+          Parlay correlation is not
+          modeled.
+        </div>
+
+        <div
+          className="mono dim2"
+          style={{
+            fontSize: 9,
+            lineHeight: 1.5,
+          }}
+        >
+          Combined model probability,
+          expected value, and Kelly
+          sizing are unavailable.
+          Quoted payout uses only the
+          current prices entered for
+          each leg.
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ParlayStakeInput({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (
+    value: number | null,
+  ) => void;
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+      }}
+    >
+      <label
+        htmlFor="betslip-parlay-stake"
+        className="upper dim2"
+        style={{
+          display: "block",
+          marginBottom: 4,
+          fontSize: 9,
+        }}
+      >
+        Parlay stake
+      </label>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          maxWidth: 160,
+        }}
+      >
+        <span className="mono dim">
+          $
+        </span>
+
+        <input
+          id="betslip-parlay-stake"
+          type="number"
+          min={0}
+          step={5}
+          value={value ?? ""}
+          placeholder="0.00"
+          onChange={(event) =>
+            onChange(
+              numberOrNull(
+                event.target.value,
+              ),
+            )
+          }
+          style={{
+            width: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
+            padding: "6px 8px",
+            backgroundColor:
+              "var(--bg-1)",
+            color: "var(--ink)",
+            border:
+              "1px solid var(--line-soft)",
+            borderRadius: 4,
+            fontFamily:
+              "var(--f-mono)",
+            fontVariantNumeric:
+              "tabular-nums",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function IncompleteSummary({
+  reasons,
+  mode,
+}: {
+  reasons:
+    IncompleteBetSlipReason[];
+  mode: "single" | "parlay";
+}) {
+  if (reasons.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        padding: 10,
+        marginBottom: 12,
+        backgroundColor:
+          "var(--bg-1)",
+        borderLeft:
+          "3px solid var(--warn)",
+        borderRadius: 3,
+      }}
+    >
+      <div
+        className="mono"
+        style={{
+          marginBottom: 5,
+          fontSize: 10,
+          color: "var(--warn)",
+        }}
+      >
+        Summary incomplete
+      </div>
+
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 16,
+          color: "var(--ink-3)",
+          fontSize: 10,
+          lineHeight: 1.6,
+        }}
+      >
+        {reasons.map((reason) => (
+          <li key={reason}>
+            {incompleteReasonLabel(
+              reason,
+              mode,
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+  positive = false,
+}: {
+  label: string;
+  value: string | null;
+  positive?: boolean;
+}) {
+  return (
+    <div>
+      <div
+        className="upper dim2"
+        style={{
+          marginBottom: 4,
+          fontSize: 9,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        className="mono tnum"
+        style={{
+          fontSize: 13,
+          color:
+            value == null
+              ? "var(--ink-4)"
+              : positive
+                ? "var(--pos)"
+                : "var(--ink-2)",
+        }}
+      >
+        {value ?? "Unavailable"}
+      </div>
+    </div>
+  );
+}
+
+function incompleteReasonLabel(
+  reason: IncompleteBetSlipReason,
+  mode: "single" | "parlay",
+): string {
+  if (reason === "no_legs") {
+    return "Add at least one wager to the slip.";
+  }
+
+  if (
+    reason ===
+    "missing_current_price"
+  ) {
+    return "Enter current odds for every staged wager.";
+  }
+
+  if (
+    reason ===
+    "missing_proposed_stake"
+  ) {
+    return mode === "single"
+      ? "Enter a proposed stake for every single wager."
+      : "Enter all required stake inputs.";
+  }
+
+  return "Enter a parlay stake.";
+}
+
+function formatMoney(
+  value: number | null,
+  includePositiveSign = false,
+): string | null {
+  if (value == null) {
+    return null;
+  }
+
+  const sign =
+    includePositiveSign && value > 0
+      ? "+"
+      : "";
+
+  return `${sign}$${value.toFixed(2)}`;
+}
+
+function numberOrNull(
+  value: string,
+): number | null {
+  if (value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : null;
 }
 
 function SizingControls({
@@ -607,26 +959,4 @@ function ModeButton({
       {label}
     </button>
   );
-}
-
-function MetricLine({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="upper dim2" style={{ fontSize: 9, marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 13 }}>{value}</div>
-    </div>
-  );
-}
-
-function decimalToAmerican(decimal: number): number {
-  if (decimal >= 2) return Math.round((decimal - 1) * 100);
-  return Math.round(-100 / (decimal - 1));
 }

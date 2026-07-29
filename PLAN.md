@@ -525,6 +525,34 @@ stake and calculates quoted combined odds, payout, and profit only when every
 leg is priced. Combined parlay model probability, EV, and Kelly remain
 explicitly unavailable because leg correlation is not modeled.
 
+#### G2b. Rebuild aggregate summaries and execution boundary — ✅ COMPLETE
+
+- [x] Replace compatibility calculations with the pure aggregate-summary model.
+- [x] Use each leg's proposed stake in singles mode.
+- [x] Require every single leg to have current odds and proposed stake.
+- [x] Show total proposed stake, potential payout, and potential profit only when the entire singles set is complete.
+- [x] Explain missing current-price and proposed-stake inputs.
+- [x] Add a separate parlay-stake input.
+- [x] Ignore per-leg proposed stakes in parlay mode.
+- [x] Require current odds for every parlay leg.
+- [x] Show quoted combined odds, payout, and profit only when the parlay is complete.
+- [x] Explain missing parlay-price and parlay-stake inputs.
+- [x] Add the parlay-correlation caveat.
+- [x] Keep combined parlay probability, EV, and Kelly unavailable.
+- [x] Retain remove-leg and clear-slip actions.
+- [x] State explicitly that Gridiron Edge does not place sportsbook wagers.
+- [x] Verify that no execution action is rendered.
+- [x] Add focused singles, parlay, incomplete-input, stake-editing, caveat, clear-slip, and no-execution coverage.
+- [x] Run the frontend build, focused tests, and full suite.
+- [x] Commit the aggregate-summary presentation unit.
+
+The BetSlip now derives all aggregate economics from the pure summary model.
+Singles use each leg's proposed stake and remain incomplete until every staged
+wager has current odds and a stake. Parlays use a separate stake and expose
+only quoted combined odds, payout, and profit. Combined model probability, EV,
+and Kelly remain unavailable because leg correlation is not modeled. The
+interface explicitly states that Gridiron Edge does not execute sportsbook
+wagers.
 
 ### H. Optional recorded-bet workflow
 
