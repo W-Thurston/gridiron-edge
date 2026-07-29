@@ -340,34 +340,54 @@ Props retain their actual game/player/projection context and remain explicitly
 unpriced until real prop odds exist. The current SlipPanel is compatibility-safe
 but has not yet received the final decision-support redesign.
 
-### E. Lock current-price and calculation behavior
+### E. Lock current-price and calculation behavior — ✅ COMPLETE
 
-- [ ] Add editable current American odds per leg.
-- [ ] Preserve the immutable reference price beside the editable current price.
-- [ ] Calculate implied probability from current price.
-- [ ] Calculate current modeled EV when probability and price are available.
-- [ ] Calculate model break-even American price.
-- [ ] Show whether the current price remains positive modeled EV.
-- [ ] Recalculate full-Kelly fraction from current price.
-- [ ] Apply a visible editable Kelly multiplier.
-- [ ] Calculate proposed Kelly dollars from the explicit bankroll basis.
-- [ ] Keep user-entered stake distinct from suggested Kelly stake.
-- [ ] Calculate single-leg payout and profit.
-- [ ] Block price-dependent outputs when current price is unavailable.
-- [ ] Add parity tests against backend odds/EV/Kelly examples.
-- [ ] Commit the calculation-model unit.
+- [x] Add editable current American odds per leg.
+- [x] Preserve the immutable reference price beside the editable current price.
+- [x] Calculate implied probability from current price.
+- [x] Calculate current modeled EV when probability and price are available.
+- [x] Calculate model break-even American price.
+- [x] Show whether the current price remains positive modeled EV.
+- [x] Recalculate full-Kelly fraction from current price.
+- [x] Apply an explicit Kelly multiplier as a calculation input.
+- [x] Calculate proposed Kelly dollars from an explicit bankroll basis.
+- [x] Keep user-entered stake distinct from suggested Kelly stake.
+- [x] Calculate single-leg payout and profit.
+- [x] Block price-dependent outputs when current price is unavailable.
+- [x] Preserve price and payout calculations while blocking EV/Kelly when model probability is unavailable.
+- [x] Add draft-update validation and persistence coverage.
+- [x] Add parity tests against established odds, EV, and Kelly examples.
+- [x] Commit the calculation-model unit.
 
-### F. Lock bankroll behavior
+BetSlip draft state now supports validated edits to current odds, proposed
+stake, sportsbook, and notes without changing immutable recommendation
+provenance. A pure leg-analysis helper derives reference and current
+calculations, model break-even price, current-price acceptability, full Kelly,
+multiplier-adjusted suggested dollars, payout, and profit. Bankroll and Kelly
+multiplier remain explicit inputs so their authoritative source can be resolved
+independently in Section F.
 
-- [ ] Use `/portfolio/summary.bankroll` as the preferred tracked bankroll.
-- [ ] Define behavior when the ledger bankroll is unavailable.
-- [ ] Decide whether to allow a clearly labeled what-if bankroll override.
-- [ ] Pass explicit bankroll and Kelly multiplier to `/edges`.
-- [ ] Ensure `kelly_stake` and displayed bankroll use the same basis.
-- [ ] Relabel or remove the legacy AppState bankroll to prevent ambiguity.
-- [ ] Surface bankroll source in the BetSlip.
-- [ ] Add bankroll-loading, fallback, and mismatch tests.
-- [ ] Commit the bankroll-contract unit.
+### F. Lock bankroll behavior — 🔵 ACTIVE
+#### F1. Require an explicit bankroll for edge dollar sizing — ✅ COMPLETE
+
+- [x] Remove the hidden `$1,000` bankroll default from `/edges`.
+- [x] Allow bankroll to be omitted explicitly.
+- [x] Preserve edge rows, EV, and full-Kelly fraction when bankroll is omitted.
+- [x] Return `kelly_stake = null` when no bankroll basis is supplied.
+- [x] Preserve zero as a valid bankroll with zero-dollar Kelly sizing.
+- [x] Constrain bankroll to nonnegative values at the HTTP boundary.
+- [x] Constrain Kelly multiplier to `[0, 1]` at the HTTP boundary.
+- [x] Validate bankroll and multiplier again at the report boundary.
+- [x] Echo null bankroll provenance through populated and blocked responses.
+- [x] Add report and route coverage for omitted, zero, and invalid sizing inputs.
+- [x] Regenerate OpenAPI and TypeScript contracts.
+- [x] Run backend and frontend quality gates.
+- [x] Commit the nullable-sizing contract unit.
+
+`/edges` no longer substitutes a hidden `$1,000` sizing basis. When bankroll is
+omitted, recommendations still expose model economics and full-Kelly fraction,
+but dollar Kelly stake remains explicitly unavailable. A supplied zero bankroll
+is preserved as a valid tracked state rather than interpreted as missing.
 
 ### G. Rebuild the BetSlip presentation
 

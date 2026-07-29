@@ -236,6 +236,65 @@ class TestListEdgesRoute:
         assert first["market_type"] in {"moneyline", "spread", "total"}
         assert first["side"] in {"home", "away", "over", "under"}
 
+    def test_omitted_bankroll_leaves_dollar_stake_unavailable(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        predictions = pd.DataFrame([_make_prediction()])
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_champion_manifest()
+            .with_predictions_archive(predictions)
+            .with_odds_snapshot(_make_odds_snapshot())
+        )
+
+        response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                "kelly_multiplier": 0.25,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["bankroll"] is None
+        assert body["kelly_multiplier"] == 0.25
+        assert body["items"]
+
+        for item in body["items"]:
+            assert item["kelly_frac"] is not None
+            assert item["kelly_stake"] is None
+
+    @pytest.mark.parametrize(
+        "invalid_params",
+        [
+            {"bankroll": -1.0},
+            {"kelly_multiplier": -0.01},
+            {"kelly_multiplier": 1.01},
+        ],
+    )
+    def test_rejects_invalid_sizing_query(
+        self,
+        client: TestClient,
+        invalid_params: dict[str, float],
+    ) -> None:
+        response = client.get(
+            "/edges",
+            params={
+                "season": "2026-2027",
+                "week": 1,
+                **invalid_params,
+            },
+        )
+
+        assert response.status_code == 422
+
     def test_missing_manifest_returns_field_status(
         self,
         client: TestClient,

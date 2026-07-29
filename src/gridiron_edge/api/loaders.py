@@ -794,7 +794,7 @@ def load_edges_for_week(
     season: str,
     week: int,
     min_ev: float = 0.0,
-    bankroll: float = 1000.0,
+    bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
 ) -> pd.DataFrame:
     """Load ranked edges for (season, week) using the champion model.
@@ -809,7 +809,8 @@ def load_edges_for_week(
         season: Season label, e.g. "2026-2027".
         week: Week number.
         min_ev: Minimum EV threshold. Rows with ev <= min_ev are excluded.
-        bankroll: Bankroll for Kelly stake sizing.
+        bankroll: Bankroll for Kelly stake sizing. When None, edge rows
+            retain full-Kelly fractions but do not populate kelly_stake.
         kelly_multiplier: Fraction of full Kelly (e.g. 0.25 for quarter).
 
     Returns:

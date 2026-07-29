@@ -1146,7 +1146,7 @@
                 "type": "null"
               }
             ],
-            "description": "Bankroll basis used to calculate kelly_stake.",
+            "description": "Bankroll basis used to calculate kelly_stake. None means dollar sizing was not requested.",
             "title": "Bankroll"
           },
           "items": {
@@ -6052,25 +6052,34 @@
             }
           },
           {
-            "description": "Bankroll for Kelly stake sizing.",
+            "description": "Bankroll for Kelly stake sizing. When omitted, kelly_stake is unavailable while kelly_frac remains populated.",
             "in": "query",
             "name": "bankroll",
             "required": false,
             "schema": {
-              "default": 1000.0,
-              "description": "Bankroll for Kelly stake sizing.",
-              "title": "Bankroll",
-              "type": "number"
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bankroll for Kelly stake sizing. When omitted, kelly_stake is unavailable while kelly_frac remains populated.",
+              "title": "Bankroll"
             }
           },
           {
-            "description": "Fraction of full Kelly (e.g. 0.25 = quarter-Kelly).",
+            "description": "Fraction of full Kelly, constrained to [0, 1] (e.g. 0.25 = quarter-Kelly).",
             "in": "query",
             "name": "kelly_multiplier",
             "required": false,
             "schema": {
               "default": 0.25,
-              "description": "Fraction of full Kelly (e.g. 0.25 = quarter-Kelly).",
+              "description": "Fraction of full Kelly, constrained to [0, 1] (e.g. 0.25 = quarter-Kelly).",
+              "maximum": 1.0,
+              "minimum": 0.0,
               "title": "Kelly Multiplier",
               "type": "number"
             }

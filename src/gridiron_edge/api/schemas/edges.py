@@ -86,7 +86,10 @@ class EdgeList(BaseListResponse[EdgeRow]):
     )
     bankroll: float | None = Field(
         default=None,
-        description=("Bankroll basis used to calculate kelly_stake."),
+        description=(
+            "Bankroll basis used to calculate kelly_stake. "
+            "None means dollar sizing was not requested."
+        ),
     )
 
     kelly_multiplier: float | None = Field(

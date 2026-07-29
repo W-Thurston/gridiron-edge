@@ -447,6 +447,85 @@ class TestBuildEdgeReport:
                 max_stake: float = 1000.0 * 0.25
                 assert row["kelly_stake"] == pytest.approx(min(expected_stake, max_stake), abs=1e-6)
 
+    def test_omitted_bankroll_preserves_fraction_without_dollar_stake(
+        self,
+    ) -> None:
+        predictions = _make_predictions(
+            home_win_prob=0.70,
+            model_spread=-7.0,
+            model_total=52.0,
+        )
+        odds = _make_long_odds(
+            ml_home=-150,
+            ml_away=130,
+            spread_home=-3.0,
+            total_line=45.0,
+        )
+
+        report = build_edge_report(
+            predictions,
+            odds,
+            margin_std=13.0,
+            total_std=13.0,
+            bankroll=None,
+            kelly_multiplier=0.25,
+        )
+
+        assert not report.empty
+        assert report["kelly_frac"].notna().all()
+        assert report["kelly_stake"].isna().all()
+
+    def test_zero_bankroll_produces_zero_dollar_stake(
+        self,
+    ) -> None:
+        predictions = _make_predictions(
+            home_win_prob=0.70,
+            model_spread=-7.0,
+            model_total=52.0,
+        )
+        odds = _make_long_odds(
+            ml_home=-150,
+            ml_away=130,
+            spread_home=-3.0,
+            total_line=45.0,
+        )
+
+        report = build_edge_report(
+            predictions,
+            odds,
+            margin_std=13.0,
+            total_std=13.0,
+            bankroll=0.0,
+            kelly_multiplier=0.25,
+        )
+
+        assert not report.empty
+        assert report["kelly_frac"].notna().all()
+        assert (report["kelly_stake"] == 0.0).all()
+
+    @pytest.mark.parametrize(
+        ("bankroll", "kelly_multiplier"),
+        [
+            (-1.0, 0.25),
+            (1000.0, -0.01),
+            (1000.0, 1.01),
+        ],
+    )
+    def test_rejects_invalid_sizing_inputs(
+        self,
+        bankroll: float,
+        kelly_multiplier: float,
+    ) -> None:
+        with pytest.raises(ValueError):
+            build_edge_report(
+                _make_predictions(),
+                _make_long_odds(),
+                margin_std=13.0,
+                total_std=13.0,
+                bankroll=bankroll,
+                kelly_multiplier=kelly_multiplier,
+            )
+
     def test_edge_strength_populated(self) -> None:
         """classify_edge_strength is applied to every row."""
         preds: DataFrame = _make_predictions(

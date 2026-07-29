@@ -47,13 +47,19 @@ def list_edges(
         default=0.0,
         description="Minimum EV threshold. Rows with ev <= min_ev excluded.",
     ),
-    bankroll: float = Query(
-        default=1000.0,
-        description="Bankroll for Kelly stake sizing.",
+    bankroll: float | None = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Bankroll for Kelly stake sizing. When omitted, "
+            "kelly_stake is unavailable while kelly_frac remains populated."
+        ),
     ),
     kelly_multiplier: float = Query(
         default=0.25,
-        description="Fraction of full Kelly (e.g. 0.25 = quarter-Kelly).",
+        ge=0.0,
+        le=1.0,
+        description=("Fraction of full Kelly, constrained to [0, 1] (e.g. 0.25 = quarter-Kelly)."),
     ),
 ) -> EdgeList:
     """Return ranked edges for (season, week) using the champion model.

@@ -296,7 +296,7 @@ def build_edge_report(
     *,
     margin_std: float,
     total_std: float,
-    bankroll: float = 1000.0,
+    bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
 ) -> pd.DataFrame:
     """Build a ranked edge report across all games and markets.
@@ -317,8 +317,9 @@ def build_edge_report(
         Spread residual std for spread cover probability.
     total_std : float
         Total residual std for total cover probability.
-    bankroll : float, default 1000.0
-        Current bankroll in dollars.
+    bankroll : float | None, default None
+        Current bankroll in dollars. When None, edge calculations retain
+        full-Kelly fractions but kelly_stake remains unavailable.
     kelly_multiplier : float, default 0.25
         Fraction of full Kelly to apply (e.g. 0.25 for quarter-Kelly).
 
@@ -330,6 +331,12 @@ def build_edge_report(
         ``model_key`` column is the composite ``f"{model_name}_{model_type}"``
         derived from the prediction row.
     """
+    if bankroll is not None and bankroll < 0:
+        raise ValueError(f"bankroll must be >= 0, got {bankroll}")
+
+    if not 0.0 <= kelly_multiplier <= 1.0:
+        raise ValueError(f"kelly_multiplier must be in [0, 1], got {kelly_multiplier}")
+
     joined: DataFrame = join_predictions_to_odds(predictions_df, odds_df)
 
     if joined.empty:
@@ -389,9 +396,12 @@ def build_edge_report(
             edge_row["edge_strength"] = classify_edge_strength(edge.ev)
             edge_row["kelly_frac"] = edge.kelly_frac
 
-            max_stake: float = bankroll * kelly_multiplier
-            raw_stake: float = bankroll * kelly_multiplier * edge.kelly_frac
-            edge_row["kelly_stake"] = min(raw_stake, max_stake)
+            if bankroll is None:
+                edge_row["kelly_stake"] = None
+            else:
+                max_stake: float = bankroll * kelly_multiplier
+                raw_stake: float = bankroll * kelly_multiplier * edge.kelly_frac
+                edge_row["kelly_stake"] = min(raw_stake, max_stake)
 
             report_rows.append(edge_row)
 
