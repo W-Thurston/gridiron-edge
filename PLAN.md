@@ -389,6 +389,29 @@ omitted, recommendations still expose model economics and full-Kelly fraction,
 but dollar Kelly stake remains explicitly unavailable. A supplied zero bankroll
 is preserved as a valid tracked state rather than interpreted as missing.
 
+#### F2a. Define the BetSlip sizing preference model — ✅ COMPLETE
+
+- [x] Add a versioned sizing-preference contract.
+- [x] Default to tracked-bankroll mode.
+- [x] Add an explicit what-if bankroll mode.
+- [x] Preserve zero as a valid tracked or what-if bankroll.
+- [x] Add an explicit Kelly multiplier constrained to `[0, 1]`.
+- [x] Default to quarter-Kelly (`0.25`).
+- [x] Resolve bankroll amount with explicit tracked, what-if, or unavailable provenance.
+- [x] Prevent tracked mode from silently falling back to a what-if bankroll.
+- [x] Prevent what-if mode from silently falling back to the tracked bankroll.
+- [x] Reject malformed persisted sizing state.
+- [x] Reject invalid updates while preserving the prior valid preference.
+- [x] Add focused parser, resolution, update, boundary, and default tests.
+- [x] Run the frontend build and full test suite.
+- [x] Commit the pure sizing-preference unit.
+
+The pure sizing model now distinguishes tracked, what-if, and unavailable
+bankroll sources. It preserves zero as a valid amount, constrains Kelly
+multipliers to `[0, 1]`, defaults to quarter-Kelly, and prevents silent source
+fallback. React persistence, portfolio loading, and BetSlip integration remain
+isolated to the next unit.
+
 ### G. Rebuild the BetSlip presentation
 
 - [ ] Preserve the Available Edges / BetSlip decision-workspace structure where
