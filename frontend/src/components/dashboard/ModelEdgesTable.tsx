@@ -5,6 +5,7 @@ import { useNav } from "../../context/NavContext";
 import { Pill } from "../primitives/Pill";
 import { TeamMark } from "../primitives/TeamMark";
 import { WinProbBand } from "../games/WinProbBand";
+import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
 
 type MarketFilter = "all" | "moneyline" | "spread" | "total";
 
@@ -116,7 +117,31 @@ export function ModelEdgesTable() {
           </thead>
           <tbody>
             {displayed.map((edge, i) => {
-              const legId = `dash-edge-${edge.game_id}-${edge.market_type}-${edge.side}`;
+              const market =
+                edge.market_type as
+                  | "moneyline"
+                  | "spread"
+                  | "total";
+
+              const side =
+                edge.side as
+                  | "home"
+                  | "away"
+                  | "over"
+                  | "under";
+
+              const line =
+                market === "spread" ||
+                market === "total"
+                  ? edge.market_value ?? null
+                  : null;
+
+              const legId = buildGameBetLegId({
+                gameId: edge.game_id,
+                market,
+                side,
+                line,
+              });
               const isPicked = legs.some((l) => l.id === legId);
               return (
                 <tr
@@ -182,15 +207,20 @@ export function ModelEdgesTable() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (isPicked) return;
-                        add({
-                          id: legId,
-                          gameId: edge.game_id,
-                          market: edge.market_type as "moneyline" | "spread" | "total",
-                          side: edge.side as "home" | "away" | "over" | "under",
-                          odds: -110,
-                          awayTeam: edge.away_team,
-                          homeTeam: edge.home_team,
-                        });
+                        add(
+                          createGameBetLeg({
+                            edge,
+                            source:
+                              "dashboard-model-edges",
+                            addedAt:
+                              new Date().toISOString(),
+                            referenceBankroll:
+                              data?.bankroll ?? null,
+                            referenceKellyMultiplier:
+                              data?.kelly_multiplier ??
+                              null,
+                          }),
+                        );
                       }}
                       type="button"
                       style={{

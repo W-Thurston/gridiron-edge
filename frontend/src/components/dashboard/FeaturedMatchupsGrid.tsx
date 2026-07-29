@@ -6,6 +6,12 @@ import { TeamHero } from "../primitives/TeamHero";
 import { WhyLink } from "../primitives/WhyLink";
 import { WinProbBand } from "../games/WinProbBand";
 import { useTeamByAbbr } from "../../api/team_metadata_hook";
+import type { components } from "../../api/schema";
+import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
+
+
+type EdgeApiRow =
+  components["schemas"]["EdgeRow"];
 
 /**
  * Grid of 3 featured game cards for the current week.
@@ -110,7 +116,19 @@ export function FeaturedMatchupsGrid() {
         }}
       >
         {featured.map(({ edge, game }) => (
-          <FeaturedCard key={game.game_id} game={game} edge={edge} />
+          <FeaturedCard
+            key={game.game_id}
+            game={game}
+            edge={edge}
+            referenceBankroll={
+              edgesResult.data?.bankroll ??
+              null
+            }
+            referenceKellyMultiplier={
+              edgesResult.data
+                ?.kelly_multiplier ?? null
+            }
+          />
         ))}
       </div>
     </div>
@@ -133,24 +151,46 @@ type FeaturedCardProps = {
       confidence_tier?: string | null;
     } | null;
   };
-  edge: {
-    game_id: string;
-    away_team: string;
-    home_team: string;
-    market_type: string;
-    side: string;
-    ev: number;
-    edge_strength: string;
-  };
+  edge: EdgeApiRow;
+  referenceBankroll: number | null;
+  referenceKellyMultiplier: number | null;
 };
 
-function FeaturedCard({ game, edge }: FeaturedCardProps) {
+function FeaturedCard({
+  game,
+  edge,
+  referenceBankroll,
+  referenceKellyMultiplier,
+}: FeaturedCardProps) {
   const { navigate } = useNav();
   const { legs, add } = useBetSlip();
   const awayTeam = useTeamByAbbr(game.away_team);
   const homeTeam = useTeamByAbbr(game.home_team);
+  const market =
+    edge.market_type as
+      | "moneyline"
+      | "spread"
+      | "total";
 
-  const legId = `dash-featured-${game.game_id}`;
+  const side =
+    edge.side as
+      | "home"
+      | "away"
+      | "over"
+      | "under";
+
+  const line =
+    market === "spread" ||
+    market === "total"
+      ? edge.market_value ?? null
+      : null;
+
+  const legId = buildGameBetLegId({
+    gameId: edge.game_id,
+    market,
+    side,
+    line,
+  });
   const isPicked = legs.some((l) => l.id === legId);
 
   const handleCardClick = () => {
@@ -160,15 +200,17 @@ function FeaturedCard({ game, edge }: FeaturedCardProps) {
   const handleAddSlip = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isPicked) return;
-    add({
-      id: legId,
-      gameId: game.game_id,
-      market: edge.market_type as "moneyline" | "spread" | "total",
-      side: edge.side as "home" | "away" | "over" | "under",
-      odds: -110, // Placeholder; real odds require market data
-      awayTeam: game.away_team,
-      homeTeam: game.home_team,
-    });
+    add(
+      createGameBetLeg({
+        edge,
+        source:
+          "dashboard-featured",
+        addedAt:
+          new Date().toISOString(),
+        referenceBankroll,
+        referenceKellyMultiplier,
+      }),
+    );
   };
 
   const gameDate = game.game_date ?? "TBD";

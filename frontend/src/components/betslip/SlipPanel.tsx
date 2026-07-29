@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
-import type { BetLeg, BetSlipMode } from "../../context/BetSlipContext";
+import type { BetLeg, } from "../../context/BetSlipContext";
 import { americanToDecimal, formatOdds } from "../../utils/odds";
 import { TeamMark } from "../primitives/TeamMark";
 
@@ -10,12 +10,53 @@ export function SlipPanel() {
   const { state } = useAppState();
   const [stake, setStake] = useState(25);
 
-  const combinedDecimal = combinedDecimalOdds(legs, mode);
-  const potentialPayout = mode === "parlay"
-    ? stake * combinedDecimal
-    : legs.reduce((sum, leg) => sum + stake * americanToDecimal(leg.odds), 0);
+  const allPriced = legs.every(
+    (leg) =>
+      leg.draft.currentAmericanOdds !=
+      null,
+  );
 
-  const potentialProfit = potentialPayout - (mode === "parlay" ? stake : stake * legs.length);
+  const combinedDecimal =
+    mode === "parlay" &&
+    allPriced
+      ? legs.reduce(
+          (product, leg) =>
+            product *
+            americanToDecimal(
+              leg.draft
+                .currentAmericanOdds as number,
+            ),
+          1,
+        )
+      : null;
+
+  const totalStake =
+    mode === "parlay"
+      ? stake
+      : stake * legs.length;
+
+  const potentialPayout =
+    !allPriced
+      ? null
+      : mode === "parlay"
+        ? stake *
+          (combinedDecimal ?? 0)
+        : legs.reduce(
+            (sum, leg) =>
+              sum +
+              stake *
+                americanToDecimal(
+                  leg.draft
+                    .currentAmericanOdds as number,
+                ),
+            0,
+          );
+
+  const potentialProfit =
+    potentialPayout == null
+      ? null
+      : potentialPayout -
+        totalStake;
 
   return (
     <div className="hm-card" style={{ padding: 24 }}>
@@ -119,10 +160,14 @@ export function SlipPanel() {
                   label="Combined Odds"
                   value={
                     <span className="mono tnum">
-                      {formatOdds(
-                        decimalToAmerican(combinedDecimal),
-                        state.oddsFormat,
-                      )}
+                      {combinedDecimal == null
+                        ? "Unavailable"
+                        : formatOdds(
+                            decimalToAmerican(
+                              combinedDecimal,
+                            ),
+                            state.oddsFormat,
+                          )}
                     </span>
                   }
                 />
@@ -131,23 +176,39 @@ export function SlipPanel() {
                 label="Total Stake"
                 value={
                   <span className="mono tnum">
-                    ${(mode === "parlay" ? stake : stake * legs.length).toFixed(2)}
+                    ${totalStake.toFixed(2)}
                   </span>
                 }
               />
               <MetricLine
                 label="Potential Payout"
                 value={
-                  <span className="mono tnum pos">
-                    ${potentialPayout.toFixed(2)}
+                  <span
+                    className={
+                      potentialPayout == null
+                        ? "mono tnum dim"
+                        : "mono tnum pos"
+                    }
+                  >
+                    {potentialPayout == null
+                      ? "Unavailable"
+                      : `$${potentialPayout.toFixed(2)}`}
                   </span>
                 }
               />
               <MetricLine
                 label="Potential Profit"
                 value={
-                  <span className="mono tnum pos">
-                    +${potentialProfit.toFixed(2)}
+                  <span
+                    className={
+                      potentialProfit == null
+                        ? "mono tnum dim"
+                        : "mono tnum pos"
+                    }
+                  >
+                    {potentialProfit == null
+                      ? "Unavailable"
+                      : `${potentialProfit >= 0 ? "+" : ""}$${potentialProfit.toFixed(2)}`}
                   </span>
                 }
               />
@@ -185,65 +246,171 @@ function LegRow({
   onRemove,
 }: {
   leg: BetLeg;
-  oddsFormat: "american" | "decimal";
+  oddsFormat:
+    | "american"
+    | "decimal";
   onRemove: () => void;
 }) {
+  const currentAmericanOdds =
+    leg.draft.currentAmericanOdds;
+
   return (
     <div
       style={{
         padding: 10,
-        background: "var(--bg-1)",
-        border: "1px solid var(--line-soft)",
+        backgroundColor:
+          "var(--bg-1)",
+        border:
+          "1px solid var(--line-soft)",
         borderRadius: 5,
       }}
     >
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           alignItems: "flex-start",
           gap: 8,
         }}
       >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 4,
-              fontSize: 11,
-            }}
-          >
-            <TeamMark abbr={leg.awayTeam} />
-            <span className="dim">@</span>
-            <TeamMark abbr={leg.homeTeam} />
-          </div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>
-            {leg.market} · {leg.side}
-            {leg.line != null ? ` · ${leg.line}` : ""}
-          </div>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {leg.kind === "game" ? (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 4,
+                  fontSize: 11,
+                }}
+              >
+                <TeamMark
+                  abbr={leg.awayTeam}
+                />
+
+                <span className="dim">
+                  @
+                </span>
+
+                <TeamMark
+                  abbr={leg.homeTeam}
+                />
+              </div>
+
+              <div
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color:
+                    "var(--ink-2)",
+                }}
+              >
+                {leg.market} ·{" "}
+                {leg.side}
+                {leg.line != null
+                  ? ` · ${leg.line}`
+                  : ""}
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 4,
+                  fontSize: 11,
+                }}
+              >
+                <TeamMark
+                  abbr={leg.team}
+                />
+
+                <span
+                  style={{
+                    color:
+                      "var(--ink-2)",
+                  }}
+                >
+                  {leg.playerName}
+                </span>
+              </div>
+
+              <div
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color:
+                    "var(--ink-2)",
+                }}
+              >
+                {leg.statType} ·{" "}
+                {leg.side}
+                {leg.line != null
+                  ? ` · ${leg.line}`
+                  : ""}
+              </div>
+            </>
+          )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            className="mono tnum"
-            style={{ fontSize: 12, color: "var(--ink-2)" }}
-          >
-            {formatOdds(leg.odds, oddsFormat)}
-          </span>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {currentAmericanOdds == null ? (
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                color: "var(--warn)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Price unavailable
+            </span>
+          ) : (
+            <span
+              className="mono tnum"
+              style={{
+                fontSize: 12,
+                color:
+                  "var(--ink-2)",
+              }}
+            >
+              {formatOdds(
+                currentAmericanOdds,
+                oddsFormat,
+              )}
+            </span>
+          )}
+
           <button
             type="button"
             onClick={onRemove}
             aria-label="Remove bet leg"
             title="Remove leg"
             style={{
-              background: "transparent",
+              backgroundColor:
+                "transparent",
               border: "none",
               padding: "0 4px",
               cursor: "pointer",
               font: "inherit",
               fontSize: 14,
-              color: "var(--ink-3)",
+              color:
+                "var(--ink-3)",
               lineHeight: 1,
             }}
           >
@@ -301,11 +468,6 @@ function MetricLine({
       <div style={{ fontSize: 13 }}>{value}</div>
     </div>
   );
-}
-
-function combinedDecimalOdds(legs: BetLeg[], mode: BetSlipMode): number {
-  if (mode !== "parlay" || legs.length === 0) return 0;
-  return legs.reduce((product, leg) => product * americanToDecimal(leg.odds), 1);
 }
 
 function decimalToAmerican(decimal: number): number {

@@ -1,21 +1,17 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
+import {
+  parseBetLegsV2,
+  parseBetLegV2,
+  type BetLeg,
+} from "../utils/betLegs";
 
-/** A single bet leg in the slip. */
-export type BetLeg = {
-  /** Unique identifier for dedup. Composed from game_id + market + side. */
-  id: string;
-  gameId: string;
-  market: "moneyline" | "spread" | "total";
-  side: "home" | "away" | "over" | "under";
-  /** American odds. */
-  odds: number;
-  /** Optional line value (for spread/total). */
-  line?: number;
-  /** Display metadata — not used for logic, just for rendering. */
-  awayTeam: string;
-  homeTeam: string;
-};
+export type { BetLeg } from "../utils/betLegs";
 
 export type BetSlipMode = "single" | "parlay";
 
@@ -28,85 +24,141 @@ type BetSlipContextValue = {
   setMode: (mode: BetSlipMode) => void;
 };
 
-const BetSlipContext = createContext<BetSlipContextValue | undefined>(
-  undefined,
-);
+const BetSlipContext = createContext<
+  BetSlipContextValue | undefined
+>(undefined);
 
-const LEGS_STORAGE_KEY = "hm-betslip";
-const MODE_STORAGE_KEY = "hm-betslip-mode";
+const LEGS_STORAGE_KEY = "hm-betslip-v2";
+const MODE_STORAGE_KEY = "hm-betslip-mode-v2";
 
 function loadInitialLegs(): BetLeg[] {
   try {
-    const stored = localStorage.getItem(LEGS_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed as BetLeg[];
+    const stored = localStorage.getItem(
+      LEGS_STORAGE_KEY,
+    );
+
+    if (!stored) {
+      return [];
     }
+
+    return parseBetLegsV2(
+      JSON.parse(stored) as unknown,
+    );
   } catch {
-    // Ignore parse errors.
+    return [];
   }
-  return [];
 }
 
 function loadInitialMode(): BetSlipMode {
   try {
-    const stored = localStorage.getItem(MODE_STORAGE_KEY);
-    if (stored === "single" || stored === "parlay") return stored;
+    const stored = localStorage.getItem(
+      MODE_STORAGE_KEY,
+    );
+
+    if (
+      stored === "single" ||
+      stored === "parlay"
+    ) {
+      return stored;
+    }
   } catch {
-    // Ignore.
+    // Ignore storage errors.
   }
+
   return "single";
 }
 
-export function BetSlipProvider({ children }: { children: ReactNode }) {
-  const [legs, setLegs] = useState<BetLeg[]>(loadInitialLegs);
-  const [mode, setModeInternal] = useState<BetSlipMode>(loadInitialMode);
+export function BetSlipProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [legs, setLegs] =
+    useState<BetLeg[]>(loadInitialLegs);
+  const [mode, setModeInternal] =
+    useState<BetSlipMode>(loadInitialMode);
 
-  // Persist legs.
   useEffect(() => {
     try {
-      localStorage.setItem(LEGS_STORAGE_KEY, JSON.stringify(legs));
+      localStorage.setItem(
+        LEGS_STORAGE_KEY,
+        JSON.stringify(legs),
+      );
     } catch {
       // Ignore quota errors.
     }
   }, [legs]);
 
-  // Persist mode.
   useEffect(() => {
     try {
-      localStorage.setItem(MODE_STORAGE_KEY, mode);
+      localStorage.setItem(
+        MODE_STORAGE_KEY,
+        mode,
+      );
     } catch {
-      // Ignore.
+      // Ignore quota errors.
     }
   }, [mode]);
 
   const add = (leg: BetLeg) => {
-    setLegs((prev) => {
-      // Dedupe by id — adding an existing leg is a no-op.
-      if (prev.some((l) => l.id === leg.id)) return prev;
-      return [...prev, leg];
+    const parsed = parseBetLegV2(leg);
+
+    if (!parsed) {
+      return;
+    }
+
+    setLegs((previous) => {
+      if (
+        previous.some(
+          (existing) =>
+            existing.id === parsed.id,
+        )
+      ) {
+        return previous;
+      }
+
+      return [...previous, parsed];
     });
   };
 
   const remove = (id: string) => {
-    setLegs((prev) => prev.filter((l) => l.id !== id));
+    setLegs((previous) =>
+      previous.filter(
+        (leg) => leg.id !== id,
+      ),
+    );
   };
 
   const clear = () => setLegs([]);
 
-  const setMode = (nextMode: BetSlipMode) => setModeInternal(nextMode);
+  const setMode = (
+    nextMode: BetSlipMode,
+  ) => setModeInternal(nextMode);
 
   return (
-    <BetSlipContext.Provider value={{ legs, mode, add, remove, clear, setMode }}>
+    <BetSlipContext.Provider
+      value={{
+        legs,
+        mode,
+        add,
+        remove,
+        clear,
+        setMode,
+      }}
+    >
       {children}
     </BetSlipContext.Provider>
   );
 }
 
 export function useBetSlip(): BetSlipContextValue {
-  const ctx = useContext(BetSlipContext);
-  if (!ctx) {
-    throw new Error("useBetSlip must be used inside a BetSlipProvider");
+  const context = useContext(BetSlipContext);
+
+  if (!context) {
+    throw new Error(
+      "useBetSlip must be used inside a BetSlipProvider",
+    );
   }
-  return ctx;
+
+  return context;
 }

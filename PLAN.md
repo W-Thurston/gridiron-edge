@@ -262,64 +262,83 @@ Parlays:
 The edge report now preserves `edge.odds` as required `american_odds`, while `market_value` retains its market-specific meaning: no-vig probability for moneyline, home-team spread for spread, and market total for total. `/edges` also returns the bankroll and Kelly multiplier used to calculate `kelly_stake`, including on blocked and legitimate-empty responses.
 
 
-### B. Define the BetLeg v2 domain model
+### B. Define the BetLeg v2 domain model — ✅ COMPLETE
 
-- [ ] Add a discriminated union:
+- [x] Add a discriminated union:
   - game wager;
   - prop interest/wager.
-- [ ] Separate immutable recommendation provenance from editable draft inputs.
-- [ ] Add canonical game-wager IDs.
-- [ ] Add canonical prop-wager IDs.
-- [ ] Keep producer/source metadata outside canonical identity.
-- [ ] Add `referenceAmericanOdds`.
-- [ ] Add editable `currentAmericanOdds`.
-- [ ] Add nullable sportsbook text for manual entry only.
-- [ ] Add model identity.
-- [ ] Add model probability or applicable fair-value context.
-- [ ] Add reference EV.
-- [ ] Add reference edge strength.
-- [ ] Add reference full-Kelly fraction.
-- [ ] Add reference Kelly stake and its bankroll/multiplier basis.
-- [ ] Add game-specific market, side, line, game ID, and teams.
-- [ ] Add prop-specific prop ID, game ID, player, team, stat type, side, line,
+- [x] Separate immutable recommendation provenance from editable draft inputs.
+- [x] Add canonical game-wager IDs.
+- [x] Add canonical prop-wager IDs.
+- [x] Keep producer/source metadata outside canonical identity.
+- [x] Add `referenceAmericanOdds`.
+- [x] Add editable `currentAmericanOdds`.
+- [x] Add nullable sportsbook text for manual entry only.
+- [x] Add model identity.
+- [x] Add model probability or applicable fair-value context.
+- [x] Add reference EV.
+- [x] Add reference edge strength.
+- [x] Add reference full-Kelly fraction.
+- [x] Add reference Kelly stake and its bankroll/multiplier basis.
+- [x] Add game-specific market, side, line, game ID, and teams.
+- [x] Add prop-specific prop ID, game ID, player, team, stat type, side, line,
       and projection mean.
-- [ ] Represent unpriced props truthfully.
-- [ ] Add pure constructors from generated edge and prop API shapes.
-- [ ] Add pure current-price calculation helpers.
-- [ ] Add constructor, canonical-ID, and calculation tests.
-- [ ] Commit the BetLeg v2 pure-foundation unit.
+- [x] Represent unpriced props truthfully.
+- [x] Add pure constructors from generated edge and prop API shapes.
+- [x] Add pure current-price calculation helpers.
+- [x] Add strict v2 runtime parsers.
+- [x] Add constructor, canonical-ID, calculation, and parser tests.
+- [x] Commit the BetLeg v2 pure-foundation unit.
 
-### C. Add validated draft persistence
+BetLeg v2 is a versioned discriminated union for game wagers and prop
+interests. Canonical IDs describe the wager rather than the producer screen.
+Immutable recommendation provenance—including reference price, model context,
+EV, and Kelly sizing basis—is stored separately from editable draft odds,
+stake, sportsbook, and notes. Props remain explicitly unpriced until real odds
+exist. Pure helpers provide guarded EV, Kelly, payout, profit, break-even, and
+price-quality calculations, while strict parsers reject legacy or malformed
+persisted state.
 
-- [ ] Introduce a versioned storage key.
-- [ ] Add runtime parsing for persisted v2 legs.
-- [ ] Reject malformed legs.
-- [ ] Do not treat prototype placeholder prices as verified reference prices.
-- [ ] Decide whether to discard or visibly reset legacy v1 state.
-- [ ] Persist local mode.
-- [ ] Decide whether editable current odds persist.
-- [ ] Decide whether proposed stakes persist.
-- [ ] Preserve canonical deduplication after reload.
-- [ ] Add storage parse, rejection, persistence, and deduplication tests.
-- [ ] Commit the validated-context unit.
+### C. Add validated draft persistence — ✅ COMPLETE
 
-### D. Migrate all leg producers
+- [x] Introduce versioned leg and mode storage keys.
+- [x] Add strict runtime parsing for persisted v2 legs.
+- [x] Reject malformed legs individually.
+- [x] Ignore legacy prototype state rather than treating placeholder prices as verified.
+- [x] Preserve valid single/parlay mode.
+- [x] Validate runtime additions defensively.
+- [x] Deduplicate by canonical wager ID.
+- [x] Add loading, rejection, add, remove, clear, persistence, mode, and deduplication coverage.
 
-- [ ] Migrate BetSlip `EdgesTable`.
-- [ ] Migrate Dashboard Featured Matchups.
-- [ ] Migrate Dashboard Model Edges.
-- [ ] Migrate Dashboard Prop Edges.
-- [ ] Migrate GameDetail Model Lean.
-- [ ] Migrate GameDetail Top Prop Edges.
-- [ ] Migrate PlayerProp.
-- [ ] Remove all fabricated `-110` values.
-- [ ] Remove all `market: "prop" as never` workarounds.
-- [ ] Remove producer-specific wager IDs.
-- [ ] Preserve producer source as metadata.
-- [ ] Verify adding the same wager from different screens deduplicates.
-- [ ] Verify game and prop selections remain distinguishable.
-- [ ] Add producer integration coverage.
-- [ ] Commit the producer-migration unit.
+The live context now reads and writes validated v2 draft state. Legacy
+prototype storage is intentionally ignored because it may contain fabricated
+prices, undeclared prop markets, incorrect game identifiers, and
+producer-specific IDs.
+
+### D. Migrate all leg producers — ✅ COMPLETE
+
+- [x] Migrate BetSlip `EdgesTable`.
+- [x] Migrate Dashboard Featured Matchups.
+- [x] Migrate Dashboard Model Edges.
+- [x] Migrate Dashboard Prop Edges.
+- [x] Migrate GameDetail Model Lean.
+- [x] Migrate GameDetail Top Prop Edges.
+- [x] Migrate PlayerProp.
+- [x] Remove all fabricated `-110` values.
+- [x] Remove all `market: "prop" as never` workarounds.
+- [x] Remove producer-specific wager IDs.
+- [x] Preserve producer source as metadata.
+- [x] Prevent missing or `No Edge` prop leans from defaulting to Over.
+- [x] Verify source-independent canonical deduplication.
+- [x] Adapt the existing slip panel to render v2 game and prop legs.
+- [x] Block aggregate payout and combined-odds output when any leg is unpriced.
+- [x] Run focused and full frontend quality gates.
+
+All live producers now create canonical v2 legs through shared constructors.
+Game edges retain the exact price and sizing context returned by `/edges`.
+Props retain their actual game/player/projection context and remain explicitly
+unpriced until real prop odds exist. The current SlipPanel is compatibility-safe
+but has not yet received the final decision-support redesign.
 
 ### E. Lock current-price and calculation behavior
 

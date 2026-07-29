@@ -14,6 +14,13 @@ import { WhyLink } from "../components/primitives/WhyLink";
 import { useBetSlip } from "../context/BetSlipContext";
 import { useNav } from "../context/NavContext";
 import { probToAmerican } from "../utils/odds";
+import {
+  buildGameBetLegId,
+  buildPropBetLegId,
+  createGameBetLeg,
+  createPropBetLeg,
+  propSideFromLean,
+} from "../utils/betLegs";
 
 export function GameDetail() {
   const { route, navigate } = useNav();
@@ -570,8 +577,6 @@ function formatMargin(
  */
 function ModelLeanCallout({
   gameId,
-  awayTeam,
-  homeTeam,
   confidenceTier,
 }: {
   gameId: string;
@@ -579,7 +584,11 @@ function ModelLeanCallout({
   homeTeam: string;
   confidenceTier: string | null;
 }) {
-  const { data, isLoading, error } = useEdges();
+  const {
+    data,
+    isLoading,
+    error,
+  } = useEdges();
   const { legs, add } = useBetSlip();
 
   if (isLoading || error) return null;
@@ -621,20 +630,54 @@ function ModelLeanCallout({
     );
   }
 
-  const legId = `game-detail-lean-${topEdge.game_id}`;
-  const isPicked = legs.some((l) => l.id === legId);
+  const market =
+    topEdge.market_type as
+      | "moneyline"
+      | "spread"
+      | "total";
+
+  const side =
+    topEdge.side as
+      | "home"
+      | "away"
+      | "over"
+      | "under";
+
+  const line =
+    market === "spread" ||
+    market === "total"
+      ? topEdge.market_value ?? null
+      : null;
+
+  const legId = buildGameBetLegId({
+    gameId: topEdge.game_id,
+    market,
+    side,
+    line,
+  });
+
+  const isPicked = legs.some(
+    (leg) => leg.id === legId,
+  );
 
   const handleAddSlip = () => {
-    if (isPicked) return;
-    add({
-      id: legId,
-      gameId: topEdge.game_id,
-      market: topEdge.market_type as "moneyline" | "spread" | "total",
-      side: topEdge.side as "home" | "away" | "over" | "under",
-      odds: -110,
-      awayTeam: awayTeam,
-      homeTeam: homeTeam,
-    });
+    if (isPicked) {
+      return;
+    }
+
+    add(
+      createGameBetLeg({
+        edge: topEdge,
+        source: "game-detail-lean",
+        addedAt:
+          new Date().toISOString(),
+        referenceBankroll:
+          data?.bankroll ?? null,
+        referenceKellyMultiplier:
+          data?.kelly_multiplier ??
+          null,
+      }),
+    );
   };
 
   return (
@@ -1385,51 +1428,99 @@ function TopPropEdgesCard({ gameId }: { gameId: string }) {
 type PropRowProps = {
   prop: {
     prop_id: string;
+    game_id: string;
+    player_id: string;
     player_name: string;
     position: string;
     team: string;
     stat_type: string;
+    model_key: string;
     projection?: {
       predicted_mean?: number | null;
       predicted_std?: number | null;
     } | null;
     line_context?: {
       line?: number | null;
+      p_over?: number | null;
       lean?: string | null;
       confidence_tier?: string | null;
     } | null;
   };
   legs: Array<{ id: string }>;
-  add: Parameters<ReturnType<typeof useBetSlip>["add"]> extends [infer L] ? (leg: L) => void : never;
-  navigate: (path: string, params?: Record<string, string>) => void;
+  add: Parameters<
+    ReturnType<
+      typeof useBetSlip
+    >["add"]
+  > extends [infer Leg]
+    ? (leg: Leg) => void
+    : never;
+  navigate: (
+    path: string,
+    params?: Record<string, string>,
+  ) => void;
   isFirst: boolean;
 };
 
-function PropRow({ prop, legs, add, navigate, isFirst }: PropRowProps) {
-  const legId = `game-detail-prop-${prop.prop_id}`;
-  const isPicked = legs.some((l) => l.id === legId);
-  const statLabel = formatStatType(prop.stat_type);
-  const lean = prop.line_context?.lean ?? null;
-  const line = prop.line_context?.line ?? null;
-  const modelMean = prop.projection?.predicted_mean ?? null;
-  const confidenceTier = prop.line_context?.confidence_tier ?? null;
+function PropRow({
+  prop,
+  legs,
+  add,
+  navigate,
+  isFirst,
+}: PropRowProps) {
+  const statLabel = formatStatType(
+    prop.stat_type,
+  );
+  const lean =
+    prop.line_context?.lean ?? null;
+  const line =
+    prop.line_context?.line ?? null;
+  const modelMean =
+    prop.projection?.predicted_mean ??
+    null;
+  const confidenceTier =
+    prop.line_context
+      ?.confidence_tier ?? null;
+  const side = propSideFromLean(lean);
+
+  const legId =
+    side == null
+      ? null
+      : buildPropBetLegId({
+          propId: prop.prop_id,
+          side,
+          line,
+        });
+
+  const isPicked =
+    legId != null &&
+    legs.some(
+      (leg) => leg.id === legId,
+    );
 
   const handleClick = () => {
     navigate("/players", { propId: prop.prop_id });
   };
 
-  const handleAdd = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isPicked) return;
-    add({
-      id: legId,
-      gameId: prop.prop_id,
-      market: "prop" as never,
-      side: (lean ?? "over") as "home" | "away" | "over" | "under",
-      odds: -110,
-      awayTeam: prop.team,
-      homeTeam: prop.team,
-    });
+  const handleAdd = (
+    event: React.MouseEvent,
+  ) => {
+    event.stopPropagation();
+
+    if (isPicked || side == null) {
+      return;
+    }
+
+    add(
+      createPropBetLeg({
+        prop,
+        side,
+        source:
+          "game-detail-prop",
+        addedAt:
+          new Date().toISOString(),
+      }),
+    );
   };
 
   return (
@@ -1524,22 +1615,44 @@ function PropRow({ prop, legs, add, navigate, isFirst }: PropRowProps) {
             subject={{ kind: "prop", propId: prop.prop_id }}
           />
           <button
-            onClick={handleAdd}
             type="button"
-            aria-label={isPicked ? "Prop on slip" : "Add prop to slip"}
+            onClick={handleAdd}
+            disabled={
+              side == null || isPicked
+            }
+            aria-label={
+              side == null
+                ? "No wager side available"
+                : isPicked
+                  ? "Prop on slip"
+                  : "Add prop to slip"
+            }
             style={{
               padding: "2px 8px",
-              background: isPicked ? "var(--bg-3)" : "var(--pos)",
-              color: isPicked ? "var(--ink-4)" : "var(--bg)",
+              backgroundColor:
+                side == null || isPicked
+                  ? "var(--bg-3)"
+                  : "var(--pos)",
+              color:
+                side == null || isPicked
+                  ? "var(--ink-4)"
+                  : "var(--bg)",
               border: "none",
               borderRadius: 3,
               fontSize: 10,
               fontWeight: 600,
-              cursor: isPicked ? "default" : "pointer",
+              cursor:
+                side == null || isPicked
+                  ? "not-allowed"
+                  : "pointer",
               fontFamily: "var(--f-sans)",
             }}
           >
-            {isPicked ? "✓" : "+"}
+            {side == null
+              ? "—"
+              : isPicked
+                ? "✓"
+                : "+"}
           </button>
         </div>
       </div>

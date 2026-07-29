@@ -80,21 +80,49 @@ describe("PropEdgesRail", () => {
         items: [
           {
             prop_id: "1",
+            game_id:
+              "2026_01_KC_LAC",
+            player_id: "player-1",
             player_name: "P. Mahomes",
             position: "QB",
             team: "KAN",
-            stat_type: "qb_pass_yards",
-            projection: { predicted_mean: 275.0, predicted_std: 45.0 },
-            line_context: { line: null, lean: null },
+            stat_type:
+              "qb_pass_yards",
+            model_key:
+              "elastic_net_qb_pass_yards",
+            projection: {
+              predicted_mean: 275.0,
+              predicted_std: 45.0,
+            },
+            line_context: {
+              line: null,
+              p_over: null,
+              lean: null,
+              confidence_tier: null,
+            },
           },
           {
             prop_id: "2",
+            game_id:
+              "2026_01_BAL_BUF",
+            player_id: "player-2",
             player_name: "L. Jackson",
             position: "QB",
             team: "BAL",
-            stat_type: "qb_pass_yards",
-            projection: { predicted_mean: 320.0, predicted_std: 40.0 },
-            line_context: { line: null, lean: null },
+            stat_type:
+              "qb_pass_yards",
+            model_key:
+              "elastic_net_qb_pass_yards",
+            projection: {
+              predicted_mean: 320.0,
+              predicted_std: 40.0,
+            },
+            line_context: {
+              line: null,
+              p_over: null,
+              lean: null,
+              confidence_tier: null,
+            },
           },
         ],
         _meta: {},

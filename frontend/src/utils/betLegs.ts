@@ -322,6 +322,23 @@ export function isPriceAtLeastAsGood(
   return americanToDecimal(current) >= americanToDecimal(threshold);
 }
 
+export function propSideFromLean(
+  lean: string | null | undefined,
+): PropSide | null {
+  const normalized =
+    lean?.trim().toLowerCase();
+
+  if (normalized === "over") {
+    return "over";
+  }
+
+  if (normalized === "under") {
+    return "under";
+  }
+
+  return null;
+}
+
 export function parseBetLegV2(value: unknown): BetLeg | null {
   if (!isRecord(value) || value.version !== BET_LEG_VERSION) return null;
   if (!isSource(value.source)) return null;

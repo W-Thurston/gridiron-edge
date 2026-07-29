@@ -7,6 +7,11 @@ import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { useBetSlip } from "../context/BetSlipContext";
+import {
+  buildPropBetLegId,
+  createPropBetLeg,
+  propSideFromLean,
+} from "../utils/betLegs";
 import { formatStatType } from "../utils/props";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { DistributionChart } from "../components/primitives/DistributionChart";
@@ -91,19 +96,45 @@ export function PlayerProp() {
   }
 
   // Bet slip integration
-  const legId = `player-prop-${prop.prop_id}`;
-  const isOnSlip = legs.some((l) => l.id === legId);
+  const propSide = propSideFromLean(
+    prop.line_context?.lean,
+  );
+
+  const propLine =
+    prop.line_context?.line ?? null;
+
+  const legId =
+    propSide == null
+      ? null
+      : buildPropBetLegId({
+          propId: prop.prop_id,
+          side: propSide,
+          line: propLine,
+        });
+
+  const isOnSlip =
+    legId != null &&
+    legs.some(
+      (leg) => leg.id === legId,
+    );
+
   const handleAddSlip = () => {
-    if (isOnSlip) return;
-    add({
-      id: legId,
-      gameId: prop.prop_id,
-      market: "prop" as never,
-      side: "over" as "home" | "away" | "over" | "under",
-      odds: -110,
-      awayTeam: prop.team,
-      homeTeam: prop.team,
-    });
+    if (
+      isOnSlip ||
+      propSide == null
+    ) {
+      return;
+    }
+
+    add(
+      createPropBetLeg({
+        prop,
+        side: propSide,
+        source: "player-prop",
+        addedAt:
+          new Date().toISOString(),
+      }),
+    );
   };
 
   const propStatus = prop._meta?.field_status;
@@ -126,6 +157,7 @@ export function PlayerProp() {
         }}
         onAddSlip={handleAddSlip}
         isOnSlip={isOnSlip}
+        canAddSlip={propSide != null}
         gameOpponent={game && prop.team ? getOpponentFromGameId(prop.game_id, prop.team) : null}
         gameDayOfWeek={game?.day_of_week ?? null}
         confidenceTier={prop.line_context?.confidence_tier ?? null}
@@ -315,6 +347,7 @@ function PlayerHero({
   prop,
   onAddSlip,
   isOnSlip,
+  canAddSlip,
   gameOpponent,
   gameDayOfWeek,
   confidenceTier,
@@ -334,6 +367,7 @@ function PlayerHero({
   };
   onAddSlip: () => void;
   isOnSlip: boolean;
+  canAddSlip: boolean;
   gameOpponent?: string | null;
   gameDayOfWeek?: string | null;
   confidenceTier?: string | null;
@@ -522,21 +556,25 @@ function PlayerHero({
           <button
             onClick={onAddSlip}
             type="button"
-            disabled={isOnSlip}
+            disabled={!canAddSlip || isOnSlip}
             style={{
               padding: "10px 18px",
-              background: isOnSlip ? "var(--bg-3)" : "var(--pos)",
-              color: isOnSlip ? "var(--ink-4)" : "var(--bg)",
+              background: !canAddSlip || isOnSlip ? "var(--bg-3)" : "var(--pos)",
+              color: !canAddSlip || isOnSlip ? "var(--ink-4)" : "var(--bg)",
               border: "none",
               borderRadius: 4,
               fontSize: 13,
               fontWeight: 600,
               fontFamily: "var(--f-sans)",
-              cursor: isOnSlip ? "default" : "pointer",
+              cursor: !canAddSlip || isOnSlip ? "default" : "pointer",
               whiteSpace: "nowrap",
             }}
           >
-            {isOnSlip ? "✓ On slip" : "+ Bet slip"}
+            {!canAddSlip
+              ? "No wager side available"
+              : isOnSlip
+                ? "✓ On slip"
+                : "+ Bet slip"}
           </button>
         </div>
       </div>

@@ -1,8 +1,14 @@
 import { usePropsList } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { useNav } from "../../context/NavContext";
+import {
+  buildPropBetLegId,
+  createPropBetLeg,
+  propSideFromLean,
+} from "../../utils/betLegs";
 import { TeamMark } from "../primitives/TeamMark";
 import { WhyLink } from "../primitives/WhyLink";
+
 
 /**
  * Compact 5-row list of top prop edges for the current week.
@@ -17,7 +23,8 @@ import { WhyLink } from "../primitives/WhyLink";
  * "See all →" navigates to Players Explorer.
  */
 export function PropEdgesRail() {
-  const { data, isLoading, error } = usePropsList({});
+  const { data, isLoading, error } =
+    usePropsList({});
   const { navigate } = useNav();
   const { legs, add } = useBetSlip();
 
@@ -109,51 +116,98 @@ export function PropEdgesRail() {
 type PropRowProps = {
   prop: {
     prop_id: string;
+    game_id: string;
+    player_id: string;
     player_name: string;
     position: string;
     team: string;
     stat_type: string;
+    model_key: string;
     projection?: {
       predicted_mean?: number | null;
       predicted_std?: number | null;
     } | null;
     line_context?: {
       line?: number | null;
+      p_over?: number | null;
       lean?: string | null;
+      confidence_tier?: string | null;
     } | null;
   };
   legs: Array<{ id: string }>;
-  add: (leg: Parameters<ReturnType<typeof import("../../context/BetSlipContext").useBetSlip>["add"]>[0]) => void;
-  navigate: (path: string, params?: Record<string, string>) => void;
+  add: (
+    leg: Parameters<
+      ReturnType<
+        typeof import(
+          "../../context/BetSlipContext"
+        ).useBetSlip
+      >["add"]
+    >[0],
+  ) => void;
+  navigate: (
+    path: string,
+    params?: Record<string, string>,
+  ) => void;
   isFirst: boolean;
 };
 
-function PropRow({ prop, legs, add, navigate, isFirst }: PropRowProps) {
-  const legId = `dash-prop-${prop.prop_id}`;
-  const isPicked = legs.some((l) => l.id === legId);
-  const statLabel = formatStatType(prop.stat_type);
-  const lean = prop.line_context?.lean ?? null;
-  const line = prop.line_context?.line ?? null;
-  const modelMean = prop.projection?.predicted_mean ?? null;
+function PropRow({
+  prop,
+  legs,
+  add,
+  navigate,
+  isFirst,
+}: PropRowProps) {
+  const statLabel = formatStatType(
+    prop.stat_type,
+  );
+  const lean =
+    prop.line_context?.lean ?? null;
+  const line =
+    prop.line_context?.line ?? null;
+  const modelMean =
+    prop.projection?.predicted_mean ??
+    null;
+  const side = propSideFromLean(lean);
+
+  const legId =
+    side == null
+      ? null
+      : buildPropBetLegId({
+          propId: prop.prop_id,
+          side,
+          line,
+        });
+
+  const isPicked =
+    legId != null &&
+    legs.some(
+      (leg) => leg.id === legId,
+    );
 
   const handleClick = () => {
     navigate("/players", { propId: prop.prop_id });
   };
 
-  const handleAdd = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isPicked) return;
-    // Note: Prop bet leg shape needs to match BetLeg schema.
-    // For now, encoding as prop with placeholder values.
-    add({
-      id: legId,
-      gameId: prop.prop_id,
-      market: "prop" as never, // Bet slip supports moneyline/spread/total; prop is aspirational
-      side: (lean ?? "over") as "home" | "away" | "over" | "under",
-      odds: -110,
-      awayTeam: prop.team,
-      homeTeam: prop.team,
-    });
+  const handleAdd = (
+    event: React.MouseEvent,
+  ) => {
+    event.stopPropagation();
+
+    if (isPicked || side == null) {
+      return;
+    }
+
+    add(
+      createPropBetLeg({
+        prop,
+        side,
+        source:
+          "dashboard-prop-edges",
+        addedAt:
+          new Date().toISOString(),
+      }),
+    );
   };
 
   return (
@@ -198,23 +252,45 @@ function PropRow({ prop, legs, add, navigate, isFirst }: PropRowProps) {
           </span>
         </div>
         <button
-          onClick={handleAdd}
           type="button"
-          aria-label={isPicked ? "Prop on slip" : "Add prop to slip"}
+          onClick={handleAdd}
+          disabled={
+            side == null || isPicked
+          }
+          aria-label={
+            side == null
+              ? "No wager side available"
+              : isPicked
+                ? "Prop on slip"
+                : "Add prop to slip"
+          }
           style={{
             padding: "2px 8px",
-            background: isPicked ? "var(--bg-3)" : "var(--pos)",
-            color: isPicked ? "var(--ink-4)" : "var(--bg)",
+            backgroundColor:
+              side == null || isPicked
+                ? "var(--bg-3)"
+                : "var(--pos)",
+            color:
+              side == null || isPicked
+                ? "var(--ink-4)"
+                : "var(--bg)",
             border: "none",
             borderRadius: 3,
             fontSize: 10,
             fontWeight: 600,
-            cursor: isPicked ? "default" : "pointer",
+            cursor:
+              side == null || isPicked
+                ? "not-allowed"
+                : "pointer",
             fontFamily: "var(--f-sans)",
             flexShrink: 0,
           }}
         >
-          {isPicked ? "✓" : "+"}
+          {side == null
+            ? "—"
+            : isPicked
+              ? "✓"
+              : "+"}
         </button>
       </div>
 

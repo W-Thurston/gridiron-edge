@@ -14,6 +14,7 @@ import {
   type BetLegSource,
   type GameBetLeg,
   type PropBetLeg,
+  propSideFromLean,
 } from "./betLegs";
 
 type EdgeApiRow = components["schemas"]["EdgeRow"];
@@ -419,5 +420,27 @@ describe("v2 runtime parsing", () => {
 
   it("returns an empty list for non-array input", () => {
     expect(parseBetLegsV2(gameLeg())).toEqual([]);
+  });
+});
+
+describe("propSideFromLean", () => {
+  it("normalizes Over and Under", () => {
+    expect(
+      propSideFromLean("Over"),
+    ).toBe("over");
+
+    expect(
+      propSideFromLean(" under "),
+    ).toBe("under");
+  });
+
+  it("rejects missing and no-edge leans", () => {
+    expect(
+      propSideFromLean(null),
+    ).toBeNull();
+
+    expect(
+      propSideFromLean("No Edge"),
+    ).toBeNull();
   });
 });

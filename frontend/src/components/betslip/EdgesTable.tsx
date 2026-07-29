@@ -4,25 +4,8 @@ import { PendingField } from "../field-status/PendingField";
 import type { FieldStatus } from "../field-status/types";
 import { TeamMark } from "../primitives/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
-import type { BetLeg } from "../../context/BetSlipContext";
+import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
 import { ErrorCard } from "../../components/error/ErrorCard";
-
-type EdgeRowShape = {
-  game_id: string;
-  game_date?: string | null;
-  away_team: string;
-  home_team: string;
-  market_type: string;
-  side: string;
-  model_value?: number | null;
-  market_value?: number | null;
-  point_edge?: number | null;
-  cover_prob?: number | null;
-  ev: number;
-  edge_strength: string;
-  kelly_frac?: number | null;
-  kelly_stake?: number | null;
-};
 
 export function EdgesTable() {
   const { data, isLoading, error, refetch } = useEdges();
@@ -88,7 +71,25 @@ export function EdgesTable() {
           </thead>
           <tbody>
             {(data.items ?? []).map((edge, i) => {
-              const legId = buildLegId(edge);
+              const legId = buildGameBetLegId({
+                gameId: edge.game_id,
+                market:
+                  edge.market_type as
+                    | "moneyline"
+                    | "spread"
+                    | "total",
+                side:
+                  edge.side as
+                    | "home"
+                    | "away"
+                    | "over"
+                    | "under",
+                line:
+                  edge.market_type === "spread" ||
+                  edge.market_type === "total"
+                    ? edge.market_value ?? null
+                    : null,
+              });
               const alreadyAdded = legIds.has(legId);
               return (
                 <tr
@@ -132,7 +133,20 @@ export function EdgesTable() {
                   <td style={{ padding: "10px 0" }}>
                     <AddButton
                       disabled={alreadyAdded}
-                      onClick={() => add(edgeToLeg(edge))}
+                      onClick={() =>
+                        add(
+                          createGameBetLeg({
+                            edge,
+                            source: "betslip-edges",
+                            addedAt:
+                              new Date().toISOString(),
+                            referenceBankroll:
+                              data.bankroll ?? null,
+                            referenceKellyMultiplier:
+                              data.kelly_multiplier ?? null,
+                          }),
+                        )
+                      }
                     />
                   </td>
                 </tr>
@@ -235,37 +249,4 @@ function AddButton({
       {disabled ? "Added" : "Add"}
     </button>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Edge → BetLeg conversion
-// ---------------------------------------------------------------------------
-
-function buildLegId(edge: EdgeRowShape): string {
-  return `${edge.game_id}__${edge.market_type}__${edge.side}`;
-}
-
-function edgeToLeg(edge: EdgeRowShape): BetLeg {
-  // Derive American odds from the edge's market_value.
-  // For moneyline, market_value IS the American odds.
-  // For spread and total, market_value is the line; edge doesn't include the odds
-  // explicitly. Default to -110 as a stand-in.
-  const isMoneyline = edge.market_type === "moneyline";
-  const odds = isMoneyline && edge.market_value != null
-    ? Math.round(edge.market_value)
-    : -110;
-
-  const isSpreadOrTotal = edge.market_type === "spread" || edge.market_type === "total";
-  const line = isSpreadOrTotal && edge.market_value != null ? edge.market_value : undefined;
-
-  return {
-    id: buildLegId(edge),
-    gameId: edge.game_id,
-    market: edge.market_type as "moneyline" | "spread" | "total",
-    side: edge.side as "home" | "away" | "over" | "under",
-    odds,
-    line,
-    awayTeam: edge.away_team,
-    homeTeam: edge.home_team,
-  };
 }
