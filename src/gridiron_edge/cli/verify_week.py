@@ -10,13 +10,16 @@ from pathlib import Path
 import re
 from typing import Final
 
+import pandas as pd
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
 import typer
 
 from gridiron_edge.core.settings import get_settings
-from gridiron_edge.datasets.loaders import load_schedule_upcoming
+from gridiron_edge.datasets.loaders import (
+    load_schedule_upcoming_rich,
+)
 from gridiron_edge.evaluation.champion_resolver import (
     ChampionNotFoundError,
     resolve_current_champion,
@@ -49,15 +52,10 @@ from gridiron_edge.models.game_prediction.post_process import (
 
 _SEASON_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(?P<start>\d{4})-(?P<end>\d{4})$")
 
-_EMPTY_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
-    "WEEK_NUM",
-    "GAME_DAY_OF_WEEK",
-    "GAME_DATE",
-    "AWAY_TEAM",
-    "HOME_TEAM",
-    "GAMETIME",
-    "YEAR",
-    "GAME_ID",
+_EMPTY_RICH_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
+    "season",
+    "week",
+    "game_id",
 )
 
 _EMPTY_MARKET_COLUMNS: Final[tuple[str, ...]] = (
@@ -106,9 +104,15 @@ def _format_timestamp(
     return value.isoformat()
 
 
-def _empty_schedule() -> DataFrame:
-    """Return an empty canonical upcoming-schedule frame."""
-    return DataFrame(columns=_EMPTY_SCHEDULE_COLUMNS)
+def _empty_rich_schedule() -> DataFrame:
+    """Return an empty rich schedule identity frame."""
+    return DataFrame(
+        {
+            "season": pd.Series(dtype="string"),
+            "week": pd.Series(dtype="int64"),
+            "game_id": pd.Series(dtype="string"),
+        }
+    )
 
 
 def _empty_markets() -> DataFrame:
@@ -119,11 +123,39 @@ def _empty_markets() -> DataFrame:
 def _load_schedule(
     repo: Path,
 ) -> DataFrame:
-    """Load schedule data without creating or refreshing it."""
+    """Load rich schedule data without creating or refreshing it."""
     try:
-        return load_schedule_upcoming(repo)
+        return load_schedule_upcoming_rich(repo)
     except FileNotFoundError:
-        return _empty_schedule()
+        return _empty_rich_schedule()
+
+
+def _schedule_for_readiness(
+    rich_schedule: DataFrame,
+) -> DataFrame:
+    """Project rich schedule identity onto the readiness schema."""
+    required: set[str] = {
+        "season",
+        "week",
+        "game_id",
+    }
+    missing: list[str] = sorted(required - set(rich_schedule.columns))
+    if missing:
+        raise ValueError(
+            "Rich upcoming schedule is missing required columns: " + ", ".join(missing)
+        )
+
+    return DataFrame(
+        {
+            "YEAR": rich_schedule["season"].astype("string"),
+            # pyrefly: ignore [missing-attribute]
+            "WEEK_NUM": pd.to_numeric(
+                rich_schedule["week"],
+                errors="raise",
+            ).astype(int),
+            "GAME_ID": rich_schedule["game_id"].astype("string"),
+        }
+    )
 
 
 def _load_markets(
@@ -143,18 +175,18 @@ def _scheduled_game_ids(
     season: str,
     week: int,
 ) -> list:
-    """Return scheduled game IDs in deterministic order."""
-    required = {
-        "YEAR",
-        "WEEK_NUM",
-        "GAME_ID",
+    """Return scheduled rich-artifact game IDs deterministically."""
+    required: set[str] = {
+        "season",
+        "week",
+        "game_id",
     }
     if not required.issubset(schedule.columns):
         return []
 
     scoped = schedule.loc[
-        (schedule["YEAR"].astype(str) == season) & (schedule["WEEK_NUM"] == week),
-        "GAME_ID",
+        (schedule["season"].astype(str) == season) & (schedule["week"] == week),
+        "game_id",
     ]
 
     return sorted({str(game_id) for game_id in scoped.dropna() if str(game_id).strip()})
@@ -374,7 +406,8 @@ def load_weekly_readiness(
 
     resolved_repo = repo or get_settings().repo_root
 
-    schedule = _load_schedule(resolved_repo)
+    rich_schedule = _load_schedule(resolved_repo)
+    readiness_schedule = _schedule_for_readiness(rich_schedule)
     markets = _load_markets(resolved_repo)
 
     events = load_forecast_events(
@@ -384,7 +417,7 @@ def load_weekly_readiness(
     )
 
     game_ids = _scheduled_game_ids(
-        schedule,
+        rich_schedule,
         season=season,
         week=week,
     )
@@ -419,7 +452,7 @@ def load_weekly_readiness(
     readiness = evaluate_weekly_readiness(
         season=season,
         week=week,
-        schedule=schedule,
+        schedule=readiness_schedule,
         predictions=predictions,
         markets=markets,
         edges=edges,

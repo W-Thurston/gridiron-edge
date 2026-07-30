@@ -17,12 +17,16 @@ from typer.testing import CliRunner
 
 from gridiron_edge.cli.verify_week import (
     _render_weekly_readiness,
+    _schedule_for_readiness,
     load_weekly_readiness,
     validate_season_label,
     verify_week_cmd,
 )
 from gridiron_edge.evaluation.forecast_contracts import (
     ForecastRole,
+)
+from gridiron_edge.evaluation.forecast_store import (
+    empty_forecast_events,
 )
 from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
@@ -56,7 +60,7 @@ def test_accepts_valid_season_label() -> None:
 @patch("gridiron_edge.cli.verify_week.build_edge_report")
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
 @patch("gridiron_edge.cli.verify_week.load_forecast_events")
-@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
 def test_explicit_run_builds_readiness_without_writes(
     mock_schedule: MagicMock,
     mock_events: MagicMock,
@@ -69,9 +73,9 @@ def test_explicit_run_builds_readiness_without_writes(
 
     mock_schedule.return_value = pd.DataFrame(
         {
-            "YEAR": ["2026-2027"],
-            "WEEK_NUM": [1],
-            "GAME_ID": ["game-1"],
+            "season": ["2026-2027"],
+            "week": [1],
+            "game_id": ["game-1"],
         }
     )
 
@@ -164,7 +168,7 @@ def test_explicit_run_builds_readiness_without_writes(
 
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
 @patch("gridiron_edge.cli.verify_week.load_forecast_events")
-@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
 def test_missing_explicit_run_is_blocked(
     mock_schedule: MagicMock,
     mock_events: MagicMock,
@@ -173,9 +177,9 @@ def test_missing_explicit_run_is_blocked(
 ) -> None:
     mock_schedule.return_value = pd.DataFrame(
         {
-            "YEAR": ["2026-2027"],
-            "WEEK_NUM": [1],
-            "GAME_ID": ["game-1"],
+            "season": ["2026-2027"],
+            "week": [1],
+            "game_id": ["game-1"],
         }
     )
     mock_events.return_value = pd.DataFrame(
@@ -563,3 +567,74 @@ def test_verify_week_module_contains_no_writer_imports() -> None:
 
     for name in forbidden:
         assert name not in source
+
+
+def test_rich_schedule_projects_to_readiness_identity() -> None:
+    rich = pd.DataFrame(
+        {
+            "season": [
+                "2026-2027",
+                "2026-2027",
+            ],
+            "week": [1, 2],
+            "game_id": [
+                "2026_01_KC_LAC",
+                "2026_02_BAL_BUF",
+            ],
+            "stadium": [
+                "SoFi Stadium",
+                "Highmark Stadium",
+            ],
+            "spread_line": [
+                pd.NA,
+                -2.5,
+            ],
+        }
+    )
+
+    projected = _schedule_for_readiness(rich)
+
+    assert projected.to_dict(orient="list") == {
+        "YEAR": [
+            "2026-2027",
+            "2026-2027",
+        ],
+        "WEEK_NUM": [1, 2],
+        "GAME_ID": [
+            "2026_01_KC_LAC",
+            "2026_02_BAL_BUF",
+        ],
+    }
+
+
+@patch("gridiron_edge.cli.verify_week.load_current_odds")
+@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
+def test_missing_rich_schedule_remains_visible(
+    mock_schedule: MagicMock,
+    mock_events: MagicMock,
+    mock_markets: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_schedule.side_effect = FileNotFoundError
+    mock_events.return_value = empty_forecast_events()
+    mock_markets.return_value = None
+
+    result = load_weekly_readiness(
+        season="2026-2027",
+        week=1,
+        run_id="run-1",
+        repo=tmp_path,
+    )
+
+    assert result.scheduled_game_count == 0
+    assert WeeklyReadinessBlocker.MISSING_SCHEDULE in result.blockers
+
+
+def test_verify_week_uses_rich_schedule_without_legacy_fallback() -> None:
+    from gridiron_edge.cli import verify_week
+
+    source = Path(verify_week.__file__).read_text()
+
+    assert "load_schedule_upcoming_rich" in source
+    assert "load_schedule_upcoming(" not in source

@@ -501,55 +501,72 @@ generating, enriching, rendering, or modifying project data.
 
 ---
 
-### Unit 6: Preserve Rich Upcoming Schedule Data
+### Unit 6: Preserve Rich Upcoming Schedule Data [Complete]
+
+#### Completed
+
+Added a registry-backed, typed Parquet artifact for rich upcoming schedule
+data while preserving the existing focused Elo schedule CSV as a compatibility
+boundary.
+
+The rich transform retains every unplayed nflverse schedule row and preserves
+canonical season, week, game ID, kickoff date and time, away and home teams,
+location and neutral-site context, stadium, roof, surface, divisional state,
+team rest, available Moneyline, Spread, and Total fields, source identity, and
+a shared timezone-aware UTC ingestion timestamp.
+
+Optional venue, context, rest, and market fields remain nullable. Missing
+Moneyline, Spread, Total, stadium, roof, surface, location, or rest values do
+not remove scheduled games.
+
+The existing Elo schedule is projected from the rich normalized rows and
+retains its original eight-column schema, registered CSV path, loader, game
+identity, and row coverage. Existing API and Elo-oriented consumers continue
+using the focused schedule.
+
+Weekly readiness verification now reads the rich schedule artifact and adapts
+its canonical lowercase game identity into the readiness evaluator’s stable
+schedule interface. It does not fall back silently to the focused Elo
+artifact when the rich artifact is missing.
+
+Both cleaned outputs are written through registered dataset writers. The rich
+artifact path is defined only in the dataset registry, and its dedicated
+loader does not fall back to the legacy schedule.
 
 #### Goal
 
-Create a model-ready, schedule-complete upcoming artifact without destabilizing
-the focused Elo schedule consumer.
-
-#### Production files
-
-- `src/gridiron_edge/ingest/nflverse/`
-- `src/gridiron_edge/transform/clean/`
-- `src/gridiron_edge/datasets/registry.py`
-- `src/gridiron_edge/datasets/loaders.py`
-- `src/gridiron_edge/datasets/writers.py`, if required
-
-#### Test files
-
-- update relevant ingest and clean unit tests
-- create or update an integration test for the rich upcoming artifact
-
-#### Preserve
-
-- canonical game ID;
-- season and week;
-- kickoff date/time;
-- away and home teams;
-- neutral-site or location context;
-- stadium;
-- roof;
-- surface;
-- divisional flag;
-- rest;
-- available Moneyline, Spread, and Total fields;
-- source;
-- local ingestion timestamp.
+Create a model-ready, schedule-complete upcoming artifact without
+destabilizing the focused Elo schedule consumer.
 
 #### Tests
 
-- every source schedule row survives cleaning;
-- no scheduled game is dropped because market fields are missing;
-- market values remain nullable;
-- team and game IDs match canonical conventions;
-- the legacy Elo schedule remains compatible;
-- dataset-registry paths are used instead of duplicate hard-coded paths.
+- the rich artifact resolves through one registered Parquet path;
+- the rich loader does not fall back to the focused Elo CSV;
+- nullable numeric values and UTC ingestion timestamps survive Parquet
+  round-trip storage;
+- every unplayed source schedule row survives rich cleaning;
+- no scheduled game is dropped because market values are missing;
+- venue, context, rest, and market fields remain nullable;
+- canonical season, week, team names, and game IDs are preserved;
+- neutral-site and location context are retained;
+- one source and ingestion timestamp are shared across one build;
+- empty source input produces stable typed rich and focused schemas;
+- the focused Elo schedule retains its original columns and ordering;
+- rich and focused artifacts contain identical canonical game-ID sets;
+- completed source rows do not enter upcoming artifacts;
+- both outputs use registered dataset writers;
+- no duplicate rich artifact path exists outside the registry and its path
+  assertion;
+- `verify-week` reads the rich schedule and does not use a legacy fallback;
+- existing API consumers continue using the focused schedule;
+- all Unit 6-specific Ruff, Pyrefly, and pytest gates pass.
 
 #### Acceptance
 
-The repository has a rich schedule-complete upcoming artifact suitable for
-composition and readiness checks.
+The repository has a typed, schedule-complete upcoming artifact suitable for
+weekly composition and readiness diagnostics. Every unplayed source game is
+preserved regardless of optional market coverage, while the focused Elo
+schedule remains compatible and is derived from the same normalized rows.
 
 ---
 
