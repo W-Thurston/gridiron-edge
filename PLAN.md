@@ -51,292 +51,1222 @@ How we operate in every session. A new thread should read this first.
 
 ---
 
-## Current Workstream — W14: Game Prediction Season Readiness
+## Active Workstream: Schedule-Complete Game Prediction Product
 
-**Status:** Designing
+### Objective
 
-### Purpose
+Build a static, schedule-complete weekly game prediction product for Moneyline,
+Spread, and Total markets, with explicit model provenance, source-labeled market
+data, immutable live forecasts, structured readiness diagnostics, and consistent
+CLI, API, and frontend behavior.
 
-Make the game-prediction vertical slice operational before the NFL season.
+The API remains a serialization boundary. Model inference, market ingestion,
+prediction composition, edge calculation, and forecast selection occur before
+API serialization.
 
-For a real upcoming week, Gridiron Edge should be able to:
+### Motivation
 
-1. refresh the required schedule, game, feature, model, and market data;
-2. produce trustworthy moneyline, spread, and total forecasts;
-3. preserve model and artifact provenance;
-4. retrieve and normalize current game-market odds;
-5. join predictions to odds without sign, identity, or freshness ambiguity;
-6. generate truthful moneyline, spread, and total edges;
-7. expose prediction, market, and edge states through the API;
-8. render the complete weekly decision loop in Dashboard, Games, GameDetail,
-   and BetSlip.
+The current runtime path is composed from incompatible contracts:
 
-This workstream prioritizes a usable game-day product path over a broad
-frontend audit. The frontend remains a verification surface, but frontend work
-is limited to the screens and contracts required by the game-prediction loop.
+- `weekly-predict` generates and archives Elo win probabilities only.
+- `weekly-predict --model-type` selects archive rows for edge generation but
+  does not select the model used to generate weekly predictions.
+- `/games` resolves the current win-probability champion and falls back to Elo.
+- `/edges` and `gridiron edges report` resolve the champion without the same
+  fallback.
+- Total predictions are archived independently and are not composed with
+  win-probability predictions.
+- Edge generation reuses the win-model type when resolving total uncertainty.
+- The prediction archive keeps only the latest row for each
+  `(game_id, model_name, model_type)` and can replace live forecasts with later
+  backfills.
+- `post-week` performs a season-level walk-forward backfill rather than settling
+  the immutable forecast issued before kickoff.
+- DraftKings ingestion is no longer a reliable current source. The previously
+  functional endpoint now appears to be blocked by Cloudflare human
+  verification, and its undocumented URL format required periodic annual
+  updates. The adapter should be preserved, but the production workflow must
+  not depend on forcing it to work.
+- nflverse upcoming schedule data already contains useful market context, but
+  the current cleaning path discards it.
+- Existing verification checks code health but not weekly prediction readiness,
+  schedule coverage, market freshness, or prediction-to-market join coverage.
 
-### Product outcome
+### Design Principles
 
-The season-readiness path should answer, for every upcoming game:
+1. Scheduled games are the denominator. Missing predictions or markets must not
+   remove games from the weekly product.
+2. Live forecasts and historical backtests are separate artifact roles.
+3. Live forecast events are immutable.
+4. Multiple forecast runs for the same game and model may coexist.
+5. A selected current forecast is explicit, not implied by latest write order.
+6. Win-probability and total models retain independent identities.
+7. Week-specific model availability policy is explicit and serialized.
+8. Market data records source and ingestion time.
+9. Missing predictions, missing markets, join failures, incomplete markets, and
+   no positive edges are distinct states.
+10. Rendering is a pure consumer and must not generate or archive predictions.
+11. CLI commands retain distinct operational intents but share domain services.
+12. Tests accompany every implementation unit.
+13. Working-unit labels belong in planning documentation only, not in source
+    comments, docstrings, test names, or runtime identifiers.
+14. Gridiron Edge has never been live and has no production compatibility
+    obligations. New contracts may replace existing schemas, artifacts, commands,
+    tests, and development-era behavior outright. Do not add migrations,
+    compatibility readers, aliases, deprecation periods, or dual-write paths
+    unless they serve a current development need.
 
-#### Moneyline
+---
 
-- What is the model win probability?
-- Which model and artifact produced it?
-- What is the fair American price?
-- What market price is currently available?
-- What is the modeled EV?
-- Is dollar Kelly sizing available, and from which bankroll basis?
+## Intended CLI Responsibilities
 
-#### Spread
+### `gridiron run-data-pipeline`
 
-- What is the projected margin or model spread?
-- Is spread produced by a trained artifact, post-processing, or another
-  derivation?
-- What market spread and price are currently available?
-- What is the point edge?
-- What is the cover probability?
-- What is the modeled EV?
+Refresh foundational datasets, Elo state, and historical modeling inputs.
 
-#### Total
+- DraftKings is removed from the default no-flags path.
+- External market ingestion is explicit and source-neutral.
+- Staleness checks use dataset-registry paths.
+- Weather defaults and documented examples must agree.
 
-- What is the projected total?
-- Which model and artifact produced it?
-- What market total and price are currently available?
-- What is the point edge?
-- What are the Over and Under probabilities?
-- What is the modeled EV?
+### `gridiron weekly-predict`
 
-### Non-goals
+Primary pregame workflow.
 
-- No broad frontend pending-highlight audit.
-- No frontend polish outside Dashboard, Games, GameDetail, and BetSlip unless
-  required by a shared contract.
-- No prop-model readiness work.
-- No injury, news, or live-game data.
-- No sportsbook authentication or wager placement.
-- No multi-book line-shopping interface in the initial season-readiness path.
-- No new model ensemble until the current individual-model path is verified.
-- No fabricated odds, predictions, edges, or production demo data.
-- No assumption that spread is a standalone trained model until the current
-  implementation is inspected.
+- Refresh required inputs.
+- Resolve an availability-aware prediction policy.
+- Produce a schedule-complete weekly product.
+- Optionally attach source-labeled market data.
+- Calculate edge results and diagnostics.
+- Publish outputs.
+- Verify weekly readiness.
 
-### Locked principles
+The normal command should not generate one model and request another model's
+archive rows for edge calculation.
 
-#### One vertical slice
+### `gridiron output predictions`
 
-The unit of readiness is not an isolated model, API endpoint, or screen. The
-unit is the complete path:
+Pure rendering/export command.
 
-```text
-upcoming schedule
-  → upcoming-game features
-  → moneyline / spread / total predictions
-  → prediction archive
-  → odds pull and normalized snapshot
-  → prediction-to-market join
-  → edge report
-  → API serialization
-  → Dashboard / Games / GameDetail / BetSlip
+- Load an existing weekly product.
+- Render requested formats.
+- Do not run inference.
+- Do not modify prediction storage.
+
+### `gridiron post-week`
+
+Completed-week closeout workflow.
+
+- Refresh completed results.
+- Join outcomes to immutable live forecasts.
+- Evaluate the forecasts actually issued before kickoff.
+- Refresh next-week state.
+- Report incomplete closeout coverage.
+
+Historical backfill does not belong in this command.
+
+### `gridiron evaluate backfill`
+
+Historical reconstruction and model-comparison workflow.
+
+- Retain season-level walk-forward behavior for trained models.
+- Retain chronological reconstruction for Elo.
+- Store backfilled forecasts separately from live forecast events.
+- Never replace live forecasts.
+
+### `gridiron edges report`
+
+Inspection/export command over the same weekly product and edge service used by
+the API and `weekly-predict`.
+
+### `gridiron verify`
+
+Code-health verification.
+
+### `gridiron verify-week`
+
+Read-only operational readiness verification for one season and week.
+
+---
+
+## Implementation Units
+
+### Unit 1A: Define Forecast Event Roles and Identity [Complete]
+
+#### Goal
+
+Define storage-independent identities for live and historical backfill forecast
+events. A forecast event has its own stable identity and run identity; it is not
+identified solely by game and model pair.
+
+Do not change archive persistence or deduplication behavior yet.
+
+#### Production files
+
+- new `src/gridiron_edge/evaluation/forecast_contracts.py`
+
+#### Test files
+
+- new `tests/unit/evaluation/test_forecast_contracts.py`
+
+#### Tests
+
+- live and backfilled roles are distinct;
+- invalid role values are rejected;
+- event identity is distinct from game/model identity;
+- two events for the same game/model can have different event IDs;
+- one run ID can group multiple game forecasts;
+- generated timestamp is required and follows the locked timezone contract;
+- contracts are immutable;
+- contracts contain no storage behavior.
+
+#### Acceptance
+
+Defined immutable forecast event identities with distinct live and backfilled
+roles, independent event and run IDs, required UTC generation timestamps, and
+focused unit coverage. Storage behavior was intentionally unchanged.
+---
+
+### Unit 1B: Define Forecast Selection and Weekly Product Identity [Complete]
+
+Defined immutable selected-forecast references and weekly product identities,
+with explicit event, run, product, season, week, and UTC generation identity.
+No storage or selection behavior was introduced.
+
+---
+
+### Unit 2: Preserve Multiple Forecast Events in Storage
+
+#### Goal
+
+Allow multiple live runs and backfilled runs for the same game and model pair to
+coexist.
+
+#### Production files
+
+- `src/gridiron_edge/evaluation/archive.py`
+
+#### Test files
+
+- `tests/unit/evaluation/test_archive_contracts.py`
+- existing archive integration test file, if present
+- otherwise create:
+  `tests/integration/evaluation/test_prediction_archive.py`
+
+#### Tests
+
+- two live forecasts for the same game/model are both retained;
+- a backfilled forecast does not replace a live forecast;
+- two backfilled runs can coexist or are versioned according to the locked
+  identity contract;
+- obsolete archive artifacts may be deleted and rebuilt under the new event
+  schema;
+- the storage layer rejects rows that do not conform to the new contract;
+- deterministic ordering does not destroy chronological identity;
+- duplicate event IDs are rejected or idempotently handled;
+- unknown incoming columns follow the chosen schema policy.
+
+#### Acceptance
+
+Prediction storage is event-preserving. No forecast is deleted merely because a
+later row has the same game and model pair.
+
+---
+
+### Unit 3: Add Explicit Current-Forecast Selection
+
+#### Goal
+
+Select the current forecast for each game and prediction family without relying
+on latest-write deduplication.
+
+#### Production files
+
+- new selection module under `src/gridiron_edge/evaluation/`
+- `src/gridiron_edge/evaluation/archive.py` only if shared loaders are needed
+
+#### Test files
+
+- create:
+  `tests/unit/evaluation/test_forecast_selection.py`
+
+#### Tests
+
+- live forecasts are preferred over backfilled forecasts;
+- selection can be restricted to a run;
+- selection is deterministic;
+- missing selection remains visible;
+- selected win and total forecasts retain separate identities;
+- no model inference occurs during selection.
+
+#### Acceptance
+
+A static selected-forecast view can be produced from immutable events.
+
+---
+
+### Unit 4: Define Weekly Readiness Diagnostics
+
+#### Goal
+
+Introduce a read-only diagnostic result that distinguishes coverage and blocker
+states.
+
+#### Production files
+
+- new focused module under `src/gridiron_edge/evaluation/` or
+  `src/gridiron_edge/market/`
+
+#### Test files
+
+- create:
+  `tests/unit/evaluation/test_weekly_readiness.py`
+
+#### Required diagnostics
+
+- scheduled game count;
+- games with selected win prediction;
+- games with selected spread value;
+- games with selected total prediction;
+- games with projected scores;
+- games with complete model provenance;
+- games with market data;
+- prediction-to-market matched games;
+- eligible market count;
+- positive-edge count;
+- artifact timestamps;
+- market source;
+- blocker reasons.
+
+#### Tests
+
+- 16 scheduled and 15 predicted reports one missing game;
+- no predictions is distinct from no market data;
+- no market data is distinct from zero joins;
+- zero joins is distinct from incomplete markets;
+- no positive edges is a valid analytical result;
+- diagnostics do not mutate files;
+- partial market coverage is reported quantitatively.
+
+#### Acceptance
+
+Every important weekly empty state has a distinct machine-readable reason.
+
+---
+
+### Unit 5: Add Read-Only `verify-week` CLI
+
+#### Goal
+
+Expose weekly diagnostics without fetching or modifying data.
+
+#### Production files
+
+- new `src/gridiron_edge/cli/verify_week.py`
+- `src/gridiron_edge/cli/main.py`
+
+#### Test files
+
+- create:
+  `tests/unit/cli/test_verify_week.py`
+- update CLI registration or help tests
+
+#### Tests
+
+- command is registered;
+- season and week are required and validated;
+- complete readiness exits successfully;
+- missing required prediction product exits nonzero;
+- valid zero-positive-edge result exits successfully;
+- command performs no writes;
+- console output includes all diagnostic counts and blockers.
+
+#### Acceptance
+
+Weekly operational readiness can be checked independently from code-health
+verification.
+
+---
+
+### Unit 6: Preserve Rich Upcoming Schedule Data
+
+#### Goal
+
+Create a model-ready, schedule-complete upcoming artifact without destabilizing
+the focused Elo schedule consumer.
+
+#### Production files
+
+- `src/gridiron_edge/ingest/nflverse/`
+- `src/gridiron_edge/transform/clean/`
+- `src/gridiron_edge/datasets/registry.py`
+- `src/gridiron_edge/datasets/loaders.py`
+- `src/gridiron_edge/datasets/writers.py`, if required
+
+#### Test files
+
+- update relevant ingest and clean unit tests
+- create or update an integration test for the rich upcoming artifact
+
+#### Preserve
+
+- canonical game ID;
+- season and week;
+- kickoff date/time;
+- away and home teams;
+- neutral-site or location context;
+- stadium;
+- roof;
+- surface;
+- divisional flag;
+- rest;
+- available Moneyline, Spread, and Total fields;
+- source;
+- local ingestion timestamp.
+
+#### Tests
+
+- every source schedule row survives cleaning;
+- no scheduled game is dropped because market fields are missing;
+- market values remain nullable;
+- team and game IDs match canonical conventions;
+- the legacy Elo schedule remains compatible;
+- dataset-registry paths are used instead of duplicate hard-coded paths.
+
+#### Acceptance
+
+The repository has a rich schedule-complete upcoming artifact suitable for
+composition and readiness checks.
+
+---
+
+### Unit 7: Fix Synthetic Upcoming Week 1 Elo Transition
+
+#### Goal
+
+Make upcoming Week 1 state deterministic and consistent with historical season
+transition semantics.
+
+#### Production files
+
+- `src/gridiron_edge/ratings/elo/table.py`
+- possibly `src/gridiron_edge/ratings/elo/simulator.py` if a shared transition
+  helper is extracted
+
+#### Test files
+
+- update:
+  `tests/unit/ratings/test_elo_table.py`
+- update:
+  `tests/unit/ratings/test_elo_core.py` only if shared math changes
+
+#### Tests
+
+- next season is derived from the latest historical season, not wall-clock year;
+- the final postseason update is included;
+- returning teams receive the intended offseason regression;
+- the transition is reproducible from identical historical input;
+- no arbitrary future weeks are fabricated;
+- expansion behavior remains correct;
+- existing historical pregame week semantics remain unchanged.
+
+#### Acceptance
+
+Upcoming Week 1 Elo uses a tested transition policy consistent with historical
+evaluation semantics.
+
+---
+
+### Unit 8: Consolidate Elo Weekly Prediction Logic
+
+#### Goal
+
+Replace duplicate schedule-to-Elo joins with one domain function.
+
+#### Production files
+
+- `src/gridiron_edge/ratings/elo/predict.py`
+- `src/gridiron_edge/viz/predictions.py`
+- callers in `src/gridiron_edge/cli/`
+
+#### Test files
+
+- update Elo prediction unit tests
+- update visualization prediction-builder tests
+- update CLI tests for `ratings elo predict` and `output predictions`
+
+#### Tests
+
+- one function produces numeric away/home probabilities;
+- schedule rows remain present when Elo is missing;
+- missing Elo is represented through status rather than row deletion;
+- neutral-site schedule identity is preserved;
+- all callers receive the same schema;
+- probability complements sum to one within tolerance.
+
+#### Acceptance
+
+There is one schedule-to-Elo prediction implementation.
+
+---
+
+### Unit 9: Define Availability-Aware Prediction Policy
+
+#### Goal
+
+Resolve prediction behavior by data availability without silently selecting a
+model that cannot produce the requested week.
+
+#### Production files
+
+- new policy module under `src/gridiron_edge/models/game_prediction/`
+- champion resolver integration as a read-only dependency
+
+#### Test files
+
+- create:
+  `tests/unit/models/game_prediction/test_prediction_policy.py`
+
+#### Tests
+
+- Week 1 chooses only an eligible policy;
+- in-season full-feature champion is selected only when required inputs exist;
+- unavailable total prediction remains explicit;
+- overrides are independently scoped to win and total models;
+- policy output records rationale and model provenance;
+- no API-layer inference or fallback is involved.
+
+#### Acceptance
+
+Model selection is explicit, availability-aware, and serializable.
+
+---
+
+### Unit 10: Build Schedule-Complete Win Prediction Component
+
+#### Goal
+
+Attach selected win probabilities to every scheduled game.
+
+#### Production files
+
+- new weekly product builder under
+  `src/gridiron_edge/models/game_prediction/` or a dedicated domain package
+
+#### Test files
+
+- create:
+  `tests/unit/models/game_prediction/test_weekly_win_product.py`
+
+#### Tests
+
+- output has exactly one row per scheduled game;
+- missing win prediction does not remove the game;
+- win-model identity is present for available predictions;
+- live forecast event identity is preserved;
+- selected forecast is explicit;
+- probabilities and team orientation are validated;
+- status is present for unavailable rows.
+
+#### Acceptance
+
+The weekly product has schedule-complete Moneyline probability coverage status.
+
+---
+
+### Unit 11: Attach Derived Spread Component
+
+#### Goal
+
+Derive model spread and spread uncertainty from the selected win component using
+the correct win-model calibration identity.
+
+#### Production files
+
+- weekly product builder
+- existing game post-processing module
+
+#### Test files
+
+- create or update:
+  `tests/unit/models/game_prediction/test_weekly_spread_product.py`
+
+#### Tests
+
+- spread sign convention is fixed and documented;
+- model spread uses the selected win model's calibration;
+- no spread is fabricated when calibration is unavailable;
+- spread provenance identifies the source win forecast and calibration;
+- schedule completeness is preserved.
+
+#### Acceptance
+
+Every game has either a valid derived spread or an explicit blocker.
+
+---
+
+### Unit 12: Attach Independent Total Component
+
+#### Goal
+
+Compose selected total-model predictions without conflating total identity with
+the win model.
+
+#### Production files
+
+- weekly product builder
+- total prediction selector or loader
+
+#### Test files
+
+- create or update:
+  `tests/unit/models/game_prediction/test_weekly_total_product.py`
+
+#### Tests
+
+- total champion resolves independently from the win champion;
+- total uncertainty uses the total model identity;
+- missing total prediction does not remove the game;
+- total-model provenance is preserved;
+- independent total archive rows compose correctly by game ID;
+- no matching algorithm between win and total is assumed.
+
+#### Acceptance
+
+Total predictions are independently resolved and explicitly composed.
+
+---
+
+### Unit 13: Add Projected Scores and Product-Level Validation
+
+#### Goal
+
+Create projected scores only when required spread and total values exist.
+
+#### Production files
+
+- weekly product builder
+- product validation module
+
+#### Test files
+
+- create or update:
+  `tests/unit/models/game_prediction/test_weekly_game_product.py`
+
+#### Tests
+
+- projected scores reconcile to model total;
+- projected score difference reconciles to spread convention;
+- missing inputs produce explicit field status;
+- invalid combinations are rejected;
+- complete product remains one row per scheduled game.
+
+#### Acceptance
+
+The composed game product has internally coherent values and granular status.
+
+---
+
+### Unit 14: Persist the Static Weekly Game Product
+
+#### Goal
+
+Write and load an immutable, versioned weekly product.
+
+#### Production files
+
+- new storage module
+- dataset registry entries
+- relevant loaders and writers
+
+#### Test files
+
+- create:
+  `tests/unit/models/game_prediction/test_weekly_product_store.py`
+- create or update:
+  `tests/integration/models/test_weekly_product_roundtrip.py`
+
+#### Tests
+
+- product round-trips without schema loss;
+- run identity and generated timestamp survive;
+- multiple runs created under the new contract coexist;
+- selected current product is explicit;
+- schema mismatch fails clearly;
+- no model computation occurs during load.
+
+#### Acceptance
+
+API, CLI rendering, and edge calculation can consume one persisted weekly
+product.
+
+---
+
+### Unit 15: Add Source-Labeled nflverse Market Adapter
+
+#### Goal
+
+Convert available nflverse schedule market fields into the generic market
+contract.
+
+#### Production files
+
+- new adapter under `src/gridiron_edge/ingest/odds/` or renamed market package
+- `src/gridiron_edge/ingest/odds/store.py`
+
+#### Test files
+
+- create:
+  `tests/unit/ingest/odds/test_nflverse_adapter.py`
+- update:
+  `tests/integration/ingest/odds/test_odds_join.py`
+
+#### Tests
+
+- source is labeled `nflverse_schedule` or the locked equivalent;
+- no DraftKings label is applied;
+- ingestion timestamp is recorded;
+- Moneyline, Spread, and Total sides normalize correctly;
+- game IDs are validated against schedule truth;
+- incomplete markets remain explicit;
+- requested season/week scope is enforced.
+
+#### Acceptance
+
+Current market comparison no longer depends on the unreliable DraftKings pull.
+
+---
+
+### Unit 16: Reclassify DraftKings as Legacy Best-Effort Adapter
+
+#### Goal
+
+Preserve the historical adapter without presenting it as the default recovery
+path.
+
+#### Production files
+
+- DraftKings adapter and CLI wrapper
+- operational messages in API and frontend
+
+#### Test files
+
+- update DraftKings parser and CLI tests
+- update API blocker-message tests
+- update affected frontend empty-state tests
+
+#### Tests
+
+- failure does not block core data refresh;
+- Cloudflare or non-JSON responses fail clearly;
+- no bypass behavior is introduced;
+- command help identifies the adapter as best-effort or legacy;
+- normal workflow does not invoke it by default;
+- stale recovery guidance is removed.
+
+#### Acceptance
+
+DraftKings code remains available but is not a production dependency.
+
+---
+
+### Unit 17: Build Unified Edge Diagnostics
+
+#### Goal
+
+Create structured coverage and result-state diagnostics before changing edge
+math callers.
+
+#### Production files
+
+- `src/gridiron_edge/market/recommendations.py`
+- new diagnostic types if appropriate
+
+#### Test files
+
+- update:
+  `tests/unit/market/test_recommendations.py`
+- create:
+  `tests/unit/market/test_edge_diagnostics.py`
+
+#### Tests
+
+- no predictions;
+- no market data;
+- stale or wrong-scope market data;
+- zero matched games;
+- incomplete markets;
+- no positive edges;
+- positive edges;
+- counts are derived from actual inputs;
+- diagnostics retain win, total, and market provenance.
+
+#### Acceptance
+
+An empty edge table always has an explicit reason.
+
+---
+
+### Unit 18: Build Unified Weekly Edge Service
+
+#### Goal
+
+Use the persisted weekly product and source-labeled market snapshot from one
+domain service.
+
+#### Production files
+
+- new service under `src/gridiron_edge/market/`
+- existing recommendation functions remain pure math helpers
+
+#### Test files
+
+- create:
+  `tests/unit/market/test_weekly_edge_service.py`
+- update relevant odds-join integration tests
+
+#### Tests
+
+- schedule and game IDs align;
+- Moneyline uses selected win probability;
+- Spread uses derived spread and win-model calibration;
+- Total uses independent total prediction and uncertainty;
+- bankroll omission leaves dollar stake unavailable;
+- explicit bankroll produces stake values;
+- diagnostics remain correct after minimum-EV filtering.
+
+#### Acceptance
+
+CLI and API can consume the same edge result and diagnostics.
+
+---
+
+### Unit 19: Rewire `weekly-predict`
+
+#### Goal
+
+Make `weekly-predict` orchestrate the new domain services.
+
+#### Production files
+
+- `src/gridiron_edge/cli/weekly_predict.py`
+- shared composite helpers only where generally reusable
+
+#### Test files
+
+- update:
+  `tests/unit/cli/test_weekly_predict.py`
+- update or add an end-to-end weekly workflow test
+
+#### Tests
+
+- prediction policy controls actual generated predictions;
+- independently scoped overrides work if retained;
+- missing market data does not fail prediction generation;
+- default bankroll is absent;
+- published outputs reference the persisted weekly product;
+- readiness diagnostics appear in the result;
+- `--skip` and `--only` examples match dependency rules;
+- stale edge files are not presented as current.
+
+#### Acceptance
+
+One command produces a truthful, schedule-complete pregame product.
+
+---
+
+### Unit 20: Make `output predictions` a Pure Renderer
+
+#### Goal
+
+Render an existing weekly product without inference or storage mutation.
+
+#### Production files
+
+- `src/gridiron_edge/cli/output.py`
+- `src/gridiron_edge/viz/predictions.py`
+
+#### Test files
+
+- update:
+  `tests/unit/cli/test_output.py`
+- update visualization tests
+
+#### Tests
+
+- rendering does not write forecast events;
+- rendering does not change selected product state;
+- missing product exits nonzero;
+- supported formats are validated;
+- repeated rendering is deterministic for the same product.
+
+#### Acceptance
+
+Output generation is a pure downstream operation.
+
+---
+
+### Unit 21: Rewire `edges report`
+
+#### Goal
+
+Use the unified edge service and return correct exit semantics.
+
+#### Production files
+
+- `src/gridiron_edge/cli/edges.py`
+
+#### Test files
+
+- update:
+  `tests/unit/cli/test_edges.py`
+
+#### Tests
+
+- missing weekly product exits nonzero;
+- missing market snapshot exits nonzero;
+- zero joins exits nonzero;
+- valid zero-positive-edge result exits successfully;
+- `--format` is validated;
+- bankroll and Kelly multiplier are validated at the CLI boundary;
+- CSV output cannot silently remain stale.
+
+#### Acceptance
+
+Direct edge inspection matches `weekly-predict` and API behavior.
+
+---
+
+### Unit 22: Rebuild `post-week` Around Live Forecast Closeout
+
+#### Goal
+
+Evaluate immutable live forecasts rather than running historical backfill.
+
+#### Production files
+
+- `src/gridiron_edge/cli/post_week.py`
+- new closeout service under `src/gridiron_edge/evaluation/`
+
+#### Test files
+
+- update:
+  `tests/unit/cli/test_post_week.py`
+- create:
+  `tests/unit/evaluation/test_live_forecast_closeout.py`
+- add an integration test for forecast-to-outcome joining
+
+#### Tests
+
+- exact requested week is closed;
+- live forecasts are selected explicitly;
+- backfilled forecasts are excluded;
+- missing live forecasts remain visible;
+- missing outcomes remain visible;
+- schedule and forecast coverage counts reconcile;
+- no historical backfill is invoked;
+- next-week state refresh is tested independently;
+- documented `--skip` and `--only` examples are executable.
+
+#### Acceptance
+
+`post-week` evaluates what the system actually forecast before kickoff.
+
+---
+
+### Unit 23: Harden Historical Backfill
+
+#### Goal
+
+Keep `evaluate backfill` as the explicit historical reconstruction workflow.
+
+#### Production files
+
+- `src/gridiron_edge/evaluation/backfill.py`
+- `src/gridiron_edge/cli/evaluate.py`
+
+#### Test files
+
+- update:
+  `tests/unit/evaluation/test_backfill.py`
+- update:
+  `tests/unit/cli/test_evaluate.py`
+
+#### Tests
+
+- mode is validated as an enum;
+- live rows are never replaced;
+- generated count and inserted count are distinguished;
+- season-level walk-forward boundaries remain correct;
+- zero generated rows are visible;
+- classification and regression backfills retain task-appropriate provenance;
+- skipped seasons are identified.
+
+#### Acceptance
+
+Historical backtests remain rigorous and cannot alter live forecast history.
+
+---
+
+### Unit 24: Make API Games Schedule-First
+
+#### Goal
+
+Serialize the persisted weekly product for every scheduled game.
+
+#### Production files
+
+- `src/gridiron_edge/api/loaders.py`
+- game API schemas
+- game routes
+
+#### Test files
+
+- update:
+  `tests/unit/api/test_loaders.py`
+- update game route tests
+- update API integration tests
+
+#### Tests
+
+- every scheduled game is returned;
+- missing predictions produce status rather than disappearance;
+- no runtime model fallback occurs in the API;
+- win and total provenance are serialized separately;
+- spread sign documentation matches runtime behavior;
+- valid scheduled game detail does not return 404 because prediction is missing.
+
+#### Acceptance
+
+`/games` is a pure schedule-complete serialization surface.
+
+---
+
+### Unit 25: Make API Edges Use Unified Service Results
+
+#### Goal
+
+Serialize shared edge rows and diagnostics.
+
+#### Production files
+
+- `src/gridiron_edge/api/loaders.py`
+- `src/gridiron_edge/api/schemas/edges.py`
+- `src/gridiron_edge/api/routes/edges.py`
+
+#### Test files
+
+- update edge schema, loader, and route tests
+
+#### Tests
+
+- sportsbook or source and ingestion timestamp are included;
+- diagnostics distinguish all empty states;
+- model and market provenance are exposed;
+- edge strength enum matches implementation;
+- API output matches direct CLI service output.
+
+#### Acceptance
+
+`/edges` no longer reconstructs model composition independently.
+
+---
+
+### Unit 26: Regenerate API Clients
+
+#### Goal
+
+Update generated contracts after API schemas stabilize.
+
+#### Production files
+
+- `api-schema.json`
+- `frontend/src/api/schema.ts`
+
+#### Test files
+
+- generated-schema consistency checks
+- frontend type-check/build coverage
+
+#### Acceptance
+
+Generated clients match the finalized API contract with no manual drift.
+
+---
+
+### Unit 27: Wire Frontend Weekly Status
+
+#### Goal
+
+Make missing or blocked weekly data visible across all game surfaces.
+
+#### Production files
+
+- Games list screen
+- Game detail screen
+- Dashboard featured matchups
+- Dashboard model edges
+- BetSlip edges table
+- shared field-status components where appropriate
+
+#### Test files
+
+- update corresponding `*.test.tsx` files
+- add focused tests for each blocker state
+
+#### Tests
+
+- no schedule rows disappear because prediction is unavailable;
+- missing prediction is not shown as “No games found”;
+- missing market data is not shown as “No play”;
+- no positive edge remains a valid “No play” state;
+- synthetic uncertainty bands are removed;
+- market values render from real market context;
+- pending and blocked states remain visibly identifiable.
+
+#### Acceptance
+
+The frontend reflects actual product readiness rather than silent nulls.
+
+---
+
+### Unit 28: Update Data Pipeline and Verification CLI Contracts
+
+#### Goal
+
+Correct remaining CLI semantics and documentation.
+
+#### Production files
+
+- `src/gridiron_edge/cli/main.py`
+- `src/gridiron_edge/cli/verify.py`
+- related help text and operational documentation
+
+#### Test files
+
+- update:
+  `tests/unit/cli/test_main.py`
+- update:
+  `tests/unit/cli/test_verify.py`
+
+#### Tests
+
+- default pipeline does not require DraftKings;
+- no-flags behavior matches documentation;
+- staleness paths come from the registry;
+- staleness warning wording is correct;
+- smoke verification behavior matches its documentation;
+- code verification remains separate from weekly readiness;
+- frontend gates are either intentionally included or explicitly documented as
+  outside this command.
+
+#### Acceptance
+
+CLI help, stage behavior, and exit semantics agree.
+
+---
+
+### Unit 29: Documentation and Operational Closeout
+
+#### Goal
+
+Document the final weekly lifecycle and remove obsolete guidance.
+
+#### Documentation files
+
+- `HANDOFF.md`
+- `ROADMAP.md`
+- `CHANGELOG.md`
+- relevant architecture or decision documentation
+- `PLAN.md`
+
+#### Required updates
+
+- live versus backfilled forecast roles;
+- weekly product schema and storage path;
+- model availability policy;
+- supported market source;
+- legacy DraftKings status;
+- `weekly-predict` workflow;
+- `post-week` workflow;
+- `verify` versus `verify-week`;
+- API serialization boundary;
+- operational recovery guidance.
+
+#### Acceptance
+
+Documentation traces the implemented behavior, commands, artifacts, and known
+limitations without stale work-unit nomenclature in runtime source.
+
+---
+
+## Quality Gates
+
+Run focused gates after each unit.
+
+### Python units
+
+```bash
+uv run ruff check <changed paths>
+uvx pyrefly check
+uv run pytest <focused test files> -q
 ```
 
-Static artifact boundary
+Run the full relevant Python suite at contract boundaries:
 
-The API remains a serialization boundary. Prediction, evaluation, odds, coverage, and edge artifacts must be produced before the API serves them.
+after forecast storage and selection;
+after weekly product persistence;
+after edge service integration;
+after CLI rewiring;
+after API rewiring.
+Frontend units
+pnpm test
+pnpm build
 
-No false empty states
 
-The system must distinguish:
+Use focused frontend tests during each UI unit and the full frontend suite after generated schema and screen wiring changes.
 
-no upcoming schedule;
-prediction unavailable;
-partial prediction coverage;
-odds pull failed;
-odds snapshot stale;
-market missing;
-prediction-to-odds join failed;
-successful complete inputs with no positive edge.
+Final workstream gates
+uv run ruff check .
+uvx pyrefly check
+uv run pytest -q
+pnpm test
+pnpm build
 
-No edges available is a valid model result only when prediction and market coverage are sufficient and the join completed successfully.
 
-Provenance and freshness
+Also run a read-only verify-week check against a known fixture-backed season and week.
 
-Every user-visible prediction or market comparison should be attributable to:
+Out of Scope
+Bypassing Cloudflare human verification.
+Connecting to a sportsbook account or placing bets.
+Treating DraftKings as the required current market source.
+Rebuilding simulation and playoff internals unless a shared-contract change requires it.
+Optimizing model champions for short-sample betting ROI.
+Frontend visual redesign unrelated to truthful weekly product status.
+Arbitrary multiweek future prediction before required state exists.
+- Preserving compatibility with development-era prediction archives, generated
+  artifacts, CLI behavior, or schemas that have never been used in production.
 
-season and week;
-game ID;
-market;
-model name and model type;
-source artifact or archived prediction;
-prediction generation time when available;
-odds source and snapshot time when available;
-bankroll and Kelly multiplier when dollar sizing is shown.
-Existing workflows first
 
-Use and harden the existing:
+Definition of Done
 
-weekly-predict;
-prediction archive;
-champion manifest and resolver;
-DraftKings ingest and odds store;
-recommendation report;
-edge report;
-API serializers;
-frontend consumers.
+The workstream is complete when:
 
-Do not create parallel season-readiness commands or duplicate prediction paths unless the current architecture cannot support the required behavior.
-
-Verified starting state
-
-The repository currently contains:
-
-trained win_prob artifacts for logistic, random forest, and XGBoost;
-trained total artifacts for random forest and XGBoost;
-no separate spread-model artifact visible under data/models;
-game prediction modules for win probability, total, and post-processing;
-current calibration and champion manifests;
-a Week 1 Elo prediction artifact and prediction archive;
-a Week 1 edge CSV;
-DraftKings ingest, game-ID resolution, and odds-store modules;
-an empty data/odds directory in the supplied repository tree;
-market math and moneyline/spread/total recommendation code;
-game, edge, and portfolio API contracts;
-Dashboard, Games, GameDetail, and BetSlip frontend consumers;
-existing unit, integration, and end-to-end coverage across these layers.
-
-The roadmap also records a critical architectural limitation: trained game models currently consume a modeling file built from completed games, so the normal upcoming-week path only archives Elo predictions. Building and validating an upcoming-week feature matrix is therefore part of the season-readiness investigation rather than an optional future note.
-
-Tier 0 — Current-state audit and dependency map — 🔵 ACTIVE
-A. Prediction-path inspection
- Inspect the win-probability model registry, artifacts, metadata, champion manifest entry, prediction path, archive schema, and API selection.
- Inspect the total model registry, artifacts, metadata, champion manifest entry, prediction path, archive schema, and API selection.
- Determine exactly how projected margin and spread outputs are produced.
- Confirm whether spread has a trained target or is derived through post-processing.
- Trace projected scores, uncertainty, confidence tiers, cover probability, and Over/Under probability to their authoritative sources.
- Verify model feature columns against artifact metadata.
- Verify calibration data corresponds to the current modeling artifacts.
- Identify every intentional Elo fallback and every place where trained model output is expected.
-B. Upcoming-week input inspection
- Inspect how the cleaned upcoming schedule enters prediction workflows.
- Inspect completed-game and upcoming-game boundaries in feature generation.
- Confirm why the current modeling file contains no upcoming-game rows.
- Inventory features that can be calculated for an unplayed game.
- Inventory features that require prior in-season observations.
- Define truthful Week 1 behavior for unavailable rolling features.
- Define mid-season behavior for next-week rolling features.
- Determine whether one upcoming-game feature matrix can serve moneyline, spread, and total prediction.
- Verify feature-schema and stale-artifact handling requirements.
-C. Archive and evaluation inspection
- Inspect game prediction archive identity and deduplication.
- Verify moneyline, spread/margin, and total fields retained per archived row.
- Verify model name and model type provenance.
- Inspect current champion-selection metrics for win_prob.
- Inspect current champion-selection metrics for total.
- Determine the appropriate historical readiness metrics for spread.
- Verify walk-forward coverage available for market-relative evaluation.
- Identify whether historical odds can be joined to archive rows for moneyline, spread, and total evaluation.
-D. Odds-path inspection
- Inspect the current DraftKings request contract.
- Reproduce and characterize the current 403 behavior.
- Inspect parsing for moneyline, spread, and total markets.
- Verify American-price preservation and Unicode-minus normalization.
- Verify spread sign and home/away conventions.
- Verify total-line and Over/Under side conventions.
- Verify canonical game-ID resolution.
- Inspect current snapshot and historical-ledger write behavior.
- Determine why data/odds is empty in the supplied repository state.
- Determine whether a reliable single-source game-market pull can be restored.
- Evaluate alternative odds sources only after the current pull path is fully understood.
-E. Join and edge inspection
- Trace prediction-to-odds joins for all three game markets.
- Verify season, week, game-ID, market, side, line, and price keys.
- Verify moneyline no-vig and implied-probability semantics.
- Verify spread point-edge and cover-probability semantics.
- Verify total point-edge and Over/Under probability semantics.
- Verify positive and negative American prices are preserved.
- Verify missing markets remain distinct from no-positive-edge results.
- Inspect the existing Week 1 edge CSV and identify its input provenance.
- Trace populated, blocked, and legitimate-empty /edges responses.
-F. Workflow inspection
- Trace every stage of weekly-predict.
- Record its required inputs and produced artifacts.
- Verify which failures are soft and which are hard.
- Verify stage dependencies and partial-resume behavior.
- Inspect verify coverage for predictions, odds, joins, and edges.
- Inspect existing unit, integration, and end-to-end workflow tests.
- Identify missing season-readiness diagnostics and integration coverage.
-G. Focused frontend inspection
- Trace game-prediction fields consumed by Dashboard.
- Trace game-prediction and market fields consumed by Games.
- Trace moneyline, spread, total, and edge fields consumed by GameDetail.
- Confirm BetSlip accepts real moneyline, spread, and total edge rows.
- Inventory fields that conflate unavailable predictions, unavailable markets, stale odds, failed joins, and legitimate no-edge states.
- Identify the minimum frontend changes required for a truthful live weekly rehearsal.
-Tier 0 deliverable
-
-Produce one verified dependency map containing:
-
-authoritative source for each moneyline, spread, and total output;
-artifact and archive path for each output;
-upcoming-week feature requirements;
-calibration and evaluation dependencies;
-odds pull, parser, normalization, and storage path;
-join and edge-generation path;
-API and frontend consumers;
-concrete missing or defective links;
-proposed implementation order for the remaining tiers.
-
-No production implementation should begin until this dependency map is complete.
-
-Planned implementation tiers
-
-The exact implementation detail will be locked after Tier 0 verifies the current contracts.
-
-Tier 1 — Upcoming-game prediction foundation
-
-Build or repair the shared upcoming-game feature and prediction path needed to produce moneyline, spread, and total outputs for real unplayed games.
-
-Tier 2 — Market-specific readiness and evaluation
-
-Verify the predictive and market-relative quality of moneyline, spread, and total outputs. Repair calibration, bias, or probability-conversion defects identified by evidence.
-
-Tier 3 — Odds ingestion reliability and coverage diagnostics
-
-Make the initial game-market odds source operationally reliable enough for the season-readiness path. Add freshness, market coverage, and failure diagnostics.
-
-Tier 4 — Prediction-to-market join and edge readiness
-
-Verify canonical joins, line and side conventions, market probabilities, EV, Kelly, and explicit distinctions between missing inputs and legitimate no-edge results.
-
-Tier 5 — API season-readiness contract
-
-Expose sufficient artifact, prediction, market, freshness, coverage, and blocker metadata for the focused frontend path without computing at request time.
-
-Tier 6 — Focused game-day frontend
-
-Harden only Dashboard, Games, GameDetail, and BetSlip for real moneyline, spread, and total use.
-
-Tier 7 — Live weekly rehearsal
-
-Run the complete weekly workflow against real upcoming-game and odds data. Verify artifacts, APIs, focused frontend screens, and real BetSlip staging.
-
-Success criteria
-
-W14 is complete when:
-
-every scheduled game in the target upcoming week has an explicit prediction state for moneyline, spread, and total;
-unavailable market outputs are explained rather than silently omitted;
-moneyline, spread, and total outputs identify their authoritative model or derivation;
-predicted outputs are archived with season, week, game, model, and generation provenance;
-odds pull success, failure, freshness, and market coverage are observable;
-moneyline, spread, and total lines and prices normalize to canonical game and side conventions;
-prediction-to-market coverage is reported by game and market;
-/edges distinguishes input failure, partial coverage, join failure, legitimate empty results, and populated recommendations;
-the existing weekly workflow can produce or explicitly diagnose every required artifact;
-Dashboard, Games, GameDetail, and BetSlip present the same underlying prediction and market state consistently;
-at least one real weekly rehearsal is completed without fabricated data;
-backend and frontend quality gates pass;
-W9.11 Tier 0 remains paused until this vertical slice is operationally verified.
+Every scheduled game appears in the weekly product.
+Live forecasts are immutable and coexist with historical backfills.
+Current forecast selection is explicit.
+Win and total model identities remain independent.
+Week 1 and in-season prediction policies are explicit.
+Current market data has source and ingestion provenance.
+Edge results distinguish blockers from valid zero-edge outcomes.
+weekly-predict, edges report, and /edges use one edge service.
+post-week evaluates immutable live forecasts.
+evaluate backfill remains the historical reconstruction workflow.
+API routes serialize persisted products without runtime inference.
+Frontend surfaces visibly distinguish pending, blocked, unavailable, and no-play states.
+verify-week reports schedule, prediction, market, and edge coverage.
+Python and frontend quality gates pass.
+Operational documentation matches the implemented lifecycle.
 
 ---
 
