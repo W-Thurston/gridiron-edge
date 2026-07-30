@@ -810,35 +810,94 @@ no API-layer inference or silent fallback participates in the decision.
 
 ---
 
-### Unit 10: Build Schedule-Complete Win Prediction Component
+### Unit 10: Build Schedule-Complete Win Prediction Component [Complete]
+
+#### Completed
+
+Added a pure weekly win-product builder that attaches explicitly selected win
+forecasts to rich schedule truth while preserving exactly one row per
+scheduled game.
+
+The builder scopes the supplied schedule to the requested season and week,
+preserves source ordering and all schedule fields, and rejects duplicate
+canonical game IDs. Neutral-site identity and other schedule context pass
+through unchanged.
+
+The Unit 9 prediction policy defines whether the win family is available and
+which model identity is eligible. An unavailable win policy produces one
+explicitly unavailable row for every scheduled game. A selected policy
+requires forecast resolutions and events matching the selected win model
+identity.
+
+Forecast attachment uses explicit `ForecastCandidateResolution` values and
+exact immutable event IDs. Selected events are never inferred from generation
+time, storage order, role, write order, or model priority. Missing or absent
+resolutions remain visible as missing forecast rows. Ambiguous resolutions
+remain visible as ambiguous rows.
+
+Available product rows preserve the selected forecast's model name, model
+type, event ID, run ID, generation timestamp, operational role, and explicit
+selection status.
+
+Selected events must match schedule truth for season, week, game ID, away team,
+and home team. Team orientation is validated rather than automatically
+reversed or reinterpreted. The event model identity must also match the model
+selected by the prediction policy.
+
+Available predictions require both away and home win probabilities. Each
+probability must fall within the closed zero-to-one range, and the pair must
+sum to one within floating-point tolerance. Unavailable, missing, and
+ambiguous rows retain null probability and forecast-provenance fields.
+
+The component performs no model execution, champion resolution, feature
+generation, forecast generation, forecast-store loading, filesystem access,
+timestamp-based selection, or API-layer inference.
 
 #### Goal
 
-Attach selected win probabilities to every scheduled game.
-
-#### Production files
-
-- new weekly product builder under
-  `src/gridiron_edge/models/game_prediction/` or a dedicated domain package
-
-#### Test files
-
-- create:
-  `tests/unit/models/game_prediction/test_weekly_win_product.py`
+Attach selected win probabilities and immutable forecast provenance to every
+scheduled game without silently dropping games or choosing forecasts.
 
 #### Tests
 
-- output has exactly one row per scheduled game;
-- missing win prediction does not remove the game;
-- win-model identity is present for available predictions;
-- live forecast event identity is preserved;
-- selected forecast is explicit;
-- probabilities and team orientation are validated;
-- status is present for unavailable rows.
+- output contains exactly one row per scheduled game;
+- output is scoped to the requested season and week;
+- schedule source ordering is preserved;
+- all supplied schedule fields pass through;
+- duplicate scheduled game IDs are rejected;
+- missing win forecasts do not remove scheduled games;
+- missing forecasts retain null probabilities and provenance;
+- ambiguous forecast selection remains explicit;
+- unavailable win policy marks every scheduled game explicitly;
+- unavailable policy cannot carry forecast resolutions;
+- available predictions preserve model name and model type;
+- live forecast event ID is preserved;
+- forecast run ID is preserved;
+- forecast generation timestamp is preserved;
+- forecast operational role is preserved;
+- selected forecast status is explicit;
+- selected event identity must match its explicit resolution;
+- selected model identity must match the prediction policy;
+- forecast season and week must match product scope;
+- forecast game ID must match schedule identity;
+- away and home team orientation must match schedule truth;
+- reversed orientation is rejected rather than silently corrected;
+- available predictions require both probabilities;
+- probabilities must remain between zero and one;
+- away and home probabilities must sum to one within tolerance;
+- neutral-site schedule identity is preserved;
+- no model execution or champion resolution occurs;
+- no forecast generation or storage read occurs;
+- no timestamp, write-order, role, or model-priority selection occurs;
+- no API-layer inference participates in composition.
 
 #### Acceptance
 
-The weekly product has schedule-complete Moneyline probability coverage status.
+The weekly win product provides schedule-complete Moneyline probability
+coverage status. Every scheduled game remains visible, available predictions
+carry explicit model and immutable forecast provenance, and unavailable,
+missing, or ambiguous predictions retain machine-readable status without
+silent selection or row deletion.
 
 ---
 
