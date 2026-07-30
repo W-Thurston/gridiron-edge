@@ -161,7 +161,7 @@ def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
     if not pairs:
         return StageResult(success=True, detail="no game pairs requested")
 
-    total_archived = 0
+    total_events = 0
     pair_summaries: list[str] = []
 
     for pair in pairs:
@@ -169,15 +169,14 @@ def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
             model_name=pair.model_name,
             model_type=pair.model_type,
             mode=None,  # auto-resolve per model
-            overwrite=True,
         )
-        total_archived += n
+        total_events += n
         pair_summaries.append(f"{pair.composite_key}={n:,}")
 
     return StageResult(
         success=True,
-        detail=f"{total_archived:,} predictions across {len(pairs)} pairs",
-        rows=total_archived,
+        detail=(f"{total_events:,} backfilled forecast events across {len(pairs)} pairs"),
+        rows=total_events,
     )
 
 
@@ -207,7 +206,7 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
     import gridiron_edge.models.prop_prediction.te_rec_yards
     import gridiron_edge.models.prop_prediction.wr_rec_yards  # noqa: F401
 
-    total_archived = 0
+    total_events = 0
     pair_summaries: list[str] = []
 
     for stat_family, algorithm in pairs:
@@ -244,13 +243,13 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
             )
             pair_n += len(enriched)
 
-        total_archived += pair_n
+        total_events += pair_n
         pair_summaries.append(f"{stat_family}/{algorithm}={pair_n:,}")
 
     return StageResult(
         success=True,
-        detail=f"{total_archived:,} predictions across {len(pairs)} pairs",
-        rows=total_archived,
+        detail=f"{total_events:,} predictions across {len(pairs)} pairs",
+        rows=total_events,
     )
 
 

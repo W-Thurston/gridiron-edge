@@ -36,6 +36,7 @@ Typical usage::
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import logging
 from logging import Logger
 from pathlib import Path
@@ -47,7 +48,12 @@ from pandas import DataFrame
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.datasets.loaders import load_modeling_file
-from gridiron_edge.evaluation.archive import load_prediction_log, write_archive_rows
+from gridiron_edge.evaluation.forecast_contracts import (
+    ForecastRole,
+    new_forecast_run_id,
+)
+from gridiron_edge.evaluation.forecast_events import build_forecast_events
+from gridiron_edge.evaluation.forecast_store import write_forecast_events
 from gridiron_edge.models.game_prediction.base import GameModelType, GamesTrainer
 from gridiron_edge.models.game_prediction.predictor import (
     build_game_predictions,
@@ -392,24 +398,24 @@ def backfill_model(
     model_name: str,
     model_type: str,
     mode: BackfillMode | None = None,
-    overwrite: bool = False,
     start_season: str | None = None,
     end_season: str | None = None,
     repo: Path | None = None,
 ) -> int:
-    """Archive predictions for all historical games.
+    """Generate and store one immutable historical forecast run.
 
     Dispatches to walk-forward retraining (the right default for trained
     ML models) or current-model prediction (the right default for
     analytic models like Elo). Override with ``mode`` if needed.
+
+    Each successful invocation creates a distinct backfilled forecast run.
+    Existing live and backfilled events are never replaced or skipped.
 
     Args:
         model_name: Model purpose (e.g. ``"win_prob"``).
         model_type: Model algorithm (e.g. ``"random_forest"``).
         mode: Explicit mode override. ``None`` selects the default for
             this model (see ``_CURRENT_MODEL_DEFAULTS``).
-        overwrite: If ``True``, re-archive all games even if predictions
-            for this ``(model_name, model_type)`` pair already exist.
         start_season: First season to predict (walk-forward only).
             Defaults to the second-earliest available season.
         end_season: Last season to predict (walk-forward only).
@@ -417,7 +423,7 @@ def backfill_model(
         repo: Repository root. Defaults to settings repo root.
 
     Returns:
-        Number of new prediction rows written to the archive.
+        Number of forecast events written for this invocation.
 
     Raises:
         KeyError: If no predictor is registered for the composite key
@@ -426,7 +432,7 @@ def backfill_model(
             yet supported (currently only ``"win_prob"`` and ``"total"``).
     """
     resolved_repo: Path = repo or get_settings().repo_root
-    resolved_mode = _resolve_mode(model_name, model_type, mode)
+    resolved_mode: BackfillMode = _resolve_mode(model_name, model_type, mode)
 
     logger.info(
         "backfill_model: (%s, %s) mode=%s",
@@ -436,7 +442,7 @@ def backfill_model(
     )
 
     if resolved_mode == "current-model":
-        df_new = _backfill_current_model(
+        df_new: DataFrame = _backfill_current_model(
             model_name=model_name,
             model_type=model_type,
             repo=resolved_repo,
@@ -458,30 +464,30 @@ def backfill_model(
         )
         return 0
 
-    if not overwrite:
-        existing: DataFrame = load_prediction_log(
-            model_name=model_name,
-            model_type=model_type,
-            repo=resolved_repo,
-        )
-        if not existing.empty:
-            already_archived: set = set(existing["game_id"].unique())
-            df_new = df_new.loc[~df_new["game_id"].isin(already_archived), :].copy()
-            if df_new.empty:
-                logger.info(
-                    "All historical games already archived for (%s, %s).",
-                    model_name,
-                    model_type,
-                )
-                return 0
-
     n_new: int = len(df_new)
-    write_archive_rows(df_new, repo=resolved_repo)
+    run_id: str = new_forecast_run_id()
+    generated_at: datetime = datetime.now(UTC)
+
+    events: DataFrame = build_forecast_events(
+        df_new,
+        model_name=model_name,
+        model_type=model_type,
+        run_id=run_id,
+        role=ForecastRole.BACKFILLED,
+        generated_at=generated_at,
+    )
+
+    write_forecast_events(
+        events,
+        repo=resolved_repo,
+    )
+
     logger.info(
-        "backfill_model: %d predictions archived for (%s, %s) via %s mode.",
+        "backfill_model: %d forecast events written for (%s, %s) via %s mode in run %s.",
         n_new,
         model_name,
         model_type,
         resolved_mode,
+        run_id,
     )
     return n_new

@@ -129,6 +129,8 @@ class TestBackfillGameModelsStage:
         assert result.success
         assert result.rows == 200  # 100 per pair x 2 pairs
         assert mock_backfill.call_count == 2
+        for call in mock_backfill.call_args_list:
+            assert "overwrite" not in call.kwargs
 
 
 class TestBackfillPropModelsStage:

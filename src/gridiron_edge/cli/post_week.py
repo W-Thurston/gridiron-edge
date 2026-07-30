@@ -74,7 +74,7 @@ def _stage_refresh_data(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_backfill_predictions(ctx: dict[str, Any]) -> StageResult:
-    """Archive predictions for the completed week.
+    """Generate backfilled forecasts for the requested season.
 
     Uses backfill_model with start/end season set to the requested
     season so only the most-recent season is touched.
@@ -87,7 +87,6 @@ def _stage_backfill_predictions(ctx: dict[str, Any]) -> StageResult:
         model_name=model_name,
         model_type=model_type,
         mode=None,  # auto-resolve per model
-        overwrite=True,
         start_season=season,
         end_season=season,
     )
@@ -95,12 +94,12 @@ def _stage_backfill_predictions(ctx: dict[str, Any]) -> StageResult:
     if n == 0:
         return StageResult(
             success=True,
-            detail="no new predictions written (already archived)",
+            detail="no predictions generated for the requested season",
         )
 
     return StageResult(
         success=True,
-        detail=f"{n:,} predictions archived for {season}",
+        detail=f"{n:,} backfilled forecast events written for {season}",
         rows=n,
     )
 

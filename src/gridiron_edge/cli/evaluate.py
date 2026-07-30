@@ -199,11 +199,6 @@ def evaluate_backfill(
             "or 'auto' (default per model)."
         ),
     ),
-    overwrite: bool = typer.Option(
-        False,
-        "--overwrite/--no-overwrite",
-        help="Re-archive all games even if already present.",
-    ),
     start_season: str | None = typer.Option(
         None,
         help="First season to predict (walk-forward only), e.g. '2000-2001'.",
@@ -213,7 +208,7 @@ def evaluate_backfill(
         help="Last season to predict (walk-forward only), e.g. '2024-2025'.",
     ),
 ) -> None:
-    r"""Archive predictions for all historical games.
+    r"""Generate an immutable historical forecast run.
 
     By default, ML models (win_prob_logistic, win_prob_random_forest,
     win_prob_xgboost, total_random_forest, total_xgboost) use walk-forward
@@ -228,7 +223,6 @@ def evaluate_backfill(
     Examples:
       gridiron evaluate backfill --model-name win_prob --model-type random_forest
       gridiron evaluate backfill --model-name win_prob --model-type elo
-      gridiron evaluate backfill --model-name win_prob --model-type random_forest --overwrite
       gridiron evaluate backfill --model-name win_prob --model-type random_forest \
         --start-season 2010-2011
     """
@@ -241,16 +235,15 @@ def evaluate_backfill(
         subtitle_parts.append(f"mode={resolved_mode}")
     console.header("evaluate backfill", subtitle="  ".join(subtitle_parts))
 
-    with step("Generate + archive historical predictions") as s:
+    with step("Generate historical forecast events") as s:
         n: int = backfill_model(
             model_name=model_name,
             model_type=model_type,
             mode=resolved_mode,  # type: ignore[arg-type]
-            overwrite=overwrite,
             start_season=start_season,
             end_season=end_season,
         )
-        s.set_detail(f"{n:,} predictions archived")
+        s.set_detail(f"{n:,} forecast events written")
 
     console.summary()
 
@@ -266,7 +259,9 @@ def evaluate_tune(
     apply: bool = typer.Option(
         False,
         "--apply/--no-apply",
-        help=("After the search, backfill the best parameters into the prediction archive."),
+        help=(
+            "After the search, generate a historical forecast run using the selected parameters."
+        ),
     ),
     top: int = typer.Option(10, help="Number of top results to display."),
     save: bool = typer.Option(
@@ -285,8 +280,7 @@ def evaluate_tune(
     held-out seasons (last 3 seasons) separately. Best holdout Brier
     score wins.
 
-    Use --apply to immediately backfill the best parameters into the
-    prediction archive.
+    Use --apply to immediately generate a historical forecast run.
 
     \b
     Examples:
@@ -365,9 +359,8 @@ def evaluate_tune(
                 n: int = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
-                    overwrite=True,
                 )
-                s.set_detail(f"{n:,} predictions archived as win_prob/elo")
+                s.set_detail(f"{n:,} backfilled forecast events written as win_prob/elo")
         else:
             params = best_params(results)
             k_val: float = params["k"]
@@ -387,9 +380,8 @@ def evaluate_tune(
                 n = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
-                    overwrite=True,
                 )
-                s.set_detail(f"{n:,} predictions archived as win_prob/elo")
+                s.set_detail(f"{n:,} backfilled forecast events written as win_prob/elo")
 
     console.summary()
 

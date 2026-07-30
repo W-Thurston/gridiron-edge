@@ -41,9 +41,7 @@ class TestBackfillPredictionsStage:
     """Cover the backfill-predictions stage's expected paths."""
 
     @patch("gridiron_edge.cli.post_week.backfill_model")
-    def test_returns_idempotent_message_when_nothing_to_archive(
-        self, mock_backfill: MagicMock
-    ) -> None:
+    def test_reports_no_generated_predictions(self, mock_backfill: MagicMock) -> None:
         from gridiron_edge.cli.post_week import (
             _stage_backfill_predictions,
         )
@@ -57,8 +55,9 @@ class TestBackfillPredictionsStage:
 
         result = _stage_backfill_predictions(ctx)
         assert result.success
-        assert "already archived" in result.detail
+        assert result.detail == ("no predictions generated for the requested season")
         assert result.rows is None
+        assert "overwrite" not in mock_backfill.call_args.kwargs
 
     @patch("gridiron_edge.cli.post_week.backfill_model")
     def test_reports_archive_count_on_success(self, mock_backfill: MagicMock) -> None:
