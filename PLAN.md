@@ -271,6 +271,26 @@ coexist.
 Prediction storage is event-preserving. No forecast is deleted merely because a
 later row has the same game and model pair.
 
+### Unit 2A: Build Immutable Forecast Event Store
+
+Define the strict forecast-event schema and event-preserving Parquet store.
+The store is introduced independently so the repository remains green while
+existing writers are updated in the following unit.
+
+The new store does not read, migrate, or write the development-era prediction
+archive.
+
+### Unit 2B: Cut Forecast Writers Over to Event Storage
+
+Update live and backfilled forecast writers to create event IDs, share one run
+ID per invocation, preserve prediction values, and write immutable events.
+
+### Unit 2C: Remove Development-Era Prediction Archive
+
+Delete the old latest-write-wins archive implementation, obsolete archive
+artifact, compatibility tests, and outdated call paths. Rename the event-store
+module to the final canonical archive module if desired.
+
 ---
 
 ### Unit 3: Add Explicit Current-Forecast Selection
