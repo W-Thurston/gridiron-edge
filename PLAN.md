@@ -901,34 +901,98 @@ silent selection or row deletion.
 
 ---
 
-### Unit 11: Attach Derived Spread Component
+### Unit 11: Attach Derived Spread Component [Complete]
+
+#### Completed
+
+Added a schedule-complete spread component that derives model spread and spread
+uncertainty from the selected weekly win forecast.
+
+The component extends the Unit 10 win product without filtering, reordering, or
+mutating its rows. Every scheduled game therefore retains either a valid
+derived spread or an explicit spread blocker.
+
+Spread derivation uses the existing probit conversion:
+
+`model_spread = -sigma * Phi_inv(home_win_prob)`
+
+The product follows the established NFL home-line convention. A negative model
+spread means the home team is favored, a positive model spread means the away
+team is favored, and zero represents pick'em.
+
+Each available spread uses the exact calibration identity attached to the
+selected win forecast through `win_model_name` and `win_model_type`. The spread
+component does not resolve the current champion, use the total-model identity,
+choose the newest calibration entry, apply a CLI default, or assume a specific
+algorithm.
+
+Added a strict persisted-calibration contract containing model name, model
+type, composite calibration key, sigma, residual margin standard deviation,
+and calibration update timestamp. Calibration is read from the existing
+`game_model_calibration.json` registry by exact composite model key.
+
+The strict calibration reader accepts only complete persisted records with
+positive finite sigma and margin standard deviation values and a nonempty
+update timestamp. Missing or incomplete records return no calibration. The
+weekly spread component does not substitute the existing in-memory or
+league-wide fallback values.
+
+Existing fallback behavior in `get_sigma()` and `get_margin_std()` remains
+unchanged for older consumers.
+
+Sigma is used only for probability-to-spread conversion. Residual
+`margin_std` is retained separately as `spread_uncertainty`; the two values are
+not treated as interchangeable.
+
+Available spread rows preserve a provenance chain from the derived spread to
+the selected immutable win event and exact calibration record. Provenance
+includes the source win event ID, win model name, win model type, persisted
+calibration key, and calibration update timestamp.
+
+Rows whose win component is unavailable receive `win_unavailable`. Rows with
+an available win forecast but no complete exact calibration receive
+`calibration_unavailable`. Blocked rows retain null spread, uncertainty, and
+spread-provenance values.
 
 #### Goal
 
-Derive model spread and spread uncertainty from the selected win component using
-the correct win-model calibration identity.
-
-#### Production files
-
-- weekly product builder
-- existing game post-processing module
-
-#### Test files
-
-- create or update:
-  `tests/unit/models/game_prediction/test_weekly_spread_product.py`
+Derive model spread and spread uncertainty from the selected win component
+using the correct win-model calibration identity.
 
 #### Tests
 
-- spread sign convention is fixed and documented;
-- model spread uses the selected win model's calibration;
-- no spread is fabricated when calibration is unavailable;
-- spread provenance identifies the source win forecast and calibration;
-- schedule completeness is preserved.
+- negative model spread means the home team is favored;
+- positive model spread means the away team is favored;
+- the selected win model determines the calibration identity;
+- different selected model calibrations produce different derived spreads;
+- spread conversion uses persisted sigma;
+- spread uncertainty uses persisted residual margin standard deviation;
+- sigma and margin standard deviation remain distinct;
+- missing calibration does not fabricate a spread;
+- incomplete calibration does not fabricate a spread;
+- no in-memory or league-wide fallback calibration is used;
+- calibration model name must match the selected win forecast;
+- calibration model type must match the selected win forecast;
+- spread provenance identifies the source immutable win event;
+- spread provenance identifies the selected win model;
+- spread provenance identifies the persisted calibration key;
+- spread provenance preserves the calibration update timestamp;
+- unavailable win rows receive an explicit blocker;
+- missing calibration rows receive an explicit blocker;
+- blocked rows retain null spread and uncertainty;
+- schedule row count is preserved;
+- schedule row order is preserved;
+- canonical game identity is preserved;
+- neutral-site identity is preserved;
+- the input weekly win product is not mutated;
+- existing post-processing and fallback-getter tests remain green.
 
 #### Acceptance
 
-Every game has either a valid derived spread or an explicit blocker.
+Every scheduled game has either a valid derived spread with residual spread
+uncertainty and traceable source provenance, or an explicit blocker explaining
+that the selected win forecast or its exact persisted calibration is
+unavailable.
 
 ---
 
