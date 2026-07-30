@@ -8,14 +8,18 @@ features, and viz modules. Delegates the simulation to the canonical
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.console import console
-from gridiron_edge.core.constants import EXPANSION_TEAMS as EXPANSION_START_YEAR
-from gridiron_edge.ratings.elo.simulator import EloSimulationResult
+from gridiron_edge.core.constants import (
+    EXPANSION_TEAMS as EXPANSION_START_YEAR,
+)
+from gridiron_edge.ratings.elo.simulator import (
+    EloSimulationResult,
+    transition_to_next_season,
+)
 
 
 @dataclass(frozen=True)
@@ -29,18 +33,100 @@ class EloTableConfig:
     divisor: float = 480.0
 
 
-def _build_years(df: pd.DataFrame) -> list[str]:
-    max_year = df["YEAR"].max()
-    if df.loc[df["YEAR"] == max_year, "WEEK_NUM"].max() == 22:
-        now: datetime = datetime.now(tz=UTC)
-        return [*sorted(df["YEAR"].unique().tolist()), f"{now.year}-{now.year + 1}"]
-    return sorted(df["YEAR"].unique().tolist())
+def _next_season_label(year: str) -> str:
+    """Derive the next season label from one historical season label."""
+    parts: list[str] = year.split("-")
+
+    if len(parts) != 2:
+        raise ValueError(f"Invalid NFL season label {year!r}. Expected format YYYY-YYYY.")
+
+    try:
+        start = int(parts[0])
+        end = int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"Invalid NFL season label {year!r}. Expected numeric years.") from exc
+
+    if end != start + 1:
+        raise ValueError(
+            f"Invalid NFL season label {year!r}. "
+            "Ending year must be one greater than starting year."
+        )
+
+    return f"{end}-{end + 1}"
 
 
 def _max_week_for_year(games: pd.DataFrame, year: str) -> int:
     """Return the maximum week number for a given season."""
     subset = games.loc[games["YEAR"] == year, "WEEK_NUM"]
     return int(subset.max()) if not subset.empty else 1
+
+
+def _add_next_season_week_one(
+    elo: dict[tuple[str, str, int], float],
+    *,
+    games: DataFrame,
+    sorted_years: list[str],
+    teams_by_year: dict[str, set[str]],
+    cfg: EloTableConfig,
+) -> None:
+    """Append one deterministic synthetic next-season Week 1 state.
+
+    The transition begins from the final postgame state of the latest
+    historical season. Returning teams receive the same offseason
+    regression used between historical seasons. Expansion teams whose
+    configured start season matches the derived next season receive the
+    configured expansion rating.
+
+    The input Elo mapping is updated in place. Existing historical rows
+    are not altered.
+    """
+    if not sorted_years:
+        return
+
+    latest_year: str = sorted_years[-1]
+    next_year: str = _next_season_label(latest_year)
+
+    max_week: int = _max_week_for_year(
+        games,
+        latest_year,
+    )
+    final_state_week: int = max_week + 1
+
+    returning_teams: set[str] = teams_by_year.get(
+        latest_year,
+        set(),
+    )
+
+    final_ratings: dict[str, float] = {
+        team: elo.get(
+            (
+                team,
+                latest_year,
+                final_state_week,
+            ),
+            cfg.initial_elo,
+        )
+        for team in returning_teams
+    }
+
+    transitioned: dict[str, float] = transition_to_next_season(
+        final_ratings,
+        returning_teams=returning_teams,
+        expansion_start=EXPANSION_START_YEAR,
+        next_year=next_year,
+        regress_frac=cfg.offseason_regress_frac,
+        initial_elo=cfg.initial_elo,
+        expansion_elo=cfg.expansion_elo,
+    )
+
+    for team, rating in transitioned.items():
+        key = (
+            team,
+            next_year,
+            1,
+        )
+        if key not in elo:
+            elo[key] = rating
 
 
 def build_elo_state_table_all_years(
@@ -73,19 +159,13 @@ def build_elo_state_table_all_years(
 
     elo_dict: dict[tuple[str, str, int], float] = dict(result.elo)
 
-    nfl_years: list[str] = _build_years(games)
-    if nfl_years and nfl_years[-1] not in sorted_years:
-        next_year: str = nfl_years[-1]
-        prev_year: str = sorted_years[-1]
-        for team in teams_by_year.get(prev_year, set()):
-            key_prev: tuple[str, str, int] = (
-                team,
-                prev_year,
-                _max_week_for_year(games_prepared, prev_year),
-            )
-            key_next = (team, next_year, 1)
-            if key_next not in elo_dict and key_prev in elo_dict:
-                elo_dict[key_next] = elo_dict[key_prev]
+    _add_next_season_week_one(
+        elo_dict,
+        games=games_prepared,
+        sorted_years=sorted_years,
+        teams_by_year=teams_by_year,
+        cfg=cfg,
+    )
 
     rows: list[dict[str, float | int | str]] = [
         {"NFL_TEAM": team, "NFL_YEAR": year, "NFL_WEEK": week, "ELO": elo}

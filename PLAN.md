@@ -570,40 +570,66 @@ schedule remains compatible and is derived from the same normalized rows.
 
 ---
 
-### Unit 7: Fix Synthetic Upcoming Week 1 Elo Transition
+### Unit 7: Fix Synthetic Upcoming Week 1 Elo Transition [Complete]
+
+#### Completed
+
+Reworked synthetic upcoming Week 1 Elo generation to use the same deterministic
+offseason transition policy as historical season boundaries.
+
+Extracted a pure next-season transition helper from the Elo simulator.
+Returning teams regress toward the mean using the configured offseason
+regression fraction, and teams whose configured expansion season matches the
+target season receive the configured expansion rating.
+
+Historical season transitions continue using the same policy through the shared
+helper. The Elo update formula, per-game prediction behavior, K-factor handling,
+and historical pregame week semantics remain unchanged.
+
+Synthetic Week 1 now derives its target season directly from the latest
+historical season label. It no longer reads the current date or wall-clock
+season.
+
+The synthetic transition starts from each team’s rating at the final historical
+season’s `max_week + 1` state. This is the postgame state produced after the
+last played game, including the final postseason update, rather than the
+pregame rating entering the final week.
+
+Only the derived next season’s Week 1 state is added. No later weeks,
+additional future seasons, or schedule-dependent states are fabricated.
+Existing historical Elo rows are not modified.
 
 #### Goal
 
-Make upcoming Week 1 state deterministic and consistent with historical season
+Make upcoming Week 1 Elo deterministic and consistent with historical season
 transition semantics.
-
-#### Production files
-
-- `src/gridiron_edge/ratings/elo/table.py`
-- possibly `src/gridiron_edge/ratings/elo/simulator.py` if a shared transition
-  helper is extracted
-
-#### Test files
-
-- update:
-  `tests/unit/ratings/test_elo_table.py`
-- update:
-  `tests/unit/ratings/test_elo_core.py` only if shared math changes
 
 #### Tests
 
-- next season is derived from the latest historical season, not wall-clock year;
-- the final postseason update is included;
-- returning teams receive the intended offseason regression;
-- the transition is reproducible from identical historical input;
-- no arbitrary future weeks are fabricated;
-- expansion behavior remains correct;
-- existing historical pregame week semantics remain unchanged.
+- the next season label is derived from the latest historical season;
+- malformed and nonconsecutive historical season labels are rejected;
+- transition output is independent of the wall-clock year;
+- the final postseason update is included through the final postgame state;
+- the final week’s pregame rating is not reused as the next season rating;
+- returning teams receive the configured offseason regression;
+- historical and synthetic transitions use the same transition policy;
+- identical historical inputs produce identical Week 1 output;
+- only the derived next season’s Week 1 rows are created;
+- no arbitrary future weeks or seasons are fabricated;
+- expansion teams receive the configured expansion rating in their start
+  season;
+- expansion teams from other seasons are not added;
+- transition inputs are not mutated;
+- existing historical Elo rows remain unchanged;
+- Elo core update and Python/Numba parity tests remain unchanged and green.
 
 #### Acceptance
 
-Upcoming Week 1 Elo uses a tested transition policy consistent with historical
-evaluation semantics.
+Upcoming Week 1 Elo is derived deterministically from the latest historical
+season’s final postgame state, including the final postseason result. Returning
+teams receive the established offseason regression exactly once, expansion
+behavior remains explicit, and no wall-clock or arbitrary future-week behavior
+affects the result.
 
 ---
 
