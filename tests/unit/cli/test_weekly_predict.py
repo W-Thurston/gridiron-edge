@@ -4,16 +4,60 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from gridiron_edge.cli._composites import CompositeStage, StageResult
 from gridiron_edge.cli.weekly_predict import (
     _ALL_STAGES,
     _build_stages,
+    _canonicalize_live_elo_predictions,
+    _stage_predict_week,
 )
+
+
+def _live_elo_predictions() -> pd.DataFrame:
+    """Create display-oriented live Elo prediction rows."""
+    return pd.DataFrame(
+        {
+            "GAME_ID": [
+                "2026_01_KC_LAC",
+                "2026_01_BAL_BUF",
+            ],
+            "GAME_DATE": [
+                "2026-09-05",
+                "2026-09-06",
+            ],
+            "AWAY_TEAM": [
+                "Kansas City Chiefs",
+                "Baltimore Ravens",
+            ],
+            "HOME_TEAM": [
+                "Los Angeles Chargers",
+                "Buffalo Bills",
+            ],
+            "AWAY_TEAM_ELO": [
+                1520.0,
+                1510.0,
+            ],
+            "HOME_TEAM_ELO": [
+                1480.0,
+                1530.0,
+            ],
+            "AWAY_WIN_PROB": [
+                0.55,
+                0.48,
+            ],
+            "HOME_WIN_PROB": [
+                0.45,
+                0.52,
+            ],
+        }
+    )
 
 
 class TestStageList:
@@ -55,51 +99,164 @@ class TestStageList:
         assert stages["generate-edges"].soft_fail is True
 
 
+class TestCanonicalizeLiveEloPredictions:
+    """Verify display-oriented Elo rows map to canonical predictions."""
+
+    def test_maps_live_elo_columns(self) -> None:
+        source = _live_elo_predictions()
+
+        canonical = _canonicalize_live_elo_predictions(
+            source,
+            season="2026-2027",
+            week=1,
+        )
+
+        assert canonical["season"].tolist() == [
+            "2026-2027",
+            "2026-2027",
+        ]
+        assert canonical["week"].tolist() == [1, 1]
+        assert canonical["game_id"].tolist() == [
+            "2026_01_KC_LAC",
+            "2026_01_BAL_BUF",
+        ]
+        assert canonical["away_elo"].tolist() == pytest.approx([1520.0, 1510.0])
+        assert canonical["home_elo"].tolist() == pytest.approx([1480.0, 1530.0])
+        assert canonical["away_win_prob"].tolist() == pytest.approx([0.55, 0.48])
+        assert canonical["home_win_prob"].tolist() == pytest.approx([0.45, 0.52])
+
+    def test_does_not_mutate_display_frame(self) -> None:
+        source = _live_elo_predictions()
+        original = source.copy(deep=True)
+
+        _canonicalize_live_elo_predictions(
+            source,
+            season="2026-2027",
+            week=1,
+        )
+
+        pd.testing.assert_frame_equal(
+            source,
+            original,
+        )
+
+
 class TestPredictWeekStage:
     """Cover the predict-week stage's expected paths."""
 
+    @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
     @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    @patch("gridiron_edge.cli.weekly_predict.append_to_prediction_log")
     def test_returns_failure_on_empty_predictions(
         self,
-        mock_append: MagicMock,
         mock_build: MagicMock,
+        mock_write: MagicMock,
     ) -> None:
-        import pandas as pd
-
-        from gridiron_edge.cli.weekly_predict import _stage_predict_week
-
         mock_build.return_value = pd.DataFrame()
-        ctx = {"week": 1, "season": "2026-2027"}
+        ctx = {
+            "week": 1,
+            "season": "2026-2027",
+        }
 
         result = _stage_predict_week(ctx)
+
         assert not result.success
         assert "no predictions" in result.detail
-        mock_append.assert_not_called()
+        mock_write.assert_not_called()
 
+    @patch("gridiron_edge.cli.weekly_predict.datetime")
+    @patch("gridiron_edge.cli.weekly_predict.new_forecast_run_id")
+    @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
     @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    @patch("gridiron_edge.cli.weekly_predict.append_to_prediction_log")
-    def test_archives_and_caches_df_on_success(
+    def test_writes_live_events_and_caches_display_frame(
         self,
-        mock_append: MagicMock,
         mock_build: MagicMock,
+        mock_write: MagicMock,
+        mock_run_id: MagicMock,
+        mock_datetime: MagicMock,
     ) -> None:
-        import pandas as pd
-
         from gridiron_edge.cli.weekly_predict import _stage_predict_week
 
-        df = pd.DataFrame({"game_id": ["x"], "away_win_prob": [0.5]})
-        mock_build.return_value = df
-        mock_append.return_value = Path("/tmp/archive.parquet")
+        predictions = _live_elo_predictions()
+        generated_at = datetime(
+            2026,
+            9,
+            1,
+            12,
+            tzinfo=UTC,
+        )
 
-        ctx: dict = {"week": 1, "season": "2026-2027"}
+        mock_build.return_value = predictions
+        mock_write.return_value = Path("/tmp/forecast_events.parquet")
+        mock_run_id.return_value = "live-run"
+        mock_datetime.now.return_value = generated_at
+
+        ctx: dict = {
+            "week": 1,
+            "season": "2026-2027",
+        }
 
         result = _stage_predict_week(ctx)
+
         assert result.success
-        assert result.rows == 1
-        assert "1 predictions archived" in result.detail
-        # DataFrame is stashed for downstream stages to consume
-        assert ctx["predictions_df"] is df
+        assert result.rows == 2
+        assert result.detail == "2 live forecast events written"
+        assert ctx["predictions_df"] is predictions
+
+        written_events = mock_write.call_args.args[0]
+
+        assert written_events["run_id"].tolist() == [
+            "live-run",
+            "live-run",
+        ]
+        assert written_events["role"].tolist() == [
+            "live",
+            "live",
+        ]
+        assert written_events["generated_at"].tolist() == [
+            pd.Timestamp(generated_at),
+            pd.Timestamp(generated_at),
+        ]
+        assert written_events["event_id"].is_unique
+        assert (written_events["model_name"] == "win_prob").all()
+        assert (written_events["model_type"] == "elo").all()
+
+        assert mock_write.call_args.kwargs["repo"] is not None
+
+    @patch("gridiron_edge.cli.weekly_predict.new_forecast_run_id")
+    @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
+    @patch("gridiron_edge.viz.predictions.build_predictions_df")
+    def test_separate_invocations_use_separate_run_ids(
+        self,
+        mock_build: MagicMock,
+        mock_write: MagicMock,
+        mock_run_id: MagicMock,
+    ) -> None:
+        from gridiron_edge.cli.weekly_predict import _stage_predict_week
+
+        mock_build.return_value = _live_elo_predictions()
+        mock_write.return_value = Path("/tmp/forecast_events.parquet")
+        mock_run_id.side_effect = [
+            "live-run-1",
+            "live-run-2",
+        ]
+
+        ctx = {
+            "week": 1,
+            "season": "2026-2027",
+        }
+
+        _stage_predict_week(ctx.copy())
+        _stage_predict_week(ctx.copy())
+
+        first_events = mock_write.call_args_list[0].args[0]
+        second_events = mock_write.call_args_list[1].args[0]
+
+        assert set(first_events["run_id"]) == {
+            "live-run-1",
+        }
+        assert set(second_events["run_id"]) == {
+            "live-run-2",
+        }
 
 
 class TestGenerateEdgesStage:

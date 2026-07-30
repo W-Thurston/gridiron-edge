@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,13 @@ from gridiron_edge.cli._composites import (
 )
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
-from gridiron_edge.evaluation.archive import append_to_prediction_log, load_prediction_log
+from gridiron_edge.evaluation.archive import load_prediction_log
+from gridiron_edge.evaluation.forecast_contracts import (
+    ForecastRole,
+    new_forecast_run_id,
+)
+from gridiron_edge.evaluation.forecast_events import build_forecast_events
+from gridiron_edge.evaluation.forecast_store import write_forecast_events
 from gridiron_edge.ingest.odds import fetch_dk_odds
 from gridiron_edge.ingest.odds.store import load_current_odds
 
@@ -74,11 +81,35 @@ def _stage_fetch_odds(ctx: dict[str, Any]) -> StageResult:
     return StageResult(success=True, detail="DK odds refreshed")
 
 
-def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
-    """Generate predictions for the upcoming week.
+def _canonicalize_live_elo_predictions(
+    predictions: DataFrame,
+    *,
+    season: str,
+    week: int,
+) -> DataFrame:
+    """Map display-oriented Elo output to canonical prediction rows."""
+    return DataFrame(
+        {
+            "season": [season] * len(predictions),
+            "week": [week] * len(predictions),
+            "game_id": predictions["GAME_ID"],
+            "game_date": predictions["GAME_DATE"],
+            "away_team": predictions["AWAY_TEAM"],
+            "home_team": predictions["HOME_TEAM"],
+            "away_elo": predictions["AWAY_TEAM_ELO"],
+            "home_elo": predictions["HOME_TEAM_ELO"],
+            "away_win_prob": predictions["AWAY_WIN_PROB"],
+            "home_win_prob": predictions["HOME_WIN_PROB"],
+        }
+    ).reset_index(drop=True)
 
-    Delegates to the existing output predictions command's underlying
-    function. Writes to the prediction archive as a side effect.
+
+def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
+    """Generate and store live Elo forecasts for the upcoming week.
+
+    The original display-oriented prediction frame remains available to
+    downstream rendering. A separate canonical frame is composed into
+    immutable live forecast events.
     """
     from gridiron_edge.viz.predictions import build_predictions_df
 
@@ -86,35 +117,48 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     week: int = ctx["week"]
     repo: Path = get_settings().repo_root
 
-    df: DataFrame = build_predictions_df(year=year, week=week, repo=repo)
-    if df.empty:
+    predictions: DataFrame = build_predictions_df(
+        year=year,
+        week=week,
+        repo=repo,
+    )
+    if predictions.empty:
         return StageResult(
             success=False,
             detail="no predictions produced (check schedule + Elo state)",
         )
 
-    # Intentional: build_predictions_df() produces Elo-based predictions
-    # (built from the Elo state table). The archive is tagged with the
-    # actual model that generated the row, not the current win_prob
-    # champion. Use `gridiron evaluate backfill --model-type <type>` to
-    # populate the archive with other model types.
-    archive_path: Path = append_to_prediction_log(
-        df,
-        model_name="win_prob",
-        model_type="elo",
+    canonical = _canonicalize_live_elo_predictions(
+        predictions,
         season=year,
         week=week,
     )
 
-    # Stash the DataFrame in context so render-outputs can use it
-    # without rebuilding.
-    ctx["predictions_df"] = df
+    run_id = new_forecast_run_id()
+    generated_at = datetime.now(UTC)
+
+    events = build_forecast_events(
+        canonical,
+        model_name="win_prob",
+        model_type="elo",
+        run_id=run_id,
+        role=ForecastRole.LIVE,
+        generated_at=generated_at,
+    )
+
+    event_path = write_forecast_events(
+        events,
+        repo=repo,
+    )
+
+    # Rendering consumes the original display-oriented frame.
+    ctx["predictions_df"] = predictions
 
     return StageResult(
         success=True,
-        detail=f"{len(df)} predictions archived",
-        rows=len(df),
-        artifacts=[archive_path],
+        detail=f"{len(events)} live forecast events written",
+        rows=len(events),
+        artifacts=[event_path],
     )
 
 
