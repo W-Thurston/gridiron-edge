@@ -9,6 +9,7 @@ from gridiron_edge.core.constants import AWAY_WIN_LOCATION
 from gridiron_edge.ratings.elo.simulator import (
     EloSimulationResult,
     simulate_elo_history,
+    transition_to_next_season,
 )
 
 
@@ -163,3 +164,104 @@ def test_table_and_tuner_share_elo_state() -> None:
 
     assert first.elo == second.elo
     assert first.away_probs == second.away_probs
+
+
+class TestNextSeasonTransition:
+    """Verify deterministic offseason transition behavior."""
+
+    def test_returning_teams_regress_toward_mean(self) -> None:
+        transitioned = transition_to_next_season(
+            {
+                "Kansas City Chiefs": 1600.0,
+                "Los Angeles Chargers": 1400.0,
+            },
+            returning_teams={
+                "Kansas City Chiefs",
+                "Los Angeles Chargers",
+            },
+            expansion_start={},
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+        )
+
+        assert transitioned["Kansas City Chiefs"] == pytest.approx(1566.6666666667)
+        assert transitioned["Los Angeles Chargers"] == pytest.approx(1433.3333333333)
+
+    def test_transition_is_reproducible(self) -> None:
+        final_ratings = {
+            "Kansas City Chiefs": 1600.0,
+            "Los Angeles Chargers": 1400.0,
+        }
+        returning_teams = {
+            "Kansas City Chiefs",
+            "Los Angeles Chargers",
+        }
+
+        first = transition_to_next_season(
+            final_ratings,
+            returning_teams=returning_teams,
+            expansion_start={},
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+        )
+        second = transition_to_next_season(
+            final_ratings,
+            returning_teams=returning_teams,
+            expansion_start={},
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+        )
+
+        assert first == second
+
+    def test_expansion_team_uses_expansion_rating(
+        self,
+    ) -> None:
+        transitioned = transition_to_next_season(
+            {
+                "Existing Team": 1520.0,
+            },
+            returning_teams={
+                "Existing Team",
+            },
+            expansion_start={
+                "Expansion Team": "2026-2027",
+            },
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+            expansion_elo=1300.0,
+        )
+
+        assert transitioned["Expansion Team"] == 1300.0
+
+    def test_expansion_from_other_season_is_not_added(
+        self,
+    ) -> None:
+        transitioned = transition_to_next_season(
+            {},
+            returning_teams=set(),
+            expansion_start={
+                "Expansion Team": "2027-2028",
+            },
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+        )
+
+        assert "Expansion Team" not in transitioned
+
+    def test_does_not_mutate_final_ratings(self) -> None:
+        final_ratings = {
+            "Kansas City Chiefs": 1600.0,
+            "Los Angeles Chargers": 1400.0,
+        }
+        original = final_ratings.copy()
+
+        transition_to_next_season(
+            final_ratings,
+            returning_teams=set(final_ratings),
+            expansion_start={},
+            next_year="2026-2027",
+            regress_frac=1 / 3.0,
+        )
+
+        assert final_ratings == original

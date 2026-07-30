@@ -74,6 +74,51 @@ def _k_for_week(
     return k_mid
 
 
+def transition_to_next_season(
+    final_ratings: dict[str, float],
+    *,
+    returning_teams: set[str],
+    expansion_start: dict[str, str],
+    next_year: str,
+    regress_frac: float,
+    initial_elo: float = _DEFAULT_INITIAL_ELO,
+    expansion_elo: float = _DEFAULT_EXPANSION_ELO,
+) -> dict[str, float]:
+    """Build deterministic Week 1 ratings for the next season.
+
+    Returning teams regress toward their own mean using the same policy
+    applied between historical seasons. Teams whose recorded expansion
+    season is next_year enter at expansion_elo.
+
+    The function performs no date lookup, schedule loading, mutation, or
+    rating update.
+    """
+    transitioned: dict[str, float] = {}
+
+    if returning_teams:
+        ratings = [
+            final_ratings.get(
+                team,
+                initial_elo,
+            )
+            for team in returning_teams
+        ]
+        season_mean = sum(ratings) / len(ratings)
+
+        for team in returning_teams:
+            current = final_ratings.get(
+                team,
+                initial_elo,
+            )
+            transitioned[team] = season_mean * regress_frac + current * (1.0 - regress_frac)
+
+    for team, start_year in expansion_start.items():
+        if start_year == next_year:
+            transitioned[team] = expansion_elo
+
+    return transitioned
+
+
 def simulate_elo_history(  # noqa: PLR0912, PLR0915
     games: pd.DataFrame,
     sorted_years: list[str],
@@ -199,18 +244,30 @@ def simulate_elo_history(  # noqa: PLR0912, PLR0915
                         elo[next_key] = elo.get(curr_key, initial_elo)
 
         if next_year is not None:
-            returning: set[str] = teams_this_season & teams_by_year.get(next_year, set())
-            next_elos: list[float] = [elo.get((t, next_year, 1), initial_elo) for t in returning]
-            if next_elos:
-                season_mean: float = sum(next_elos) / len(next_elos)
-                for team in returning:
-                    key = (team, next_year, 1)
-                    current: float = elo.get(key, initial_elo)
-                    elo[key] = season_mean * regress_frac + current * (1.0 - regress_frac)
+            returning: set[str] = teams_this_season & teams_by_year.get(
+                next_year,
+                set(),
+            )
+            final_ratings: dict[str, float] = {
+                team: elo.get(
+                    (team, next_year, 1),
+                    initial_elo,
+                )
+                for team in returning
+            }
 
-            for team, start in expansion_start.items():
-                if start == next_year:
-                    elo[(team, next_year, 1)] = expansion_elo
+            transitioned: dict[str, float] = transition_to_next_season(
+                final_ratings,
+                returning_teams=returning,
+                expansion_start=expansion_start,
+                next_year=next_year,
+                regress_frac=regress_frac,
+                initial_elo=initial_elo,
+                expansion_elo=expansion_elo,
+            )
+
+            for team, rating in transitioned.items():
+                elo[(team, next_year, 1)] = rating
 
     return EloSimulationResult(
         elo=elo,
