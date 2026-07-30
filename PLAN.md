@@ -721,35 +721,92 @@ Elo joins, probability calculations, or missing-row deletion.
 
 ---
 
-### Unit 9: Define Availability-Aware Prediction Policy
+### Unit 9: Define Availability-Aware Prediction Policy [Complete]
+
+#### Completed
+
+Added an immutable, deterministic, and serializable game-prediction policy
+that resolves win-probability and total-model decisions independently from
+explicit weekly input availability.
+
+Availability records the requested season and week together with whether Elo
+state, full win-prediction features, and total-prediction features are
+available. The policy does not infer availability from model preference,
+champion status, the current date, API behavior, or attempted model execution.
+
+A full-feature champion is selected only when its required inputs are
+available. When full win-prediction features are unavailable but Elo state is
+available, the policy selects Elo explicitly and records that rationale.
+Missing total inputs remain an explicit unavailable total decision rather than
+borrowing the selected win model or silently omitting the decision.
+
+Win and total overrides are independently scoped. A win override does not
+change total selection, and a total override does not change win selection.
+Overrides remain availability-aware. An explicitly requested model whose
+required inputs are unavailable is rejected as ineligible rather than silently
+falling back to another model.
+
+Selected decisions include model identity, selection source, stable rationale,
+human-readable explanation, and serializable provenance. Champion provenance
+preserves promotion timestamp, source run ID, and task-flexible metrics.
+Policy-owned Elo and explicit overrides record their distinct selection
+sources.
+
+Added a read-only champion assembly boundary using the persistent champion
+manifest. Win and total champion entries are resolved independently. An
+explicit override skips champion lookup only for its own family. Missing
+manifest entries become explicit unavailable decisions, while malformed
+champion metadata remains an error rather than being disguised as ordinary
+unavailability.
+
+The pure resolver performs no filesystem access, dataset inspection, feature
+generation, model execution, clock lookup, or API inference. The read-only
+assembly performs no artifact loading, champion computation, promotion,
+manifest writing, feature generation, or prediction execution.
 
 #### Goal
 
-Resolve prediction behavior by data availability without silently selecting a
-model that cannot produce the requested week.
-
-#### Production files
-
-- new policy module under `src/gridiron_edge/models/game_prediction/`
-- champion resolver integration as a read-only dependency
-
-#### Test files
-
-- create:
-  `tests/unit/models/game_prediction/test_prediction_policy.py`
+Resolve prediction behavior from explicit data availability without silently
+selecting a model that cannot produce the requested week.
 
 #### Tests
 
-- Week 1 chooses only an eligible policy;
-- in-season full-feature champion is selected only when required inputs exist;
+- Week 1 selects Elo only when Elo state is available and full features are
+  unavailable;
+- a full-feature win champion is selected only when required inputs exist;
+- a total champion is selected only when total inputs exist;
 - unavailable total prediction remains explicit;
-- overrides are independently scoped to win and total models;
-- policy output records rationale and model provenance;
-- no API-layer inference or fallback is involved.
+- missing Elo and unavailable full features produce an unavailable win
+  decision;
+- a missing champion is distinct from missing required inputs;
+- win and total overrides are independently scoped;
+- a win override does not change the total decision;
+- a total override does not change the win decision;
+- an ineligible override is rejected without fallback;
+- an Elo override requires available Elo state;
+- selected models include stable rationale and explanation;
+- champion promotion timestamp, source run ID, metrics, and model identity are
+  preserved as provenance;
+- champion metrics serialize in deterministic key order;
+- win and total champions resolve independently;
+- a missing total champion does not alter the win decision;
+- a win override skips only win champion lookup;
+- a total override skips only total champion lookup;
+- two overrides require no champion lookup;
+- malformed champion metadata remains an error;
+- policy contracts are immutable;
+- identical inputs produce equal policy output;
+- policy output is JSON serializable;
+- the policy module imports no API or pandas layer;
+- the policy performs no artifact loading, feature generation, prediction
+  execution, champion promotion, or manifest writing.
 
 #### Acceptance
 
-Model selection is explicit, availability-aware, and serializable.
+Model selection is explicit, availability-aware, independently scoped by
+prediction family, and serializable. Champion status does not imply that a
+model can produce the requested week, unavailable outputs remain visible, and
+no API-layer inference or silent fallback participates in the decision.
 
 ---
 

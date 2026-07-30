@@ -1,12 +1,16 @@
-# src/gridiron_edge/models/game_prediction/prediction_policy.py
-
 """Availability-aware game prediction model policy."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
+
+from gridiron_edge.evaluation.champion_resolver import (
+    ChampionNotFoundError,
+    resolve_current_champion_with_metadata,
+)
 
 
 class PredictionModelStatus(StrEnum):
@@ -411,6 +415,31 @@ def _resolve_total_decision(
     )
 
 
+def _load_champion_provenance(
+    model_name: str,
+    *,
+    repo: Path | None,
+) -> ModelProvenance | None:
+    """Load one champion as serializable provenance.
+
+    A missing manifest or missing family returns None. Invalid champion
+    metadata remains an error rather than being disguised as ordinary
+    unavailability.
+    """
+    try:
+        entry = resolve_current_champion_with_metadata(
+            model_name,
+            repo=repo,
+        )
+    except ChampionNotFoundError:
+        return None
+
+    return ModelProvenance.from_champion_entry(
+        model_name=model_name,
+        entry=entry,
+    )
+
+
 def resolve_prediction_policy(
     availability: PredictionAvailability,
     *,
@@ -439,4 +468,44 @@ def resolve_prediction_policy(
         availability=availability,
         win=win,
         total=total,
+    )
+
+
+def load_prediction_policy(
+    availability: PredictionAvailability,
+    *,
+    repo: Path | None = None,
+    win_override: str | None = None,
+    total_override: str | None = None,
+) -> PredictionPolicy:
+    """Load champion provenance and resolve prediction policy.
+
+    Champion metadata is read independently for win and total. An explicit
+    override skips champion lookup only for its own family. This function
+    does not inspect datasets, generate features, execute models, write
+    manifests, promote candidates, or involve the API layer.
+    """
+    win_champion = (
+        None
+        if win_override is not None
+        else _load_champion_provenance(
+            "win_prob",
+            repo=repo,
+        )
+    )
+    total_champion = (
+        None
+        if total_override is not None
+        else _load_champion_provenance(
+            "total",
+            repo=repo,
+        )
+    )
+
+    return resolve_prediction_policy(
+        availability,
+        win_champion=win_champion,
+        total_champion=total_champion,
+        win_override=win_override,
+        total_override=total_override,
     )
