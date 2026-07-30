@@ -52,6 +52,29 @@ def load_schedule_upcoming(repo_root: Path) -> pd.DataFrame:
     return load_csv(repo_root, "schedule_upcoming")
 
 
+def load_schedule_upcoming_rich(
+    repo_root: Path,
+) -> pd.DataFrame:
+    """Load the rich schedule-complete upcoming-game artifact.
+
+    The rich artifact preserves schedule, venue, context, nullable market,
+    source, and ingestion-provenance fields. The focused
+    ``load_schedule_upcoming`` loader remains the compatibility boundary
+    for Elo and existing schedule consumers.
+
+    Args:
+        repo_root: Absolute path to the repository root.
+
+    Returns:
+        Rich upcoming-game rows loaded from registered Parquet storage.
+    """
+    path: Path = dataset_path(
+        repo_root,
+        "schedule_upcoming_rich",
+    )
+    return pd.read_parquet(path)
+
+
 def load_elo_state(repo_root: Path) -> pd.DataFrame:
     """Load the Elo ratings state table.
 

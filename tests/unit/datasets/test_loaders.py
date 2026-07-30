@@ -8,16 +8,26 @@ from pathlib import Path
 import pandas as pd
 from pandas import DataFrame
 import pytest
-from tests.fixtures.dataframes import make_epa_by_game, make_games, make_stadiums
+from tests.fixtures.dataframes import (
+    make_epa_by_game,
+    make_games,
+    make_stadiums,
+)
 
 from gridiron_edge.datasets.loaders import (
     load_csv,
     load_epa_by_game,
     load_games,
     load_parquet_if_exists,
+    load_schedule_upcoming,
+    load_schedule_upcoming_rich,
     load_stadiums,
 )
-from gridiron_edge.datasets.writers import write_csv
+from gridiron_edge.datasets.registry import dataset_path
+from gridiron_edge.datasets.writers import (
+    write_csv,
+    write_parquet,
+)
 
 
 class TestLoadCsv:
@@ -83,3 +93,195 @@ class TestLoadEpaByGame:
         epa.to_parquet(epa_path, index=False)
         result: DataFrame = load_epa_by_game(tmp_path)
         assert len(result) > 0
+
+
+def test_loads_rich_upcoming_schedule_from_registry(
+    tmp_path: Path,
+) -> None:
+    expected = pd.DataFrame(
+        {
+            "season": ["2026-2027"],
+            "week": [1],
+            "game_id": ["2026_01_KC_LAC"],
+            "game_date": ["2026-09-05"],
+            "game_time": ["20:20:00"],
+            "away_team": ["Kansas City Chiefs"],
+            "home_team": ["Los Angeles Chargers"],
+            "spread_line": [None],
+            "total_line": [None],
+            "source": ["nflverse"],
+            "ingested_at": [pd.Timestamp("2026-07-30T18:00:00Z")],
+        }
+    )
+
+    written_path = write_parquet(
+        tmp_path,
+        "schedule_upcoming_rich",
+        expected,
+    )
+
+    assert written_path == dataset_path(
+        tmp_path,
+        "schedule_upcoming_rich",
+    )
+
+    loaded = load_schedule_upcoming_rich(tmp_path)
+
+    pd.testing.assert_frame_equal(
+        loaded,
+        expected,
+    )
+
+
+def test_rich_loader_does_not_fall_back_to_legacy_schedule(
+    tmp_path: Path,
+) -> None:
+    legacy = pd.DataFrame(
+        {
+            "WEEK_NUM": [1],
+            "GAME_DAY_OF_WEEK": ["Sunday"],
+            "GAME_DATE": ["2026-09-05"],
+            "AWAY_TEAM": ["Kansas City Chiefs"],
+            "HOME_TEAM": ["Los Angeles Chargers"],
+            "GAMETIME": ["20:20:00"],
+            "YEAR": ["2026-2027"],
+            "GAME_ID": ["2026_01_KC_LAC"],
+        }
+    )
+
+    write_csv(
+        tmp_path,
+        "schedule_upcoming",
+        legacy,
+    )
+
+    with pytest.raises(FileNotFoundError):
+        load_schedule_upcoming_rich(tmp_path)
+
+
+def test_legacy_schedule_loader_remains_compatible(
+    tmp_path: Path,
+) -> None:
+    expected = pd.DataFrame(
+        {
+            "WEEK_NUM": [1],
+            "GAME_DAY_OF_WEEK": ["Sunday"],
+            "GAME_DATE": ["2026-09-05"],
+            "AWAY_TEAM": ["Kansas City Chiefs"],
+            "HOME_TEAM": ["Los Angeles Chargers"],
+            "GAMETIME": ["20:20:00"],
+            "YEAR": ["2026-2027"],
+            "GAME_ID": ["2026_01_KC_LAC"],
+        }
+    )
+
+    write_csv(
+        tmp_path,
+        "schedule_upcoming",
+        expected,
+    )
+
+    loaded = load_schedule_upcoming(tmp_path)
+
+    pd.testing.assert_frame_equal(
+        loaded,
+        expected,
+    )
+
+
+class TestUpcomingScheduleLoaders:
+    """Verify focused and rich upcoming-schedule loader contracts."""
+
+    def test_loads_rich_schedule_from_registry(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        expected = pd.DataFrame(
+            {
+                "season": ["2026-2027"],
+                "week": [1],
+                "game_id": ["2026_01_KC_LAC"],
+                "game_date": ["2026-09-05"],
+                "game_time": ["20:20:00"],
+                "away_team": ["Kansas City Chiefs"],
+                "home_team": ["Los Angeles Chargers"],
+                "spread_line": [None],
+                "total_line": [None],
+                "source": ["nflverse"],
+                "ingested_at": [pd.Timestamp("2026-07-30T18:00:00Z")],
+            }
+        )
+
+        written_path = write_parquet(
+            tmp_path,
+            "schedule_upcoming_rich",
+            expected,
+        )
+
+        assert written_path == dataset_path(
+            tmp_path,
+            "schedule_upcoming_rich",
+        )
+
+        loaded: DataFrame = load_schedule_upcoming_rich(tmp_path)
+
+        pd.testing.assert_frame_equal(
+            loaded,
+            expected,
+        )
+
+    def test_rich_loader_does_not_fall_back_to_legacy(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        legacy = pd.DataFrame(
+            {
+                "WEEK_NUM": [1],
+                "GAME_DAY_OF_WEEK": ["Sunday"],
+                "GAME_DATE": ["2026-09-05"],
+                "AWAY_TEAM": ["Kansas City Chiefs"],
+                "HOME_TEAM": ["Los Angeles Chargers"],
+                "GAMETIME": ["20:20:00"],
+                "YEAR": ["2026-2027"],
+                "GAME_ID": ["2026_01_KC_LAC"],
+            }
+        )
+
+        write_csv(
+            tmp_path,
+            "schedule_upcoming",
+            legacy,
+        )
+
+        with pytest.raises(FileNotFoundError):
+            load_schedule_upcoming_rich(tmp_path)
+
+    def test_legacy_loader_remains_compatible(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        expected = pd.DataFrame(
+            {
+                "WEEK_NUM": [1],
+                "GAME_DAY_OF_WEEK": ["Sunday"],
+                "GAME_DATE": ["2026-09-05"],
+                "AWAY_TEAM": ["Kansas City Chiefs"],
+                "HOME_TEAM": ["Los Angeles Chargers"],
+                "GAMETIME": ["20:20:00"],
+                "YEAR": ["2026-2027"],
+                "GAME_ID": ["2026_01_KC_LAC"],
+            }
+        )
+
+        write_csv(
+            tmp_path,
+            "schedule_upcoming",
+            expected,
+        )
+
+        loaded: DataFrame = load_schedule_upcoming(tmp_path)
+
+        pd.testing.assert_frame_equal(
+            loaded,
+            expected,
+        )

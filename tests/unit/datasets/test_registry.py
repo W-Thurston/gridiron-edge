@@ -12,8 +12,8 @@ class TestDatasetRegistry:
     def test_datasets_not_empty(self) -> None:
         assert len(DATASETS) > 0
 
-    def test_has_19_keys(self) -> None:
-        assert len(DATASETS) == 19
+    def test_has_20_keys(self) -> None:
+        assert len(DATASETS) == 20
 
     def test_all_values_are_dataset_spec(self) -> None:
         for key, spec in DATASETS.items():
@@ -32,6 +32,7 @@ class TestDatasetRegistry:
             # Cleaned datasets
             "games",
             "schedule_upcoming",
+            "schedule_upcoming_rich",
             "weather_enriched",
             "elo_state",
             "stadiums",
@@ -60,6 +61,17 @@ class TestDatasetRegistry:
     def test_modeling_datasets_are_parquet(self) -> None:
         for key in ("modeling_base", "modeling_full"):
             assert DATASETS[key].relpath.endswith(".parquet"), f"{key} should be parquet"
+
+    def test_rich_upcoming_schedule_uses_registered_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = dataset_path(
+            tmp_path,
+            "schedule_upcoming_rich",
+        )
+
+        assert path == (tmp_path / "data" / "cleaned" / "NFL_upcoming_schedule_rich.parquet")
 
 
 class TestDatasetPath:
