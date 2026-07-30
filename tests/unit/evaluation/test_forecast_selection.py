@@ -15,6 +15,7 @@ from gridiron_edge.evaluation.forecast_contracts import (
 )
 from gridiron_edge.evaluation.forecast_selection import (
     select_forecast_events,
+    select_forecast_run,
 )
 from gridiron_edge.evaluation.forecast_store import (
     FORECAST_EVENT_COLUMNS,
@@ -117,6 +118,75 @@ def _events() -> pd.DataFrame:
                     12,
                     tzinfo=UTC,
                 ),
+            ),
+        ],
+        ignore_index=True,
+    )
+
+
+def _multi_family_run_events() -> pd.DataFrame:
+    """Create two explicit runs with independent forecast families."""
+    return pd.concat(
+        [
+            _event(
+                event_id="run-1-win-kc",
+                run_id="run-1",
+                role=ForecastRole.LIVE,
+                generated_at=datetime(
+                    2026,
+                    9,
+                    1,
+                    12,
+                    tzinfo=UTC,
+                ),
+                game_id="2026_01_KC_LAC",
+                model_name="win_prob",
+                model_type="elo",
+            ),
+            _event(
+                event_id="run-1-total-kc",
+                run_id="run-1",
+                role=ForecastRole.LIVE,
+                generated_at=datetime(
+                    2026,
+                    9,
+                    1,
+                    12,
+                    tzinfo=UTC,
+                ),
+                game_id="2026_01_KC_LAC",
+                model_name="total",
+                model_type="random_forest",
+            ),
+            _event(
+                event_id="run-1-win-bal",
+                run_id="run-1",
+                role=ForecastRole.LIVE,
+                generated_at=datetime(
+                    2026,
+                    9,
+                    1,
+                    12,
+                    tzinfo=UTC,
+                ),
+                game_id="2026_01_BAL_BUF",
+                model_name="win_prob",
+                model_type="elo",
+            ),
+            _event(
+                event_id="run-2-win-kc",
+                run_id="run-2",
+                role=ForecastRole.BACKFILLED,
+                generated_at=datetime(
+                    2026,
+                    9,
+                    2,
+                    12,
+                    tzinfo=UTC,
+                ),
+                game_id="2026_01_KC_LAC",
+                model_name="win_prob",
+                model_type="elo",
             ),
         ],
         ignore_index=True,
@@ -325,3 +395,32 @@ def test_rejects_invalid_event_schema() -> None:
                 )
             ],
         )
+
+
+class TestSelectForecastRun:
+    """Tests for selection by exact forecast-run identity."""
+
+    def test_selects_only_requested_run(self) -> None:
+        result = select_forecast_run(
+            _multi_family_run_events(),
+            run_id="run-1",
+        )
+
+        assert result.found
+        assert result.run_id == "run-1"
+        assert len(result.events) == 3
+        assert set(result.events["run_id"]) == {
+            "run-1",
+        }
+        assert "run-2-win-kc" not in set(result.events["event_id"])
+
+    def test_missing_run_remains_visible(self) -> None:
+        result = select_forecast_run(
+            _multi_family_run_events(),
+            run_id="missing-run",
+        )
+
+        assert not result.found
+        assert result.run_id == "missing-run"
+        assert result.events.empty
+        assert list(result.events.columns) == FORECAST_EVENT_COLUMNS
