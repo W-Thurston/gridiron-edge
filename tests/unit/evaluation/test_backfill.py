@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from gridiron_edge.evaluation.backfill import (
     _CURRENT_MODEL_DEFAULTS,
     BackfillMode,
-    _build_regression_predictions,
     _resolve_mode,
+)
+from gridiron_edge.models.game_prediction.predictor import (
+    build_regression_predictions,
 )
 
 
@@ -62,15 +65,20 @@ class TestBuildRegressionPredictions:
                 "YEAR": ["2024-2025"] * 4,
                 "WEEK_NUM": [1, 1, 1, 1],
                 "HOME_FIELD": [0, 1, 0, 1],
+                "GAME_DATE": [
+                    "2024-09-05",
+                    "2024-09-05",
+                    "2024-09-06",
+                    "2024-09-06",
+                ],
             }
         )
         preds = np.array([45.0, 45.0, 48.0, 48.0])
-        result = _build_regression_predictions(
+        result = build_regression_predictions(
             df,
             preds,
-            model_name="total",
-            model_type="random_forest",
         )
+
         assert len(result) == 2  # one row per game
         assert result["model_total"].iloc[0] == 45.0
         assert result["model_total"].iloc[1] == 48.0
@@ -86,48 +94,60 @@ class TestBuildRegressionPredictions:
                 "YEAR": ["2024-2025", "2024-2025"],
                 "WEEK_NUM": [1, 1],
                 "HOME_FIELD": [0, 1],
+                "GAME_DATE": [
+                    "2024-09-05",
+                    "2024-09-05",
+                ],
             }
         )
         preds = np.array([45.0, 45.0])
-        result = _build_regression_predictions(
+        result = build_regression_predictions(
             df,
             preds,
-            model_name="total",
-            model_type="random_forest",
         )
-        expected_cols = {
-            "predicted_at",
-            "is_backfilled",
-            "model_name",
-            "model_type",
+
+        expected_cols: set[str] = {
             "season",
             "week",
             "game_id",
+            "game_date",
+            "away_team",
+            "home_team",
             "model_total",
         }
         assert expected_cols <= set(result.columns)
+        assert "predicted_at" not in result.columns
+        assert "is_backfilled" not in result.columns
+        assert "model_name" not in result.columns
+        assert "model_type" not in result.columns
 
-    def test_is_backfilled_true(self) -> None:
-        import numpy as np
-
+    def test_preserves_game_identity(self) -> None:
         df = pd.DataFrame(
             {
                 "GAME_ID": ["g1", "g1"],
-                "TEAM_A": ["A", "B"],
-                "TEAM_B": ["B", "A"],
-                "YEAR": ["2024-2025", "2024-2025"],
+                "GAME_DATE": [
+                    "2024-09-05",
+                    "2024-09-05",
+                ],
+                "TEAM_A": ["Chiefs", "Ravens"],
+                "TEAM_B": ["Ravens", "Chiefs"],
+                "YEAR": [
+                    "2024-2025",
+                    "2024-2025",
+                ],
                 "WEEK_NUM": [1, 1],
                 "HOME_FIELD": [0, 1],
             }
         )
-        preds = np.array([45.0, 45.0])
-        result = _build_regression_predictions(
+
+        result = build_regression_predictions(
             df,
-            preds,
-            model_name="total",
-            model_type="random_forest",
+            np.array([45.0, 45.0]),
         )
-        assert result["is_backfilled"].iloc[0] is True or result["is_backfilled"].iloc[0] == True  # noqa: E712
+
+        assert result["game_date"].iloc[0] == "2024-09-05"
+        assert result["away_team"].iloc[0] == "Chiefs"
+        assert result["home_team"].iloc[0] == "Ravens"
 
 
 class TestBackfillModeType:

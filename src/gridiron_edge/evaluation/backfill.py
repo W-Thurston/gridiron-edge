@@ -41,7 +41,6 @@ from logging import Logger
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import pandas as pd
 from pandas import DataFrame
 
@@ -50,6 +49,10 @@ from gridiron_edge.datasets import loaders
 from gridiron_edge.datasets.loaders import load_modeling_file
 from gridiron_edge.evaluation.archive import load_prediction_log, write_archive_rows
 from gridiron_edge.models.game_prediction.base import GameModelType, GamesTrainer
+from gridiron_edge.models.game_prediction.predictor import (
+    build_game_predictions,
+    build_regression_predictions,
+)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -225,8 +228,6 @@ def _walk_forward_one_season(
         DataFrame of predictions for ``target_season``, or empty if
         no valid rows.
     """
-    from gridiron_edge.models.game_prediction.predictor import build_game_predictions
-
     logger.info(
         "Walk-forward iteration: train through %s, predict %s",
         train_through_season,
@@ -265,20 +266,15 @@ def _walk_forward_one_season(
 
     if trainer.spec.task == "classification":
         probs = trainer._model.predict_proba(x_feat_arr)[:, 1]
-        season_preds = build_game_predictions(
+        season_preds: DataFrame = build_game_predictions(
             target_df_valid,
             probs,
-            model_name=model_name,
-            model_type=model_type,
-            is_backfilled=True,
         )
     else:
         preds = trainer._model.predict(x_feat_arr)
-        season_preds = _build_regression_predictions(
+        season_preds = build_regression_predictions(
             target_df_valid,
             preds,
-            model_name=model_name,
-            model_type=model_type,
         )
 
     logger.info(
@@ -389,44 +385,6 @@ def _backfill_walk_forward(
         logger.warning("Skipped seasons: %s", skipped_seasons)
 
     return pd.concat(all_predictions, ignore_index=True)
-
-
-def _build_regression_predictions(
-    df: pd.DataFrame,
-    preds: np.ndarray,
-    *,
-    model_name: str,
-    model_type: str,
-) -> pd.DataFrame:
-    """Build archive-shaped DataFrame for regression predictions.
-
-    Mirrors ``build_game_predictions`` from
-    ``models/game_prediction/predictor.py`` but for regression output
-    (model_total instead of away_win_prob).
-    """
-    import datetime as dt
-
-    work = df.copy()
-    work["_total"] = preds
-
-    # One row per game - keep the away-team perspective.
-    # pyrefly: ignore [no-matching-overload]
-    away = work.loc[work["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
-
-    ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
-
-    return pd.DataFrame(
-        {
-            "predicted_at": ts,
-            "is_backfilled": True,
-            "model_name": model_name,
-            "model_type": model_type,
-            "season": away["YEAR"],
-            "week": away["WEEK_NUM"].astype(int),
-            "game_id": away["GAME_ID"],
-            "model_total": away["_total"],
-        }
-    ).reset_index(drop=True)
 
 
 def backfill_model(

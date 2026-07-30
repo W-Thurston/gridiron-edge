@@ -9,8 +9,8 @@ prediction models are registered with ``ModelRegistry``. It contains:
 - Five composite-key subclasses registered with ``ModelRegistry``:
     * ``"win_prob_logistic"`` / ``"win_prob_random_forest"`` / ``"win_prob_xgboost"``
     * ``"total_random_forest"`` / ``"total_xgboost"``
-- The :func:`build_game_predictions` helper used internally by
-  classification predict_historical to assemble game-level rows.
+- Pure helpers that assemble canonical game-level classification and
+  regression prediction rows.
 
 All game-side training and prediction flows through :class:`GamesTrainer`
 and this module's :class:`GamesPredictor`. ``ModelRegistry`` keys use
@@ -20,7 +20,6 @@ the composite ``{model_name}_{model_type}`` convention (e.g.
 
 from __future__ import annotations
 
-import datetime as dt
 import logging
 from logging import Logger
 from pathlib import Path
@@ -81,7 +80,7 @@ def get_known_model_names() -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# build_game_predictions - internal helper for assembling archive rows
+# Canonical historical prediction rows
 # ---------------------------------------------------------------------------
 
 
@@ -89,95 +88,186 @@ def build_game_predictions(
     df: pd.DataFrame,
     probs: np.ndarray,
     *,
-    model_name: str,
-    model_type: str,
-    is_backfilled: bool = True,
     totals: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """Map raw model outputs onto game-level prediction rows.
+    """Map classification outputs onto canonical game prediction rows.
 
-    The modeling DataFrame has one row per team-game (two rows per game).
-    This function picks exactly one row per game and constructs the
-    standard archive schema.
+    The modeling DataFrame has one row per team-game, with two rows for
+    standard games. This function selects exactly one stable row per game
+    and returns the selected team's perspective as the away perspective.
 
-    For standard games (one team has HOME_FIELD=1, the other HOME_FIELD=0),
-    the HOME_FIELD=0 row is kept and labeled as the away perspective.
-
-    For neutral-site games (both rows have HOME_FIELD=0 - e.g. London,
-    Mexico City), there is no canonical away/home distinction. We pick
-    the row whose TEAM_A name is alphabetically first, then label that
-    team as "away" purely for archive-schema compatibility. The actual
-    win probability assignment remains correct because TEAM_A is the
-    perspective for which ``probs`` was computed.
+    For standard games, the ``HOME_FIELD == 0`` row is selected. For
+    neutral-site games, where both rows have ``HOME_FIELD == 0``, the row
+    whose ``TEAM_A`` value sorts first is selected deterministically.
 
     Args:
-        df: Modeling DataFrame (must include GAME_ID, TEAM_A, TEAM_B,
-            YEAR, WEEK_NUM, HOME_FIELD). Aligned with *probs*.
-        probs: Predicted probability that TEAM_A wins, aligned with *df*.
-        model_name: Win-probability model purpose (e.g. ``"win_prob"``).
-        model_type: Win-probability model algorithm (e.g. ``"random_forest"``).
-        is_backfilled: Whether these are historical backfill predictions.
-        totals: Optional predicted game totals, aligned with *df*.
+        df: Modeling DataFrame containing game, team, season, week, and
+            home-field identity.
+        probs: Probability that ``TEAM_A`` wins, aligned with ``df``.
+        totals: Optional predicted game totals aligned with ``df``.
 
     Returns:
-        Game-level predictions DataFrame with exactly one row per game.
+        Canonical game-level prediction rows with one row per game.
     """
-    work = df.copy()
+    work: DataFrame = df.copy()
     work["_prob"] = probs
+
     if totals is not None:
         work["_total"] = totals
 
-    # Identify games that have a "true home" (one HOME_FIELD=1 row).
     has_home: pd.Series = work.groupby("GAME_ID")["HOME_FIELD"].transform("max") == 1
 
-    # Pick one row per game:
-    # - Standard games (has_home == True): keep the HOME_FIELD=0 row (away).
-    # - Neutral games (has_home == False): keep the row where TEAM_A is
-    #   alphabetically smaller. Stable tiebreaker; ensures the same game
-    #   gets the same away/home labeling across runs.
-    standard_rows = work.loc[has_home & (work["HOME_FIELD"] == 0)]
+    standard_rows: DataFrame | Series = work.loc[has_home & (work["HOME_FIELD"] == 0)]
 
-    # For neutral games: sort by GAME_ID then TEAM_A, take the first row
-    # per GAME_ID. This deterministic picking closes the neutral-site
-    # arbitrary-labeling bug (predictor/C1 from audit_2026_06_18.md).
-    neutral_rows = (
+    neutral_rows: DataFrame = (
         work.loc[~has_home]
         # pyrefly: ignore [no-matching-overload]
-        .sort_values(["GAME_ID", "TEAM_A"], kind="stable")
-        .drop_duplicates(subset=["GAME_ID"], keep="first")
+        .sort_values(
+            ["GAME_ID", "TEAM_A"],
+            kind="stable",
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="first",
+        )
     )
 
-    away = (
-        pd.concat([standard_rows, neutral_rows], ignore_index=False)
-        .drop_duplicates(subset=["GAME_ID"], keep="first")
-        .sort_values(["YEAR", "WEEK_NUM", "GAME_ID"])
+    away: DataFrame = (
+        pd.concat(
+            [standard_rows, neutral_rows],
+            ignore_index=False,
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="first",
+        )
+        .sort_values(
+            ["YEAR", "WEEK_NUM", "GAME_ID"],
+        )
     )
-
-    ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
 
     result = pd.DataFrame(
         {
-            "predicted_at": ts,
-            "is_backfilled": is_backfilled,
-            "model_name": model_name,
-            "model_type": model_type,
             "season": away["YEAR"].values,
             "week": away["WEEK_NUM"].astype(int).values,
             "game_id": away["GAME_ID"].values,
-            "game_date": "",
+            "game_date": away.get(
+                "GAME_DATE",
+                pd.Series(
+                    [None] * len(away),
+                    index=away.index,
+                    dtype=object,
+                ),
+            ).values,
             "away_team": away["TEAM_A"].values,
             "home_team": away["TEAM_B"].values,
-            "away_elo": float("nan"),
-            "home_elo": float("nan"),
-            "away_win_prob": away["_prob"].to_numpy(dtype=float),
-            "home_win_prob": 1.0 - away["_prob"].to_numpy(dtype=float),
+            "away_elo": away.get(
+                "TEAM_A_ELO",
+                pd.Series(
+                    [float("nan")] * len(away),
+                    index=away.index,
+                    dtype=float,
+                ),
+            ).values,
+            "home_elo": away.get(
+                "TEAM_B_ELO",
+                pd.Series(
+                    [float("nan")] * len(away),
+                    index=away.index,
+                    dtype=float,
+                ),
+            ).values,
+            "away_win_prob": away["_prob"].to_numpy(
+                dtype=float,
+            ),
+            "home_win_prob": (
+                1.0
+                - away["_prob"].to_numpy(
+                    dtype=float,
+                )
+            ),
         }
     )
 
     if "_total" in away.columns:
-        result["model_total"] = away["_total"].to_numpy(dtype=float)
+        result["model_total"] = away["_total"].to_numpy(
+            dtype=float,
+        )
 
     return result.reset_index(drop=True)
+
+
+def build_regression_predictions(
+    df: pd.DataFrame,
+    preds: np.ndarray,
+) -> pd.DataFrame:
+    """Map regression outputs onto canonical game prediction rows.
+
+    Standard and neutral-site games use the same deterministic team
+    orientation as classification predictions.
+
+    Args:
+        df: Modeling DataFrame containing game, team, season, week, and
+            home-field identity.
+        preds: Predicted game totals aligned with ``df``.
+
+    Returns:
+        Canonical game-level total prediction rows with one row per game.
+    """
+    work: DataFrame = df.copy()
+    work["_total"] = preds
+
+    has_home: pd.Series = work.groupby("GAME_ID")["HOME_FIELD"].transform("max") == 1
+
+    standard_rows: DataFrame | Series = work.loc[has_home & (work["HOME_FIELD"] == 0)]
+
+    neutral_rows: DataFrame = (
+        work.loc[~has_home]
+        # pyrefly: ignore [no-matching-overload]
+        .sort_values(
+            ["GAME_ID", "TEAM_A"],
+            kind="stable",
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="first",
+        )
+    )
+
+    away: DataFrame = (
+        pd.concat(
+            [standard_rows, neutral_rows],
+            ignore_index=False,
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="first",
+        )
+        .sort_values(
+            ["YEAR", "WEEK_NUM", "GAME_ID"],
+        )
+    )
+
+    return pd.DataFrame(
+        {
+            "season": away["YEAR"].values,
+            "week": away["WEEK_NUM"].astype(int).values,
+            "game_id": away["GAME_ID"].values,
+            "game_date": away.get(
+                "GAME_DATE",
+                pd.Series(
+                    [None] * len(away),
+                    index=away.index,
+                    dtype=object,
+                ),
+            ).values,
+            "away_team": away["TEAM_A"].values,
+            "home_team": away["TEAM_B"].values,
+            "model_total": away["_total"].to_numpy(
+                dtype=float,
+            ),
+        }
+    ).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -349,12 +439,9 @@ class GamesPredictor:
         # totals are silently omitted if the total model isn't trained.
         totals: Series | None = self._maybe_predict_totals(df_valid, repo=repo)
 
-        result = build_game_predictions(
+        result: DataFrame = build_game_predictions(
             df_valid,
             probs,
-            model_name=self.model_name,
-            model_type=self.model_type,
-            is_backfilled=True,
             totals=totals,
         )
 
@@ -433,11 +520,8 @@ class GamesPredictor:
     def _predict_historical_regression(self, *, repo: Path) -> pd.DataFrame:
         """Historical prediction lifecycle for regression (total).
 
-        Returns a DataFrame with point estimates for every modeling-file
-        row whose features are complete. Schema parallels the
-        classification archive: ``predicted_at``, ``is_backfilled``,
-        ``model_name``, ``model_type``, ``season``, ``week``, ``game_id``,
-        ``model_total``.
+        Returns canonical total prediction rows for historical games whose
+        required model features are complete.
         """
         store = ArtifactStore(repo)
 
@@ -464,24 +548,10 @@ class GamesPredictor:
         x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
         preds: np.ndarray = model.predict(x_feat_arr)
 
-        # One row per game (away-team perspective, dedup on GAME_ID).
-        df_valid["_total"] = preds
-        away = df_valid.loc[df_valid["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
-
-        ts = dt.datetime.now(tz=dt.UTC).replace(tzinfo=None)
-        result = pd.DataFrame(
-            {
-                "predicted_at": ts,
-                "is_backfilled": True,
-                "model_name": self.model_name,
-                "model_type": self.model_type,
-                "season": away["YEAR"],
-                "week": away["WEEK_NUM"].astype(int),
-                "game_id": away["GAME_ID"],
-                "model_total": away["_total"],
-            }
+        return build_regression_predictions(
+            df_valid,
+            preds,
         )
-        return result.reset_index(drop=True)
 
     def _predict_upcoming_regression(self, schedule: pd.DataFrame, *, repo: Path) -> pd.DataFrame:
         """Upcoming prediction lifecycle for regression (total)."""

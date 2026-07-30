@@ -319,7 +319,7 @@ class TestModelTypeEnumRoundtrip:
 
 
 class TestBuildGamePredictions:
-    """Tests for ``build_game_predictions()`` - assembles archive rows.
+    """Tests for canonical classification prediction rows.
 
     The function lives at module scope in ``predictor.py`` (not a method
     of ``GamesPredictor``) because it's a pure data-shape helper used by
@@ -336,6 +336,24 @@ class TestBuildGamePredictions:
                 "YEAR": ["2024-2025"] * 4,
                 "WEEK_NUM": [1, 1, 1, 1],
                 "HOME_FIELD": [0, 1, 0, 1],
+                "GAME_DATE": [
+                    "2024-09-05",
+                    "2024-09-05",
+                    "2024-09-06",
+                    "2024-09-06",
+                ],
+                "TEAM_A_ELO": [
+                    1520.0,
+                    1480.0,
+                    1510.0,
+                    1500.0,
+                ],
+                "TEAM_B_ELO": [
+                    1480.0,
+                    1520.0,
+                    1500.0,
+                    1510.0,
+                ],
             }
         )
 
@@ -345,7 +363,8 @@ class TestBuildGamePredictions:
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         assert len(result) == 2
 
@@ -355,22 +374,12 @@ class TestBuildGamePredictions:
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         g1 = result[result["game_id"] == "G1"].iloc[0]
         assert g1["away_win_prob"] == pytest.approx(0.45)
         assert g1["home_win_prob"] == pytest.approx(0.55)
-
-    def test_model_name_and_type_tagged(self) -> None:
-        """All rows have the correct (model_name, model_type) pair."""
-        df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
-
-        result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
-        )
-        assert (result["model_name"] == "win_prob").all()
-        assert (result["model_type"] == "random_forest").all()
 
     def test_totals_included_when_provided(self) -> None:
         """model_total column present when totals are passed."""
@@ -381,8 +390,6 @@ class TestBuildGamePredictions:
         result = build_game_predictions(
             df,
             probs,
-            model_name="win_prob",
-            model_type="random_forest",
             totals=totals,
         )
         assert "model_total" in result.columns
@@ -394,31 +401,10 @@ class TestBuildGamePredictions:
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         assert "model_total" not in result.columns
-
-    def test_is_backfilled_flag(self) -> None:
-        """is_backfilled flag is set correctly."""
-        df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
-
-        result_bf = build_game_predictions(
-            df,
-            probs,
-            model_name="win_prob",
-            model_type="random_forest",
-            is_backfilled=True,
-        )
-        result_live = build_game_predictions(
-            df,
-            probs,
-            model_name="win_prob",
-            model_type="random_forest",
-            is_backfilled=False,
-        )
-        assert result_bf["is_backfilled"].all()
-        assert not result_live["is_backfilled"].any()
 
     def test_required_columns_present(self) -> None:
         """Output contains all base archive columns."""
@@ -426,13 +412,10 @@ class TestBuildGamePredictions:
         probs = np.array([0.45, 0.55, 0.60, 0.40])
 
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
-        required = {
-            "predicted_at",
-            "is_backfilled",
-            "model_name",
-            "model_type",
+        required: set[str] = {
             "season",
             "week",
             "game_id",
@@ -445,6 +428,11 @@ class TestBuildGamePredictions:
             "home_win_prob",
         }
         assert required.issubset(set(result.columns))
+        assert required.issubset(set(result.columns))
+        assert "predicted_at" not in result.columns
+        assert "is_backfilled" not in result.columns
+        assert "model_name" not in result.columns
+        assert "model_type" not in result.columns
 
     def _make_neutral_site_df(self) -> pd.DataFrame:
         """Modeling DataFrame with a neutral-site game (both rows HOME_FIELD=0)."""
@@ -464,7 +452,8 @@ class TestBuildGamePredictions:
         df = self._make_neutral_site_df()
         probs = np.array([0.55, 0.45])  # P(Chiefs beat Ravens), P(Ravens beat Chiefs)
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         assert len(result) == 1
 
@@ -473,7 +462,8 @@ class TestBuildGamePredictions:
         df = self._make_neutral_site_df()
         probs = np.array([0.55, 0.45])
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         # Chiefs < Ravens alphabetically, so Chiefs is labeled "away"
         assert result["away_team"].iloc[0] == "Chiefs"
@@ -486,7 +476,8 @@ class TestBuildGamePredictions:
         # Row 2: TEAM_A=Ravens, prob = P(Ravens beats Chiefs) = 0.45
         probs = np.array([0.55, 0.45])
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         # Chiefs is labeled away; away_win_prob should be P(Chiefs beats Ravens)
         assert result["away_win_prob"].iloc[0] == pytest.approx(0.55)
@@ -502,10 +493,12 @@ class TestBuildGamePredictions:
         probs2 = probs1[::-1]
 
         result1 = build_game_predictions(
-            df1, probs1, model_name="win_prob", model_type="random_forest"
+            df1,
+            probs1,
         )
         result2 = build_game_predictions(
-            df2, probs2, model_name="win_prob", model_type="random_forest"
+            df2,
+            probs2,
         )
 
         # Same away team, same probability, regardless of input order
@@ -526,7 +519,8 @@ class TestBuildGamePredictions:
         )
         probs = np.array([0.60, 0.40, 0.55, 0.45])
         result = build_game_predictions(
-            df, probs, model_name="win_prob", model_type="random_forest"
+            df,
+            probs,
         )
         assert len(result) == 2
 
@@ -539,3 +533,18 @@ class TestBuildGamePredictions:
         # Chiefs alphabetically first, labeled away
         assert neutral_row["away_team"] == "Chiefs"
         assert neutral_row["away_win_prob"] == pytest.approx(0.55)
+
+    def test_preserves_game_date_and_elo_values(self) -> None:
+        df = self._make_modeling_df()
+        probs = np.array([0.45, 0.55, 0.60, 0.40])
+
+        result = build_game_predictions(
+            df,
+            probs,
+        )
+
+        g1 = result.loc[result["game_id"] == "G1"].iloc[0]
+
+        assert g1["game_date"] == "2024-09-05"
+        assert g1["away_elo"] == pytest.approx(1520.0)
+        assert g1["home_elo"] == pytest.approx(1480.0)

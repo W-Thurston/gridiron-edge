@@ -14,13 +14,13 @@ diverge from the production Elo state table at predict time.
 
 from __future__ import annotations
 
-import datetime
 import logging
 from logging import Logger
 from pathlib import Path
 from typing import ClassVar, Final
 
 import pandas as pd
+from pandas import DataFrame
 
 from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.models.base import PredictorSpec
@@ -35,7 +35,7 @@ logger: Logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _build_elo_archive_rows(
+def _build_elo_predictions(
     away_probs: list[float],
     game_seasons: list[str],
     game_ids: list[str],
@@ -44,12 +44,11 @@ def _build_elo_archive_rows(
     model_name: str,
     model_type: str,
 ) -> pd.DataFrame:
-    """Convert Elo simulation output into prediction archive rows.
+    """Convert Elo simulation output into canonical prediction rows.
 
-    Local to ``elo/predictor.py`` to avoid the ``models/artifact.py``
-    ``build_archive_rows`` name collision. The Elo path constructs rows
-    by hand (from simulation output) rather than from a pre-built
-    predictions DataFrame.
+    The simulation returns game identity and away-team win probability.
+    This function restores team orientation and game dates from the
+    historical games dataset, then applies pure prediction enrichment.
 
     Args:
         away_probs: Predicted away-team win probability per game.
@@ -60,8 +59,7 @@ def _build_elo_archive_rows(
         model_type: Model algorithm (always ``"elo"`` for the Elo predictor).
 
     Returns:
-        DataFrame in prediction archive schema with the (model_name,
-        model_type) pair populated and enrichment columns derived.
+        Canonical game-level Elo prediction rows with derived enrichment.
     """
     games_indexed = games.set_index("GAME_ID")
     away_teams: list[str] = []
@@ -80,14 +78,10 @@ def _build_elo_archive_rows(
             home_teams.append("")
             game_dates.append("")
 
-    weeks = games.set_index("GAME_ID")["WEEK_NUM"].to_dict()
+    weeks: dict = games.set_index("GAME_ID")["WEEK_NUM"].to_dict()
 
     result = pd.DataFrame(
         {
-            "predicted_at": datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None),
-            "is_backfilled": True,
-            "model_name": model_name,
-            "model_type": model_type,
             "season": game_seasons,
             "week": [int(weeks.get(gid, 0)) for gid in game_ids],
             "game_id": game_ids,
@@ -97,11 +91,11 @@ def _build_elo_archive_rows(
             "away_elo": float("nan"),
             "home_elo": float("nan"),
             "away_win_prob": away_probs,
-            "home_win_prob": [1.0 - p for p in away_probs],
+            "home_win_prob": [1.0 - probability for probability in away_probs],
         }
     )
 
-    result = enrich_predictions(
+    result: DataFrame = enrich_predictions(
         result,
         model_name=model_name,
         model_type=model_type,
@@ -277,7 +271,7 @@ class WinProbEloPredictor:
         from gridiron_edge.evaluation.tune import _prepare_games
 
         games_prepared, _, _ = _prepare_games(games)
-        return _build_elo_archive_rows(
+        return _build_elo_predictions(
             away_probs,
             game_seasons,
             game_ids,
