@@ -35,9 +35,11 @@ from plottable import ColDef, ColumnDefinition, Table
 from plottable.plots import image
 
 from gridiron_edge.core.settings import get_settings
-from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.ingest.odds.store import load_current_odds
-from gridiron_edge.ratings.elo.core import elo_win_probability
+from gridiron_edge.ratings.elo.predict import (
+    format_elo_prediction_percentages,
+    predict_elo_for_week,
+)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -292,97 +294,41 @@ def build_predictions_df(
     year: str,
     week: int,
     repo: Path | None = None,
-) -> pd.DataFrame:
-    """Build the raw predictions DataFrame for a given week.
+) -> DataFrame:
+    """Build the canonical display prediction frame for one week.
 
-    Merges Elo ratings onto the upcoming schedule and computes win
-    probabilities. This DataFrame is the canonical prediction output -
-    it is written to CSV and also used as input to the visualisation.
+    Elo lookup, schedule preservation, availability status, and numeric
+    probability calculation are owned by
+    ``ratings.elo.predict.predict_schedule_with_elo``.
+
+    This adapter adds only the human-readable percentage columns needed by
+    image and HTML rendering.
 
     Args:
-        year: NFL season label (e.g. ``"2026-2027"``).
+        year: NFL season label, such as ``"2026-2027"``.
         week: NFL week number.
-        repo: Repository root path.
+        repo: Optional repository root override.
 
     Returns:
-        DataFrame with columns: ``WEEK_NUM``, ``GAME_DATE``,
-        ``GAME_DAY_OF_WEEK``, ``GAMETIME``, ``AWAY_TEAM``, ``HOME_TEAM``,
-        ``AWAY_TEAM_ELO``, ``HOME_TEAM_ELO``, ``AWAY_WIN_PROB``,
-        ``HOME_WIN_PROB``.
+        Schedule rows with Elo ratings, numeric complementary
+        probabilities, explicit prediction status, and formatted display
+        percentages.
     """
-    settings = get_settings()
-    resolved_repo: Path = repo or settings.repo_root
-
-    elo_path: Path = dataset_path(resolved_repo, "elo_state")
-    schedule_path: Path = dataset_path(resolved_repo, "schedule_upcoming")
-
-    df_elo: DataFrame = pd.read_csv(elo_path)
-    df_schedule: DataFrame = pd.read_csv(schedule_path)
-
-    df_schedule = df_schedule.loc[
-        (df_schedule["YEAR"] == year) & (df_schedule["WEEK_NUM"] == week), :
-    ].copy()
-
-    if df_schedule.empty:
-        logger.warning("No upcoming games found for %s week %d in %s", year, week, schedule_path)
-        return pd.DataFrame()
-
-    # Merge Elo for away team
-    df_schedule = (
-        pd.merge(
-            df_schedule,
-            df_elo,
-            how="left",
-            left_on=["AWAY_TEAM", "YEAR", "WEEK_NUM"],
-            right_on=["NFL_TEAM", "NFL_YEAR", "NFL_WEEK"],
-        )
-        .drop(columns=["NFL_TEAM", "NFL_YEAR", "NFL_WEEK"])
-        .rename(columns={"ELO": "AWAY_TEAM_ELO"})
+    predictions = predict_elo_for_week(
+        year=year,
+        week=week,
+        repo=repo,
     )
 
-    # Merge Elo for home team
-    df_schedule = (
-        pd.merge(
-            df_schedule,
-            df_elo,
-            how="left",
-            left_on=["HOME_TEAM", "YEAR", "WEEK_NUM"],
-            right_on=["NFL_TEAM", "NFL_YEAR", "NFL_WEEK"],
-        )
-        .drop(columns=["NFL_TEAM", "NFL_YEAR", "NFL_WEEK"])
-        .rename(columns={"ELO": "HOME_TEAM_ELO"})
-    )
-
-    df_schedule = df_schedule.dropna(subset=["AWAY_TEAM_ELO", "HOME_TEAM_ELO"])
-
-    if df_schedule.empty:
+    if predictions.empty:
         logger.warning(
-            "Elo data missing for %s week %d - schedule has games but Elo state "
-            "does not yet cover this week. Run `gridiron ratings elo fit` first.",
+            "No upcoming games found for %s week %d.",
             year,
             week,
         )
-        return pd.DataFrame()
+        return predictions
 
-    # Compute win probabilities
-    probs = df_schedule.apply(
-        lambda x: elo_win_probability(x["AWAY_TEAM_ELO"], x["HOME_TEAM_ELO"]),
-        axis=1,
-    )
-    df_schedule[["AWAY_WIN_PROB", "HOME_WIN_PROB"]] = pd.DataFrame(
-        probs.tolist(),
-        index=df_schedule.index,
-    )
-
-    # Formatted percentage strings for display
-    df_schedule["AWAY_TEAM_WIN_PROB"] = df_schedule["AWAY_WIN_PROB"].map(
-        lambda x: f"{x * 100:.1f} %"
-    )
-    df_schedule["HOME_TEAM_WIN_PROB"] = df_schedule["HOME_WIN_PROB"].map(
-        lambda x: f"{x * 100:.1f} %"
-    )
-
-    return df_schedule.drop(columns=["YEAR"])
+    return format_elo_prediction_percentages(predictions)
 
 
 def render_predictions_image(

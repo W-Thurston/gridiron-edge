@@ -288,10 +288,10 @@ def predict_elo_for_week(
     )
 
 
-def _format_prediction_percentages(
+def format_elo_prediction_percentages(
     predictions: DataFrame,
 ) -> DataFrame:
-    """Add human-readable percentage columns for CSV output."""
+    """Add human-readable percentage columns without recalculating."""
     formatted = predictions.copy()
 
     formatted["AWAY_TEAM_WIN_PROB"] = formatted["AWAY_WIN_PROB"].map(
@@ -318,7 +318,7 @@ def predict_elo_only(
         week=week,
         repo=resolved_repo,
     )
-    output = _format_prediction_percentages(predictions)
+    output = format_elo_prediction_percentages(predictions)
 
     out_dir = resolved_repo / "data" / "output" / "predictions" / year[:4]
     out_dir.mkdir(

@@ -15,6 +15,7 @@ from gridiron_edge.datasets.writers import (
 )
 from gridiron_edge.ratings.elo.predict import (
     EloPredictionStatus,
+    format_elo_prediction_percentages,
     predict_elo_for_week,
     predict_schedule_with_elo,
 )
@@ -300,3 +301,44 @@ def test_file_loading_entrypoint_uses_registered_datasets(
     assert len(result) == 2
     assert "AWAY_WIN_PROB" in result.columns
     assert "PREDICTION_STATUS" in result.columns
+
+
+def test_percentage_formatting_does_not_recalculate() -> None:
+    predictions = predict_schedule_with_elo(
+        _schedule(),
+        _elo_state(),
+        year="2026-2027",
+        week=1,
+    )
+    original = predictions.copy(deep=True)
+
+    formatted = format_elo_prediction_percentages(predictions)
+
+    pd.testing.assert_series_equal(
+        formatted["AWAY_WIN_PROB"],
+        original["AWAY_WIN_PROB"],
+    )
+    pd.testing.assert_series_equal(
+        formatted["HOME_WIN_PROB"],
+        original["HOME_WIN_PROB"],
+    )
+    pd.testing.assert_frame_equal(
+        predictions,
+        original,
+    )
+
+
+def test_percentage_formatting_preserves_missing_values() -> None:
+    predictions = predict_schedule_with_elo(
+        _schedule(),
+        _elo_state(),
+        year="2026-2027",
+        week=1,
+    )
+
+    formatted = format_elo_prediction_percentages(predictions)
+
+    missing = formatted.loc[formatted["GAME_ID"] == "2026_01_BAL_BUF"].iloc[0]
+
+    assert pd.isna(missing["AWAY_TEAM_WIN_PROB"])
+    assert pd.isna(missing["HOME_TEAM_WIN_PROB"])
