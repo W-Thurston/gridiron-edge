@@ -23,6 +23,8 @@ from gridiron_edge.models.game_prediction.product_validation import (
 WEEKLY_PRODUCT_SCHEMA_VERSION: Final[int] = 1
 _INDEX_FILENAME: Final[str] = "index.json"
 _PRODUCTS_DIRECTORY: Final[str] = "products"
+_CURRENT_FILENAME: Final[str] = "current.json"
+_CURRENT_SCHEMA_VERSION: Final[int] = 1
 _STORAGE_IDENTITY_COLUMNS: Final[tuple[str, ...]] = (
     "product_schema_version",
     "product_id",
@@ -64,6 +66,28 @@ class WeeklyProductRecord:
             raise ValueError("generated_at must be timezone-aware UTC.")
         if self.generated_at.utcoffset() != timedelta(0):
             raise ValueError("generated_at must use UTC.")
+
+
+@dataclass(frozen=True)
+class WeeklyProductSelection:
+    """Explicit current-product selection for one weekly scope."""
+
+    season: str
+    week: int
+    product_id: str
+    selected_at: datetime
+
+    def __post_init__(self) -> None:
+        """Validate current-selection metadata."""
+        if not self.season.strip():
+            raise ValueError("season must not be empty.")
+        if self.week < 1:
+            raise ValueError("week must be at least 1.")
+        _validate_product_id(self.product_id)
+        if self.selected_at.tzinfo is None:
+            raise ValueError("selected_at must be timezone-aware UTC.")
+        if self.selected_at.utcoffset() != timedelta(0):
+            raise ValueError("selected_at must use UTC.")
 
 
 def weekly_product_root(repo: Path | None = None) -> Path:
@@ -133,15 +157,60 @@ def _write_index(index: dict[str, Any], *, repo: Path | None = None) -> None:
     temporary.replace(path)
 
 
-def _parse_generated_at(
-    value: object,
-    *,
-    context: str,
-) -> datetime:
+def _current_path(repo: Path | None = None) -> Path:
+    return weekly_product_root(repo) / _CURRENT_FILENAME
+
+
+def _selection_key(season: str, week: int) -> str:
+    """Return the canonical current-selection key for one weekly scope."""
+    if not season.strip():
+        raise ValueError("season must not be empty.")
+    if week < 1:
+        raise ValueError("week must be at least 1.")
+    return f"{season}_week_{week:02d}"
+
+
+def _empty_current() -> dict[str, object]:
+    return {
+        "schema_version": _CURRENT_SCHEMA_VERSION,
+        "selections": {},
+    }
+
+
+def _read_current(repo: Path | None = None) -> dict[str, Any]:
+    """Read and validate the explicit current-product manifest."""
+    path = _current_path(repo)
+    if not path.exists():
+        return _empty_current()
+
+    raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("Weekly product current manifest must contain a JSON object.")
+    schema_version = raw.get("schema_version")
+    if schema_version != _CURRENT_SCHEMA_VERSION:
+        raise ValueError(
+            "Unsupported weekly product current schema version: "
+            f"{schema_version!r}; expected {_CURRENT_SCHEMA_VERSION}."
+        )
+    selections = raw.get("selections")
+    if not isinstance(selections, dict):
+        raise ValueError("Weekly product current 'selections' must be an object.")
+    return raw
+
+
+def _write_current(current: dict[str, Any], *, repo: Path | None = None) -> None:
+    """Atomically write the explicit current-product manifest."""
+    path = _current_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.tmp")
+    temporary.write_text(json.dumps(current, indent=2, sort_keys=True))
+    temporary.replace(path)
+
+
+def _parse_generated_at(value: object, *, context: str) -> datetime:
     """Parse one timezone-aware UTC timestamp."""
     if not isinstance(value, str):
         raise ValueError(f"{context} generated_at must be an ISO datetime string.")
-
     timestamp = pd.Timestamp(value)
     if pd.isna(timestamp):
         raise ValueError(f"{context} generated_at must be a valid datetime.")
@@ -149,7 +218,6 @@ def _parse_generated_at(
         raise ValueError(f"{context} generated_at must be timezone-aware UTC.")
     if timestamp.utcoffset() != timedelta(0):
         raise ValueError(f"{context} generated_at must use UTC.")
-
     return timestamp.to_pydatetime()
 
 
@@ -278,13 +346,11 @@ def _load_indexed_artifact(
         raise ValueError(f"Weekly product artifact run_id mismatch for {record.product_id!r}.")
 
     generated = pd.to_datetime(stored["product_generated_at"], utc=True, errors="coerce")
-    # pyrefly: ignore [missing-attribute]
     if generated.isna().any():
         raise ValueError(
             f"Weekly product artifact generated_at is invalid for {record.product_id!r}."
         )
     expected_generated = pd.Timestamp(record.generated_at)
-    # pyrefly: ignore [missing-attribute]
     if not (generated == expected_generated).all():
         raise ValueError(
             f"Weekly product artifact generated_at mismatch for {record.product_id!r}."
@@ -401,3 +467,119 @@ def list_weekly_products(
     if week is not None:
         records = [record for record in records if record.week == week]
     return tuple(sorted(records, key=lambda record: record.product_id))
+
+
+def _selection_from_payload(
+    key: str,
+    payload: object,
+) -> WeeklyProductSelection:
+    """Parse one explicit current-product selection."""
+    if not isinstance(payload, dict):
+        raise ValueError(f"Weekly product selection {key!r} must be an object.")
+    required = {"season", "week", "product_id", "selected_at"}
+    missing = sorted(required - set(payload))
+    if missing:
+        raise ValueError(f"Weekly product selection {key!r} is missing: " + ", ".join(missing))
+    selected_at = _parse_generated_at(
+        payload["selected_at"],
+        context=f"Weekly product selection {key!r}",
+    )
+    selection = WeeklyProductSelection(
+        season=str(payload["season"]),
+        week=int(payload["week"]),
+        product_id=str(payload["product_id"]),
+        selected_at=selected_at,
+    )
+    if key != _selection_key(selection.season, selection.week):
+        raise ValueError(f"Weekly product selection key mismatch: {key!r}.")
+    return selection
+
+
+def select_current_weekly_product(
+    product_id: str,
+    *,
+    season: str,
+    week: int,
+    selected_at: datetime,
+    repo: Path | None = None,
+) -> WeeklyProductSelection:
+    """Explicitly select one indexed immutable product for a weekly scope."""
+    normalized_id = _validate_product_id(product_id)
+    key = _selection_key(season, week)
+    if selected_at.tzinfo is None:
+        raise ValueError("selected_at must be timezone-aware UTC.")
+    if selected_at.utcoffset() != timedelta(0):
+        raise ValueError("selected_at must use UTC.")
+
+    records = list_weekly_products(repo=repo)
+    record = next(
+        (candidate for candidate in records if candidate.product_id == normalized_id),
+        None,
+    )
+    if record is None:
+        raise FileNotFoundError(f"Weekly product is not indexed: product_id={normalized_id!r}.")
+    if record.season != season or record.week != week:
+        raise ValueError(
+            "Weekly product scope does not match current selection: "
+            f"product={record.season} week {record.week}, "
+            f"selection={season} week {week}."
+        )
+
+    load_weekly_product(normalized_id, repo=repo)
+    current = _read_current(repo)
+    selections = current["selections"]
+    if not isinstance(selections, dict):
+        raise ValueError("Weekly product current 'selections' must be an object.")
+    selections[key] = {
+        "season": season,
+        "week": week,
+        "product_id": normalized_id,
+        "selected_at": selected_at.isoformat(),
+    }
+    _write_current(current, repo=repo)
+    return WeeklyProductSelection(
+        season=season,
+        week=week,
+        product_id=normalized_id,
+        selected_at=selected_at,
+    )
+
+
+def get_current_weekly_product_selection(
+    *,
+    season: str,
+    week: int,
+    repo: Path | None = None,
+) -> WeeklyProductSelection:
+    """Return the explicit current-product selection for one weekly scope."""
+    key = _selection_key(season, week)
+    current = _read_current(repo)
+    selections = current["selections"]
+    if not isinstance(selections, dict):
+        raise ValueError("Weekly product current 'selections' must be an object.")
+    payload = selections.get(key)
+    if payload is None:
+        raise FileNotFoundError(
+            f"No current weekly product selected for season={season!r}, week={week}."
+        )
+    return _selection_from_payload(key, payload)
+
+
+def load_current_weekly_product(
+    *,
+    season: str,
+    week: int,
+    repo: Path | None = None,
+) -> DataFrame:
+    """Load only the explicitly selected current product for one weekly scope."""
+    selection = get_current_weekly_product_selection(
+        season=season,
+        week=week,
+        repo=repo,
+    )
+    product = load_weekly_product(selection.product_id, repo=repo)
+    if not (product["season"].astype(str) == season).all():
+        raise ValueError("Selected current weekly product season mismatch.")
+    if not (product["week"].astype(int) == week).all():
+        raise ValueError("Selected current weekly product week mismatch.")
+    return product

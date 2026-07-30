@@ -15,8 +15,11 @@ import pytest
 from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
 from gridiron_edge.models.game_prediction.weekly_product_store import (
     WEEKLY_PRODUCT_SCHEMA_VERSION,
+    get_current_weekly_product_selection,
     list_weekly_products,
+    load_current_weekly_product,
     load_weekly_product,
+    select_current_weekly_product,
     weekly_product_artifact_path,
     weekly_product_root,
     write_weekly_product,
@@ -263,3 +266,169 @@ def test_load_does_not_import_prediction_or_model_computation(tmp_path: Path) ->
     )
     assert all(name not in source for name in forbidden)
     assert not load_weekly_product(identity.product_id, repo=tmp_path).empty
+
+
+def _current_path(repo: Path) -> Path:
+    return weekly_product_root(repo) / "current.json"
+
+
+def test_current_product_selection_is_explicit(tmp_path: Path) -> None:
+    first = _identity("product-1", run_id="run-1")
+    second = _identity(
+        "product-2",
+        run_id="run-2",
+        generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
+    )
+    write_weekly_product(_product(), identity=first, repo=tmp_path)
+    write_weekly_product(_product(), identity=second, repo=tmp_path)
+
+    selected_at = datetime(2026, 10, 20, 14, tzinfo=UTC)
+    selection = select_current_weekly_product(
+        first.product_id,
+        season=first.season,
+        week=first.week,
+        selected_at=selected_at,
+        repo=tmp_path,
+    )
+
+    assert selection.product_id == first.product_id
+    assert selection.selected_at == selected_at
+    current = load_current_weekly_product(
+        season=first.season,
+        week=first.week,
+        repo=tmp_path,
+    )
+    assert set(current["product_id"]) == {first.product_id}
+
+
+def test_writing_newer_product_does_not_change_current(tmp_path: Path) -> None:
+    first = _identity("product-1", run_id="run-1")
+    write_weekly_product(_product(), identity=first, repo=tmp_path)
+    select_current_weekly_product(
+        first.product_id,
+        season=first.season,
+        week=first.week,
+        selected_at=datetime(2026, 10, 20, 12, 30, tzinfo=UTC),
+        repo=tmp_path,
+    )
+
+    second = _identity(
+        "product-2",
+        run_id="run-2",
+        generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
+    )
+    write_weekly_product(_product(), identity=second, repo=tmp_path)
+
+    current = load_current_weekly_product(
+        season=first.season,
+        week=first.week,
+        repo=tmp_path,
+    )
+    assert set(current["product_id"]) == {first.product_id}
+
+
+def test_current_selection_can_be_changed_explicitly(tmp_path: Path) -> None:
+    first = _identity("product-1", run_id="run-1")
+    second = _identity(
+        "product-2",
+        run_id="run-2",
+        generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
+    )
+    write_weekly_product(_product(), identity=first, repo=tmp_path)
+    write_weekly_product(_product(), identity=second, repo=tmp_path)
+    select_current_weekly_product(
+        first.product_id,
+        season=first.season,
+        week=first.week,
+        selected_at=datetime(2026, 10, 20, 14, tzinfo=UTC),
+        repo=tmp_path,
+    )
+    select_current_weekly_product(
+        second.product_id,
+        season=second.season,
+        week=second.week,
+        selected_at=datetime(2026, 10, 20, 15, tzinfo=UTC),
+        repo=tmp_path,
+    )
+
+    selection = get_current_weekly_product_selection(
+        season=second.season,
+        week=second.week,
+        repo=tmp_path,
+    )
+    assert selection.product_id == second.product_id
+    current = load_current_weekly_product(
+        season=second.season,
+        week=second.week,
+        repo=tmp_path,
+    )
+    assert set(current["product_id"]) == {second.product_id}
+
+
+def test_missing_current_selection_fails_clearly(tmp_path: Path) -> None:
+    write_weekly_product(_product(), identity=_identity(), repo=tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="No current weekly product selected"):
+        load_current_weekly_product(
+            season="2026-2027",
+            week=8,
+            repo=tmp_path,
+        )
+
+
+def test_selection_requires_indexed_product(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="not indexed"):
+        select_current_weekly_product(
+            "missing-product",
+            season="2026-2027",
+            week=8,
+            selected_at=datetime(2026, 10, 20, 12, tzinfo=UTC),
+            repo=tmp_path,
+        )
+
+
+def test_selection_scope_must_match_product(tmp_path: Path) -> None:
+    identity = _identity()
+    write_weekly_product(_product(), identity=identity, repo=tmp_path)
+
+    with pytest.raises(ValueError, match="scope does not match"):
+        select_current_weekly_product(
+            identity.product_id,
+            season=identity.season,
+            week=9,
+            selected_at=datetime(2026, 10, 20, 12, tzinfo=UTC),
+            repo=tmp_path,
+        )
+
+
+def test_current_schema_mismatch_fails_clearly(tmp_path: Path) -> None:
+    root = weekly_product_root(tmp_path)
+    root.mkdir(parents=True)
+    _current_path(tmp_path).write_text(json.dumps({"schema_version": 999, "selections": {}}))
+
+    with pytest.raises(ValueError, match="Unsupported weekly product current schema"):
+        load_current_weekly_product(
+            season="2026-2027",
+            week=8,
+            repo=tmp_path,
+        )
+
+
+def test_current_selection_target_must_remain_loadable(tmp_path: Path) -> None:
+    identity = _identity()
+    path = write_weekly_product(_product(), identity=identity, repo=tmp_path)
+    select_current_weekly_product(
+        identity.product_id,
+        season=identity.season,
+        week=identity.week,
+        selected_at=datetime(2026, 10, 20, 12, tzinfo=UTC),
+        repo=tmp_path,
+    )
+    path.unlink()
+
+    with pytest.raises(FileNotFoundError, match="artifact is missing"):
+        load_current_weekly_product(
+            season=identity.season,
+            week=identity.week,
+            repo=tmp_path,
+        )
