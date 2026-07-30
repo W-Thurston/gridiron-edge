@@ -633,36 +633,91 @@ affects the result.
 
 ---
 
-### Unit 8: Consolidate Elo Weekly Prediction Logic
+### Unit 8: Consolidate Elo Weekly Prediction Logic [Complete]
+
+#### Completed
+
+Added one canonical, row-preserving schedule-to-Elo prediction function and
+routed all weekly Elo prediction callers through it.
+
+The shared domain function scopes the focused upcoming schedule to the
+requested season and week, joins away and home Elo state by canonical team,
+season, and week identity, and calculates numeric away and home win
+probabilities for games with complete ratings.
+
+Schedule truth remains authoritative. Every scoped scheduled game remains in
+the result even when one or both Elo ratings are unavailable. Missing away,
+home, or both ratings remain null and are represented through explicit
+machine-readable prediction statuses. Missing Elo is never replaced silently
+with an initial or fallback rating.
+
+Ready predictions expose numeric away and home probabilities whose complements
+sum to one within floating-point tolerance. Human-readable percentage columns
+are added by one shared formatting adapter without recalculating or modifying
+the numeric probabilities.
+
+Duplicate Elo identities for the same team, season, and week are rejected
+before joining. Schedule order, game identity, team identity, kickoff fields,
+and neutral-site or other schedule context pass through unchanged. Input
+schedule and Elo frames are not mutated.
+
+The file-based Elo prediction entry point now only loads registered schedule
+and Elo datasets before calling the domain function. CSV output adds formatted
+percentage fields and writes the resulting prediction frame.
+
+Visualization delegates Elo prediction assembly to the domain entry point and
+contains no independent Elo merge, missing-rating filter, or probability
+formula. Its private display-table builder remains responsible only for logos,
+short display names, time labels, ordering, and separator rows.
+
+The `ratings elo predict`, `output predictions`, and `weekly-predict` workflows
+all route through the same schedule-to-Elo implementation. Canonical live
+forecast conversion preserves scheduled rows and nullable Elo and probability
+values without expanding the immutable forecast-event schema.
 
 #### Goal
 
-Replace duplicate schedule-to-Elo joins with one domain function.
-
-#### Production files
-
-- `src/gridiron_edge/ratings/elo/predict.py`
-- `src/gridiron_edge/viz/predictions.py`
-- callers in `src/gridiron_edge/cli/`
-
-#### Test files
-
-- update Elo prediction unit tests
-- update visualization prediction-builder tests
-- update CLI tests for `ratings elo predict` and `output predictions`
+Replace duplicate schedule-to-Elo joins and probability calculations with one
+domain implementation shared by ratings, visualization, output, and composite
+weekly prediction workflows.
 
 #### Tests
 
-- one function produces numeric away/home probabilities;
-- schedule rows remain present when Elo is missing;
-- missing Elo is represented through status rather than row deletion;
-- neutral-site schedule identity is preserved;
-- all callers receive the same schema;
-- probability complements sum to one within tolerance.
+- one domain function produces away and home Elo predictions;
+- ready probabilities are numeric;
+- away and home probabilities sum to one within tolerance;
+- every requested schedule row remains present;
+- missing away Elo receives an explicit status;
+- missing home Elo receives an explicit status;
+- missing both Elo ratings receives an explicit status;
+- missing ratings and probabilities remain null;
+- missing Elo is not replaced with a default rating;
+- neutral-site and schedule identity fields are preserved;
+- requested season and week scoping remains exact;
+- schedule input order is preserved;
+- duplicate Elo team, season, and week identities are rejected;
+- missing required schedule and Elo columns are rejected;
+- schedule and Elo input frames are not mutated;
+- registered schedule and Elo loaders feed the domain entry point;
+- percentage formatting preserves numeric probabilities;
+- percentage formatting preserves missing values;
+- percentage formatting does not mutate the domain result;
+- visualization delegates to the domain prediction entry point;
+- visualization contains no independent Elo merge or probability calculation;
+- visualization preserves missing-Elo rows and status;
+- `ratings elo predict` delegates to the shared CSV output path;
+- `output predictions` delegates to the shared visualization adapter;
+- `weekly-predict` delegates to the shared visualization adapter;
+- canonical live forecast conversion preserves rows with missing Elo values;
+- CLI-required arguments remain enforced;
+- existing output and weekly prediction behavior remains compatible.
 
 #### Acceptance
 
-There is one schedule-to-Elo prediction implementation.
+There is one schedule-to-Elo prediction implementation. All weekly Elo callers
+receive the same row-preserving schema, numeric probabilities, and explicit
+missing-rating behavior. Visualization and CLI modules perform no independent
+Elo joins, probability calculations, or missing-row deletion.
 
 ---
 

@@ -604,3 +604,69 @@ class TestModelTypeResolution:
 
         assert result.exit_code != 0
         assert "requires a champion manifest" in result.output
+
+
+def test_canonicalization_preserves_missing_elo_values() -> None:
+    predictions = pd.DataFrame(
+        {
+            "GAME_ID": [
+                "2026_01_KC_LAC",
+                "2026_01_BAL_BUF",
+            ],
+            "GAME_DATE": [
+                "2026-09-05",
+                "2026-09-06",
+            ],
+            "AWAY_TEAM": [
+                "Kansas City Chiefs",
+                "Baltimore Ravens",
+            ],
+            "HOME_TEAM": [
+                "Los Angeles Chargers",
+                "Buffalo Bills",
+            ],
+            "AWAY_TEAM_ELO": [
+                1520.0,
+                1510.0,
+            ],
+            "HOME_TEAM_ELO": [
+                1480.0,
+                pd.NA,
+            ],
+            "AWAY_WIN_PROB": pd.Series(
+                [
+                    0.55,
+                    pd.NA,
+                ],
+                dtype="Float64",
+            ),
+            "HOME_WIN_PROB": pd.Series(
+                [
+                    0.45,
+                    pd.NA,
+                ],
+                dtype="Float64",
+            ),
+            "PREDICTION_STATUS": [
+                "ready",
+                "missing_home_elo",
+            ],
+        }
+    )
+
+    canonical = _canonicalize_live_elo_predictions(
+        predictions,
+        season="2026-2027",
+        week=1,
+    )
+
+    assert len(canonical) == len(predictions)
+
+    missing = canonical.loc[canonical["game_id"] == "2026_01_BAL_BUF"].iloc[0]
+
+    assert missing["season"] == "2026-2027"
+    assert missing["week"] == 1
+    assert missing["away_elo"] == 1510.0
+    assert pd.isna(missing["home_elo"])
+    assert pd.isna(missing["away_win_prob"])
+    assert pd.isna(missing["home_win_prob"])

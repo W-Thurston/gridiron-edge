@@ -39,7 +39,7 @@ def elo_predict(
     year: str = typer.Option(..., help="NFL season label like '2025-2026'."),
     week: int = typer.Option(..., help="Week number to predict."),
 ) -> None:
-    """Write Elo win probabilities for upcoming games to Excel."""
+    """Write Elo win probabilities for upcoming games to CSV."""
     from gridiron_edge.core.console import console, step
     from gridiron_edge.ratings.elo.predict import predict_elo_only
 
