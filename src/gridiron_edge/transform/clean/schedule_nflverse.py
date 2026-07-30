@@ -18,15 +18,21 @@ Canonical schedule schema (NFL_upcoming_schedule_cleaned.csv):
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import logging
 from logging import Logger
 from pathlib import Path
+from typing import Final
 
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
-from gridiron_edge.core.settings import get_settings
+from gridiron_edge.core.settings import Settings, get_settings
 from gridiron_edge.datasets.registry import dataset_path
+from gridiron_edge.datasets.writers import (
+    write_csv,
+    write_parquet,
+)
 from gridiron_edge.transform.clean._nflverse_common import (
     GAME_TYPE_TO_WEEK,
     gametime_to_hhmmss,
@@ -35,6 +41,60 @@ from gridiron_edge.transform.clean._nflverse_common import (
 )
 
 logger: Logger = logging.getLogger(__name__)
+
+
+RICH_UPCOMING_COLUMNS: Final[tuple[str, ...]] = (
+    "season",
+    "week",
+    "game_id",
+    "game_day_of_week",
+    "game_date",
+    "game_time",
+    "away_team",
+    "home_team",
+    "neutral_site",
+    "location",
+    "stadium",
+    "roof",
+    "surface",
+    "divisional",
+    "away_rest",
+    "home_rest",
+    "away_moneyline",
+    "home_moneyline",
+    "spread_line",
+    "away_spread_odds",
+    "home_spread_odds",
+    "total_line",
+    "over_odds",
+    "under_odds",
+    "source",
+    "ingested_at",
+)
+
+ELO_UPCOMING_COLUMNS: Final[tuple[str, ...]] = (
+    "WEEK_NUM",
+    "GAME_DAY_OF_WEEK",
+    "GAME_DATE",
+    "AWAY_TEAM",
+    "HOME_TEAM",
+    "GAMETIME",
+    "YEAR",
+    "GAME_ID",
+)
+
+_RICH_NUMERIC_COLUMNS: Final[tuple[str, ...]] = (
+    "away_rest",
+    "home_rest",
+    "away_moneyline",
+    "home_moneyline",
+    "spread_line",
+    "away_spread_odds",
+    "home_spread_odds",
+    "total_line",
+    "over_odds",
+    "under_odds",
+)
 
 
 def _check_stadium_coverage(
@@ -119,9 +179,351 @@ def _check_stadium_coverage(
     )
 
 
+def _empty_rich_upcoming_schedule() -> DataFrame:
+    """Return an empty rich schedule with stable column types."""
+    return DataFrame(
+        {
+            "season": Series(dtype="string"),
+            "week": Series(dtype="int64"),
+            "game_id": Series(dtype="string"),
+            "game_day_of_week": Series(dtype="string"),
+            "game_date": Series(dtype="string"),
+            "game_time": Series(dtype="string"),
+            "away_team": Series(dtype="string"),
+            "home_team": Series(dtype="string"),
+            "neutral_site": Series(dtype="boolean"),
+            "location": Series(dtype="string"),
+            "stadium": Series(dtype="string"),
+            "roof": Series(dtype="string"),
+            "surface": Series(dtype="string"),
+            "divisional": Series(dtype="Int64"),
+            "away_rest": Series(dtype="Float64"),
+            "home_rest": Series(dtype="Float64"),
+            "away_moneyline": Series(dtype="Float64"),
+            "home_moneyline": Series(dtype="Float64"),
+            "spread_line": Series(dtype="Float64"),
+            "away_spread_odds": Series(dtype="Float64"),
+            "home_spread_odds": Series(dtype="Float64"),
+            "total_line": Series(dtype="Float64"),
+            "over_odds": Series(dtype="Float64"),
+            "under_odds": Series(dtype="Float64"),
+            "source": Series(dtype="string"),
+            "ingested_at": Series(dtype="datetime64[ns, UTC]"),
+        }
+    ).loc[:, list(RICH_UPCOMING_COLUMNS)]
+
+
+def _validate_ingested_at(
+    value: datetime,
+) -> None:
+    """Require a timezone-aware UTC ingestion timestamp."""
+    if value.tzinfo is None:
+        raise ValueError("ingested_at must be timezone-aware UTC.")
+
+    if value.utcoffset() != timedelta(0):
+        raise ValueError("ingested_at must use UTC.")
+
+
+def _optional_string(
+    frame: DataFrame,
+    column: str,
+) -> Series:
+    """Return one nullable string source column."""
+    if column not in frame.columns:
+        return Series(
+            pd.NA,
+            index=frame.index,
+            dtype="string",
+        )
+
+    return frame[column].astype("string")
+
+
+def _optional_numeric(
+    frame: DataFrame,
+    column: str,
+) -> Series:
+    """Return one nullable floating-point source column."""
+    if column not in frame.columns:
+        return Series(
+            pd.NA,
+            index=frame.index,
+            dtype="Float64",
+        )
+
+    # pyrefly: ignore [missing-attribute]
+    return pd.to_numeric(
+        frame[column],
+        errors="coerce",
+    ).astype("Float64")
+
+
+def _optional_integer(
+    frame: DataFrame,
+    column: str,
+) -> Series:
+    """Return one nullable integer source column."""
+    if column not in frame.columns:
+        return Series(
+            pd.NA,
+            index=frame.index,
+            dtype="Int64",
+        )
+
+    # pyrefly: ignore [missing-attribute]
+    return pd.to_numeric(
+        frame[column],
+        errors="coerce",
+    ).astype("Int64")
+
+
+def _resolve_week(
+    row: Series,
+) -> int:
+    """Map postseason game types or return the source week."""
+    game_type = str(row["game_type"])
+    if game_type in GAME_TYPE_TO_WEEK:
+        return GAME_TYPE_TO_WEEK[game_type]
+
+    return int(row["week"])
+
+
+def _map_team_names(
+    values: Series,
+) -> Series:
+    """Map nflverse short codes to canonical long names."""
+    source: Series[str] = values.astype("string")
+    mapped: Series[str] = source.map(map_short_to_long)
+
+    return mapped.where(
+        mapped.notna(),
+        source,
+    ).astype("string")
+
+
+def _neutral_site(
+    frame: DataFrame,
+) -> Series:
+    """Derive nullable neutral-site state from source location."""
+    if "location" not in frame.columns:
+        return Series(
+            pd.NA,
+            index=frame.index,
+            dtype="boolean",
+        )
+
+    location: Series[str] = frame["location"].astype("string")
+    result: Series[bool] = location.str.casefold().eq("neutral")
+    return result.astype("boolean")
+
+
+def build_rich_upcoming_schedule(
+    raw: DataFrame,
+    *,
+    ingested_at: datetime | None = None,
+) -> DataFrame:
+    """Build schedule-complete rich upcoming-game rows.
+
+    Every unplayed source row produces one rich output row. Optional venue,
+    context, rest, and market fields remain nullable and never determine
+    whether a scheduled game survives the transform.
+
+    Args:
+        raw: Raw nflverse upcoming schedule rows.
+        ingested_at: UTC timestamp for this local ingestion invocation.
+
+    Returns:
+        Rich, typed upcoming schedule rows in canonical column order.
+    """
+    timestamp: datetime = ingested_at or datetime.now(UTC)
+    _validate_ingested_at(timestamp)
+
+    required: set[str] = {
+        "season",
+        "week",
+        "game_type",
+        "game_id",
+        "weekday",
+        "gameday",
+        "gametime",
+        "away_team",
+        "home_team",
+    }
+    missing: list[str] = sorted(required - set(raw.columns))
+    if missing:
+        raise ValueError("Raw upcoming schedule is missing required columns: " + ", ".join(missing))
+
+    frame: DataFrame = raw.copy()
+
+    if "result" in frame.columns:
+        frame = frame.loc[
+            frame["result"].isna(),
+            :,
+        ].copy()
+
+    if frame.empty:
+        return _empty_rich_upcoming_schedule()
+
+    week_values = frame.apply(
+        _resolve_week,
+        axis=1,
+    ).astype(int)
+
+    away_team: Series = _map_team_names(frame["away_team"])
+    home_team: Series = _map_team_names(frame["home_team"])
+
+    rich = DataFrame(
+        {
+            "season": (frame["season"].astype(int).map(season_label).astype("string")),
+            "week": week_values,
+            "game_id": frame["game_id"].astype("string"),
+            "game_day_of_week": _optional_string(
+                frame,
+                "weekday",
+            ),
+            "game_date": _optional_string(
+                frame,
+                "gameday",
+            ),
+            "game_time": frame["gametime"].apply(gametime_to_hhmmss).astype("string"),
+            "away_team": away_team,
+            "home_team": home_team,
+            "neutral_site": _neutral_site(frame),
+            "location": _optional_string(
+                frame,
+                "location",
+            ),
+            "stadium": _optional_string(
+                frame,
+                "stadium",
+            ),
+            "roof": _optional_string(
+                frame,
+                "roof",
+            ),
+            "surface": _optional_string(
+                frame,
+                "surface",
+            ),
+            "divisional": _optional_integer(
+                frame,
+                "div_game",
+            ),
+            "away_rest": _optional_numeric(
+                frame,
+                "away_rest",
+            ),
+            "home_rest": _optional_numeric(
+                frame,
+                "home_rest",
+            ),
+            "away_moneyline": _optional_numeric(
+                frame,
+                "away_moneyline",
+            ),
+            "home_moneyline": _optional_numeric(
+                frame,
+                "home_moneyline",
+            ),
+            "spread_line": _optional_numeric(
+                frame,
+                "spread_line",
+            ),
+            "away_spread_odds": _optional_numeric(
+                frame,
+                "away_spread_odds",
+            ),
+            "home_spread_odds": _optional_numeric(
+                frame,
+                "home_spread_odds",
+            ),
+            "total_line": _optional_numeric(
+                frame,
+                "total_line",
+            ),
+            "over_odds": _optional_numeric(
+                frame,
+                "over_odds",
+            ),
+            "under_odds": _optional_numeric(
+                frame,
+                "under_odds",
+            ),
+            "source": Series(
+                "nflverse",
+                index=frame.index,
+                dtype="string",
+            ),
+            "ingested_at": pd.to_datetime(
+                Series(
+                    timestamp,
+                    index=frame.index,
+                ),
+                utc=True,
+            ),
+        }
+    )
+
+    return rich.loc[
+        :,
+        list(RICH_UPCOMING_COLUMNS),
+    ].sort_values(
+        [
+            "week",
+            "game_date",
+            "game_time",
+            "game_id",
+        ],
+        kind="stable",
+        ignore_index=True,
+    )
+
+
+def build_elo_upcoming_schedule(
+    rich: DataFrame,
+) -> DataFrame:
+    """Project rich upcoming rows onto the focused Elo schedule schema."""
+    missing: list[str] = sorted(
+        {
+            "season",
+            "week",
+            "game_id",
+            "game_day_of_week",
+            "game_date",
+            "game_time",
+            "away_team",
+            "home_team",
+        }
+        - set(rich.columns)
+    )
+    if missing:
+        raise ValueError(
+            "Rich upcoming schedule is missing required columns: " + ", ".join(missing)
+        )
+
+    focused = DataFrame(
+        {
+            "WEEK_NUM": rich["week"].astype(int),
+            "GAME_DAY_OF_WEEK": (rich["game_day_of_week"].fillna("").astype(str)),
+            "GAME_DATE": (rich["game_date"].fillna("").astype(str)),
+            "AWAY_TEAM": rich["away_team"].astype(str),
+            "HOME_TEAM": rich["home_team"].astype(str),
+            "GAMETIME": (rich["game_time"].fillna("").astype(str)),
+            "YEAR": rich["season"].astype(str),
+            "GAME_ID": rich["game_id"].astype(str),
+        }
+    )
+
+    return focused.loc[
+        :,
+        list(ELO_UPCOMING_COLUMNS),
+    ].reset_index(drop=True)
+
+
 def clean_nflverse_upcoming(
     *,
     repo: Path | None = None,
+    ingested_at: datetime | None = None,
 ) -> Path:
     """Transform nflverse raw upcoming schedule into the canonical schedule CSV.
 
@@ -136,11 +538,13 @@ def clean_nflverse_upcoming(
     Args:
         repo: Absolute path to the repository root. Defaults to the value
             from ``get_settings()``.
+        ingested_at: Optional timezone-aware UTC timestamp attached to all
+            rich rows. Defaults to the current UTC time.
 
     Returns:
         Absolute path to the written canonical upcoming schedule CSV.
     """
-    settings = get_settings()
+    settings: Settings = get_settings()
     resolved_repo: Path = repo or settings.repo_root
 
     raw_path: Path = dataset_path(resolved_repo, "schedule_upcoming_raw_nflverse")
@@ -152,91 +556,65 @@ def clean_nflverse_upcoming(
         raise FileNotFoundError(msg)
 
     logger.info("Reading raw nflverse upcoming schedule from %s", raw_path)
+
     df: DataFrame = pd.read_parquet(raw_path)
+    # The raw artifact is expected to be upcoming-only. Retain the
+    # defensive filter for callers that provide a broader schedule.
+    upcoming = df.loc[
+        df["result"].isna(),
+        :,
+    ].copy()
 
-    # Confirm all rows are unplayed
-    df = df.loc[df["result"].isna(), :].copy()
-
-    if df.empty:
-        logger.info("No upcoming games found in %s - season may be complete.", raw_path)
-        out_path: Path = dataset_path(resolved_repo, "schedule_upcoming")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write empty CSV with correct column headers so downstream readers
-        # don't fail on a missing file.
-        empty = pd.DataFrame(
-            columns=[
-                "WEEK_NUM",
-                "GAME_DAY_OF_WEEK",
-                "GAME_DATE",
-                "AWAY_TEAM",
-                "HOME_TEAM",
-                "GAMETIME",
-                "YEAR",
-                "GAME_ID",
-            ]
-        )
-        empty.to_csv(out_path, index=False)
-        return out_path
-
-    logger.info("Processing %d upcoming games", len(df))
-
-    # ── Stadium coverage check ────────────────────────────────────────────
-    # Run before the transform so we're working with raw nflverse stadium
-    # names, which is exactly what gets written to the games CSV and used
-    # as the join key in weather ingest.
-    stadiums_path: Path = dataset_path(resolved_repo, "stadiums")
-    if stadiums_path.exists():
-        stadiums_df: DataFrame = pd.read_csv(stadiums_path)
-        # Derive season label from the first row's season value for logging
-        season_int: int = int(df["season"].iloc[0]) if "season" in df.columns else 0
-        season_lbl: str = season_label(season_int) if season_int else "unknown"
-        _check_stadium_coverage(df, stadiums_df, season_lbl)
-    else:
-        logger.warning(
-            "Stadium reference file not found at %s - skipping coverage check.",
-            stadiums_path,
-        )
-
-    # ── Transform ─────────────────────────────────────────────────────────
-    def _resolve_week(row: pd.Series) -> int:
-        gt = str(row["game_type"])
-        if gt in GAME_TYPE_TO_WEEK:
-            return GAME_TYPE_TO_WEEK[gt]
-        return int(row["week"])
-
-    df["WEEK_NUM"] = df.apply(_resolve_week, axis=1)
-
-    # --- Map short codes to long names ---
-    df["AWAY_TEAM"] = df["away_team"].map(map_short_to_long)
-    df["HOME_TEAM"] = df["home_team"].map(map_short_to_long)
-
-    # --- Other fields ---
-    df["YEAR"] = df["season"].astype(int).map(season_label)
-    df["GAMETIME"] = df["gametime"].apply(gametime_to_hhmmss)
-    df["GAME_ID"] = df["game_id"].astype(str)
-
-    out = pd.DataFrame(
-        {
-            "WEEK_NUM": df["WEEK_NUM"].astype(int),
-            "GAME_DAY_OF_WEEK": df["weekday"].fillna(""),
-            "GAME_DATE": df["gameday"].fillna(""),
-            "AWAY_TEAM": df["AWAY_TEAM"],
-            "HOME_TEAM": df["HOME_TEAM"],
-            "GAMETIME": df["GAMETIME"],
-            "YEAR": df["YEAR"],
-            "GAME_ID": df["GAME_ID"],
-        }
+    logger.info(
+        "Processing %d upcoming games",
+        len(upcoming),
     )
 
-    out: DataFrame = out.sort_values(
-        ["WEEK_NUM", "GAME_DATE", "GAMETIME"],
-        ascending=True,
-        ignore_index=True,
+    if not upcoming.empty:
+        stadiums_path: Path = dataset_path(
+            resolved_repo,
+            "stadiums",
+        )
+        if stadiums_path.exists():
+            stadiums_df: DataFrame = pd.read_csv(stadiums_path)
+            season_int = int(upcoming["season"].iloc[0])
+            _check_stadium_coverage(
+                upcoming,
+                stadiums_df,
+                season_label(season_int),
+            )
+        else:
+            logger.warning(
+                "Stadium reference file not found at %s - skipping coverage check.",
+                stadiums_path,
+            )
+
+    rich: DataFrame = build_rich_upcoming_schedule(
+        upcoming,
+        ingested_at=ingested_at,
+    )
+    focused: DataFrame = build_elo_upcoming_schedule(rich)
+
+    rich_path: Path = write_parquet(
+        resolved_repo,
+        "schedule_upcoming_rich",
+        rich,
+    )
+    focused_path: Path = write_csv(
+        resolved_repo,
+        "schedule_upcoming",
+        focused,
     )
 
-    out_path = dataset_path(resolved_repo, "schedule_upcoming")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(out_path, index=False)
+    logger.info(
+        "Wrote %d rich upcoming game rows to %s",
+        len(rich),
+        rich_path,
+    )
+    logger.info(
+        "Wrote %d focused Elo schedule rows to %s",
+        len(focused),
+        focused_path,
+    )
 
-    logger.info("Wrote %d upcoming game rows to %s", len(out), out_path)
-    return out_path
+    return focused_path
