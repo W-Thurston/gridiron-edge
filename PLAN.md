@@ -434,37 +434,70 @@ filesystem metadata or implicit recency.
 
 ---
 
-### Unit 5: Add Read-Only `verify-week` CLI
+### Unit 5: Add Read-Only `verify-week` CLI [Complete]
+
+#### Completed
+
+Added a top-level `verify-week` command for read-only weekly operational
+diagnostics, separate from the existing code-health `verify` workflow.
+
+The command requires an NFL season and week, validates season continuity and
+the supported week range, and optionally accepts an exact forecast run ID.
+When a run ID is supplied, readiness uses only that invocation. Without one,
+the current win-probability champion identifies the requested model type and
+eligible forecast events are resolved without using recency, write order, or
+event identity as an implicit tie-breaker.
+
+The command reads the existing upcoming schedule, immutable forecast events,
+current market snapshot, and persisted calibration metadata. It may calculate
+an in-memory edge report from those existing inputs, but it does not fetch,
+refresh, generate, enrich, render, or persist artifacts.
+
+Output includes every schedule, prediction, model-output, provenance, market,
+join, eligible-market, and positive-edge count. Prediction and market artifact
+timestamps and market source are displayed when available. All readiness
+blockers are printed using their machine-readable values.
+
+Complete readiness exits successfully. Blocked readiness exits nonzero while
+retaining the full diagnostic report. A valid result with zero positive edges
+exits successfully.
+
+The new command is registered independently from `verify`, and both appear in
+top-level CLI help.
 
 #### Goal
 
-Expose weekly diagnostics without fetching or modifying data.
-
-#### Production files
-
-- new `src/gridiron_edge/cli/verify_week.py`
-- `src/gridiron_edge/cli/main.py`
-
-#### Test files
-
-- create:
-  `tests/unit/cli/test_verify_week.py`
-- update CLI registration or help tests
+Expose weekly operational readiness independently from code-health verification
+without fetching, modifying, or silently completing data.
 
 #### Tests
 
-- command is registered;
-- season and week are required and validated;
+- `verify-week` is registered on the top-level CLI;
+- `verify` and `verify-week` both appear in top-level help;
+- season and week are required;
+- malformed and nonconsecutive season labels are rejected;
+- weeks outside the supported range are rejected;
+- an exact run ID is forwarded to run-scoped selection;
 - complete readiness exits successfully;
-- missing required prediction product exits nonzero;
-- valid zero-positive-edge result exits successfully;
-- command performs no writes;
-- console output includes all diagnostic counts and blockers.
+- missing forecast selection exits nonzero;
+- ambiguous forecast selection remains explicit;
+- all diagnostic counts are rendered;
+- prediction and market provenance are rendered;
+- unavailable provenance is displayed explicitly;
+- every blocker is rendered;
+- valid zero-positive-edge readiness exits successfully;
+- existing schedule, forecast, market, and calibration artifacts are read
+  without mutation;
+- no forecast, odds, archive, prediction-generation, enrichment, PNG, or HTML
+  writer is imported by the command;
+- read-only readiness assembly performs no writes.
 
 #### Acceptance
 
-Weekly operational readiness can be checked independently from code-health
-verification.
+Weekly operational readiness can be checked with `gridiron verify-week`
+independently from code-health verification. The command reports complete
+quantitative diagnostics and exits according to readiness without fetching,
+generating, enriching, rendering, or modifying project data.
 
 ---
 

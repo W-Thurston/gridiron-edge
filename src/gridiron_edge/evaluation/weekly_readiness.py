@@ -32,6 +32,8 @@ class WeeklyReadinessBlocker(StrEnum):
     MISSING_PREDICTION_PROVENANCE = "missing_prediction_provenance"
     MISSING_MARKET_PROVENANCE = "missing_market_provenance"
     AMBIGUOUS_MARKET_PROVENANCE = "ambiguous_market_provenance"
+    MISSING_FORECAST_SELECTION = "missing_forecast_selection"
+    AMBIGUOUS_FORECAST_SELECTION = "ambiguous_forecast_selection"
 
 
 _GAME_COVERAGE_FIELDS: Final[tuple[str, ...]] = (

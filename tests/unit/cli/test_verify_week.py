@@ -1,0 +1,565 @@
+# tests/unit/cli/test_verify_week.py
+
+"""Tests for read-only weekly readiness assembly."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+
+# pyrefly: ignore [missing-import]
+import typer
+from typer.testing import CliRunner
+
+from gridiron_edge.cli.verify_week import (
+    _render_weekly_readiness,
+    load_weekly_readiness,
+    validate_season_label,
+    verify_week_cmd,
+)
+from gridiron_edge.evaluation.forecast_contracts import (
+    ForecastRole,
+)
+from gridiron_edge.evaluation.weekly_readiness import (
+    WeeklyReadiness,
+    WeeklyReadinessBlocker,
+)
+
+runner = CliRunner()
+
+
+@pytest.mark.parametrize(
+    "season",
+    [
+        "2026",
+        "2026-27",
+        "not-a-season",
+        "2026-2028",
+        "",
+    ],
+)
+def test_rejects_invalid_season_labels(
+    season: str,
+) -> None:
+    with pytest.raises(ValueError):
+        validate_season_label(season)
+
+
+def test_accepts_valid_season_label() -> None:
+    assert validate_season_label("2026-2027") == "2026-2027"
+
+
+@patch("gridiron_edge.cli.verify_week.build_edge_report")
+@patch("gridiron_edge.cli.verify_week.load_current_odds")
+@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming")
+def test_explicit_run_builds_readiness_without_writes(
+    mock_schedule: MagicMock,
+    mock_events: MagicMock,
+    mock_markets: MagicMock,
+    mock_edges: MagicMock,
+    tmp_path: Path,
+) -> None:
+    generated_at = pd.Timestamp("2026-09-01T12:00:00Z")
+    fetched_at = pd.Timestamp("2026-09-01T13:00:00Z")
+
+    mock_schedule.return_value = pd.DataFrame(
+        {
+            "YEAR": ["2026-2027"],
+            "WEEK_NUM": [1],
+            "GAME_ID": ["game-1"],
+        }
+    )
+
+    mock_events.return_value = pd.DataFrame(
+        {
+            "event_id": ["event-1"],
+            "run_id": ["run-1"],
+            "role": [ForecastRole.LIVE.value],
+            "generated_at": [generated_at],
+            "season": ["2026-2027"],
+            "week": [1],
+            "game_id": ["game-1"],
+            "model_name": ["win_prob"],
+            "model_type": ["elo"],
+            "game_date": ["2026-09-05"],
+            "away_team": ["Away"],
+            "home_team": ["Home"],
+            "away_elo": [1500.0],
+            "home_elo": [1500.0],
+            "away_win_prob": [0.45],
+            "home_win_prob": [0.55],
+            "model_spread": [-1.5],
+            "model_total": [44.5],
+            "projected_home_score": [23.0],
+            "projected_away_score": [21.5],
+            "margin_std": [13.0],
+            "win_prob_lo": [0.47],
+            "win_prob_hi": [0.63],
+            "confidence_tier": ["Low"],
+        }
+    )
+
+    mock_markets.return_value = pd.DataFrame(
+        {
+            "fetched_at": [
+                fetched_at,
+                fetched_at,
+            ],
+            "sportsbook": [
+                "draftkings",
+                "draftkings",
+            ],
+            "season": [
+                "2026-2027",
+                "2026-2027",
+            ],
+            "week": [1, 1],
+            "game_id": [
+                "game-1",
+                "game-1",
+            ],
+            "market": [
+                "moneyline",
+                "moneyline",
+            ],
+            "side": [
+                "home",
+                "away",
+            ],
+            "odds": [
+                -110.0,
+                -110.0,
+            ],
+            "line": [
+                None,
+                None,
+            ],
+        }
+    )
+
+    mock_edges.return_value = pd.DataFrame(
+        {
+            "ev": [0.04],
+        }
+    )
+
+    result = load_weekly_readiness(
+        season="2026-2027",
+        week=1,
+        run_id="run-1",
+        repo=tmp_path,
+    )
+
+    assert result.ready
+    assert result.scheduled_game_count == 1
+    assert result.selected_win_prediction_count == 1
+    assert result.positive_edge_count == 1
+    assert result.market_source == "draftkings"
+
+
+@patch("gridiron_edge.cli.verify_week.load_current_odds")
+@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming")
+def test_missing_explicit_run_is_blocked(
+    mock_schedule: MagicMock,
+    mock_events: MagicMock,
+    mock_markets: MagicMock,
+    tmp_path: Path,
+) -> None:
+    mock_schedule.return_value = pd.DataFrame(
+        {
+            "YEAR": ["2026-2027"],
+            "WEEK_NUM": [1],
+            "GAME_ID": ["game-1"],
+        }
+    )
+    mock_events.return_value = pd.DataFrame(
+        columns=[
+            "event_id",
+            "run_id",
+            "role",
+            "generated_at",
+            "season",
+            "week",
+            "game_id",
+            "model_name",
+            "model_type",
+            "game_date",
+            "away_team",
+            "home_team",
+            "away_elo",
+            "home_elo",
+            "away_win_prob",
+            "home_win_prob",
+            "model_spread",
+            "model_total",
+            "projected_home_score",
+            "projected_away_score",
+            "margin_std",
+            "win_prob_lo",
+            "win_prob_hi",
+            "confidence_tier",
+        ]
+    )
+    mock_markets.return_value = None
+
+    result = load_weekly_readiness(
+        season="2026-2027",
+        week=1,
+        run_id="missing-run",
+        repo=tmp_path,
+    )
+
+    assert not result.ready
+    assert WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION in result.blockers
+    assert WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS in result.blockers
+
+
+def test_rejects_invalid_week(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="week must be between 1 and 22",
+    ):
+        load_weekly_readiness(
+            season="2026-2027",
+            week=0,
+            repo=tmp_path,
+        )
+
+
+def _cli_readiness(
+    *,
+    blockers: tuple[
+        WeeklyReadinessBlocker,
+        ...,
+    ] = (),
+    positive_edge_count: int = 3,
+) -> WeeklyReadiness:
+    """Create a readiness result for CLI rendering tests."""
+    return WeeklyReadiness(
+        season="2026-2027",
+        week=1,
+        scheduled_game_count=2,
+        selected_win_prediction_count=2,
+        spread_value_count=2,
+        total_prediction_count=2,
+        projected_score_count=2,
+        complete_provenance_count=2,
+        market_game_count=2,
+        prediction_market_match_count=2,
+        eligible_market_count=6,
+        positive_edge_count=positive_edge_count,
+        prediction_generated_at=datetime(
+            2026,
+            9,
+            1,
+            12,
+            tzinfo=UTC,
+        ),
+        market_fetched_at=datetime(
+            2026,
+            9,
+            1,
+            13,
+            tzinfo=UTC,
+        ),
+        market_source="draftkings",
+        blockers=blockers,
+    )
+
+
+def _command_app() -> typer.Typer:
+    """Create an isolated Typer app for command tests."""
+    app = typer.Typer()
+    app.command()(verify_week_cmd)
+    return app
+
+
+class TestVerifyWeekCommand:
+    """Tests for weekly readiness CLI rendering and exit behavior."""
+
+    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
+    def test_complete_readiness_exits_successfully(
+        self,
+        mock_load: MagicMock,
+    ) -> None:
+        mock_load.return_value = _cli_readiness()
+
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "verify-week  2026-2027 week 1" in result.output
+        assert "Ready" in result.output
+        assert "No blockers" in result.output
+
+        mock_load.assert_called_once_with(
+            season="2026-2027",
+            week=1,
+            run_id=None,
+        )
+
+    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
+    def test_explicit_run_is_forwarded(
+        self,
+        mock_load: MagicMock,
+    ) -> None:
+        mock_load.return_value = _cli_readiness()
+
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                "1",
+                "--run-id",
+                "run-1",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_load.assert_called_once_with(
+            season="2026-2027",
+            week=1,
+            run_id="run-1",
+        )
+
+    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
+    def test_blocked_readiness_exits_nonzero(
+        self,
+        mock_load: MagicMock,
+    ) -> None:
+        mock_load.return_value = _cli_readiness(
+            blockers=(
+                WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,
+                WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS,
+            ),
+            positive_edge_count=0,
+        )
+
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Blocked" in result.output
+        assert "missing_forecast_selection" in result.output
+        assert "missing_win_predictions" in result.output
+
+    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
+    def test_zero_positive_edges_exits_successfully(
+        self,
+        mock_load: MagicMock,
+    ) -> None:
+        mock_load.return_value = _cli_readiness(
+            positive_edge_count=0,
+        )
+
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Positive edges                  0" in result.output
+        assert "Ready" in result.output
+
+    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
+    def test_output_contains_every_diagnostic_count(
+        self,
+        mock_load: MagicMock,
+    ) -> None:
+        mock_load.return_value = _cli_readiness()
+
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        expected_labels = [
+            "Scheduled games",
+            "Selected win predictions",
+            "Spread values",
+            "Total predictions",
+            "Projected scores",
+            "Complete provenance",
+            "Games with market data",
+            "Prediction-market matches",
+            "Eligible markets",
+            "Positive edges",
+            "Prediction generated at",
+            "Market fetched at",
+            "Market source",
+        ]
+
+        for label in expected_labels:
+            assert label in result.output
+
+
+class TestVerifyWeekValidation:
+    """Tests for required CLI scope and validation."""
+
+    def test_season_is_required(self) -> None:
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 2
+
+    def test_week_is_required(self) -> None:
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+            ],
+        )
+
+        assert result.exit_code == 2
+
+    @pytest.mark.parametrize(
+        "week",
+        [
+            "0",
+            "23",
+        ],
+    )
+    def test_week_range_is_validated(
+        self,
+        week: str,
+    ) -> None:
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                "2026-2027",
+                "--week",
+                week,
+            ],
+        )
+
+        assert result.exit_code == 2
+
+    @pytest.mark.parametrize(
+        "season",
+        [
+            "not-a-season",
+            "2026",
+            "2026-2028",
+        ],
+    )
+    def test_season_format_is_validated(
+        self,
+        season: str,
+    ) -> None:
+        result = runner.invoke(
+            _command_app(),
+            [
+                "--season",
+                season,
+                "--week",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "Expected format" in result.output or ("ending year" in result.output)
+
+
+def test_rendering_marks_unavailable_provenance(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    readiness = WeeklyReadiness(
+        season="2026-2027",
+        week=1,
+        scheduled_game_count=0,
+        selected_win_prediction_count=0,
+        spread_value_count=0,
+        total_prediction_count=0,
+        projected_score_count=0,
+        complete_provenance_count=0,
+        market_game_count=0,
+        prediction_market_match_count=0,
+        eligible_market_count=0,
+        positive_edge_count=0,
+        prediction_generated_at=None,
+        market_fetched_at=None,
+        market_source=None,
+        blockers=(WeeklyReadinessBlocker.MISSING_SCHEDULE,),
+    )
+
+    _render_weekly_readiness(readiness)
+
+    output = capsys.readouterr().out
+
+    assert output.count("unavailable") == 3
+    assert "missing_schedule" in output
+
+
+def test_verify_week_is_registered_on_main_app() -> None:
+    from gridiron_edge.cli.main import app
+
+    result = runner.invoke(
+        app,
+        [
+            "--help",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "verify-week" in result.output
+
+
+def test_verify_week_module_contains_no_writer_imports() -> None:
+    from gridiron_edge.cli import verify_week
+
+    source = Path(verify_week.__file__).read_text()
+
+    forbidden = [
+        "write_forecast_events",
+        "write_current_odds_snapshot",
+        "append_to_odds_ledger",
+        "append_to_prediction_log",
+        "build_predictions_df",
+        "enrich_predictions",
+    ]
+
+    for name in forbidden:
+        assert name not in source

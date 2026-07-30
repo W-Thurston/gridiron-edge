@@ -1,0 +1,516 @@
+# src/gridiron_edge/cli/verify_week.py
+
+"""Read-only weekly operational readiness verification."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from datetime import datetime
+from pathlib import Path
+import re
+from typing import Final
+
+from pandas import DataFrame
+
+# pyrefly: ignore [missing-import]
+import typer
+
+from gridiron_edge.core.settings import get_settings
+from gridiron_edge.datasets.loaders import load_schedule_upcoming
+from gridiron_edge.evaluation.champion_resolver import (
+    ChampionNotFoundError,
+    resolve_current_champion,
+)
+from gridiron_edge.evaluation.forecast_contracts import (
+    SelectedForecast,
+)
+from gridiron_edge.evaluation.forecast_selection import (
+    ForecastCandidateIdentity,
+    ForecastCandidateStatus,
+    resolve_forecast_candidates,
+    select_forecast_events,
+    select_forecast_run,
+)
+from gridiron_edge.evaluation.forecast_store import (
+    empty_forecast_events,
+    load_forecast_events,
+)
+from gridiron_edge.evaluation.weekly_readiness import (
+    WeeklyReadiness,
+    WeeklyReadinessBlocker,
+    evaluate_weekly_readiness,
+)
+from gridiron_edge.ingest.odds.store import load_current_odds
+from gridiron_edge.market.recommendations import build_edge_report
+from gridiron_edge.models.game_prediction.post_process import (
+    get_margin_std,
+    get_total_std,
+)
+
+_SEASON_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(?P<start>\d{4})-(?P<end>\d{4})$")
+
+_EMPTY_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
+    "WEEK_NUM",
+    "GAME_DAY_OF_WEEK",
+    "GAME_DATE",
+    "AWAY_TEAM",
+    "HOME_TEAM",
+    "GAMETIME",
+    "YEAR",
+    "GAME_ID",
+)
+
+_EMPTY_MARKET_COLUMNS: Final[tuple[str, ...]] = (
+    "fetched_at",
+    "sportsbook",
+    "season",
+    "week",
+    "game_id",
+    "game_date",
+    "away_team",
+    "home_team",
+    "market",
+    "side",
+    "odds",
+    "line",
+)
+
+
+def validate_season_label(season: str) -> str:
+    """Validate and return an NFL season label."""
+    match = _SEASON_PATTERN.fullmatch(season)
+    if match is None:
+        raise ValueError(
+            f"Could not parse season {season!r}. Expected format YYYY-YYYY, for example 2026-2027."
+        )
+
+    start = int(match.group("start"))
+    end = int(match.group("end"))
+
+    if end != start + 1:
+        raise ValueError(
+            f"Invalid season {season!r}. "
+            "The ending year must be one greater than the starting year."
+        )
+
+    return season
+
+
+def _format_timestamp(
+    value: datetime | None,
+) -> str:
+    """Format an artifact timestamp for diagnostic output."""
+    if value is None:
+        return "unavailable"
+
+    return value.isoformat()
+
+
+def _empty_schedule() -> DataFrame:
+    """Return an empty canonical upcoming-schedule frame."""
+    return DataFrame(columns=_EMPTY_SCHEDULE_COLUMNS)
+
+
+def _empty_markets() -> DataFrame:
+    """Return an empty canonical long-format market frame."""
+    return DataFrame(columns=_EMPTY_MARKET_COLUMNS)
+
+
+def _load_schedule(
+    repo: Path,
+) -> DataFrame:
+    """Load schedule data without creating or refreshing it."""
+    try:
+        return load_schedule_upcoming(repo)
+    except FileNotFoundError:
+        return _empty_schedule()
+
+
+def _load_markets(
+    repo: Path,
+) -> DataFrame:
+    """Load the current market snapshot without fetching it."""
+    markets = load_current_odds(repo=repo)
+    if markets is None:
+        return _empty_markets()
+
+    return markets.copy()
+
+
+def _scheduled_game_ids(
+    schedule: DataFrame,
+    *,
+    season: str,
+    week: int,
+) -> list:
+    """Return scheduled game IDs in deterministic order."""
+    required = {
+        "YEAR",
+        "WEEK_NUM",
+        "GAME_ID",
+    }
+    if not required.issubset(schedule.columns):
+        return []
+
+    scoped = schedule.loc[
+        (schedule["YEAR"].astype(str) == season) & (schedule["WEEK_NUM"] == week),
+        "GAME_ID",
+    ]
+
+    return sorted({str(game_id) for game_id in scoped.dropna() if str(game_id).strip()})
+
+
+def _select_run_predictions(
+    events: DataFrame,
+    *,
+    run_id: str,
+) -> tuple[
+    DataFrame,
+    tuple[WeeklyReadinessBlocker, ...],
+]:
+    """Select one explicit run and retain its win-probability rows."""
+    result = select_forecast_run(
+        events,
+        run_id=run_id,
+    )
+
+    if not result.found:
+        return (
+            empty_forecast_events(),
+            (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,),
+        )
+
+    predictions = result.events.loc[
+        result.events["model_name"] == "win_prob",
+        :,
+    ].copy()
+
+    if predictions.empty:
+        return (
+            predictions,
+            (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,),
+        )
+
+    if predictions["game_id"].duplicated().any():
+        return (
+            predictions.iloc[0:0].copy(),
+            (WeeklyReadinessBlocker.AMBIGUOUS_FORECAST_SELECTION,),
+        )
+
+    return predictions.reset_index(drop=True), ()
+
+
+def _select_current_predictions(
+    events: DataFrame,
+    *,
+    scheduled_game_ids: list[str],
+    model_type: str,
+) -> tuple[
+    DataFrame,
+    tuple[WeeklyReadinessBlocker, ...],
+]:
+    """Select uniquely eligible champion events for scheduled games."""
+    identities = [
+        ForecastCandidateIdentity(
+            game_id=game_id,
+            model_name="win_prob",
+            model_type=model_type,
+        )
+        for game_id in scheduled_game_ids
+    ]
+
+    resolutions = resolve_forecast_candidates(
+        events,
+        identities,
+    )
+
+    references: list[SelectedForecast] = []
+    missing = False
+    ambiguous = False
+
+    for resolution in resolutions:
+        if resolution.status is ForecastCandidateStatus.SELECTED:
+            if resolution.selected is not None:
+                references.append(resolution.selected)
+        elif resolution.status is ForecastCandidateStatus.MISSING:
+            missing = True
+        elif resolution.status is ForecastCandidateStatus.AMBIGUOUS:
+            ambiguous = True
+
+    blockers: list[WeeklyReadinessBlocker] = []
+
+    if missing:
+        blockers.append(WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION)
+
+    if ambiguous:
+        blockers.append(WeeklyReadinessBlocker.AMBIGUOUS_FORECAST_SELECTION)
+
+    selected = select_forecast_events(
+        events,
+        references,
+    )
+
+    return selected.events, tuple(blockers)
+
+
+def _build_edges(
+    predictions: DataFrame,
+    markets: DataFrame,
+    *,
+    repo: Path,
+) -> DataFrame:
+    """Build an in-memory edge result from existing artifacts."""
+    if predictions.empty or markets.empty:
+        return DataFrame(columns=["ev"])
+
+    model_types = sorted(
+        {str(value) for value in predictions["model_type"].dropna() if str(value).strip()}
+    )
+    if len(model_types) != 1:
+        return DataFrame(columns=["ev"])
+
+    model_type = model_types[0]
+
+    return build_edge_report(
+        predictions,
+        markets,
+        margin_std=get_margin_std(
+            "win_prob",
+            model_type,
+            repo=repo,
+        ),
+        total_std=get_total_std(
+            "total",
+            model_type,
+            repo=repo,
+            default=13.0,
+        ),
+    )
+
+
+def _with_selection_blockers(
+    readiness: WeeklyReadiness,
+    selection_blockers: tuple[
+        WeeklyReadinessBlocker,
+        ...,
+    ],
+) -> WeeklyReadiness:
+    """Append selection blockers without duplicating existing blockers."""
+    combined = tuple(
+        dict.fromkeys(
+            (
+                *readiness.blockers,
+                *selection_blockers,
+            )
+        )
+    )
+
+    return replace(
+        readiness,
+        blockers=combined,
+    )
+
+
+def _render_weekly_readiness(
+    readiness: WeeklyReadiness,
+) -> None:
+    """Render every weekly readiness count and blocker."""
+    typer.echo("Coverage")
+    typer.echo(f"  Scheduled games                 {readiness.scheduled_game_count}")
+    typer.echo(f"  Selected win predictions        {readiness.selected_win_prediction_count}")
+    typer.echo(f"  Spread values                   {readiness.spread_value_count}")
+    typer.echo(f"  Total predictions               {readiness.total_prediction_count}")
+    typer.echo(f"  Projected scores                {readiness.projected_score_count}")
+    typer.echo(f"  Complete provenance             {readiness.complete_provenance_count}")
+
+    typer.echo("")
+    typer.echo("Markets")
+    typer.echo(f"  Games with market data          {readiness.market_game_count}")
+    typer.echo(f"  Prediction-market matches       {readiness.prediction_market_match_count}")
+    typer.echo(f"  Eligible markets                {readiness.eligible_market_count}")
+    typer.echo(f"  Positive edges                  {readiness.positive_edge_count}")
+
+    typer.echo("")
+    typer.echo("Artifacts")
+    typer.echo(
+        f"  Prediction generated at         {_format_timestamp(readiness.prediction_generated_at)}"
+    )
+    typer.echo(
+        f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
+    )
+    typer.echo(f"  Market source                   {readiness.market_source or 'unavailable'}")
+
+    typer.echo("")
+
+    if readiness.ready:
+        typer.echo("Ready")
+        typer.echo("  No blockers")
+        return
+
+    typer.echo("Blocked")
+    for blocker in readiness.blockers:
+        typer.echo(f"  {blocker.value}")
+
+
+def load_weekly_readiness(
+    *,
+    season: str,
+    week: int,
+    run_id: str | None = None,
+    repo: Path | None = None,
+) -> WeeklyReadiness:
+    """Load existing weekly artifacts and derive readiness.
+
+    This function performs reads and in-memory analysis only. It does not
+    fetch, generate, enrich, persist, or render artifacts.
+    """
+    validate_season_label(season)
+
+    if week < 1 or week > 22:
+        raise ValueError("week must be between 1 and 22.")
+
+    if run_id is not None and not run_id.strip():
+        raise ValueError("run_id must not be empty when provided.")
+
+    resolved_repo = repo or get_settings().repo_root
+
+    schedule = _load_schedule(resolved_repo)
+    markets = _load_markets(resolved_repo)
+
+    events = load_forecast_events(
+        season=season,
+        week=week,
+        repo=resolved_repo,
+    )
+
+    game_ids = _scheduled_game_ids(
+        schedule,
+        season=season,
+        week=week,
+    )
+
+    if run_id is not None:
+        predictions, selection_blockers = _select_run_predictions(
+            events,
+            run_id=run_id,
+        )
+    else:
+        try:
+            _, model_type = resolve_current_champion(
+                "win_prob",
+                repo=resolved_repo,
+            )
+        except ChampionNotFoundError:
+            predictions = empty_forecast_events()
+            selection_blockers = (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,)
+        else:
+            predictions, selection_blockers = _select_current_predictions(
+                events,
+                scheduled_game_ids=game_ids,
+                model_type=model_type,
+            )
+
+    edges = _build_edges(
+        predictions,
+        markets,
+        repo=resolved_repo,
+    )
+
+    readiness = evaluate_weekly_readiness(
+        season=season,
+        week=week,
+        schedule=schedule,
+        predictions=predictions,
+        markets=markets,
+        edges=edges,
+    )
+
+    return _with_selection_blockers(
+        readiness,
+        selection_blockers,
+    )
+
+
+def _render_weekly_readiness(
+    readiness: WeeklyReadiness,
+) -> None:
+    """Render every weekly readiness count and blocker."""
+    typer.echo("Coverage")
+    typer.echo(f"  Scheduled games                 {readiness.scheduled_game_count}")
+    typer.echo(f"  Selected win predictions        {readiness.selected_win_prediction_count}")
+    typer.echo(f"  Spread values                   {readiness.spread_value_count}")
+    typer.echo(f"  Total predictions               {readiness.total_prediction_count}")
+    typer.echo(f"  Projected scores                {readiness.projected_score_count}")
+    typer.echo(f"  Complete provenance             {readiness.complete_provenance_count}")
+
+    typer.echo("")
+    typer.echo("Markets")
+    typer.echo(f"  Games with market data          {readiness.market_game_count}")
+    typer.echo(f"  Prediction-market matches       {readiness.prediction_market_match_count}")
+    typer.echo(f"  Eligible markets                {readiness.eligible_market_count}")
+    typer.echo(f"  Positive edges                  {readiness.positive_edge_count}")
+
+    typer.echo("")
+    typer.echo("Artifacts")
+    typer.echo(
+        f"  Prediction generated at         {_format_timestamp(readiness.prediction_generated_at)}"
+    )
+    typer.echo(
+        f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
+    )
+    typer.echo(f"  Market source                   {readiness.market_source or 'unavailable'}")
+
+    typer.echo("")
+
+    if readiness.ready:
+        typer.echo("Ready")
+        typer.echo("  No blockers")
+        return
+
+    typer.echo("Blocked")
+    for blocker in readiness.blockers:
+        typer.echo(f"  {blocker.value}")
+
+
+def verify_week_cmd(
+    *,
+    season: str = typer.Option(
+        ...,
+        "--season",
+        help=("NFL season label in YYYY-YYYY format, for example 2026-2027."),
+    ),
+    week: int = typer.Option(
+        ...,
+        "--week",
+        min=1,
+        max=22,
+        help="NFL week number from 1 through 22.",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        "--run-id",
+        help=(
+            "Exact forecast run to verify. When omitted, "
+            "resolve the current win-probability champion's "
+            "eligible events without using recency."
+        ),
+    ),
+) -> None:
+    """Verify weekly operational readiness without modifying data."""
+    try:
+        validated_season = validate_season_label(season)
+        readiness = load_weekly_readiness(
+            season=validated_season,
+            week=week,
+            run_id=run_id,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"verify-week  {validated_season} week {week}")
+    typer.echo("")
+
+    _render_weekly_readiness(readiness)
+
+    if not readiness.ready:
+        raise typer.Exit(code=1)
