@@ -191,47 +191,47 @@ Read-only operational readiness verification for one season and week.
 
 ## Implementation Units
 
-### Unit 1A: Define Forecast Event Roles and Identity [Complete]
+### Unit 1: Define Forecast and Weekly Product Identity [Complete]
+
+#### Completed
+
+Defined immutable forecast-event, selected-forecast, and weekly-product
+identities. Live and backfilled forecasts have distinct roles, while each
+forecast event has its own event ID, shared invocation-level run ID, game and
+model identity, and required UTC generation timestamp.
+
+Selected-forecast references preserve the identity of the exact forecast event
+chosen for downstream composition. Weekly-product identity records the product
+ID, run ID, season, week, and UTC generation timestamp independently from
+storage and selection behavior.
+
+No archive persistence, deduplication, forecast selection, or product-storage
+behavior was introduced.
 
 #### Goal
 
-Define storage-independent identities for live and historical backfill forecast
-events. A forecast event has its own stable identity and run identity; it is not
-identified solely by game and model pair.
-
-Do not change archive persistence or deduplication behavior yet.
-
-#### Production files
-
-- new `src/gridiron_edge/evaluation/forecast_contracts.py`
-
-#### Test files
-
-- new `tests/unit/evaluation/test_forecast_contracts.py`
+Establish storage-independent identity contracts for immutable forecast events,
+explicit forecast selection, and static weekly products before changing
+persistence behavior.
 
 #### Tests
 
-- live and backfilled roles are distinct;
+- live and backfilled forecast roles are distinct;
 - invalid role values are rejected;
-- event identity is distinct from game/model identity;
-- two events for the same game/model can have different event IDs;
-- one run ID can group multiple game forecasts;
-- generated timestamp is required and follows the locked timezone contract;
-- contracts are immutable;
-- contracts contain no storage behavior.
+- event identity is distinct from game and model identity;
+- multiple events for the same game and model can have different event IDs;
+- one run ID can group multiple forecast events;
+- generated timestamps are required, timezone-aware, and UTC;
+- selected forecasts reference exact event identities;
+- weekly products retain product, run, season, week, and generation identity;
+- identity contracts are immutable;
+- identity contracts contain no storage or selection behavior.
 
 #### Acceptance
 
-Defined immutable forecast event identities with distinct live and backfilled
-roles, independent event and run IDs, required UTC generation timestamps, and
-focused unit coverage. Storage behavior was intentionally unchanged.
----
-
-### Unit 1B: Define Forecast Selection and Weekly Product Identity [Complete]
-
-Defined immutable selected-forecast references and weekly product identities,
-with explicit event, run, product, season, week, and UTC generation identity.
-No storage or selection behavior was introduced.
+Forecast events, selected forecasts, and weekly products have explicit,
+immutable, storage-independent identities suitable for the event-preserving
+storage and selection layers that follow.
 
 ---
 
@@ -271,14 +271,13 @@ coexist.
 Prediction storage is event-preserving. No forecast is deleted merely because a
 later row has the same game and model pair.
 
-### Unit 2A: Build Immutable Forecast Event Store
+### Unit 2A: Build Immutable Forecast Event Store [Complete]
 
-Define the strict forecast-event schema and event-preserving Parquet store.
-The store is introduced independently so the repository remains green while
-existing writers are updated in the following unit.
-
-The new store does not read, migrate, or write the development-era prediction
-archive.
+Defined and tested a strict event-preserving Parquet store with canonical
+forecast columns, immutable event IDs, idempotent identical retries, explicit
+live and backfilled roles, UTC generation timestamps, deterministic ordering,
+and filtered loading. The store is independent from the development-era
+latest-write-wins archive.
 
 ### Unit 2B: Cut Forecast Writers Over to Event Storage
 
