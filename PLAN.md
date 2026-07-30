@@ -363,52 +363,74 @@ order, recency, or model priority.
 
 ---
 
-### Unit 4: Define Weekly Readiness Diagnostics
+### Unit 4: Define Weekly Readiness Diagnostics [Complete]
+
+#### Completed
+
+Added immutable weekly readiness contracts and a pure evaluator for schedule,
+prediction, market, provenance, join, and edge coverage.
+
+Readiness records the scheduled-game count; selected win-prediction, spread,
+total, projected-score, and model-provenance coverage; market-covered games;
+prediction-to-market matches; eligible game-market pairs; and positive-edge
+count.
+
+The evaluator distinguishes missing, partial, unmatched, and incomplete states
+with machine-readable blockers. It scopes schedule, prediction, and market
+inputs to the requested season and week, rejects duplicate game identities,
+and validates required schemas before calculating readiness.
+
+Eligible markets represent complete, calculable game-market pairs rather than
+raw market-side rows. Moneyline requires both prices and a win probability;
+spread requires a model spread, home line, and both prices; total requires a
+model total, total line, and both prices.
+
+Prediction and market artifact provenance is explicit. Unique UTC generation
+and fetch timestamps are preserved, while missing or mixed provenance remains
+visible rather than being resolved through recency. Market source is retained
+only when exactly one non-empty source is present.
+
+Zero positive edges is a valid analytical result and does not block readiness.
+The evaluator performs no file I/O, forecast selection, prediction generation,
+market ingestion, edge calculation, or input mutation.
 
 #### Goal
 
-Introduce a read-only diagnostic result that distinguishes coverage and blocker
-states.
-
-#### Production files
-
-- new focused module under `src/gridiron_edge/evaluation/` or
-  `src/gridiron_edge/market/`
-
-#### Test files
-
-- create:
-  `tests/unit/evaluation/test_weekly_readiness.py`
-
-#### Required diagnostics
-
-- scheduled game count;
-- games with selected win prediction;
-- games with selected spread value;
-- games with selected total prediction;
-- games with projected scores;
-- games with complete model provenance;
-- games with market data;
-- prediction-to-market matched games;
-- eligible market count;
-- positive-edge count;
-- artifact timestamps;
-- market source;
-- blocker reasons.
+Provide quantitative, machine-readable diagnostics that distinguish a valid
+weekly analytical result from missing data, partial coverage, unmatched inputs,
+incomplete markets, and unavailable provenance.
 
 #### Tests
 
-- 16 scheduled and 15 predicted reports one missing game;
-- no predictions is distinct from no market data;
-- no market data is distinct from zero joins;
-- zero joins is distinct from incomplete markets;
-- no positive edges is a valid analytical result;
-- diagnostics do not mutate files;
-- partial market coverage is reported quantitatively.
+- complete weekly inputs produce a ready result with exact coverage counts;
+- zero positive edges remains ready and is distinct from missing inputs;
+- scheduled games remain the denominator for game-level coverage;
+- sixteen scheduled games and fifteen predictions report partial coverage;
+- missing and partial win, spread, total, projected-score, and provenance
+  coverage are distinct;
+- no predictions and no market data produce different blockers;
+- zero prediction-to-market matches and incomplete markets are distinct;
+- partial market coverage retains quantitative game and match counts;
+- eligible markets count complete game-market pairs rather than raw sides;
+- positive edges use the strict `ev > 0` rule;
+- prediction and market artifact timestamps require timezone-aware UTC;
+- missing prediction and market provenance remain visible;
+- mixed market sources or fetch timestamps are reported as ambiguous;
+- no timestamp or source is selected through recency;
+- duplicate schedule and prediction game IDs are rejected;
+- missing required input columns are rejected;
+- non-empty edge inputs require an EV column;
+- invalid scope and count relationships are rejected;
+- readiness results are immutable;
+- source DataFrames are not mutated.
 
 #### Acceptance
 
-Every important weekly empty state has a distinct machine-readable reason.
+Weekly readiness exposes exact game, prediction, market, match, eligibility,
+provenance, and positive-edge counts with structured blockers. Missing data,
+partial coverage, zero joins, incomplete markets, and valid zero-edge outcomes
+cannot be confused with one another, and no readiness value is inferred from
+filesystem metadata or implicit recency.
 
 ---
 
