@@ -996,35 +996,91 @@ unavailable.
 
 ---
 
-### Unit 12: Attach Independent Total Component
+### Unit 12: Attach Independent Total Component [Complete]
+
+#### Completed
+
+Added an independent total component that attaches explicitly selected total
+forecast events to the schedule-complete weekly product.
+
+Total selection is controlled exclusively by the Unit 9 total policy decision.
+The selected win model, derived spread model, and their algorithms do not
+participate in total identity or selection. Win and total model algorithms may
+differ without conflict.
+
+Total forecasts attach only through explicit candidate resolutions and exact
+immutable forecast event IDs. The component performs no selection by event
+timestamp, storage order, forecast role, archive order, current champion, or
+matching win algorithm.
+
+Each selected total event must use the `total` model family and the model type
+selected by the total policy. Event season, week, game ID, away team, and home
+team must match the weekly product row. Reversed team orientation and
+conflicting model identity are rejected rather than silently corrected.
+
+Available total rows preserve the model-total point estimate, total model name,
+total model type, immutable event ID, forecast run ID, generation timestamp,
+operational role, and explicit selection status.
+
+Added a strict total-uncertainty contract backed by the selected total model's
+artifact metadata. Uncertainty uses the exact total model identity and reads
+the positive finite holdout RMSE from `metrics["rmse"]`. The artifact training
+timestamp is retained as uncertainty provenance.
+
+The weekly total component does not use the existing `get_total_std()` default
+fallback. If a valid total forecast exists but exact artifact uncertainty is
+unavailable, the point estimate remains present while uncertainty remains null
+and the row receives an explicit `uncertainty_unavailable` status.
+
+Missing and ambiguous total forecasts remain visible without removing scheduled
+games. An unavailable total policy produces one explicit unavailable total row
+for every scheduled game.
+
+The component preserves row count, ordering, canonical game identity, schedule
+fields, neutral-site context, win fields, and spread fields.
 
 #### Goal
 
-Compose selected total-model predictions without conflating total identity with
-the win model.
-
-#### Production files
-
-- weekly product builder
-- total prediction selector or loader
-
-#### Test files
-
-- create or update:
-  `tests/unit/models/game_prediction/test_weekly_total_product.py`
+Compose selected total-model predictions independently without conflating total
+identity or uncertainty with the selected win model.
 
 #### Tests
 
-- total champion resolves independently from the win champion;
-- total uncertainty uses the total model identity;
+- total policy selection is independent from win policy selection;
+- win and total algorithms may differ;
+- total identity does not use the win model type;
+- total identity does not use the spread model type;
+- selected total events attach through exact immutable event IDs;
+- total events compose by canonical game ID regardless of event ordering;
+- available totals preserve the model-total point estimate;
+- available totals preserve model name and model type;
+- available totals preserve event ID and run ID;
+- available totals preserve generation timestamp and operational role;
+- total selection status is explicit;
 - missing total prediction does not remove the game;
-- total-model provenance is preserved;
-- independent total archive rows compose correctly by game ID;
-- no matching algorithm between win and total is assumed.
+- ambiguous total selection does not remove the game;
+- unavailable total policy preserves all games;
+- selected total event season and week must match product scope;
+- selected total event game ID must match schedule identity;
+- selected total event team orientation must match schedule truth;
+- selected total event model identity must match the total policy;
+- model-total values must be present and finite;
+- total uncertainty uses the selected total model identity;
+- strict total uncertainty reads artifact `metrics["rmse"]`;
+- total uncertainty preserves artifact `trained_at`;
+- missing uncertainty does not remove the total point estimate;
+- missing uncertainty remains explicit;
+- no default total uncertainty is silently substituted;
+- uncertainty identity mismatch is rejected;
+- schedule row count and ordering are preserved;
+- schedule, win, spread, and neutral-site fields remain unchanged.
 
 #### Acceptance
 
-Total predictions are independently resolved and explicitly composed.
+Total predictions are independently resolved and explicitly composed. Every
+scheduled game retains an explicit total state, available totals preserve
+immutable forecast and artifact provenance, and neither model identity nor
+uncertainty is inferred from the selected win component.
 
 ---
 
