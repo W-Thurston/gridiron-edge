@@ -1084,33 +1084,116 @@ uncertainty is inferred from the selected win component.
 
 ---
 
-### Unit 13: Add Projected Scores and Product-Level Validation
+### Unit 13: Add Projected Scores and Product-Level Validation [Complete]
+
+#### Completed
+
+Added the final projected-score composition and product-level validation layers
+for the schedule-complete weekly game product.
+
+Projected scores are derived only when the spread component has an available
+model spread and the total component has an available model-total point
+estimate. A total row whose uncertainty is unavailable remains eligible for
+score projection because the point estimate itself is still valid.
+
+Projected scores use the established NFL home-line spread convention and the
+existing domain equation:
+
+`projected_home_score = (model_total - model_spread) / 2`
+
+`projected_away_score = (model_total + model_spread) / 2`
+
+The resulting values must reconcile to both upstream point estimates. Projected
+home and away scores sum to the model total, and projected away score minus
+projected home score equals the model spread. Equivalently, projected home
+margin equals the negative model spread.
+
+Added granular projected-score statuses for available scores, unavailable
+spread, unavailable total, and simultaneous spread-and-total unavailability.
+Blocked rows retain null projected score fields rather than fabricating partial
+values.
+
+The score attachment function copies the incoming weekly product, preserves
+every row and existing field, and adds only projected-score status and projected
+home and away scores.
+
+Added final product validation across schedule, win, spread, total, and
+projected-score components.
+
+Schedule identity validation requires nonempty unique canonical game IDs.
+
+Available win rows require finite complementary away and home probabilities,
+selected win model identity, and immutable win event identity.
+
+Available spread rows require a finite model spread, positive residual spread
+uncertainty, source win event identity, selected win model identity, persisted
+calibration key, and calibration update timestamp. Spread event and model
+provenance must match the selected win component.
+
+Unavailable spread rows must not contain model spread or spread uncertainty.
+
+Available total rows require a finite model-total point estimate, total model
+identity, immutable total event identity, positive total uncertainty, and
+artifact training timestamp.
+
+Rows with unavailable total uncertainty retain the valid total point estimate
+and total forecast identity while requiring null uncertainty and uncertainty
+provenance.
+
+Unavailable total forecast rows must not contain model-total or uncertainty
+values.
+
+Available projected-score rows require finite home and away scores that
+reconcile to the model total and model spread within floating-point tolerance.
+Blocked projected-score rows must retain null score fields.
+
+Validation returns a defensive copy and rejects inconsistent combinations. It
+does not fill, coerce, infer, or repair invalid values.
 
 #### Goal
 
-Create projected scores only when required spread and total values exist.
-
-#### Production files
-
-- weekly product builder
-- product validation module
-
-#### Test files
-
-- create or update:
-  `tests/unit/models/game_prediction/test_weekly_game_product.py`
+Create projected scores only when required spread and total point estimates
+exist, and validate internal coherence across the complete weekly game product.
 
 #### Tests
 
-- projected scores reconcile to model total;
-- projected score difference reconciles to spread convention;
-- missing inputs produce explicit field status;
-- invalid combinations are rejected;
-- complete product remains one row per scheduled game.
+- projected home and away scores sum to model total;
+- projected away score minus projected home score equals model spread;
+- negative model spread produces a higher projected home score;
+- projected scores use the existing domain calculation;
+- spread-unavailable rows receive explicit status;
+- total-unavailable rows receive explicit status;
+- rows missing both inputs receive combined explicit status;
+- blocked projected-score rows retain null scores;
+- unavailable total uncertainty does not block a valid score projection;
+- available projected scores require finite spread and total values;
+- available win probabilities must be finite and complementary;
+- available win rows require model and immutable event identity;
+- available spread rows require positive uncertainty;
+- spread source event must match selected win event;
+- spread model identity must match selected win model identity;
+- unavailable spread rows cannot contain spread values;
+- available total rows require total model and immutable event identity;
+- available total uncertainty must be positive;
+- unavailable total uncertainty requires null uncertainty values while
+  preserving the total point estimate;
+- unavailable total forecast rows cannot contain total values;
+- projected scores that do not reconcile to total are rejected;
+- projected scores that do not reconcile to spread are rejected;
+- blocked rows containing projected scores are rejected;
+- duplicate or blank game IDs are rejected;
+- complete product remains one row per scheduled game;
+- game ordering is preserved;
+- schedule and neutral-site fields are preserved;
+- input product is not repaired or silently coerced.
 
 #### Acceptance
 
-The composed game product has internally coherent values and granular status.
+The composed weekly game product has internally coherent schedule, win, spread,
+total, uncertainty, provenance, and projected-score values. Every scheduled
+game remains present, projected scores exist only when their required point
+estimates are available, and all missing or blocked values retain granular
+machine-readable status.
 
 ---
 
