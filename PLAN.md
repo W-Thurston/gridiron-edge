@@ -304,35 +304,62 @@ identity, and game forecast rendering has no persistence side effects.
 
 ---
 
-### Unit 3: Add Explicit Current-Forecast Selection
+### Unit 3: Add Explicit Current-Forecast Selection [Complete]
+
+#### Completed
+
+Added pure, storage-independent selection for immutable forecast events.
+
+Exact selection resolves `SelectedForecast` references by event ID, verifies
+their game and model identity, preserves request order, and reports missing
+references without substituting another event.
+
+Run-scoped selection resolves one explicitly requested invocation, preserves
+independent prediction families, rejects duplicate game and model identities
+within a run, and returns deterministic output without treating ordering as
+selection.
+
+Candidate resolution represents selected, missing, and ambiguous states
+explicitly. Live events exclude backfilled candidates for the same game and
+model identity, but multiple eligible live runs remain ambiguous. When no live
+event exists, a single backfilled event may be selected, while multiple
+backfilled runs remain ambiguous.
+
+No selector infers current state from generation time, event ID, input order,
+Parquet order, or model priority. No model inference or persistence occurs
+during selection.
 
 #### Goal
 
-Select the current forecast for each game and prediction family without relying
-on latest-write deduplication.
-
-#### Production files
-
-- new selection module under `src/gridiron_edge/evaluation/`
-- `src/gridiron_edge/evaluation/archive.py` only if shared loaders are needed
-
-#### Test files
-
-- create:
-  `tests/unit/evaluation/test_forecast_selection.py`
+Produce explicit selected-forecast views from immutable events without relying
+on latest-write deduplication or implicit recency.
 
 #### Tests
 
-- live forecasts are preferred over backfilled forecasts;
-- selection can be restricted to a run;
-- selection is deterministic;
-- missing selection remains visible;
-- selected win and total forecasts retain separate identities;
-- no model inference occurs during selection.
+- exact event references select only the requested immutable event;
+- reference order is preserved;
+- missing references remain visible;
+- duplicate references and identity conflicts are rejected;
+- exact run selection excludes all other runs;
+- missing runs return a canonical empty result;
+- game and model identities are unique within a selected run;
+- the same game and model may coexist across separate runs;
+- win and total forecast families remain independently selectable;
+- live candidates exclude matching backfilled candidates;
+- newer backfills do not override live forecasts;
+- multiple live runs remain ambiguous;
+- multiple backfilled runs remain ambiguous when no live event exists;
+- ambiguity is independent from timestamp and input order;
+- candidate-resolution invariants are validated;
+- selectors do not mutate source event frames;
+- no selector performs model inference or storage writes.
 
 #### Acceptance
 
-A static selected-forecast view can be produced from immutable events.
+Immutable forecast events can be selected by exact event identity, exact run
+identity, or explicit candidate eligibility. Selected, missing, and ambiguous
+states are machine-readable, and no current forecast is inferred from write
+order, recency, or model priority.
 
 ---
 

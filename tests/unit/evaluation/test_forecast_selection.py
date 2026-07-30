@@ -14,6 +14,9 @@ from gridiron_edge.evaluation.forecast_contracts import (
     SelectedForecast,
 )
 from gridiron_edge.evaluation.forecast_selection import (
+    ForecastCandidateIdentity,
+    ForecastCandidateStatus,
+    resolve_forecast_candidates,
     select_forecast_events,
     select_forecast_run,
 )
@@ -73,6 +76,20 @@ def _selection(
     """Create an explicit selected-forecast reference."""
     return SelectedForecast(
         event_id=event_id,
+        game_id=game_id,
+        model_name=model_name,
+        model_type=model_type,
+    )
+
+
+def _candidate(
+    *,
+    game_id: str = "2026_01_KC_LAC",
+    model_name: str = "win_prob",
+    model_type: str = "elo",
+) -> ForecastCandidateIdentity:
+    """Create a forecast candidate identity."""
+    return ForecastCandidateIdentity(
         game_id=game_id,
         model_name=model_name,
         model_type=model_type,
@@ -424,3 +441,326 @@ class TestSelectForecastRun:
         assert result.run_id == "missing-run"
         assert result.events.empty
         assert list(result.events.columns) == FORECAST_EVENT_COLUMNS
+
+
+class TestResolveForecastCandidates:
+    """Tests for explicit candidate eligibility resolution."""
+
+    def test_selects_single_live_event(self) -> None:
+        events = _event(
+            event_id="live-event",
+            run_id="live-run",
+            role=ForecastRole.LIVE,
+            generated_at=datetime(
+                2026,
+                9,
+                1,
+                12,
+                tzinfo=UTC,
+            ),
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "live-event"
+        assert resolution.eligible_event_ids == ("live-event",)
+
+    def test_live_event_excludes_backfilled_candidate(
+        self,
+    ) -> None:
+        events = pd.concat(
+            [
+                _event(
+                    event_id="backfilled-event",
+                    run_id="backfill-run",
+                    role=ForecastRole.BACKFILLED,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        2,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+                _event(
+                    event_id="live-event",
+                    run_id="live-run",
+                    role=ForecastRole.LIVE,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        1,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "live-event"
+        assert resolution.eligible_event_ids == ("live-event",)
+
+    def test_single_backfilled_event_is_eligible_when_no_live_exists(
+        self,
+    ) -> None:
+        events = _event(
+            event_id="backfilled-event",
+            run_id="backfill-run",
+            role=ForecastRole.BACKFILLED,
+            generated_at=datetime(
+                2026,
+                9,
+                1,
+                12,
+                tzinfo=UTC,
+            ),
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "backfilled-event"
+
+    def test_multiple_live_runs_remain_ambiguous(
+        self,
+    ) -> None:
+        resolution = resolve_forecast_candidates(
+            _events(),
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.AMBIGUOUS
+        assert resolution.selected is None
+        assert resolution.eligible_event_ids == (
+            "newer-live",
+            "older-live",
+        )
+
+    def test_ambiguity_is_independent_from_input_order(
+        self,
+    ) -> None:
+        events = _events()
+        reversed_events = events.iloc[::-1].reset_index(
+            drop=True,
+        )
+
+        first = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+        second = resolve_forecast_candidates(
+            reversed_events,
+            [_candidate()],
+        )[0]
+
+        assert first.status is ForecastCandidateStatus.AMBIGUOUS
+        assert second.status is ForecastCandidateStatus.AMBIGUOUS
+        assert first.eligible_event_ids == second.eligible_event_ids
+
+    def test_newer_backfill_does_not_override_live_event(
+        self,
+    ) -> None:
+        events = pd.concat(
+            [
+                _event(
+                    event_id="live-event",
+                    run_id="live-run",
+                    role=ForecastRole.LIVE,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        1,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+                _event(
+                    event_id="newer-backfill",
+                    run_id="backfill-run",
+                    role=ForecastRole.BACKFILLED,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        3,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "live-event"
+
+    def test_multiple_backfills_are_ambiguous_without_live_event(
+        self,
+    ) -> None:
+        events = pd.concat(
+            [
+                _event(
+                    event_id="backfill-1",
+                    run_id="run-1",
+                    role=ForecastRole.BACKFILLED,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        1,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+                _event(
+                    event_id="backfill-2",
+                    run_id="run-2",
+                    role=ForecastRole.BACKFILLED,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        2,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.AMBIGUOUS
+        assert resolution.selected is None
+        assert resolution.eligible_event_ids == (
+            "backfill-1",
+            "backfill-2",
+        )
+
+    def test_missing_candidate_remains_visible(self) -> None:
+        resolution = resolve_forecast_candidates(
+            _events(),
+            [
+                _candidate(
+                    game_id="missing-game",
+                )
+            ],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.MISSING
+        assert resolution.selected is None
+        assert resolution.eligible_event_ids == ()
+
+    def test_win_and_total_candidates_resolve_independently(
+        self,
+    ) -> None:
+        events = _multi_family_run_events()
+
+        resolutions = resolve_forecast_candidates(
+            events,
+            [
+                _candidate(
+                    model_name="win_prob",
+                    model_type="elo",
+                ),
+                _candidate(
+                    model_name="total",
+                    model_type="random_forest",
+                ),
+            ],
+        )
+
+        assert len(resolutions) == 2
+        assert resolutions[0].identity.model_name == "win_prob"
+        assert resolutions[1].identity.model_name == "total"
+        assert resolutions[1].status is ForecastCandidateStatus.SELECTED
+        assert resolutions[1].selected is not None
+        assert resolutions[1].selected.event_id == "run-1-total-kc"
+
+    def test_preserves_requested_identity_order(self) -> None:
+        events = _multi_family_run_events()
+        total = _candidate(
+            model_name="total",
+            model_type="random_forest",
+        )
+        win = _candidate(
+            game_id="2026_01_BAL_BUF",
+            model_name="win_prob",
+            model_type="elo",
+        )
+
+        resolutions = resolve_forecast_candidates(
+            events,
+            [total, win],
+        )
+
+        assert [resolution.identity for resolution in resolutions] == [
+            total,
+            win,
+        ]
+
+    def test_rejects_duplicate_candidate_identity(
+        self,
+    ) -> None:
+        candidate = _candidate()
+
+        with pytest.raises(
+            ValueError,
+            match=("candidate identities contain duplicates: 2026_01_KC_LAC/win_prob/elo"),
+        ):
+            resolve_forecast_candidates(
+                _events(),
+                [
+                    candidate,
+                    candidate,
+                ],
+            )
+
+    def test_empty_candidate_list_returns_empty_tuple(
+        self,
+    ) -> None:
+        assert (
+            resolve_forecast_candidates(
+                _events(),
+                [],
+            )
+            == ()
+        )
+
+    def test_does_not_mutate_event_frame(self) -> None:
+        events = _events()
+        original = events.copy(deep=True)
+
+        resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )
+
+        pd.testing.assert_frame_equal(
+            events,
+            original,
+        )

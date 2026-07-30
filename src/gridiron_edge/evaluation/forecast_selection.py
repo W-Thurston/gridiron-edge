@@ -7,11 +7,15 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.evaluation.forecast_contracts import SelectedForecast
+from gridiron_edge.evaluation.forecast_contracts import (
+    ForecastRole,
+    SelectedForecast,
+)
 from gridiron_edge.evaluation.forecast_store import (
     FORECAST_EVENT_COLUMNS,
     validate_forecast_events,
@@ -22,6 +26,61 @@ _RUN_FORECAST_KEY: tuple[str, ...] = (
     "model_name",
     "model_type",
 )
+
+
+@dataclass(frozen=True)
+class ForecastCandidateIdentity:
+    """Game and model identity requiring forecast selection."""
+
+    game_id: str
+    model_name: str
+    model_type: str
+
+    def __post_init__(self) -> None:
+        """Validate candidate identity fields."""
+        for field_name, value in (
+            ("game_id", self.game_id),
+            ("model_name", self.model_name),
+            ("model_type", self.model_type),
+        ):
+            if not value.strip():
+                raise ValueError(f"{field_name} must not be empty.")
+
+
+class ForecastCandidateStatus(StrEnum):
+    """Resolution state for one forecast candidate identity."""
+
+    SELECTED = "selected"
+    MISSING = "missing"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class ForecastCandidateResolution:
+    """Resolution result for one game and model identity."""
+
+    identity: ForecastCandidateIdentity
+    status: ForecastCandidateStatus
+    selected: SelectedForecast | None
+    eligible_event_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Validate resolution-state invariants."""
+        if self.status is ForecastCandidateStatus.SELECTED:
+            if self.selected is None:
+                raise ValueError("Selected resolution requires a selected forecast.")
+            if len(self.eligible_event_ids) != 1:
+                raise ValueError("Selected resolution requires exactly one eligible event ID.")
+            return
+
+        if self.selected is not None:
+            raise ValueError("Only a selected resolution may contain a selected forecast.")
+
+        if self.status is ForecastCandidateStatus.MISSING and self.eligible_event_ids:
+            raise ValueError("Missing resolution must not contain eligible event IDs.")
+
+        if self.status is ForecastCandidateStatus.AMBIGUOUS and len(self.eligible_event_ids) < 2:
+            raise ValueError("Ambiguous resolution requires at least two eligible event IDs.")
 
 
 @dataclass(frozen=True)
@@ -248,3 +307,115 @@ def select_forecast_run(
         events=selected.loc[:, FORECAST_EVENT_COLUMNS],
         found=True,
     )
+
+
+def resolve_forecast_candidates(
+    events: DataFrame,
+    identities: Sequence[ForecastCandidateIdentity],
+) -> tuple[ForecastCandidateResolution, ...]:
+    """Resolve eligible events for explicit game and model identities.
+
+    Live events are preferred over backfilled events. When at least one
+    matching live event exists, matching backfilled events are excluded.
+
+    Selection succeeds only when exactly one eligible event remains.
+    Multiple eligible live events or multiple eligible backfilled events
+    remain ambiguous. Generation time, storage order, and event ID do not
+    determine which event is selected.
+
+    Args:
+        events: Forecast events conforming to the canonical event schema.
+        identities: Game and model identities requiring resolution.
+
+    Returns:
+        One resolution per requested identity, preserving request order.
+
+    Raises:
+        ValueError: If the event frame violates the storage contract or a
+            candidate identity is requested more than once.
+    """
+    normalized = validate_forecast_events(events)
+
+    identity_counts = Counter(identities)
+    duplicate_identities = sorted(
+        (identity for identity, count in identity_counts.items() if count > 1),
+        key=lambda identity: (
+            identity.game_id,
+            identity.model_name,
+            identity.model_type,
+        ),
+    )
+    if duplicate_identities:
+        formatted = [
+            (f"{identity.game_id}/{identity.model_name}/{identity.model_type}")
+            for identity in duplicate_identities
+        ]
+        raise ValueError(
+            "Forecast candidate identities contain duplicates: " + ", ".join(formatted)
+        )
+
+    resolutions: list[ForecastCandidateResolution] = []
+
+    for identity in identities:
+        matches = normalized.loc[
+            (normalized["game_id"] == identity.game_id)
+            & (normalized["model_name"] == identity.model_name)
+            & (normalized["model_type"] == identity.model_type),
+            :,
+        ]
+
+        if matches.empty:
+            resolutions.append(
+                ForecastCandidateResolution(
+                    identity=identity,
+                    status=ForecastCandidateStatus.MISSING,
+                    selected=None,
+                    eligible_event_ids=(),
+                )
+            )
+            continue
+
+        live_matches = matches.loc[
+            matches["role"] == ForecastRole.LIVE.value,
+            :,
+        ]
+        eligible = (
+            live_matches
+            if not live_matches.empty
+            else matches.loc[
+                matches["role"] == ForecastRole.BACKFILLED.value,
+                :,
+            ]
+        )
+
+        eligible_event_ids = tuple(sorted(eligible["event_id"].astype(str).tolist()))
+
+        if len(eligible) > 1:
+            resolutions.append(
+                ForecastCandidateResolution(
+                    identity=identity,
+                    status=ForecastCandidateStatus.AMBIGUOUS,
+                    selected=None,
+                    eligible_event_ids=eligible_event_ids,
+                )
+            )
+            continue
+
+        row = eligible.iloc[0]
+        selected = SelectedForecast(
+            event_id=str(row["event_id"]),
+            game_id=str(row["game_id"]),
+            model_name=str(row["model_name"]),
+            model_type=str(row["model_type"]),
+        )
+
+        resolutions.append(
+            ForecastCandidateResolution(
+                identity=identity,
+                status=ForecastCandidateStatus.SELECTED,
+                selected=selected,
+                eligible_event_ids=eligible_event_ids,
+            )
+        )
+
+    return tuple(resolutions)
