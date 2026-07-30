@@ -12,8 +12,8 @@ class TestDatasetRegistry:
     def test_datasets_not_empty(self) -> None:
         assert len(DATASETS) > 0
 
-    def test_has_20_keys(self) -> None:
-        assert len(DATASETS) == 20
+    def test_has_21_keys(self) -> None:
+        assert len(DATASETS) == 21
 
     def test_all_values_are_dataset_spec(self) -> None:
         for key, spec in DATASETS.items():
@@ -51,6 +51,7 @@ class TestDatasetRegistry:
             # Output directories
             "predictions_csv",
             "elo_rankings_csv",
+            "weekly_products",
         }
         assert set(DATASETS.keys()) == expected
 
@@ -124,3 +125,12 @@ class TestArchiveLogKeys:
     def test_bankroll_txn_path(self, tmp_path: Path) -> None:
         result = dataset_path(tmp_path, "bankroll_txn")
         assert result == tmp_path / "data" / "betting" / "bankroll_txn.parquet"
+
+    def test_weekly_products_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        assert dataset_path(
+            tmp_path,
+            "weekly_products",
+        ) == (tmp_path / "data" / "output" / "weekly_products")

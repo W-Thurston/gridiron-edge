@@ -28,6 +28,7 @@ DatasetKey = Literal[
     # ---- Output directories ----
     "predictions_csv",
     "elo_rankings_csv",
+    "weekly_products",
 ]
 
 
@@ -39,7 +40,7 @@ class DatasetSpec:
         relpath: Path to the dataset file, relative to the repository root.
     """
 
-    relpath: str  # relative to repo root
+    relpath: str
 
 
 DATASETS: dict[DatasetKey, DatasetSpec] = {
@@ -69,8 +70,9 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "bet_ledger": DatasetSpec("data/betting/bet_ledger.parquet"),
     "bankroll_txn": DatasetSpec("data/betting/bankroll_txn.parquet"),
     # ---- Output directories ----
-    "predictions_csv": DatasetSpec("data/output/predictions"),  # directory
-    "elo_rankings_csv": DatasetSpec("data/output/rankings"),  # directory
+    "predictions_csv": DatasetSpec("data/output/predictions"),
+    "elo_rankings_csv": DatasetSpec("data/output/rankings"),
+    "weekly_products": DatasetSpec("data/output/weekly_products"),
 }
 
 
