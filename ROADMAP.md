@@ -73,14 +73,28 @@ Gridiron Edge is a CLI-driven NFL analytics, modeling, and betting platform with
 | Injury/news feed | ❌ Not started | Blocks W4.5 scenario engine + injury UI fields |
 | Live game / real-time | ❌ Not started | No live state, odds, or win prob |
 | Off/def rating decomposition | ❌ Not started | Blocks off/def ranking tabs, Compare Off/Def mini-stats |
-| Frontend prototype-fidelity backlog | 🟡 Partial | Core-screen rebuilds are complete, including PlayoffProjections, Weekly Outcomes, and BetSlip. Remaining work is the W9.11 Tier 0 audit plus independently tracked backend/data gaps and bounded frontend polish. |
+| Frontend prototype-fidelity backlog | 🟡 Partial | Core-screen rebuilds are complete, including PlayoffProjections, Weekly Outcomes, and BetSlip. Current frontend priority is the focused W14 game-day path across Dashboard, GamesList, GameDetail, and BetSlip. W9.11 Tier 0 remains paused; independent backend/data gaps and bounded frontend polish remain tracked below. |
 
-### Known Blockers
+#### Known Blockers
 
-None at the workstream level. Two operational items tracked in PLAN.md:
+W14 Game Prediction Season Readiness currently has two verified architectural
+or operational risks:
 
-- **DraftKings API 403 (bot detection):** `weekly-predict` soft-fails gracefully when this happens; historical odds ledger and game_id resolver work independently.
-- **Walk-forward backfill on single-season expanded-feature windows:** Real bug, fix needed before W12 (Model Ensemble) can do a clean Brier comparison. Fix tracked in ROADMAP §9.2.
+- **Upcoming-game feature coverage:** trained game models consume a modeling
+  file built from completed games, so the current upcoming-week path archives
+  Elo-only predictions. W14 must determine and implement truthful upcoming-game
+  feature behavior before trained moneyline, spread, or total outputs can be
+  treated as season-ready.
+- **DraftKings API 403:** the current single-source odds path is not
+  operationally reliable. W14 must reproduce the failure, verify the existing
+  request and parser path, and either restore it or deliberately adopt another
+  source for the initial game-market vertical slice.
+
+Additional tracked issue:
+
+- **Walk-forward backfill on single-season expanded-feature windows:** real bug
+  that soft-blocks W12 ensemble comparison. It may also affect historical
+  readiness evaluation and must be assessed during W14 Tier 0.
 
 ---
 
@@ -157,9 +171,9 @@ RatingChart, DistributionChart, BarChart, PendingChip, ComingSoonCard.
 See CHANGELOG.md for details.
 
 
-### Active Workstream
+#### Paused Workstream
 
-##### W9.11: Screen Completion — 🟡 ACTIVE
+###### W9.11: Screen Completion — ⏸️ PAUSED
 
 **Goal:** Finish the core-screen set by rebuilding PlayoffProjections and
 BetSlip against verified real data and the shared primitive set established
@@ -195,11 +209,9 @@ the final frontend surface.
   wager surfaces. A real-data staged-wager visual pass remains operationally
   deferred because `/edges` currently returns no recommendations.
 
-- **Tier 0 — Final pending-highlight and frontend consistency audit — ACTIVE.**
-  Walk the completed frontend surface with pending highlighting on and off,
-  resolve bounded presentation defects, and move genuine backend/data gaps to
-  the appropriate roadmap sections. Complete the deferred BetSlip staged-wager
-  visual pass when real edge recommendations are available.
+**Resume condition:** W14 completes an operational weekly game-prediction path
+and real frontend rehearsal. The broader pending-highlight audit remains useful
+but is not the current highest-value work.
 
 **Ready:** Tier 0 can begin immediately. The BetSlip staged-wager portion of
 the audit remains operationally blocked until `/edges` returns a real
@@ -215,7 +227,76 @@ model/config identity, random seed, and elapsed duration; SGP correlation
 warnings, book selection, and line movement; anything requiring live or
 multi-book data.
 
+#### Active Workstream
+
+###### W14: Game Prediction Season Readiness — 🟡 ACTIVE
+
+**Goal:** Make one complete game-prediction vertical slice operational before
+the NFL season: upcoming schedule and features, moneyline/spread/total
+predictions, archived provenance, game-market odds, canonical joins, edges, API
+serialization, and focused Dashboard/Games/GameDetail/BetSlip use.
+
+**Why now:** Gridiron Edge has trained win-probability and total artifacts,
+post-processed spread/score outputs, market math, edge generation, weekly
+workflows, APIs, and frontend consumers. The path is not yet season-ready
+because trained models currently lack upcoming-game feature rows and the
+single-source DraftKings odds pull is operationally unreliable.
+
+**Execution order:**
+
+- **Tier 0 — Current-state audit and dependency map — ACTIVE.**
+  Verify the authoritative path for moneyline, spread, and total; determine
+  whether spread is trained or derived; trace upcoming schedule through
+  features, models, archives, odds, joins, edges, API, and focused frontend
+  consumers; produce the concrete gap list before implementation.
+- **Tier 1 — Upcoming-game prediction foundation.**
+  Build or repair the shared upcoming-game feature and prediction path.
+- **Tier 2 — Market-specific readiness and evaluation.**
+  Validate moneyline, spread, and total predictive and market-relative quality.
+- **Tier 3 — Odds ingestion reliability and diagnostics.**
+  Restore or deliberately replace the initial game-market pull and make
+  freshness and coverage observable.
+- **Tier 4 — Prediction-to-market join and edge readiness.**
+  Verify canonical joins, sign conventions, probabilities, EV, Kelly, and
+  legitimate-empty behavior.
+- **Tier 5 — API season-readiness contract.**
+  Serialize prediction, market, freshness, coverage, and blocker state from
+  static artifacts.
+- **Tier 6 — Focused game-day frontend.**
+  Harden Dashboard, Games, GameDetail, and BetSlip only.
+- **Tier 7 — Live weekly rehearsal.**
+  Run the complete workflow against real upcoming-game and odds data and use
+  the resulting recommendations for final frontend and BetSlip verification.
+
+**Required outcomes:**
+
+- explicit moneyline, spread, and total prediction state per scheduled game;
+- authoritative model or derivation provenance for every populated output;
+- archived upcoming-week predictions beyond the current Elo-only limitation
+  where features permit;
+- reliable or explicitly failed odds pulls;
+- per-market prediction, odds, and join coverage diagnostics;
+- `/edges` distinction between missing inputs, partial coverage, join failure,
+  legitimate empty results, and populated recommendations;
+- one coherent game-day experience across the focused frontend surfaces;
+- at least one real weekly rehearsal without fabricated data.
+
+**Dependencies:** Existing W2, W3, W4.1, W5, W8, W9, and W13 foundations.
+W14 may pull targeted items from the upcoming-feature-matrix note, operational
+odds backlog, game-related data gaps, and focused frontend backlog.
+
+**Does not include:** props, multi-book line-shopping UI, injuries/news, live
+games, direct wager placement, broad frontend audit, or a model ensemble.
+
+**Unlocks:** A usable game-prediction product slice for the season; real
+recommendations for BetSlip verification; evidence-driven scope for W12 model
+ensemble and W7 multi-book work.
+
 ### Future Workstreams (ordered by current priority)
+
+W14 is intentionally ahead of W12 and W7. It verifies and hardens the current
+single-model, single-source vertical slice before adding ensemble complexity or
+multi-book breadth.
 
 #### W12: Model Ensemble — 🟢 PLANNED
 
@@ -366,6 +447,12 @@ W8 (API) ✅
 ├── W9 (Frontend) ✅
 │   └── W9.5–W9.9 ✅ (fidelity arc) · W9.10 ✅ (Compare)
 │
+├── W14 (Game Prediction Season Readiness) 🟡 active
+│   ├── upcoming-game predictions
+│   ├── odds reliability
+│   ├── market joins + edges
+│   └── focused game-day frontend
+│
 ├── W12 (Ensemble) 🟢 planned
 │
 ├── W7 (Multi-Book) 🟢 planned
@@ -375,15 +462,15 @@ W8 (API) ✅
 ```
 
 
-**Current position:** W9.11 Tier 1 PlayoffProjections and its navigation /
-Weekly Outcomes follow-up are complete and verified against the real 32-team
-2026–2027 preseason artifact.
+**Current position:** W9.11 Tier 1 and Tier 2 are complete. W9.11 Tier 0 is
+paused.
 
-- Next: W9.11 Tier 0 — complete the pending-highlight and final frontend
-  consistency audit. The BetSlip real-data staged-wager review remains deferred
-  until `/edges` returns an available recommendation.
-- Final W9.11 capstone: Tier 0 — pending-highlight audit across the completed
-  frontend surface.
+- Active: W14 Game Prediction Season Readiness.
+- First step: read-only current-state audit of moneyline, spread, total,
+  upcoming-game features, archives, odds ingestion, joins, edges, API, and
+  focused frontend consumers.
+- W9.11 Tier 0 resumes after the operational game-prediction vertical slice is
+  verified.
 
 
 ---
@@ -398,11 +485,16 @@ Weekly Outcomes follow-up are complete and verified against the real 32-team
 | **M2: Know if the model makes money** | After a month of tracking bets, run `gridiron bet summary` and see your CLV, ROI, and record by confidence tier. | W6 | ✅ **ACHIEVED** |
 | **M3: First prop edge** | Full prop evaluation report with accuracy, bias, coverage metrics. | W4 + W5 | ✅ **ACHIEVED** |
 | **M4.5: Visual output verification** | Wire the Gridiron Edge frontend prototype to the API and walk the full surface. Every populated field is verified; every `null` field surfaces a backend gap that's tracked in §9. | W8 + W9 | ✅ **ACHIEVED** |
+| **M1.7: Season-ready game prediction loop** | Run the weekly workflow for a real upcoming week and produce moneyline, spread, and total predictions, current game-market coverage, truthful edges or explicit blockers, and a coherent Dashboard/Games/GameDetail/BetSlip experience. | W14 | Active |
 | **M4: Shop across 3+ books** | Run `gridiron lines --week 12` and see a cross-book comparison with best prices highlighted. | W7 | Planned |
 | **M5: Friends can use it** | Stand up a web UI that your friends can access. Dashboard, game detail, edges. | W8 + W9 | Planned (delivered with M4.5 + auth) |
 | **M6: Live game day experience** | Real-time win prob, live edges, hedge suggestions during a game. | W10 | Planned |
 
-**M4.5 ✅ achieved.** The visual verification surface now exists and is actively used — the dev-panel highlight mode operationalizes it. Next milestone north star is **M4 (multi-book line shopping)** or **M5 (friends can use it, needs auth)**, both gated on W7 / auth respectively.
+**M4.5 ✅ achieved.** The frontend verification surface exists and is actively used.
+
+The immediate milestone is **M1.7: Season-ready game prediction loop**. This
+deliberately hardens the current single-model, single-source game vertical
+slice before M4 multi-book expansion or W12 ensemble work.
 
 ---
 ## 9. Known Issues & Backlog
@@ -618,7 +710,7 @@ Remaining frontend gaps after the W9.5–W9.10 fidelity arc. Original audit 2026
 
 #### Per-screen remaining sections
 
-**PlayoffProjections (/projections)** — W9.11 Tier 1 active
+**PlayoffProjections (`/projections`)** — ✅ rebuilt 2026-07-28
 
 | Item | Priority | Notes |
 |---|---:|---|
@@ -711,14 +803,15 @@ Remaining items are blocked-only:
 
 #### Priority summary (post-prune)
 
-- **P0:** W9.11 Tier 0 pending-highlight and final frontend consistency audit.
+- **P0:** W14 focused game-day frontend requirements surfaced by the verified moneyline/spread/total vertical slice.
 - **P1:** ~20 — per-screen enhancements + remaining primitives/charts
 - **P2:** ~10 — polish
 - **Blocked:** ~20 — W7, W10, §5.3, feature attribution, OAuth
 
-PlayoffProjections, Weekly Outcomes, and BetSlip are rebuilt. Remaining
-frontend work is the W9.11 Tier 0 audit, bounded per-screen polish, and items
-blocked on named backend or data workstreams.
+PlayoffProjections, Weekly Outcomes, and BetSlip are rebuilt. Broad frontend
+audit work is paused. Current frontend priority is limited to Dashboard,
+GamesList, GameDetail, and BetSlip changes required by W14's real prediction,
+market, freshness, coverage, and edge contracts.
 
 ### Deferred task: Pending-highlight audit sweep
 
@@ -726,9 +819,9 @@ After the next full-retrain pipeline run populates all backend data, walk every 
 
 Screens to walk: Dashboard, GamesList, GameDetail, TeamsScreen, PlayerProp, PlayersExplorer, PlayoffProjections, Compare, BetSlip, Bankroll.
 
-Status: **Unblocked (2026-07-11)** — pipeline populated cohort splits, opponent-allowed, situational splits, projections. Ready to run. This is a natural next frontend task (capstone of the W9.8 highlight work).
+Status: **Paused for W14.** Resume after the season-ready game-prediction vertical slice is operationally verified.
 
-### Future note: Upcoming-week feature matrix
+#### W14 input: Upcoming-week feature matrix
 
 Trained models (logistic/rf/xgb game models; all prop models) predict from the modeling file / prop feature tables, both built from *completed* games. So they cannot predict upcoming (unplayed) weeks — no feature rows exist. Consequences observed 2026-07-11 (offseason):
 - Games serve **elo only** for upcoming weeks (WP populated; spread/total/projected-score null — those come from trained-model post-proc).
@@ -736,7 +829,11 @@ Trained models (logistic/rf/xgb game models; all prop models) predict from the m
 
 To get trained-model projections for upcoming weeks: build an upcoming-week feature matrix (fold the upcoming schedule into build-features, compute per-game features for unplayed games — many rolling features are thin/undefined for Week 1 of a new season), then run the champion predict path + prop projections against it.
 
-Optional / medium workstream. Elo-in-offseason is a reasonable default; this is only worth building if trained-model upcoming projections are wanted pre-season (more useful mid-season, where rolling features exist for the next unplayed week).
+This is now an active W14 dependency. Tier 0 must inventory which features are
+available for an unplayed game, define truthful Week 1 and mid-season behavior,
+and determine whether a shared upcoming-game feature artifact can support
+moneyline, derived spread outputs, and the total model without violating
+feature or archive contracts.
 
 ### Backlog (from 2026-07-06 audit)
 
@@ -776,6 +873,7 @@ Optional / medium workstream. Elo-in-offseason is a reasonable default; this is 
 
 | Date | Change |
 |---|---|
+| 2026-07-30 | **W14 opened: Game Prediction Season Readiness.** Paused W9.11 Tier 0 in favor of a complete upcoming-game vertical slice across moneyline, spread, total, archives, odds ingestion, canonical joins, edges, API, Dashboard, Games, GameDetail, and BetSlip. Promoted the upcoming-week feature matrix and DraftKings reliability issues into active dependencies. Tier 0 is a read-only current-state audit before implementation. |
 | 2026-07-29 | **W9.11 Tier 2 complete.** Rebuilt BetSlip as a canonical, provenance-aware decision-support workspace with exact edge prices, validated game/prop draft state, editable current odds and stakes, tracked/what-if bankroll sizing, guarded EV/Kelly/payout calculations, truthful unpriced props, single/parlay summaries, responsive layout, and accessibility coverage. Removed fabricated producer prices and the hidden `/edges` bankroll default. The staged-wager real-data visual pass remains deferred because no edge recommendations are currently available. Tier 0 is next. |
 | 2026-07-28 | **W9.11 Tier 1 follow-up complete.** Added Team Rankings / Playoff Projections sibling navigation and a Weekly Outcomes view backed by the static `/projections/grid` contract. Shipped played/projected grouping, Week 1–18 diverging probability cells, BYE handling, shared filters and team identity, viewport-portaled accessible matchup tooltips, generated contracts, comprehensive tests, and real-data verification. Tier 2 BetSlip is next; Tier 0 remains the final capstone. |
 | 2026-07-28 | **W9.11 Tier 1 complete.** Rebuilt PlayoffProjections with a full-cell probability heat matrix, accessible sorting, dependent conference/division selectors, current Elo and record context, explicit Elo-delta semantics, as-of-week metadata, Week 1-aware unavailable treatment, and team-profile navigation. Composed existing `/projections` and `/teams` contracts without adding request-time computation. Verified against the real 32-team artifact. |
