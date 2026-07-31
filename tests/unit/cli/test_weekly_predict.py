@@ -67,7 +67,6 @@ class TestStageList:
         names: list[str] = [s.name for s in _build_stages()]
         assert names == [
             "ensure-data-fresh",
-            "fetch-odds",
             "predict-week",
             "render-outputs",
             "generate-edges",
@@ -84,15 +83,12 @@ class TestStageList:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert "predict-week" in stages["render-outputs"].depends_on
 
-    def test_generate_edges_depends_on_predict_and_odds(self) -> None:
+    def test_generate_edges_depends_only_on_predict(self) -> None:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
-        deps: tuple[str, ...] = stages["generate-edges"].depends_on
-        assert "predict-week" in deps
-        assert "fetch-odds" in deps
+        assert stages["generate-edges"].depends_on == ("predict-week",)
 
-    def test_fetch_odds_is_soft_fail(self) -> None:
-        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
-        assert stages["fetch-odds"].soft_fail is True
+    def test_external_odds_fetch_is_not_a_stage(self) -> None:
+        assert "fetch-odds" not in _ALL_STAGES
 
     def test_generate_edges_is_soft_fail(self) -> None:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
@@ -296,10 +292,8 @@ class TestGenerateEdgesStage:
 
         result = _stage_generate_edges(ctx)
         assert not result.success
-        assert "no current DK odds" in result.detail
+        assert result.detail == "no current market snapshot available"
 
-    @patch("gridiron_edge.market.recommendations.rank_edges")
-    @patch("gridiron_edge.market.recommendations.build_edge_report")
     @patch("gridiron_edge.models.game_prediction.post_process.get_total_std")
     @patch("gridiron_edge.models.game_prediction.post_process.get_margin_std")
     @patch("gridiron_edge.cli.weekly_predict.load_current_odds")
@@ -310,8 +304,6 @@ class TestGenerateEdgesStage:
         mock_odds: MagicMock,
         mock_margin_std: MagicMock,
         mock_total_std: MagicMock,
-        mock_build_report: MagicMock,
-        mock_rank_edges: MagicMock,
     ) -> None:
         """weekly-predict should cache the top edge preview for display."""
 
@@ -331,8 +323,6 @@ class TestGenerateEdgesStage:
         mock_margin_std.return_value = 13.0
         mock_total_std.return_value = 13.0
 
-        mock_build_report.return_value = pd.DataFrame({"ev": [0.04]})
-
         ranked = pd.DataFrame(
             {
                 "away_team": ["KC"],
@@ -344,15 +334,23 @@ class TestGenerateEdgesStage:
             }
         )
 
-        mock_rank_edges.return_value = ranked
-
         ctx: dict[str, object] = {
             "week": 1,
             "season": "2026-2027",
             "model_type": "random_forest",
         }
 
-        result = _stage_generate_edges(ctx)
+        with (
+            patch(
+                "gridiron_edge.market.recommendations.build_edge_report",
+                return_value=pd.DataFrame({"ev": [0.04]}),
+            ),
+            patch(
+                "gridiron_edge.market.recommendations.rank_edges",
+                return_value=ranked,
+            ),
+        ):
+            result = _stage_generate_edges(ctx)
 
         assert result.success
         assert "top_edges_preview" in ctx
@@ -368,7 +366,6 @@ class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
 
     @patch("gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh")
-    @patch("gridiron_edge.cli.weekly_predict._stage_fetch_odds")
     @patch("gridiron_edge.cli.weekly_predict._stage_predict_week")
     @patch("gridiron_edge.cli.weekly_predict._stage_render_outputs")
     @patch("gridiron_edge.cli.weekly_predict._stage_generate_edges")
@@ -377,7 +374,6 @@ class TestCommandInvocation:
         mock_edges: MagicMock,
         mock_render: MagicMock,
         mock_predict: MagicMock,
-        mock_odds: MagicMock,
         mock_data: MagicMock,
     ) -> None:
         import typer
@@ -386,7 +382,6 @@ class TestCommandInvocation:
         from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
 
         mock_data.return_value = StageResult(success=True, detail="ok")
-        mock_odds.return_value = StageResult(success=True, detail="ok")
         mock_predict.return_value = StageResult(success=True, detail="ok")
         mock_render.return_value = StageResult(success=True, detail="ok")
         mock_edges.return_value = StageResult(success=True, detail="ok")
@@ -440,7 +435,7 @@ class TestCommandInvocation:
                 "--season",
                 "2026-2027",
                 "--skip",
-                "fetch-odds",
+                "render-outputs",
                 "--only",
                 "predict-week",
             ],
@@ -470,10 +465,6 @@ class TestModelTypeResolution:
         with (
             patch(
                 "gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh",
-                return_value=StageResult(success=True, detail="ok"),
-            ),
-            patch(
-                "gridiron_edge.cli.weekly_predict._stage_fetch_odds",
                 return_value=StageResult(success=True, detail="ok"),
             ),
             patch(
@@ -543,7 +534,6 @@ class TestModelTypeResolution:
 
         for stage_fn in (
             "_stage_ensure_data_fresh",
-            "_stage_fetch_odds",
             "_stage_predict_week",
             "_stage_render_outputs",
             "_stage_generate_edges",
@@ -583,7 +573,6 @@ class TestModelTypeResolution:
 
         for stage_fn in (
             "_stage_ensure_data_fresh",
-            "_stage_fetch_odds",
             "_stage_predict_week",
             "_stage_render_outputs",
             "_stage_generate_edges",

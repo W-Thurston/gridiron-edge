@@ -52,13 +52,13 @@ _BRIER_DRIFT_WARNING_THRESHOLD: float = 0.02
 def _stage_refresh_data(ctx: dict[str, Any]) -> StageResult:
     """Refresh underlying data via the weekly run-data-pipeline path.
 
-    Skips fetch-weather and fetch-odds (external services). Includes
+    Skips fetch-weather because weather refresh remains out-of-band. Includes
     build-elo, which incrementally updates Elo state with the
     completed week's results.
     """
     from gridiron_edge.cli.main import ALL_STAGES, _run_pipeline_stages
 
-    active = set(ALL_STAGES) - {"fetch-weather", "fetch-odds"}
+    active: set[str] = set(ALL_STAGES) - {"fetch-weather"}
 
     _run_pipeline_stages(
         active=active,

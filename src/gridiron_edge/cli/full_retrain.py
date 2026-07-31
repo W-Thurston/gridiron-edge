@@ -99,7 +99,7 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
     """Run the full-history data pipeline (skip weather/odds)."""
     from gridiron_edge.cli.main import ALL_STAGES, _run_pipeline_stages
 
-    active = set(ALL_STAGES) - {"fetch-weather", "fetch-odds"}
+    active: set[str] = set(ALL_STAGES) - {"fetch-weather"}
 
     _run_pipeline_stages(
         active=active,

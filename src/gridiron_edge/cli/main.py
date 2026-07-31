@@ -98,7 +98,6 @@ ALL_STAGES: list[str] = [
     "fetch-upcoming",
     "clean-upcoming",
     "fetch-weather",
-    "fetch-odds",
     "build-epa",
     "build-elo",
     "build-features",
@@ -260,12 +259,6 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
             fetch_weather(season_year=season_year, owm_api_key=key)
             s.set_detail(season_year)
 
-    with step("Fetch DraftKings odds", skip=not runs("fetch-odds")):
-        if runs("fetch-odds"):
-            from gridiron_edge.ingest.odds import fetch_dk_odds
-
-            fetch_dk_odds()
-
     with step("Build EPA features", skip=not runs("build-epa")) as s:
         if runs("build-epa"):
             from gridiron_edge.ingest.nflverse.pbp import fetch_pbp, fetch_pbp_refresh
@@ -345,8 +338,8 @@ def run_data_pipeline(
         --only build-elo --fit-elo-all-years
 
     \b
-    Scenario 4 - skip weather and odds:
-      gridiron run-data-pipeline --skip fetch-weather --skip fetch-odds
+    Scenario 4 - skip weather:
+      gridiron run-data-pipeline --skip fetch-weather
 
     \b
     Scenario 5 - features only:

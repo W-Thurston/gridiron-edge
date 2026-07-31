@@ -3,14 +3,13 @@
 """Composite command: weekly-predict.
 
 Generates predictions for the upcoming week by composing data refresh,
-odds fetch, prediction generation, output rendering, and edge report
-into a single workflow. Mirrors the operational checklist in HANDOFF.md
-steps 1-4.
+prediction generation, output rendering, and an edge report from an existing
+source-neutral market snapshot. Mirrors the operational checklist in
+HANDOFF.md steps 1-4.
 
 Usage::
 
     gridiron weekly-predict --week 1 --season 2026-2027
-    gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
     gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
 """
 
@@ -43,7 +42,6 @@ from gridiron_edge.evaluation.forecast_contracts import (
 )
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
-from gridiron_edge.ingest.odds import fetch_dk_odds
 from gridiron_edge.ingest.odds.store import load_current_odds
 
 # ---------------------------------------------------------------------------
@@ -54,13 +52,13 @@ from gridiron_edge.ingest.odds.store import load_current_odds
 def _stage_ensure_data_fresh(ctx: dict[str, Any]) -> StageResult:
     """Refresh underlying data via the weekly run-data-pipeline path.
 
-    Skips fetch-weather and fetch-odds within run-data-pipeline because
-    those are handled separately (fetch-odds as its own composite stage;
-    fetch-weather is generally out-of-band).
+    Skips fetch-weather because weather refresh remains out-of-band for
+    this workflow. Market data is consumed from an existing source-neutral
+    snapshot and is not fetched by weekly prediction orchestration.
     """
     from gridiron_edge.cli.main import ALL_STAGES, _run_pipeline_stages
 
-    active = set(ALL_STAGES) - {"fetch-weather", "fetch-odds"}
+    active = set(ALL_STAGES) - {"fetch-weather"}
 
     _run_pipeline_stages(
         active=active,
@@ -73,12 +71,6 @@ def _stage_ensure_data_fresh(ctx: dict[str, Any]) -> StageResult:
         fit_elo_all_years=False,
     )
     return StageResult(success=True, detail="data refreshed")
-
-
-def _stage_fetch_odds(ctx: dict[str, Any]) -> StageResult:
-    """Fetch current DraftKings odds. Soft-fails on network errors."""
-    fetch_dk_odds()
-    return StageResult(success=True, detail="DK odds refreshed")
 
 
 def _canonicalize_live_elo_predictions(
@@ -200,9 +192,10 @@ def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
-    """Generate edge report against current odds.
+    """Generate an edge report from the existing current market snapshot.
 
-    Soft-fails when no odds are available (fetch-odds failed earlier).
+    Missing market data remains a source-neutral soft failure. This stage does
+    not invoke an external market adapter.
     """
     from gridiron_edge.market.recommendations import (
         build_edge_report,
@@ -234,7 +227,7 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
     if odds is None or odds.empty:
         return StageResult(
             success=False,
-            detail="no current DK odds - fetch-odds did not produce data",
+            detail="no current market snapshot available",
         )
 
     margin_std = get_margin_std("win_prob", model_type)
@@ -298,20 +291,14 @@ def _build_stages() -> list[CompositeStage]:
     """Define the stages for weekly-predict.
 
     Order matters: each stage's depends_on points to stages earlier in
-    the list. fetch-odds and predict-week are independent (predictions
-    don't need odds), but generate-edges depends on both.
+    the list. Edge generation depends on predictions and consumes an existing
+    source-neutral market snapshot without fetching external data.
     """
     return [
         CompositeStage(
             name="ensure-data-fresh",
             description="Ensure data is fresh",
             func=_stage_ensure_data_fresh,
-        ),
-        CompositeStage(
-            name="fetch-odds",
-            description="Fetch current DraftKings odds",
-            func=_stage_fetch_odds,
-            soft_fail=True,
         ),
         CompositeStage(
             name="predict-week",
@@ -329,7 +316,7 @@ def _build_stages() -> list[CompositeStage]:
             name="generate-edges",
             description="Generate edge report against current odds",
             func=_stage_generate_edges,
-            depends_on=("predict-week", "fetch-odds"),
+            depends_on=("predict-week",),
             soft_fail=True,
         ),
     ]
@@ -376,16 +363,14 @@ def weekly_predict_cmd(
 ) -> None:
     r"""Generate predictions and edge report for the upcoming week.
 
-    Composes five stages: data refresh, odds fetch, prediction, output
-    rendering, edge report. Odds fetch and edge report soft-fail
-    individually - the rest of the workflow continues even when the
-    external odds service is unavailable.
+    Composes four stages: data refresh, prediction, output rendering,
+    and an edge report from the existing current market snapshot. Edge
+    generation soft-fails when current market data is unavailable.
 
     \b
     Examples:
       gridiron weekly-predict --week 1 --season 2026-2027
       gridiron weekly-predict --week 1 --season 2026-2027 --model-type xgboost
-      gridiron weekly-predict --week 1 --season 2026-2027 --skip fetch-odds
       gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
     """
     stages = _build_stages()
