@@ -112,15 +112,39 @@ def ingest_weather(
 
 @ingest_app.command("dk-odds")
 def ingest_dk_odds() -> None:
-    """Pull DraftKings odds for the current NFL week."""
+    """Run the legacy best-effort DraftKings adapter explicitly.
+
+    The supported current-market workflow uses nflverse schedule data. This
+    historical adapter may be unavailable and is not required by normal data
+    refresh or weekly prediction workflows.
+    """
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.ingest.odds import fetch_dk_odds
+    from gridiron_edge.ingest.odds import (
+        DraftKingsUnavailableError,
+        fetch_dk_odds,
+    )
 
-    console.header("ingest dk-odds")
+    console.header(
+        "ingest dk-odds",
+        subtitle="Legacy best-effort adapter",
+    )
 
-    with step("Fetch DraftKings odds"):
-        fetch_dk_odds()
+    try:
+        with step("Run legacy DraftKings adapter") as current_step:
+            result = fetch_dk_odds()
 
+            if result is None:
+                detail = "No current rows returned; no files written"
+            else:
+                ledger_path, snapshot_path = result
+                detail = f"ledger={ledger_path}; snapshot={snapshot_path}"
+
+            current_step.set_detail(detail)
+    except DraftKingsUnavailableError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(detail)
     console.summary()
 
 
