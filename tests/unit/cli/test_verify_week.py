@@ -32,6 +32,11 @@ from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
     WeeklyReadinessBlocker,
 )
+from gridiron_edge.market.edge_diagnostics import (
+    EdgeDiagnostics,
+    EdgeResultState,
+)
+from gridiron_edge.market.recommendations import EdgeResult
 
 runner = CliRunner()
 
@@ -57,7 +62,7 @@ def test_accepts_valid_season_label() -> None:
     assert validate_season_label("2026-2027") == "2026-2027"
 
 
-@patch("gridiron_edge.cli.verify_week.build_edge_report")
+@patch("gridiron_edge.market.weekly_edge_service.build_weekly_edge_result")
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
 @patch("gridiron_edge.cli.verify_week.load_forecast_events")
 @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
@@ -146,16 +151,42 @@ def test_explicit_run_builds_readiness_without_writes(
         }
     )
 
-    mock_edges.return_value = pd.DataFrame(
-        {
-            "ev": [0.04],
-        }
+    mock_edges.return_value = EdgeResult(
+        rows=pd.DataFrame(
+            {
+                "ev": [0.04],
+            }
+        ),
+        diagnostics=EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=1,
+            market_game_count=1,
+            matched_game_count=1,
+            complete_moneyline_count=1,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=1,
+            calculated_edge_count=1,
+            positive_edge_count=1,
+            filtered_edge_count=1,
+            state=EdgeResultState.POSITIVE_EDGES,
+        ),
     )
 
     result = load_weekly_readiness(
         season="2026-2027",
         week=1,
         run_id="run-1",
+        repo=tmp_path,
+    )
+
+    mock_edges.assert_called_once_with(
+        season="2026-2027",
+        week=1,
+        bankroll=None,
+        kelly_multiplier=0.25,
+        min_ev=0.0,
         repo=tmp_path,
     )
 
@@ -638,3 +669,18 @@ def test_verify_week_uses_rich_schedule_without_legacy_fallback() -> None:
 
     assert "load_schedule_upcoming_rich" in source
     assert "load_schedule_upcoming(" not in source
+
+
+def test_verify_week_has_no_direct_edge_calculation_dependencies() -> None:
+    from gridiron_edge.cli import verify_week
+
+    source = Path(verify_week.__file__).read_text()
+    retired = (
+        "build_edge_report",
+        "get_margin_std",
+        "get_total_std",
+    )
+    found = [name for name in retired if name in source]
+
+    assert found == []
+    assert "build_weekly_edge_result" in source

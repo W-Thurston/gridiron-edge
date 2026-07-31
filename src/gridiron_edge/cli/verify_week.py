@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 import re
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import pandas as pd
 from pandas import DataFrame
@@ -44,11 +44,9 @@ from gridiron_edge.evaluation.weekly_readiness import (
     evaluate_weekly_readiness,
 )
 from gridiron_edge.ingest.odds.store import load_current_odds
-from gridiron_edge.market.recommendations import build_edge_report
-from gridiron_edge.models.game_prediction.post_process import (
-    get_margin_std,
-    get_total_std,
-)
+
+if TYPE_CHECKING:
+    from gridiron_edge.market.recommendations import EdgeResult
 
 _SEASON_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(?P<start>\d{4})-(?P<end>\d{4})$")
 
@@ -285,38 +283,24 @@ def _select_current_predictions(
     return selected.events, tuple(blockers)
 
 
-def _build_edges(
-    predictions: DataFrame,
-    markets: DataFrame,
+def _load_edge_result(
     *,
+    season: str,
+    week: int,
     repo: Path,
-) -> DataFrame:
-    """Build an in-memory edge result from existing artifacts."""
-    if predictions.empty or markets.empty:
-        return DataFrame(columns=["ev"])
-
-    model_types = sorted(
-        {str(value) for value in predictions["model_type"].dropna() if str(value).strip()}
+) -> EdgeResult:
+    """Load weekly edge rows and diagnostics without modifying artifacts."""
+    from gridiron_edge.market.weekly_edge_service import (
+        build_weekly_edge_result,
     )
-    if len(model_types) != 1:
-        return DataFrame(columns=["ev"])
 
-    model_type = model_types[0]
-
-    return build_edge_report(
-        predictions,
-        markets,
-        margin_std=get_margin_std(
-            "win_prob",
-            model_type,
-            repo=repo,
-        ),
-        total_std=get_total_std(
-            "total",
-            model_type,
-            repo=repo,
-            default=13.0,
-        ),
+    return build_weekly_edge_result(
+        season=season,
+        week=week,
+        bankroll=None,
+        kelly_multiplier=0.25,
+        min_ev=0.0,
+        repo=repo,
     )
 
 
@@ -341,6 +325,26 @@ def _with_selection_blockers(
         readiness,
         blockers=combined,
     )
+
+
+def _edge_readiness_blockers(
+    result: EdgeResult,
+) -> tuple[WeeklyReadinessBlocker, ...]:
+    """Translate unified edge blockers into readiness blockers."""
+    from gridiron_edge.market.edge_diagnostics import EdgeDiagnosticBlocker
+
+    mapping = {
+        EdgeDiagnosticBlocker.NO_PREDICTIONS: (WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT),
+        EdgeDiagnosticBlocker.NO_MARKET_DATA: (WeeklyReadinessBlocker.MISSING_MARKET_DATA),
+        EdgeDiagnosticBlocker.MARKET_WRONG_SCOPE: (WeeklyReadinessBlocker.MARKET_SCOPE_MISMATCH),
+        EdgeDiagnosticBlocker.MARKET_STALE: (WeeklyReadinessBlocker.STALE_MARKET_DATA),
+        EdgeDiagnosticBlocker.ZERO_MATCHED_GAMES: (
+            WeeklyReadinessBlocker.ZERO_PREDICTION_MARKET_MATCHES
+        ),
+        EdgeDiagnosticBlocker.INCOMPLETE_MARKETS: (WeeklyReadinessBlocker.INCOMPLETE_MARKETS),
+    }
+
+    return tuple(dict.fromkeys(mapping[blocker] for blocker in result.diagnostics.blockers))
 
 
 def _render_weekly_readiness(
@@ -443,9 +447,9 @@ def load_weekly_readiness(
                 model_type=model_type,
             )
 
-    edges = _build_edges(
-        predictions,
-        markets,
+    edge_result = _load_edge_result(
+        season=season,
+        week=week,
         repo=resolved_repo,
     )
 
@@ -455,12 +459,23 @@ def load_weekly_readiness(
         schedule=readiness_schedule,
         predictions=predictions,
         markets=markets,
-        edges=edges,
+        edges=edge_result.rows,
+    )
+
+    readiness = replace(
+        readiness,
+        market_game_count=(edge_result.diagnostics.market_game_count),
+        prediction_market_match_count=(edge_result.diagnostics.matched_game_count),
+        eligible_market_count=(edge_result.diagnostics.eligible_market_count),
+        positive_edge_count=(edge_result.diagnostics.positive_edge_count),
     )
 
     return _with_selection_blockers(
         readiness,
-        selection_blockers,
+        (
+            *selection_blockers,
+            *_edge_readiness_blockers(edge_result),
+        ),
     )
 
 
