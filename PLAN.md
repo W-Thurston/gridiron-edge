@@ -1722,55 +1722,163 @@ historical prediction and odds-ledger artifacts.
 #### Goal
 
 Make `weekly-predict` resolve prediction policy before model execution and
-produce one truthful, schedule-complete pregame product whose published outputs
-are traceable to the exact persisted weekly product.
+produce one truthful, schedule-complete pregame product whose forecast events,
+model identities, readiness diagnostics, and published outputs are traceable to
+the exact persisted weekly product.
 
-#### Production files
-
-- `src/gridiron_edge/cli/weekly_predict.py`
-- generally reusable prediction orchestration helpers, if required
-- weekly-product or edge-output metadata contracts only where needed for
-  product traceability
-
-#### Test files
-
-- update `tests/unit/cli/test_weekly_predict.py`
-- update `tests/unit/cli/test_weekly_predict_product_stage.py`
-- add an end-to-end weekly workflow test using persisted forecast events,
-  weekly-product selection, market storage, and published outputs
+Before policy-driven trained-model execution can be added, replace the
+historical `TEAM_A` / `TEAM_B` modeling orientation with the canonical
+`AWAY_TEAM` / `HOME_TEAM` game orientation already used by schedules, weekly
+products, markets, APIs, and frontend surfaces.
 
 #### Tests
 
-- prediction availability is established before policy resolution;
-- resolved Win policy controls the model implementation actually executed;
-- resolved Total policy independently controls Total execution;
-- unavailable model families produce explicit component statuses;
-- any retained Win and Total overrides are independently scoped and affect
-  actual generated artifacts;
-- an ineligible override fails clearly rather than silently falling back;
+- prediction availability is model-specific;
+- explicit overrides are evaluated against the exact requested model identity;
+- an ineligible override does not silently fall back;
+- historical and upcoming model inputs share one stable home/away schema;
+- one modeling row represents one game;
+- Win targets and probabilities use the home-team perspective;
+- differential features use `HOME - AWAY`;
+- Total prediction remains independent from Win prediction;
+- schedule-complete upcoming features can be built without orientation adapters;
+- prediction policy controls the model implementations actually executed;
 - forecast-event model identities match policy decisions;
-- weekly-product model identities match the selected forecast events;
-- missing market data does not fail prediction or weekly-product publication;
+- weekly-product component identities match selected forecast events;
+- missing market data does not fail forecast or weekly-product publication;
 - omitted bankroll leaves dollar stake unavailable;
-- edge outputs are derived from the newly selected weekly product;
-- published output metadata identifies the exact weekly product;
-- no-edge and blocked-edge outcomes cannot leave a stale file presented as
-  current;
-- readiness diagnostics are included in the workflow result;
-- `--skip` and `--only` help examples describe valid dependency closures;
-- a complete workflow persists forecast events, writes and selects the weekly
-  product, evaluates readiness, and publishes only current outputs.
+- published outputs identify the exact weekly product;
+- no-edge outcomes cannot leave stale files presented as current;
+- valid `--skip` and `--only` paths respect dependency closure;
+- one end-to-end workflow persists forecast events, selects the weekly product,
+  evaluates readiness, and publishes only current outputs.
 
 #### Acceptance
 
-One command resolves prediction policy, executes the selected available model
-families, persists their immutable forecast events, composes and explicitly
-selects a schedule-complete weekly product, evaluates readiness, and publishes
-only outputs traceable to that exact product.
+One command resolves prediction policy, executes the selected available Win and
+Total model families, persists immutable forecast events, composes and
+explicitly selects a schedule-complete weekly product, evaluates readiness, and
+publishes only outputs traceable to that exact product.
 
-Unavailable Win, Spread, Total, projected-score, market, or edge components are
-represented explicitly and are never silently omitted, recomputed from a
-different model, or substituted from stale artifacts.
+Historical training rows, upcoming prediction rows, forecast events, weekly
+products, and market joins use one stable home/away game orientation.
+
+No game-prediction feature, model, predictor, or orchestration path requires
+`TEAM_A` or `TEAM_B`.
+
+Win models directly predict home win probability. Away win probability is the
+complement.
+
+All differential features use `HOME - AWAY`.
+
+Unavailable components are represented explicitly and are never silently
+omitted, recomputed from another model identity, or substituted from stale
+artifacts.
+
+### Unit 19.2a: Canonical Game Schema
+
+#### Completed
+
+Defined one canonical home/away-oriented schema for the game-prediction domain.
+
+Locked identity columns to game, season, week, away team, and home team.
+
+Defined optional game date and neutral-site identity fields.
+
+Defined historical score and target columns using the home-team perspective.
+
+Defined Win prediction outputs as home win probability and its away-team
+complement.
+
+Documented the existing home-oriented Spread convention, where a negative model
+Spread means the home team is favored.
+
+Established `HOME - AWAY` as the direction for every differential feature.
+
+Added canonical helpers for Away, Home, and differential feature names.
+
+Explicitly identified `TEAM_A`, `TEAM_B`, and `HOME_FIELD` as retired
+orientation columns.
+
+No feature, modeling, training, prediction, or artifact behavior changed in this
+unit.
+
+#### Goal
+
+Establish one centrally defined home/away schema before migrating modeling rows,
+features, predictors, tests, and development artifacts.
+
+#### Tests
+
+Verified canonical game identity, optional identity, scores, targets,
+probabilities, prediction outputs, feature prefixes, differential naming, input
+validation, and exclusion of retired orientation columns.
+
+#### Acceptance
+
+The future game-prediction schema has one documented source of truth and no
+canonical field depends on `TEAM_A`, `TEAM_B`, or perspective-relative
+`HOME_FIELD`.
+
+### Unit 19.2b.1: Preserve Historical Home/Away Truth
+
+#### Completed
+
+Extended the cleaned historical games schema with explicit Away Team, Home Team,
+Away Score, Home Score, and neutral-site status.
+
+Preserved these values directly from nflverse schedule identity and score
+fields. They are never reconstructed from winner/loser fields, game location,
+game IDs, abbreviation reversal, or alphabetical ordering.
+
+Retained existing winner/loser fields for historical consumers not yet migrated
+to the canonical home/away schema.
+
+Added validation for required columns, unique and nonempty game IDs, nonempty
+team identities, distinct away and home teams, nonnegative scores, binary
+neutral-site values, ties, winner and loser score reconciliation, and winning
+team identity.
+
+Updated favorite identity derivation to use the preserved home and away teams.
+
+Updated the empty cleaned-games schema and added focused synthetic cleaner tests
+covering home wins, away wins, neutral-site games, ties, empty first runs,
+non-clobbering empty refreshes, duplicate game IDs, same-team rows, score
+mismatches, and invalid tie state.
+
+Restored the full nflverse raw history from 1999 through 2026 and regenerated
+the cleaned historical artifact.
+
+Validated 7,276 cleaned historical games with 7,182 standard-site games, 94
+neutral-site games, and 15 ties.
+
+Confirmed zero duplicate game IDs, same-team rows, negative scores, tie-state
+mismatches, winner-score mismatches, loser-score mismatches, home-winner
+identity mismatches, and away-winner identity mismatches.
+
+Confirmed that the standard current-season refresh replaces only the requested
+season while preserving all other seasons in the raw historical artifact.
+
+All quality gates and tests pass.
+
+#### Goal
+
+Prevent historical home/away information from being discarded during cleaning
+so all later modeling and prediction stages can consume explicit schedule
+truth.
+
+#### Tests
+
+Covered home wins, away wins, neutral-site games, ties, empty output schema,
+empty-refresh protection, duplicate IDs, invalid same-team rows, score
+mismatches, tie mismatches, historical regeneration, and complete artifact
+reconciliation.
+
+#### Acceptance
+
+The cleaned historical games artifact contains explicit, validated home/away
+identity and scores for every completed game without downstream orientation
+reconstruction.
 
 ---
 

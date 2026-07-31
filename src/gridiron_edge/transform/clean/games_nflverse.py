@@ -2,8 +2,11 @@
 
 """Transform nflverse raw schedule data into the canonical games schema.
 
-Maps the nflverse home/away-oriented schema to the WINNER/LOSER-oriented
-canonical games schema used by Elo, features, and all downstream modules.
+Preserves nflverse home/away identity and scores as the canonical game
+orientation.
+
+Winner/loser fields remain available for historical consumers while the
+game-prediction domain migrates to one stable home/away row per game.
 
 nflverse schema (key columns used):
     game_id         str     "2025_01_PHI_GB"  (YYYY_WW_AWAY_HOME, short codes)
@@ -33,6 +36,11 @@ Canonical games schema (NFL_wk_by_wk_cleaned.csv):
     GAME_DAY_OF_WEEK    str     "Thursday"
     GAME_DATE           str     "2025-09-04"
     GAMETIME            str     "20:20:00"  (HH:MM:SS for backwards compat)
+    AWAY_TEAM           str     "Philadelphia Eagles"  (long name)
+    HOME_TEAM           str     "Green Bay Packers"    (long name)
+    AWAY_SCORE          int     20
+    HOME_SCORE          int     17
+    IS_NEUTRAL_SITE     int     0 | 1
     WINNER              str     "Philadelphia Eagles"  (long name)
     GAME_LOCATION       str     "H" (home) | "@" (away) | "N" (neutral)
     LOSER               str     "Green Bay Packers"    (long name)
@@ -63,6 +71,12 @@ Notes:
     - GAME_LOCATION uses: "H" = home game, "@" = away game, "N" = neutral site.
     - nflverse uses short team codes. This module maps them to long names
       using the team_metadata reference dataset (long/short name columns)
+    - AWAY_TEAM, HOME_TEAM, AWAY_SCORE, and HOME_SCORE preserve nflverse
+      schedule orientation directly. They are never reconstructed from
+      WINNER, LOSER, GAME_LOCATION, or GAME_ID.
+    - IS_NEUTRAL_SITE is 1 only when nflverse location is "Neutral".
+    - WINNER/LOSER fields remain historical result-oriented fields for
+      consumers not yet migrated to the home/away schema.
 
       (Elo table, features) continues to work unchanged.
 """
@@ -75,7 +89,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.registry import dataset_path
@@ -94,6 +108,11 @@ _GAMES_COLUMNS: list[str] = [
     "GAME_DAY_OF_WEEK",
     "GAME_DATE",
     "GAMETIME",
+    "AWAY_TEAM",
+    "HOME_TEAM",
+    "AWAY_SCORE",
+    "HOME_SCORE",
+    "IS_NEUTRAL_SITE",
     "WINNER",
     "GAME_LOCATION",
     "LOSER",
@@ -141,6 +160,122 @@ def _handle_empty_games(out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(columns=_GAMES_COLUMNS).to_csv(out_path, index=False)
     return out_path
+
+
+def _validate_home_away_games(games: DataFrame) -> None:  # noqa: PLR0912
+    """Validate preserved home/away identity and score invariants."""
+    required = {
+        "GAME_ID",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+        "IS_NEUTRAL_SITE",
+        "WINNER",
+        "LOSER",
+        "PTS_WINNER",
+        "PTS_LOSER",
+        "WIN_OR_TIE",
+    }
+    missing: list[str] = sorted(required - set(games.columns))
+    if missing:
+        raise ValueError("Cleaned games are missing required columns: " + ", ".join(missing))
+
+    if games["GAME_ID"].isna().any():
+        raise ValueError("Cleaned game IDs must not contain nulls.")
+
+    if games["GAME_ID"].astype(str).str.strip().eq("").any():
+        raise ValueError("Cleaned game IDs must not contain empty values.")
+
+    if games["GAME_ID"].duplicated().any():
+        duplicated: list = sorted(
+            games.loc[
+                games["GAME_ID"].duplicated(keep=False),
+                "GAME_ID",
+            ]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+        raise ValueError("Cleaned games contain duplicate game IDs: " + ", ".join(duplicated))
+
+    for column in ("AWAY_TEAM", "HOME_TEAM"):
+        if games[column].isna().any():
+            raise ValueError(f"{column} must not contain nulls.")
+
+        if games[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"{column} must not contain empty values.")
+
+    same_team: Series[bool] = games["AWAY_TEAM"].astype(str) == games["HOME_TEAM"].astype(str)
+    if same_team.any():
+        game_ids: list = sorted(
+            games.loc[
+                same_team,
+                "GAME_ID",
+            ]
+            .astype(str)
+            .tolist()
+        )
+        raise ValueError("Away and home team must differ for games: " + ", ".join(game_ids))
+
+    for column in (
+        "AWAY_SCORE",
+        "HOME_SCORE",
+        "PTS_WINNER",
+        "PTS_LOSER",
+    ):
+        if games[column].isna().any():
+            raise ValueError(f"{column} must not contain nulls.")
+
+        if (games[column] < 0).any():
+            raise ValueError(f"{column} must not contain negative values.")
+
+    neutral_values: set = set(games["IS_NEUTRAL_SITE"].dropna().astype(int).unique().tolist())
+    if neutral_values - {0, 1}:
+        raise ValueError("IS_NEUTRAL_SITE must contain only 0 or 1.")
+
+    if games["IS_NEUTRAL_SITE"].isna().any():
+        raise ValueError("IS_NEUTRAL_SITE must not contain nulls.")
+
+    tied: Series[bool] = games["AWAY_SCORE"] == games["HOME_SCORE"]
+    declared_tie: Series[bool] = games["WIN_OR_TIE"] == 0.5
+
+    if not tied.equals(declared_tie):
+        raise ValueError("Home/away scores do not reconcile with WIN_OR_TIE.")
+
+    expected_winner_score = games[
+        [
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+        # pyrefly: ignore [bad-argument-type]
+    ].max(axis=1)
+    expected_loser_score = games[
+        [
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+        # pyrefly: ignore [bad-argument-type]
+    ].min(axis=1)
+
+    if not (games["PTS_WINNER"] == expected_winner_score).all():
+        raise ValueError("PTS_WINNER does not reconcile with home/away scores.")
+
+    if not (games["PTS_LOSER"] == expected_loser_score).all():
+        raise ValueError("PTS_LOSER does not reconcile with home/away scores.")
+
+    home_wins: Series[bool] = games["HOME_SCORE"] > games["AWAY_SCORE"]
+    away_wins: Series[bool] = games["AWAY_SCORE"] > games["HOME_SCORE"]
+
+    if not (
+        games.loc[home_wins, "WINNER"].astype(str) == games.loc[home_wins, "HOME_TEAM"].astype(str)
+    ).all():
+        raise ValueError("Home-winning games do not reconcile with WINNER.")
+
+    if not (
+        games.loc[away_wins, "WINNER"].astype(str) == games.loc[away_wins, "AWAY_TEAM"].astype(str)
+    ).all():
+        raise ValueError("Away-winning games do not reconcile with WINNER.")
 
 
 def clean_nflverse_games(
@@ -198,6 +333,24 @@ def clean_nflverse_games(
 
     df["WEEK_NUM"] = df.apply(_resolve_week, axis=1)
 
+    # --- Preserve canonical home/away identity and scores ---
+    df["AWAY_TEAM"] = df["away_team"].astype(str).map(map_short_to_long)
+    df["HOME_TEAM"] = df["home_team"].astype(str).map(map_short_to_long)
+
+    # pyrefly: ignore [missing-attribute]
+    df["AWAY_SCORE"] = pd.to_numeric(
+        df["away_score"],
+        errors="raise",
+    ).astype(int)
+    # pyrefly: ignore [missing-attribute]
+    df["HOME_SCORE"] = pd.to_numeric(
+        df["home_score"],
+        errors="raise",
+    ).astype(int)
+
+    neutral_mask = df["location"].fillna("").astype(str).str.strip().eq("Neutral")
+    df["IS_NEUTRAL_SITE"] = neutral_mask.astype(int)
+
     # --- Derive WINNER / LOSER from scores ---
     # home_score > away_score → home team won → WINNER = home, LOSER = away
     # away_score > home_score → away team won → WINNER = away, LOSER = home
@@ -230,7 +383,6 @@ def clean_nflverse_games(
 
     # --- GAME_LOCATION from home/away winner perspective ---
     # "H" = home game, "@" = away game (winner was visitor), "N" = neutral site
-    neutral_mask = df["location"].fillna("").str.strip() == "Neutral"
     away_won_mask = df["away_score"] > df["home_score"]
 
     df["GAME_LOCATION"] = np.where(
@@ -263,11 +415,11 @@ def clean_nflverse_games(
 
     df["FAVORITED"] = np.where(
         home_favored,
-        df["home_team"].map(map_short_to_long),
+        df["HOME_TEAM"],
         np.where(
             away_favored,
-            df["away_team"].map(map_short_to_long),
-            np.nan,  # Pick (line = 0)
+            df["AWAY_TEAM"],
+            np.nan,
         ),
     )
     # Negate for away-favored games so VEGAS_LINE is always negative spread
@@ -283,6 +435,11 @@ def clean_nflverse_games(
             "GAME_DAY_OF_WEEK": df["weekday"].fillna(""),
             "GAME_DATE": df["gameday"].fillna(""),
             "GAMETIME": df["GAMETIME"],
+            "AWAY_TEAM": df["AWAY_TEAM"],
+            "HOME_TEAM": df["HOME_TEAM"],
+            "AWAY_SCORE": df["AWAY_SCORE"],
+            "HOME_SCORE": df["HOME_SCORE"],
+            "IS_NEUTRAL_SITE": df["IS_NEUTRAL_SITE"],
             "WINNER": df["WINNER"],
             "GAME_LOCATION": df["GAME_LOCATION"],
             "LOSER": df["LOSER"],
@@ -301,6 +458,7 @@ def clean_nflverse_games(
             "OVER_UNDER": pd.to_numeric(df["total_line"], errors="coerce"),
             "FAVORITED": df["FAVORITED"],
             "WIN_OR_TIE": df["WIN_OR_TIE"],
+            # pyrefly: ignore [missing-attribute]
             "DIV_GAME": pd.to_numeric(df["div_game"], errors="coerce").fillna(0).astype(int),
         }
     )
@@ -311,6 +469,8 @@ def clean_nflverse_games(
         ascending=True,
         ignore_index=True,
     )
+
+    _validate_home_away_games(out)
 
     out_path = dataset_path(resolved_repo, "games")
     out_path.parent.mkdir(parents=True, exist_ok=True)
