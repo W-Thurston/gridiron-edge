@@ -1,10 +1,11 @@
 # src/gridiron_edge/ingest/odds/draftkings.py
 
-"""DraftKings NFL odds ingestion.
+"""Legacy best-effort DraftKings NFL odds adapter.
 
-Pulls current NFL odds from the DraftKings sportsbook API, parses moneyline,
-spread, and total markets into a team-oriented long-format DataFrame, and
-persists to the historical odds ledger and current snapshot.
+This explicitly invoked historical adapter is not part of the supported
+nflverse schedule-market workflow. It parses usable DraftKings JSON into the
+generic source-neutral market store, but does not attempt to bypass HTML,
+human-verification, or other non-JSON responses.
 """
 
 from __future__ import annotations
@@ -35,6 +36,54 @@ from gridiron_edge.ingest.odds.store import (
 )
 
 logger: Logger = logging.getLogger(__name__)
+
+
+class DraftKingsUnavailableError(RuntimeError):
+    """Raised when the legacy DraftKings adapter returns no usable payload."""
+
+
+def _legacy_unavailable(detail: str) -> DraftKingsUnavailableError:
+    """Build one stable error for the optional legacy adapter."""
+    return DraftKingsUnavailableError(
+        "Legacy DraftKings adapter returned no usable JSON: "
+        f"{detail}. This adapter is best-effort and is not required for "
+        "the supported nflverse schedule market workflow."
+    )
+
+
+def _validate_legacy_payload(payload: object) -> dict[str, Any]:
+    """Require the mapping and list fields consumed by the parser."""
+    if not isinstance(payload, dict):
+        raise _legacy_unavailable("decoded payload is not an object")
+    for field in ("events", "markets", "selections"):
+        value = payload.get(field)
+        if not isinstance(value, list):
+            raise _legacy_unavailable(f"payload field {field!r} is not a list")
+    return payload
+
+
+def _load_legacy_payload(response: Response) -> dict[str, Any]:
+    """Decode one response without bypass or browser automation."""
+    try:
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise _legacy_unavailable(f"HTTP request failed: {exc}") from exc
+
+    content_type = response.headers.get("content-type", "").lower()
+    body_prefix = response.text.lstrip()[:100].lower()
+    is_html = (
+        "html" in content_type
+        or body_prefix.startswith("<!doctype html")
+        or body_prefix.startswith("<html")
+    )
+    if is_html:
+        raise _legacy_unavailable("response was HTML or human-verification content")
+
+    try:
+        payload: object = response.json()
+    except ValueError as exc:
+        raise _legacy_unavailable("response was not valid JSON") from exc
+    return _validate_legacy_payload(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -390,13 +439,36 @@ def fetch_dk_odds_wide(
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0",  # noqa: E501
             "accept-language": "en-US,en;q=0.9",
         }
-        resp: Response = sess.get(base, params=params, headers=headers, timeout=20)
-        resp.raise_for_status()
-        payload = resp.json()
+        try:
+            resp: Response = sess.get(
+                base,
+                params=params,
+                headers=headers,
+                timeout=20,
+            )
+        except requests.RequestException as exc:
+            raise _legacy_unavailable(f"HTTP request failed: {exc}") from exc
+        payload = _load_legacy_payload(resp)
     else:
-        payload: dict = payload_override
+        payload = _validate_legacy_payload(payload_override)
 
     df_events: DataFrame = _extract_game_lines(payload)
+    if df_events.empty:
+        return pd.DataFrame(
+            columns=[
+                "team",
+                "opponent",
+                "location",
+                "event_id",
+                "start_time",
+                "moneyline",
+                "spread_value",
+                "spread_odds",
+                "total_OU_value",
+                "over_total_odds",
+                "under_total_odds",
+            ]
+        )
     df_teams: DataFrame = _event_rows_to_team_rows(df_events)
     df_teams = df_teams.sort_values(
         ["start_time", "event_id", "location"],
@@ -451,8 +523,8 @@ def fetch_dk_odds(
     season: str | None = None,
     week: int | None = None,
     repo: Path | None = None,
-) -> tuple[Path, Path]:
-    """Pull DraftKings odds and persist to ledger + snapshot.
+) -> tuple[Path, Path] | None:
+    """Run the legacy best-effort adapter and persist usable rows.
 
     Fetches current NFL moneyline, spread, and total odds from the
     DraftKings sportsbook API, converts to long format, appends to the
@@ -475,11 +547,12 @@ def fetch_dk_odds(
     df_wide: DataFrame = fetch_dk_odds_wide()
 
     if df_wide.empty:
-        logger.warning("No DraftKings odds returned for %s week %d", resolved_season, resolved_week)
-        return (
-            repo / "data" / "odds" / "dk_odds_log.parquet" if repo else Path(),
-            repo / "data" / "odds" / "dk_odds_current.parquet" if repo else Path(),
+        logger.warning(
+            "Legacy DraftKings adapter returned no current rows for %s week %d",
+            resolved_season,
+            resolved_week,
         )
+        return None
 
     df_long: DataFrame = wide_to_long(
         df_wide,
