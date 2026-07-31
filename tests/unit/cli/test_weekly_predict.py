@@ -68,6 +68,7 @@ class TestStageList:
         assert names == [
             "ensure-data-fresh",
             "predict-week",
+            "compose-weekly-product",
             "render-outputs",
             "generate-edges",
         ]
@@ -83,9 +84,13 @@ class TestStageList:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert "predict-week" in stages["render-outputs"].depends_on
 
-    def test_generate_edges_depends_only_on_predict(self) -> None:
+    def test_product_composition_depends_on_predict(self) -> None:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
-        assert stages["generate-edges"].depends_on == ("predict-week",)
+        assert stages["compose-weekly-product"].depends_on == ("predict-week",)
+
+    def test_generate_edges_depends_on_selected_product(self) -> None:
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
+        assert stages["generate-edges"].depends_on == ("compose-weekly-product",)
 
     def test_external_odds_fetch_is_not_a_stage(self) -> None:
         assert "fetch-odds" not in _ALL_STAGES
@@ -256,110 +261,189 @@ class TestPredictWeekStage:
 
 
 class TestGenerateEdgesStage:
-    """Cover the soft-failure paths in generate-edges."""
+    """Cover the unified weekly edge service boundary."""
 
-    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
-    def test_failure_when_no_predictions(self, mock_load: MagicMock) -> None:
-        import pandas as pd
-
-        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
-
-        mock_load.return_value = pd.DataFrame()
-        ctx = {
-            "week": 1,
-            "season": "2026-2027",
-            "model_type": "random_forest",
-        }
-
-        result = _stage_generate_edges(ctx)
-        assert not result.success
-        assert "no predictions" in result.detail
-
-    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
-    @patch("gridiron_edge.cli.weekly_predict.load_current_odds")
-    def test_failure_when_no_odds(self, mock_odds: MagicMock, mock_load: MagicMock) -> None:
-        import pandas as pd
-
-        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
-
-        mock_load.return_value = pd.DataFrame({"game_id": ["x"], "away_win_prob": [0.5]})
-        mock_odds.return_value = None
-        ctx = {
-            "week": 1,
-            "season": "2026-2027",
-            "model_type": "random_forest",
-        }
-
-        result = _stage_generate_edges(ctx)
-        assert not result.success
-        assert result.detail == "no current market snapshot available"
-
-    @patch("gridiron_edge.models.game_prediction.post_process.get_total_std")
-    @patch("gridiron_edge.models.game_prediction.post_process.get_margin_std")
-    @patch("gridiron_edge.cli.weekly_predict.load_current_odds")
-    @patch("gridiron_edge.cli.weekly_predict.load_prediction_log")
-    def test_stashes_top_edge_preview_in_context(
+    def _diagnostics(
         self,
-        mock_predictions: MagicMock,
-        mock_odds: MagicMock,
-        mock_margin_std: MagicMock,
-        mock_total_std: MagicMock,
-    ) -> None:
-        """weekly-predict should cache the top edge preview for display."""
+        *,
+        state,
+        blockers=(),
+        calculated: int = 0,
+        positive: int = 0,
+        filtered: int = 0,
+    ):
+        from gridiron_edge.market.edge_diagnostics import EdgeDiagnostics
 
-        import pandas as pd
-
-        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
-
-        mock_predictions.return_value = pd.DataFrame(
-            {
-                "game_id": ["g1"],
-                "away_win_prob": [0.55],
-            }
+        return EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=1,
+            market_game_count=1,
+            matched_game_count=1,
+            complete_moneyline_count=1,
+            complete_spread_count=1,
+            complete_total_count=0,
+            eligible_market_count=2,
+            calculated_edge_count=calculated,
+            positive_edge_count=positive,
+            filtered_edge_count=filtered,
+            state=state,
+            blockers=blockers,
         )
 
-        mock_odds.return_value = pd.DataFrame({"x": [1]})
+    def test_calls_service_and_writes_returned_rows(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
+        from gridiron_edge.market.edge_diagnostics import EdgeResultState
+        from gridiron_edge.market.recommendations import EdgeResult
 
-        mock_margin_std.return_value = 13.0
-        mock_total_std.return_value = 13.0
-
-        ranked = pd.DataFrame(
+        rows = pd.DataFrame(
             {
                 "away_team": ["KC"],
                 "home_team": ["LAC"],
                 "market_type": ["spread"],
                 "side": ["home"],
                 "ev": [0.042],
-                "kelly_stake": [18.2],
+                "kelly_stake": [None],
             }
         )
-
-        ctx: dict[str, object] = {
-            "week": 1,
-            "season": "2026-2027",
-            "model_type": "random_forest",
-        }
-
+        edge_result = EdgeResult(
+            rows=rows,
+            diagnostics=self._diagnostics(
+                state=EdgeResultState.POSITIVE_EDGES,
+                calculated=1,
+                positive=1,
+                filtered=1,
+            ),
+        )
         with (
             patch(
-                "gridiron_edge.market.recommendations.build_edge_report",
-                return_value=pd.DataFrame({"ev": [0.04]}),
+                "gridiron_edge.cli.weekly_predict.get_settings",
+                return_value=MagicMock(repo_root=tmp_path),
             ),
             patch(
-                "gridiron_edge.market.recommendations.rank_edges",
-                return_value=ranked,
-            ),
+                "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
+                return_value=edge_result,
+            ) as service,
         ):
+            ctx = {
+                "season": "2026-2027",
+                "week": 1,
+                "bankroll": None,
+            }
             result = _stage_generate_edges(ctx)
 
         assert result.success
-        assert "top_edges_preview" in ctx
-
+        service.assert_called_once_with(
+            season="2026-2027",
+            week=1,
+            bankroll=None,
+            kelly_multiplier=0.25,
+            min_ev=0.0,
+            repo=tmp_path,
+        )
+        assert result.rows == 1
+        assert len(result.artifacts) == 1
+        written = pd.read_csv(result.artifacts[0])
+        assert written["ev"].tolist() == pytest.approx([0.042])
         preview = ctx["top_edges_preview"]
         assert isinstance(preview, pd.DataFrame)
-        assert len(preview) == 1
         assert preview.iloc[0]["away_team"] == "KC"
-        assert preview.iloc[0]["home_team"] == "LAC"
+
+    def test_blocked_result_soft_fails_without_writing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
+        from gridiron_edge.market.edge_diagnostics import (
+            EdgeDiagnosticBlocker,
+            EdgeResultState,
+        )
+        from gridiron_edge.market.recommendations import EdgeResult
+
+        edge_result = EdgeResult(
+            rows=pd.DataFrame(),
+            diagnostics=self._diagnostics(
+                state=EdgeResultState.BLOCKED,
+                blockers=(EdgeDiagnosticBlocker.NO_MARKET_DATA,),
+            ),
+        )
+        with (
+            patch(
+                "gridiron_edge.cli.weekly_predict.get_settings",
+                return_value=MagicMock(repo_root=tmp_path),
+            ),
+            patch(
+                "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
+                return_value=edge_result,
+            ),
+        ):
+            result = _stage_generate_edges({"season": "2026-2027", "week": 1, "bankroll": None})
+
+        assert not result.success
+        assert result.detail == "edge calculation blocked: no_market_data"
+        assert not (tmp_path / "data" / "output" / "edges").exists()
+
+    @pytest.mark.parametrize(
+        ("state", "calculated", "positive", "message"),
+        [
+            (
+                "no_calculable_edges",
+                0,
+                0,
+                "no calculable edges",
+            ),
+            (
+                "no_positive_edges",
+                1,
+                0,
+                "no positive-EV edges",
+            ),
+            (
+                "positive_edges",
+                2,
+                1,
+                "below min_ev=0.0%",
+            ),
+        ],
+    )
+    def test_analytical_empty_result_is_success(
+        self,
+        tmp_path: Path,
+        state: str,
+        calculated: int,
+        positive: int,
+        message: str,
+    ) -> None:
+        from gridiron_edge.cli.weekly_predict import _stage_generate_edges
+        from gridiron_edge.market.edge_diagnostics import EdgeResultState
+        from gridiron_edge.market.recommendations import EdgeResult
+
+        edge_result = EdgeResult(
+            rows=pd.DataFrame(),
+            diagnostics=self._diagnostics(
+                state=EdgeResultState(state),
+                calculated=calculated,
+                positive=positive,
+            ),
+        )
+        with (
+            patch(
+                "gridiron_edge.cli.weekly_predict.get_settings",
+                return_value=MagicMock(repo_root=tmp_path),
+            ),
+            patch(
+                "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
+                return_value=edge_result,
+            ),
+        ):
+            result = _stage_generate_edges({"season": "2026-2027", "week": 1, "bankroll": None})
+
+        assert result.success
+        assert message in result.detail
+        assert result.artifacts == []
 
 
 class TestCommandInvocation:
@@ -367,12 +451,14 @@ class TestCommandInvocation:
 
     @patch("gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh")
     @patch("gridiron_edge.cli.weekly_predict._stage_predict_week")
+    @patch("gridiron_edge.cli.weekly_predict._stage_compose_weekly_product")
     @patch("gridiron_edge.cli.weekly_predict._stage_render_outputs")
     @patch("gridiron_edge.cli.weekly_predict._stage_generate_edges")
     def test_runs_all_stages_when_all_succeed(
         self,
         mock_edges: MagicMock,
         mock_render: MagicMock,
+        mock_product: MagicMock,
         mock_predict: MagicMock,
         mock_data: MagicMock,
     ) -> None:
@@ -383,6 +469,7 @@ class TestCommandInvocation:
 
         mock_data.return_value = StageResult(success=True, detail="ok")
         mock_predict.return_value = StageResult(success=True, detail="ok")
+        mock_product.return_value = StageResult(success=True, detail="ok")
         mock_render.return_value = StageResult(success=True, detail="ok")
         mock_edges.return_value = StageResult(success=True, detail="ok")
 
@@ -397,8 +484,6 @@ class TestCommandInvocation:
                 "1",
                 "--season",
                 "2026-2027",
-                "--model-type",
-                "random_forest",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -444,155 +529,23 @@ class TestCommandInvocation:
         assert "mutually exclusive" in result.output
 
 
-class TestModelTypeResolution:
-    """Cover --model-type auto sentinel handling (W13 Tier 3 Step 2)."""
+class TestWeeklyPredictModelContract:
+    """The live weekly workflow owns an Elo forecast identity."""
 
-    def _fake_settings(self, tmp_path: Path):
-        from dataclasses import dataclass
-
-        @dataclass
-        class FakeSettings:
-            repo_root: Path
-
-        return lambda: FakeSettings(repo_root=tmp_path)
-
-    def test_explicit_model_type_passes_through(self) -> None:
+    def test_help_has_no_model_type(self) -> None:
         import typer
         from typer.testing import CliRunner
 
         from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
-
-        with (
-            patch(
-                "gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh",
-                return_value=StageResult(success=True, detail="ok"),
-            ),
-            patch(
-                "gridiron_edge.cli.weekly_predict._stage_predict_week",
-                return_value=StageResult(success=True, detail="ok"),
-            ),
-            patch(
-                "gridiron_edge.cli.weekly_predict._stage_render_outputs",
-                return_value=StageResult(success=True, detail="ok"),
-            ),
-            patch(
-                "gridiron_edge.cli.weekly_predict._stage_generate_edges",
-                return_value=StageResult(success=True, detail="ok"),
-            ),
-        ):
-            app = typer.Typer()
-            app.command()(weekly_predict_cmd)
-
-            runner = CliRunner()
-            result = runner.invoke(
-                app,
-                [
-                    "--week",
-                    "1",
-                    "--season",
-                    "2026-2027",
-                    "--model-type",
-                    "xgboost",
-                ],
-            )
-
-        assert result.exit_code == 0, result.output
-        assert "model=xgboost" in result.output
-
-    def test_auto_resolves_from_manifest(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import json
-
-        import typer
-        from typer.testing import CliRunner
-
-        from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
-
-        manifest_dir = tmp_path / "data" / "output" / "champions"
-        manifest_dir.mkdir(parents=True)
-        manifest = {
-            "schema_version": 1,
-            "updated_at": "2026-07-01T14:00:00+00:00",
-            "models": {
-                "win_prob": {
-                    "model_type": "random_forest",
-                    "promoted_at": "2026-07-01T14:00:00",
-                    "source_run_id": "RUN_X",
-                    "metrics": {"brier": 0.213},
-                },
-            },
-        }
-        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            self._fake_settings(tmp_path),
-        )
-
-        for stage_fn in (
-            "_stage_ensure_data_fresh",
-            "_stage_predict_week",
-            "_stage_render_outputs",
-            "_stage_generate_edges",
-        ):
-            monkeypatch.setattr(
-                f"gridiron_edge.cli.weekly_predict.{stage_fn}",
-                lambda ctx: StageResult(success=True, detail="stubbed"),
-            )
 
         app = typer.Typer()
         app.command()(weekly_predict_cmd)
+        result = CliRunner().invoke(app, ["--help"])
 
-        runner = CliRunner()
-        result = runner.invoke(
-            app,
-            ["--week", "1", "--season", "2026-2027"],
-        )
-
-        assert result.exit_code == 0, result.output
-        assert "model=random_forest" in result.output
-
-    def test_auto_fails_when_manifest_missing(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import typer
-        from typer.testing import CliRunner
-
-        from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
-
-        # tmp_path has no manifest.
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            self._fake_settings(tmp_path),
-        )
-
-        for stage_fn in (
-            "_stage_ensure_data_fresh",
-            "_stage_predict_week",
-            "_stage_render_outputs",
-            "_stage_generate_edges",
-        ):
-            monkeypatch.setattr(
-                f"gridiron_edge.cli.weekly_predict.{stage_fn}",
-                lambda ctx: StageResult(success=True, detail="stubbed"),
-            )
-
-        app = typer.Typer()
-        app.command()(weekly_predict_cmd)
-
-        runner = CliRunner()
-        result = runner.invoke(
-            app,
-            ["--week", "1", "--season", "2026-2027"],
-        )
-
-        assert result.exit_code != 0
-        assert "requires a champion manifest" in result.output
+        assert result.exit_code == 0
+        assert "--model-type" not in result.output
+        assert "Optional bankroll" in result.output
+        assert "1000.0" not in result.output
 
 
 def test_canonicalization_preserves_missing_elo_values() -> None:

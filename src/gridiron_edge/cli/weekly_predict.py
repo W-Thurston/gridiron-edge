@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
@@ -30,19 +31,19 @@ from gridiron_edge.cli._composites import (
     StageResult,
     render_composite_summary,
     resolve_active_stages,
-    resolve_win_prob_model_type,
     run_composite,
 )
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
-from gridiron_edge.evaluation.archive import load_prediction_log
 from gridiron_edge.evaluation.forecast_contracts import (
     ForecastRole,
     new_forecast_run_id,
 )
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
-from gridiron_edge.ingest.odds.store import load_current_odds
+
+if TYPE_CHECKING:
+    from gridiron_edge.market.recommendations import EdgeResult
 
 # ---------------------------------------------------------------------------
 # Stage functions
@@ -143,14 +144,147 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
         repo=repo,
     )
 
-    # Rendering consumes the original display-oriented frame.
+    # Downstream product composition selects this exact immutable run.
     ctx["predictions_df"] = predictions
+    ctx["forecast_run_id"] = run_id
+    ctx["forecast_generated_at"] = generated_at
 
     return StageResult(
         success=True,
         detail=f"{len(events)} live forecast events written",
         rows=len(events),
         artifacts=[event_path],
+    )
+
+
+def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
+    """Compose, persist, and explicitly select the live Elo weekly product."""
+    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
+    from gridiron_edge.datasets.writers import (
+        select_current_weekly_product,
+        write_weekly_product,
+    )
+    from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
+    from gridiron_edge.evaluation.forecast_selection import (
+        ForecastCandidateIdentity,
+        resolve_forecast_candidates,
+        select_forecast_run,
+    )
+    from gridiron_edge.evaluation.forecast_store import load_forecast_events
+    from gridiron_edge.models.game_prediction.prediction_policy import (
+        PredictionAvailability,
+        resolve_prediction_policy,
+    )
+    from gridiron_edge.models.game_prediction.weekly_game_product import (
+        build_weekly_game_product,
+    )
+    from gridiron_edge.models.game_prediction.weekly_spread_product import (
+        load_and_attach_derived_spreads,
+    )
+    from gridiron_edge.models.game_prediction.weekly_total_product import (
+        load_and_attach_selected_totals,
+    )
+    from gridiron_edge.models.game_prediction.weekly_win_product import (
+        build_weekly_win_product,
+    )
+
+    season: str = ctx["season"]
+    week: int = ctx["week"]
+    repo: Path = get_settings().repo_root
+    run_id_value = ctx.get("forecast_run_id")
+    generated_at_value = ctx.get("forecast_generated_at")
+    if not isinstance(run_id_value, str) or not run_id_value.strip():
+        return StageResult(success=False, detail="forecast run identity is unavailable")
+    if not isinstance(generated_at_value, datetime):
+        return StageResult(success=False, detail="forecast generation time is unavailable")
+
+    schedule = load_schedule_upcoming_rich(repo)
+    scoped_schedule = schedule.loc[
+        (schedule["season"].astype(str) == season) & (schedule["week"] == week),
+        :,
+    ].copy()
+    if scoped_schedule.empty:
+        return StageResult(success=False, detail="rich weekly schedule is empty")
+
+    events = load_forecast_events(
+        season=season,
+        week=week,
+        run_id=run_id_value,
+        repo=repo,
+    )
+    selected_run = select_forecast_run(events, run_id=run_id_value)
+    if not selected_run.found:
+        return StageResult(success=False, detail="forecast run is not persisted")
+
+    policy = resolve_prediction_policy(
+        PredictionAvailability(
+            season=season,
+            week=week,
+            elo_available=True,
+            full_features_available=False,
+            total_features_available=False,
+        ),
+        win_champion=None,
+        total_champion=None,
+        win_override="elo",
+    )
+    win_resolutions = resolve_forecast_candidates(
+        selected_run.events,
+        [
+            ForecastCandidateIdentity(
+                game_id=str(game_id),
+                model_name="win_prob",
+                model_type="elo",
+            )
+            for game_id in scoped_schedule["game_id"]
+        ],
+    )
+    win_product = build_weekly_win_product(
+        scoped_schedule,
+        selected_run.events,
+        win_resolutions,
+        policy=policy,
+        season=season,
+        week=week,
+    )
+    spread_product = load_and_attach_derived_spreads(
+        win_product,
+        repo=repo,
+    )
+    total_product = load_and_attach_selected_totals(
+        spread_product,
+        selected_run.events,
+        (),
+        policy=policy,
+        season=season,
+        week=week,
+        repo=repo,
+    )
+    product = build_weekly_game_product(total_product)
+
+    product_id = f"weekly_{season.replace('-', '_')}_wk{week:02d}_{run_id_value}"
+    identity = WeeklyProductIdentity(
+        product_id=product_id,
+        run_id=run_id_value,
+        season=season,
+        week=week,
+        generated_at=generated_at_value,
+    )
+    artifact = write_weekly_product(repo, product, identity=identity)
+    select_current_weekly_product(
+        repo,
+        product_id,
+        season=season,
+        week=week,
+        selected_at=datetime.now(UTC),
+    )
+    ctx["weekly_product_id"] = product_id
+    ctx["weekly_product_path"] = artifact
+    return StageResult(
+        success=True,
+        detail=f"{len(product)} weekly product rows selected",
+        rows=len(product),
+        artifacts=[artifact],
     )
 
 
@@ -191,74 +325,76 @@ def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+def _edge_stage_detail(result: EdgeResult, *, min_ev: float) -> str:
+    """Return a deterministic composite-stage detail from diagnostics."""
+    from gridiron_edge.market.edge_diagnostics import EdgeResultState
+
+    if result.diagnostics.blockers:
+        blockers = ", ".join(blocker.value for blocker in result.diagnostics.blockers)
+        return f"edge calculation blocked: {blockers}"
+    if result.diagnostics.state is EdgeResultState.NO_CALCULABLE_EDGES:
+        return "no calculable edges from available inputs"
+    if result.diagnostics.state is EdgeResultState.NO_POSITIVE_EDGES:
+        return "calculated markets contain no positive-EV edges"
+    if result.rows.empty:
+        return f"positive edges exist below min_ev={min_ev:.1%}"
+    return f"{len(result.rows)} edges (top EV {result.rows['ev'].max():.1%})"
+
+
+def _edge_stage_detail(result: EdgeResult, *, min_ev: float) -> str:
+    """Return a deterministic composite-stage detail from diagnostics."""
+    from gridiron_edge.market.edge_diagnostics import EdgeResultState
+
+    if result.diagnostics.blockers:
+        blockers = ", ".join(blocker.value for blocker in result.diagnostics.blockers)
+        return f"edge calculation blocked: {blockers}"
+    if result.diagnostics.state is EdgeResultState.NO_CALCULABLE_EDGES:
+        return "no calculable edges from available inputs"
+    if result.diagnostics.state is EdgeResultState.NO_POSITIVE_EDGES:
+        return "calculated markets contain no positive-EV edges"
+    if result.rows.empty:
+        return f"positive edges exist below min_ev={min_ev:.1%}"
+    return f"{len(result.rows)} edges (top EV {result.rows['ev'].max():.1%})"
+
+
 def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
-    """Generate an edge report from the existing current market snapshot.
-
-    Missing market data remains a source-neutral soft failure. This stage does
-    not invoke an external market adapter.
-    """
-    from gridiron_edge.market.recommendations import (
-        build_edge_report,
-        rank_edges,
-    )
-    from gridiron_edge.models.game_prediction.post_process import (
-        get_margin_std,
-        get_total_std,
+    """Generate persisted weekly edges through the unified domain service."""
+    from gridiron_edge.market.weekly_edge_service import (
+        build_weekly_edge_result,
     )
 
-    year: str = ctx["season"]
+    season: str = ctx["season"]
     week: int = ctx["week"]
-    model_type: str = ctx.get("model_type", "random_forest")
     repo: Path = get_settings().repo_root
+    bankroll = ctx.get("bankroll")
+    if bankroll is not None and not isinstance(bankroll, int | float):
+        return StageResult(success=False, detail="bankroll must be numeric")
 
-    predictions = load_prediction_log(
-        season=year,
+    kelly_multiplier = 0.25
+    min_ev = 0.0
+    result = build_weekly_edge_result(
+        season=season,
         week=week,
-        model_name="win_prob",
-        model_type=model_type,
+        bankroll=None if bankroll is None else float(bankroll),
+        kelly_multiplier=kelly_multiplier,
+        min_ev=min_ev,
+        repo=repo,
     )
-    if predictions.empty:
-        return StageResult(
-            success=False,
-            detail=f"no predictions for win_prob/{model_type} week {week}",
-        )
+    detail = _edge_stage_detail(result, min_ev=min_ev)
+    if result.diagnostics.blockers:
+        return StageResult(success=False, detail=detail)
+    if result.rows.empty:
+        return StageResult(success=True, detail=detail)
 
-    odds = load_current_odds()
-    if odds is None or odds.empty:
-        return StageResult(
-            success=False,
-            detail="no current market snapshot available",
-        )
-
-    margin_std = get_margin_std("win_prob", model_type)
-    total_std = get_total_std("total", model_type, default=13.0)
-
-    edge_report = build_edge_report(
-        predictions,
-        odds,
-        margin_std=margin_std,
-        total_std=total_std,
-        bankroll=ctx.get("bankroll", 1000.0),
-        kelly_multiplier=0.25,
-    )
-
-    if edge_report.empty:
-        return StageResult(
-            success=True,
-            detail="no edges (predictions did not match any odds)",
-        )
-
-    ranked = rank_edges(edge_report, min_ev=0.0)
+    ranked = result.rows
     ctx["top_edges_preview"] = ranked.head(5).reset_index(drop=True).copy()
-
     out_dir = repo / "data" / "output" / "edges"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"edges_{year}_wk{week:02d}.csv"
+    out_path = out_dir / f"edges_{season}_wk{week:02d}.csv"
     ranked.to_csv(out_path, index=False)
-
     return StageResult(
         success=True,
-        detail=f"{len(ranked)} edges (top EV {ranked['ev'].max():.1%})",
+        detail=detail,
         rows=len(ranked),
         artifacts=[out_path],
     )
@@ -282,9 +418,9 @@ def _render_edge_preview(ranked: DataFrame) -> None:
         matchup: str = f"{row['away_team']} @ {row['home_team']}"
         market: str = f"{row['market_type']}:{row['side']}"
 
-        typer.echo(
-            f"{matchup:20s}  {market:16s}  EV {row['ev']:+.1%}  Stake ${row['kelly_stake']:.2f}"
-        )
+        stake = row.get("kelly_stake")
+        stake_text = "—" if pd.isna(stake) else f"${float(stake):.2f}"
+        typer.echo(f"{matchup:20s}  {market:16s}  EV {row['ev']:+.1%}  Stake {stake_text}")
 
 
 def _build_stages() -> list[CompositeStage]:
@@ -307,6 +443,12 @@ def _build_stages() -> list[CompositeStage]:
             depends_on=("ensure-data-fresh",),
         ),
         CompositeStage(
+            name="compose-weekly-product",
+            description="Compose and select the weekly game product",
+            func=_stage_compose_weekly_product,
+            depends_on=("predict-week",),
+        ),
+        CompositeStage(
             name="render-outputs",
             description="Render predictions PNG + HTML",
             func=_stage_render_outputs,
@@ -316,7 +458,7 @@ def _build_stages() -> list[CompositeStage]:
             name="generate-edges",
             description="Generate edge report against current odds",
             func=_stage_generate_edges,
-            depends_on=("predict-week",),
+            depends_on=("compose-weekly-product",),
             soft_fail=True,
         ),
     ]
@@ -337,18 +479,10 @@ def weekly_predict_cmd(
     *,
     week: int = typer.Option(..., help="NFL week number to predict."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
-    model_type: str = typer.Option(
-        "auto",
-        help=(
-            "Win-probability model algorithm to use for edges. "
-            "One of: random_forest, xgboost, logistic, elo. "
-            "Defaults to 'auto', which resolves to the current champion "
-            "from the manifest at data/output/champions/champions.json."
-        ),
-    ),
-    bankroll: float = typer.Option(
-        1000.0,
-        help="Bankroll for Kelly stake sizing in the edge report.",
+    bankroll: float | None = typer.Option(
+        None,
+        min=0.0,
+        help="Optional bankroll for Kelly stake sizing in the edge report.",
     ),
     skip: list[str] = typer.Option(  # noqa: B008
         [],
@@ -363,14 +497,13 @@ def weekly_predict_cmd(
 ) -> None:
     r"""Generate predictions and edge report for the upcoming week.
 
-    Composes four stages: data refresh, prediction, output rendering,
+    Composes data refresh, live Elo prediction, weekly-product selection,
     and an edge report from the existing current market snapshot. Edge
     generation soft-fails when current market data is unavailable.
 
     \b
     Examples:
       gridiron weekly-predict --week 1 --season 2026-2027
-      gridiron weekly-predict --week 1 --season 2026-2027 --model-type xgboost
       gridiron weekly-predict --only predict-week --week 1 --season 2026-2027
     """
     stages = _build_stages()
@@ -388,24 +521,19 @@ def weekly_predict_cmd(
             f"Could not parse season '{season}'. Expected format: 'YYYY-YYYY+1' (e.g. '2026-2027')."
         ) from exc
 
-    # Resolve --model-type auto sentinel against the champion manifest.
-    # Runs after Typer/user-input validation so genuine input errors
-    # surface first.
-    resolved_model_type = resolve_win_prob_model_type(model_type)
-
     context: dict[str, Any] = {
         "week": week,
         "season": season,
         "season_int": season_int,
         "resolved_season_int": season_int,
         "upcoming_target": season_int,
-        "model_type": resolved_model_type,
+        "model_type": "elo",
         "bankroll": bankroll,
     }
 
     console.header(
         "weekly-predict",
-        subtitle=f"week {week} · {season} · model={resolved_model_type}",
+        subtitle=f"week {week} · {season} · model=elo",
     )
 
     summary: CompositeSummary = run_composite(
