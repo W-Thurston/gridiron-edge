@@ -1294,38 +1294,97 @@ strictly a validated serialization operation rather than a compute boundary.
 
 ---
 
-### Unit 15: Add Source-Labeled nflverse Market Adapter
+### Unit 15: Add Source-Labeled nflverse Market Adapter [Complete]
+
+#### Completed
+
+Added a pure nflverse schedule-market adapter that converts rich upcoming
+schedule fields into the generic long-format market contract.
+
+Every adapted row is labeled `nflverse_schedule`. No DraftKings label, parser,
+fetcher, game-ID resolver, or fallback behavior participates in adaptation.
+
+The rich schedule's timezone-aware UTC ingestion timestamp is preserved as the
+market `fetched_at` value. The adapter does not read the clock or substitute an
+execution timestamp.
+
+Canonical nflverse game IDs and away/home team orientation pass through
+unchanged. Requested season and week scope is enforced, and duplicate or
+incomplete schedule identity is rejected.
+
+Each scheduled game produces six deterministic rows: away and home Moneyline,
+away and home Spread, and Over and Under Total.
+
+Moneyline prices map directly to away and home sides with null line values.
+The nflverse `spread_line` uses home-team orientation, so the home side retains
+the source line and the away side receives its additive inverse. Both Total
+sides retain the source total line.
+
+Incomplete markets remain explicit. Canonical side rows are retained with null
+odds or line values rather than being omitted, defaulted, or fabricated.
+
+Replaced the development-era DraftKings-specific market ledger and current
+snapshot filenames with source-neutral `odds_log.parquet` and
+`odds_current.parquet` artifacts. No compatibility reader, migration, alias,
+fallback, or dual-write behavior was added for the retired paths.
+
+Added strict validation and normalization for the shared long-format market
+contract. Stored rows require canonical columns, nonempty source and market
+identity, valid NFL week values, timezone-aware UTC ingestion timestamps, and
+valid Moneyline, Spread, and Total side combinations.
+
+Validation runs before current-snapshot writes and historical-ledger appends,
+and again after snapshot and ledger loads. Nullable prices and lines survive
+storage without omission or fabricated values.
+
+Added integration coverage for adaptation, current-snapshot persistence, and
+joining to schedule truth by canonical game ID. Complete markets, incomplete
+markets, and unmatched scheduled games remain distinct. Source identity,
+ingestion timestamp, normalized spread orientation, and Total values survive
+the round trip.
 
 #### Goal
 
 Convert available nflverse schedule market fields into the generic market
-contract.
-
-#### Production files
-
-- new adapter under `src/gridiron_edge/ingest/odds/` or renamed market package
-- `src/gridiron_edge/ingest/odds/store.py`
-
-#### Test files
-
-- create:
-  `tests/unit/ingest/odds/test_nflverse_adapter.py`
-- update:
-  `tests/integration/ingest/odds/test_odds_join.py`
+contract without depending on the unreliable DraftKings pull.
 
 #### Tests
 
-- source is labeled `nflverse_schedule` or the locked equivalent;
+- source is labeled `nflverse_schedule`;
 - no DraftKings label is applied;
-- ingestion timestamp is recorded;
-- Moneyline, Spread, and Total sides normalize correctly;
-- game IDs are validated against schedule truth;
-- incomplete markets remain explicit;
-- requested season/week scope is enforced.
+- rich-schedule ingestion timestamp is preserved as market fetch timestamp;
+- timestamps require timezone-aware UTC values;
+- mixed snapshot timestamps are rejected;
+- Moneyline away and home sides normalize correctly;
+- Spread away and home sides normalize correctly;
+- nflverse home-line spread orientation is preserved;
+- Total Over and Under sides normalize correctly;
+- exactly six canonical market-side rows are emitted per scheduled game;
+- incomplete markets retain explicit nullable rows;
+- missing prices are not defaulted;
+- missing lines are not inferred;
+- canonical game IDs pass through unchanged;
+- away and home team orientation passes through unchanged;
+- duplicate scoped game IDs are rejected;
+- requested season and week scope is enforced;
+- non-nflverse source input is rejected;
+- empty requested scope returns the canonical schema;
+- generic market storage uses source-neutral paths;
+- retired DraftKings-specific storage paths are not created;
+- generic market schema and column order are validated;
+- invalid market and side combinations are rejected;
+- incomplete rows survive Parquet round trip;
+- source and ingestion provenance survive persistence;
+- complete, incomplete, and unmatched games remain distinct after joining;
+- schedule truth remains the denominator under a left join;
+- no DraftKings resolver, parser, or fetch path participates.
 
 #### Acceptance
 
-Current market comparison no longer depends on the unreliable DraftKings pull.
+Current market comparison uses source-labeled nflverse schedule markets through
+the generic market contract and source-neutral storage. Complete, incomplete,
+and unmatched market states remain explicit, and the normal current-market path
+does not depend on the unreliable DraftKings pull.
 
 ---
 
