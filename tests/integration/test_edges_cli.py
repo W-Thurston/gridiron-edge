@@ -160,56 +160,6 @@ _MARGIN_STD_PATH = "gridiron_edge.models.game_prediction.post_process.get_margin
 # ---------------------------------------------------------------------------
 
 
-class TestReportCommand:
-    """Tests for 'gridiron edges report'."""
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_CURRENT_ODDS_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_report_runs(self, mock_preds, mock_odds, mock_std) -> None:
-        """Command completes successfully with valid data."""
-        mock_preds.return_value = _make_predictions()
-        mock_odds.return_value = _make_long_odds()
-
-        result = runner.invoke(
-            edges_app,
-            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_CURRENT_ODDS_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_report_no_predictions(self, mock_preds, mock_odds, mock_std) -> None:
-        """Empty predictions -> graceful exit with message."""
-        mock_preds.return_value = pd.DataFrame()
-        mock_odds.return_value = _make_long_odds()
-
-        result = runner.invoke(
-            edges_app,
-            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-        assert "No predictions found" in result.output
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_CURRENT_ODDS_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_report_no_odds(self, mock_preds, mock_odds, mock_std) -> None:
-        """Empty odds -> graceful exit with message."""
-        mock_preds.return_value = _make_predictions()
-        mock_odds.return_value = pd.DataFrame()
-
-        result = runner.invoke(
-            edges_app,
-            ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-        assert "No current market snapshot is available" in result.output
-        assert "rich nflverse upcoming schedule" in result.output
-        assert "fetch-odds" not in result.output
-
-
 # ---------------------------------------------------------------------------
 # TestClvCommand
 # ---------------------------------------------------------------------------

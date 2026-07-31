@@ -6,16 +6,16 @@ Provides two sub-commands:
     gridiron edges report   Weekly edge report (the Sunday artifact)
     gridiron edges clv      Historical closing line value analysis
 
-Workstream 2 convention:
-    These commands operate on win_prob predictions. The ``--model-type``
-    option selects the algorithm (``random_forest``, ``xgboost``,
-    ``logistic``, ``elo``); ``model_name="win_prob"`` is implied.
+The weekly report consumes the explicitly selected persisted weekly
+product. Historical CLV analysis retains its explicit win-model selection.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import pandas as pd
 from pandas import DataFrame
 
 # pyrefly: ignore [missing-import]
@@ -24,6 +24,9 @@ import typer
 from gridiron_edge.cli._composites import resolve_win_prob_model_type
 from gridiron_edge.core.settings import Settings
 from gridiron_edge.models.game_prediction.post_process import get_total_std
+
+if TYPE_CHECKING:
+    from gridiron_edge.market.edge_diagnostics import EdgeDiagnostics
 
 edges_app = typer.Typer(help="Betting edge analysis.", no_args_is_help=True)
 
@@ -47,99 +50,51 @@ def report(
     *,
     week: int = typer.Option(..., help="NFL week number."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
-    model_type: str = typer.Option(
-        "auto",
-        help=(
-            "Win-probability model algorithm to use. One of: random_forest, "
-            "xgboost, logistic, elo. Defaults to 'auto', which resolves to "
-            "the current champion from the manifest at "
-            "data/output/champions/champions.json."
-        ),
+    bankroll: float | None = typer.Option(
+        None,
+        help="Optional bankroll in dollars for Kelly stake sizing.",
     ),
-    bankroll: float = typer.Option(1000.0, help="Current bankroll in dollars."),
     kelly_multiplier: float = typer.Option(
-        0.25, help="Fraction of full Kelly (e.g. 0.25 for quarter-Kelly)."
+        0.25,
+        help="Fraction of full Kelly (e.g. 0.25 for quarter-Kelly).",
     ),
-    min_ev: float = typer.Option(0.0, help="Minimum EV threshold for display (e.g. 0.02 for 2%%)."),
-    output_format: str = typer.Option("table", "--format", help="Output format: 'table' or 'csv'."),
+    min_ev: float = typer.Option(
+        0.0,
+        help="Minimum EV threshold for display (e.g. 0.02 for 2%%).",
+    ),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        help="Output format: 'table' or 'csv'.",
+    ),
 ) -> None:
-    """Generate a weekly betting edge report."""
+    """Generate a weekly betting edge report from the selected product."""
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.ingest.odds.store import load_current_odds
-    from gridiron_edge.market.recommendations import build_edge_report, rank_edges
-    from gridiron_edge.models.game_prediction.post_process import get_margin_std
-
-    resolved_model_type = resolve_win_prob_model_type(model_type)
-
-    console.header(f"Edge Report - {season} Week {week}  ·  model={resolved_model_type}")
-
-    # ── Load predictions ──────────────────────────────────────────────
-    with step("Loading predictions"):
-        predictions: DataFrame = load_prediction_log(
-            season=season,
-            week=week,
-            model_name="win_prob",
-            model_type=resolved_model_type,
-        )
-    if predictions.empty:
-        typer.echo(
-            f"No predictions found for win_prob/{resolved_model_type} / {season} / week {week}."
-        )
-        raise typer.Exit()
-
-    typer.echo(f"  {len(predictions)} prediction(s) loaded.")
-
-    # ── Load odds ─────────────────────────────────────────────────────
-    with step("Loading current odds"):
-        odds: DataFrame | None = load_current_odds()
-    if odds is None or odds.empty:
-        typer.echo(
-            "No current market snapshot is available. "
-            "Generate the snapshot from the rich nflverse upcoming schedule "
-            "before running the edge report."
-        )
-        raise typer.Exit()
-
-    typer.echo(f"  {len(odds)} odds row(s) loaded.")
-
-    # ── Build edge report ─────────────────────────────────────────────
-    margin_std: float = get_margin_std("win_prob", resolved_model_type)
-    total_std: float = get_total_std(
-        "total",
-        resolved_model_type,
-        default=_TOTAL_STD_FALLBACK,
+    from gridiron_edge.market.weekly_edge_service import (
+        build_weekly_edge_result,
     )
 
-    with step("Computing edges"):
-        edge_report: DataFrame = build_edge_report(
-            predictions,
-            odds,
-            margin_std=margin_std,
-            total_std=total_std,
+    console.header(f"Edge Report - {season} Week {week}")
+
+    with step("Building weekly edge result"):
+        result = build_weekly_edge_result(
+            season=season,
+            week=week,
             bankroll=bankroll,
             kelly_multiplier=kelly_multiplier,
+            min_ev=min_ev,
         )
 
-    if edge_report.empty:
-        typer.echo("No edges found (predictions did not match any odds).")
+    if result.rows.empty:
+        typer.echo(_edge_result_message(result.diagnostics, min_ev=min_ev))
         raise typer.Exit()
 
-    # ── Rank and filter ───────────────────────────────────────────────
-    with step("Ranking edges"):
-        ranked: DataFrame = rank_edges(edge_report, min_ev=min_ev)
-
-    if ranked.empty:
-        typer.echo(f"No edges above min_ev={min_ev:.1%}.")
-        raise typer.Exit()
-
-    # ── Output ────────────────────────────────────────────────────────
     if output_format == "csv":
-        _write_csv(ranked, season, week)
+        _write_csv(result.rows, season, week)
     else:
-        _render_edge_table(ranked)
+        _render_edge_table(result.rows)
 
-    typer.echo(f"\n  {len(ranked)} edge(s) found.")
+    typer.echo(f"\n  {len(result.rows)} edge(s) found.")
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +184,46 @@ def clv(
 # ---------------------------------------------------------------------------
 
 
+def _edge_result_message(
+    diagnostics: EdgeDiagnostics,
+    *,
+    min_ev: float,
+) -> str:
+    """Render one deterministic explanation for an empty edge result."""
+    from gridiron_edge.market.edge_diagnostics import (
+        EdgeDiagnosticBlocker,
+        EdgeResultState,
+    )
+
+    blocker_messages = {
+        EdgeDiagnosticBlocker.NO_PREDICTIONS: (
+            "No current weekly product is selected for the requested season and week."
+        ),
+        EdgeDiagnosticBlocker.NO_MARKET_DATA: ("No current market snapshot is available."),
+        EdgeDiagnosticBlocker.MARKET_WRONG_SCOPE: (
+            "The current market snapshot does not contain the requested season and week."
+        ),
+        EdgeDiagnosticBlocker.MARKET_STALE: (
+            "The current market snapshot is stale under the supplied freshness policy."
+        ),
+        EdgeDiagnosticBlocker.ZERO_MATCHED_GAMES: (
+            "The weekly product and market snapshot have no matching game IDs."
+        ),
+        EdgeDiagnosticBlocker.INCOMPLETE_MARKETS: (
+            "Matching games exist, but one or more market families are incomplete."
+        ),
+    }
+    if diagnostics.blockers:
+        return " ".join(blocker_messages[blocker] for blocker in diagnostics.blockers)
+    if diagnostics.state is EdgeResultState.NO_CALCULABLE_EDGES:
+        return "No calculable edges were produced from the available inputs."
+    if diagnostics.state is EdgeResultState.NO_POSITIVE_EDGES:
+        return "Calculated markets contained no positive expected-value edges."
+    if diagnostics.state is EdgeResultState.POSITIVE_EDGES and diagnostics.filtered_edge_count == 0:
+        return f"Positive edges were calculated, but none exceeded min_ev={min_ev:.1%}."
+    return "No edge rows are available for the requested scope."
+
+
 def _render_edge_table(ranked_df: DataFrame) -> None:
     """Render a rich console table of ranked edges."""
     # pyrefly: ignore [missing-import]
@@ -268,7 +263,9 @@ def _render_edge_table(ranked_df: DataFrame) -> None:
         else:
             ev_style = "[dim]"
 
-        kelly_str: str = f"${row.get('kelly_stake', 0):.2f}"
+        kelly_value = row.get("kelly_stake")
+        # pyrefly: ignore [bad-argument-type]
+        kelly_str = "—" if pd.isna(kelly_value) else f"${float(kelly_value):.2f}"
 
         game_id: str = row.get("game_id", "")
         short_game: str = game_id.split("_", 1)[-1] if "_" in game_id else game_id
