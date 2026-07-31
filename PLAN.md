@@ -1925,6 +1925,108 @@ delegation.
 Explicit season ingestion preserves all unrequested historical seasons, while
 full-history ingestion remains the only intentional replacement operation.
 
+### Unit 19.2b.2: Home/Away Modeling Table
+
+#### Completed
+
+Added a canonical one-row-per-game historical modeling-table builder.
+
+The builder consumes only explicit Away Team, Home Team, Away Score, Home
+Score, game identity, game date, and neutral-site fields from the cleaned
+historical games artifact.
+
+Derived a nullable Home Win target. Home wins are represented as one, away wins
+as zero, and ties as null.
+
+Defined Actual Margin as Home Score minus Away Score and Actual Total as the sum
+of Away and Home scores.
+
+Added strict validation for required columns, game identities, team identities,
+duplicate game IDs, week numbers, scores, neutral-site values, and same-team
+matchups.
+
+Separated identity, week, score, neutral-site, and target validation into
+focused helpers.
+
+Ensured the builder does not mutate its input and returns chronologically stable
+output.
+
+Confirmed the new modeling schema contains no `TEAM_A`, `TEAM_B`, `HOME_FIELD`,
+or `RESULT` columns.
+
+Retained the existing symmetric builder as the active `build_model_inputs()`
+input until the feature pipeline is migrated.
+
+#### Goal
+
+Create and validate the canonical one-row home/away modeling contract before
+migrating feature generation and model execution.
+
+#### Tests
+
+Covered home wins, away wins, ties, neutral-site games, output schema, retired
+column exclusion, ordering, input immutability, missing columns, duplicate game
+IDs, null and empty identities, same-team rows, invalid weeks, null and negative
+scores, and invalid neutral-site values.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+A cleaned historical game can be converted into exactly one validated,
+home/away-oriented modeling row without winner/loser reconstruction or
+perspective-relative fields.
+
+### Unit 19.2c.1: Canonical Home/Away Elo Feature
+
+#### Completed
+
+Added a canonical home/away Elo feature for one-row-per-game inputs.
+
+The feature consumes stable Away Team, Home Team, season, and week identity and
+produces Away Elo and Home Elo.
+
+Joined Elo state independently for Away and Home using exact team, season, and
+week identity.
+
+Preserved every input row, its order, and unrelated columns.
+
+Missing Away or Home ratings remain explicitly null and do not remove scheduled
+games.
+
+Ratings from another season or week do not satisfy the requested game identity.
+
+Rejected malformed game schemas, malformed Elo schemas, and duplicate Elo
+team-season-week identities.
+
+Confirmed that feature execution does not mutate its input.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B Elo feature.
+
+Left the active feature sequence and current modeling pipeline unchanged.
+
+#### Goal
+
+Provide the first shared historical and upcoming team feature using the
+canonical one-row home/away schema.
+
+#### Tests
+
+Covered registry identity, feature outputs, exact weekly joins, row and order
+preservation, immutability, missing Away ratings, missing Home ratings,
+other-week ratings, other-season ratings, duplicate Elo identities, missing
+game columns, missing Elo columns, empty frames, and exclusion of retired
+orientation names.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames can receive explicit Away and Home
+Elo ratings without TEAM_A, TEAM_B, HOME_FIELD, probability calculation, row
+loss, or model execution.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
