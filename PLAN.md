@@ -1719,6 +1719,21 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
+19.2c.6  Canonical travel
+19.2c.7  Canonical venue HFA
+19.2c.8  Audit and adapt game-level features
+19.2c.9  Define canonical feature sequences
+19.2d    Activate one-row feature pipeline
+19.2e    Migrate Win model
+19.2f    Migrate Total model
+19.2g    Migrate tuning, evaluation, and retraining
+19.2h    Remove retired orientation and rebuild artifacts
+19.1b    Implement truthful availability inspection
+19.3     Execute policy-selected models
+19.4     Persist and select weekly product
+19.5     Readiness and publication hardening
+19.6     End-to-end orchestration acceptance
+
 #### Goal
 
 Make `weekly-predict` resolve prediction policy before model execution and
@@ -2333,6 +2348,72 @@ Historical and upcoming one-row game frames receive truthful Away and Home
 travel distance, timezone shift, and game-site altitude without TEAM_A,
 TEAM_B, HOME_FIELD, venue assumptions, target-row stadium propagation, row
 loss, or concealed unavailable states.
+
+### Unit 19.2c.7: Canonical Home Franchise Advantage
+
+#### Completed
+
+Added a canonical Home franchise advantage feature for one-row-per-game
+historical and upcoming inputs.
+
+The feature produces one Home Franchise HFA value rather than mirrored Away and
+Home coefficients.
+
+Defined the coefficient as the Home franchise's prior home win rate minus the
+prior league-average home win rate.
+
+Calculated the coefficient from completed, non-neutral games strictly before
+the target season and week.
+
+Included all prior seasons and earlier weeks in the target season without using
+target-week or future results.
+
+Counted ties as one-half home wins.
+
+Preserved the established minimum sample policy. Franchises with fewer than
+twenty prior home games receive the intentional zero-valued league-average
+prior.
+
+Neutral target games receive zero Home Franchise HFA.
+
+Derived historical home results directly from Home Team, Away Score, Home Score,
+and neutral-site identity.
+
+Excluded unplayed and historical neutral-site games from coefficient
+calculation.
+
+Rejected malformed target and historical schemas, duplicate historical game
+IDs, invalid season labels, and invalid neutral-site values.
+
+Preserved target columns, unrelated values, and caller immutability.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B venue-HFA feature.
+
+Left the active feature sequence and legacy implementation unchanged.
+
+#### Goal
+
+Provide one truthful pregame Home franchise advantage value using stable home
+identity and only information available before the target game.
+
+#### Tests
+
+Covered registration, the single canonical output, coefficient calculation,
+neutral targets, minimum sample behavior, tie accounting, historical neutral
+games, current and future exclusion, earlier target-season games, prior-season
+history, unplayed rows, empty history, input preservation, schema validation,
+duplicate game IDs, invalid neutral state, invalid season labels, and exclusion
+of retired orientation fields.
+
+All scoped quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive one leakage-free Home
+franchise advantage value without TEAM_A, TEAM_B, HOME_FIELD, WINNER, LOSER,
+GAME_LOCATION, mirrored coefficients, target-week leakage, or future-result
+leakage.
 
 ---
 
