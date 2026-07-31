@@ -142,6 +142,20 @@ class Unavailable:
     NO_EVALUATION_DATA: tuple[str, str] = ("no_evaluation_data", "data")
     NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
     NO_ODDS_AVAILABLE: tuple[str, str] = ("no_odds_available", "data")
+    NO_WEEKLY_PRODUCT: tuple[str, str] = ("no_weekly_product", "data")
+    MARKET_SCOPE_MISMATCH: tuple[str, str] = (
+        "market_scope_mismatch",
+        "data",
+    )
+    STALE_MARKET_DATA: tuple[str, str] = ("stale_market_data", "data")
+    ZERO_EDGE_GAME_MATCHES: tuple[str, str] = (
+        "zero_edge_game_matches",
+        "data",
+    )
+    INCOMPLETE_MARKET_DATA: tuple[str, str] = (
+        "incomplete_market_data",
+        "data",
+    )
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
     NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
     NO_SCHEDULE_DATA: tuple[str, str] = ("no_schedule_data", "data")

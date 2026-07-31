@@ -402,7 +402,7 @@ class TestLoadGame:
 
 
 class TestLoadEdgesForWeek:
-    """Cover load_edges_for_week (W8 Tier 2 Step 6a)."""
+    """Cover the API loader boundary around the weekly edge service."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -413,118 +413,108 @@ class TestLoadEdgesForWeek:
 
         return FakeSettings(repo_root=tmp_path)
 
-    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
-        import json
-
-        manifest_dir = tmp_path / "data" / "output" / "champions"
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        (manifest_dir / "champions.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "updated_at": "2026-07-01T14:00:00+00:00",
-                    "models": {
-                        "win_prob": {
-                            "model_type": model_type,
-                            "promoted_at": "2026-07-01T14:00:00",
-                            "source_run_id": "RUN_X",
-                            "metrics": {"brier": 0.213},
-                        },
-                    },
-                }
-            )
-        )
-
-    def _make_prediction_row(self) -> dict:
-        return {
-            "predicted_at": pd.Timestamp("2026-09-01"),
-            "is_backfilled": False,
-            "model_name": "win_prob",
-            "model_type": "random_forest",
-            "season": "2026-2027",
-            "week": 1,
-            "game_id": "2026_01_KC_LAC",
-            "game_date": "2026-09-05",
-            "away_team": "Kansas City Chiefs",
-            "home_team": "Los Angeles Chargers",
-            "away_elo": 1550.0,
-            "home_elo": 1520.0,
-            "away_win_prob": 0.30,
-            "home_win_prob": 0.70,
-            "model_spread": -7.0,
-            "model_total": 50.0,
-            "projected_home_score": 28.0,
-            "projected_away_score": 22.0,
-            "margin_std": 13.54,
-            "win_prob_lo": 0.55,
-            "win_prob_hi": 0.85,
-            "confidence_tier": "High",
-        }
-
-    def _make_odds_rows(self) -> pd.DataFrame:
-        ts = pd.Timestamp("2026-09-05 12:00:00")
-        return pd.DataFrame(
-            [
-                {
-                    "fetched_at": ts,
-                    "sportsbook": "draftkings",
-                    "season": "2026-2027",
-                    "week": 1,
-                    "game_id": "2026_01_KC_LAC",
-                    "game_date": "2026-09-05",
-                    "away_team": "Kansas City Chiefs",
-                    "home_team": "Los Angeles Chargers",
-                    "market": "moneyline",
-                    "side": "home",
-                    "odds": -200.0,
-                    "line": float("nan"),
-                },
-                {
-                    "fetched_at": ts,
-                    "sportsbook": "draftkings",
-                    "season": "2026-2027",
-                    "week": 1,
-                    "game_id": "2026_01_KC_LAC",
-                    "game_date": "2026-09-05",
-                    "away_team": "Kansas City Chiefs",
-                    "home_team": "Los Angeles Chargers",
-                    "market": "moneyline",
-                    "side": "away",
-                    "odds": 170.0,
-                    "line": float("nan"),
-                },
-            ]
-        )
-
-    def test_returns_ranked_edges_with_short_codes(
+    def test_forwards_scope_sizing_and_repository(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from gridiron_edge.api.loaders import load_edges_for_week
+        from gridiron_edge.market.edge_diagnostics import (
+            EdgeDiagnosticBlocker,
+            EdgeDiagnostics,
+            EdgeResultState,
+        )
+        from gridiron_edge.market.recommendations import EdgeResult
 
-        self._write_manifest(tmp_path, "random_forest")
+        diagnostics = EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=0,
+            market_game_count=0,
+            matched_game_count=0,
+            complete_moneyline_count=0,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=0,
+            calculated_edge_count=0,
+            positive_edge_count=0,
+            filtered_edge_count=0,
+            state=EdgeResultState.BLOCKED,
+            blockers=(EdgeDiagnosticBlocker.NO_PREDICTIONS,),
+        )
+        expected = EdgeResult(rows=pd.DataFrame(), diagnostics=diagnostics)
+        calls: list[dict[str, object]] = []
+
+        def fake_service(**kwargs):
+            calls.append(kwargs)
+            return expected
+
+        monkeypatch.setattr(
+            "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
+            fake_service,
+        )
         settings = self._fake_settings(tmp_path)
+        result = load_edges_for_week(
+            settings,
+            season="2026-2027",
+            week=1,
+            min_ev=0.03,
+            bankroll=2500.0,
+            kelly_multiplier=0.10,
+        )
 
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
+        assert result is expected
+        assert calls == [
+            {
+                "season": "2026-2027",
+                "week": 1,
+                "min_ev": 0.03,
+                "bankroll": 2500.0,
+                "kelly_multiplier": 0.10,
+                "repo": tmp_path,
+            }
+        ]
+
+    def test_normalizes_team_names_on_a_defensive_copy(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.api.loaders import load_edges_for_week
+        from gridiron_edge.market.edge_diagnostics import (
+            EdgeDiagnostics,
+            EdgeResultState,
         )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame([self._make_prediction_row()]),
+        from gridiron_edge.market.recommendations import EdgeResult
+
+        rows = pd.DataFrame(
+            [
+                {
+                    "away_team": "Kansas City Chiefs",
+                    "home_team": "Los Angeles Chargers",
+                    "ev": 0.08,
+                }
+            ]
         )
-        monkeypatch.setattr(
-            "gridiron_edge.ingest.odds.store.load_current_odds",
-            lambda **kwargs: self._make_odds_rows(),
+        diagnostics = EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=1,
+            market_game_count=1,
+            matched_game_count=1,
+            complete_moneyline_count=1,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=1,
+            calculated_edge_count=1,
+            positive_edge_count=1,
+            filtered_edge_count=1,
+            state=EdgeResultState.POSITIVE_EDGES,
         )
+        service_result = EdgeResult(rows=rows, diagnostics=diagnostics)
         monkeypatch.setattr(
-            "gridiron_edge.models.game_prediction.post_process.get_margin_std",
-            lambda *args, **kwargs: 13.54,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.models.game_prediction.post_process.get_total_std",
-            lambda *args, **kwargs: 13.0,
+            "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
+            lambda **kwargs: service_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.api.loaders.load_team_name_map",
@@ -534,127 +524,17 @@ class TestLoadEdgesForWeek:
             },
         )
 
-        result = load_edges_for_week(settings, season="2026-2027", week=1)
-
-        assert not result.empty
-        assert "away_team" in result.columns
-        assert "home_team" in result.columns
-        assert set(result["home_team"].unique()) <= {"KC", "LAC"}
-        assert set(result["away_team"].unique()) <= {"KC", "LAC"}
-        assert "ev" in result.columns
-        # Sorted descending by EV.
-        assert result["ev"].is_monotonic_decreasing
-
-    def test_empty_predictions_returns_empty(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from gridiron_edge.api.loaders import load_edges_for_week
-
-        self._write_manifest(tmp_path, "random_forest")
-        settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame(),
+        result = load_edges_for_week(
+            self._fake_settings(tmp_path),
+            season="2026-2027",
+            week=1,
         )
 
-        result = load_edges_for_week(settings, season="2026-2027", week=1)
-        assert result.empty
-
-    def test_missing_odds_raises_odds_unavailable(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from gridiron_edge.api.exceptions import OddsUnavailableError
-        from gridiron_edge.api.loaders import load_edges_for_week
-
-        self._write_manifest(tmp_path, "random_forest")
-        settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame([self._make_prediction_row()]),
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.ingest.odds.store.load_current_odds",
-            lambda **kwargs: None,
-        )
-
-        with pytest.raises(OddsUnavailableError) as exc_info:
-            load_edges_for_week(settings, season="2026-2027", week=1)
-
-            message = str(exc_info.value)
-
-            assert "No current market snapshot is available" in message
-            assert "data/odds/odds_current.parquet" in message
-            assert "rich nflverse upcoming schedule" in message
-            assert "fetch-odds" not in message
-            assert "dk_odds_current" not in message
-
-    def test_empty_odds_raises_odds_unavailable(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from gridiron_edge.api.exceptions import OddsUnavailableError
-        from gridiron_edge.api.loaders import load_edges_for_week
-
-        self._write_manifest(tmp_path, "random_forest")
-        settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame([self._make_prediction_row()]),
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.ingest.odds.store.load_current_odds",
-            lambda **kwargs: pd.DataFrame(),
-        )
-
-        with pytest.raises(OddsUnavailableError) as exc_info:
-            load_edges_for_week(settings, season="2026-2027", week=1)
-
-            message = str(exc_info.value)
-
-            assert "No current market snapshot is available" in message
-            assert "data/odds/odds_current.parquet" in message
-            assert "rich nflverse upcoming schedule" in message
-            assert "fetch-odds" not in message
-            assert "dk_odds_current" not in message
-
-    def test_missing_manifest_raises_champion_not_found(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from gridiron_edge.api.loaders import load_edges_for_week
-        from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
-
-        # No manifest written.
-        settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-
-        with pytest.raises(ChampionNotFoundError):
-            load_edges_for_week(settings, season="2026-2027", week=1)
+        assert result.diagnostics is diagnostics
+        assert result.rows.loc[0, "away_team"] == "KC"
+        assert result.rows.loc[0, "home_team"] == "LAC"
+        assert service_result.rows.loc[0, "away_team"] == "Kansas City Chiefs"
+        assert service_result.rows.loc[0, "home_team"] == "Los Angeles Chargers"
 
 
 class TestParseSeasonInt:

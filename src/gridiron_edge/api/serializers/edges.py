@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.api.meta import ResponseMeta
 from gridiron_edge.api.schemas.edges import EdgeList, EdgeRow
 
 
@@ -63,13 +64,9 @@ def serialize_edges_list(
     min_ev: float | None,
     bankroll: float | None,
     kelly_multiplier: float | None,
+    response_meta: ResponseMeta | None = None,
 ) -> EdgeList:
-    """Build the /edges list response from a loader DataFrame.
-
-    Empty rows return an empty items list. The route layer handles
-    ChampionNotFoundError / OddsUnavailableError translation to
-    field_status; this serializer covers only the happy-path shape.
-    """
+    """Build the /edges list response with optional route-owned metadata."""
     items: list[EdgeRow] = [_row_to_edge(r.to_dict()) for _, r in rows.iterrows()]
     return EdgeList(
         items=items,
@@ -79,4 +76,5 @@ def serialize_edges_list(
         min_ev=min_ev,
         bankroll=bankroll,
         kelly_multiplier=kelly_multiplier,
+        response_meta=response_meta,  # pyrefly: ignore [unexpected-keyword]
     )

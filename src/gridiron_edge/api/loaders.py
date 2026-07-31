@@ -17,12 +17,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.settings import Settings
+
+if TYPE_CHECKING:
+    from gridiron_edge.market.recommendations import EdgeResult
 
 
 def load_bets_df(settings: Settings, *, status: str | None = None) -> pd.DataFrame:
@@ -798,88 +801,32 @@ def load_edges_for_week(
     min_ev: float = 0.0,
     bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
-) -> pd.DataFrame:
-    """Load ranked edges for (season, week) using the champion model.
-
-    Resolves the current win_prob champion, loads its predictions
-    filtered by (season, week), joins to the current source-labeled market
-    snapshot, computes edges via ``market.recommendations.build_edge_report``,
-    and ranks by EV. Team names are converted to short codes.
-
-    Args:
-        settings: API settings, source of repo_root.
-        season: Season label, e.g. "2026-2027".
-        week: Week number.
-        min_ev: Minimum EV threshold. Rows with ev <= min_ev are excluded.
-        bankroll: Bankroll for Kelly stake sizing. When None, edge rows
-            retain full-Kelly fractions but do not populate kelly_stake.
-        kelly_multiplier: Fraction of full Kelly (e.g. 0.25 for quarter).
-
-    Returns:
-        DataFrame with columns from ``_REPORT_COLUMNS`` in
-        ``market.recommendations``, ranked by EV descending. Team name
-        columns hold short codes.
-
-    Raises:
-        ChampionNotFoundError: If the champion manifest is missing or
-            has no win_prob entry.
-        OddsUnavailableError: If the current odds snapshot is missing
-            or empty.
-    """
-    from gridiron_edge.api.exceptions import OddsUnavailableError
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
-    from gridiron_edge.ingest.odds.store import load_current_odds
-    from gridiron_edge.market.recommendations import build_edge_report, rank_edges
-    from gridiron_edge.models.game_prediction.post_process import (
-        get_margin_std,
-        get_total_std,
+) -> EdgeResult:
+    """Load the unified persisted weekly edge result for one scope."""
+    from gridiron_edge.market.recommendations import EdgeResult
+    from gridiron_edge.market.weekly_edge_service import (
+        build_weekly_edge_result,
     )
 
-    _, model_type = resolve_current_champion("win_prob", repo=settings.repo_root)
-
-    predictions: DataFrame = load_prediction_log(
+    result = build_weekly_edge_result(
         season=season,
         week=week,
-        model_name="win_prob",
-        model_type=model_type,
-        repo=settings.repo_root,
-    )
-    if predictions.empty:
-        return pd.DataFrame()
-
-    odds: DataFrame | None = load_current_odds(repo=settings.repo_root)
-    if odds is None or odds.empty:
-        raise OddsUnavailableError(
-            "No current market snapshot is available at "
-            f"{settings.repo_root}/data/odds/odds_current.parquet. "
-            "Generate the snapshot from the rich nflverse upcoming schedule "
-            "before requesting edges."
-        )
-
-    margin_std: float = get_margin_std("win_prob", model_type)
-    total_std: float = get_total_std("total", model_type, default=13.0)
-
-    edge_report: DataFrame = build_edge_report(
-        predictions,
-        odds,
-        margin_std=margin_std,
-        total_std=total_std,
+        min_ev=min_ev,
         bankroll=bankroll,
         kelly_multiplier=kelly_multiplier,
+        repo=settings.repo_root,
     )
-    if edge_report.empty:
-        return pd.DataFrame()
+    if result.rows.empty:
+        return result
 
-    ranked: DataFrame = rank_edges(edge_report, min_ev=min_ev)
-    if ranked.empty:
-        return pd.DataFrame()
-
-    long_to_short: dict[str, str] = load_team_name_map(settings)
-    ranked["away_team"] = ranked["away_team"].map(long_to_short).fillna(ranked["away_team"])
-    ranked["home_team"] = ranked["home_team"].map(long_to_short).fillna(ranked["home_team"])
-
-    return ranked
+    rows = result.rows.copy()
+    long_to_short = load_team_name_map(settings)
+    rows["away_team"] = rows["away_team"].map(long_to_short).fillna(rows["away_team"])
+    rows["home_team"] = rows["home_team"].map(long_to_short).fillna(rows["home_team"])
+    return EdgeResult(
+        rows=rows,
+        diagnostics=result.diagnostics,
+    )
 
 
 def _finalize_games_frame(
