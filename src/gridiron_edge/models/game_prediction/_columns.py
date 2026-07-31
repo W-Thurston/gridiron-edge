@@ -45,23 +45,23 @@ _SCHEMA_VERSION: Final[int] = _CURRENT
 # canonical list so additions to EPA_COLS propagate here automatically.
 _EPA_SUFFIXES: Final[list[str]] = [c.upper() for c in _EPA_COLS_RAW]
 
-# Raw feature columns
+# Raw Away/Home feature columns.
 _RAW_FEATURES: Final[list[str]] = (
-    ["HOME_FIELD", "TEAM_A_ELO", "TEAM_B_ELO"]
-    + [f"TEAM_A_{s}" for s in _EPA_SUFFIXES]
-    + [f"TEAM_B_{s}" for s in _EPA_SUFFIXES]
+    ["AWAY_ELO", "HOME_ELO"]
+    + [f"AWAY_{suffix}" for suffix in _EPA_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _EPA_SUFFIXES]
 )
 
-# Differential feature names
-_DIFF_FEATURES: Final[list[str]] = ["HOME_FIELD", "ELO_DIFF"] + [f"{s}_DIFF" for s in _EPA_SUFFIXES]
+# Differential feature names. Every differential is HOME - AWAY.
+_DIFF_FEATURES: Final[list[str]] = ["ELO_DIFF"] + [f"{suffix}_DIFF" for suffix in _EPA_SUFFIXES]
 
-# Combined feature names
-_COMBINED_FEATURES: Final[list[str]] = _DIFF_FEATURES + [
-    c for c in _RAW_FEATURES if c != "HOME_FIELD"
+# Differential features followed by direct Away/Home values.
+_COMBINED_FEATURES: Final[list[str]] = [
+    *_DIFF_FEATURES,
+    *_RAW_FEATURES,
 ]
 
-# new feature columns
-# Game-level features (same value for both team perspectives in a row)
+# Matchup-level features with one value per game.
 _GAME_FEATURES: Final[list[str]] = [
     "IS_DIV_GAME",
     "IS_DOME",
@@ -75,45 +75,46 @@ _GAME_FEATURES: Final[list[str]] = [
     "LOW_VIS_FLAG",
     "WIND_CHILL_DELTA",
     "IS_NEUTRAL_SITE",
-    "ALTITUDE",
+    "GAME_SITE_ALTITUDE",
     "IS_PRIMETIME",
     "WEEK_NUM",
 ]
 
-# Per-team features (asymmetric - TEAM_A and TEAM_B values differ)
+# Team-state features produced directly by the canonical feature pipeline.
 _TEAM_FEATURES: Final[list[str]] = [
-    "TEAM_A_DAYS_REST",
-    "TEAM_B_DAYS_REST",
-    "TEAM_A_SHORT_WEEK",
-    "TEAM_B_SHORT_WEEK",
-    "TEAM_A_POST_BYE",
-    "TEAM_B_POST_BYE",
-    "TEAM_A_REST_DIFF",
-    "TEAM_B_REST_DIFF",
-    "TEAM_A_KM_TRAVELED",
-    "TEAM_B_KM_TRAVELED",
-    "TEAM_A_TZ_SHIFT",
-    "TEAM_B_TZ_SHIFT",
-    "TEAM_A_FRANCHISE_HFA",
-    "TEAM_B_FRANCHISE_HFA",
-    "TEAM_A_WINS",
-    "TEAM_A_LOSSES",
-    "TEAM_A_WIN_PCT",
-    "TEAM_A_WIN_STREAK",
-    "TEAM_A_LOSS_STREAK",
-    "TEAM_B_WINS",
-    "TEAM_B_LOSSES",
-    "TEAM_B_WIN_PCT",
-    "TEAM_B_WIN_STREAK",
-    "TEAM_B_LOSS_STREAK",
-    "TEAM_A_SOS",
-    "TEAM_A_SOV",
-    "TEAM_B_SOS",
-    "TEAM_B_SOV",
+    "AWAY_DAYS_REST",
+    "HOME_DAYS_REST",
+    "AWAY_SHORT_WEEK",
+    "HOME_SHORT_WEEK",
+    "AWAY_POST_BYE",
+    "HOME_POST_BYE",
+    "DAYS_REST_DIFF",
+    "AWAY_KM_TRAVELED",
+    "HOME_KM_TRAVELED",
+    "AWAY_TZ_SHIFT",
+    "HOME_TZ_SHIFT",
+    "HOME_FRANCHISE_HFA",
+    "AWAY_WINS",
+    "AWAY_LOSSES",
+    "AWAY_WIN_PCT",
+    "AWAY_WIN_STREAK",
+    "AWAY_LOSS_STREAK",
+    "HOME_WINS",
+    "HOME_LOSSES",
+    "HOME_WIN_PCT",
+    "HOME_WIN_STREAK",
+    "HOME_LOSS_STREAK",
+    "AWAY_SOS",
+    "AWAY_SOV",
+    "HOME_SOS",
+    "HOME_SOV",
 ]
 
-# Expanded feature set
-_EXPANDED_FEATURES: Final[list[str]] = _COMBINED_FEATURES + _GAME_FEATURES + _TEAM_FEATURES
+_EXPANDED_FEATURES: Final[list[str]] = [
+    *_COMBINED_FEATURES,
+    *_GAME_FEATURES,
+    *_TEAM_FEATURES,
+]
 
 
 # ---------------------------------------------------------------------------

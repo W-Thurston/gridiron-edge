@@ -2563,6 +2563,48 @@ HOME_FIELD, and RESULT.
 The active legacy feature pipeline and persisted development artifacts remain
 unchanged pending canonical model-contract migration.
 
+### Unit 19.2d: Activate One-Row Feature Pipeline
+
+#### Completed
+
+Defined the canonical model-facing feature sets.
+
+Replaced TEAM_A, TEAM_B, and HOME_FIELD model feature declarations with stable
+Away and Home columns.
+
+Defined all Elo and EPA differentials as Home minus Away.
+
+Updated the feature-set contracts to 37 differential, 74 raw, 111 combined,
+and 152 expanded columns.
+
+Preserved the existing diff, raw, combined, and expanded lookup keys used by
+Win and Total model specifications.
+
+Replaced legacy altitude and mirrored franchise-HFA fields with Game Site
+Altitude and one Home Franchise HFA value.
+
+Covered exact schemas, column uniqueness, differential direction, ordering,
+feature-set metadata, optional expanded columns, retired-orientation exclusion,
+and input immutability.
+
+All scoped quality gates and tests pass.
+
+#### Goal
+
+Activate one canonical one-row-per-game historical modeling artifact and
+feature pipeline.
+
+#### Tests
+
+Canonical model feature-set tests are complete. Active artifact construction,
+manifest versioning, real feature execution, and artifact verification remain.
+
+#### Acceptance
+
+The active modeling build produces exactly one canonical Away/Home row per game,
+runs the canonical feature sequence, persists the canonical schema, and contains
+no TEAM_A, TEAM_B, HOME_FIELD, or RESULT dependency.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

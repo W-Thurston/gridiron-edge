@@ -68,69 +68,33 @@ MIN_CV_TRAIN_ROWS: int = 4000
 
 
 def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Engineer TEAM_A - TEAM_B differential features.
-
-    Args:
-        df: Modeling DataFrame with raw feature columns.
-
-    Returns:
-        DataFrame with 10 differential features.
-    """
+    """Engineer canonical HOME - AWAY differential features."""
     out = pd.DataFrame(index=df.index)
-    out["HOME_FIELD"] = df["HOME_FIELD"]
-    out["ELO_DIFF"] = df["TEAM_A_ELO"] - df["TEAM_B_ELO"]
+    out["ELO_DIFF"] = df["HOME_ELO"] - df["AWAY_ELO"]
     for suffix in _EPA_SUFFIXES:
-        out[f"{suffix}_DIFF"] = df[f"TEAM_A_{suffix}"] - df[f"TEAM_B_{suffix}"]
-    return out
+        out[f"{suffix}_DIFF"] = df[f"HOME_{suffix}"] - df[f"AWAY_{suffix}"]
+    return out.loc[:, _DIFF_FEATURES]
 
 
 def _make_raw_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Select raw features for both teams.
-
-    Args:
-        df: Modeling DataFrame with raw feature columns.
-
-    Returns:
-        DataFrame with 19 raw features.
-    """
+    """Select ordered canonical Away and Home raw features."""
     return df.loc[:, _RAW_FEATURES].copy()
 
 
 def _make_combined_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine differential and raw features.
-
-    Args:
-        df: Modeling DataFrame with raw feature columns.
-
-    Returns:
-        DataFrame with 28 combined features.
-    """
+    """Combine canonical differentials and direct Away/Home values."""
     diff: DataFrame = _make_diff_features(df)
-    raw_no_home: DataFrame = df.loc[:, [c for c in _RAW_FEATURES if c != "HOME_FIELD"]].copy()
-    return pd.concat([diff, raw_no_home], axis=1)
+    raw: DataFrame = _make_raw_features(df)
+    return pd.concat([diff, raw], axis=1).loc[:, _COMBINED_FEATURES]
 
 
 def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine all features with the v1 combined set.
-
-    Extends _make_combined_features with the 35 columns:
-    game-level features (IS_DIV_GAME, weather, venue) and per-team
-    features (rest, travel, franchise HFA). Game-level features are
-    identical for both team perspectives in a row - the model learns
-    their influence on win probability directly.
-
-    Missing columns (e.g. WIND_SPEED_MPH for dome games not yet backfilled)
-    produce NaN rows which _prepare_data excludes from training automatically.
-
-    Args:
-        df: Modeling DataFrame with all feature columns required by the current modeling schema.
-
-    Returns:
-        DataFrame with 63 expanded features.
-    """
+    """Add available canonical game and team-state features."""
     base: DataFrame = _make_combined_features(df)
-    extended_cols: list[str] = [c for c in _GAME_FEATURES + _TEAM_FEATURES if c in df.columns]
-    extended: DataFrame = df.loc[:, extended_cols].copy()
+    extended_columns: list[str] = [
+        column for column in [*_GAME_FEATURES, *_TEAM_FEATURES] if column in df.columns
+    ]
+    extended = df.loc[:, extended_columns].copy()
     return pd.concat([base, extended], axis=1)
 
 
@@ -142,22 +106,22 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 # Callers import FEATURE_SETS["combined"] rather than the raw constants.
 FEATURE_SETS: dict[str, FeatureSet] = {
     "diff": FeatureSet(
-        name="diff_24",
+        name="diff_37",
         feature_fn=_make_diff_features,
         feature_names=_DIFF_FEATURES,
     ),
     "raw": FeatureSet(
-        name="raw_47",
+        name="raw_74",
         feature_fn=_make_raw_features,
         feature_names=list(_RAW_FEATURES),
     ),
     "combined": FeatureSet(
-        name="combined_70",
+        name="combined_111",
         feature_fn=_make_combined_features,
         feature_names=_COMBINED_FEATURES,
     ),
     "expanded": FeatureSet(
-        name="expanded_107",
+        name="expanded_152",
         feature_fn=_make_expanded_features,
         feature_names=_EXPANDED_FEATURES,
     ),
