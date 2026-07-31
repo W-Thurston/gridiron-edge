@@ -2083,6 +2083,66 @@ Historical and upcoming one-row game frames can receive paired Away and Home
 pregame EPA features without TEAM_A, TEAM_B, HOME_FIELD, lost games, or current
 game leakage.
 
+### Unit 19.2c.3: Canonical Home/Away Rest Features
+
+#### Completed
+
+Added canonical home/away rest features for one-row-per-game historical and
+upcoming inputs.
+
+The feature produces Away Days Rest, Home Days Rest, Away Short Week, Home Short
+Week, Away Post Bye, Home Post Bye, and one Days Rest Differential.
+
+Defined Days Rest Differential as Home Days Rest minus Away Days Rest.
+
+Calculated rest from each target game's date against the latest completed game
+date strictly before it.
+
+This schedule-complete lookup supports upcoming games that do not yet exist in
+completed historical data.
+
+Prevented future-game leakage by excluding games on or after the target date.
+
+Preserved the existing short-week threshold of fewer than six days and the
+post-bye threshold of at least thirteen days.
+
+Preserved cross-season elapsed rest rather than resetting the value at the
+season boundary.
+
+Missing team history or invalid target dates remain explicitly null, including
+dependent flags and the differential.
+
+Rejected malformed target schemas and duplicate historical team-game
+identities.
+
+Preserved input rows, unrelated columns, and caller immutability.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B rest feature.
+
+Left the active feature sequence and existing modeling pipeline unchanged.
+
+#### Goal
+
+Provide schedule-complete pregame rest features using stable Away and Home
+identity without requiring target games to exist in completed history.
+
+#### Tests
+
+Covered registration, canonical output schema, distinct Away and Home values,
+home-minus-away differential direction, future-game exclusion, short-week and
+post-bye boundaries, missing history, cross-season elapsed rest, input
+preservation, missing target columns, duplicate historical identities, and
+exclusion of retired orientation names.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive truthful Away and Home rest
+features without TEAM_A, TEAM_B, HOME_FIELD, target-game archive dependency, or
+future leakage.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
