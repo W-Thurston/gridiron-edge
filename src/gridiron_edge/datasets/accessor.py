@@ -47,6 +47,10 @@ class DatasetAccessor:
         """
         return loaders.load_stadiums(self.repo)
 
+    def schedule_upcoming_rich(self) -> pd.DataFrame:
+        """Load the rich schedule-complete upcoming-game artifact."""
+        return loaders.load_schedule_upcoming_rich(self.repo)
+
     def epa_by_game(self) -> pd.DataFrame:
         """Load the pre-aggregated game-level EPA statistics.
 

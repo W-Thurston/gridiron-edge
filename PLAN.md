@@ -2262,6 +2262,78 @@ and SOV values without TEAM_A, TEAM_B, HOME_FIELD, target-game archive
 dependency, current or future result leakage, or default substitution for
 missing opponent Elo.
 
+### Unit 19.2c.6: Canonical Home/Away Travel Features
+
+#### Completed
+
+Added canonical Away and Home travel features for one-row-per-game historical
+and upcoming inputs.
+
+The feature produces game-site altitude, Away and Home kilometers traveled, and
+Away and Home timezone shifts.
+
+Resolved the actual game venue internally by Game ID from historical games and
+the rich upcoming schedule. The canonical modeling schema does not need to
+carry stadium identity solely for travel calculation.
+
+Joined actual venue coordinates by stadium name and franchise origins by team
+and season.
+
+Excluded special Alternate and International venue rows from franchise-origin
+selection.
+
+Allowed duplicate stadium aliases and franchise-season rows when they resolve
+to the same coordinate tuple. Rejected conflicting venue or coordinate
+identities.
+
+Calculated both teams' travel from franchise-season home coordinates to the
+actual game-site coordinates.
+
+Standard home games naturally produce zero Home travel and timezone shift when
+the actual venue matches the Home team's coordinates.
+
+Neutral, international, relocated, and alternate-site games calculate travel
+for both teams from their respective origins.
+
+Missing venue or coordinate data remains explicitly null without removing the
+target game or failing unrelated historical feature generation.
+
+Added access to the rich upcoming schedule through the repository-scoped
+dataset accessor. A missing rich upcoming artifact does not prevent historical
+travel calculation.
+
+Preserved target row order, unrelated columns, and caller immutability.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B travel feature.
+
+Left the active feature sequence, legacy travel implementation, and canonical
+modeling schema unchanged.
+
+#### Goal
+
+Provide schedule-complete Away and Home travel features using the actual game
+venue without requiring target rows to carry stadium metadata or use retired
+orientation fields.
+
+#### Tests
+
+Covered registration, canonical outputs, standard home games, upcoming venue
+resolution, historical venue resolution, neutral venues, unavailable rich
+schedule data, missing venues, missing team origins, coordinate aliases,
+conflicting venue identities, conflicting franchise and site coordinates, row
+and column preservation, input immutability, missing target fields, and
+exclusion of retired orientation names.
+
+All scoped quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive truthful Away and Home
+travel distance, timezone shift, and game-site altitude without TEAM_A,
+TEAM_B, HOME_FIELD, venue assumptions, target-row stadium propagation, row
+loss, or concealed unavailable states.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
