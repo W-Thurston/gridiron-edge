@@ -244,8 +244,8 @@ def join_predictions_to_odds(
 def compute_game_edges(
     row: pd.Series,
     *,
-    margin_std: float,
-    total_std: float,
+    margin_std: float | None,
+    total_std: float | None,
 ) -> list[MoneylineEdge | SpreadEdge | TotalEdge]:
     """Compute edges for all available markets in a single game row.
 
@@ -291,7 +291,8 @@ def compute_game_edges(
 
     # Spread
     if (
-        _has(row, "spread_line_home")
+        margin_std is not None
+        and _has(row, "spread_line_home")
         and _has(row, "spread_odds_home")
         and _has(row, "spread_odds_away")
         and _has(row, "model_spread")
@@ -308,7 +309,8 @@ def compute_game_edges(
 
     # Total
     if (
-        _has(row, "total_line")
+        total_std is not None
+        and _has(row, "total_line")
         and _has(row, "over_odds")
         and _has(row, "under_odds")
         and _has(row, "model_total")
@@ -335,8 +337,8 @@ def build_edge_report(
     predictions_df: pd.DataFrame,
     odds_df: pd.DataFrame,
     *,
-    margin_std: float,
-    total_std: float,
+    margin_std: float | None,
+    total_std: float | None,
     bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
 ) -> pd.DataFrame:
@@ -354,10 +356,10 @@ def build_edge_report(
         ``model_type`` columns; ``model_key`` is derived in the output.
     odds_df : pd.DataFrame
         Odds data - long or wide format.
-    margin_std : float
-        Spread residual std for spread cover probability.
-    total_std : float
-        Total residual std for total cover probability.
+    margin_std : float | None
+        Spread residual std. ``None`` disables Spread calculation.
+    total_std : float | None
+        Total residual std. ``None`` disables Total calculation.
     bankroll : float | None, default None
         Current bankroll in dollars. When None, edge calculations retain
         full-Kelly fractions but kelly_stake remains unavailable.
@@ -492,8 +494,8 @@ def build_edge_result(
     *,
     season: str,
     week: int,
-    margin_std: float,
-    total_std: float,
+    margin_std: float | None,
+    total_std: float | None,
     bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
     min_ev: float = 0.0,
