@@ -1719,9 +1719,6 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2c.6  Canonical travel
-19.2c.7  Canonical venue HFA
-19.2c.8  Audit and adapt game-level features
 19.2c.9  Define canonical feature sequences
 19.2d    Activate one-row feature pipeline
 19.2e    Migrate Win model
@@ -2414,6 +2411,91 @@ Historical and upcoming one-row game frames receive one leakage-free Home
 franchise advantage value without TEAM_A, TEAM_B, HOME_FIELD, WINNER, LOSER,
 GAME_LOCATION, mirrored coefficients, target-week leakage, or future-result
 leakage.
+
+### Unit 19.2c.8: Canonical Game-Level Features
+
+#### Completed
+
+Added schedule-complete canonical divisional, primetime, dome, and weather
+features for one-row-per-game historical and upcoming inputs.
+
+Added a shared internal metadata resolver that combines completed historical
+game metadata with the rich upcoming schedule by Game ID.
+
+Normalized historical and upcoming field names while preserving one stable
+canonical Game ID lookup.
+
+Accepted identical overlapping metadata and selected a populated value when the
+other source was unavailable.
+
+Rejected conflicting non-null metadata for the same game and field.
+
+Tolerated an unavailable rich upcoming artifact so historical feature
+generation remains operational.
+
+Added canonical divisional-game identity using historical DIV_GAME and upcoming
+divisional metadata.
+
+Added canonical primetime identity using historical and upcoming weekday and
+kickoff-time metadata.
+
+Preserved the established Monday, Sunday night, Thursday night, and Saturday
+night primetime rules.
+
+Represented missing, unknown, or malformed required primetime metadata as null
+rather than silently classifying the game as non-primetime.
+
+Added canonical dome and weather features using historical and upcoming roof
+metadata plus weather observations keyed by Game ID.
+
+Reused the established weather conversions, precipitation classifications,
+visibility handling, derived fields, and controlled-environment defaults.
+
+Known dome games receive controlled environmental values even when no weather
+artifact is available.
+
+Known outdoor games without weather coverage retain explicit null weather
+values.
+
+Missing roof metadata leaves dome state explicitly null rather than defaulting
+to outdoor.
+
+Preserved target rows, target order, unrelated columns, and caller
+immutability.
+
+Confirmed that no canonical replacement for perspective-relative HOME_FIELD is
+needed. Stable Away Team, Home Team, and neutral-site identity already express
+the canonical game orientation.
+
+Registered the canonical implementations independently from the active legacy
+features.
+
+Left the active feature sequence, model columns, feature engineering, and
+modeling pipeline unchanged.
+
+#### Goal
+
+Complete the canonical game-level feature family so historical and upcoming
+one-row game inputs use the same schedule-complete metadata and weather path.
+
+#### Tests
+
+Covered shared historical and upcoming metadata resolution, identical
+overlaps, null-versus-populated values, conflicting metadata, missing rich
+schedule data, divisional state, primetime rules, nullable schedule metadata,
+historical and upcoming roof state, weather conversions, dome defaults,
+missing outdoor weather, missing roof metadata, row and order preservation,
+input immutability, required Game ID validation, and exclusion of retired
+orientation fields.
+
+All scoped quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive divisional, primetime,
+dome, and weather features through one canonical Game ID path without TEAM_A,
+TEAM_B, HOME_FIELD, completed-history dependence for upcoming games, silent
+metadata substitution, or row loss.
 
 ---
 

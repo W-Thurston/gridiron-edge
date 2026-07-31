@@ -75,10 +75,15 @@ from typing import TYPE_CHECKING, Final
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame, Series
 
 from gridiron_edge.core.enums import COVERED_STADIUMS
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
+from gridiron_edge.features.team._game_metadata import (
+    build_game_metadata_lookup,
+    load_optional_upcoming_metadata,
+)
 
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
@@ -288,3 +293,93 @@ class WeatherFeature:
 
         # pyrefly: ignore [no-matching-overload]
         return w[_WEATHER_OUTPUT_COLS].drop_duplicates("GAME_ID").reset_index(drop=True)
+
+
+@FeatureRegistry.register("home_away_weather")
+class HomeAwayWeatherFeature:
+    """Attach schedule-complete game-level weather and dome features."""
+
+    spec = FeatureSpec(
+        name="home_away_weather",
+        produces=list(WeatherFeature.spec.produces),
+    )
+
+    def compute(
+        self,
+        *,
+        df: pd.DataFrame,
+        datasets: DatasetAccessor,
+    ) -> pd.DataFrame:
+        """Attach nullable roof state and weather by canonical game ID."""
+        if "GAME_ID" not in df.columns:
+            raise ValueError("Home/away game frame is missing required columns: GAME_ID")
+
+        output_columns: list[str] = list(self.spec.produces)
+        source: DataFrame = df.copy().drop(
+            columns=output_columns,
+            errors="ignore",
+        )
+        source["_INPUT_ORDER"] = range(len(source))
+
+        metadata: DataFrame = build_game_metadata_lookup(
+            historical=datasets.games(),
+            upcoming=load_optional_upcoming_metadata(datasets),
+            historical_mapping={
+                "GAME_ID": "GAME_ID",
+                "ROOF": "ROOF",
+            },
+            upcoming_mapping={
+                "game_id": "GAME_ID",
+                "roof": "ROOF",
+            },
+        )
+        roof_text: Series[str] = metadata["ROOF"].astype("string").str.lower().str.strip()
+        dome_values: Series[int] = roof_text.isin(
+            frozenset(value.lower() for value in _DOME_ROOF_VALUES)
+        ).astype("Int64")
+        dome_values = dome_values.mask(metadata["ROOF"].isna())
+        metadata["IS_DOME"] = dome_values
+
+        legacy = WeatherFeature()
+        weather_df: DataFrame | None = legacy._load_weather(datasets)
+        if weather_df is not None and not weather_df.empty:
+            weather_lookup: DataFrame = legacy._process_weather(weather_df)
+        else:
+            weather_lookup = DataFrame(columns=_WEATHER_OUTPUT_COLS)
+
+        result: DataFrame = source.merge(
+            metadata[["GAME_ID", "IS_DOME"]],
+            how="left",
+            on="GAME_ID",
+            sort=False,
+            validate="many_to_one",
+        )
+        if weather_lookup.empty:
+            for column in _WEATHER_OUTPUT_COLS:
+                if column != "GAME_ID":
+                    result[column] = float("nan")
+        else:
+            result = result.merge(
+                weather_lookup,
+                how="left",
+                on="GAME_ID",
+                sort=False,
+                validate="many_to_one",
+            )
+
+        dome_mask: Series[bool] = result["IS_DOME"].eq(1)
+        result.loc[dome_mask, "WIND_SPEED_MPH"] = 0.0
+        result.loc[dome_mask, "TEMP_F"] = _DOME_TEMP_F
+        result.loc[dome_mask, "PRECIP_FLAG"] = 0
+        result.loc[dome_mask, "FEELS_LIKE_F"] = _DOME_FEELS_LIKE_F
+        result.loc[dome_mask, "HUMIDITY_PCT"] = _DOME_HUMIDITY_PCT
+        result.loc[dome_mask, "VISIBILITY_M"] = _DOME_VISIBILITY_M
+        result.loc[dome_mask, "SNOW_FLAG"] = 0
+        result.loc[dome_mask, "LOW_VIS_FLAG"] = 0
+        result.loc[dome_mask, "WIND_CHILL_DELTA"] = 0.0
+
+        return (
+            result.sort_values("_INPUT_ORDER", kind="stable")
+            .drop(columns=["_INPUT_ORDER"])
+            .reset_index(drop=True)
+        )
