@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from pandas import DataFrame
@@ -16,12 +17,14 @@ from tests.fixtures.dataframes import (
 
 from gridiron_edge.datasets.loaders import (
     load_csv,
+    load_current_weekly_product,
     load_epa_by_game,
     load_games,
     load_parquet_if_exists,
     load_schedule_upcoming,
     load_schedule_upcoming_rich,
     load_stadiums,
+    load_weekly_product,
 )
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.datasets.writers import (
@@ -86,8 +89,6 @@ class TestLoadEpaByGame:
 
     def test_returns_data_when_file_exists(self, tmp_path: Path) -> None:
         epa = make_epa_by_game(teams=["KC", "SF"], seasons=[2024], weeks_per_season=2)
-
-        # Write to the expected location
         epa_path: Path = tmp_path / "data" / "cleaned" / "epa_by_game.parquet"
         epa_path.parent.mkdir(parents=True, exist_ok=True)
         epa.to_parquet(epa_path, index=False)
@@ -95,9 +96,7 @@ class TestLoadEpaByGame:
         assert len(result) > 0
 
 
-def test_loads_rich_upcoming_schedule_from_registry(
-    tmp_path: Path,
-) -> None:
+def test_loads_rich_upcoming_schedule_from_registry(tmp_path: Path) -> None:
     expected = pd.DataFrame(
         {
             "season": ["2026-2027"],
@@ -113,29 +112,13 @@ def test_loads_rich_upcoming_schedule_from_registry(
             "ingested_at": [pd.Timestamp("2026-07-30T18:00:00Z")],
         }
     )
-
-    written_path = write_parquet(
-        tmp_path,
-        "schedule_upcoming_rich",
-        expected,
-    )
-
-    assert written_path == dataset_path(
-        tmp_path,
-        "schedule_upcoming_rich",
-    )
-
+    written_path = write_parquet(tmp_path, "schedule_upcoming_rich", expected)
+    assert written_path == dataset_path(tmp_path, "schedule_upcoming_rich")
     loaded = load_schedule_upcoming_rich(tmp_path)
-
-    pd.testing.assert_frame_equal(
-        loaded,
-        expected,
-    )
+    pd.testing.assert_frame_equal(loaded, expected)
 
 
-def test_rich_loader_does_not_fall_back_to_legacy_schedule(
-    tmp_path: Path,
-) -> None:
+def test_rich_loader_does_not_fall_back_to_legacy_schedule(tmp_path: Path) -> None:
     legacy = pd.DataFrame(
         {
             "WEEK_NUM": [1],
@@ -148,20 +131,12 @@ def test_rich_loader_does_not_fall_back_to_legacy_schedule(
             "GAME_ID": ["2026_01_KC_LAC"],
         }
     )
-
-    write_csv(
-        tmp_path,
-        "schedule_upcoming",
-        legacy,
-    )
-
+    write_csv(tmp_path, "schedule_upcoming", legacy)
     with pytest.raises(FileNotFoundError):
         load_schedule_upcoming_rich(tmp_path)
 
 
-def test_legacy_schedule_loader_remains_compatible(
-    tmp_path: Path,
-) -> None:
+def test_legacy_schedule_loader_remains_compatible(tmp_path: Path) -> None:
     expected = pd.DataFrame(
         {
             "WEEK_NUM": [1],
@@ -174,28 +149,15 @@ def test_legacy_schedule_loader_remains_compatible(
             "GAME_ID": ["2026_01_KC_LAC"],
         }
     )
-
-    write_csv(
-        tmp_path,
-        "schedule_upcoming",
-        expected,
-    )
-
+    write_csv(tmp_path, "schedule_upcoming", expected)
     loaded = load_schedule_upcoming(tmp_path)
-
-    pd.testing.assert_frame_equal(
-        loaded,
-        expected,
-    )
+    pd.testing.assert_frame_equal(loaded, expected)
 
 
 class TestUpcomingScheduleLoaders:
     """Verify focused and rich upcoming-schedule loader contracts."""
 
-    def test_loads_rich_schedule_from_registry(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_loads_rich_schedule_from_registry(self, tmp_path: Path) -> None:
         expected = pd.DataFrame(
             {
                 "season": ["2026-2027"],
@@ -211,29 +173,12 @@ class TestUpcomingScheduleLoaders:
                 "ingested_at": [pd.Timestamp("2026-07-30T18:00:00Z")],
             }
         )
-
-        written_path = write_parquet(
-            tmp_path,
-            "schedule_upcoming_rich",
-            expected,
-        )
-
-        assert written_path == dataset_path(
-            tmp_path,
-            "schedule_upcoming_rich",
-        )
-
+        written_path = write_parquet(tmp_path, "schedule_upcoming_rich", expected)
+        assert written_path == dataset_path(tmp_path, "schedule_upcoming_rich")
         loaded: DataFrame = load_schedule_upcoming_rich(tmp_path)
+        pd.testing.assert_frame_equal(loaded, expected)
 
-        pd.testing.assert_frame_equal(
-            loaded,
-            expected,
-        )
-
-    def test_rich_loader_does_not_fall_back_to_legacy(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_rich_loader_does_not_fall_back_to_legacy(self, tmp_path: Path) -> None:
         legacy = pd.DataFrame(
             {
                 "WEEK_NUM": [1],
@@ -246,20 +191,11 @@ class TestUpcomingScheduleLoaders:
                 "GAME_ID": ["2026_01_KC_LAC"],
             }
         )
-
-        write_csv(
-            tmp_path,
-            "schedule_upcoming",
-            legacy,
-        )
-
+        write_csv(tmp_path, "schedule_upcoming", legacy)
         with pytest.raises(FileNotFoundError):
             load_schedule_upcoming_rich(tmp_path)
 
-    def test_legacy_loader_remains_compatible(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_legacy_loader_remains_compatible(self, tmp_path: Path) -> None:
         expected = pd.DataFrame(
             {
                 "WEEK_NUM": [1],
@@ -272,16 +208,46 @@ class TestUpcomingScheduleLoaders:
                 "GAME_ID": ["2026_01_KC_LAC"],
             }
         )
+        write_csv(tmp_path, "schedule_upcoming", expected)
+        loaded: DataFrame = load_schedule_upcoming(tmp_path)
+        pd.testing.assert_frame_equal(loaded, expected)
 
-        write_csv(
+
+class TestWeeklyProductLoaders:
+    """Verify dataset loaders delegate to the weekly-product store."""
+
+    @patch("gridiron_edge.models.game_prediction.weekly_product_store.load_weekly_product")
+    def test_loads_exact_weekly_product(
+        self,
+        mock_load: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        expected = pd.DataFrame({"product_id": ["product-1"]})
+        mock_load.return_value = expected
+
+        loaded = load_weekly_product(tmp_path, "product-1")
+
+        pd.testing.assert_frame_equal(loaded, expected)
+        mock_load.assert_called_once_with("product-1", repo=tmp_path)
+
+    @patch("gridiron_edge.models.game_prediction.weekly_product_store.load_current_weekly_product")
+    def test_loads_explicit_current_weekly_product(
+        self,
+        mock_load_current: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        expected = pd.DataFrame({"product_id": ["product-1"]})
+        mock_load_current.return_value = expected
+
+        loaded = load_current_weekly_product(
             tmp_path,
-            "schedule_upcoming",
-            expected,
+            season="2026-2027",
+            week=8,
         )
 
-        loaded: DataFrame = load_schedule_upcoming(tmp_path)
-
-        pd.testing.assert_frame_equal(
-            loaded,
-            expected,
+        pd.testing.assert_frame_equal(loaded, expected)
+        mock_load_current.assert_called_once_with(
+            season="2026-2027",
+            week=8,
+            repo=tmp_path,
         )

@@ -1197,38 +1197,100 @@ machine-readable status.
 
 ---
 
-### Unit 14: Persist the Static Weekly Game Product
+### Unit 14: Persist the Static Weekly Game Product [Complete]
+
+#### Completed
+
+Added immutable, versioned persistence for validated weekly game products.
+
+Each product run is stored as a separate Parquet artifact addressed by an
+explicit product ID. Multiple products for the same season and week coexist
+without overwrite or implicit precedence.
+
+The store stamps every row with product schema version, product ID, product run
+ID, and timezone-aware UTC generation timestamp. An atomic JSON index records
+each product's scope, row count, exact ordered columns, generated timestamp,
+and relative artifact path.
+
+Loading by product ID validates the index schema, entry shape, artifact path,
+artifact existence, exact column order, row count, product schema version,
+product identity, run identity, generated timestamp, season, week, and complete
+weekly game-product domain contract.
+
+Identical rewrites are idempotent. Reusing a product ID with different content,
+run identity, or generation timestamp is rejected. Missing artifacts, unindexed
+artifacts, and other inconsistent storage states fail clearly.
+
+Added a versioned current-product manifest keyed by canonical season and week.
+Each selection records an explicit product ID and timezone-aware UTC selection
+timestamp. Selecting current requires an indexed, loadable product whose scope
+matches the requested season and week.
+
+Writing a newer product does not alter current. Current changes only through an
+explicit selection operation and is never inferred from timestamps, filenames,
+modification times, run IDs, index ordering, or lexical product ID ordering.
+
+Added standard dataset loader and writer wrappers for exact product loading,
+current-product loading, immutable product writing, and explicit current
+selection. These wrappers delegate to the product store and do not duplicate
+storage or validation behavior.
+
+Added integration coverage for two products in the same weekly scope. The test
+writes and selects product A, writes product B without changing current,
+explicitly changes current to B, and verifies that both products remain exactly
+loadable with distinct coherent values.
+
+The full persistence and loading workflow creates only weekly-product storage.
+It performs no policy resolution, feature generation, model execution,
+champion resolution, calibration loading, forecast selection, spread
+derivation, total composition, projected-score calculation, or API inference.
 
 #### Goal
 
-Write and load an immutable, versioned weekly product.
-
-#### Production files
-
-- new storage module
-- dataset registry entries
-- relevant loaders and writers
-
-#### Test files
-
-- create:
-  `tests/unit/models/game_prediction/test_weekly_product_store.py`
-- create or update:
-  `tests/integration/models/test_weekly_product_roundtrip.py`
+Write and load immutable, versioned weekly game products through a static
+serialization boundary that supports multiple runs and explicit current
+selection.
 
 #### Tests
 
 - product round-trips without schema loss;
-- run identity and generated timestamp survive;
-- multiple runs created under the new contract coexist;
-- selected current product is explicit;
-- schema mismatch fails clearly;
-- no model computation occurs during load.
+- exact ordered domain columns survive;
+- nullable blocked values survive;
+- product ID survives;
+- product run ID survives;
+- timezone-aware UTC generation timestamp survives;
+- multiple products for the same season and week coexist;
+- each coexisting product remains independently loadable;
+- identical rewrites are idempotent;
+- conflicting product content is rejected;
+- conflicting run identity is rejected;
+- conflicting generation timestamp is rejected;
+- unsupported index schema fails clearly;
+- artifact column mismatch fails clearly;
+- row-count mismatch fails clearly;
+- product identity mismatch fails clearly;
+- season and week mismatch fail clearly;
+- missing artifact fails clearly;
+- unindexed artifact fails clearly;
+- current selection is explicit;
+- writing a newer product does not change current;
+- current selection can be changed explicitly;
+- missing current selection fails clearly;
+- selection requires an indexed and loadable product;
+- selection scope must match product scope;
+- unsupported current-manifest schema fails clearly;
+- dataset loaders delegate to product storage;
+- dataset writers delegate to product storage;
+- integration round trip preserves distinct product values;
+- no unrelated compute or model artifacts are created;
+- loading performs no prediction or model computation.
 
 #### Acceptance
 
-API, CLI rendering, and edge calculation can consume one persisted weekly
-product.
+API, CLI rendering, and edge calculation can consume one persisted weekly game
+product through the standard dataset boundary. Product runs are immutable and
+versioned, multiple runs coexist, current selection is explicit, and loading is
+strictly a validated serialization operation rather than a compute boundary.
 
 ---
 

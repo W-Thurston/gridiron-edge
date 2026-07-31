@@ -346,11 +346,13 @@ def _load_indexed_artifact(
         raise ValueError(f"Weekly product artifact run_id mismatch for {record.product_id!r}.")
 
     generated = pd.to_datetime(stored["product_generated_at"], utc=True, errors="coerce")
+    # pyrefly: ignore [missing-attribute]
     if generated.isna().any():
         raise ValueError(
             f"Weekly product artifact generated_at is invalid for {record.product_id!r}."
         )
     expected_generated = pd.Timestamp(record.generated_at)
+    # pyrefly: ignore [missing-attribute]
     if not (generated == expected_generated).all():
         raise ValueError(
             f"Weekly product artifact generated_at mismatch for {record.product_id!r}."

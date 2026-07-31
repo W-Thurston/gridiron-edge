@@ -1,9 +1,12 @@
 # src/gridiron_edge/datasets/writers.py
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
 
 from .registry import DatasetKey, dataset_path
 
@@ -62,3 +65,43 @@ def write_parquet(
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=index)
     return path
+
+
+def write_weekly_product(
+    repo_root: Path,
+    df: pd.DataFrame,
+    *,
+    identity: WeeklyProductIdentity,
+) -> Path:
+    """Write one validated immutable weekly game product."""
+    from gridiron_edge.models.game_prediction.weekly_product_store import (
+        write_weekly_product as write_stored_weekly_product,
+    )
+
+    return write_stored_weekly_product(
+        df,
+        identity=identity,
+        repo=repo_root,
+    )
+
+
+def select_current_weekly_product(
+    repo_root: Path,
+    product_id: str,
+    *,
+    season: str,
+    week: int,
+    selected_at: datetime,
+) -> None:
+    """Explicitly select one persisted product as current."""
+    from gridiron_edge.models.game_prediction.weekly_product_store import (
+        select_current_weekly_product as select_stored_weekly_product,
+    )
+
+    select_stored_weekly_product(
+        product_id,
+        season=season,
+        week=week,
+        selected_at=selected_at,
+        repo=repo_root,
+    )

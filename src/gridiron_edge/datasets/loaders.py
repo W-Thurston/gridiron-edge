@@ -29,114 +29,44 @@ def load_csv(repo_root: Path, key: DatasetKey, **read_csv_kwargs: Any) -> pd.Dat
 
 
 def load_games(repo_root: Path) -> pd.DataFrame:
-    """Load the cleaned historical NFL games dataset.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame of cleaned historical game results.
-    """
+    """Load the cleaned historical NFL games dataset."""
     return load_csv(repo_root, "games")
 
 
 def load_schedule_upcoming(repo_root: Path) -> pd.DataFrame:
-    """Load the cleaned upcoming schedule dataset.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame of upcoming scheduled games.
-    """
+    """Load the cleaned upcoming schedule dataset."""
     return load_csv(repo_root, "schedule_upcoming")
 
 
-def load_schedule_upcoming_rich(
-    repo_root: Path,
-) -> pd.DataFrame:
-    """Load the rich schedule-complete upcoming-game artifact.
-
-    The rich artifact preserves schedule, venue, context, nullable market,
-    source, and ingestion-provenance fields. The focused
-    ``load_schedule_upcoming`` loader remains the compatibility boundary
-    for Elo and existing schedule consumers.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        Rich upcoming-game rows loaded from registered Parquet storage.
-    """
-    path: Path = dataset_path(
-        repo_root,
-        "schedule_upcoming_rich",
-    )
+def load_schedule_upcoming_rich(repo_root: Path) -> pd.DataFrame:
+    """Load the rich schedule-complete upcoming-game artifact."""
+    path: Path = dataset_path(repo_root, "schedule_upcoming_rich")
     return pd.read_parquet(path)
 
 
 def load_elo_state(repo_root: Path) -> pd.DataFrame:
-    """Load the Elo ratings state table.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame with per-team Elo ratings indexed by season and week.
-    """
+    """Load the Elo ratings state table."""
     return load_csv(repo_root, "elo_state")
 
 
 def load_stadiums(repo_root: Path) -> pd.DataFrame:
-    """Load the stadium reference dataset.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame with stadium metadata including coordinates and altitude.
-    """
+    """Load the stadium reference dataset."""
     return load_csv(repo_root, "stadiums")
 
 
 def load_moneylines(repo_root: Path) -> pd.DataFrame:
-    """Load the historical moneylines dataset.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame of historical NFL moneyline odds.
-    """
+    """Load the historical moneylines dataset."""
     return load_csv(repo_root, "moneylines")
 
 
 def load_teams_long_short(repo_root: Path) -> pd.DataFrame:
-    """Load team long-to-short name mapping (from unified metadata).
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame with columns NFL_LONG_NAME, NFL_SHORT_NAME. Sources from
-        the unified team_metadata CSV.
-    """
+    """Load team long-to-short name mapping (from unified metadata)."""
     df: pd.DataFrame = load_csv(repo_root, "team_metadata")
     return df.loc[:, ["NFL_LONG_NAME", "NFL_SHORT_NAME"]].copy()
 
 
 def load_divisions(repo_root: Path) -> pd.DataFrame:
-    """Load conference and division assignment (from unified metadata).
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame with columns NFL_TEAM, CONFERENCE, DIVISION. Sources from
-        the unified team_metadata CSV. Converts single-letter div codes
-        (N/S/E/W) to full "AFC North" / "NFC East" style names for
-        backward compatibility with sim/season.py::build_conf_div_arrays_from_csv.
-    """
+    """Load conference and division assignment (from unified metadata)."""
     df: pd.DataFrame = load_csv(repo_root, "team_metadata")
 
     div_letter_to_name: dict[str, str] = {
@@ -157,15 +87,7 @@ def load_divisions(repo_root: Path) -> pd.DataFrame:
 
 
 def load_epa_by_game(repo_root: Path) -> pd.DataFrame:
-    """Load the pre-aggregated game-level EPA statistics.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-
-    Returns:
-        DataFrame with one row per (team, game) containing EPA metrics.
-        Empty DataFrame if the file does not exist yet.
-    """
+    """Load the pre-aggregated game-level EPA statistics."""
     path: Path = repo_root / "data" / "cleaned" / "epa_by_game.parquet"
     if not path.exists():
         return pd.DataFrame()
@@ -173,14 +95,7 @@ def load_epa_by_game(repo_root: Path) -> pd.DataFrame:
 
 
 def load_parquet_if_exists(path: Path) -> pd.DataFrame | None:
-    """Load a Parquet file if it exists; return ``None`` otherwise.
-
-    Args:
-        path: Absolute path to the Parquet file.
-
-    Returns:
-        DataFrame if the file exists, ``None`` if it does not.
-    """
+    """Load a Parquet file if it exists; return ``None`` otherwise."""
     if path.exists():
         return pd.read_parquet(path)
     return None
@@ -193,22 +108,7 @@ def load_modeling_file(
     required_schema_version: int | None = None,
     context: str = "",
 ) -> pd.DataFrame:
-    """Load the full feature matrix with optional manifest validation.
-
-    Args:
-        repo_root: Absolute path to the repository root.
-        expected_columns: If provided, asserts these columns are present.
-        required_schema_version: If provided, asserts the manifest schema
-            version matches.
-        context: Optional label for error messages (e.g. model name).
-
-    Returns:
-        Full feature matrix DataFrame.
-
-    Raises:
-        FileNotFoundError: If the modeling file or manifest does not exist.
-        ValueError: If column or schema version validation fails.
-    """
+    """Load the full feature matrix with optional manifest validation."""
     from gridiron_edge.datasets.registry import dataset_path
     from gridiron_edge.features.manifest import (
         read_manifest,
@@ -233,3 +133,40 @@ def load_modeling_file(
             validate_columns(df, expected_columns=expected_columns, context=context)
 
     return df
+
+
+def load_weekly_product(
+    repo_root: Path,
+    product_id: str,
+) -> DataFrame:
+    """Load one exact immutable weekly game product.
+
+    Loading uses the weekly-product serialization boundary and performs no
+    prediction, feature, model, calibration, or forecast computation.
+    """
+    from gridiron_edge.models.game_prediction.weekly_product_store import (
+        load_weekly_product as load_stored_weekly_product,
+    )
+
+    return load_stored_weekly_product(
+        product_id,
+        repo=repo_root,
+    )
+
+
+def load_current_weekly_product(
+    repo_root: Path,
+    *,
+    season: str,
+    week: int,
+) -> DataFrame:
+    """Load the explicitly selected current product for one weekly scope."""
+    from gridiron_edge.models.game_prediction.weekly_product_store import (
+        load_current_weekly_product as load_current_stored_weekly_product,
+    )
+
+    return load_current_stored_weekly_product(
+        season=season,
+        week=week,
+        repo=repo_root,
+    )
