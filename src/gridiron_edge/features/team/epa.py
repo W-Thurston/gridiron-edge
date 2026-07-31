@@ -41,10 +41,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
 from gridiron_edge.features.base import FeatureSpec
 from gridiron_edge.features.registry import FeatureRegistry
+from gridiron_edge.models.game_prediction.game_schema import (
+    away_feature_name,
+    home_feature_name,
+)
 
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
@@ -106,6 +110,24 @@ _EPA_COLS: list[str] = EPA_COLS
 _TEAM_A_COLS: Final[list[str]] = [f"TEAM_A_{c.upper()}" for c in EPA_COLS]
 _TEAM_B_COLS: Final[list[str]] = [f"TEAM_B_{c.upper()}" for c in EPA_COLS]
 
+_AWAY_EPA_COLS: Final[list[str]] = [away_feature_name(column.upper()) for column in EPA_COLS]
+
+_HOME_EPA_COLS: Final[list[str]] = [home_feature_name(column.upper()) for column in EPA_COLS]
+
+_HOME_AWAY_EPA_INPUT_COLUMNS: Final[tuple[str, ...]] = (
+    "GAME_ID",
+    "YEAR",
+    "WEEK_NUM",
+    "AWAY_TEAM",
+    "HOME_TEAM",
+)
+
+_EPA_SOURCE_IDENTITY_COLUMNS: Final[tuple[str, ...]] = (
+    "game_id",
+    "season",
+    "week",
+    "team",
+)
 
 # Maximum regular-season week. Used by ``_build_rolling_epa`` to
 # optionally exclude prior-season playoff games from the rolling
@@ -208,6 +230,235 @@ def _join_team_epa(
         left_on=["season", "WEEK_NUM", prefix],
         right_on=["season", "week", "team"],
     ).drop(columns=["week", "team"], errors="ignore")
+
+
+def _require_home_away_epa_columns(
+    frame: DataFrame,
+    required: tuple[str, ...],
+    *,
+    label: str,
+) -> None:
+    """Require the identity columns used by canonical EPA joins."""
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        raise ValueError(f"{label} is missing required columns: " + ", ".join(missing))
+
+
+def _validate_home_away_epa_identity(
+    epa: DataFrame,
+) -> None:
+    """Reject ambiguous team-season-week EPA identities."""
+    duplicated = epa.duplicated(
+        subset=[
+            "season",
+            "week",
+            "team",
+        ],
+        keep=False,
+    )
+    if not duplicated.any():
+        return
+
+    duplicate_rows = (
+        epa.loc[
+            duplicated,
+            [
+                "season",
+                "week",
+                "team",
+            ],
+        ]
+        .drop_duplicates()
+        .sort_values(
+            [
+                "season",
+                "week",
+                "team",
+            ],
+            kind="stable",
+        )
+    )
+
+    identities = [
+        (f"{row['team']}/{row['season']}/{row['week']}") for _, row in duplicate_rows.iterrows()
+    ]
+
+    raise ValueError("EPA source contains duplicate identities: " + ", ".join(identities))
+
+
+def _canonical_epa_lookup(
+    rolled: DataFrame,
+    *,
+    team_column: str,
+    prefix: str,
+) -> DataFrame:
+    """Project rolling EPA columns onto one canonical game side."""
+    renamed = rolled.rename(
+        columns={
+            "team": team_column,
+            "week": "WEEK_NUM",
+            **{f"rolling_{column}": (f"{prefix}{column.upper()}") for column in EPA_COLS},
+        }
+    )
+
+    feature_columns = [f"{prefix}{column.upper()}" for column in EPA_COLS]
+
+    return renamed.loc[
+        :,
+        [
+            "season",
+            "WEEK_NUM",
+            team_column,
+            *feature_columns,
+        ],
+    ].copy()
+
+
+def _season_numbers(
+    frame: DataFrame,
+) -> Series:
+    """Convert canonical season labels to starting-season integers."""
+    if frame["YEAR"].isna().any():
+        raise ValueError("YEAR must not contain nulls.")
+
+    year_text = frame["YEAR"].astype(str).str.strip()
+    if year_text.eq("").any():
+        raise ValueError("YEAR must not contain empty values.")
+
+    season_text = year_text.str.split(
+        "-",
+        n=1,
+    ).str[0]
+
+    try:
+        return season_text.astype(int)
+    except ValueError as exc:
+        raise ValueError("YEAR must begin with a numeric season.") from exc
+
+
+@FeatureRegistry.register("home_away_epa")
+class HomeAwayEpaFeature:
+    """Join pregame rolling EPA for canonical Away and Home teams."""
+
+    spec = FeatureSpec(
+        name="home_away_epa",
+        produces=[
+            *_AWAY_EPA_COLS,
+            *_HOME_EPA_COLS,
+        ],
+    )
+
+    def __init__(
+        self,
+        window: int = DEFAULT_ROLLING_WINDOW,
+        *,
+        exclude_playoffs: bool = True,
+    ) -> None:
+        """Configure rolling EPA behavior."""
+        if window < 1:
+            raise ValueError("window must be at least 1.")
+
+        self.window = window
+        self.exclude_playoffs = exclude_playoffs
+
+    def compute(
+        self,
+        *,
+        df: pd.DataFrame,
+        datasets: DatasetAccessor,
+    ) -> pd.DataFrame:
+        """Attach Away and Home pregame EPA without removing games."""
+        _require_home_away_epa_columns(
+            df,
+            _HOME_AWAY_EPA_INPUT_COLUMNS,
+            label="Home/away game frame",
+        )
+
+        source = df.copy().drop(
+            columns=[
+                *_AWAY_EPA_COLS,
+                *_HOME_EPA_COLS,
+            ],
+            errors="ignore",
+        )
+        source["_EPA_INPUT_ORDER"] = range(len(source))
+
+        epa_raw: DataFrame = datasets.epa_by_game()
+
+        if epa_raw.empty:
+            result = source.assign(
+                **{
+                    column: float("nan")
+                    for column in (
+                        *_AWAY_EPA_COLS,
+                        *_HOME_EPA_COLS,
+                    )
+                }
+            )
+            return result.drop(columns=["_EPA_INPUT_ORDER"]).reset_index(drop=True)
+
+        _require_home_away_epa_columns(
+            epa_raw,
+            _EPA_SOURCE_IDENTITY_COLUMNS,
+            label="EPA source",
+        )
+        _validate_home_away_epa_identity(epa_raw)
+
+        rolled = _build_rolling_epa(
+            epa_raw,
+            window=self.window,
+            exclude_playoffs=(self.exclude_playoffs),
+        )
+
+        source["season"] = _season_numbers(source)
+
+        away_lookup = _canonical_epa_lookup(
+            rolled,
+            team_column="AWAY_TEAM",
+            prefix="AWAY_",
+        )
+        result = source.merge(
+            away_lookup,
+            how="left",
+            on=[
+                "season",
+                "WEEK_NUM",
+                "AWAY_TEAM",
+            ],
+            sort=False,
+            validate="many_to_one",
+        )
+
+        home_lookup = _canonical_epa_lookup(
+            rolled,
+            team_column="HOME_TEAM",
+            prefix="HOME_",
+        )
+        result = result.merge(
+            home_lookup,
+            how="left",
+            on=[
+                "season",
+                "WEEK_NUM",
+                "HOME_TEAM",
+            ],
+            sort=False,
+            validate="many_to_one",
+        )
+
+        return (
+            result.sort_values(
+                "_EPA_INPUT_ORDER",
+                kind="stable",
+            )
+            .drop(
+                columns=[
+                    "_EPA_INPUT_ORDER",
+                    "season",
+                ]
+            )
+            .reset_index(drop=True)
+        )
 
 
 @FeatureRegistry.register("epa")

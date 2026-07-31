@@ -2027,6 +2027,62 @@ Historical and upcoming one-row game frames can receive explicit Away and Home
 Elo ratings without TEAM_A, TEAM_B, HOME_FIELD, probability calculation, row
 loss, or model execution.
 
+### Unit 19.2c.2: Canonical Home/Away EPA Feature
+
+#### Completed
+
+Added a canonical home/away EPA feature for one-row-per-game inputs.
+
+The feature produces paired Away and Home columns for all 36 existing EPA
+metrics.
+
+Reused the established rolling EPA implementation, preserving prior-game-only
+shift behavior, configurable window length, cross-season history, playoff
+exclusion, and null handling for unavailable metrics.
+
+Joined Away and Home EPA independently using exact team, season, and week
+identity.
+
+Preserved every input game, original row order, and unrelated columns.
+
+Missing team history remains explicitly null without removing games or affecting
+the opposite team's available EPA values.
+
+An unavailable EPA artifact produces the complete canonical EPA schema with null
+values.
+
+Rejected missing game identity columns, malformed nonempty EPA source schemas,
+duplicate team-season-week identities, invalid season labels, and nonpositive
+rolling windows.
+
+Confirmed that the feature does not mutate its input.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B EPA feature.
+
+Left the active feature sequence, stored modeling pipeline, EPA-window tuning,
+and legacy EPA implementation unchanged.
+
+#### Goal
+
+Provide schedule-complete pregame EPA features using the canonical one-row
+home/away game orientation.
+
+#### Tests
+
+Covered registry identity, complete output schema, distinct Away and Home joins,
+current-game anti-lookahead, unavailable EPA artifacts, missing Away history,
+input preservation, duplicate EPA identities, invalid season labels, and
+rolling-window validation.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames can receive paired Away and Home
+pregame EPA features without TEAM_A, TEAM_B, HOME_FIELD, lost games, or current
+game leakage.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
