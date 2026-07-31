@@ -17,10 +17,13 @@ Public API:
     compute_game_edges          Per-game edge list (ML, spread, total)
     build_edge_report           Full edge report DataFrame
     rank_edges                  Filter + sort by EV
+    build_edge_result           Filtered rows plus explicit diagnostics
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 import logging
 from logging import Logger
 
@@ -36,6 +39,10 @@ from gridiron_edge.market.edge import (
     moneyline_edge,
     spread_edge,
     total_edge,
+)
+from gridiron_edge.market.edge_diagnostics import (
+    EdgeDiagnostics,
+    evaluate_edge_diagnostics,
 )
 
 logger: Logger = logging.getLogger(__name__)
@@ -66,6 +73,40 @@ _REPORT_COLUMNS: list[str] = [
     "kelly_frac",
     "kelly_stake",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class EdgeResult:
+    """Filtered recommendation rows with diagnostics for the same scope."""
+
+    rows: DataFrame
+    diagnostics: EdgeDiagnostics
+
+    def __post_init__(self) -> None:
+        """Require rows to agree with the diagnostic result count."""
+        if len(self.rows) != self.diagnostics.filtered_edge_count:
+            raise ValueError("rows must contain diagnostics.filtered_edge_count rows.")
+
+
+def _scope_recommendation_input(
+    frame: DataFrame,
+    *,
+    season: str,
+    week: int,
+) -> DataFrame:
+    """Return one detached weekly scope without mutating the input."""
+    if frame.empty:
+        return frame.copy()
+    required = {"season", "week"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(
+            "Recommendation input is missing required scope columns: " + ", ".join(missing)
+        )
+    return frame.loc[
+        (frame["season"].astype(str) == season) & (frame["week"] == week),
+        :,
+    ].copy()
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +479,73 @@ def rank_edges(
     filtered: DataFrame = report_df.loc[report_df["ev"] > min_ev, :].copy()
     # pyrefly: ignore [no-matching-overload]
     return filtered.sort_values("ev", ascending=False).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Recommendation result with diagnostics
+# ---------------------------------------------------------------------------
+
+
+def build_edge_result(
+    predictions_df: DataFrame,
+    odds_df: DataFrame,
+    *,
+    season: str,
+    week: int,
+    margin_std: float,
+    total_std: float,
+    bankroll: float | None = None,
+    kelly_multiplier: float = 0.25,
+    min_ev: float = 0.0,
+    as_of: datetime | None = None,
+    max_market_age: timedelta | None = None,
+) -> EdgeResult:
+    """Build filtered edge rows and diagnostics for one weekly scope.
+
+    Existing DataFrame-returning recommendation functions remain unchanged.
+    Empty results retain an explicit diagnostic blocker or result state.
+    """
+    if min_ev < 0.0:
+        raise ValueError("min_ev must be greater than or equal to 0.")
+
+    scoped_predictions = _scope_recommendation_input(
+        predictions_df,
+        season=season,
+        week=week,
+    )
+    scoped_markets = _scope_recommendation_input(
+        odds_df,
+        season=season,
+        week=week,
+    )
+
+    if scoped_predictions.empty or scoped_markets.empty:
+        calculated = DataFrame(columns=_REPORT_COLUMNS)
+    else:
+        calculated = build_edge_report(
+            scoped_predictions,
+            scoped_markets,
+            margin_std=margin_std,
+            total_std=total_std,
+            bankroll=bankroll,
+            kelly_multiplier=kelly_multiplier,
+        )
+
+    filtered = rank_edges(calculated, min_ev=min_ev)
+    diagnostics = evaluate_edge_diagnostics(
+        predictions_df,
+        odds_df,
+        calculated,
+        filtered,
+        season=season,
+        week=week,
+        as_of=as_of,
+        max_market_age=max_market_age,
+    )
+    return EdgeResult(
+        rows=filtered,
+        diagnostics=diagnostics,
+    )
 
 
 # ---------------------------------------------------------------------------

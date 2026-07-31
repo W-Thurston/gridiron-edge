@@ -1490,40 +1490,109 @@ operational messaging do not depend on or recommend it.
 
 ---
 
-### Unit 17: Build Unified Edge Diagnostics
+### Unit 17: Build Unified Edge Diagnostics [Complete]
+
+#### Completed
+
+Added immutable contracts for edge diagnostic blockers, terminal analytical
+states, prediction and market provenance, weekly coverage diagnostics, and
+recommendation results.
+
+Defined explicit blockers for missing predictions, missing market data,
+wrong-scope market data, stale market data, zero matched games, and incomplete
+markets.
+
+Defined terminal result states that distinguish blocked inputs, no calculable
+edge rows, calculated rows with no positive expected value, and positive edge
+rows.
+
+Added validation for requested season and week, nonnegative counts,
+prediction-to-market match bounds, eligible-market arithmetic, calculated and
+positive row relationships, blocker uniqueness, and terminal-state
+consistency.
+
+Added deterministic JSON-compatible serialization for diagnostics and
+provenance.
+
+Implemented a pure evaluator that scopes prediction, market, calculated-edge,
+and filtered-edge inputs to an explicit season and week.
+
+The evaluator derives distinct prediction-game, market-game, and matched-game
+counts from canonical game IDs. Duplicate input rows do not inflate coverage.
+
+Added complete Moneyline, Spread, and Total counting using the existing
+recommendation input semantics. Eligible-market count is derived from those
+three complete market-family counts.
+
+Missing market sides, prices, required lines, or corresponding model values
+produce an explicit incomplete-market blocker.
+
+Added deterministic optional market freshness evaluation through
+caller-supplied `as_of` and `max_market_age` values. The evaluator does not read
+the system clock, inspect file timestamps, or infer a freshness threshold.
+
+Retained all recognized scoped win, total, weekly-product, market-source, and
+market-timestamp provenance as sorted unique tuples. Mixed provenance is not
+collapsed through recency or arbitrary selection.
+
+Added a frozen recommendation result contract that pairs filtered edge rows
+with diagnostics for the same weekly scope and validates that the returned row
+count matches the diagnostic filtered-edge count.
+
+Added `build_edge_result()` as a compatibility-preserving composition of the
+existing edge report builder, ranking function, and diagnostic evaluator.
+
+The existing DataFrame-returning recommendation functions and all edge math,
+classification, Kelly sizing, and ranking behavior remain unchanged.
+
+An empty result from the new recommendation operation now retains an explicit
+blocker or terminal analytical state. A custom positive EV threshold may return
+an empty table while preserving the fact that positive calculated edges existed
+below that threshold.
+
+The diagnostic and recommendation result paths do not mutate supplied frames,
+execute models, ingest markets, select artifacts, read files, inspect file
+timestamps, or access the system clock.
 
 #### Goal
 
 Create structured coverage and result-state diagnostics before changing edge
 math callers.
 
-#### Production files
-
-- `src/gridiron_edge/market/recommendations.py`
-- new diagnostic types if appropriate
-
-#### Test files
-
-- update:
-  `tests/unit/market/test_recommendations.py`
-- create:
-  `tests/unit/market/test_edge_diagnostics.py`
-
 #### Tests
 
-- no predictions;
-- no market data;
-- stale or wrong-scope market data;
-- zero matched games;
-- incomplete markets;
-- no positive edges;
-- positive edges;
-- counts are derived from actual inputs;
-- diagnostics retain win, total, and market provenance.
+- no predictions produce an explicit blocker;
+- no market data produces an explicit blocker;
+- simultaneous missing inputs retain both blockers;
+- wrong-scope market data remains distinct from missing market data;
+- explicit stale-market policy produces a stale blocker;
+- staleness is not inferred without a supplied policy;
+- zero matched games produce an explicit blocker;
+- incomplete Moneyline, Spread, or Total coverage remains explicit;
+- duplicate rows do not inflate distinct-game counts;
+- complete market counts are derived from actual model and market values;
+- no calculable edge rows produce an explicit terminal state;
+- calculated rows with no positive EV produce an explicit terminal state;
+- positive edge rows produce an explicit terminal state;
+- a custom threshold may return no rows while retaining positive-edge counts;
+- calculated, positive, and filtered counts are derived from actual inputs;
+- win provenance is retained;
+- total provenance is retained;
+- weekly-product provenance is retained;
+- all market sources and timestamps are retained;
+- provenance values are deterministic, sorted, and unique;
+- market timestamps require timezone-aware UTC values;
+- diagnostic contracts are immutable and JSON serializable;
+- recommendation result rows agree with diagnostic filtered-row counts;
+- negative diagnostic minimum-EV thresholds are rejected;
+- supplied DataFrames are not mutated;
+- existing recommendation and ranking tests remain unchanged and green.
 
 #### Acceptance
 
-An empty edge table always has an explicit reason.
+The new recommendation-level operation always pairs its edge table with
+structured diagnostics. An empty edge table always has an explicit blocker,
+analytical result state, or threshold explanation.
 
 ---
 
