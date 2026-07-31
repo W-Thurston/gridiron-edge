@@ -8,7 +8,7 @@ export function LineShopping() {
       blocker="multi_book_ingest"
       roadmap="W7"
       requirements={[
-        "Multi-book odds ingest pipeline (currently only DraftKings)",
+        "Multi-book sportsbook ingest pipeline; current game markets use the nflverse schedule source",
         "Odds source decision — likely The Odds API for ~15 books coverage",
         "market/line_shopping.py: best_price, price_comparison_table, detect_arbitrage",
       ]}

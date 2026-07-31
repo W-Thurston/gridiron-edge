@@ -66,7 +66,9 @@ def _make_odds_snapshot(
     game_id: str = "2026_01_KC_LAC",
 ) -> pd.DataFrame:
     """Long-format odds for one game, all three markets."""
-    ts = pd.Timestamp("2026-09-05 12:00:00")
+    ts = pd.Timestamp(
+        "2026-09-05T12:00:00Z",
+    )
     return pd.DataFrame(
         [
             {

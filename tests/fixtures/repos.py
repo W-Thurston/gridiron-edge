@@ -297,7 +297,7 @@ class MiniRepoBuilder:
     ) -> MiniRepoBuilder:
         """Add a current odds snapshot parquet.
 
-        Writes ``data/odds/dk_odds_current.parquet``, the path that
+        Writes ``data/odds/odds_current.parquet``, the path that
         ``ingest.odds.store.load_current_odds`` reads from.
 
         Args:
@@ -308,7 +308,10 @@ class MiniRepoBuilder:
         """
         odds_dir: Path = self._root / "data" / "odds"
         odds_dir.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(odds_dir / "dk_odds_current.parquet", index=False)
+        df.to_parquet(
+            odds_dir / "odds_current.parquet",
+            index=False,
+        )
         return self
 
     def with_teams_reference(

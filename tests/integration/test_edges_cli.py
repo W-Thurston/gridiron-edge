@@ -205,7 +205,9 @@ class TestReportCommand:
             ["report", "--week", "1", "--season", "2026-2027", "--model-type", "random_forest"],
         )
         assert result.exit_code == 0
-        assert "No current odds" in result.output
+        assert "No current market snapshot is available" in result.output
+        assert "rich nflverse upcoming schedule" in result.output
+        assert "fetch-odds" not in result.output
 
 
 # ---------------------------------------------------------------------------

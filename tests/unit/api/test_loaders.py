@@ -591,8 +591,16 @@ class TestLoadEdgesForWeek:
             lambda **kwargs: None,
         )
 
-        with pytest.raises(OddsUnavailableError):
+        with pytest.raises(OddsUnavailableError) as exc_info:
             load_edges_for_week(settings, season="2026-2027", week=1)
+
+            message = str(exc_info.value)
+
+            assert "No current market snapshot is available" in message
+            assert "data/odds/odds_current.parquet" in message
+            assert "rich nflverse upcoming schedule" in message
+            assert "fetch-odds" not in message
+            assert "dk_odds_current" not in message
 
     def test_empty_odds_raises_odds_unavailable(
         self,
@@ -618,8 +626,16 @@ class TestLoadEdgesForWeek:
             lambda **kwargs: pd.DataFrame(),
         )
 
-        with pytest.raises(OddsUnavailableError):
+        with pytest.raises(OddsUnavailableError) as exc_info:
             load_edges_for_week(settings, season="2026-2027", week=1)
+
+            message = str(exc_info.value)
+
+            assert "No current market snapshot is available" in message
+            assert "data/odds/odds_current.parquet" in message
+            assert "rich nflverse upcoming schedule" in message
+            assert "fetch-odds" not in message
+            assert "dk_odds_current" not in message
 
     def test_missing_manifest_raises_champion_not_found(
         self,
@@ -703,6 +719,7 @@ class TestLoadPropsForWeek:
 
     def _make_archive_row(
         self,
+        *,
         game_id: str = "2026_01_KC_LAC",
         player_id: str = "00-0033873",
         stat_type: str = "qb_pass_yards",

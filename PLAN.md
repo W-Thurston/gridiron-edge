@@ -1388,36 +1388,105 @@ does not depend on the unreliable DraftKings pull.
 
 ---
 
-### Unit 16: Reclassify DraftKings as Legacy Best-Effort Adapter
+### Unit 16: Reclassify DraftKings as Legacy Best-Effort Adapter [Complete]
+
+#### Completed
+
+Reclassified DraftKings ingestion as an explicitly invoked legacy best-effort
+adapter rather than a production dependency.
+
+Added a dedicated adapter-unavailability error. HTTP failures, HTML or
+human-verification responses, malformed JSON, non-object payloads, and malformed
+event, market, or selection collections now fail with clear adapter-specific
+messages.
+
+No browser automation, cookie handling, retry mechanism, verification bypass,
+or alternate endpoint workaround was introduced.
+
+Valid payloads containing no current events remain distinct from unavailable
+responses. Empty results do not fabricate persistence paths. Usable adapter
+output continues through the generic source-neutral market store.
+
+The explicit `gridiron ingest dk-odds` command remains available. Its help
+identifies the adapter as legacy and best-effort, states that nflverse schedule
+data supplies the supported current-market workflow, and explains that
+DraftKings is not required by normal data refresh or weekly prediction.
+
+Adapter failures exit nonzero. Valid empty results report that no files were
+written. Successful runs report the generic market ledger and current-snapshot
+paths.
+
+Removed DraftKings ingestion from normal orchestration. `run-data-pipeline`
+no longer contains an odds-fetch stage or imports the DraftKings adapter.
+`weekly-predict` no longer imports DraftKings or contains a `fetch-odds` stage.
+
+Weekly edge generation consumes the existing source-neutral current market
+snapshot and depends only on prediction generation. Missing market data remains
+a source-neutral soft failure and does not trigger an external adapter.
+
+Removed stale odds-fetch references from other composite workflow descriptions
+and stage sets.
+
+Updated CLI and API recovery guidance to reference the current source-neutral
+market snapshot and rich nflverse upcoming schedule. Removed references to the
+nonexistent `gridiron ingest fetch-odds` command and the retired
+`dk_odds_current.parquet` artifact.
+
+Updated shared repository fixtures to write `odds_current.parquet` and aligned
+integration fixtures with the required timezone-aware UTC market provenance
+contract.
+
+Updated the Line Shopping blocker to distinguish current nflverse schedule
+markets from future multi-book sportsbook ingestion.
+
+Legitimate DraftKings sportsbook identities, parser coverage, explicit legacy
+command behavior, and stored book examples remain intact.
 
 #### Goal
 
-Preserve the historical adapter without presenting it as the default recovery
-path.
-
-#### Production files
-
-- DraftKings adapter and CLI wrapper
-- operational messages in API and frontend
-
-#### Test files
-
-- update DraftKings parser and CLI tests
-- update API blocker-message tests
-- update affected frontend empty-state tests
+Preserve the historical DraftKings adapter without presenting it as the default
+or required recovery path.
 
 #### Tests
 
-- failure does not block core data refresh;
-- Cloudflare or non-JSON responses fail clearly;
-- no bypass behavior is introduced;
-- command help identifies the adapter as best-effort or legacy;
-- normal workflow does not invoke it by default;
-- stale recovery guidance is removed.
+- valid DraftKings fixture JSON still parses;
+- HTTP failures produce a clear adapter-specific error;
+- non-JSON responses fail clearly;
+- HTML and human-verification responses fail clearly;
+- malformed JSON fails clearly;
+- non-object payloads fail clearly;
+- malformed expected collections fail clearly;
+- valid empty payloads remain distinct from adapter failures;
+- empty results do not fabricate artifact paths;
+- no browser automation or verification bypass is introduced;
+- explicit command help identifies the adapter as legacy and best-effort;
+- explicit command help identifies nflverse as the supported market workflow;
+- adapter failure exits nonzero;
+- valid empty command result reports that no files were written;
+- successful command output reports generic source-neutral artifacts;
+- normal data pipeline has no external odds stage;
+- normal data pipeline does not import or invoke DraftKings;
+- weekly prediction has no external odds stage;
+- weekly edge generation consumes an existing market snapshot;
+- weekly edge generation does not invoke DraftKings;
+- missing market output is source-neutral;
+- post-week and full-retrain contain no retired odds stage references;
+- CLI recovery guidance contains no nonexistent odds-ingestion command;
+- API loader guidance contains no DraftKings-specific snapshot path;
+- API missing-market errors reference the active generic snapshot path;
+- shared fixtures write the active generic snapshot;
+- integration market timestamps are timezone-aware UTC;
+- frontend blocker copy identifies nflverse as the current game-market source;
+- frontend blocker copy does not claim DraftKings is the current-only source;
+- retired DraftKings-specific snapshot paths are not created;
+- legitimate DraftKings book identities and explicit adapter tests remain.
 
 #### Acceptance
 
-DraftKings code remains available but is not a production dependency.
+DraftKings code remains available as an explicitly invoked legacy best-effort
+adapter, but normal data refresh, weekly prediction, current market storage,
+edge generation, API recovery guidance, shared fixtures, and frontend
+operational messaging do not depend on or recommend it.
 
 ---
 

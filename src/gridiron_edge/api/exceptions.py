@@ -14,10 +14,9 @@ from __future__ import annotations
 
 
 class OddsUnavailableError(Exception):
-    """Raised when the current odds snapshot is missing or empty.
+    """Raised when the current market snapshot is missing or empty.
 
-    Not a bug: the odds snapshot is written by ``gridiron ingest fetch-odds``
-    and may not have been refreshed yet. Downstream routes catch this
-    and mark the affected fields with an Unavailable slug rather than
-    returning an HTTP error.
+    Missing market data is an operational data-state gap rather than an API
+    failure. Downstream routes catch this exception and mark affected fields
+    unavailable instead of returning an HTTP error.
     """

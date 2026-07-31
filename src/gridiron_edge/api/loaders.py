@@ -394,7 +394,9 @@ def load_projection_grid_data(
 
     return ProjectionGridData(
         probabilities=probabilities,
+        # pyrefly: ignore [bad-argument-type]
         schedule=schedule,
+        # pyrefly: ignore [bad-argument-type]
         games=games,
         long_to_short=load_team_name_map(settings),
         season=season,
@@ -800,9 +802,9 @@ def load_edges_for_week(
     """Load ranked edges for (season, week) using the champion model.
 
     Resolves the current win_prob champion, loads its predictions
-    filtered by (season, week), joins to the current DK odds snapshot,
-    computes edges via ``market.recommendations.build_edge_report``, and
-    ranks by EV. Team names are converted to short codes.
+    filtered by (season, week), joins to the current source-labeled market
+    snapshot, computes edges via ``market.recommendations.build_edge_report``,
+    and ranks by EV. Team names are converted to short codes.
 
     Args:
         settings: API settings, source of repo_root.
@@ -849,9 +851,10 @@ def load_edges_for_week(
     odds: DataFrame | None = load_current_odds(repo=settings.repo_root)
     if odds is None or odds.empty:
         raise OddsUnavailableError(
-            f"No current odds snapshot at "
-            f"{settings.repo_root}/data/odds/dk_odds_current.parquet. "
-            f"Run `gridiron ingest fetch-odds` to refresh."
+            "No current market snapshot is available at "
+            f"{settings.repo_root}/data/odds/odds_current.parquet. "
+            "Generate the snapshot from the rich nflverse upcoming schedule "
+            "before requesting edges."
         )
 
     margin_std: float = get_margin_std("win_prob", model_type)

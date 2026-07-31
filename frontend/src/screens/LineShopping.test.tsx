@@ -13,5 +13,13 @@ describe("LineShopping", () => {
     expect(screen.getByText("Line Shopping")).toBeInTheDocument();
     expect(screen.getByText(/multi_book_ingest/)).toBeInTheDocument();
     expect(screen.getByText(/W7/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /current game markets use the nflverse schedule source/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/currently only DraftKings/i),
+    ).not.toBeInTheDocument();
   });
 });

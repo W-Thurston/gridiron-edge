@@ -44,6 +44,7 @@ _TOTAL_STD_FALLBACK: float = 13.0
 
 @edges_app.command()
 def report(
+    *,
     week: int = typer.Option(..., help="NFL week number."),
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
     model_type: str = typer.Option(
@@ -93,7 +94,11 @@ def report(
     with step("Loading current odds"):
         odds: DataFrame | None = load_current_odds()
     if odds is None or odds.empty:
-        typer.echo("No current odds available. Run 'gridiron ingest fetch-odds' first.")
+        typer.echo(
+            "No current market snapshot is available. "
+            "Generate the snapshot from the rich nflverse upcoming schedule "
+            "before running the edge report."
+        )
         raise typer.Exit()
 
     typer.echo(f"  {len(odds)} odds row(s) loaded.")
