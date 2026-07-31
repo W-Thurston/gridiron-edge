@@ -2143,6 +2143,62 @@ Historical and upcoming one-row game frames receive truthful Away and Home rest
 features without TEAM_A, TEAM_B, HOME_FIELD, target-game archive dependency, or
 future leakage.
 
+### Unit 19.2c.4: Canonical Home/Away Record Features
+
+#### Completed
+
+Added canonical home/away season-record and streak features for
+one-row-per-game historical and upcoming inputs.
+
+The feature produces Away and Home wins, losses, win percentage, win streak,
+and loss streak.
+
+Calculated each team's state from completed games in the same season with week
+numbers strictly earlier than the target week.
+
+Target-week and future-week results cannot contribute to pregame features.
+
+Records reset at the season boundary.
+
+Preserved the existing tie convention: each tie contributes one-half win and
+one-half loss and resets both win and loss streaks.
+
+Teams without prior same-season history receive zero wins, zero losses, null win
+percentage, and zero-valued streaks.
+
+Derived result history directly from explicit Away Team, Home Team, Away Score,
+and Home Score fields.
+
+Rejected malformed target schemas, malformed historical schemas, duplicate game
+IDs, and duplicate team-game identities.
+
+Preserved target rows, unrelated columns, and caller immutability.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B record feature.
+
+Left the active feature sequence and existing modeling pipeline unchanged.
+
+#### Goal
+
+Provide schedule-complete pregame record and streak features using stable Away
+and Home identity.
+
+#### Tests
+
+Covered registration, canonical output schema, distinct Away and Home records,
+current-week exclusion, future-week exclusion, tie accounting, tie streak
+reset, season reset, initial-state values, input preservation, missing target
+columns, and duplicate historical identities.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive truthful same-season Away
+and Home records and streaks without TEAM_A, TEAM_B, HOME_FIELD, target-game
+archive dependency, or current and future result leakage.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
