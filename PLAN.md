@@ -1880,6 +1880,51 @@ The cleaned historical games artifact contains explicit, validated home/away
 identity and scores for every completed game without downstream orientation
 reconstruction.
 
+### Unit 19.2b.1a: Safe Seasonal nflverse Refresh
+
+#### Completed
+
+Changed explicit nflverse season ingestion from destructive artifact replacement
+to targeted season refresh.
+
+`--season` now removes and replaces only the requested seasons while preserving
+all other seasons in the shared raw historical artifact.
+
+Multiple explicit seasons are sorted, deduplicated, fetched together, and
+replaced atomically within the existing history.
+
+The default current-season refresh now delegates to the same selected-season
+refresh implementation.
+
+`--all-years` remains the only command mode that intentionally replaces the raw
+artifact with a selected historical range.
+
+Updated CLI help to distinguish selected-season refresh behavior from
+full-history replacement behavior.
+
+Added a dedicated nflverse game-ingestion test module covering preservation of
+unrequested seasons, multi-season replacement, sorting and deduplication,
+invalid season rejection, new-artifact creation, duplicate game-ID rejection,
+and single-season delegation.
+
+All quality gates and tests pass.
+
+#### Goal
+
+Prevent targeted nflverse ingestion from silently collapsing the shared raw
+historical artifact to only the requested season.
+
+#### Tests
+
+Covered targeted refresh, multi-season refresh, season normalization, invalid
+input, first-write behavior, duplicate identities, and current-season
+delegation.
+
+#### Acceptance
+
+Explicit season ingestion preserves all unrequested historical seasons, while
+full-history ingestion remains the only intentional replacement operation.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

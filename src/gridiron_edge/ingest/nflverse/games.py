@@ -22,8 +22,9 @@ from pathlib import Path
 # pyrefly: ignore [missing-import]
 import nflreadpy as nfl
 import pandas as pd
+from pandas import DataFrame
 
-from gridiron_edge.core.settings import current_nfl_season, get_settings
+from gridiron_edge.core.settings import Settings, current_nfl_season, get_settings
 from gridiron_edge.datasets.registry import dataset_path
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,107 @@ def fetch_nflverse_games(
     return out_path
 
 
+def refresh_nflverse_game_seasons(
+    *,
+    seasons: list[int],
+    repo: Path | None = None,
+) -> Path:
+    """Refresh selected seasons while preserving all other raw history.
+
+    Fetches the complete nflverse schedule for each requested season,
+    removes existing rows for only those seasons, and writes the combined
+    historical artifact.
+
+    Args:
+        seasons: Season years to refresh.
+        repo: Absolute path to the repository root.
+
+    Returns:
+        Absolute path to the updated raw Parquet file.
+
+    Raises:
+        ValueError: If no valid nflverse seasons are supplied.
+    """
+    settings: Settings = get_settings()
+    resolved_repo: Path = repo or settings.repo_root
+
+    season_list: list[int] = sorted({season for season in seasons if season >= NFLVERSE_MIN_SEASON})
+    if not season_list:
+        raise ValueError(
+            "No valid seasons to refresh. All seasons are before the "
+            f"nflverse minimum of {NFLVERSE_MIN_SEASON}."
+        )
+
+    logger.info(
+        "Refreshing nflverse seasons: %s",
+        season_list,
+    )
+
+    refreshed: DataFrame = nfl.load_schedules(season_list).to_pandas()
+
+    raw_path: Path = dataset_path(
+        resolved_repo,
+        "games_raw_nflverse",
+    )
+    raw_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    if raw_path.exists():
+        existing: DataFrame = pd.read_parquet(raw_path)
+        retained = existing.loc[
+            ~existing["season"].astype(int).isin(season_list),
+            :,
+        ].copy()
+        combined: DataFrame = pd.concat(
+            [
+                retained,
+                refreshed,
+            ],
+            ignore_index=True,
+        )
+    else:
+        combined = refreshed
+
+    combined = combined.sort_values(
+        [
+            "season",
+            "week",
+            "game_id",
+        ],
+        kind="stable",
+        ignore_index=True,
+    )
+
+    if combined["game_id"].duplicated().any():
+        duplicated: list = sorted(
+            combined.loc[
+                combined["game_id"].duplicated(keep=False),
+                "game_id",
+            ]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+        raise ValueError(
+            "Refreshed nflverse games contain duplicate game IDs: " + ", ".join(duplicated)
+        )
+
+    combined.to_parquet(
+        raw_path,
+        index=False,
+    )
+
+    logger.info(
+        "Seasons %s refreshed. Total rows: %d written to %s",
+        season_list,
+        len(combined),
+        raw_path,
+    )
+    return raw_path
+
+
 def fetch_nflverse_games_refresh(
     *,
     season: int | None = None,
@@ -113,30 +215,9 @@ def fetch_nflverse_games_refresh(
     Returns:
         Absolute path to the written raw Parquet file.
     """
-    settings = get_settings()
-    resolved_repo = repo or settings.repo_root
+    target: int = season or current_nfl_season()
 
-    target = season or current_nfl_season()
-
-    logger.info("Refreshing nflverse season %d", target)
-
-    df_new: pd.DataFrame = nfl.load_schedules([target]).to_pandas()
-
-    raw_path = dataset_path(resolved_repo, "games_raw_nflverse")
-
-    if raw_path.exists():
-        df_existing = pd.read_parquet(raw_path)
-        df_existing = df_existing.loc[df_existing["season"].astype(int) != target].copy()
-        df_out = pd.concat([df_existing, df_new], ignore_index=True)
-    else:
-        raw_path.parent.mkdir(parents=True, exist_ok=True)
-        df_out = df_new
-
-    df_out.to_parquet(raw_path, index=False)
-    logger.info(
-        "Season %d refreshed. Total rows: %d written to %s",
-        target,
-        len(df_out),
-        raw_path,
+    return refresh_nflverse_game_seasons(
+        seasons=[target],
+        repo=repo,
     )
-    return raw_path

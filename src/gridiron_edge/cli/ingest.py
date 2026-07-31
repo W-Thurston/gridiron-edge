@@ -19,7 +19,8 @@ def ingest_nflverse_games(
     season: list[int] = typer.Option(  # noqa: B008
         [],
         help=(
-            "Specific season year(s) to fetch (e.g. --season 2025). "
+            "Specific season year(s) to refresh while preserving "
+            "all other raw history (e.g. --season 2025). "
             "Repeatable: --season 2024 --season 2025. "
             "If omitted, refreshes the current season."
         ),
@@ -27,7 +28,10 @@ def ingest_nflverse_games(
     all_years: bool = typer.Option(
         False,
         "--all-years/--no-all-years",
-        help="Fetch full history from 1999 to present.",
+        help=(
+            "Replace the raw artifact with full history from "
+            "the selected start season through the present."
+        ),
     ),
     start_season: int = typer.Option(1999, help="First season when --all-years is set."),
 ) -> None:
@@ -43,7 +47,11 @@ def ingest_nflverse_games(
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import current_nfl_season
-    from gridiron_edge.ingest.nflverse import fetch_nflverse_games, fetch_nflverse_games_refresh
+    from gridiron_edge.ingest.nflverse.games import (
+        fetch_nflverse_games,
+        fetch_nflverse_games_refresh,
+        refresh_nflverse_game_seasons,
+    )
 
     if all_years:
         label: str = f"Fetch nflverse games ({start_season}-present)"
@@ -58,7 +66,7 @@ def ingest_nflverse_games(
         if all_years:
             path: Path = fetch_nflverse_games(start_season=start_season)
         elif season:
-            path = fetch_nflverse_games(seasons=list(season))
+            path = refresh_nflverse_game_seasons(seasons=list(season))
         else:
             path = fetch_nflverse_games_refresh()
         s.set_detail(str(path))
