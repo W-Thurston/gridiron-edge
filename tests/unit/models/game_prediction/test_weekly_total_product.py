@@ -25,6 +25,7 @@ from gridiron_edge.models.game_prediction.prediction_policy import (
     PredictionModelStatus,
     PredictionPolicy,
     PredictionPolicyRationale,
+    resolve_prediction_policy,
 )
 from gridiron_edge.models.game_prediction.weekly_total_product import (
     TotalUncertainty,
@@ -78,16 +79,24 @@ def _decision(
 
 
 def _policy(*, total_model_type: str | None = "xgboost") -> PredictionPolicy:
-    return PredictionPolicy(
-        availability=PredictionAvailability(
-            season="2026-2027",
-            week=8,
-            elo_available=True,
-            full_features_available=True,
-            total_features_available=total_model_type is not None,
-        ),
-        win=_decision("win_prob", "elo"),
-        total=_decision("total", total_model_type),
+    """Create a resolved policy for weekly Total composition tests."""
+    availability = PredictionAvailability(
+        season="2026-2027",
+        week=8,
+        elo_available=True,
+        win_logistic_features_available=False,
+        win_random_forest_features_available=False,
+        win_xgboost_features_available=False,
+        total_random_forest_features_available=(total_model_type == "random_forest"),
+        total_xgboost_features_available=(total_model_type == "xgboost"),
+    )
+
+    return resolve_prediction_policy(
+        availability,
+        win_champion=None,
+        total_champion=None,
+        win_override="elo",
+        total_override=total_model_type,
     )
 
 

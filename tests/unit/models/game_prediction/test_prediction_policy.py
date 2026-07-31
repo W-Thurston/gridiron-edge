@@ -15,6 +15,7 @@ from gridiron_edge.models.game_prediction.prediction_policy import (
     PredictionAvailability,
     PredictionModelSource,
     PredictionModelStatus,
+    PredictionPolicy,
     PredictionPolicyRationale,
     load_prediction_policy,
     resolve_prediction_policy,
@@ -23,18 +24,25 @@ from gridiron_edge.models.game_prediction.prediction_policy import (
 
 def _availability(
     *,
+    season: str = "2026-2027",
     week: int = 1,
     elo_available: bool = True,
-    full_features_available: bool = False,
-    total_features_available: bool = False,
+    win_logistic_features_available: bool = False,
+    win_random_forest_features_available: bool = False,
+    win_xgboost_features_available: bool = False,
+    total_random_forest_features_available: bool = False,
+    total_xgboost_features_available: bool = False,
 ) -> PredictionAvailability:
     """Create explicit weekly availability facts."""
     return PredictionAvailability(
-        season="2026-2027",
+        season=season,
         week=week,
         elo_available=elo_available,
-        full_features_available=full_features_available,
-        total_features_available=total_features_available,
+        win_logistic_features_available=win_logistic_features_available,
+        win_random_forest_features_available=(win_random_forest_features_available),
+        win_xgboost_features_available=win_xgboost_features_available,
+        total_random_forest_features_available=(total_random_forest_features_available),
+        total_xgboost_features_available=(total_xgboost_features_available),
     )
 
 
@@ -54,7 +62,7 @@ def _champion(
 
 
 def test_week_one_selects_only_eligible_elo_policy() -> None:
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         _availability(),
         win_champion=_champion("win_prob", "random_forest"),
         total_champion=_champion("total", "xgboost"),
@@ -69,11 +77,11 @@ def test_week_one_selects_only_eligible_elo_policy() -> None:
 
 
 def test_full_feature_champions_require_available_inputs() -> None:
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_random_forest_features_available=True,
+            total_xgboost_features_available=True,
         ),
         win_champion=_champion("win_prob", "random_forest"),
         total_champion=_champion("total", "xgboost"),
@@ -86,8 +94,8 @@ def test_full_feature_champions_require_available_inputs() -> None:
 
 
 def test_unavailable_total_remains_explicit() -> None:
-    policy = resolve_prediction_policy(
-        _availability(total_features_available=False),
+    policy: PredictionPolicy = resolve_prediction_policy(
+        _availability(),
         win_champion=None,
         total_champion=_champion("total", "xgboost"),
     )
@@ -99,11 +107,11 @@ def test_unavailable_total_remains_explicit() -> None:
 
 
 def test_win_override_does_not_change_total_decision() -> None:
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_logistic_features_available=True,
+            total_xgboost_features_available=True,
         ),
         win_champion=_champion("win_prob", "random_forest"),
         total_champion=_champion("total", "xgboost"),
@@ -119,11 +127,11 @@ def test_win_override_does_not_change_total_decision() -> None:
 
 
 def test_total_override_does_not_change_win_decision() -> None:
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_random_forest_features_available=True,
+            total_random_forest_features_available=True,
         ),
         win_champion=_champion("win_prob", "random_forest"),
         total_champion=_champion("total", "xgboost"),
@@ -139,8 +147,8 @@ def test_total_override_does_not_change_win_decision() -> None:
 
 
 def test_ineligible_override_does_not_fall_back() -> None:
-    policy = resolve_prediction_policy(
-        _availability(full_features_available=False),
+    policy: PredictionPolicy = resolve_prediction_policy(
+        _availability(),
         win_champion=_champion("win_prob", "random_forest"),
         total_champion=None,
         win_override="xgboost",
@@ -152,7 +160,7 @@ def test_ineligible_override_does_not_fall_back() -> None:
 
 
 def test_explicit_elo_override_requires_elo_state() -> None:
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         _availability(elo_available=False),
         win_champion=None,
         total_champion=None,
@@ -164,10 +172,13 @@ def test_explicit_elo_override_requires_elo_state() -> None:
 
 
 def test_policy_records_champion_provenance() -> None:
-    win_champion = _champion("win_prob", "random_forest")
+    win_champion: ModelProvenance = _champion("win_prob", "random_forest")
 
-    policy = resolve_prediction_policy(
-        _availability(week=8, full_features_available=True),
+    policy: PredictionPolicy = resolve_prediction_policy(
+        _availability(
+            week=8,
+            win_random_forest_features_available=True,
+        ),
         win_champion=win_champion,
         total_champion=None,
     )
@@ -266,11 +277,11 @@ def test_loads_win_and_total_champions_independently(
 
     mock_resolve.side_effect = resolve_entry
 
-    policy = load_prediction_policy(
+    policy: PredictionPolicy = load_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_random_forest_features_available=True,
+            total_xgboost_features_available=True,
         )
     )
 
@@ -309,11 +320,11 @@ def test_missing_total_champion_remains_explicit(
 
     mock_resolve.side_effect = resolve_entry
 
-    policy = load_prediction_policy(
+    policy: PredictionPolicy = load_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_random_forest_features_available=True,
+            total_xgboost_features_available=True,
         )
     )
 
@@ -336,11 +347,11 @@ def test_win_override_skips_only_win_champion(
         "metrics": {},
     }
 
-    policy = load_prediction_policy(
+    policy: PredictionPolicy = load_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_logistic_features_available=True,
+            total_xgboost_features_available=True,
         ),
         win_override="logistic",
     )
@@ -367,11 +378,11 @@ def test_total_override_skips_only_total_champion(
         "metrics": {},
     }
 
-    policy = load_prediction_policy(
+    policy: PredictionPolicy = load_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_random_forest_features_available=True,
+            total_xgboost_features_available=True,
         ),
         total_override="xgboost",
     )
@@ -391,11 +402,11 @@ def test_total_override_skips_only_total_champion(
 def test_two_overrides_require_no_champion_lookup(
     mock_resolve: MagicMock,
 ) -> None:
-    policy = load_prediction_policy(
+    policy: PredictionPolicy = load_prediction_policy(
         _availability(
             week=8,
-            full_features_available=True,
-            total_features_available=True,
+            win_logistic_features_available=True,
+            total_xgboost_features_available=True,
         ),
         win_override="logistic",
         total_override="xgboost",
@@ -425,7 +436,7 @@ def test_malformed_champion_metadata_is_not_hidden(
         load_prediction_policy(
             _availability(
                 week=8,
-                full_features_available=True,
+                total_xgboost_features_available=True,
             ),
             total_override="xgboost",
         )
@@ -442,3 +453,95 @@ def test_policy_module_has_no_compute_or_api_dependency() -> None:
     assert "run_features" not in source
     assert "predict_upcoming" not in source
     assert "write_manifest" not in source
+
+
+def test_logistic_override_uses_its_own_feature_availability() -> None:
+    policy = resolve_prediction_policy(
+        _availability(
+            elo_available=False,
+            win_logistic_features_available=True,
+            win_random_forest_features_available=False,
+            win_xgboost_features_available=False,
+        ),
+        win_champion=None,
+        total_champion=None,
+        win_override="logistic",
+    )
+
+    assert policy.win.status is PredictionModelStatus.SELECTED
+    assert policy.win.model_type == "logistic"
+
+
+def test_random_forest_override_does_not_borrow_logistic_features() -> None:
+    policy = resolve_prediction_policy(
+        _availability(
+            elo_available=True,
+            win_logistic_features_available=True,
+            win_random_forest_features_available=False,
+        ),
+        win_champion=None,
+        total_champion=None,
+        win_override="random_forest",
+    )
+
+    assert policy.win.status is PredictionModelStatus.UNAVAILABLE
+    assert policy.win.model_type is None
+    assert policy.win.rationale is PredictionPolicyRationale.OVERRIDE_INELIGIBLE
+
+
+def test_win_champion_uses_exact_feature_requirement() -> None:
+    champion = ModelProvenance(
+        model_name="win_prob",
+        model_type="xgboost",
+        source=PredictionModelSource.CHAMPION,
+    )
+
+    policy = resolve_prediction_policy(
+        _availability(
+            elo_available=True,
+            win_random_forest_features_available=True,
+            win_xgboost_features_available=False,
+        ),
+        win_champion=champion,
+        total_champion=None,
+    )
+
+    assert policy.win.status is PredictionModelStatus.SELECTED
+    assert policy.win.model_type == "elo"
+    assert policy.win.rationale is PredictionPolicyRationale.ELO_ONLY_AVAILABLE
+
+
+def test_total_xgboost_does_not_borrow_random_forest_readiness() -> None:
+    policy = resolve_prediction_policy(
+        _availability(
+            total_random_forest_features_available=True,
+            total_xgboost_features_available=False,
+        ),
+        win_champion=None,
+        total_champion=None,
+        total_override="xgboost",
+    )
+
+    assert policy.total.status is PredictionModelStatus.UNAVAILABLE
+    assert policy.total.model_type is None
+
+
+def test_model_specific_availability_helpers() -> None:
+    availability = _availability(
+        elo_available=True,
+        win_logistic_features_available=True,
+        win_random_forest_features_available=False,
+        win_xgboost_features_available=True,
+        total_random_forest_features_available=True,
+        total_xgboost_features_available=False,
+    )
+
+    assert availability.win_features_available("elo")
+    assert availability.win_features_available("logistic")
+    assert not availability.win_features_available("random_forest")
+    assert availability.win_features_available("xgboost")
+    assert not availability.win_features_available("unknown")
+
+    assert availability.total_features_available("random_forest")
+    assert not availability.total_features_available("xgboost")
+    assert not availability.total_features_available("logistic")

@@ -41,6 +41,7 @@ from gridiron_edge.evaluation.forecast_contracts import (
 )
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
+from gridiron_edge.models.game_prediction.prediction_policy import PredictionPolicy
 
 if TYPE_CHECKING:
     from gridiron_edge.market.recommendations import EdgeResult
@@ -216,13 +217,16 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     if not selected_run.found:
         return StageResult(success=False, detail="forecast run is not persisted")
 
-    policy = resolve_prediction_policy(
+    policy: PredictionPolicy = resolve_prediction_policy(
         PredictionAvailability(
             season=season,
             week=week,
             elo_available=True,
-            full_features_available=False,
-            total_features_available=False,
+            win_logistic_features_available=False,
+            win_random_forest_features_available=False,
+            win_xgboost_features_available=False,
+            total_random_forest_features_available=False,
+            total_xgboost_features_available=False,
         ),
         win_champion=None,
         total_champion=None,
@@ -419,6 +423,7 @@ def _render_edge_preview(ranked: DataFrame) -> None:
         market: str = f"{row['market_type']}:{row['side']}"
 
         stake = row.get("kelly_stake")
+        # pyrefly: ignore [bad-argument-type]
         stake_text = "—" if pd.isna(stake) else f"${float(stake):.2f}"
         typer.echo(f"{matchup:20s}  {market:16s}  EV {row['ev']:+.1%}  Stake {stake_text}")
 

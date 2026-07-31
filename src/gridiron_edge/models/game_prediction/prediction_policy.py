@@ -44,13 +44,16 @@ MetricValue = int | float | str | bool | None
 
 @dataclass(frozen=True)
 class PredictionAvailability:
-    """Explicit input availability for one requested week."""
+    """Explicit model-specific input availability for one requested week."""
 
     season: str
     week: int
     elo_available: bool
-    full_features_available: bool
-    total_features_available: bool
+    win_logistic_features_available: bool
+    win_random_forest_features_available: bool
+    win_xgboost_features_available: bool
+    total_random_forest_features_available: bool
+    total_xgboost_features_available: bool
 
     def __post_init__(self) -> None:
         """Validate prediction scope."""
@@ -59,14 +62,41 @@ class PredictionAvailability:
         if self.week < 1:
             raise ValueError("week must be at least 1.")
 
+    def win_features_available(
+        self,
+        model_type: str,
+    ) -> bool:
+        """Return source-feature availability for one Win model type."""
+        availability: dict[str, bool] = {
+            "elo": self.elo_available,
+            "logistic": self.win_logistic_features_available,
+            "random_forest": (self.win_random_forest_features_available),
+            "xgboost": self.win_xgboost_features_available,
+        }
+        return availability.get(model_type.strip(), False)
+
+    def total_features_available(
+        self,
+        model_type: str,
+    ) -> bool:
+        """Return source-feature availability for one Total model type."""
+        availability: dict[str, bool] = {
+            "random_forest": (self.total_random_forest_features_available),
+            "xgboost": self.total_xgboost_features_available,
+        }
+        return availability.get(model_type.strip(), False)
+
     def to_dict(self) -> dict[str, object]:
         """Return a stable serialization representation."""
         return {
             "season": self.season,
             "week": self.week,
             "elo_available": self.elo_available,
-            "full_features_available": self.full_features_available,
-            "total_features_available": self.total_features_available,
+            "win_logistic_features_available": (self.win_logistic_features_available),
+            "win_random_forest_features_available": (self.win_random_forest_features_available),
+            "win_xgboost_features_available": (self.win_xgboost_features_available),
+            "total_random_forest_features_available": (self.total_random_forest_features_available),
+            "total_xgboost_features_available": (self.total_xgboost_features_available),
         }
 
 
@@ -277,7 +307,7 @@ def _resolve_win_decision(  # noqa: PLR0911
 ) -> PredictionModelDecision:
     """Resolve the win-probability family independently."""
     if override is not None:
-        normalized_override = override.strip()
+        normalized_override: str = override.strip()
         if not normalized_override:
             raise ValueError("win_override must not be empty when provided.")
 
@@ -290,18 +320,19 @@ def _resolve_win_decision(  # noqa: PLR0911
                     ),
                     rationale=PredictionPolicyRationale.OVERRIDE_ELIGIBLE,
                     explanation=(
-                        "Explicit Elo override is eligible because Elo state is available."
+                        "The explicit Elo override is eligible because Elo inputs are available."
                     ),
                 )
+
             return _unavailable_decision(
                 model_name="win_prob",
                 rationale=PredictionPolicyRationale.OVERRIDE_INELIGIBLE,
                 explanation=(
-                    "Explicit Elo override is ineligible because Elo state is unavailable."
+                    "The explicit Elo override is ineligible because Elo inputs are unavailable."
                 ),
             )
 
-        if availability.full_features_available:
+        if availability.win_features_available(normalized_override):
             return _selected_decision(
                 ModelProvenance.override(
                     model_name="win_prob",
@@ -309,8 +340,9 @@ def _resolve_win_decision(  # noqa: PLR0911
                 ),
                 rationale=PredictionPolicyRationale.OVERRIDE_ELIGIBLE,
                 explanation=(
-                    "Explicit win-model override is eligible because full "
-                    "prediction features are available."
+                    f"The explicit {normalized_override} Win override is "
+                    "eligible because its required prediction features "
+                    "are available."
                 ),
             )
 
@@ -318,18 +350,21 @@ def _resolve_win_decision(  # noqa: PLR0911
             model_name="win_prob",
             rationale=PredictionPolicyRationale.OVERRIDE_INELIGIBLE,
             explanation=(
-                "Explicit win-model override is ineligible because full "
-                "prediction features are unavailable."
+                f"The explicit {normalized_override} Win override is "
+                "ineligible because its required prediction features "
+                "are unavailable."
             ),
         )
 
-    if champion is not None and availability.full_features_available:
+    if champion is not None and availability.win_features_available(
+        champion.model_type,
+    ):
         return _selected_decision(
             champion,
             rationale=PredictionPolicyRationale.CHAMPION_ELIGIBLE,
             explanation=(
-                "The win-probability champion is eligible because full "
-                "prediction features are available."
+                "The win-probability champion is eligible because its "
+                "required prediction features are available."
             ),
         )
 
@@ -372,7 +407,9 @@ def _resolve_total_decision(
         if not normalized_override:
             raise ValueError("total_override must not be empty when provided.")
 
-        if availability.total_features_available:
+        if availability.total_features_available(
+            normalized_override,
+        ):
             return _selected_decision(
                 ModelProvenance.override(
                     model_name="total",
@@ -380,8 +417,9 @@ def _resolve_total_decision(
                 ),
                 rationale=PredictionPolicyRationale.OVERRIDE_ELIGIBLE,
                 explanation=(
-                    "Explicit total-model override is eligible because "
-                    "total features are available."
+                    f"The explicit {normalized_override} Total override is "
+                    "eligible because its required prediction features "
+                    "are available."
                 ),
             )
 
@@ -389,12 +427,15 @@ def _resolve_total_decision(
             model_name="total",
             rationale=PredictionPolicyRationale.OVERRIDE_INELIGIBLE,
             explanation=(
-                "Explicit total-model override is ineligible because "
-                "total features are unavailable."
+                f"The explicit {normalized_override} Total override is "
+                "ineligible because its required prediction features "
+                "are unavailable."
             ),
         )
 
-    if champion is not None and availability.total_features_available:
+    if champion is not None and availability.total_features_available(
+        champion.model_type,
+    ):
         return _selected_decision(
             champion,
             rationale=PredictionPolicyRationale.CHAMPION_ELIGIBLE,

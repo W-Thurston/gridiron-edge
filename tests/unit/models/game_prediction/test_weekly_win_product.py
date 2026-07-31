@@ -55,8 +55,11 @@ def _policy(*, available: bool = True) -> PredictionPolicy:
         season="2026-2027",
         week=1,
         elo_available=True,
-        full_features_available=False,
-        total_features_available=False,
+        win_logistic_features_available=False,
+        win_random_forest_features_available=False,
+        win_xgboost_features_available=False,
+        total_random_forest_features_available=False,
+        total_xgboost_features_available=False,
     )
     if available:
         provenance = ModelProvenance(
