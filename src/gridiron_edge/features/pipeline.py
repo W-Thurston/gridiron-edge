@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Final
 
 import pandas as pd
+from pandas import DataFrame, Series
 
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders, writers
@@ -31,6 +32,11 @@ import gridiron_edge.features.team.schedule_strength
 import gridiron_edge.features.team.travel
 import gridiron_edge.features.team.venue_hfa
 import gridiron_edge.features.team.weather  # noqa: F401
+from gridiron_edge.models.game_prediction.game_schema import (
+    GAME_IDENTITY_COLUMNS,
+    GAME_SCORE_COLUMNS,
+    GAME_TARGET_COLUMNS,
+)
 
 # Feature order matters - dependencies between features:
 # - home_field before travel (travel reads HOME_FIELD)
@@ -63,6 +69,234 @@ def _feature_columns(feature_names: list[str]) -> list[str]:
     for name in feature_names:
         cols.extend(FeatureRegistry.get(name)().spec.produces)
     return cols
+
+
+_HOME_AWAY_MODELING_SOURCE_COLUMNS: Final[tuple[str, ...]] = (
+    "GAME_ID",
+    "YEAR",
+    "WEEK_NUM",
+    "GAME_DATE",
+    "AWAY_TEAM",
+    "HOME_TEAM",
+    "AWAY_SCORE",
+    "HOME_SCORE",
+    "IS_NEUTRAL_SITE",
+)
+
+_HOME_AWAY_MODELING_COLUMNS: Final[tuple[str, ...]] = (
+    *GAME_IDENTITY_COLUMNS,
+    "GAME_DATE",
+    *GAME_SCORE_COLUMNS,
+    "IS_NEUTRAL_SITE",
+    *GAME_TARGET_COLUMNS,
+)
+
+
+def _validate_modeling_identity(
+    source: DataFrame,
+) -> None:
+    """Validate game and team identities."""
+    if source["GAME_ID"].isna().any():
+        raise ValueError("GAME_ID must not contain nulls.")
+
+    empty_game_ids = source["GAME_ID"].astype(str).str.strip().eq("")
+    if empty_game_ids.any():
+        raise ValueError("GAME_ID must not contain empty values.")
+
+    duplicated = source["GAME_ID"].duplicated(
+        keep=False,
+    )
+    if duplicated.any():
+        duplicate_ids = sorted(
+            source.loc[
+                duplicated,
+                "GAME_ID",
+            ]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+        raise ValueError("Historical games contain duplicate game IDs: " + ", ".join(duplicate_ids))
+
+    for column in (
+        "YEAR",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+    ):
+        if source[column].isna().any():
+            raise ValueError(f"{column} must not contain nulls.")
+
+        empty = source[column].astype(str).str.strip().eq("")
+        if empty.any():
+            raise ValueError(f"{column} must not contain empty values.")
+
+    same_team = source["AWAY_TEAM"].astype(str) == source["HOME_TEAM"].astype(str)
+    if same_team.any():
+        game_ids = sorted(
+            source.loc[
+                same_team,
+                "GAME_ID",
+            ]
+            .astype(str)
+            .tolist()
+        )
+        raise ValueError("Away and home team must differ for games: " + ", ".join(game_ids))
+
+
+def _coerce_modeling_week(
+    source: DataFrame,
+) -> None:
+    """Validate and normalize week numbers in place."""
+    # pyrefly: ignore [bad-assignment]
+    week_values: Series = pd.to_numeric(
+        source["WEEK_NUM"],
+        errors="raise",
+    )
+
+    if week_values.isna().any():
+        raise ValueError("WEEK_NUM must not contain nulls.")
+
+    if (week_values < 1).any():
+        raise ValueError("WEEK_NUM must be at least 1.")
+
+    source["WEEK_NUM"] = week_values.astype(int)
+
+
+def _coerce_modeling_scores(
+    source: DataFrame,
+) -> None:
+    """Validate and normalize Away and Home scores in place."""
+    for column in (
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    ):
+        # pyrefly: ignore [bad-assignment]
+        values: Series = pd.to_numeric(
+            source[column],
+            errors="raise",
+        )
+
+        if values.isna().any():
+            raise ValueError(f"{column} must not contain nulls.")
+
+        if (values < 0).any():
+            raise ValueError(f"{column} must not contain negative values.")
+
+        source[column] = values.astype(int)
+
+
+def _coerce_neutral_site(
+    source: DataFrame,
+) -> None:
+    """Validate and normalize neutral-site state in place."""
+    # pyrefly: ignore [bad-assignment]
+    neutral_values: Series = pd.to_numeric(
+        source["IS_NEUTRAL_SITE"],
+        errors="raise",
+    )
+
+    if neutral_values.isna().any():
+        raise ValueError("IS_NEUTRAL_SITE must not contain nulls.")
+
+    invalid = ~neutral_values.isin(
+        [
+            0,
+            1,
+        ]
+    )
+    if invalid.any():
+        raise ValueError("IS_NEUTRAL_SITE must contain only 0 or 1.")
+
+    source["IS_NEUTRAL_SITE"] = neutral_values.astype(int)
+
+
+def _attach_modeling_targets(
+    source: DataFrame,
+) -> None:
+    """Attach nullable Home Win, margin, and total targets in place."""
+    home_wins = source["HOME_SCORE"] > source["AWAY_SCORE"]
+    away_wins = source["AWAY_SCORE"] > source["HOME_SCORE"]
+
+    home_win = Series(
+        pd.NA,
+        index=source.index,
+        dtype="Int64",
+    )
+    home_win.loc[home_wins] = 1
+    home_win.loc[away_wins] = 0
+
+    source["HOME_WIN"] = home_win
+    source["ACTUAL_MARGIN"] = source["HOME_SCORE"] - source["AWAY_SCORE"]
+    source["ACTUAL_TOTAL"] = source["HOME_SCORE"] + source["AWAY_SCORE"]
+
+
+def _require_home_away_modeling_columns(
+    games: DataFrame,
+) -> None:
+    """Require explicit historical home/away source fields."""
+    missing: list[str] = sorted(set(_HOME_AWAY_MODELING_SOURCE_COLUMNS) - set(games.columns))
+    if missing:
+        raise ValueError(
+            "Historical games are missing required home/away columns: " + ", ".join(missing)
+        )
+
+
+def build_home_away_modeling_table(
+    games: DataFrame,
+) -> DataFrame:
+    """Build one canonical home/away modeling row per historical game.
+
+    The input must contain explicit schedule-oriented Away and Home
+    identities and scores. Winner/loser fields, game-location inference,
+    game-ID parsing, and perspective duplication are not used.
+
+    ``HOME_WIN`` is nullable:
+
+    - ``1`` when the home team won;
+    - ``0`` when the away team won;
+    - ``pd.NA`` when the game was tied.
+
+    ``ACTUAL_MARGIN`` is always Home Score minus Away Score.
+    ``ACTUAL_TOTAL`` is always the sum of Away and Home scores.
+
+    Args:
+        games: Cleaned completed historical games.
+
+    Returns:
+        One chronologically ordered row per game in the canonical
+        home/away modeling schema.
+
+    Raises:
+        ValueError: If required fields are missing, game identities are
+            invalid or duplicated, teams are invalid, scores are invalid,
+            or neutral-site values are not binary.
+    """
+    _require_home_away_modeling_columns(games)
+
+    source = games.loc[
+        :,
+        list(_HOME_AWAY_MODELING_SOURCE_COLUMNS),
+    ].copy()
+
+    _validate_modeling_identity(source)
+    _coerce_modeling_week(source)
+    _coerce_modeling_scores(source)
+    _coerce_neutral_site(source)
+    _attach_modeling_targets(source)
+
+    return source.loc[
+        :,
+        list(_HOME_AWAY_MODELING_COLUMNS),
+    ].sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_DATE",
+            "GAME_ID",
+        ],
+        kind="stable",
+        ignore_index=True,
+    )
 
 
 def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
