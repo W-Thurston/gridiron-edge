@@ -57,11 +57,24 @@ FEATURES: Final[list[str]] = [
     "schedule_strength",
     "primetime",
 ]
+CANONICAL_FEATURES: Final[list[str]] = [
+    "home_away_elo",
+    "home_away_epa",
+    "home_away_rest",
+    "home_away_record",
+    "home_away_schedule_strength",
+    "home_away_travel",
+    "home_away_venue_hfa",
+    "home_away_divisional",
+    "home_away_primetime",
+    "home_away_weather",
+]
 
 # Validate that the ordering above satisfies all depends_on constraints.
 # This runs at import time - a mis-ordering raises ValueError immediately
 # rather than silently producing wrong features during training.
 validate_ordering(FEATURES)
+validate_ordering(CANONICAL_FEATURES)
 
 
 def _feature_columns(feature_names: list[str]) -> list[str]:
@@ -69,6 +82,22 @@ def _feature_columns(feature_names: list[str]) -> list[str]:
     for name in feature_names:
         cols.extend(FeatureRegistry.get(name)().spec.produces)
     return cols
+
+
+def canonical_feature_columns() -> list[str]:
+    """Return the ordered, unique canonical feature output columns.
+
+    Raises:
+        ValueError: If more than one canonical feature declares the same
+            output column.
+    """
+    columns: list[str] = _feature_columns(CANONICAL_FEATURES)
+    duplicated: list[str] = sorted({column for column in columns if columns.count(column) > 1})
+    if duplicated:
+        raise ValueError(
+            "Canonical features declare duplicate output columns: " + ", ".join(duplicated)
+        )
+    return columns
 
 
 _HOME_AWAY_MODELING_SOURCE_COLUMNS: Final[tuple[str, ...]] = (

@@ -1719,7 +1719,6 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2c.9  Define canonical feature sequences
 19.2d    Activate one-row feature pipeline
 19.2e    Migrate Win model
 19.2f    Migrate Total model
@@ -2496,6 +2495,73 @@ Historical and upcoming one-row game frames receive divisional, primetime,
 dome, and weather features through one canonical Game ID path without TEAM_A,
 TEAM_B, HOME_FIELD, completed-history dependence for upcoming games, silent
 metadata substitution, or row loss.
+
+### Unit 19.2c.9: Canonical Feature Sequence and Output Contract
+
+#### Completed
+
+Defined one ordered canonical feature sequence for historical and upcoming
+one-row game inputs.
+
+The sequence includes canonical Elo, EPA, rest, record, schedule strength,
+travel, Home franchise advantage, divisional, primetime, and weather features.
+
+Validated the canonical sequence independently from the active legacy feature
+sequence.
+
+Confirmed that canonical schedule strength executes after canonical Elo, its
+only declared feature dependency.
+
+Added a canonical feature-column helper that derives the ordered output contract
+directly from registered feature specifications.
+
+Rejected duplicate output declarations across canonical features.
+
+Verified that the declared canonical feature schema excludes TEAM_A, TEAM_B,
+HOME_FIELD, RESULT, and prefixed retired-orientation columns.
+
+Confirmed representative outputs from every canonical feature group are present
+in the declared schema.
+
+Verified sequence composition preserves one row per historical or upcoming
+input game, canonical identity and target fields, input order, unrelated
+columns, and caller immutability.
+
+Verified unavailable feature outputs remain explicit null values without
+dropping target games.
+
+Left the active legacy feature sequence, model-input builder, model columns,
+feature engineering, manifest schema version, and data version unchanged.
+
+#### Goal
+
+Define and validate the complete canonical feature sequence and its enriched
+output contract before activating the one-row modeling pipeline.
+
+#### Tests
+
+Covered the exact canonical sequence, registry identity, dependency ordering,
+Elo-before-schedule-strength ordering, ordered feature-spec output collection,
+output uniqueness, retired-orientation exclusion, feature-group coverage,
+duplicate-output rejection, legacy-sequence isolation, row and order
+preservation, canonical identity and target preservation, input immutability,
+unique output columns, and explicit null states.
+
+The sequence-composition test uses controlled feature stubs to validate
+orchestration and schema behavior. Individual canonical feature tests validate
+the underlying calculations and dataset interactions.
+
+All scoped quality gates and tests pass.
+
+#### Acceptance
+
+The project has one registered and dependency-valid canonical feature sequence
+whose declared output schema is unique, schedule-complete, compatible with
+one-row historical and upcoming game inputs, and free of TEAM_A, TEAM_B,
+HOME_FIELD, and RESULT.
+
+The active legacy feature pipeline and persisted development artifacts remain
+unchanged pending canonical model-contract migration.
 
 ---
 
