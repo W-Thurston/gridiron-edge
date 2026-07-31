@@ -1596,71 +1596,181 @@ analytical result state, or threshold explanation.
 
 ---
 
-### Unit 18: Build Unified Weekly Edge Service
+### Unit 18: Unify Weekly Edge Calculation
+
+#### Completed
+
+Established one persisted domain boundary for all current-week edge calculation.
+
+Added structured edge diagnostics covering prediction availability, market
+availability, market scope, market freshness, game-ID alignment, market
+completeness, calculable rows, positive expected-value rows, filtered rows, and
+artifact provenance.
+
+Added a shared edge result containing ranked recommendation rows and structured
+diagnostics.
+
+Added a weekly edge service that loads only the explicitly selected immutable
+weekly product and the current source-labeled market snapshot.
+
+The service uses persisted selected win probabilities, derived Spread values,
+independent Total predictions, and their persisted uncertainties. It does not
+resolve champions, load prediction archives, execute models, recompute
+predictions, or reload calibration artifacts.
+
+Unavailable Spread or Total uncertainty disables only the corresponding market
+family. Moneyline remains independently calculable.
+
+Multiple persisted uncertainty values for one available market family are
+rejected rather than selected, averaged, or replaced with defaults.
+
+Added persisted round-trip coverage through immutable weekly-product storage,
+explicit current-product selection, source-labeled market storage, canonical
+game-ID alignment, recommendation calculation, bankroll sizing, provenance, and
+minimum-EV filtering.
+
+Migrated `gridiron edges report` to the shared service. Removed report-level
+model selection, champion resolution, prediction-archive loading, direct market
+loading, uncertainty lookup, edge construction, and ranking.
+
+Changed report bankroll sizing from an implicit default to an optional input.
+Unavailable dollar stakes render explicitly rather than as fabricated zero
+values.
+
+Migrated the `/edges` API loader and route to the shared edge result. Added
+source-neutral API field-status mappings for missing weekly products, missing or
+wrong-scope markets, stale markets, zero game-ID matches, and incomplete market
+coverage.
+
+Removed the retired odds-unavailable exception and its compatibility path.
+
+Replaced API champion-and-archive integration fixtures with explicitly selected
+weekly products and source-labeled market snapshots.
+
+Added weekly-product composition to `weekly-predict`. The workflow now retains
+the exact live Elo forecast run, builds a schedule-complete weekly product,
+attaches derived Spread values, represents unavailable Total values explicitly,
+writes the immutable product, and selects it as current before edge generation.
+
+Removed the unrelated `weekly-predict --model-type` option. The current live
+prediction stage produces Elo forecast events and now identifies itself
+consistently as an Elo workflow.
+
+Migrated `weekly-predict` edge generation to the shared service. Removed direct
+prediction-archive loading, market loading, uncertainty lookup, recommendation
+construction, and ranking from the workflow.
+
+Migrated `verify-week` edge evaluation to the shared service while preserving
+its independent read-only checks for schedule availability, forecast selection,
+market coverage, and artifact provenance.
+
+Audited all edge construction, artifact writing, current-market loading,
+prediction-archive loading, uncertainty lookup, composite workflow, API, and
+command-registration callsites.
+
+Confirmed that all active current-week consumers use the shared service:
+
+- `gridiron edges report`
+- `GET /edges`
+- `gridiron weekly-predict`
+- `gridiron verify-week`
+
+Confirmed that direct recommendation construction remains only in the domain
+implementation, domain tests, and historical closing-line-value analysis.
+
+Confirmed that remaining prediction-archive consumers support historical
+calibration, game views, or historical CLV rather than current-week edge
+calculation.
+
+Confirmed that current edge CSV writing is limited to the standalone report
+export and `weekly-predict`, both using rows returned by the shared service.
 
 #### Goal
 
-Use the persisted weekly product and source-labeled market snapshot from one
-domain service.
-
-#### Production files
-
-- new service under `src/gridiron_edge/market/`
-- existing recommendation functions remain pure math helpers
-
-#### Test files
-
-- create:
-  `tests/unit/market/test_weekly_edge_service.py`
-- update relevant odds-join integration tests
+Ensure every current-week edge consumer uses the same explicitly selected
+weekly product, source-labeled current market snapshot, recommendation
+calculation, filtering behavior, bankroll semantics, provenance, and structured
+diagnostics.
 
 #### Tests
 
-- schedule and game IDs align;
-- Moneyline uses selected win probability;
-- Spread uses derived spread and win-model calibration;
-- Total uses independent total prediction and uncertainty;
-- bankroll omission leaves dollar stake unavailable;
-- explicit bankroll produces stake values;
-- diagnostics remain correct after minimum-EV filtering.
+Covered diagnostic invariants, blocker precedence, market completeness,
+freshness, provenance, optional market-family uncertainty, bankroll sizing,
+minimum-EV filtering, immutable product selection, persisted product and market
+round trips, CLI rendering, API field-status translation, weekly workflow
+composition, verification behavior, and architecture dependency guards.
+
+Verified that current-week consumers cannot restore direct prediction-archive,
+market-loading, uncertainty-resolution, recommendation-construction, or ranking
+dependencies.
+
+All quality gates and tests pass.
 
 #### Acceptance
 
-CLI and API can consume the same edge result and diagnostics.
+All current-week edge surfaces consume one shared result derived from the
+explicitly selected immutable weekly product and current source-labeled market
+snapshot.
+
+Historical CLV remains the intentional exception because it operates over
+historical prediction and odds-ledger artifacts.
 
 ---
 
-### Unit 19: Rewire `weekly-predict`
+### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
 #### Goal
 
-Make `weekly-predict` orchestrate the new domain services.
+Make `weekly-predict` resolve prediction policy before model execution and
+produce one truthful, schedule-complete pregame product whose published outputs
+are traceable to the exact persisted weekly product.
 
 #### Production files
 
 - `src/gridiron_edge/cli/weekly_predict.py`
-- shared composite helpers only where generally reusable
+- generally reusable prediction orchestration helpers, if required
+- weekly-product or edge-output metadata contracts only where needed for
+  product traceability
 
 #### Test files
 
-- update:
-  `tests/unit/cli/test_weekly_predict.py`
-- update or add an end-to-end weekly workflow test
+- update `tests/unit/cli/test_weekly_predict.py`
+- update `tests/unit/cli/test_weekly_predict_product_stage.py`
+- add an end-to-end weekly workflow test using persisted forecast events,
+  weekly-product selection, market storage, and published outputs
 
 #### Tests
 
-- prediction policy controls actual generated predictions;
-- independently scoped overrides work if retained;
-- missing market data does not fail prediction generation;
-- default bankroll is absent;
-- published outputs reference the persisted weekly product;
-- readiness diagnostics appear in the result;
-- `--skip` and `--only` examples match dependency rules;
-- stale edge files are not presented as current.
+- prediction availability is established before policy resolution;
+- resolved Win policy controls the model implementation actually executed;
+- resolved Total policy independently controls Total execution;
+- unavailable model families produce explicit component statuses;
+- any retained Win and Total overrides are independently scoped and affect
+  actual generated artifacts;
+- an ineligible override fails clearly rather than silently falling back;
+- forecast-event model identities match policy decisions;
+- weekly-product model identities match the selected forecast events;
+- missing market data does not fail prediction or weekly-product publication;
+- omitted bankroll leaves dollar stake unavailable;
+- edge outputs are derived from the newly selected weekly product;
+- published output metadata identifies the exact weekly product;
+- no-edge and blocked-edge outcomes cannot leave a stale file presented as
+  current;
+- readiness diagnostics are included in the workflow result;
+- `--skip` and `--only` help examples describe valid dependency closures;
+- a complete workflow persists forecast events, writes and selects the weekly
+  product, evaluates readiness, and publishes only current outputs.
 
 #### Acceptance
 
-One command produces a truthful, schedule-complete pregame product.
+One command resolves prediction policy, executes the selected available model
+families, persists their immutable forecast events, composes and explicitly
+selects a schedule-complete weekly product, evaluates readiness, and publishes
+only outputs traceable to that exact product.
+
+Unavailable Win, Spread, Total, projected-score, market, or edge components are
+represented explicitly and are never silently omitted, recomputed from a
+different model, or substituted from stale artifacts.
 
 ---
 
