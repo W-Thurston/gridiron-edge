@@ -23,12 +23,22 @@ Manifest file location:
 Example manifest::
 
     {
-        "schema_version": 1,
-        "created_at": "2026-05-23T13:17:42",
-        "feature_names": ["home_field", "team_elo", "travel"],
-        "feature_columns": ["HOME_FIELD", "TEAM_A_ELO", "TEAM_B_ELO", ...],
-        "all_columns": ["GAME_ID", "TEAM_A", "TEAM_B", ..., "HOME_FIELD", ...],
-        "row_count": 14552,
+        feature_names:
+        home_away_elo
+        home_away_epa
+
+        feature_columns:
+        AWAY_ELO
+        HOME_ELO
+        AWAY_OFF_EPA_PER_PLAY
+        HOME_OFF_EPA_PER_PLAY
+
+        all_columns:
+        GAME_ID
+        AWAY_TEAM
+        HOME_TEAM
+        HOME_WIN
+        ...
     }
 """
 
@@ -48,7 +58,7 @@ logger: Logger = logging.getLogger(__name__)
 # Bump this whenever the feature set or feature output columns change.
 # Models trained on a previous version will detect the mismatch and
 # surface a clear error rather than silently producing wrong predictions.
-CURRENT_SCHEMA_VERSION: int = 4
+CURRENT_SCHEMA_VERSION: int = 5
 
 # Bump this whenever the IMPLEMENTATION of any feature changes such that
 # existing values on disk would differ from a fresh rebuild. This is the
@@ -63,7 +73,7 @@ CURRENT_SCHEMA_VERSION: int = 4
 #
 # When this is bumped, the next incremental build will detect the mismatch
 # and force a full rebuild instead of preserving stale rows.
-CURRENT_DATA_VERSION: int = 1
+CURRENT_DATA_VERSION: int = 2
 
 _MANIFEST_FILENAME: str = "modeling_file_manifest.json"
 

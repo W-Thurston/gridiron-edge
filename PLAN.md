@@ -2572,22 +2572,37 @@ Defined the canonical model-facing feature sets.
 Replaced TEAM_A, TEAM_B, and HOME_FIELD model feature declarations with stable
 Away and Home columns.
 
-Defined all Elo and EPA differentials as Home minus Away.
+Defined all generated Elo and EPA differentials as Home minus Away.
 
 Updated the feature-set contracts to 37 differential, 74 raw, 111 combined,
-and 152 expanded columns.
+and 152 expanded columns while preserving the diff, raw, combined, and expanded
+lookup keys.
 
-Preserved the existing diff, raw, combined, and expanded lookup keys used by
-Win and Total model specifications.
+Activated the canonical historical modeling-table builder.
 
-Replaced legacy altitude and mirrored franchise-HFA fields with Game Site
-Altitude and one Home Franchise HFA value.
+The active modeling pipeline now produces one Away/Home-oriented base row per
+completed game and runs the canonical feature sequence.
 
-Covered exact schemas, column uniqueness, differential direction, ordering,
-feature-set metadata, optional expanded columns, retired-orientation exclusion,
-and input immutability.
+Changed persisted and incremental artifact identity to one row per Game ID.
 
-All scoped quality gates and tests pass.
+Changed manifests to record the canonical feature sequence and canonical
+feature-column contract.
+
+Replaced the data-version-only stale check with a combined schema-version and
+data-version compatibility check.
+
+Bumped the modeling schema version to 5 and data version to 2 so retired
+development artifacts force a full canonical rebuild.
+
+Updated shared game fixtures with internally consistent canonical Away Team,
+Home Team, Away Score, Home Score, and neutral-site truth while retaining
+legacy result fields still required by Elo and transitional tests.
+
+Updated integration and end-to-end pipeline tests to require one row per game,
+canonical targets, canonical feature columns, unique Game IDs, canonical
+manifest metadata, and absence of retired orientation fields.
+
+All scoped quality gates, integration tests, and end-to-end tests pass.
 
 #### Goal
 
@@ -2596,8 +2611,11 @@ feature pipeline.
 
 #### Tests
 
-Canonical model feature-set tests are complete. Active artifact construction,
-manifest versioning, real feature execution, and artifact verification remain.
+Canonical feature-set, artifact-version, manifest, integration, and end-to-end
+pipeline tests are complete.
+
+Real repository artifact rebuilding and validation remain before this unit is
+closed.
 
 #### Acceptance
 

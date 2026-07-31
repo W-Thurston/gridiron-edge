@@ -1,5 +1,6 @@
 # src/gridiron_edge/features/pipeline.py
 
+import logging
 from pathlib import Path
 from typing import Final
 
@@ -13,6 +14,7 @@ from gridiron_edge.datasets.loaders import load_parquet_if_exists
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.features.manifest import (
     CURRENT_DATA_VERSION,
+    CURRENT_SCHEMA_VERSION,
     read_manifest,
     write_manifest,
 )
@@ -356,40 +358,29 @@ def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _data_version_changed(modeling_dir: Path) -> bool:
-    """Return True when the manifest's data_version differs from current.
-
-    Used by ``build_model_inputs`` to decide whether an incremental update
-    is safe or whether a full rebuild is required because the on-disk data
-    was produced by older (possibly buggy) feature code.
-
-    Returns True (force rebuild) when:
-        - The manifest is missing
-        - The manifest lacks a data_version field (pre-versioning)
-        - The manifest's data_version differs from CURRENT_DATA_VERSION
-    """
+def _modeling_artifact_is_stale(
+    modeling_dir: Path,
+) -> bool:
+    """Return whether the persisted modeling artifact must be rebuilt."""
     try:
         manifest = read_manifest(modeling_dir)
     except FileNotFoundError:
         return True
 
-    stored = manifest.get("data_version")
-    if not isinstance(stored, int):
-        return True
-    return stored != CURRENT_DATA_VERSION
+    schema_version = manifest.get("schema_version")
+    data_version = manifest.get("data_version")
+
+    return schema_version != CURRENT_SCHEMA_VERSION or data_version != CURRENT_DATA_VERSION
 
 
 def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
-    """Build modeling inputs (base + full) as Parquet files.
+    """Build canonical modeling inputs as Parquet artifacts.
 
-    Schema version 3: adds rest and weather features;
-    converts modeling files from CSV to Parquet for faster load times
-    and correct dtype preservation.
+    Produces one Away/Home-oriented row per completed game.
 
-    all_years=True:
-      - full rebuild from scratch
-    all_years=False:
-      - append only new GAME_ID rows (incremental build)
+    When ``all_years`` is true, performs a full canonical rebuild.
+    Otherwise, appends unseen game IDs when the persisted schema and
+    data versions match, or performs a full rebuild when they do not.
     """
     repo = repo or repo_root()
     datasets = DatasetAccessor(repo)
@@ -399,22 +390,22 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     base_path: Path = dataset_path(repo, "modeling_base")
     full_path: Path = dataset_path(repo, "modeling_full")
 
-    base_all: pd.DataFrame = build_base_modeling_table(games)
+    base_all: pd.DataFrame = build_home_away_modeling_table(games)
 
     if all_years or not base_path.exists() or not full_path.exists():
         # Full rebuild
         base_out: pd.DataFrame = base_all
         full_out: pd.DataFrame = run_features(
             df=base_out,
-            feature_names=FEATURES,
+            feature_names=CANONICAL_FEATURES,
             datasets=datasets,
         )
         writers.write_parquet(repo, "modeling_base", base_out)
         writers.write_parquet(repo, "modeling_full", full_out)
         write_manifest(
             full_out,
-            feature_names=list(FEATURES),
-            feature_columns=_feature_columns(list(FEATURES)),
+            feature_names=list(CANONICAL_FEATURES),
+            feature_columns=(canonical_feature_columns()),
             modeling_dir=full_path.parent,
         )
         return
@@ -424,13 +415,25 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     full_existing: pd.DataFrame | None = load_parquet_if_exists(full_path)
     if base_existing is None or full_existing is None:
         base_out = base_all
-        full_out = run_features(df=base_out, feature_names=FEATURES, datasets=datasets)
-        writers.write_parquet(repo, "modeling_base", base_out)
-        writers.write_parquet(repo, "modeling_full", full_out)
+        full_out = run_features(
+            df=base_out,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
+        )
+        writers.write_parquet(
+            repo,
+            "modeling_base",
+            base_out,
+        )
+        writers.write_parquet(
+            repo,
+            "modeling_full",
+            full_out,
+        )
         write_manifest(
             full_out,
-            feature_names=list(FEATURES),
-            feature_columns=_feature_columns(list(FEATURES)),
+            feature_names=list(CANONICAL_FEATURES),
+            feature_columns=(canonical_feature_columns()),
             modeling_dir=full_path.parent,
         )
         return
@@ -439,65 +442,126 @@ def build_model_inputs(*, all_years: bool, repo: Path | None = None) -> None:
     # current code. If not, incremental updates would silently preserve
     # stale rows produced by older (potentially buggy) feature code. Force
     # a full rebuild in that case.
-    if _data_version_changed(full_path.parent):
-        import logging
-
+    if _modeling_artifact_is_stale(full_path.parent):
         logger = logging.getLogger(__name__)
         logger.warning(
-            "Modeling file data_version is stale (manifest version differs from "
-            "CURRENT_DATA_VERSION=%d). Forcing a full rebuild to refresh all "
-            "feature values from current code.",
+            "Modeling artifact versions are stale. "
+            "Forcing a full canonical rebuild "
+            "with schema_version=%d and "
+            "data_version=%d.",
+            CURRENT_SCHEMA_VERSION,
             CURRENT_DATA_VERSION,
         )
+
         base_out = base_all
-        full_out = run_features(df=base_out, feature_names=FEATURES, datasets=datasets)
-        writers.write_parquet(repo, "modeling_base", base_out)
-        writers.write_parquet(repo, "modeling_full", full_out)
+        full_out = run_features(
+            df=base_out,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
+        )
+        writers.write_parquet(
+            repo,
+            "modeling_base",
+            base_out,
+        )
+        writers.write_parquet(
+            repo,
+            "modeling_full",
+            full_out,
+        )
         write_manifest(
             full_out,
-            feature_names=list(FEATURES),
-            feature_columns=_feature_columns(list(FEATURES)),
+            feature_names=list(CANONICAL_FEATURES),
+            feature_columns=(canonical_feature_columns()),
             modeling_dir=full_path.parent,
         )
         return
 
     existing_game_ids: set = set(base_existing["GAME_ID"].unique().tolist())
-    new_mask: pd.Series[bool] = ~base_all["GAME_ID"].isin(existing_game_ids)
-    base_new: pd.DataFrame = base_all.loc[new_mask, :].copy()
+    new_mask: pd.Series = ~base_all["GAME_ID"].isin(existing_game_ids)
+    base_new: pd.DataFrame = base_all.loc[
+        new_mask,
+        :,
+    ].copy()
 
     if base_new.empty:
-        _manifest_path: Path = full_path.parent / "modeling_file_manifest.json"
-        if not _manifest_path.exists():
+        manifest_path = full_path.parent / "modeling_file_manifest.json"
+        if not manifest_path.exists():
             write_manifest(
                 full_existing,
-                feature_names=list(FEATURES),
-                feature_columns=_feature_columns(list(FEATURES)),
+                feature_names=list(CANONICAL_FEATURES),
+                feature_columns=(canonical_feature_columns()),
                 modeling_dir=full_path.parent,
             )
         return
 
     full_new: pd.DataFrame = run_features(
         df=base_new,
-        feature_names=FEATURES,
+        feature_names=CANONICAL_FEATURES,
         datasets=datasets,
     )
 
     base_out = (
-        pd.concat([base_existing, base_new], ignore_index=True)
-        .drop_duplicates(subset=["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM"])
-        .reset_index(drop=True)
-    )
-    full_out = (
-        pd.concat([full_existing, full_new], ignore_index=True)
-        .drop_duplicates(subset=["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM"])
-        .reset_index(drop=True)
+        pd.concat(
+            [
+                base_existing,
+                base_new,
+            ],
+            ignore_index=True,
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="last",
+        )
+        .sort_values(
+            [
+                "YEAR",
+                "WEEK_NUM",
+                "GAME_DATE",
+                "GAME_ID",
+            ],
+            kind="stable",
+            ignore_index=True,
+        )
     )
 
-    writers.write_parquet(repo, "modeling_base", base_out)
-    writers.write_parquet(repo, "modeling_full", full_out)
+    full_out = (
+        pd.concat(
+            [
+                full_existing,
+                full_new,
+            ],
+            ignore_index=True,
+        )
+        .drop_duplicates(
+            subset=["GAME_ID"],
+            keep="last",
+        )
+        .sort_values(
+            [
+                "YEAR",
+                "WEEK_NUM",
+                "GAME_DATE",
+                "GAME_ID",
+            ],
+            kind="stable",
+            ignore_index=True,
+        )
+    )
+
+    writers.write_parquet(
+        repo,
+        "modeling_base",
+        base_out,
+    )
+    writers.write_parquet(
+        repo,
+        "modeling_full",
+        full_out,
+    )
     write_manifest(
         full_out,
-        feature_names=list(FEATURES),
-        feature_columns=_feature_columns(list(FEATURES)),
+        feature_names=list(CANONICAL_FEATURES),
+        feature_columns=(canonical_feature_columns()),
         modeling_dir=full_path.parent,
     )

@@ -29,6 +29,9 @@ from tests.fixtures.dataframes import (
 
 from gridiron_edge.datasets.registry import DATASETS
 from gridiron_edge.datasets.writers import write_csv
+from gridiron_edge.features.manifest import (
+    CURRENT_SCHEMA_VERSION,
+)
 
 
 class MiniRepoBuilder:
@@ -77,12 +80,21 @@ class MiniRepoBuilder:
                         "GAME_ID": "2025_01_A_B",
                         "YEAR": "2025-2026",
                         "WEEK_NUM": 1,
+                        "GAME_DATE": "2025-09-07",
+                        "GAME_DAY_OF_WEEK": "Sunday",
+                        "GAMETIME": "13:00:00",
+                        "AWAY_TEAM": "Team B",
+                        "HOME_TEAM": "Team A",
+                        "AWAY_SCORE": 20,
+                        "HOME_SCORE": 27,
+                        "IS_NEUTRAL_SITE": 0,
                         "WINNER": "Team A",
                         "LOSER": "Team B",
                         "WIN_OR_TIE": 1,
-                        "GAME_DATE": "2025-09-07",
                         "GAME_LOCATION": "NULL_VALUE",
                         "STADIUM": "Stadium A",
+                        "ROOF": "outdoors",
+                        "DIV_GAME": 1,
                         "PTS_WINNER": 27,
                         "PTS_LOSER": 20,
                         "VEGAS_LINE": -3.0,
@@ -93,12 +105,21 @@ class MiniRepoBuilder:
                         "GAME_ID": "2025_02_B_A",
                         "YEAR": "2025-2026",
                         "WEEK_NUM": 2,
+                        "GAME_DATE": "2025-09-14",
+                        "GAME_DAY_OF_WEEK": "Sunday",
+                        "GAMETIME": "16:25:00",
+                        "AWAY_TEAM": "Team A",
+                        "HOME_TEAM": "Team B",
+                        "AWAY_SCORE": 17,
+                        "HOME_SCORE": 31,
+                        "IS_NEUTRAL_SITE": 0,
                         "WINNER": "Team B",
                         "LOSER": "Team A",
                         "WIN_OR_TIE": 1,
-                        "GAME_DATE": "2025-09-14",
                         "GAME_LOCATION": "NULL_VALUE",
                         "STADIUM": "Stadium B",
+                        "ROOF": "outdoors",
+                        "DIV_GAME": 1,
                         "PTS_WINNER": 31,
                         "PTS_LOSER": 17,
                         "VEGAS_LINE": -7.0,
@@ -136,7 +157,7 @@ class MiniRepoBuilder:
         self,
         df: pd.DataFrame | None = None,
         *,
-        schema_version: int = 4,
+        schema_version: int = CURRENT_SCHEMA_VERSION,
     ) -> MiniRepoBuilder:
         """Add a modeling file (parquet) and its manifest.
 
