@@ -2199,6 +2199,69 @@ Historical and upcoming one-row game frames receive truthful same-season Away
 and Home records and streaks without TEAM_A, TEAM_B, HOME_FIELD, target-game
 archive dependency, or current and future result leakage.
 
+### Unit 19.2c.5: Canonical Home/Away Schedule-Strength Features
+
+#### Completed
+
+Added canonical home/away strength-of-schedule and strength-of-victory features
+for one-row-per-game historical and upcoming inputs.
+
+The feature produces Away SOS, Away SOV, Home SOS, and Home SOV.
+
+Derived historical team-opponent results directly from explicit Away Team, Home
+Team, Away Score, and Home Score fields.
+
+Joined each opponent's Elo from the exact season and week of the historical
+matchup.
+
+Calculated target values from same-season games with week numbers strictly
+earlier than the target week.
+
+Target-week, future-week, and unplayed games cannot contribute to pregame
+features.
+
+SOS includes prior wins, losses, and ties with available opponent Elo.
+
+SOV includes only outright wins with available opponent Elo. Ties are excluded
+from SOV.
+
+Historical games with unavailable opponent Elo are excluded from the applicable
+average rather than assigned a default rating.
+
+Teams without qualifying history receive explicit null SOS and SOV values.
+
+Rejected malformed target, historical-game, and Elo schemas, duplicate
+historical game IDs, and duplicate Elo team-season-week identities.
+
+Preserved target rows, unrelated columns, and caller immutability.
+
+Registered the canonical implementation independently from the existing
+TEAM_A/TEAM_B schedule-strength feature.
+
+Left the active feature sequence and existing modeling pipeline unchanged.
+
+#### Goal
+
+Provide schedule-complete pregame schedule-strength features using stable Away
+and Home identity and historical opponent Elo from the original matchup week.
+
+#### Tests
+
+Covered registration, output schema, canonical Elo dependency, independent Away
+and Home calculations, strength of victory, ties, current-week exclusion,
+future-week exclusion, unplayed-game exclusion, missing opponent Elo, season
+reset, initial null states, input preservation, malformed schemas, duplicate
+game IDs, duplicate Elo identities, and exclusion of retired orientation names.
+
+All quality gates and tests pass.
+
+#### Acceptance
+
+Historical and upcoming one-row game frames receive truthful Away and Home SOS
+and SOV values without TEAM_A, TEAM_B, HOME_FIELD, target-game archive
+dependency, current or future result leakage, or default substitution for
+missing opponent Elo.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
