@@ -2993,6 +2993,61 @@ registration, or legacy record-table builder remains.
 All scoped quality gates, canonical feature tests, integration tests, and
 end-to-end tests pass.
 
+Removed the retired TeamEpaFeature implementation and registration.
+
+Removed TEAM_A and TEAM_B EPA output declarations and the perspective-oriented
+EPA join helper.
+
+Preserved the shared shifted rolling-EPA calculation used by canonical feature
+generation and alternate-window model tuning.
+
+Preserved the complete canonical Away and Home EPA output contract.
+
+Retained focused coverage for EPA column definitions, rolling-window behavior,
+lookahead prevention, alternate windows, and optional playoff exclusion.
+
+Removed tests for the retired EPA registration and perspective-oriented output
+prefixes.
+
+Updated registry expectations to require home_away_epa.
+
+Verified that no TeamEpaFeature, epa registration, TEAM_A EPA output, TEAM_B EPA
+output, or legacy EPA join helper remains.
+
+All scoped quality gates, canonical feature tests, model-window tests,
+integration tests, and end-to-end tests pass.
+
+Removed the retired ScheduleStrengthFeature and VenueHFAFeature implementations
+and registrations.
+
+Removed the perspective-oriented SOS and SOV output declarations, legacy
+vectorized schedule-strength table, and TEAM_A and TEAM_B franchise-HFA
+outputs.
+
+Deleted the dedicated legacy Schedule Strength and Venue HFA test suites.
+
+Preserved canonical score-derived opponent history, historical pregame Elo
+joins, and same-season Away and Home SOS and SOV calculation.
+
+Preserved leakage-free Home franchise advantage calculation from completed,
+non-neutral games before the target week.
+
+Preserved zero Home franchise advantage for neutral-site games and franchises
+without the configured minimum historical Home sample.
+
+Removed the legacy Travel dependency from Venue HFA.
+
+Updated registry and ordering tests to require home_away_schedule_strength
+after home_away_elo and to require home_away_venue_hfa without legacy
+dependencies.
+
+Verified that no ScheduleStrengthFeature, VenueHFAFeature, schedule_strength
+registration, venue_hfa registration, legacy SOS/SOV table, or
+perspective-oriented feature output remains.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
 #### Goal
 
 Remove the retired p*rspective-oriented feature archite*ture and rebuild all

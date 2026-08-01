@@ -27,15 +27,16 @@ class TestFeatureRegistryGet:
 
         expected: set[str] = {
             "travel",
-            "schedule_strength",
-            "venue_hfa",
             "home_away_elo",
+            "home_away_epa",
+            "home_away_rest",
+            "home_away_record",
+            "home_away_schedule_strength",
+            "home_away_travel",
+            "home_away_venue_hfa",
             "home_away_divisional",
             "home_away_primetime",
             "home_away_weather",
-            "home_away_rest",
-            "home_away_record",
-            "home_away_epa",
         }
         for name in expected:
             cls: type[Feature] = FeatureRegistry.get(name)
@@ -66,5 +67,5 @@ class TestValidateOrdering:
 
     def test_invalid_ordering_raises(self) -> None:
         # schedule_strength depends on elo - putting it before elo should fail
-        with pytest.raises((ValueError, KeyError)):
-            validate_ordering(["schedule_strength", "elo"])
+        with pytest.raises(ValueError, match="home_away_elo"):
+            validate_ordering(["home_away_schedule_strength", "home_away_elo"])
