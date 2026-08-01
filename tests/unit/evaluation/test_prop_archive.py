@@ -393,6 +393,168 @@ class TestArchivePropPredictions:
         assert set(loaded["model_name"]) == {"qb_pass_yards", "qb_rush_yards"}
 
 
+class TestPersistedPropArchiveSchema:
+    """Strict schema checks for persisted prop archives."""
+
+    @staticmethod
+    def _archive_path(repo: Path) -> Path:
+        return repo / "data" / "output" / "props" / "prop_predictions_log.parquet"
+
+    @staticmethod
+    def _write_current_archive(repo: Path) -> Path:
+        path = repo / "data" / "output" / "props" / "prop_predictions_log.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        rows = _make_predictions(n=1)
+        rows["predicted_at"] = "2026-08-01T00:00:00+00:00"
+        rows["is_backfilled"] = True
+        rows["model_name"] = "qb_pass_yards"
+        rows["model_type"] = "elasticnet"
+        rows = rows.loc[:, _ARCHIVE_COLUMNS]
+        rows.to_parquet(path, index=False)
+
+        return path
+
+    def test_exact_current_archive_loads(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_current_archive(tmp_path)
+
+        loaded = load_prop_archive(repo=tmp_path)
+
+        assert len(loaded) == 1
+        assert loaded.columns.tolist() == _ARCHIVE_COLUMNS
+
+    def test_load_rejects_missing_column(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = self._write_current_archive(tmp_path)
+        malformed = pd.read_parquet(path).drop(columns=["model_name"])
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="missing columns: model_name",
+        ):
+            load_prop_archive(repo=tmp_path)
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == (malformed.columns.tolist())
+
+    def test_load_rejects_extra_column(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = self._write_current_archive(tmp_path)
+        malformed = pd.read_parquet(path)
+        malformed["unexpected_field"] = "unexpected"
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="extra columns: unexpected_field",
+        ):
+            load_prop_archive(repo=tmp_path)
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == (malformed.columns.tolist())
+
+    def test_load_rejects_reordered_columns(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = self._write_current_archive(tmp_path)
+        reordered_columns = [
+            _ARCHIVE_COLUMNS[1],
+            _ARCHIVE_COLUMNS[0],
+            *_ARCHIVE_COLUMNS[2:],
+        ]
+
+        malformed = pd.read_parquet(path).loc[
+            :,
+            reordered_columns,
+        ]
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="columns are not in canonical order",
+        ):
+            load_prop_archive(repo=tmp_path)
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == reordered_columns
+
+    @pytest.mark.parametrize(
+        ("malformation", "message"),
+        [
+            (
+                "missing",
+                "missing columns: model_type",
+            ),
+            (
+                "extra",
+                "extra columns: unexpected_field",
+            ),
+            (
+                "reordered",
+                "columns are not in canonical order",
+            ),
+        ],
+    )
+    def test_malformed_existing_archive_prevents_append(
+        self,
+        tmp_path: Path,
+        malformation: str,
+        message: str,
+    ) -> None:
+        path = self._write_current_archive(tmp_path)
+        malformed = pd.read_parquet(path)
+
+        if malformation == "missing":
+            malformed = malformed.drop(columns=["model_type"])
+        elif malformation == "extra":
+            malformed["unexpected_field"] = "unexpected"
+        else:
+            reordered_columns = [
+                _ARCHIVE_COLUMNS[1],
+                _ARCHIVE_COLUMNS[0],
+                *_ARCHIVE_COLUMNS[2:],
+            ]
+            malformed = malformed.loc[
+                :,
+                reordered_columns,
+            ]
+
+        malformed.to_parquet(path, index=False)
+        original_columns = malformed.columns.tolist()
+        original_rows = len(malformed)
+
+        with pytest.raises(ValueError, match=message):
+            archive_prop_predictions(
+                _make_predictions(n=1),
+                repo=tmp_path,
+                is_backfilled=True,
+                model_name="qb_pass_yards",
+                model_type="random_forest",
+            )
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == original_columns
+        assert len(stored) == original_rows
+
+    def test_missing_archive_returns_canonical_empty_frame(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        loaded = load_prop_archive(repo=tmp_path)
+
+        assert loaded.empty
+        assert loaded.columns.tolist() == _ARCHIVE_COLUMNS
+
+
 class TestLoadPropArchive:
     """Verify archive read behavior."""
 

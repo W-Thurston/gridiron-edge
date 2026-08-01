@@ -3246,7 +3246,7 @@ or local Predictor terminology remains in source or tests.
 
 Game model registry keys and persisted model identity remain unchanged.
 
-#### 19.2h-D3d.2 Completed
+#### Unit 19.2h-D3d.2 Completed
 
 Replaced permissive bet-ledger schema repair with exact persisted-schema
 validation.
@@ -3289,6 +3289,47 @@ artifact overwrite.
 The ledger read and write boundaries accept only the canonical twenty-one-column
 schema, and no model_version or historical ledger compatibility behavior
 remains.
+
+#### Unit 19.2h-D3d.3 Completed
+
+Replaced permissive persisted prop archive repair with exact schema validation.
+
+Existing, loaded, and newly written prop prediction archives must contain all
+twenty canonical columns, no additional columns, and the canonical column
+order.
+
+Applied schema validation before appending to an existing archive, before
+writing the merged archive, and when loading persisted predictions.
+
+Removed persisted missing-column synthesis and unknown-column projection.
+
+Added coverage for valid current-schema loads, missing columns, additional
+columns, reordered columns, canonical empty archives, and non-destructive
+append failures against malformed existing artifacts.
+
+Verified that the existing 262,977-row prop prediction archive passes the
+strict reader without modification.
+
+#### Goal
+
+Require every persisted prop prediction archive to satisfy one exact current
+schema without repairing or translating malformed artifact shapes.
+
+#### Tests
+
+Prop archive, prop metrics, prop champion, Prop CLI, full retraining, API
+loader, and prop route tests pass. Ruff and Pyrefly pass.
+
+The current persisted prop prediction archive loads successfully through the
+strict schema boundary.
+
+#### Acceptance
+
+Missing, additional, or reordered persisted archive columns fail before any
+artifact overwrite.
+
+Archive load, append, and write boundaries accept only the canonical
+twenty-column schema, and no persisted prop archive repair behavior remains.
 
 ---
 

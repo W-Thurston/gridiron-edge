@@ -90,6 +90,36 @@ _DEFAULT_SUBDIR: Final[str] = "data/output/props"
 _DEFAULT_FILENAME: Final[str] = "prop_predictions_log.parquet"
 
 
+def _require_archive_schema(
+    df: DataFrame,
+    *,
+    label: str,
+) -> None:
+    """Require the exact current persisted prop archive schema."""
+    actual: list[str] = df.columns.tolist()
+    expected: list[str] = _ARCHIVE_COLUMNS
+
+    missing: list[str] = [column for column in expected if column not in actual]
+    extra: list[str] = [column for column in actual if column not in expected]
+
+    problems: list[str] = []
+
+    if missing:
+        problems.append("missing columns: " + ", ".join(missing))
+
+    if extra:
+        problems.append("extra columns: " + ", ".join(extra))
+
+    if not missing and not extra and actual != expected:
+        problems.append("columns are not in canonical order")
+
+    if problems:
+        raise ValueError(
+            f"{label} does not match the current prop prediction "
+            "archive schema: " + "; ".join(problems)
+        )
+
+
 def _archive_path(repo: Path | None = None) -> Path:
     """Resolve the archive file path."""
     resolved: Path = repo or get_settings().repo_root
@@ -150,11 +180,16 @@ def archive_prop_predictions(
     path: Path = _archive_path(repo)
     if path.exists():
         existing: DataFrame = pd.read_parquet(path)
+        _require_archive_schema(
+            existing,
+            label="Existing prop prediction archive",
+        )
         logger.info(
             "Loaded existing archive: %d rows",
             len(existing),
         )
-        # Concat new on top, then dedup keeping last (new wins)
+
+        # Concat new on top, then dedup keeping last (new wins).
         merged: DataFrame = pd.concat(
             [existing, result],
             ignore_index=True,
@@ -165,7 +200,11 @@ def archive_prop_predictions(
     else:
         merged = result
 
-    # Write
+    _require_archive_schema(
+        merged,
+        label="Prop prediction archive write",
+    )
+
     path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_parquet(path, index=False)
     logger.info(
@@ -200,12 +239,11 @@ def load_prop_archive(
         return DataFrame(columns=_ARCHIVE_COLUMNS)
 
     df: DataFrame = pd.read_parquet(path)
+    _require_archive_schema(
+        df,
+        label="Prop prediction archive",
+    )
     logger.info("Loaded prop archive: %d rows", len(df))
-
-    for col in _ARCHIVE_COLUMNS:
-        if col not in df.columns:
-            df[col] = pd.NA
-    df = df.loc[:, _ARCHIVE_COLUMNS]
 
     if stat_type is not None:
         df = df.loc[df["stat_type"] == stat_type, :]
