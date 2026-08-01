@@ -18,7 +18,7 @@ is retired (e.g. replacing ``"NULL_VALUE"`` with ``"H"`` for home games).
 HOME_GAME_LOCATION: str = "H"
 
 # GAME_LOCATION value indicating the winner was the away team.
-# Used by predictors, backfill, and the Elo tuner to identify home/away.
+# Used by models, backfill, and the Elo tuner to identify home/away.
 AWAY_WIN_LOCATION: str = "@"
 
 # ---------------------------------------------------------------------------

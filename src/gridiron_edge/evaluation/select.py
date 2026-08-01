@@ -37,10 +37,10 @@ def _parse_composite_key(key: str) -> tuple[str, str]:
     ``model_name`` (e.g. ``"win_prob"``) and ``model_type``
     (e.g. ``"random_forest"``) can contain underscores, this function matches
     the key against the known model_name prefixes returned by
-    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`
+    :func:`gridiron_edge.models.game_prediction.model.get_known_model_names`
     rather than splitting on a single underscore.
     """
-    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+    from gridiron_edge.models.game_prediction.model import get_known_model_names
 
     known_names: tuple[str, ...] = get_known_model_names()
     for model_name in known_names:

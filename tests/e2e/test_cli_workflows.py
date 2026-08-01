@@ -68,7 +68,7 @@ class TestModelsListSmoke:
     """``gridiron models list`` runs to completion on an empty repo.
 
     The command walks ModelRegistry and reports trained/untrained
-    status per predictor. With no artifacts on disk every entry should
+    status per model. With no artifacts on disk every entry should
     show "(not trained)" and the command should exit 0.
     """
 

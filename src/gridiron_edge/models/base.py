@@ -17,8 +17,7 @@ The model layer is organized around domain models:
 ``Trainable``
     Optional capability protocol for models with an explicit training step.
 
-Model discovery is handled by ``ModelRegistry``. The old Predictor naming is
-kept as a backward-compatible alias during the migration.
+Model discovery is handled by ``ModelRegistry``.
 """
 
 from __future__ import annotations
@@ -110,15 +109,3 @@ class Trainable(Protocol):
     def is_trained(self, *, repo: Path | None = None) -> bool:
         """Return whether a trained artifact exists."""
         ...
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases
-# ---------------------------------------------------------------------------
-
-# Keep old names during the migration. Existing game-side code can continue
-# importing Predictor / PredictorSpec while new code shifts to Model /
-# ModelSpec. Remove these aliases in a later cleanup pass once all imports
-# are migrated.
-PredictorSpec = ModelSpec
-Predictor = GameModel

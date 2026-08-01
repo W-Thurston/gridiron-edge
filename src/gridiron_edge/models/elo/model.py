@@ -1,8 +1,8 @@
-# src/gridiron_edge/models/elo/predictor.py
+# src/gridiron_edge/models/elo/model.py
 
-"""Elo-based predictor implementation.
+"""Elo-based model implementation.
 
-Implements the ``Predictor`` protocol for the Elo win-probability model.
+Implements the ``Model`` protocol for the Elo win-probability model.
 Registered under the composite model key ``"win_prob_elo"`` with
 ``model_name="win_prob"`` and ``model_type="elo"``.
 
@@ -55,8 +55,8 @@ def _build_elo_predictions(
         game_seasons: Season label per game.
         game_ids: Canonical GAME_ID per game.
         games: Full games DataFrame (used to look up team names and dates).
-        model_name: Model purpose (always ``"win_prob"`` for the Elo predictor).
-        model_type: Model algorithm (always ``"elo"`` for the Elo predictor).
+        model_name: Model purpose (always ``"win_prob"`` for the Elo model).
+        model_type: Model algorithm (always ``"elo"`` for the Elo model).
 
     Returns:
         Canonical game-level Elo prediction rows with derived enrichment.
@@ -167,8 +167,8 @@ def _merge_elo_predictions(
     Args:
         schedule: Canonical upcoming schedule DataFrame.
         elo: Elo state table DataFrame.
-        model_name: Model purpose (always ``"win_prob"`` for the Elo predictor).
-        model_type: Model algorithm (always ``"elo"`` for the Elo predictor).
+        model_name: Model purpose (always ``"win_prob"`` for the Elo model).
+        model_type: Model algorithm (always ``"elo"`` for the Elo model).
 
     Returns:
         DataFrame compatible with ``build_predictions_df()`` output schema.
@@ -222,13 +222,13 @@ def _merge_elo_predictions(
 
 
 # ---------------------------------------------------------------------------
-# WinProbEloPredictor - composite key "win_prob_elo"
+# WinProbEloModel - composite key "win_prob_elo"
 # ---------------------------------------------------------------------------
 
 
 @ModelRegistry.register
-class WinProbEloPredictor:
-    """Elo predictor with production-default parameters.
+class WinProbEloModel:
+    """Elo model with production-default parameters.
 
     Composite registry key: ``"win_prob_elo"``.
     Parameters: K=20, divisor=480, offseason regression=1/3.
@@ -265,7 +265,7 @@ class WinProbEloPredictor:
             regress_frac=self.REGRESS_FRAC,
         )
         if not away_probs:
-            logger.warning("WinProbEloPredictor: no predictions generated.")
+            logger.warning("WinProbEloModel: no predictions generated.")
             return pd.DataFrame()
 
         from gridiron_edge.evaluation.tune import _prepare_games

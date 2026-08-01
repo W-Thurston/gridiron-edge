@@ -1,12 +1,12 @@
 # tests/unit/models/test_games_predictor.py
 
-"""Tests for GamesPredictor + composite-key registrations + build_game_predictions.
+"""Tests for GamesModel + composite-key registrations + build_game_predictions.
 
-Covers the static surface of the predictor classes plus the module-level
+Covers the static surface of the model classes plus the module-level
 ``build_game_predictions`` helper:
     - All 5 composite keys are registered.
     - Each subclass has the right (model_name, model_type, spec).
-    - GamesPredictor delegates train() to the right trainer.
+    - GamesModel delegates train() to the right trainer.
     - is_trained() delegates to ArtifactStore with the (name, type) pair.
     - predict_historical() / predict_upcoming() return empty DataFrames
       when artifacts are missing (graceful fallback).
@@ -37,14 +37,14 @@ from gridiron_edge.models.base import ModelSpec, Trainable
 from gridiron_edge.models.game_prediction.base import (
     GameModelType,
 )
-from gridiron_edge.models.game_prediction.predictor import (
+from gridiron_edge.models.game_prediction.model import (
     _TRAINER_FOR_NAME,
-    GamesPredictor,
-    TotalRandomForestPredictor,
-    TotalXGBoostPredictor,
-    WinProbLogisticPredictor,
-    WinProbRandomForestPredictor,
-    WinProbXGBoostPredictor,
+    GamesModel,
+    TotalRandomForestModel,
+    TotalXGBoostModel,
+    WinProbLogisticModel,
+    WinProbRandomForestModel,
+    WinProbXGBoostModel,
     build_game_predictions,
 )
 from gridiron_edge.models.game_prediction.total import TotalTrainer
@@ -74,17 +74,17 @@ class TestTrainerDispatch:
 # ---------------------------------------------------------------------------
 
 
-_EXPECTED_REGISTRATIONS: list[tuple[str, type[GamesPredictor], str, str]] = [
-    ("win_prob_logistic", WinProbLogisticPredictor, "win_prob", "logistic"),
+_EXPECTED_REGISTRATIONS: list[tuple[str, type[GamesModel], str, str]] = [
+    ("win_prob_logistic", WinProbLogisticModel, "win_prob", "logistic"),
     (
         "win_prob_random_forest",
-        WinProbRandomForestPredictor,
+        WinProbRandomForestModel,
         "win_prob",
         "random_forest",
     ),
-    ("win_prob_xgboost", WinProbXGBoostPredictor, "win_prob", "xgboost"),
-    ("total_random_forest", TotalRandomForestPredictor, "total", "random_forest"),
-    ("total_xgboost", TotalXGBoostPredictor, "total", "xgboost"),
+    ("win_prob_xgboost", WinProbXGBoostModel, "win_prob", "xgboost"),
+    ("total_random_forest", TotalRandomForestModel, "total", "random_forest"),
+    ("total_xgboost", TotalXGBoostModel, "total", "xgboost"),
 ]
 
 
@@ -92,89 +92,89 @@ class TestCompositeRegistrations:
     """All 5 composite keys are registered and resolve to the right class."""
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_registered(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        # Importing predictor.py at test-module load time triggered registration.
+        # Importing model.py at test-module load time triggered registration.
         cls = ModelRegistry.get(registry_key)
-        assert cls is predictor_cls
+        assert cls is model_cls
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_class_attributes(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        assert predictor_cls.model_name == model_name
-        assert predictor_cls.model_type == model_type
-        assert predictor_cls.spec.name == registry_key
+        assert model_cls.model_name == model_name
+        assert model_cls.model_type == model_type
+        assert model_cls.spec.name == registry_key
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_spec_is_trainable(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        assert predictor_cls.spec.trainable is True
+        assert model_cls.spec.trainable is True
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_implements_trainable_protocol(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        instance: GamesPredictor = predictor_cls()
+        instance: GamesModel = model_cls()
         assert isinstance(instance, Trainable)
 
 
 # ---------------------------------------------------------------------------
-# GamesPredictor accessors
+# GamesModel accessors
 # ---------------------------------------------------------------------------
 
 
-class TestGamesPredictorAccessors:
+class TestGamesModelAccessors:
     """``_trainer``, ``_game_model_spec``, ``_task`` resolve correctly."""
 
     def test_win_prob_trainer_instance(self) -> None:
-        pred = WinProbRandomForestPredictor()
+        pred = WinProbRandomForestModel()
         trainer = pred._trainer()
         assert isinstance(trainer, WinProbTrainer)
 
     def test_total_trainer_instance(self) -> None:
-        pred = TotalRandomForestPredictor()
+        pred = TotalRandomForestModel()
         trainer = pred._trainer()
         assert isinstance(trainer, TotalTrainer)
 
     def test_win_prob_task(self) -> None:
-        assert WinProbLogisticPredictor()._task() == "classification"
-        assert WinProbRandomForestPredictor()._task() == "classification"
-        assert WinProbXGBoostPredictor()._task() == "classification"
+        assert WinProbLogisticModel()._task() == "classification"
+        assert WinProbRandomForestModel()._task() == "classification"
+        assert WinProbXGBoostModel()._task() == "classification"
 
     def test_total_task(self) -> None:
-        assert TotalRandomForestPredictor()._task() == "regression"
-        assert TotalXGBoostPredictor()._task() == "regression"
+        assert TotalRandomForestModel()._task() == "regression"
+        assert TotalXGBoostModel()._task() == "regression"
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ class TestIsTrained:
     """``is_trained`` returns False when the artifact directory is empty."""
 
     def test_returns_false_when_no_artifact(self, tmp_path: Path) -> None:
-        pred = WinProbRandomForestPredictor()
+        pred = WinProbRandomForestModel()
         assert pred.is_trained(repo=tmp_path) is False
 
     def test_returns_false_for_each_composite(self, tmp_path: Path) -> None:
@@ -203,28 +203,28 @@ class TestPredictGracefulFallback:
     """When no artifact exists, predict methods return an empty DataFrame."""
 
     def test_predict_historical_classification_empty(self, tmp_path: Path) -> None:
-        pred = WinProbRandomForestPredictor()
+        pred = WinProbRandomForestModel()
         empty_games = pd.DataFrame()
         out = pred.predict_historical(empty_games, repo=tmp_path)
         assert isinstance(out, pd.DataFrame)
         assert out.empty
 
     def test_predict_historical_regression_empty(self, tmp_path: Path) -> None:
-        pred = TotalRandomForestPredictor()
+        pred = TotalRandomForestModel()
         empty_games = pd.DataFrame()
         out = pred.predict_historical(empty_games, repo=tmp_path)
         assert isinstance(out, pd.DataFrame)
         assert out.empty
 
     def test_predict_upcoming_classification_empty(self, tmp_path: Path) -> None:
-        pred = WinProbRandomForestPredictor()
+        pred = WinProbRandomForestModel()
         empty_schedule = pd.DataFrame()
         out = pred.predict_upcoming(empty_schedule, repo=tmp_path)
         assert isinstance(out, pd.DataFrame)
         assert out.empty
 
     def test_predict_upcoming_regression_empty(self, tmp_path: Path) -> None:
-        pred = TotalRandomForestPredictor()
+        pred = TotalRandomForestModel()
         empty_schedule = pd.DataFrame()
         out = pred.predict_upcoming(empty_schedule, repo=tmp_path)
         assert isinstance(out, pd.DataFrame)
@@ -240,30 +240,30 @@ class TestModelSpecShape:
     """Every composite spec is a fully formed ``ModelSpec``."""
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_spec_type(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        assert isinstance(predictor_cls.spec, ModelSpec)
+        assert isinstance(model_cls.spec, ModelSpec)
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_spec_description_nonempty(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
-        assert predictor_cls.spec.description.strip() != ""
+        assert model_cls.spec.description.strip() != ""
 
 
 # ---------------------------------------------------------------------------
@@ -272,21 +272,21 @@ class TestModelSpecShape:
 
 
 class TestModelTypeEnumRoundtrip:
-    """Each predictor's ``model_type`` string is a valid ``GameModelType``."""
+    """Each model's ``model_type`` string is a valid ``GameModelType``."""
 
     @pytest.mark.parametrize(
-        ("registry_key", "predictor_cls", "model_name", "model_type"),
+        ("registry_key", "model_cls", "model_name", "model_type"),
         _EXPECTED_REGISTRATIONS,
     )
     def test_model_type_is_valid_enum(
         self,
         registry_key: str,
-        predictor_cls: type[GamesPredictor],
+        model_cls: type[GamesModel],
         model_name: str,
         model_type: str,
     ) -> None:
         # GameModelType("logistic") / ("random_forest") / ("xgboost") must succeed.
-        assert GameModelType(predictor_cls.model_type) in GameModelType
+        assert GameModelType(model_cls.model_type) in GameModelType
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +539,9 @@ class TestUpcomingClassificationLifecycle:
             }
         )
 
-    @patch("gridiron_edge.models.game_prediction.predictor.enrich_predictions")
-    @patch("gridiron_edge.models.game_prediction.predictor.run_features")
-    @patch("gridiron_edge.models.game_prediction.predictor.ArtifactStore")
+    @patch("gridiron_edge.models.game_prediction.model.enrich_predictions")
+    @patch("gridiron_edge.models.game_prediction.model.run_features")
+    @patch("gridiron_edge.models.game_prediction.model.ArtifactStore")
     def test_upcoming_prediction_uses_home_orientation(
         self,
         store_cls: MagicMock,
@@ -562,10 +562,10 @@ class TestUpcomingClassificationLifecycle:
 
         enrich_mock.side_effect = lambda frame, **_kwargs: frame
 
-        predictor = WinProbRandomForestPredictor()
+        model = WinProbRandomForestModel()
 
         with patch.object(
-            predictor,
+            model,
             "_feature_fn",
             return_value=(
                 lambda frame: frame.loc[
@@ -574,7 +574,7 @@ class TestUpcomingClassificationLifecycle:
                 ].copy()
             ),
         ):
-            result: DataFrame = predictor.predict_upcoming(
+            result: DataFrame = model.predict_upcoming(
                 self._schedule(),
                 repo=tmp_path,
             )
@@ -691,8 +691,8 @@ class TestUpcomingRegressionLifecycle:
             }
         )
 
-    @patch("gridiron_edge.models.game_prediction.predictor.run_features")
-    @patch("gridiron_edge.models.game_prediction.predictor.ArtifactStore")
+    @patch("gridiron_edge.models.game_prediction.model.run_features")
+    @patch("gridiron_edge.models.game_prediction.model.ArtifactStore")
     def test_total_prediction_runs_independently(
         self,
         store_cls: MagicMock,
@@ -703,16 +703,16 @@ class TestUpcomingRegressionLifecycle:
         store.is_trained.return_value = True
         store.load_scaler.return_value = None
 
-        model = MagicMock()
-        model.predict.return_value = np.array([47.5])
-        store.load.return_value = model
+        estimator = MagicMock()
+        estimator.predict.return_value = np.array([47.5])
+        store.load.return_value = estimator
 
         run_features_mock.return_value = self._enriched_schedule()
 
-        predictor = TotalRandomForestPredictor()
+        game_model = TotalRandomForestModel()
 
         with patch.object(
-            predictor,
+            game_model,
             "_feature_fn",
             return_value=(
                 lambda frame: frame.loc[
@@ -721,7 +721,7 @@ class TestUpcomingRegressionLifecycle:
                 ].copy()
             ),
         ):
-            result = predictor.predict_upcoming(
+            result = game_model.predict_upcoming(
                 self._schedule(),
                 repo=tmp_path,
             )
@@ -740,4 +740,4 @@ class TestUpcomingRegressionLifecycle:
         call_kwargs = run_features_mock.call_args.kwargs
         assert call_kwargs["feature_names"] == (CANONICAL_FEATURES)
 
-        model.predict.assert_called_once()
+        estimator.predict.assert_called_once()

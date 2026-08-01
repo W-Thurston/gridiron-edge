@@ -13,6 +13,8 @@ from gridiron_edge.models.registry import ModelRegistry
 
 class TestModelRegistryGet:
     def test_at_least_one_model_registered(self) -> None:
+        import gridiron_edge.models.game_prediction.model  # noqa: F401
+
         assert len(ModelRegistry.all()) > 0
 
     def test_unknown_model_raises_key_error(self) -> None:
@@ -56,7 +58,7 @@ def test_all_registered_models_have_spec() -> None:
 
 
 def test_game_models_register() -> None:
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
 
     assert "win_prob_logistic" in ModelRegistry.names()
     assert "win_prob_random_forest" in ModelRegistry.names()
@@ -78,7 +80,7 @@ def test_prop_models_register() -> None:
 
 
 def test_known_model_names_includes_games_and_props() -> None:
-    import gridiron_edge.models.game_prediction.predictor
+    import gridiron_edge.models.game_prediction.model
     import gridiron_edge.models.prop_prediction.qb_pass_yards  # noqa: F401
 
     names = ModelRegistry.known_model_names()
@@ -91,8 +93,8 @@ def test_known_model_names_includes_games_and_props() -> None:
 def test_is_trainable_does_not_instantiate_twice() -> None:
     """is_trainable should read spec.trainable, not instantiate."""
     # Game models declare trainable=True; Elo declares trainable=False.
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     assert ModelRegistry.is_trainable("win_prob_random_forest") is True
@@ -123,8 +125,8 @@ def test_register_rejects_structural_without_flag() -> None:
 
 def test_is_trainable_reads_spec_for_registered_models() -> None:
     """is_trainable should reflect spec.trainable, not protocol detection."""
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
 
     assert ModelRegistry.is_trainable("win_prob_random_forest") is True
     assert ModelRegistry.is_trainable("win_prob_elo") is False
@@ -132,8 +134,8 @@ def test_is_trainable_reads_spec_for_registered_models() -> None:
 
 def test_trainable_names_reflects_spec_trainable() -> None:
     """trainable_names should match the set of models with spec.trainable=True."""
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
 
     names = ModelRegistry.trainable_names()
 

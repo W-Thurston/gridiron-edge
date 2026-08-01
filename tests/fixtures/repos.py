@@ -166,7 +166,7 @@ class MiniRepoBuilder:
         ``modeling_file_manifest.json`` next to it. The manifest is required
         by :func:`load_modeling_file` when called with
         ``required_schema_version=...`` (the case for predict paths in
-        :class:`GamesPredictor`).
+        :class:`GamesModel`).
 
         Args:
             df: Modeling DataFrame. Uses :func:`make_games_modeling_df`

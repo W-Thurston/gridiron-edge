@@ -1726,14 +1726,14 @@ historical prediction and odds-ledger artifacts.
 19.2h-D2  Artifact metadata migration              COMPLETE
 19.2h-D3a Prediction archive migration             COMPLETE
 19.2h-D3b Serialization terminology                COMPLETE
-19.2h-D3c Implementation-label cleanup             NEXT
-19.2h-D3d Runtime compatibility review             PENDING
+19.2h-D3c Implementation-label cleanup             COMPLETE
   D3b.1 Make prop enrichment configuration keyword-only
   D3c.1  Migrate Predictor names to Model names
   D3c.2  Make betting ledger and betting CLI identity current
   D3c.3  Make prop archive schema strict
   D3c.4  Remove remaining implementation labels
   D3c.5  Final compatibility inventory
+19.2h-D3d Runtime compatibility review             PENDING
   D3d.1  Migrate Predictor naming to Model naming
   D3d.2  Make betting ledger schema strict
   D3d.3  Make prop prediction archive schema strict
@@ -3199,6 +3199,52 @@ prediction, archive, or orchestration behavior.
 
 No unclassified migration or compatibility surface remains hidden outside the
 runtime compatibility review.
+
+#### 19.2h-D3d.1 Completed
+
+Removed the Predictor, PredictorSpec, and PredictorRegistry compatibility
+aliases after confirming that no active consumers remained.
+
+Renamed the concrete game model hierarchy from Predictor terminology to Model
+terminology, including GamesModel and all registered win-probability and total
+model classes.
+
+Renamed the Elo and game-prediction modules from predictor.py to model.py and
+renamed the focused unit test file accordingly.
+
+Updated imports, registration triggers, patch targets, annotations, fixtures,
+integration coverage, end-to-end coverage, comments, docstrings, logger labels,
+and local variables to use Model terminology.
+
+Removed the obsolete game-prediction package compatibility-shim documentation
+without retaining forwarding modules or aliases.
+
+Preserved all registry keys, artifact identities, model_name values, model_type
+values, persisted schemas, and prediction behavior.
+
+Corrected a test variable collision exposed by the terminology migration by
+distinguishing the persisted estimator from the project game model wrapper.
+
+#### Goal
+
+Complete the Predictor-to-Model naming migration without retaining aliases,
+module shims, or retired import paths.
+
+#### Tests
+
+Model base, model registry, game model, game backfill, and game fit-load-predict
+tests pass. Ruff and Pyrefly pass.
+
+Canonical model imports and registration succeed, while removed Predictor
+aliases and predictor.py module imports fail as intended.
+
+#### Acceptance
+
+No Predictor, PredictorSpec, PredictorRegistry, concrete Predictor class,
+predictor.py source module, predictor test filename, import path, patch target,
+or local Predictor terminology remains in source or tests.
+
+Game model registry keys and persisted model identity remain unchanged.
 
 ---
 

@@ -997,7 +997,7 @@ def make_modeling_manifest(
 
     The manifest is required by ``load_modeling_file`` when called with
     ``required_schema_version=...`` (which is the case for the predict
-    path in ``GamesPredictor``). Without this, predict-side integration
+    path in ``GamesModel``). Without this, predict-side integration
     tests fail with ``FileNotFoundError: No feature manifest found``.
 
     Args:

@@ -5,7 +5,7 @@ Joins game-level data (spread, total, roof, date) from the cleaned games
 dataset to player game logs and derives team-perspective features.
 
 These features are all **known pre-game** (Vegas lines are set before
-kickoff), so no shift(1) is needed - they are legitimate predictors at
+kickoff), so no shift(1) is needed - they are legitimate models at
 prediction time.
 
 Features produced:

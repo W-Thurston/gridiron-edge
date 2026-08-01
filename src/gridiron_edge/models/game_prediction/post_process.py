@@ -2,7 +2,7 @@
 """Post-processing enrichment for game prediction outputs.
 
 Derives additional outputs from base model win probabilities without
-modifying model internals. Every predictor that outputs ``home_win_prob``
+modifying model internals. Every model that outputs ``home_win_prob``
 can be enriched by calling ``enrich_predictions()`` on its output
 DataFrame.
 

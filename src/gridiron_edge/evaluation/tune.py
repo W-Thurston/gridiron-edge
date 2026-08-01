@@ -169,7 +169,7 @@ def _simulate_and_score(
 ) -> tuple[list[float], list[float], list[str], list[str]]:
     """Tuner-shaped view over :func:`simulate_elo_history`.
 
-    Kept as the public callable consumed by ``models/elo/predictor.py``
+    Kept as the public callable consumed by ``models/elo/model.py``
     and the grid-search loops below. The actual Elo simulation is
     delegated to the canonical simulator.
     """

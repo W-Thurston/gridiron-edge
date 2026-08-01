@@ -2,19 +2,15 @@
 
 """Game prediction model package.
 
-Importing this package registers all prediction models with
-ModelRegistry.  Any code that needs to enumerate or instantiate
-game-prediction models should import this package (or any sub-module)
-before calling ModelRegistry.names().
+Import ``gridiron_edge.models.game_prediction.model`` to register the game
+models with ``ModelRegistry``.
 
-Sub-modules:
-    _columns.py  - feature column definitions
-    _features.py - feature engineering + training helpers
-    logistic  - logistic (champion)
-    tree      - random_forest, xgboost (champions)
-
-The old monolithic predictor.py is superseded by this package.  The
-import path ``gridiron_edge.models.game_prediction.predictor`` is kept
-as a compatibility shim (it simply re-imports this package) so any
-existing code or CLI imports continue to work unchanged.
+Submodules:
+    _columns.py: Feature column definitions.
+    _features.py: Feature engineering and training helpers.
+    logistic.py: Logistic classification trainer.
+    model.py: Registered game model classes and prediction assembly.
+    total.py: Total regression trainer.
+    tree.py: Random forest and XGBoost trainers.
+    win_prob.py: Win-probability classification trainer.
 """

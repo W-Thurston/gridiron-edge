@@ -3,7 +3,7 @@
 """End-to-end tests for the games training and prediction lifecycle.
 
 Each test trains a tiny model on synthetic data, persists the artifact
-through ``ArtifactStore``, loads it back through ``GamesPredictor``, and
+through ``ArtifactStore``, loads it back through ``GamesModel``, and
 asserts the predictions are reasonable. These tests catch the class of
 bugs where training reports a clean Brier but production prediction
 produces nonsense (the scaler-not-applied-at-predict-time pattern).
@@ -30,13 +30,13 @@ from tests.fixtures.helpers import (
 from tests.fixtures.repos import MiniRepoBuilder
 
 from gridiron_edge.models.artifact import ArtifactStore
-from gridiron_edge.models.elo.predictor import WinProbEloPredictor
-from gridiron_edge.models.game_prediction.predictor import (
-    TotalRandomForestPredictor,
-    TotalXGBoostPredictor,
-    WinProbLogisticPredictor,
-    WinProbRandomForestPredictor,
-    WinProbXGBoostPredictor,
+from gridiron_edge.models.elo.model import WinProbEloModel
+from gridiron_edge.models.game_prediction.model import (
+    TotalRandomForestModel,
+    TotalXGBoostModel,
+    WinProbLogisticModel,
+    WinProbRandomForestModel,
+    WinProbXGBoostModel,
 )
 
 pytestmark = [
@@ -90,7 +90,7 @@ def modeling_df() -> pd.DataFrame:
 
 
 def _fit_load_predict_classification(
-    predictor: (WinProbLogisticPredictor | WinProbRandomForestPredictor | WinProbXGBoostPredictor),
+    model: (WinProbLogisticModel | WinProbRandomForestModel | WinProbXGBoostModel),
     *,
     repo: Path,
     modeling_df: pd.DataFrame,
@@ -99,17 +99,17 @@ def _fit_load_predict_classification(
     """Train classification model, persist, load, predict, assert reasonable.
 
     Shared by all three win_prob tests since their lifecycles are identical
-    once the predictor class differs. Splits the train and predict_historical
+    once the model class differs. Splits the train and predict_historical
     calls so the artifact is genuinely loaded from disk (not cached in
     memory) before predictions are made.
     """
     with patch_minimal_param_grid():
-        metadata = predictor.train(modeling_df, repo=repo)
+        metadata = model.train(modeling_df, repo=repo)
 
     # Verify artifact landed on disk
     store = ArtifactStore(repo)
-    assert store.is_trained(predictor.model_name, predictor.model_type), (
-        f"artifact missing at {store.artifact_dir(predictor.model_name, predictor.model_type)}"
+    assert store.is_trained(model.model_name, model.model_type), (
+        f"artifact missing at {store.artifact_dir(model.model_name, model.model_type)}"
     )
     assert metadata.task == "classification"
 
@@ -125,9 +125,9 @@ def _fit_load_predict_classification(
     )
 
     # Now run the predict path - this is where the scaler bug surfaced.
-    # Fresh predictor instance to confirm we're loading from disk, not
+    # Fresh model instance to confirm we're loading from disk, not
     # using in-memory state from training.
-    fresh_predictor = type(predictor)()
+    fresh_predictor = type(model)()
     result_df = fresh_predictor.predict_historical(pd.DataFrame(), repo=repo)
 
     assert not result_df.empty
@@ -156,25 +156,25 @@ def _fit_load_predict_classification(
         result_df["away_win_prob"],
         task="classification",
         allow_extreme=not enforce_scaler_band,
-        name=(f"{predictor.model_name}/{predictor.model_type}"),
+        name=(f"{model.model_name}/{model.model_type}"),
     )
 
     assert result_df["away_win_prob"].nunique() > 1
 
 
 def _fit_load_predict_regression(
-    predictor: TotalRandomForestPredictor | TotalXGBoostPredictor,
+    model: TotalRandomForestModel | TotalXGBoostModel,
     *,
     repo: Path,
     modeling_df: pd.DataFrame,
 ) -> None:
     """Train regression model, persist, load, predict, assert reasonable."""
     with patch_minimal_param_grid():
-        metadata = predictor.train(modeling_df, repo=repo)
+        metadata = model.train(modeling_df, repo=repo)
 
     store = ArtifactStore(repo)
-    assert store.is_trained(predictor.model_name, predictor.model_type), (
-        f"artifact missing at {store.artifact_dir(predictor.model_name, predictor.model_type)}"
+    assert store.is_trained(model.model_name, model.model_type), (
+        f"artifact missing at {store.artifact_dir(model.model_name, model.model_type)}"
     )
     assert metadata.task == "regression"
 
@@ -188,8 +188,8 @@ def _fit_load_predict_regression(
         "holdout_mae",
     )
 
-    # Fresh predictor for the load path
-    fresh_predictor = type(predictor)()
+    # Fresh model for the load path
+    fresh_predictor = type(model)()
     result_df = fresh_predictor.predict_historical(pd.DataFrame(), repo=repo)
 
     assert not result_df.empty
@@ -210,7 +210,7 @@ def _fit_load_predict_regression(
     assert_predictions_reasonable(
         result_df["model_total"],
         task="regression",
-        name=f"{predictor.model_name}/{predictor.model_type}",
+        name=f"{model.model_name}/{model.model_type}",
     )
 
 
@@ -230,9 +230,9 @@ class TestWinProbLogistic:
     """
 
     def test_fit_load_predict(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
-        predictor = WinProbLogisticPredictor()
+        model = WinProbLogisticModel()
         _fit_load_predict_classification(
-            predictor,
+            model,
             repo=games_repo,
             modeling_df=modeling_df,
             enforce_scaler_band=True,
@@ -240,12 +240,12 @@ class TestWinProbLogistic:
 
     def test_scaler_artifact_persisted(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
         """Verify the scaler is actually written to disk alongside the model."""
-        predictor = WinProbLogisticPredictor()
+        model = WinProbLogisticModel()
         with patch_minimal_param_grid():
-            predictor.train(modeling_df, repo=games_repo)
+            model.train(modeling_df, repo=games_repo)
 
         store = ArtifactStore(games_repo)
-        scaler = store.load_scaler(predictor.model_name, predictor.model_type)
+        scaler = store.load_scaler(model.model_name, model.model_type)
         # If the scaler doesn't get persisted, the load-side bug returns -
         # this catches a regression in the artifact persistence layer.
         assert scaler is not None, "scaler artifact missing - load_scaler returned None"
@@ -260,9 +260,9 @@ class TestWinProbRandomForest:
     """End-to-end lifecycle for win_prob_random_forest."""
 
     def test_fit_load_predict(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
-        predictor = WinProbRandomForestPredictor()
+        model = WinProbRandomForestModel()
         _fit_load_predict_classification(
-            predictor,
+            model,
             repo=games_repo,
             modeling_df=modeling_df,
         )
@@ -277,9 +277,9 @@ class TestWinProbXGBoost:
     """End-to-end lifecycle for win_prob_xgboost."""
 
     def test_fit_load_predict(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
-        predictor = WinProbXGBoostPredictor()
+        model = WinProbXGBoostModel()
         _fit_load_predict_classification(
-            predictor,
+            model,
             repo=games_repo,
             modeling_df=modeling_df,
         )
@@ -294,9 +294,9 @@ class TestTotalRandomForest:
     """End-to-end lifecycle for total_random_forest."""
 
     def test_fit_load_predict(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
-        predictor = TotalRandomForestPredictor()
+        model = TotalRandomForestModel()
         _fit_load_predict_regression(
-            predictor,
+            model,
             repo=games_repo,
             modeling_df=modeling_df,
         )
@@ -311,9 +311,9 @@ class TestTotalXGBoost:
     """End-to-end lifecycle for total_xgboost."""
 
     def test_fit_load_predict(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
-        predictor = TotalXGBoostPredictor()
+        model = TotalXGBoostModel()
         _fit_load_predict_regression(
-            predictor,
+            model,
             repo=games_repo,
             modeling_df=modeling_df,
         )
@@ -327,22 +327,22 @@ class TestTotalXGBoost:
 class TestWinProbElo:
     """End-to-end lifecycle for win_prob_elo.
 
-    Elo doesn't fit (it's analytic). The test verifies that the predictor
+    Elo doesn't fit (it's analytic). The test verifies that the model
     correctly reads Elo state and produces reasonable predictions. Catches
-    regressions in the Elo migration path - e.g., if the predictor's load
+    regressions in the Elo migration path - e.g., if the model's load
     path stops reading the Elo state table correctly.
     """
 
     def test_predict_historical(self, games_repo: Path) -> None:
         from gridiron_edge.datasets import loaders
 
-        predictor = WinProbEloPredictor()
+        model = WinProbEloModel()
         # Elo's predict_historical reads games from the games DataFrame
         # rather than the modeling file. Loading via the same path the
         # backfill CLI uses keeps the test honest about real usage.
         games_raw: DataFrame = loaders.load_games(games_repo)
         games = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()
-        result_df: DataFrame = predictor.predict_historical(games, repo=games_repo)
+        result_df: DataFrame = model.predict_historical(games, repo=games_repo)
 
         assert not result_df.empty
 

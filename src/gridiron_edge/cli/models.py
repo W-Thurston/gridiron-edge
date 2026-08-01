@@ -64,7 +64,7 @@ def _split_composite_key(key: str) -> tuple[str, str] | None:
     """Split a composite registry key into ``(model_name, model_type)``.
 
     Matches the key against the known model_name prefixes returned by
-    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`.
+    :func:`gridiron_edge.models.game_prediction.model.get_known_model_names`.
     Returns ``None`` if the key doesn't match any known prefix (so
     ``models list`` can display ``-`` instead of crashing).
 
@@ -75,7 +75,7 @@ def _split_composite_key(key: str) -> tuple[str, str] | None:
         Tuple of ``(model_name, model_type)``, or ``None`` if no known
         prefix matches.
     """
-    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+    from gridiron_edge.models.game_prediction.model import get_known_model_names
 
     for model_name in get_known_model_names():
         prefix: str = f"{model_name}_"
@@ -341,8 +341,8 @@ def models_train(
     from gridiron_edge.datasets import loaders
     from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.base import Trainable
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
@@ -432,8 +432,8 @@ def models_list() -> None:
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
     from gridiron_edge.models.base import GameModel, Trainable
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
@@ -493,8 +493,8 @@ def models_info(
     """
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.models.artifact import ArtifactStore
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root

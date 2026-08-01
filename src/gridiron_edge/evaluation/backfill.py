@@ -12,7 +12,7 @@ Two modes:
   season.
 
 - **Current-model** (default for analytic models like elo): use the
-  currently-trained predictor for all historical games. Honest for
+  currently-trained model for all historical games. Honest for
   Elo because its state is built chronologically game-by-game.
 
 Typical usage::
@@ -54,7 +54,7 @@ from gridiron_edge.evaluation.forecast_contracts import (
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
 from gridiron_edge.models.game_prediction.base import GameModelType, GamesTrainer
-from gridiron_edge.models.game_prediction.predictor import (
+from gridiron_edge.models.game_prediction.model import (
     build_game_predictions,
     build_regression_predictions,
 )
@@ -149,18 +149,18 @@ def _backfill_current_model(
     from typing import cast
 
     from gridiron_edge.models.base import GameModel
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     registry_key: str = f"{model_name}_{model_type}"
 
-    predictor = cast(GameModel, ModelRegistry.get(registry_key)())
+    model = cast(GameModel, ModelRegistry.get(registry_key)())
 
     games_raw: DataFrame = loaders.load_games(repo)
     games: DataFrame = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()
 
-    return predictor.predict_historical(games, repo=repo)
+    return model.predict_historical(games, repo=repo)
 
 
 def _resolve_walk_forward_trainer(
@@ -426,7 +426,7 @@ def backfill_model(
         Number of forecast events written for this invocation.
 
     Raises:
-        KeyError: If no predictor is registered for the composite key
+        KeyError: If no model is registered for the composite key
             (current-model mode only).
         ValueError: If walk-forward is requested for a model_name not
             yet supported (currently only ``"win_prob"`` and ``"total"``).

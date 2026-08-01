@@ -9,7 +9,7 @@ Returns an :class:`EloSimulationResult` containing both:
 
 - the full Elo dict keyed by ``(team, year, week)``, used by the state
   table builder, and
-- the per-game predictions used by the tuner and the Elo predictor.
+- the per-game predictions used by the tuner and the Elo model.
 
 Numba kernels in ``sim/_engine.py`` and ``sim/playoffs.py`` are
 intentionally not affected: they operate on numeric Elo vectors at

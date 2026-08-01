@@ -40,7 +40,7 @@ def _split_composite_key(key: str) -> tuple[str | None, str | None]:
     """Split a composite model_key into (model_name, model_type) for filtering.
 
     Matches against the known model_name prefixes returned by
-    :func:`gridiron_edge.models.game_prediction.predictor.get_known_model_names`.
+    :func:`gridiron_edge.models.game_prediction.model.get_known_model_names`.
     Returns ``(None, None)`` when the key is ``"all"`` so callers can skip
     the filter entirely.
 
@@ -52,7 +52,7 @@ def _split_composite_key(key: str) -> tuple[str | None, str | None]:
         Tuple of ``(model_name, model_type)``. Both ``None`` if ``key == "all"``.
         Raises if ``key`` doesn't match any known prefix.
     """
-    from gridiron_edge.models.game_prediction.predictor import get_known_model_names
+    from gridiron_edge.models.game_prediction.model import get_known_model_names
 
     if key == "all":
         return None, None
@@ -456,8 +456,8 @@ def evaluate_diagnostics(
 
     # Multi-model comparison
     if compare:
-        import gridiron_edge.models.elo.predictor
-        import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+        import gridiron_edge.models.elo.model
+        import gridiron_edge.models.game_prediction.model  # noqa: F401
         from gridiron_edge.models.registry import ModelRegistry
 
         all_keys: list[str] = ModelRegistry.names()
@@ -535,8 +535,8 @@ def evaluate_select_model(
 
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
@@ -807,8 +807,8 @@ def evaluate_report(
     """
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
-    import gridiron_edge.models.elo.predictor
-    import gridiron_edge.models.game_prediction.predictor  # noqa: F401
+    import gridiron_edge.models.elo.model
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
     from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root

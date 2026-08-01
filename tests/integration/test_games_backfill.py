@@ -31,8 +31,8 @@ from gridiron_edge.evaluation.forecast_store import (
     FORECAST_EVENT_COLUMNS,
     load_forecast_events,
 )
-from gridiron_edge.models.game_prediction.predictor import (
-    WinProbLogisticPredictor,
+from gridiron_edge.models.game_prediction.model import (
+    WinProbLogisticModel,
 )
 
 pytestmark = [
@@ -71,9 +71,9 @@ def trained_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     # Train a single tiny model. Each test in this module reuses this
     # trained artifact via the backfill path.
-    predictor = WinProbLogisticPredictor()
+    model = WinProbLogisticModel()
     with patch_minimal_param_grid():
-        predictor.train(modeling, repo=repo)
+        model.train(modeling, repo=repo)
 
     return repo
 

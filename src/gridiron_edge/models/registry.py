@@ -13,8 +13,7 @@ declarative signal, and the structural ``Trainable`` protocol provides
 type-level enforcement of the train/is_trained surface. Both signals are
 checked at registration time so they cannot drift apart at runtime.
 
-Backward-compatible ``PredictorRegistry`` alias is retained during the
-migration.
+checked at registration time so they cannot drift apart at runtime.
 """
 
 from __future__ import annotations
@@ -142,8 +141,3 @@ class ModelRegistry:
     def trainable_names(cls: type[ModelRegistry]) -> list[str]:
         """Return sorted registered model keys whose spec.trainable is True."""
         return sorted(name for name, mcls in cls._models.items() if cls._read_spec(mcls).trainable)
-
-
-# Backward-compatible alias. Existing imports of PredictorRegistry keep
-# working during the migration.
-PredictorRegistry: type[ModelRegistry] = ModelRegistry

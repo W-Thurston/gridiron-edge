@@ -1,11 +1,11 @@
-# src/gridiron_edge/models/game_prediction/predictor.py
+# src/gridiron_edge/models/game_prediction/model.py
 
 """Game prediction model registry entry point.
 
 This module is the single import that callers use to ensure all game
 prediction models are registered with ``ModelRegistry``. It contains:
 
-- The :class:`GamesPredictor` base class (Predictor + Trainable protocols).
+- The :class:`GamesModel` base class (GameModel + Trainable protocols).
 - Five composite-key subclasses registered with ``ModelRegistry``:
     * ``"win_prob_logistic"`` / ``"win_prob_random_forest"`` / ``"win_prob_xgboost"``
     * ``"total_random_forest"`` / ``"total_xgboost"``
@@ -13,7 +13,7 @@ prediction models are registered with ``ModelRegistry``. It contains:
   regression prediction rows.
 
 All game-side training and prediction flows through :class:`GamesTrainer`
-and this module's :class:`GamesPredictor`. ``ModelRegistry`` keys use
+and this module's :class:`GamesModel`. ``ModelRegistry`` keys use
 the composite ``{model_name}_{model_type}`` convention (e.g.
 ``"win_prob_random_forest"``).
 """
@@ -68,7 +68,7 @@ _TRAINER_FOR_NAME: dict[str, type[GamesTrainer]] = {
 
 
 def get_known_model_names() -> tuple[str, ...]:
-    """Return the model_names recognized by ``GamesPredictor``.
+    """Return the model_names recognized by ``GamesModel``.
 
     Used by composite-key parsing in other modules (e.g.
     :mod:`evaluation.select`, :mod:`cli.models`, :mod:`cli.evaluate`)
@@ -220,19 +220,19 @@ def build_regression_predictions(
 
 
 # ---------------------------------------------------------------------------
-# GamesPredictor base
+# GamesModel base
 # ---------------------------------------------------------------------------
 
 
-class GamesPredictor:
-    """Base class for game prediction model predictors.
+class GamesModel:
+    """Base class for game prediction models.
 
     Each composite ``(model_name, model_type)`` pair has a thin subclass
     that sets ``model_name``, ``model_type``, and ``spec`` at class scope
     and is registered with :class:`ModelRegistry`. All logic lives
     here - subclasses are spec-only.
 
-    The class implements both :class:`Predictor` (via ``predict_historical``
+    The class implements both :class:`Model` (via ``predict_historical``
     / ``predict_upcoming``) and :class:`Trainable` (via ``train`` /
     ``is_trained``). Dispatch on classification vs regression happens
     internally based on the trainer's :attr:`GameModelSpec.task`.
@@ -257,7 +257,7 @@ class GamesPredictor:
         return self._trainer().spec
 
     def _task(self) -> str:
-        """Return ``"classification"`` or ``"regression"`` for this predictor."""
+        """Return ``"classification"`` or ``"regression"`` for this model."""
         return self._game_model_spec().task
 
     def _feature_fn(self):  # noqa: ANN202 - return type is a Callable
@@ -293,7 +293,7 @@ class GamesPredictor:
         )
 
     # ------------------------------------------------------------------
-    # Predictor protocol
+    # Model protocol
     # ------------------------------------------------------------------
 
     def predict_historical(
@@ -306,7 +306,7 @@ class GamesPredictor:
 
         Args:
             games: Canonical games DataFrame (unused - the modeling file
-                is loaded internally). Kept for :class:`Predictor`
+                is loaded internally). Kept for :class:`Model`
                 protocol compatibility.
             repo: Repository root path.
 
@@ -546,7 +546,7 @@ class GamesPredictor:
 
 
 @ModelRegistry.register
-class WinProbLogisticPredictor(GamesPredictor):
+class WinProbLogisticModel(GamesModel):
     """Win probability - logistic regression."""
 
     model_name = "win_prob"
@@ -561,7 +561,7 @@ class WinProbLogisticPredictor(GamesPredictor):
 
 
 @ModelRegistry.register
-class WinProbRandomForestPredictor(GamesPredictor):
+class WinProbRandomForestModel(GamesModel):
     """Win probability - Random Forest with isotonic calibration."""
 
     model_name = "win_prob"
@@ -577,7 +577,7 @@ class WinProbRandomForestPredictor(GamesPredictor):
 
 
 @ModelRegistry.register
-class WinProbXGBoostPredictor(GamesPredictor):
+class WinProbXGBoostModel(GamesModel):
     """Win probability - XGBoost with conditional isotonic calibration."""
 
     model_name = "win_prob"
@@ -593,7 +593,7 @@ class WinProbXGBoostPredictor(GamesPredictor):
 
 
 @ModelRegistry.register
-class TotalRandomForestPredictor(GamesPredictor):
+class TotalRandomForestModel(GamesModel):
     """Total points - Random Forest regression."""
 
     model_name = "total"
@@ -608,7 +608,7 @@ class TotalRandomForestPredictor(GamesPredictor):
 
 
 @ModelRegistry.register
-class TotalXGBoostPredictor(GamesPredictor):
+class TotalXGBoostModel(GamesModel):
     """Total points - XGBoost regression."""
 
     model_name = "total"
