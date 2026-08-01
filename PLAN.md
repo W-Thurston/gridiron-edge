@@ -2960,7 +2960,7 @@ schemas.
 Canonical artifacts still require final rebuild, retraining, refresh, and
 real-data validation.
 
-#### 19.2h-D3b Completed
+#### Unit 19.2h-D3b Completed
 
 Documented Lean and ConfidenceTier values as the current canonical serialized
 strings for DataFrame, archive, and API boundaries.
@@ -2983,7 +2983,7 @@ Pyrefly pass.
 Prop enrichment uses explicit named configuration, and serialized recommendation
 and confidence values remain unchanged.
 
-#### 19.2h-D3c.1 Completed
+#### Unit 19.2h-D3c.1 Completed
 
 Migrated active model-registry consumers from PredictorRegistry to
 ModelRegistry and from PredictorSpec to ModelSpec.
@@ -3021,7 +3021,7 @@ The only remaining PredictorSpec and PredictorRegistry alias references are
 their compatibility definitions and explanatory comments pending the runtime
 compatibility review.
 
-#### 19.2h-D3c.2 Completed
+#### Unit 19.2h-D3c.2 Completed
 
 Defined bet model identity as one optional model_name and model_type pair.
 
@@ -3062,7 +3062,7 @@ model_type pair.
 Incomplete or empty model identities fail before ledger creation or bankroll
 mutation, and the betting CLI uses only the current model identity options.
 
-#### 19.2h-D3c.3 Completed
+#### Unit 19.2h-D3c.3 Completed
 
 Defined the complete current prop prediction payload required for new archive
 writes.
@@ -3110,7 +3110,7 @@ payloads serialize to the exact canonical twenty-column archive schema.
 Writer-owned metadata overrides caller-supplied values, unavailable market
 fields remain explicit nulls, and additional feature columns are not persisted.
 
-#### 19.2h-D3c.4 Completed
+#### Unit 19.2h-D3c.4 Completed
 
 Removed workstream, unit, tier, phase, step, substep, and planning-document
 labels from current source comments, docstrings, API descriptions, and tests.
@@ -3146,6 +3146,59 @@ step, or substep labels.
 
 The sole remaining unit label is isolated inside deferred bet-ledger runtime
 compatibility behavior and remains visible for D3d.2.
+
+#### Unit 19.2h-D3c.5 Completed
+
+Completed the final compatibility, terminology, persisted-schema, and retired
+game-orientation inventory.
+
+Confirmed that Predictor, PredictorSpec, and PredictorRegistry remain only as
+compatibility aliases with no active source or test consumers.
+
+Identified permissive persisted-schema handling in the bet ledger and prop
+prediction archive for removal during the runtime compatibility review.
+
+Verified that the current bet ledger contains one row and the exact current
+twenty-one-column schema.
+
+Verified that the current prop prediction archive contains 262,977 rows and the
+exact current twenty-column schema in canonical order.
+
+Confirmed that remaining TEAM_A, TEAM_B, and HOME_FIELD references are negative
+assertions proving retired fields are absent.
+
+Confirmed that remaining production RESULT columns are local canonical
+result-history calculations and are not persisted targets, modeling fields,
+orientation adapters, or prediction dependencies.
+
+Cataloged the remaining model-name aliases, tuning alias, package shim, CLI
+re-export, superseded command, protocol wording, source-format contracts, and
+explicit legacy integrations for the final runtime compatibility review.
+
+#### Goal
+
+Establish a complete, classified inventory of every remaining compatibility
+surface before runtime aliases, permissive schemas, and fallback behavior are
+removed.
+
+#### Tests
+
+Repository-wide compatibility, retired-orientation, planning-label, and
+persisted-artifact inventories completed.
+
+The current bet ledger and prop prediction archive were inspected directly and
+match their canonical schemas.
+
+#### Acceptance
+
+All remaining compatibility behavior is explicitly assigned to D3d.1 through
+D3d.4 or classified as an intentional current contract.
+
+No retired game-orientation field remains in active modeling, feature,
+prediction, archive, or orchestration behavior.
+
+No unclassified migration or compatibility surface remains hidden outside the
+runtime compatibility review.
 
 ---
 
