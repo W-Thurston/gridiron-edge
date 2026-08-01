@@ -3,7 +3,7 @@
 """Elo-based predictor implementation.
 
 Implements the ``Predictor`` protocol for the Elo win-probability model.
-Registered under the Workstream 2 composite key ``"win_prob_elo"`` with
+Registered under the composite model key ``"win_prob_elo"`` with
 ``model_name="win_prob"`` and ``model_type="elo"``.
 
 Parameters use the production defaults (K=20, divisor=480, regress=1/3)

@@ -146,8 +146,8 @@ class TotalEdge:
 # Constants
 # ---------------------------------------------------------------------------
 
-# EV thresholds for edge classification.  Starting values - can be tuned
-# empirically after historical validation in Phase E.
+# EV thresholds for edge classification. Starting values can be tuned
+# empirically after historical validation.
 _STRONG_THRESHOLD: Final[float] = 0.05
 _MODERATE_THRESHOLD: Final[float] = 0.02
 

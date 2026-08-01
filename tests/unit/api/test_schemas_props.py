@@ -1,6 +1,6 @@
 # tests/unit/api/test_schemas_props.py
 
-"""Tests for /props response schemas (W8 Tier 2 Step 7b)."""
+"""Tests for /props response schemas."""
 
 from __future__ import annotations
 

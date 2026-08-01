@@ -3110,6 +3110,43 @@ payloads serialize to the exact canonical twenty-column archive schema.
 Writer-owned metadata overrides caller-supplied values, unavailable market
 fields remain explicit nulls, and additional feature columns are not persisted.
 
+#### 19.2h-D3c.4 Completed
+
+Removed workstream, unit, tier, phase, step, substep, and planning-document
+labels from current source comments, docstrings, API descriptions, and tests.
+
+Replaced development chronology with direct descriptions of model identity,
+selection rules, archive behavior, API dependencies, blocked fields, route
+domains, algorithm stages, and test responsibilities.
+
+Updated user-visible API schema descriptions to identify concrete unavailable
+datasets rather than internal PLAN.md or ROADMAP.md locations.
+
+Preserved ordinary technical uses of implementation terminology and retained
+runtime compatibility documentation with the behavior it describes.
+
+Confirmed that the only remaining matching planning label is the Unit 6a
+comment attached to the bet-ledger compatibility path scheduled for removal
+during the runtime compatibility review.
+
+#### Goal
+
+Make source and test documentation describe the system as it operates today
+rather than when or where functionality was introduced.
+
+#### Tests
+
+All scoped model, evaluation, market, CLI, API schema, serializer, loader, and
+passing integration tests pass. Ruff and Pyrefly pass.
+
+#### Acceptance
+
+Current source, tests, and API descriptions contain no workstream, tier, phase,
+step, or substep labels.
+
+The sole remaining unit label is isolated inside deferred bet-ledger runtime
+compatibility behavior and remains visible for D3d.2.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

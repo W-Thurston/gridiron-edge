@@ -619,7 +619,7 @@ class TestRankEdges:
 
 
 class TestComputeGameEdgesHomeProbDerivation:
-    """Verify defensive derivation of home_win_prob (Unit 11 / recommendations/H2)."""
+    """Verify defensive derivation of home_win_prob."""
 
     def test_uses_home_win_prob_when_present(self) -> None:
         row = pd.Series(

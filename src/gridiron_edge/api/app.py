@@ -10,9 +10,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# OpenAPI tag inventory — one entry per route domain. Tier 1 tags
-# describe populated endpoints; Tier 3 tags describe blocked endpoints
-# whose unblock work is tracked in ROADMAP §9.5.
+# OpenAPI tag inventory, with one entry per route domain. Populated
+# endpoint tags are listed separately from blocked endpoint tags.
 _OPENAPI_TAGS: list[dict[str, str]] = [
     # Populated endpoints.
     {"name": "weeks", "description": "Current week and season."},

@@ -46,7 +46,7 @@ class TestOpenApiTags:
 
     def test_tags_cover_known_route_domains(self) -> None:
         names: set[str] = {tag["name"] for tag in _OPENAPI_TAGS}
-        # Tier 1 domains.
+        # Populated route domains.
         assert {
             "weeks",
             "games",
@@ -58,7 +58,7 @@ class TestOpenApiTags:
             "compare",
             "model",
         } <= names
-        # Tier 3 domains.
+        # Blocked route domains.
         assert {
             "lines",
             "live",

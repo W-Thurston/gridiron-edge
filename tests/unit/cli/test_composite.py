@@ -317,7 +317,7 @@ class TestRenderCompositeSummary:
 
 
 class TestResolveWinProbModelType:
-    """Cover resolve_win_prob_model_type (W13 Tier 3 helper)."""
+    """Cover win-probability model-type resolution."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass

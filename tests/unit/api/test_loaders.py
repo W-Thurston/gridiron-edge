@@ -128,7 +128,7 @@ class TestResolveCurrentWeek:
 
 
 class TestLoadGamesForWeek:
-    """Cover load_games_for_week (W8 Tier 2 Step 5a)."""
+    """Cover weekly game loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -275,7 +275,7 @@ class TestLoadGamesForWeek:
 
 
 class TestLoadGame:
-    """Cover load_game (W8 Tier 2 Step 5a)."""
+    """Cover individual game loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -538,7 +538,7 @@ class TestLoadEdgesForWeek:
 
 
 class TestParseSeasonInt:
-    """Cover _parse_season_int (W8 Tier 2 Step 7a helper)."""
+    """Cover season-label parsing."""
 
     def test_hyphenated_returns_leading_year(self) -> None:
         from gridiron_edge.api.loaders import _parse_season_int
@@ -558,7 +558,7 @@ class TestParseSeasonInt:
 
 
 class TestLoadPropsForWeek:
-    """Cover load_props_for_week (W8 Tier 2 Step 7a)."""
+    """Cover weekly prop loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -810,7 +810,7 @@ class TestLoadPropsForWeek:
 
 
 class TestLoadProp:
-    """Cover load_prop (W8 Tier 2 Step 7a)."""
+    """Cover individual prop loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass

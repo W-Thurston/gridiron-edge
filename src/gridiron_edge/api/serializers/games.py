@@ -124,7 +124,7 @@ def serialize_game_detail(
     meta: ResponseMeta = meta.with_pending("kick")
     meta = meta.with_pending("venue")
     meta = meta.with_pending("weather")
-    # Tier 3 additive datasets (per PLAN.md W8 Tier 3).
+    # Optional derived datasets that are not yet available.
     if team_comparison is None:
         meta = meta.with_pending("team_comparison")
     meta = meta.with_pending("top_prop_edges")

@@ -67,8 +67,8 @@ class PlayerVsDefenseRow(BaseModel):
     """A single row in the player-vs-defense comparison table.
 
     ``projection_value`` is populated from the champion model's archive
-    row. ``defense_value`` is null in T2 — blocked pending
-    opponent-allowed-by-position aggregation (ROADMAP §9 Tier 3).
+    row. ``defense_value`` is null while blocked pending
+    opponent-allowed-by-position aggregation.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

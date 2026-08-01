@@ -313,7 +313,7 @@ class TestGameModelMetadataContract:
 
 
 # ---------------------------------------------------------------------------
-# Tests for TimeSeriesSplit inner CV (Unit 1b: game_base/H1, game_base/H2)
+# Tests for TimeSeriesSplit inner cross-validation
 # ---------------------------------------------------------------------------
 
 

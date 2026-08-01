@@ -1,6 +1,6 @@
 # tests/unit/api/test_serializers_edges.py
 
-"""Tests for /edges serializers (W8 Tier 2 Step 6c)."""
+"""Tests for /edges serializers."""
 
 from __future__ import annotations
 

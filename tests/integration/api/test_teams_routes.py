@@ -2,7 +2,7 @@
 
 """Integration tests for /teams routes.
 
-W8 Tier 3 Substep 2b — verifies percentile fields populate end-to-end
+Verifies percentile fields populate end-to-end
 when the artifact exists.
 """
 

@@ -142,7 +142,7 @@ def extract_classification_metrics(meta: GameModelMetadata) -> dict[str, float]:
     """Pull a standardised metric dict from GameModelMetadata.
 
     Reads the classification metrics from the ``metrics`` dict on
-    :class:`BaseModelMetadata` (Unit 9). Any metric not recorded at
+    :class:`BaseModelMetadata`. Any metric not recorded at
     training time surfaces as NaN so the comparator gates can treat
     them uniformly.
 
@@ -446,8 +446,8 @@ def select_game_regression_champions(
     manifest entry.
 
     Ties on MAE are broken by preferring ``random_forest`` over
-    ``xgboost`` (matches classification convention; see W13 Tier 2
-    design decisions). Ties are not expected in practice.
+    ``xgboost``, matching the classification selector's tie-break
+    rule. Ties are not expected in practice.
 
     Args:
         pairs: List of ``(model_name, model_type)`` pairs to consider.
@@ -765,7 +765,7 @@ def promote_champions(
 ) -> PromoteChampionsResult:
     """Run all three selectors, merge with existing manifest, and persist.
 
-    Reusable core logic for W13 Tier 2. Called by
+    Reusable champion-selection and manifest-persistence logic. Called by
     ``cli/full_retrain.py::_stage_promote_champions`` (from
     ``gridiron full-retrain``) and by CLI flags on ``evaluate select-model``
     and ``props champion`` (manual overrides).

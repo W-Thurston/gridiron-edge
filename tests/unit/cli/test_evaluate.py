@@ -1,9 +1,8 @@
 # tests/unit/cli/test_evaluate.py
 
-"""Tests for the evaluate CLI, focused on W13 --write-manifest additions.
+"""Tests for evaluate CLI champion-manifest persistence.
 
-Broader evaluate-command coverage is out of scope for W13 Tier 2. This
-file exercises only the new manifest-write flag introduced in Step 7.
+This module focuses on the explicit manifest-write command surface.
 """
 
 from __future__ import annotations

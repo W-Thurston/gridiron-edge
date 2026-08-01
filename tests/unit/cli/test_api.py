@@ -98,7 +98,7 @@ class TestApiWiredIntoMainCli:
 
 
 class TestExportSchema:
-    """Cover the export-schema command (W8 patch for W9 kickoff)."""
+    """Cover the OpenAPI schema export command."""
 
     def test_writes_schema_to_output(self, tmp_path: Path) -> None:
         from gridiron_edge.cli.api import export_schema

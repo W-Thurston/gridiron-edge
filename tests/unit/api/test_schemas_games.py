@@ -1,4 +1,4 @@
-"""Tests for /games response schemas (W8 Tier 2 Step 5b)."""
+"""Tests for /games response schemas."""
 
 from __future__ import annotations
 

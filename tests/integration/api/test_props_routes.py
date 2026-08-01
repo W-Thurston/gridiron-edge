@@ -2,7 +2,7 @@
 
 """Integration tests for /props and /props/{prop_id} routes.
 
-W8 Tier 2 Step 7d. Exercises loader → serializer → route stack
+Exercises loader → serializer → route stack
 end-to-end via MiniRepoBuilder + FastAPI dependency_overrides.
 """
 

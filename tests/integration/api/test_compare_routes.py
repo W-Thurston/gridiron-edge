@@ -1,6 +1,6 @@
 """Integration tests for /compare/teams route.
 
-W8 Tier 2 Step 8a. Exercises loader → serializer → route stack
+Exercises loader → serializer → route stack
 end-to-end via MiniRepoBuilder + FastAPI dependency_overrides.
 """
 

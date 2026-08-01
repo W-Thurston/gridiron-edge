@@ -199,7 +199,7 @@ def serialize_compare_teams(
     meta = meta.with_blocked("off_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("trend", *Unavailable.NO_PRIOR_SNAPSHOT)
-    # Pending on Tier 3 additive datasets.
+    # Pending required derived datasets.
     meta = meta.with_pending("schedule_difficulty")
     if cohort_splits is None:
         meta = meta.with_pending("cohort_splits")
@@ -227,7 +227,7 @@ def serialize_compare_player(
 
     Populated stats come from the archive row's projection fields.
     Defense-side stats are entirely blocked pending
-    opponent-allowed-by-position aggregation (Tier 3 additive dataset).
+    opponent-allowed-by-position aggregation.
     """
     from gridiron_edge.api.schemas.compare import (
         ComparePlayerResponse,

@@ -1,9 +1,8 @@
 # tests/unit/cli/test_props_champion_write_manifest.py
 
-"""Tests for `gridiron props champion --write-manifest` (W13 Step 8).
+"""Tests for `gridiron props champion --write-manifest`.
 
-Broader props CLI coverage is out of scope for W13 Tier 2. This file
-exercises only the new --write-manifest flag.
+This module focuses on the explicit champion-manifest write surface.
 """
 
 from __future__ import annotations

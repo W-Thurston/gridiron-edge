@@ -102,12 +102,12 @@ class GameDetail(BaseResponse):
     weather: WeatherBlock | None = None
     prediction: PredictionBlock | None = None
 
-    # Scaffolded fields. Populated in Tier 3 or later workstreams.
+    # Optional fields awaiting their required derived datasets.
     team_comparison: dict | None = Field(
         default=None,
         description=(
             "Opponent-adjusted percentile stats table. Pending: no "
-            "backend for percentile computation (ROADMAP §9 Tier 3)."
+            "backend for percentile computation."
         ),
     )
     swing_factors: list[dict] | None = Field(
@@ -122,7 +122,5 @@ class GameDetail(BaseResponse):
     )
     top_prop_edges: list[dict] | None = Field(
         default=None,
-        description=(
-            "Top prop edges for this game. Pending: defer until /edges endpoint lands (Step 6)."
-        ),
+        description=("Top prop edges for this game. Pending the required edges data source."),
     )

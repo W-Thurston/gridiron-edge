@@ -98,7 +98,7 @@ class TestPropModelMetadata:
         assert meta.notes == ""
 
     def test_model_type_required(self) -> None:
-        """model_type and task are required kwargs (Workstream 2)."""
+        """model_type and task are required keyword arguments."""
         with pytest.raises(TypeError):
             PropModelMetadata(  # type: ignore[call-arg]
                 model_name="test",
@@ -208,7 +208,7 @@ class TestPredictNotFitted:
 
 
 # ---------------------------------------------------------------------------
-# Tests for _fit() TimeSeriesSplit CV discipline (Unit 1: prop_base/C1, C2)
+# Tests for _fit() TimeSeriesSplit cross-validation discipline
 # ---------------------------------------------------------------------------
 
 

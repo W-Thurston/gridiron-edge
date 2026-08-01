@@ -1,7 +1,7 @@
 # src/gridiron_edge/cli/evaluate.py
 """CLI commands for model evaluation.
 
-Workstream 2 convention:
+Composite model identity:
     Model identity uses the composite ``model_key`` - ``f"{model_name}_{model_type}"``
     matching the ``ModelRegistry`` keys (e.g. ``"win_prob_random_forest"``,
     ``"total_xgboost"``). The ``backfill`` command takes ``--model-name`` +

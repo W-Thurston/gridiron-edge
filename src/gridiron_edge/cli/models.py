@@ -1,7 +1,7 @@
 # src/gridiron_edge/cli/models.py
 """CLI commands for model training and champion/challenger management.
 
-Workstream 2 user surface:
+Model command identity:
     All commands that touch a specific model take two positional args -
     ``model_name`` (purpose, e.g. ``"win_prob"``) and ``model_type``
     (algorithm, e.g. ``"random_forest"``). This matches the ``ArtifactStore``

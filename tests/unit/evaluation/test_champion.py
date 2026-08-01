@@ -1302,7 +1302,7 @@ class TestSelectPropChampionsAllFamilies:
 
 
 class TestPromoteChampions:
-    """Cover the promote_champions pure function extracted for Step 7."""
+    """Cover the pure champion promotion orchestration."""
 
     def test_returns_result_with_manifest_path(
         self,
@@ -1431,7 +1431,7 @@ class TestPromoteChampions:
 
 class TestBuildPropChampionCandidates:
     """Cover build_prop_champion_candidates (extracted from
-    select_prop_champion_for_family in Step 9)."""
+    select_prop_champion_for_family)."""
 
     def test_returns_result_per_algorithm_with_archive_rows(
         self,

@@ -127,7 +127,7 @@ def compare_player(
     Projection-side fields (mean, std, lo_90, hi_90) populate from the
     champion model's archive row. Defense-side fields (avg allowed,
     rank vs position, L5 avg, red zone rate) are entirely blocked
-    pending opponent-allowed-by-position aggregation (ROADMAP §9 Tier 3).
+    pending opponent-allowed-by-position aggregation.
 
     - Malformed or unknown prop_id: 404.
     - Champion for this stat_type not resolved: 200 with projection

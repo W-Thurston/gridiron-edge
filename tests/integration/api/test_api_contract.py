@@ -225,9 +225,8 @@ class TestFieldStatusCompleteness:
 
         # Collect every top-level key in the response body plus a few
         # specific keys that appear inside nested structures we expect.
-        # For Tier 1 with everything blocked at the field level, top-level
-        # coverage is sufficient — nested-field documentation will be
-        # exercised when populated endpoints arrive.
+        # With every field blocked, top-level coverage is sufficient.
+        # Nested-field documentation is exercised by populated endpoints.
         top_level_keys: set = set(body.keys()) - {"_meta", "total"}
 
         # Plus the special-cased "items" key that list responses use.
@@ -274,8 +273,8 @@ class TestResponseModelMatchesHandler:
         actual_keys: set = set(body.keys())
 
         # The response may legitimately omit `_meta` if every field is
-        # populated — but in Tier 1 every endpoint has at least one
-        # blocked field, so `_meta` must be present.
+        # populated. These fixtures retain at least one blocked field,
+        # so `_meta` must be present.
         assert "_meta" in actual_keys, f"{path} response missing `_meta`"
 
         # All other declared keys should appear.

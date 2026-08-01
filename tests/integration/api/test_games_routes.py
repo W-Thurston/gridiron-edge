@@ -2,7 +2,7 @@
 
 """Integration tests for /games and /games/{game_id} routes.
 
-W8 Tier 2 Step 5d. Exercises the loader → serializer → route stack
+Exercises the loader → serializer → route stack
 end-to-end via MiniRepoBuilder + FastAPI dependency_overrides.
 """
 

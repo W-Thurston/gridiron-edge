@@ -214,7 +214,7 @@ def build_matchup_features(
         player_logs = df.copy()
     logger.info("Loaded %d player-game rows for matchup features", len(player_logs))
 
-    # Step 1: Compute what each defense allows per game
+    # Compute what each defense allows per game.
     def_allowed: DataFrame = _compute_def_allowed_per_game(player_logs)
     logger.info(
         "Defensive allowances: %d team-game rows, %d stats",
@@ -222,13 +222,13 @@ def build_matchup_features(
         len([c for c in def_allowed.columns if c.endswith("_allowed")]),
     )
 
-    # Step 2: Rolling averages (shifted - no lookahead)
+    # Compute shifted rolling averages without lookahead.
     def_rolling: DataFrame = _rolling_def_allowed(def_allowed, window=resolved_window)
 
-    # Step 3: Rank defenses
+    # Rank defenses.
     def_rolling = _rank_defenses(def_rolling, window=resolved_window)
 
-    # Step 4: Join back to player logs on opponent_team = defense team
+    # Join defense values to player logs through opponent_team.
     matchup_cols: list[str] = [c for c in def_rolling.columns if f"_L{resolved_window}" in c]
     join_cols: list[str] = ["team", "season", "week", *matchup_cols]
 

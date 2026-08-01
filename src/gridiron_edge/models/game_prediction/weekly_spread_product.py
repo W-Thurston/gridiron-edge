@@ -136,7 +136,7 @@ def load_spread_calibration(
 
 
 def _require_win_columns(win_product: DataFrame) -> None:
-    """Require the Unit 10 win-product contract."""
+    """Require the canonical win-product contract."""
     missing = sorted(set(_REQUIRED_WIN_COLUMNS) - set(win_product.columns))
     if missing:
         raise ValueError("Win product is missing required columns: " + ", ".join(missing))

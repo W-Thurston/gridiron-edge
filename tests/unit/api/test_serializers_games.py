@@ -1,6 +1,6 @@
 # tests/unit/api/test_serializers_games.py
 
-"""Tests for /games serializers (W8 Tier 2 Step 5c)."""
+"""Tests for /games serializers."""
 
 from __future__ import annotations
 

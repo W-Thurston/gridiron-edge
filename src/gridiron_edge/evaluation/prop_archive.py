@@ -236,7 +236,7 @@ def build_prop_evaluation_df(
     archive analytics.
 
     Predictions are filtered to a specific ``(model_name, model_type)``
-    pair (per the Unit 5b prop archive identity migration). Actuals are
+    pair. Actuals are
     obtained either from ``actuals_df`` (preferred for tests and reuse)
     or by building features via ``build_prop_features`` (default for
     normal CLI usage).
@@ -267,7 +267,7 @@ def build_prop_evaluation_df(
 
     from gridiron_edge.models.prop_prediction.base import PropTrainer
 
-    # Step 1: Resolve the trainer + target column.
+    # Resolve the trainer and target column.
     # Ensure prop trainer modules are imported so they register with
     # ModelRegistry. Without this, ModelRegistry.get() fails with an
     # empty registry when build_prop_evaluation_df is called from a
@@ -291,7 +291,7 @@ def build_prop_evaluation_df(
 
     target_col: str = trainer.spec.target_col
 
-    # Step 2: Load predictions from the archive (Unit 5b composite identity).
+    # Load predictions for the requested composite model identity.
     predictions: DataFrame = load_prop_archive(
         repo=repo,
         stat_type=model_name,
@@ -307,7 +307,7 @@ def build_prop_evaluation_df(
     if predictions.empty:
         return _empty_evaluation_df()
 
-    # Step 3: Resolve actuals.
+    # Resolve actuals.
     if actuals_df is None:
         from gridiron_edge.features.player.builder import build_prop_features
 
@@ -327,7 +327,7 @@ def build_prop_evaluation_df(
         ["game_id", "player_id", target_col],
     ]
 
-    # Step 4: Inner join. Evaluation only makes sense where both sides exist.
+    # Inner join where predictions and actuals both exist.
     merged: DataFrame = predictions.merge(
         actuals,
         on=["game_id", "player_id"],
@@ -336,10 +336,10 @@ def build_prop_evaluation_df(
     if merged.empty:
         return _empty_evaluation_df()
 
-    # Step 5: Normalize the actual column name.
+    # Normalize the actual column name.
     merged = merged.rename(columns={target_col: "actual"})
 
-    # Step 6: Stable sort for deterministic downstream behavior.
+    # Sort stably for deterministic downstream behavior.
     sort_cols: list[str] = [
         c for c in ("season", "week", "game_id", "player_id") if c in merged.columns
     ]

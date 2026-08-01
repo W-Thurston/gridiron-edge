@@ -125,14 +125,13 @@ class PropDetail(BaseResponse):
         default=None,
         description=(
             "Past matchups vs this opponent's defense. Pending: "
-            "opponent-adjusted matchup aggregation (ROADMAP §9 Tier 3)."
+            "opponent-adjusted matchup aggregation."
         ),
     )
     situational_splits: dict | None = Field(
         default=None,
         description=(
-            "Home/away, dome/outdoor, favored/underdog splits. Pending: "
-            "prop cohort splits (ROADMAP §9 Tier 3)."
+            "Home/away, dome/outdoor, favored/underdog splits. Pending: prop cohort splits."
         ),
     )
     prop_reasoning: dict | None = Field(

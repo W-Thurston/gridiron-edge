@@ -7,7 +7,7 @@ by evaluation metrics and producing ranked results. These functions are
 intentionally CLI-agnostic so they can be called from tests or notebooks
 without importing the CLI layer.
 
-Workstream 2 convention:
+Composite model identity:
     All registered ``ModelRegistry`` keys are composite strings
     of the form ``f"{model_name}_{model_type}"`` (e.g.
     ``"win_prob_random_forest"``, ``"total_xgboost"``, ``"win_prob_elo"``).

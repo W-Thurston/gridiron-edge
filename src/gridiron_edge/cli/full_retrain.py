@@ -402,7 +402,7 @@ def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
     outside the current subset, and writes the combined manifest via
     ``write_manifest``.
 
-    Subset semantics (per W13 Tier 2 design Q2):
+    Subset semantics:
         - Ranking respects ``ctx["game_pairs"]`` and ``ctx["prop_pairs"]``.
           If the CLI passed ``--game-models win_prob_random_forest``,
           only that pair participates in win_prob's ranking.

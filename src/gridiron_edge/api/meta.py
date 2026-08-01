@@ -8,8 +8,8 @@ work scheduled but not done) or a `BlockedStatus` object naming an upstream
 blocker that maps to a ROADMAP.md item.
 
 The `Blocker` class is a registry of stable `(slug, roadmap_ref)` tuples used
-across the API surface. Per D16, every Tier 3 route uses a registered slug;
-a consistency test enforces this.
+across blocked API fields and routes. A consistency test ensures every
+blocked route references a registered slug.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ class Blocker:
     def all_slugs(cls: type[Blocker]) -> frozenset:
         """Return every registered blocker slug.
 
-        Used by the consistency test that asserts every Tier 3 route
+        Used by the consistency test that asserts every blocked route
         references a registered slug.
         """
         return frozenset(

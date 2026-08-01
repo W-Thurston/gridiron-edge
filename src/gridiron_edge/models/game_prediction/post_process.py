@@ -18,7 +18,7 @@ distribution (approx 13.86 league-wide) and *Phi_inv* is the inverse
 normal CDF. Sigma is calibrated per ``(model_name, model_type)`` pair
 for maximum accuracy.
 
-Model identification (Workstream 2):
+Model identification:
     Models are identified by the pair ``(model_name, model_type)`` -
     e.g. ``("win_prob", "random_forest")``. Sigma and margin_std maps
     are keyed by this tuple. Calibrators live alongside model artifacts

@@ -1,6 +1,6 @@
 # tests/unit/api/test_serializers_props.py
 
-"""Tests for /props serializers (W8 Tier 2 Step 7c)."""
+"""Tests for /props serializers."""
 
 from __future__ import annotations
 
