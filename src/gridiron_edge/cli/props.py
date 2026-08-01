@@ -103,8 +103,8 @@ def _enrich_and_predict(
 
     The returned DataFrame is archive-ready: ``predicted_mean``,
     ``stat_type``, and all post-process enrichment columns
-    (``predicted_std``, ``lo_90``, ``hi_90``, and — when ``line`` is
-    present — ``p_over``, ``lean``, ``tier``) are populated.
+    (``predicted_std``, ``lo_90``, ``hi_90``, and, when ``line`` is
+    present, ``p_over``, ``lean``, ``confidence_tier``) are populated.
 
     Args:
         trainer: Fitted (or artifact-loaded) prop trainer instance.

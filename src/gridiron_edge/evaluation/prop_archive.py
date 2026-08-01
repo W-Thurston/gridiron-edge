@@ -25,15 +25,12 @@ from datetime import UTC, datetime
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
-
-if TYPE_CHECKING:
-    pass
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -70,6 +67,25 @@ _ARCHIVE_COLUMNS: Final[list[str]] = [
     "confidence_tier",
 ]
 
+_PROP_PREDICTION_COLUMNS: Final[list[str]] = [
+    "season",
+    "week",
+    "game_id",
+    "player_id",
+    "player_name",
+    "position",
+    "team",
+    "stat_type",
+    "predicted_mean",
+    "predicted_std",
+    "lo_90",
+    "hi_90",
+    "line",
+    "p_over",
+    "lean",
+    "confidence_tier",
+]
+
 _DEFAULT_SUBDIR: Final[str] = "data/output/props"
 _DEFAULT_FILENAME: Final[str] = "prop_predictions_log.parquet"
 
@@ -95,8 +111,9 @@ def archive_prop_predictions(
     the merged result.
 
     Args:
-        df: Predictions DataFrame.  Must contain at minimum: game_id,
-            player_id, stat_type, predicted_mean.
+        df: Predictions DataFrame containing the complete current prop
+            prediction payload. Columns with unavailable values remain
+            present with null values.
         repo: Repository root override.
         is_backfilled: Whether these predictions are historical backfill
             (True) or live predictions (False).
@@ -109,13 +126,14 @@ def archive_prop_predictions(
         Path to the written archive file.
 
     Raises:
-        ValueError: If required columns are missing from df.
+        ValueError: If any current prop prediction payload columns are
+            missing from df.
     """
-    required: list[str] = ["game_id", "player_id", "stat_type", "predicted_mean"]
-    missing: list[str] = [c for c in required if c not in df.columns]
+    missing: list[str] = [column for column in _PROP_PREDICTION_COLUMNS if column not in df.columns]
     if missing:
-        msg: str = f"Missing required columns for archive: {missing}"
-        raise ValueError(msg)
+        raise ValueError(
+            "Prop prediction rows are missing required archive columns: " + ", ".join(missing)
+        )
 
     result: DataFrame = df.copy()
 
@@ -125,13 +143,8 @@ def archive_prop_predictions(
     result["model_name"] = model_name
     result["model_type"] = model_type
 
-    # Ensure all archive columns exist (fill missing with NaN)
-    for col in _ARCHIVE_COLUMNS:
-        if col not in result.columns:
-            result[col] = pd.NA
-
-    # Select and order columns
-    result = result.loc[:, [c for c in _ARCHIVE_COLUMNS if c in result.columns]]
+    # Serialize only the complete current archive schema.
+    result = result.loc[:, _ARCHIVE_COLUMNS]
 
     # Load existing archive and merge
     path: Path = _archive_path(repo)

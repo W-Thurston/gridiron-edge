@@ -3062,6 +3062,54 @@ model_type pair.
 Incomplete or empty model identities fail before ledger creation or bankroll
 mutation, and the betting CLI uses only the current model identity options.
 
+#### 19.2h-D3c.3 Completed
+
+Defined the complete current prop prediction payload required for new archive
+writes.
+
+New rows must provide all sixteen prediction columns before writer-owned
+metadata is added. Unavailable market-derived values remain explicit through
+present-but-null columns.
+
+Removed writer-side synthesis of missing prediction columns and preserved exact
+canonical ordering for the twenty persisted archive columns.
+
+Kept predicted_at, is_backfilled, model_name, and model_type authoritative at
+the archive boundary.
+
+Allowed enriched feature frames to contain additional source columns while
+excluding those columns from persisted archive rows.
+
+Updated prop archive tests for complete-column enforcement, deterministic
+missing-column errors, canonical serialization order, authoritative metadata,
+extra-column exclusion, and explicit null values.
+
+Corrected archive-ready prop prediction documentation to use confidence_tier.
+
+Verified that the existing 262,977-row prop prediction archive already contains
+the complete current schema in canonical order.
+
+Deferred persisted archive read validation and compatibility removal to the
+runtime compatibility review.
+
+#### Goal
+
+Ensure every newly written prop prediction row satisfies one complete current
+archive payload contract without silently synthesizing missing columns.
+
+#### Tests
+
+Prop archive, prop metrics, Prop CLI, full retraining, and prop champion tests
+pass. Ruff and Pyrefly pass.
+
+#### Acceptance
+
+Incomplete prop prediction payloads fail before archive I/O, while complete
+payloads serialize to the exact canonical twenty-column archive schema.
+
+Writer-owned metadata overrides caller-supplied values, unavailable market
+fields remain explicit nulls, and additional feature columns are not persisted.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

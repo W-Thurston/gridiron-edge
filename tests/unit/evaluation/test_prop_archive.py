@@ -12,6 +12,7 @@ import pytest
 from gridiron_edge.evaluation.prop_archive import (
     _ARCHIVE_COLUMNS,
     _DEDUP_KEYS,
+    _PROP_PREDICTION_COLUMNS,
     archive_prop_predictions,
     load_prop_archive,
 )
@@ -48,12 +49,22 @@ class TestArchiveColumns:
         for key in _DEDUP_KEYS:
             assert key in _ARCHIVE_COLUMNS
 
-    def test_schema_has_metadata(self) -> None:
-        assert "predicted_at" in _ARCHIVE_COLUMNS
-        assert "is_backfilled" in _ARCHIVE_COLUMNS
-        assert "model_name" in _ARCHIVE_COLUMNS
-        assert "model_type" in _ARCHIVE_COLUMNS
-        assert "model_version" not in _ARCHIVE_COLUMNS
+    def test_schema_has_writer_metadata(self) -> None:
+        assert _ARCHIVE_COLUMNS[:2] == [
+            "predicted_at",
+            "is_backfilled",
+        ]
+        assert _ARCHIVE_COLUMNS[10:12] == [
+            "model_name",
+            "model_type",
+        ]
+
+    def test_prediction_payload_excludes_writer_metadata(self) -> None:
+        assert "predicted_at" not in _PROP_PREDICTION_COLUMNS
+        assert "is_backfilled" not in _PROP_PREDICTION_COLUMNS
+        assert "model_name" not in _PROP_PREDICTION_COLUMNS
+        assert "model_type" not in _PROP_PREDICTION_COLUMNS
+        assert len(_PROP_PREDICTION_COLUMNS) == 16
 
     def test_schema_has_enrichment(self) -> None:
         for col in [
@@ -188,28 +199,21 @@ class TestArchivePropPredictions:
         loaded: DataFrame = load_prop_archive(repo=tmp_path)
         assert len(loaded) == 2
 
-    def test_missing_optional_cols_filled_na(self, tmp_path: Path) -> None:
-        """Columns not in df but in schema → filled with NA."""
-        df = DataFrame(
-            {
-                "game_id": ["2024_01_LV_KC"],
-                "player_id": ["QB1"],
-                "stat_type": ["qb_pass_yards"],
-                "predicted_mean": [250.0],
-            }
-        )
-        archive_prop_predictions(
-            df,
-            repo=tmp_path,
-            model_name="qb_pass_yards",
-            model_type="elasticnet",
-        )
-        loaded: DataFrame = load_prop_archive(repo=tmp_path)
-        assert pd.isna(loaded["line"].iloc[0])
+    @pytest.mark.parametrize(
+        "missing_column",
+        _PROP_PREDICTION_COLUMNS,
+    )
+    def test_rejects_each_missing_prediction_column(
+        self,
+        tmp_path: Path,
+        missing_column: str,
+    ) -> None:
+        df = _make_predictions(n=1).drop(columns=[missing_column])
 
-    def test_raises_without_required_cols(self, tmp_path: Path) -> None:
-        df = DataFrame({"game_id": ["x"], "player_id": ["y"]})
-        with pytest.raises(ValueError, match="Missing required columns"):
+        with pytest.raises(
+            ValueError,
+            match=(f"Prop prediction rows are missing required archive columns: {missing_column}"),
+        ):
             archive_prop_predictions(
                 df,
                 repo=tmp_path,
@@ -217,13 +221,130 @@ class TestArchivePropPredictions:
                 model_type="elasticnet",
             )
 
-    def test_different_model_types_do_not_dedup(self, tmp_path: Path) -> None:
-        """Same player-game-stat with different algorithms should both persist.
+        assert not (
+            tmp_path / "data" / "output" / "props" / "prop_predictions_log.parquet"
+        ).exists()
 
-        This guards the Unit 5b migration from model_version to
-        (model_name, model_type). Previously all algorithms collapsed into
-        model_version='v1'.
-        """
+    def test_reports_all_missing_columns_in_canonical_order(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        df = _make_predictions(n=1).drop(
+            columns=[
+                "player_name",
+                "predicted_std",
+                "confidence_tier",
+            ]
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=("player_name, predicted_std, confidence_tier"),
+        ):
+            archive_prop_predictions(
+                df,
+                repo=tmp_path,
+                model_name="qb_pass_yards",
+                model_type="elasticnet",
+            )
+
+    def test_persists_exact_canonical_column_order(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        archive_prop_predictions(
+            _make_predictions(n=1),
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        stored = pd.read_parquet(
+            tmp_path / "data" / "output" / "props" / "prop_predictions_log.parquet"
+        )
+
+        assert stored.columns.tolist() == _ARCHIVE_COLUMNS
+
+    def test_excludes_extra_source_columns(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        df = _make_predictions(n=1)
+        df["feature_not_in_archive"] = 42.0
+
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        stored = load_prop_archive(repo=tmp_path)
+
+        assert "feature_not_in_archive" not in stored.columns
+        assert stored.columns.tolist() == _ARCHIVE_COLUMNS
+
+    def test_writer_metadata_is_authoritative(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        df = _make_predictions(n=1)
+        df["predicted_at"] = "caller-value"
+        df["is_backfilled"] = False
+        df["model_name"] = "caller-model"
+        df["model_type"] = "caller-type"
+
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            is_backfilled=True,
+            model_name="qb_pass_yards",
+            model_type="random_forest",
+        )
+
+        stored = load_prop_archive(repo=tmp_path)
+        row = stored.iloc[0]
+
+        assert row["predicted_at"] != "caller-value"
+        assert row["is_backfilled"] == True  # noqa: E712
+        assert row["model_name"] == "qb_pass_yards"
+        assert row["model_type"] == "random_forest"
+
+    def test_present_market_columns_may_contain_nulls(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        df = _make_predictions(n=1)
+        df["line"] = float("nan")
+        df["p_over"] = float("nan")
+        df["lean"] = None
+        df["confidence_tier"] = None
+
+        archive_prop_predictions(
+            df,
+            repo=tmp_path,
+            model_name="qb_pass_yards",
+            model_type="elasticnet",
+        )
+
+        stored = load_prop_archive(repo=tmp_path)
+
+        assert (
+            stored[
+                [
+                    "line",
+                    "p_over",
+                    "lean",
+                    "confidence_tier",
+                ]
+            ]
+            .isna()
+            .all()
+            .all()
+        )
+
+    def test_different_model_types_do_not_dedup(self, tmp_path: Path) -> None:
+        """Distinct algorithms persist as distinct prediction rows."""
         df1: DataFrame = _make_predictions(n=1)
         df1["predicted_mean"] = 200.0
         archive_prop_predictions(
