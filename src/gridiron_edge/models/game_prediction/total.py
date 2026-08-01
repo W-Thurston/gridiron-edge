@@ -1,25 +1,16 @@
 # src/gridiron_edge/models/game_prediction/total.py
-"""Total points regression model.
+"""Total-points regression model.
 
-Total-points predictions use the same expanded feature set as the
-win-probability models, but target ``actual_total = PTS_WINNER + PTS_LOSER``
-instead of ``RESULT``. The model is trained via :class:`TotalTrainer`
-and served at predict time through :class:`GamesPredictor` (registered
-under composite key ``"total_random_forest"`` and ``"total_xgboost"``).
+Total models use the canonical one-row-per-game expanded feature set and
+train directly against ``ACTUAL_TOTAL`` from the persisted modeling
+artifact.
 
-This is a supporting model - total predictions feed into win_prob
-:meth:`GamesPredictor._maybe_predict_totals` to attach ``model_total``
-to game-level predictions.
+Total prediction is an independent model workflow registered under
+``total_random_forest`` and ``total_xgboost``.
 
 Public API:
-    _prepare_total_data  Data preparation helper (used by GamesTrainer).
-    TotalTrainer         Spec-only subclass of GamesTrainer.
-    DEFAULT_TOTAL_MODEL_NAME / DEFAULT_TOTAL_MODEL_TYPE: identity
-        constants used by GamesPredictor when defaulting the total model.
-
-All total-model training, loading, and prediction flow through
-``GamesTrainer`` / ``GamesPredictor``. The :class:`TotalTrainer` here
-contributes only the spec; behavior lives in the trainer base class.
+    _prepare_total_data  Canonical Total training-data preparation.
+    TotalTrainer         Total regression model specification.
 """
 
 from __future__ import annotations
@@ -28,8 +19,7 @@ import logging
 from logging import Logger
 from pathlib import Path
 
-import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Index, Series
 
 from gridiron_edge.models.game_prediction._features import (
     FEATURE_SETS,
@@ -41,21 +31,11 @@ from gridiron_edge.models.game_prediction.base import (
     GameModelType,
     GamesTrainer,
 )
+from gridiron_edge.models.game_prediction.game_schema import (
+    ACTUAL_TOTAL_TARGET,
+)
 
 logger: Logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-#: Default ``model_name`` for the total points regression family.
-#: Used by :meth:`GamesPredictor._maybe_predict_totals` to identify which
-#: total model to attach to win_prob predictions.
-DEFAULT_TOTAL_MODEL_NAME: str = "total"
-
-#: Default ``model_type`` for the total points regression family.
-DEFAULT_TOTAL_MODEL_TYPE: str = "random_forest"
 
 
 # ---------------------------------------------------------------------------
@@ -65,52 +45,63 @@ DEFAULT_TOTAL_MODEL_TYPE: str = "random_forest"
 
 def _prepare_total_data(
     repo: Path,
-) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, list[str], list[str]]:
-    """Prepare features and total-points target for training.
+) -> tuple[
+    DataFrame,
+    Series,
+    DataFrame,
+    Series,
+    list[str],
+    list[str],
+]:
+    """Prepare canonical Total train and holdout data.
 
-    Loads the modeling file, joins game scores to compute
-    ``actual_total = PTS_WINNER + PTS_LOSER``, then splits into
-    train / holdout using the same ``HOLDOUT_SEASONS`` as the win model.
+    Loads the canonical modeling artifact, uses its persisted
+    ``ACTUAL_TOTAL`` target directly, removes rows with unavailable model
+    features, and performs the configured chronological holdout split.
 
-    Called by :meth:`GamesTrainer._prepare_window` when ``spec.task ==
-    "regression"`` (the regression branch always uses the standard
-    4-game EPA window - total models don't tune ``epa_window``).
+    Args:
+        repo: Repository root containing the canonical modeling artifact.
 
     Returns:
-        Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, holdout_seasons).
-        Season lists are formatted as ``"YYYY-YYYY"`` strings to match the
-        :class:`BaseModelMetadata` convention.
+        Train features, train target, holdout features, holdout target,
+        sorted training seasons, and sorted holdout seasons.
+
+    Raises:
+        ValueError: If the canonical Total target is unavailable.
     """
-    from gridiron_edge.datasets.loaders import load_games, load_modeling_file
-
-    df: DataFrame = load_modeling_file(repo)
-    games: DataFrame = load_games(repo)
-
-    # Build total lookup: GAME_ID → actual_total
-    games_lookup: DataFrame = games.dropna(subset=["PTS_WINNER", "PTS_LOSER"]).copy()
-    games_lookup = games_lookup.drop_duplicates(subset=["GAME_ID"])
-    games_lookup["actual_total"] = games_lookup["PTS_WINNER"] + games_lookup["PTS_LOSER"]
-
-    df = df.merge(
-        games_lookup[["GAME_ID", "actual_total"]],
-        on="GAME_ID",
-        how="inner",
+    from gridiron_edge.datasets.loaders import (
+        load_modeling_file,
     )
 
-    df = df.dropna(subset=["actual_total"])
+    df: DataFrame = load_modeling_file(repo)
+
+    if ACTUAL_TOTAL_TARGET not in df.columns:
+        raise ValueError(
+            "Canonical Total modeling data is missing required target "
+            f"column: {ACTUAL_TOTAL_TARGET}"
+        )
+
+    df = df.dropna(subset=[ACTUAL_TOTAL_TARGET]).copy()
+
+    df = df.sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_DATE",
+            "GAME_ID",
+        ],
+        kind="stable",
+        ignore_index=True,
+    )
 
     features: DataFrame = _make_expanded_features(df)
     valid = features.notna().all(axis=1)
-    df = df.loc[valid, :].copy()
-    features = features.loc[valid, :].copy()
+    valid_index = features.index[valid]
 
-    y = df["actual_total"].astype(float)
+    df = df.reindex(valid_index).copy()
+    features = features.reindex(valid_index).copy()
 
-    # Sort by time so TimeSeriesSplit respects temporal ordering.
-    time_order = df[["YEAR", "WEEK_NUM"]].sort_values(["YEAR", "WEEK_NUM"]).index
-    df = df.loc[time_order]
-    features = features.loc[time_order]
-    y = y.loc[time_order]
+    y: Series = df[ACTUAL_TOTAL_TARGET].astype(float)
 
     train_mask = ~df["YEAR"].isin(HOLDOUT_SEASONS)
     hold_mask = df["YEAR"].isin(HOLDOUT_SEASONS)
@@ -122,17 +113,40 @@ def _prepare_total_data(
         y.mean(),
     )
 
-    train_seasons: list[str] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
-    hold_seasons: list[str] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
+    train_seasons: list[str] = sorted(
+        df.loc[
+            train_mask,
+            "YEAR",
+        ]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+    holdout_seasons: list[str] = sorted(
+        df.loc[
+            hold_mask,
+            "YEAR",
+        ]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
 
-    # pyrefly: ignore [bad-return]
+    train_index: Index = df.index[train_mask]
+    holdout_index: Index = df.index[hold_mask]
+
+    x_train: DataFrame = features.reindex(train_index)
+    y_train: Series = y.reindex(train_index)
+    x_holdout: DataFrame = features.reindex(holdout_index)
+    y_holdout: Series = y.reindex(holdout_index)
+
     return (
-        features.loc[train_mask],
-        y.loc[train_mask],
-        features.loc[hold_mask],
-        y.loc[hold_mask],
+        x_train,
+        y_train,
+        x_holdout,
+        y_holdout,
         train_seasons,
-        hold_seasons,
+        holdout_seasons,
     )
 
 
@@ -151,11 +165,11 @@ class TotalTrainer(GamesTrainer):
 
     @property
     def spec(self) -> GameModelSpec:
-        """Return the total-points model specification."""
+        """Return the Total regression model specification."""
         return GameModelSpec(
             name="total",
             task="regression",
-            target_col="actual_total",
+            target_col=ACTUAL_TOTAL_TARGET,
             feature_set={
                 GameModelType.RANDOM_FOREST: FEATURE_SETS["expanded"],
                 GameModelType.XGBOOST: FEATURE_SETS["expanded"],

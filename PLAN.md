@@ -2720,6 +2720,60 @@ Win models train on HOME_WIN and directly produce HOME_WIN_PROB, with
 AWAY_WIN_PROB derived as its complement and no TEAM_A, TEAM_B, HOME_FIELD,
 RESULT, two-row selection, or neutral-site alphabetical orientation.
 
+### Unit 19.2f: Migrate Total Model
+
+#### Completed
+
+Migrated the Total regression target from reconstructed lowercase actual_total
+to canonical ACTUAL_TOTAL.
+
+Total training now reads ACTUAL_TOTAL directly from the persisted canonical
+modeling artifact.
+
+Removed Total-training dependence on the cleaned games dataset, PTS_WINNER,
+PTS_LOSER, and a secondary Game ID target merge.
+
+Preserved tied games because their combined score remains a valid Total target.
+
+Added explicit validation when canonical Total modeling data does not contain
+ACTUAL_TOTAL.
+
+Preserved deterministic chronological training order by Year, Week Number,
+Game Date, and Game ID.
+
+Preserved feature and target alignment while filtering unavailable targets and
+model features.
+
+Preserved configured holdout seasons and sorted training and holdout season
+metadata.
+
+Updated the Total model specification to use the canonical ACTUAL_TOTAL target
+constant.
+
+Added focused tests for persisted-target use, tie retention, unavailable-target
+and unavailable-feature filtering, chronological ordering, holdout splitting,
+missing-target validation, unique fixture columns, and caller immutability.
+
+All scoped quality gates and tests pass.
+
+#### Goal
+
+Train and predict Total points directly from the canonical one-row game
+perspective, independently from Win prediction.
+
+#### Tests
+
+Canonical Total target and training-data preparation tests are complete.
+
+Direct historical and upcoming regression prediction and removal of Win-to-Total
+execution coupling remain.
+
+#### Acceptance
+
+Total models train on ACTUAL_TOTAL and independently produce one model_total per
+canonical game without TEAM_A, TEAM_B, HOME_FIELD, winner/loser score
+reconstruction, two-row selection, or Win predictor side effects.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

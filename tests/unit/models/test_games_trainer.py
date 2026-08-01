@@ -34,6 +34,7 @@ from gridiron_edge.models.game_prediction.base import (
     _n_iter_for,
 )
 from gridiron_edge.models.game_prediction.game_schema import (
+    ACTUAL_TOTAL_TARGET,
     HOME_WIN_TARGET,
 )
 from gridiron_edge.models.game_prediction.total import TotalTrainer
@@ -246,7 +247,7 @@ class TestTotalSpec:
         assert TotalTrainer().spec.task == "regression"
 
     def test_target_col(self) -> None:
-        assert TotalTrainer().spec.target_col == "actual_total"
+        assert TotalTrainer().spec.target_col == ACTUAL_TOTAL_TARGET
 
     def test_excludes_logistic(self) -> None:
         spec = TotalTrainer().spec
