@@ -297,3 +297,18 @@ def test_load_prediction_log_empty_if_no_file(tmp_path: pytest.FixtureValue) -> 
     log = load_prediction_log(repo=tmp_path)
     assert log.empty
     assert list(log.columns) == _ARCHIVE_COLUMNS
+
+
+def test_write_archive_rows_rejects_incomplete_schema(
+    tmp_path: pytest.FixtureValue,
+) -> None:
+    rows = build_archive_rows(
+        _make_predictions(),
+        model_name="win_prob",
+        model_type="random_forest",
+        season="2025-2026",
+        week=1,
+    ).drop(columns=["margin_std"])
+
+    with pytest.raises(ValueError, match="missing columns"):
+        write_archive_rows(rows, repo=tmp_path)

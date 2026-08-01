@@ -157,8 +157,7 @@ def derive_lean(
         under_threshold: P(over) below this → :data:`Lean.UNDER` (default 0.45).
 
     Returns:
-        Series of :class:`Lean` string values (each member's ``.value`` is the
-        underlying string label for backward compat with archived data).
+        Series containing the canonical serialized Lean values.
     """
     lean = Series(Lean.NO_EDGE.value, index=p_over.index, dtype="object")
     lean = lean.where(~(p_over > over_threshold), Lean.OVER.value)
@@ -185,9 +184,7 @@ def derive_confidence_tier(
             :data:`ConfidenceTier.MODERATE` (default 0.08).
 
     Returns:
-        Series of :class:`ConfidenceTier` string values (each member's
-        ``.value`` is the underlying string label for backward compat
-        with archived data).
+        Series containing the canonical serialized ConfidenceTier values.
     """
     distance: Series = (p_over - 0.5).abs()
     tier = Series(ConfidenceTier.LOW.value, index=p_over.index, dtype="object")

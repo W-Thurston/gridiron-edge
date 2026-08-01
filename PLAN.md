@@ -3209,6 +3209,29 @@ and end-to-end prediction lifecycles remain covered.
 
 All scoped quality gates and tests pass.
 
+### Completed
+
+Added strict current-schema validation to prediction archive reads and writes.
+
+Removed read-time synthesis of columns missing from obsolete archive files.
+
+Preserved enrichment values supplied by current prediction outputs and explicit
+null values for unavailable enrichment.
+
+Preserved prediction-log deduplication semantics.
+
+### Goal
+
+Require one current prediction archive schema without development-era migration.
+
+### Tests
+
+Archive unit tests, schema tests, and archive round-trip integration tests pass.
+
+### Acceptance
+
+Missing or unexpected archive columns are rejected, current rows round-trip
+successfully, and supplied enrichment values are preserved.
 #### Goal
 
 Remove the retired p*rspective-oriented feature archite*ture and rebuild all

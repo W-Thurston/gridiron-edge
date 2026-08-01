@@ -86,6 +86,29 @@ _DEDUP_KEY: Final[list[str]] = [
 ]
 
 
+def _require_archive_schema(
+    frame: DataFrame,
+    *,
+    label: str,
+) -> None:
+    """Require the complete current prediction archive schema."""
+    expected = set(_ARCHIVE_COLUMNS)
+    actual = set(frame.columns)
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+
+    problems: list[str] = []
+    if missing:
+        problems.append("missing columns: " + ", ".join(missing))
+    if unexpected:
+        problems.append("unexpected columns: " + ", ".join(unexpected))
+
+    if problems:
+        raise ValueError(
+            f"{label} does not match the current prediction archive schema: " + "; ".join(problems)
+        )
+
+
 def _archive_path(repo: Path | None = None) -> Path:
     """Return the predictions log path, creating the directory if needed.
 
@@ -111,51 +134,50 @@ def build_archive_rows(
     predicted_at: datetime.datetime | None = None,
     is_backfilled: bool = False,
 ) -> pd.DataFrame:
-    """Convert a predictions DataFrame into archive-schema rows.
+    """Convert prediction rows into the current archive schema.
 
-    Args:
-        df_predictions: Output of ``build_predictions_df()`` - contains
-            ``GAME_ID``, ``GAME_DATE``, ``AWAY_TEAM``, ``HOME_TEAM``,
-            ``AWAY_TEAM_ELO``, ``HOME_TEAM_ELO``, ``AWAY_WIN_PROB``,
-            ``HOME_WIN_PROB``.
-        model_name: Model purpose (e.g. ``"win_prob"``).
-        model_type: Model algorithm (e.g. ``"random_forest"``, ``"elo"``).
-        season: NFL season label (e.g. ``"2026-2027"``).
-        week: NFL week number.
-        predicted_at: UTC timestamp of the prediction run. Defaults to now.
-        is_backfilled: ``True`` for historical backfill predictions,
-            ``False`` for live pre-game predictions.
-
-    Returns:
-        DataFrame conforming to ``_ARCHIVE_COLUMNS``.
+    Core prediction fields are required. Supported enrichment fields are
+    preserved when supplied and otherwise stored as explicit null values.
     """
-    ts = predicted_at or datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
+    source = df_predictions.reset_index(drop=True)
+    timestamp = predicted_at or datetime.datetime.now(tz=datetime.UTC).replace(tzinfo=None)
 
     rows = pd.DataFrame(
         {
-            "predicted_at": ts,
+            "predicted_at": timestamp,
             "is_backfilled": is_backfilled,
             "model_name": model_name,
             "model_type": model_type,
             "season": season,
             "week": week,
-            "game_id": df_predictions["GAME_ID"],
-            "game_date": df_predictions.get("GAME_DATE", pd.Series([""] * len(df_predictions))),
-            "away_team": df_predictions["AWAY_TEAM"],
-            "home_team": df_predictions["HOME_TEAM"],
-            "away_elo": df_predictions["AWAY_TEAM_ELO"],
-            "home_elo": df_predictions["HOME_TEAM_ELO"],
-            "away_win_prob": df_predictions["AWAY_WIN_PROB"],
-            "home_win_prob": df_predictions["HOME_WIN_PROB"],
+            "game_id": source["GAME_ID"],
+            "game_date": source.get("GAME_DATE", pd.Series([""] * len(source))),
+            "away_team": source["AWAY_TEAM"],
+            "home_team": source["HOME_TEAM"],
+            "away_elo": source["AWAY_TEAM_ELO"],
+            "home_elo": source["HOME_TEAM_ELO"],
+            "away_win_prob": source["AWAY_WIN_PROB"],
+            "home_win_prob": source["HOME_WIN_PROB"],
         }
     )
 
-    # Enrichment columns - filled by enrich_predictions() at prediction
-    # time. Default to NaN / empty for backward compatibility with callers
-    # that don't enrich before archiving.
-    for col in _ARCHIVE_COLUMNS:
-        if col not in rows.columns:
-            rows[col] = float("nan") if col != "confidence_tier" else ""
+    enrichment_columns = [
+        "model_spread",
+        "model_total",
+        "projected_home_score",
+        "projected_away_score",
+        "margin_std",
+        "win_prob_lo",
+        "win_prob_hi",
+        "confidence_tier",
+    ]
+    for column in enrichment_columns:
+        if column in source.columns:
+            rows[column] = source[column]
+        elif column == "confidence_tier":
+            rows[column] = ""
+        else:
+            rows[column] = float("nan")
 
     return rows.loc[:, _ARCHIVE_COLUMNS].reset_index(drop=True)
 
@@ -165,40 +187,30 @@ def write_archive_rows(
     *,
     repo: Path | None = None,
 ) -> Path:
-    """Write pre-built archive rows to the prediction log.
-
-    Low-level function used by both ``append_to_prediction_log`` (single
-    week) and bulk backfill operations. Deduplicates on
-    ``(game_id, model_name, model_type)`` - the most recently written row
-    wins.
-
-    Args:
-        new_rows: DataFrame already conforming to ``_ARCHIVE_COLUMNS``.
-        repo: Repository root. Defaults to ``get_settings().repo_root``.
-
-    Returns:
-        Absolute path to the archive file.
-    """
-    path: Path = _archive_path(repo)
+    """Write current-schema archive rows to the prediction log."""
+    _require_archive_schema(new_rows, label="New archive rows")
+    normalized_new = new_rows.loc[:, _ARCHIVE_COLUMNS].copy()
+    path = _archive_path(repo)
 
     if path.exists():
         existing: DataFrame = pd.read_parquet(path)
-        mask = existing.set_index(_DEDUP_KEY).index.isin(new_rows.set_index(_DEDUP_KEY).index)
+        _require_archive_schema(existing, label="Existing prediction archive")
+        existing = existing.loc[:, _ARCHIVE_COLUMNS].copy()
+        mask = existing.set_index(_DEDUP_KEY).index.isin(normalized_new.set_index(_DEDUP_KEY).index)
         # pyrefly: ignore [unsupported-operation]
         existing = existing.loc[~mask].copy()
-        combined: DataFrame = pd.concat([existing, new_rows], ignore_index=True)
+        combined: DataFrame = pd.concat([existing, normalized_new], ignore_index=True)
     else:
-        combined = new_rows.copy()
+        combined = normalized_new.copy()
 
     combined = combined.sort_values(
         ["season", "week", "game_id", "model_name", "model_type"]
     ).reset_index(drop=True)
-
     combined.to_parquet(path, index=False)
     logger.info(
-        "Prediction archive: %d total rows (%d new) → %s",
+        "Prediction archive: %d total rows (%d new) -> %s",
         len(combined),
-        len(new_rows),
+        len(normalized_new),
         path,
     )
     return path
@@ -280,11 +292,8 @@ def load_prediction_log(
         return pd.DataFrame(columns=_ARCHIVE_COLUMNS)
 
     df = pd.read_parquet(path)
-
-    # Backward compat: add enrichment columns if archive predates them.
-    for col in _ARCHIVE_COLUMNS:
-        if col not in df.columns:
-            df[col] = float("nan") if col != "confidence_tier" else ""
+    _require_archive_schema(df, label="Prediction archive")
+    df = df.loc[:, _ARCHIVE_COLUMNS].copy()
 
     if season is not None:
         df = df.loc[df["season"] == season]

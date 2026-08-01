@@ -9,10 +9,10 @@ scattered across the codebase:
   games dataset, with two named groupings reflecting two legitimate
   but distinct semantic interpretations (see below).
 
-All three use :class:`enum.StrEnum`, so each member's ``.value`` is the
-underlying string used in archived data. Existing code that compares
-columns against the bare string still works; new code should use the
-enum members for type safety.
+All three use StrEnum. Each member's value is the canonical string
+serialized into DataFrame, archive, and API fields. Internal code should
+use enum members where practical and serialize through value at data
+boundaries.
 
 Roof type groupings
 -------------------
@@ -42,10 +42,7 @@ from enum import StrEnum
 
 
 class Lean(StrEnum):
-    """Prop bet recommendation lean.
-
-    Values match the archived prediction column for backward compat.
-    """
+    """Canonical serialized prop recommendation values."""
 
     OVER = "Over"
     UNDER = "Under"
@@ -53,10 +50,7 @@ class Lean(StrEnum):
 
 
 class ConfidenceTier(StrEnum):
-    """Prediction confidence classification.
-
-    Values match the archived prediction column for backward compat.
-    """
+    """Canonical serialized prediction-confidence values."""
 
     HIGH = "High"
     MODERATE = "Moderate"
