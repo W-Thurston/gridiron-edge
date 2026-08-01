@@ -9,6 +9,7 @@ metadata-subclass discrimination on read.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,7 @@ def _make_game_meta(
         training_seasons=["2020-2021", "2021-2022"],
         holdout_seasons=["2023-2024"],
         parameters={"n_estimators": 100},
-        feature_columns=["HOME_FIELD", "TEAM_A_ELO"],
+        feature_columns=["AWAY_ELO", "HOME_ELO"],
         n_train_rows=5000,
         n_holdout_rows=500,
         metrics={
@@ -128,6 +129,10 @@ class TestSaveLoadGame:
         assert out.model_name == "win_prob"
         assert out.model_type == "random_forest"
         assert out.task == "classification"
+        assert out.feature_columns == [
+            "AWAY_ELO",
+            "HOME_ELO",
+        ]
         assert out.metrics["brier"] == pytest.approx(0.220)
         # Regression-side metrics default to NaN
         assert "mae" not in out.metrics
@@ -136,6 +141,34 @@ class TestSaveLoadGame:
         store = ArtifactStore(tmp_path)
         store.save(metadata=_make_game_meta(), model_obj={"x": 1})
         assert store.is_trained("win_prob", "random_forest") is True
+
+        def test_current_game_metadata_excludes_legacy_fields(
+            self,
+            tmp_path: Path,
+        ) -> None:
+            store = ArtifactStore(tmp_path)
+            store.save(
+                metadata=_make_game_meta(),
+                model_obj={
+                    "x": 1,
+                },
+            )
+
+            metadata_path = (
+                tmp_path / "data" / "models" / "win_prob" / "random_forest" / "metadata.json"
+            )
+            payload = json.loads(metadata_path.read_text())
+
+            assert payload["feature_columns"] == [
+                "AWAY_ELO",
+                "HOME_ELO",
+            ]
+            assert payload["metrics"]["brier"] == pytest.approx(0.220)
+
+            assert "holdout_brier" not in payload
+            assert "holdout_mae" not in payload
+            assert "holdout_rmse" not in payload
+            assert "holdout_r2" not in payload
 
 
 # ---------------------------------------------------------------------------

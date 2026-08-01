@@ -3139,6 +3139,23 @@ complementary, and nonconstant.
 All scoped quality gates, fixture tests, backfill integration tests, and game
 fit-load-predict end-to-end tests pass.
 
+Updated current game-model artifact examples to canonical Away and Home feature
+columns.
+
+Replaced flattened holdout metric construction and assertions with the
+normalized metrics mapping.
+
+Added serialized-metadata coverage proving current artifact writes contain
+canonical feature columns and no flattened legacy metric fields.
+
+Updated the artifact integration test description to remove completed
+workstream terminology and accurately describe persistence behavior.
+
+Retained isolated legacy-read tests until the matching production
+compatibility logic is removed in the migration-guard cleanup.
+
+All scoped quality gates and artifact persistence tests pass.
+
 #### Goal
 
 Remove the retired p*rspective-oriented feature archite*ture and rebuild all

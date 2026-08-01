@@ -1,5 +1,5 @@
 # tests/integration/test_model_train_predict.py
-"""Integration: artifact save → load → predict roundtrip (Workstream 2)."""
+"""Integration tests for game-model artifact persistence."""
 
 from __future__ import annotations
 
@@ -15,18 +15,32 @@ def _make_metadata(
     model_name: str = "win_prob",
     model_type: str = "random_forest",
 ) -> GameModelMetadata:
+    """Return representative canonical game-model metadata."""
     return GameModelMetadata(
         model_name=model_name,
         model_type=model_type,
         task="classification",
-        trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
-        training_seasons=["2020-2021", "2021-2022"],
-        holdout_seasons=["2023-2024"],
-        parameters={"n_estimators": 10, "max_depth": 3},
-        feature_columns=["HOME_FIELD", "TEAM_A_ELO", "TEAM_B_ELO"],
+        trained_at=(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")),
+        training_seasons=[
+            "2020-2021",
+            "2021-2022",
+        ],
+        holdout_seasons=[
+            "2023-2024",
+        ],
+        parameters={
+            "n_estimators": 10,
+            "max_depth": 3,
+        },
+        feature_columns=[
+            "AWAY_ELO",
+            "HOME_ELO",
+        ],
         n_train_rows=100,
         n_holdout_rows=20,
-        holdout_brier=0.230,
+        metrics={
+            "brier": 0.230,
+        },
     )
 
 
@@ -53,8 +67,15 @@ class TestArtifactRoundtrip:
         assert loaded_md.model_name == "win_prob"
         assert loaded_md.model_type == "random_forest"
         assert loaded_md.task == "classification"
-        assert loaded_md.holdout_brier == 0.230
-        assert loaded_md.feature_columns == ["HOME_FIELD", "TEAM_A_ELO", "TEAM_B_ELO"]
+        assert loaded_md.metrics["brier"] == 0.230
+        assert loaded_md.feature_columns == [
+            "AWAY_ELO",
+            "HOME_ELO",
+        ]
+        assert not hasattr(
+            loaded_md,
+            "holdout_brier",
+        )
         assert loaded_md.training_seasons == ["2020-2021", "2021-2022"]
         assert loaded_md.holdout_seasons == ["2023-2024"]
 
@@ -74,10 +95,15 @@ class TestArtifactRoundtrip:
                 training_seasons=["2023-2024"],
                 holdout_seasons=["2024-2025"],
                 parameters={},
-                feature_columns=["HOME_FIELD"],
+                feature_columns=[
+                    "AWAY_ELO",
+                    "HOME_ELO",
+                ],
                 n_train_rows=10,
                 n_holdout_rows=2,
-                holdout_brier=0.25,
+                metrics={
+                    "brier": 0.25,
+                },
             )
             store.save(metadata=md, model_obj={"pair": f"{model_name}_{model_type}"})
 
@@ -99,3 +125,10 @@ class TestArtifactRoundtrip:
         assert data["model_type"] == "random_forest"
         assert data["task"] == "classification"
         assert isinstance(data["feature_columns"], list)
+        assert data["feature_columns"] == [
+            "AWAY_ELO",
+            "HOME_ELO",
+        ]
+
+        assert data["metrics"]["brier"] == 0.230
+        assert "holdout_brier" not in data
