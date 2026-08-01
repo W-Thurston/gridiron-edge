@@ -2810,56 +2810,45 @@ predictor side effects.
 
 Migrated alternate EPA-window rebuilding to the canonical Away/Home schema.
 
-Alternate EPA windows now delegate to HomeAwayEpaFeature so standard feature
-generation and tuning share one implementation.
+Alternate EPA windows delegate to HomeAwayEpaFeature so standard feature
+generation and tuning share one implementation for rolling values, lookahead
+prevention, source validation, missing-data behavior, and Away/Home joins.
 
-Validated canonical walk-forward classification and regression dispatch.
+Preserved the four-game fast path and replaced persisted four-game values when
+another tuning window is requested.
+
+Validated canonical walk-forward Win and Total dispatch.
 
 Walk-forward evaluation trains from the canonical modeling artifact, filters
-incomplete target-season rows, and passes one canonical row per game to the Win
-and Total prediction helpers.
+incomplete target-season rows, and predicts one canonical row per game.
 
-Updated walk-forward sizing documentation for one canonical row per game.
+Updated walk-forward row-sufficiency documentation for one row per game.
 
-Migrated Win calibration refresh to canonical Actual Margin.
+Migrated calibration refresh to canonical Actual Margin.
 
-Calibration now joins archived forecasts directly to the canonical modeling
-artifact by Game ID and consumes Home-oriented Actual Margin without
-reconstructing score orientation.
+Calibration joins archived forecasts directly to the canonical modeling
+artifact by Game ID and consumes signed Home-oriented Actual Margin without
+winner/loser score reconstruction.
 
-Loaded canonical actuals once per calibration stage rather than once per model
-pair.
+Added validation for missing Actual Margin and duplicate canonical Game IDs.
 
-Added explicit failures for a missing Actual Margin target and duplicate
-canonical Game IDs.
+Migrated player situational Home and Away cohorts to direct Home Team and Away
+Team identity.
 
-Removed calibration dependence on WINNER, LOSER, WIN_OR_TIE, PTS_WINNER,
-PTS_LOSER, cleaned-game score joins, and row-wise Home-margin reconstruction.
+Neutral-site situational splits preserve their designated schedule identity,
+and unmapped player teams are classified as neither Home nor Away.
 
-Verified that canonical Home Win Probability and signed Actual Margin values
-are passed unchanged to sigma and margin-standard-deviation calibration.
+Migrated Elo tuning team-population construction to canonical Away Team and
+Home Team identity.
 
-Migrated player situational Home and Away cohorts to canonical team identity.
+WIN_OR_TIE remains only as the completed-game filter for Elo tuning and is not
+used for orientation.
 
-Situational splits now compare each player's team directly with Home Team and
-Away Team rather than reconstructing venue orientation from Winner, Loser, and
-Game Location.
+Updated evaluation manifest examples to canonical Away/Home identity and Elo
+features.
 
-Neutral-site games preserve their designated Away and Home schedule identities.
-
-An unmapped player team is classified as neither Home nor Away rather than
-silently defaulting to Away.
-
-Added duplicate Game ID validation before joining canonical game context to
-player-game logs.
-
-Preserved season, favored, underdog, indoor, outdoor, and last-four cohort
-behavior.
-
-Verified caller inputs remain unmodified and production source contains no
-Winner, Loser, or Game Location dependency.
-
-All scoped quality gates and tests pass.
+Removed migrated execution-path dependence on TEAM_A, TEAM_B, HOME_FIELD,
+RESULT, winner/loser score reconstruction, and lowercase actual_total.
 
 #### Goal
 
@@ -2868,10 +2857,23 @@ retraining to the canonical one-row game contract.
 
 #### Tests
 
-Covered canonical alternate EPA-window rebuilding, walk-forward Win and Total
-dispatch, incomplete-feature filtering, training cutoff arguments, canonical
-calibration inputs, negative Home margins, missing targets, duplicate Game IDs,
-calibration persistence, and retired-orientation exclusion.
+Covered alternate EPA windows, lookahead prevention, missing EPA sources,
+canonical target preservation, one-row identity, and input immutability.
+
+Covered walk-forward Win and Total dispatch, positive-class orientation,
+incomplete-feature filtering, cutoff arguments, and empty target seasons.
+
+Covered canonical calibration margins, negative Home margins, missing targets,
+duplicate Game IDs, and persisted calibration values.
+
+Covered canonical situational Home and Away cohorts, neutral-site identity,
+unknown team handling, duplicate game metadata, all existing cohort outputs,
+and input immutability.
+
+Covered canonical Elo tuning team populations, unplayed-game filtering, missing
+source columns, empty identities, season grouping, and input immutability.
+
+Covered canonical evaluation manifest examples and generic manifest validation.
 
 All scoped quality gates and tests pass.
 
@@ -2879,7 +2881,7 @@ All scoped quality gates and tests pass.
 
 Tuning, evaluation, calibration, and retraining operate on canonical one-row
 game data without TEAM_A, TEAM_B, HOME_FIELD, RESULT, winner/loser score
-reconstruction, or legacy probability orientation.
+reconstruction, lowercase actual_total, or legacy probability orientation.
 
 ---
 

@@ -17,13 +17,15 @@ from gridiron_edge.features.manifest import (
 
 
 def _make_df() -> pd.DataFrame:
+    """Return a minimal canonical modeling frame."""
     return pd.DataFrame(
         {
             "GAME_ID": ["g1", "g2"],
-            "TEAM_A": ["KC", "PHI"],
-            "TEAM_B": ["LAC", "DAL"],
-            "HOME_FIELD": [1, 0],
-            "TEAM_A_ELO": [1520.0, 1490.0],
+            "AWAY_TEAM": ["KC", "PHI"],
+            "HOME_TEAM": ["LAC", "DAL"],
+            "AWAY_ELO": [1520.0, 1490.0],
+            "HOME_ELO": [1480.0, 1510.0],
+            "HOME_WIN": [0, 1],
         }
     )
 
@@ -37,15 +39,21 @@ def test_write_and_read_manifest(tmp_path: pytest.FixtureValue) -> None:
     df = _make_df()
     write_manifest(
         df,
-        feature_names=["home_field", "team_elo"],
-        feature_columns=["HOME_FIELD", "TEAM_A_ELO"],
+        feature_names=["home_away_elo"],
+        feature_columns=[
+            "AWAY_ELO",
+            "HOME_ELO",
+        ],
         modeling_dir=tmp_path,
     )
     manifest = read_manifest(tmp_path)
 
     assert manifest["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert manifest["feature_names"] == ["home_field", "team_elo"]
-    assert manifest["feature_columns"] == ["HOME_FIELD", "TEAM_A_ELO"]
+    assert manifest["feature_names"] == ["home_away_elo"]
+    assert manifest["feature_columns"] == [
+        "AWAY_ELO",
+        "HOME_ELO",
+    ]
     assert manifest["all_columns"] == list(df.columns)
     assert manifest["row_count"] == 2
     assert "created_at" in manifest
@@ -59,8 +67,11 @@ def test_read_manifest_raises_if_missing(tmp_path: pytest.FixtureValue) -> None:
 def test_write_manifest_creates_json_file(tmp_path: pytest.FixtureValue) -> None:
     write_manifest(
         _make_df(),
-        feature_names=["home_field"],
-        feature_columns=["HOME_FIELD"],
+        feature_names=["home_away_elo"],
+        feature_columns=[
+            "AWAY_ELO",
+            "HOME_ELO",
+        ],
         modeling_dir=tmp_path,
     )
     manifest_file = tmp_path / "modeling_file_manifest.json"
@@ -79,7 +90,16 @@ def test_write_manifest_creates_json_file(tmp_path: pytest.FixtureValue) -> None
 def test_validate_columns_passes_when_all_present() -> None:
     df = _make_df()
     # Should not raise
-    validate_columns(df, expected_columns=["GAME_ID", "HOME_FIELD"])
+    validate_columns(
+        df,
+        expected_columns=[
+            "GAME_ID",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "AWAY_ELO",
+            "HOME_ELO",
+        ],
+    )
 
 
 def test_validate_columns_raises_on_missing() -> None:
@@ -131,3 +151,16 @@ def test_validate_schema_version_raises_on_retrain_hint() -> None:
     manifest = {"schema_version": 99}
     with pytest.raises(ValueError, match="Retrain"):
         validate_schema_version(manifest, required_version=1)
+
+
+def test_manifest_examples_exclude_retired_orientation() -> None:
+    df = _make_df()
+
+    retired = {
+        "TEAM_A",
+        "TEAM_B",
+        "HOME_FIELD",
+        "RESULT",
+    }
+
+    assert not (retired & set(df.columns))
