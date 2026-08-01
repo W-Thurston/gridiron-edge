@@ -1719,8 +1719,6 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2f    Migrate Total model
-19.2g    Migrate tuning, evaluation, and retraining
 19.2h    Remove retired orientation and rebuild artifacts
 19.1b    Implement truthful availability inspection
 19.3     Execute policy-selected models
@@ -2741,20 +2739,34 @@ ACTUAL_TOTAL.
 Preserved deterministic chronological training order by Year, Week Number,
 Game Date, and Game ID.
 
-Preserved feature and target alignment while filtering unavailable targets and
-model features.
+Preserved feature and target alignment while filtering rows with unavailable
+targets or model features.
 
-Preserved configured holdout seasons and sorted training and holdout season
-metadata.
+Migrated historical Total prediction assembly to one canonical input row and
+one canonical output row per game.
 
-Updated the Total model specification to use the canonical ACTUAL_TOTAL target
-constant.
+Migrated upcoming Total prediction to the canonical feature sequence.
 
-Added focused tests for persisted-target use, tie retention, unavailable-target
-and unavailable-feature filtering, chronological ordering, holdout splitting,
-missing-target validation, unique fixture columns, and caller immutability.
+Canonical Away Team and Home Team identities now pass directly to historical
+and upcoming Total prediction outputs, including neutral-site games.
 
-All scoped quality gates and tests pass.
+Removed regression prediction dependence on TEAM_A, TEAM_B, HOME_FIELD,
+two-row grouping, perspective selection, and neutral-site alphabetical
+orientation.
+
+Added validation for duplicate Game IDs and prediction-count mismatches.
+
+Removed opportunistic Total execution from historical and upcoming Win
+prediction.
+
+Removed the default Total model setting and the internal Win-to-Total prediction
+helper.
+
+Win predictors now produce only Win probabilities. Total predictors now produce
+only model_total. Weekly-product orchestration remains responsible for selecting
+and combining independent forecast events.
+
+Preserved Total model registration under total_random_forest and total_xgboost.
 
 #### Goal
 
@@ -2763,16 +2775,89 @@ perspective, independently from Win prediction.
 
 #### Tests
 
-Canonical Total target and training-data preparation tests are complete.
+Covered canonical ACTUAL_TOTAL target selection, persisted-target use, tie
+retention, unavailable-target and unavailable-feature filtering, chronological
+preparation, holdout splitting, missing-target validation, unique fixture
+columns, and caller immutability.
 
-Direct historical and upcoming regression prediction and removal of Win-to-Total
-execution coupling remain.
+Covered direct historical Total prediction cardinality, chronological
+alignment, canonical Away and Home identity, neutral-site identity
+preservation, output schema, duplicate Game ID rejection, prediction-count
+validation, input immutability, and exclusion of retired orientation fields.
+
+Covered the upcoming Total lifecycle, canonical feature-sequence execution,
+incomplete-row filtering, model execution, model identity, and independent
+model_total output.
+
+Verified that predictor production code contains no TEAM_A, TEAM_B, or
+HOME_FIELD references.
+
+Verified that no Win-to-Total execution helper or default Total model setting
+remains.
+
+All scoped quality gates and tests pass.
 
 #### Acceptance
 
 Total models train on ACTUAL_TOTAL and independently produce one model_total per
 canonical game without TEAM_A, TEAM_B, HOME_FIELD, winner/loser score
-reconstruction, two-row selection, or Win predictor side effects.
+reconstruction, two-row selection, neutral-site orientation recovery, or Win
+predictor side effects.
+
+### Unit 19.2g: Migrate Tuning, Evaluation, and Retraining
+
+#### Completed
+
+Migrated alternate EPA-window rebuilding to the canonical Away/Home schema.
+
+Alternate EPA windows now delegate to HomeAwayEpaFeature so standard feature
+generation and tuning share one implementation.
+
+Preserved canonical targets, one row per Game ID, lookahead prevention, explicit
+unavailable states, and caller immutability across alternate-window rebuilding.
+
+Validated canonical walk-forward classification and regression dispatch.
+
+Walk-forward evaluation now trains from the canonical modeling artifact, filters
+incomplete target-season feature rows, and passes one canonical row per game to
+the Win and Total prediction helpers.
+
+Classification walk-forward output uses the HOME_WIN positive-class
+probability, which the canonical prediction helper maps directly to Home Win
+Probability and complements to Away Win Probability.
+
+Regression walk-forward output passes one Total prediction per canonical game.
+
+Updated walk-forward data-sufficiency documentation for one canonical row per
+game rather than the retired doubled perspective-row count.
+
+Corrected walk-forward documentation so it describes the actual per-cutoff
+training behavior without claiming fixed hyperparameters.
+
+Removed duplicated evaluation tests for the retired two-row regression helper.
+
+Verified that production walk-forward code contains no TEAM_A, TEAM_B,
+HOME_FIELD, or RESULT dependency.
+
+#### Goal
+
+Migrate alternate-window tuning, walk-forward evaluation, calibration, and full
+retraining to the canonical one-row game contract.
+
+#### Tests
+
+Covered canonical alternate EPA-window rebuilding, walk-forward Win and Total
+dispatch, positive-class orientation, incomplete-feature filtering, training
+cutoff arguments, empty target seasons, canonical row identity, and
+retired-orientation exclusion.
+
+All scoped quality gates and tests pass.
+
+#### Acceptance
+
+Tuning, evaluation, calibration, and retraining operate on canonical one-row
+game data without TEAM_A, TEAM_B, HOME_FIELD, RESULT, winner/loser score
+reconstruction, or legacy probability orientation.
 
 ---
 

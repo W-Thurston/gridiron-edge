@@ -10,9 +10,6 @@ Covers the static surface of the predictor classes plus the module-level
     - is_trained() delegates to ArtifactStore with the (name, type) pair.
     - predict_historical() / predict_upcoming() return empty DataFrames
       when artifacts are missing (graceful fallback).
-    - _maybe_predict_totals() returns None when:
-        * called from a total predictor (no recursion).
-        * the configured total model is not trained.
     - build_game_predictions() constructs the standard archive schema.
 
 End-to-end fit-and-predict smoke tests against real modeling data are
@@ -30,6 +27,7 @@ from unittest.mock import (
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 import pytest
 
 from gridiron_edge.features.pipeline import (
@@ -178,12 +176,6 @@ class TestGamesPredictorAccessors:
         assert TotalRandomForestPredictor()._task() == "regression"
         assert TotalXGBoostPredictor()._task() == "regression"
 
-    def test_default_total_model_type(self) -> None:
-        # Default is random_forest for all win_prob variants.
-        assert WinProbLogisticPredictor.default_total_model_type == "random_forest"
-        assert WinProbRandomForestPredictor.default_total_model_type == "random_forest"
-        assert WinProbXGBoostPredictor.default_total_model_type == "random_forest"
-
 
 # ---------------------------------------------------------------------------
 # is_trained delegation
@@ -237,29 +229,6 @@ class TestPredictGracefulFallback:
         out = pred.predict_upcoming(empty_schedule, repo=tmp_path)
         assert isinstance(out, pd.DataFrame)
         assert out.empty
-
-
-# ---------------------------------------------------------------------------
-# _maybe_predict_totals
-# ---------------------------------------------------------------------------
-
-
-class TestMaybePredictTotals:
-    """``_maybe_predict_totals`` skips recursion and missing artifacts."""
-
-    def test_total_predictor_returns_none(self, tmp_path: Path) -> None:
-        """A total predictor never tries to predict its own totals."""
-        pred = TotalRandomForestPredictor()
-        empty_df = pd.DataFrame()
-        result = pred._maybe_predict_totals(empty_df, repo=tmp_path)
-        assert result is None
-
-    def test_win_prob_returns_none_when_total_not_trained(self, tmp_path: Path) -> None:
-        """Win-prob silently omits totals when the total model is missing."""
-        pred = WinProbRandomForestPredictor()
-        empty_df = pd.DataFrame()
-        result = pred._maybe_predict_totals(empty_df, repo=tmp_path)
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -437,30 +406,6 @@ class TestBuildGamePredictions:
         assert g1["away_elo"] == pytest.approx(1520.0)
         assert g1["home_elo"] == pytest.approx(1480.0)
 
-    def test_totals_are_aligned_after_sorting(self) -> None:
-        df = self._make_modeling_df()
-        totals = pd.Series(
-            [48.0, 44.0],
-            index=df.index,
-        )
-
-        result = build_game_predictions(
-            df,
-            np.array([0.40, 0.55]),
-            totals=totals,
-        )
-
-        assert result["game_id"].tolist() == ["G1", "G2"]
-        assert result["model_total"].tolist() == pytest.approx([44.0, 48.0])
-
-    def test_totals_are_optional(self) -> None:
-        result = build_game_predictions(
-            self._make_modeling_df(),
-            np.array([0.40, 0.55]),
-        )
-
-        assert "model_total" not in result.columns
-
     def test_required_archive_columns_are_present(self) -> None:
         result = build_game_predictions(
             self._make_modeling_df(),
@@ -507,17 +452,6 @@ class TestBuildGamePredictions:
             build_game_predictions(
                 self._make_modeling_df(),
                 np.array([0.40]),
-            )
-
-    def test_total_count_must_match_rows(self) -> None:
-        with pytest.raises(
-            ValueError,
-            match=("Total prediction count must match canonical game rows"),
-        ):
-            build_game_predictions(
-                self._make_modeling_df(),
-                np.array([0.40, 0.55]),
-                totals=pd.Series([44.0]),
             )
 
     def test_input_is_not_mutated(self) -> None:
@@ -630,24 +564,17 @@ class TestUpcomingClassificationLifecycle:
 
         predictor = WinProbRandomForestPredictor()
 
-        with (
-            patch.object(
-                predictor,
-                "_feature_fn",
-                return_value=(
-                    lambda frame: frame.loc[
-                        :,
-                        ["MODEL_FEATURE"],
-                    ].copy()
-                ),
-            ),
-            patch.object(
-                predictor,
-                "_maybe_predict_totals",
-                return_value=None,
+        with patch.object(
+            predictor,
+            "_feature_fn",
+            return_value=(
+                lambda frame: frame.loc[
+                    :,
+                    ["MODEL_FEATURE"],
+                ].copy()
             ),
         ):
-            result = predictor.predict_upcoming(
+            result: DataFrame = predictor.predict_upcoming(
                 self._schedule(),
                 repo=tmp_path,
             )
@@ -680,14 +607,96 @@ class TestUpcomingClassificationLifecycle:
         assert enriched_input["HOME_WIN_PROB"].iloc[0] == pytest.approx(0.65)
         assert enriched_input["AWAY_WIN_PROB"].iloc[0] == pytest.approx(0.35)
 
-    @patch("gridiron_edge.models.game_prediction.predictor.enrich_predictions")
+
+class TestBuildRegressionPredictions:
+    """Tests for direct canonical Total prediction rows."""
+
+    def _canonical_rows(self) -> pd.DataFrame:
+        """Return canonical games in non-chronological order."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": ["G2", "G1"],
+                "YEAR": ["2025-2026", "2025-2026"],
+                "WEEK_NUM": [2, 1],
+                "GAME_DATE": [
+                    "2025-09-14",
+                    "2025-09-07",
+                ],
+                "AWAY_TEAM": [
+                    "Bills",
+                    "Chiefs",
+                ],
+                "HOME_TEAM": [
+                    "Dolphins",
+                    "Ravens",
+                ],
+                "IS_NEUTRAL_SITE": [0, 1],
+            }
+        )
+
+
+class TestUpcomingRegressionLifecycle:
+    """Tests for independent canonical upcoming Total prediction."""
+
+    def _schedule(self) -> pd.DataFrame:
+        """Return two canonical upcoming games."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": [
+                    "G_COMPLETE",
+                    "G_INCOMPLETE",
+                ],
+                "YEAR": [
+                    "2025-2026",
+                    "2025-2026",
+                ],
+                "WEEK_NUM": [1, 1],
+                "AWAY_TEAM": [
+                    "Bills",
+                    "Chiefs",
+                ],
+                "HOME_TEAM": [
+                    "Dolphins",
+                    "Ravens",
+                ],
+                "IS_NEUTRAL_SITE": [0, 0],
+            }
+        )
+
+    def _enriched_schedule(self) -> pd.DataFrame:
+        """Return canonical feature output with one incomplete row."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": [
+                    "G_COMPLETE",
+                    "G_INCOMPLETE",
+                ],
+                "YEAR": [
+                    "2025-2026",
+                    "2025-2026",
+                ],
+                "WEEK_NUM": [1, 1],
+                "AWAY_TEAM": [
+                    "Bills",
+                    "Chiefs",
+                ],
+                "HOME_TEAM": [
+                    "Dolphins",
+                    "Ravens",
+                ],
+                "MODEL_FEATURE": [
+                    1.0,
+                    float("nan"),
+                ],
+            }
+        )
+
     @patch("gridiron_edge.models.game_prediction.predictor.run_features")
     @patch("gridiron_edge.models.game_prediction.predictor.ArtifactStore")
-    def test_upcoming_totals_remain_index_aligned(
+    def test_total_prediction_runs_independently(
         self,
         store_cls: MagicMock,
         run_features_mock: MagicMock,
-        enrich_mock: MagicMock,
         tmp_path: Path,
     ) -> None:
         store = store_cls.return_value
@@ -695,38 +704,21 @@ class TestUpcomingClassificationLifecycle:
         store.load_scaler.return_value = None
 
         model = MagicMock()
-        model.predict_proba.return_value = np.array([[0.40, 0.60]])
+        model.predict.return_value = np.array([47.5])
         store.load.return_value = model
 
-        enriched = self._enriched_schedule()
-        enriched.index = [10, 20]
-        run_features_mock.return_value = enriched
+        run_features_mock.return_value = self._enriched_schedule()
 
-        enrich_mock.side_effect = lambda frame, **_kwargs: frame
+        predictor = TotalRandomForestPredictor()
 
-        predictor = WinProbRandomForestPredictor()
-
-        totals = pd.Series(
-            [47.5],
-            index=[10],
-            dtype=float,
-        )
-
-        with (
-            patch.object(
-                predictor,
-                "_feature_fn",
-                return_value=(
-                    lambda frame: frame.loc[
-                        :,
-                        ["MODEL_FEATURE"],
-                    ].copy()
-                ),
-            ),
-            patch.object(
-                predictor,
-                "_maybe_predict_totals",
-                return_value=totals,
+        with patch.object(
+            predictor,
+            "_feature_fn",
+            return_value=(
+                lambda frame: frame.loc[
+                    :,
+                    ["MODEL_FEATURE"],
+                ].copy()
             ),
         ):
             result = predictor.predict_upcoming(
@@ -735,5 +727,17 @@ class TestUpcomingClassificationLifecycle:
             )
 
         assert len(result) == 1
-        assert result["GAME_ID"].iloc[0] == ("G_COMPLETE")
-        assert result["model_total"].iloc[0] == (pytest.approx(47.5))
+
+        row = result.iloc[0]
+
+        assert row["GAME_ID"] == "G_COMPLETE"
+        assert row["AWAY_TEAM"] == "Bills"
+        assert row["HOME_TEAM"] == "Dolphins"
+        assert row["model_total"] == pytest.approx(47.5)
+        assert row["model_name"] == "total"
+        assert row["model_type"] == ("random_forest")
+
+        call_kwargs = run_features_mock.call_args.kwargs
+        assert call_kwargs["feature_names"] == (CANONICAL_FEATURES)
+
+        model.predict.assert_called_once()

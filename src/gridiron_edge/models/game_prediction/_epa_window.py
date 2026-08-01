@@ -1,39 +1,38 @@
 # src/gridiron_edge/models/game_prediction/_epa_window.py
 
-"""EPA rolling window hyperparameter infrastructure for tree-based models.
+"""EPA rolling-window hyperparameter infrastructure.
 
-The standard modeling file uses a fixed 4-game rolling window for EPA
-features. This module provides the infrastructure to search over different
-window sizes as a hyperparameter during training.
+The persisted canonical modeling artifact uses a four-game EPA window.
+This module supports alternate tuning windows by delegating EPA
+recalculation to ``HomeAwayEpaFeature`` so standard feature generation
+and hyperparameter search share one implementation.
 
 Public API
 ----------
-_EPA_RAW_COLS       list[str]       - EPA column names from epa_by_game.parquet
-_EPA_COL_MAP        dict[str, str]  - lowercase → uppercase EPA column mapping
-_EPA_WINDOW_OPTIONS list[int]       - window sizes searched during tuning
-WindowData          NamedTuple      - cached train/holdout split per window
-_rebuild_features_with_window       - recompute EPA features with given window
-_get_cached_window_data             - retrieve/populate per-window cache entry
+_EPA_RAW_COLS       list[str]       EPA source columns.
+_EPA_COL_MAP        dict[str, str]  Source-to-model suffix mapping.
+_EPA_WINDOW_OPTIONS list[int]       Window sizes searched during tuning.
+WindowData          NamedTuple      Cached train/holdout data per window.
+_rebuild_features_with_window       Rebuild canonical EPA for a window.
+_get_cached_window_data             Retrieve or populate the cache.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-import contextlib
-import logging
-from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import Final, NamedTuple
 
 import pandas as pd
 from pandas import DataFrame, Series
 
-from gridiron_edge.features.team.epa import EPA_COLS as _EPA_COLS_RAW
-
-if TYPE_CHECKING:
-    pass
-
-logger: Logger = logging.getLogger(__name__)
+from gridiron_edge.datasets.accessor import DatasetAccessor
+from gridiron_edge.features.team.epa import (
+    EPA_COLS as _EPA_COLS_RAW,
+)
+from gridiron_edge.features.team.epa import (
+    HomeAwayEpaFeature,
+)
 
 # ---------------------------------------------------------------------------
 # EPA column definitions
@@ -83,90 +82,40 @@ def _rebuild_features_with_window(
     window: int,
     repo: Path,
 ) -> pd.DataFrame:
-    """Recompute rolling EPA features with a configurable window size.
+    """Recompute canonical Away/Home EPA using another rolling window.
 
-    The standard modeling file uses a fixed 4-game rolling window. This
-    function loads the raw game-level EPA data and recomputes rolling
-    averages with a different window, then splices the result back into
-    the modeling DataFrame. Called during hyperparameter search when
-    epa_window is a tunable parameter.
-
-    Fast path: if window == 4, returns df unchanged (no disk read needed).
+    The persisted modeling artifact contains the standard four-game EPA
+    values. Window four therefore returns the input unchanged. Other
+    windows replace the canonical EPA columns by delegating to the same
+    feature implementation used by the active modeling pipeline.
 
     Args:
-        df: Full modeling DataFrame from load_modeling_file.
-        window: Rolling window size (number of prior games to average).
-        repo: Repository root (for loading epa_by_game.parquet).
+        df: Canonical one-row-per-game modeling DataFrame.
+        window: Number of prior games included in each rolling average.
+        repo: Repository root used to load game-level EPA data.
 
     Returns:
-        Modeling DataFrame with TEAM_A_* and TEAM_B_* EPA columns
-        recomputed using the requested window. NaN rows from incomplete
-        windows are retained; callers apply the NaN mask after feature
-        engineering.
-    """
-    from gridiron_edge.datasets.loaders import load_epa_by_game
+        A new DataFrame with canonical Away and Home EPA columns for the
+        requested window. The window-four fast path returns ``df``
+        unchanged.
 
+    Raises:
+        ValueError: If ``window`` is less than one or the canonical EPA
+            source or target identities are invalid.
+    """
     if window == 4:
         return df
 
-    epa_raw: pd.DataFrame = load_epa_by_game(repo)
-    if epa_raw.empty:
-        logger.warning("epa_by_game.parquet not found - returning df unchanged")
-        return df
+    feature_columns = list(HomeAwayEpaFeature.spec.produces)
+    source = df.drop(
+        columns=feature_columns,
+        errors="ignore",
+    ).copy()
 
-    epa_sorted: pd.DataFrame = epa_raw.sort_values(["season", "week", "team"]).copy()
-
-    # Compute rolling mean per team with shift(1) to prevent lookahead
-    rolled_parts: list[pd.DataFrame] = []
-    for _team, grp in epa_sorted.groupby("team", sort=False):
-        grp_sorted: DataFrame = grp.sort_values(["season", "week"]).copy()
-        for col in _EPA_RAW_COLS:
-            grp_sorted[f"{col}_roll"] = (
-                grp_sorted[col].shift(1).rolling(window=window, min_periods=1).mean()
-            )
-        rolled_parts.append(grp_sorted)
-
-    rolled: pd.DataFrame = pd.concat(rolled_parts, ignore_index=True)
-
-    roll_cols: list[str] = [f"{c}_roll" for c in _EPA_RAW_COLS]
-    lookup: DataFrame = rolled.loc[:, ["season", "week", "team", *roll_cols]].copy()
-
-    # Build season int → YEAR string mapping from the modeling file itself
-    # (epa_by_game uses int seasons like 2024; modeling file uses "2024-2025")
-    year_to_season: dict[str, int] = {}
-    for year_str in df["YEAR"].unique():
-        with contextlib.suppress(ValueError, IndexError):
-            year_to_season[year_str] = int(str(year_str).split("-")[0])
-
-    lookup["YEAR"] = lookup["season"].map({v: k for k, v in year_to_season.items()})
-    lookup = lookup.dropna(subset=["YEAR"])
-
-    # Drop existing EPA columns before merging updated ones
-    team_a_epa_cols: list[str] = [f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
-    team_b_epa_cols: list[str] = [f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]
-    df = df.copy().drop(columns=team_a_epa_cols + team_b_epa_cols, errors="ignore")
-
-    # Merge TEAM_A EPA
-    team_a_merge: DataFrame = lookup.rename(
-        columns={
-            "team": "TEAM_A",
-            "week": "WEEK_NUM",
-            **{f"{c}_roll": f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
-        }
-    ).loc[:, ["TEAM_A", "YEAR", "WEEK_NUM", *[f"TEAM_A_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
-    df = df.merge(team_a_merge, on=["TEAM_A", "YEAR", "WEEK_NUM"], how="left")
-
-    # Merge TEAM_B EPA
-    team_b_merge: DataFrame = lookup.rename(
-        columns={
-            "team": "TEAM_B",
-            "week": "WEEK_NUM",
-            **{f"{c}_roll": f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS},
-        }
-    ).loc[:, ["TEAM_B", "YEAR", "WEEK_NUM", *[f"TEAM_B_{_EPA_COL_MAP[c]}" for c in _EPA_RAW_COLS]]]
-    df = df.merge(team_b_merge, on=["TEAM_B", "YEAR", "WEEK_NUM"], how="left")
-
-    return df
+    return HomeAwayEpaFeature(window=window).compute(
+        df=source,
+        datasets=DatasetAccessor(repo),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,9 @@ import pandas as pd
 from pandas import DataFrame
 import pytest
 
+from gridiron_edge.features.team.epa import (
+    HomeAwayEpaFeature,
+)
 from gridiron_edge.models.game_prediction._epa_window import (
     _rebuild_features_with_window,
 )
@@ -32,16 +35,11 @@ from gridiron_edge.models.game_prediction._epa_window import (
 
 @pytest.fixture()
 def synthetic_modeling_df() -> pd.DataFrame:
-    """Minimal modeling DataFrame resembling the real schema.
-
-    Covers seasons straddling the holdout boundary so _prepare_data has
-    both train and holdout rows. EPA columns use the standard
-    TEAM_A_*/TEAM_B_* names with window=4 values pre-filled.
-    """
+    """Return canonical modeling rows with window-four EPA values."""
     rng: Generator = np.random.default_rng(0)
-    n = 400
+    row_count = 400
 
-    seasons: list[str] = (
+    seasons = (
         ["2006-2007"] * 80
         + ["2007-2008"] * 80
         + ["2008-2009"] * 80
@@ -49,50 +47,74 @@ def synthetic_modeling_df() -> pd.DataFrame:
         + ["2024-2025"] * 80
     )
 
-    epa_suffixes: list[str] = [
-        "OFF_EPA_PER_PLAY",
-        "OFF_PASS_EPA",
-        "OFF_RUSH_EPA",
-        "OFF_SUCCESS_RATE",
-        "OFF_PASS_SUCCESS_RATE",
-        "OFF_RUSH_SUCCESS_RATE",
-        "OFF_EXPLOSIVE_RATE",
-        "OFF_THIRD_DOWN_PCT",
-        "OFF_REDZONE_TD_PCT",
-        "OFF_TURNOVER_RATE",
-        "OFF_SACK_RATE",
-        "DEF_EPA_PER_PLAY",
-        "DEF_PASS_EPA",
-        "DEF_RUSH_EPA",
-        "DEF_SUCCESS_RATE",
-        "DEF_PASS_SUCCESS_RATE",
-        "DEF_RUSH_SUCCESS_RATE",
-        "DEF_EXPLOSIVE_RATE",
-        "DEF_THIRD_DOWN_PCT",
-        "DEF_REDZONE_TD_PCT",
-        "DEF_TURNOVER_RATE",
-        "DEF_SACK_RATE",
-    ]
-
-    df = pd.DataFrame(
+    frame = pd.DataFrame(
         {
-            "GAME_ID": [f"game_{i}" for i in range(n)],
-            "TEAM_A": rng.choice(["KC", "SF", "BUF", "PHI"], n).tolist(),
-            "TEAM_B": rng.choice(["DAL", "NYG", "MIA", "LAR"], n).tolist(),
+            "GAME_ID": [f"game_{index}" for index in range(row_count)],
+            "AWAY_TEAM": rng.choice(
+                ["KC", "SF", "BUF", "PHI"],
+                row_count,
+            ).tolist(),
+            "HOME_TEAM": rng.choice(
+                ["DAL", "NYG", "MIA", "LAR"],
+                row_count,
+            ).tolist(),
             "YEAR": seasons,
-            "WEEK_NUM": rng.integers(1, 18, n).tolist(),
-            "RESULT": rng.choice([0, 1], n).tolist(),
-            "HOME_FIELD": rng.choice([0, 1], n).tolist(),
-            "TEAM_A_ELO": rng.uniform(1400, 1600, n).tolist(),
-            "TEAM_B_ELO": rng.uniform(1400, 1600, n).tolist(),
+            "WEEK_NUM": rng.integers(
+                1,
+                19,
+                row_count,
+            ).tolist(),
+            "GAME_DATE": [f"{season[:4]}-09-01" for season in seasons],
+            "HOME_WIN": rng.choice(
+                [0, 1],
+                row_count,
+            ).tolist(),
+            "ACTUAL_MARGIN": rng.uniform(
+                -30.0,
+                30.0,
+                row_count,
+            ).tolist(),
+            "ACTUAL_TOTAL": rng.uniform(
+                20.0,
+                70.0,
+                row_count,
+            ).tolist(),
+            "AWAY_ELO": rng.uniform(
+                1400.0,
+                1600.0,
+                row_count,
+            ).tolist(),
+            "HOME_ELO": rng.uniform(
+                1400.0,
+                1600.0,
+                row_count,
+            ).tolist(),
         }
     )
 
-    for suffix in epa_suffixes:
-        df[f"TEAM_A_{suffix}"] = rng.uniform(-0.2, 0.3, n)
-        df[f"TEAM_B_{suffix}"] = rng.uniform(-0.2, 0.3, n)
+    feature_values = pd.DataFrame(
+        {
+            output: rng.uniform(
+                -0.2,
+                0.3,
+                row_count,
+            )
+            for output in (HomeAwayEpaFeature.spec.produces)
+        }
+    )
 
-    return df
+    frame = pd.concat(
+        [
+            frame,
+            feature_values,
+        ],
+        axis=1,
+    )
+
+    assert frame.columns.is_unique
+    assert frame["GAME_ID"].is_unique
+
+    return frame
 
 
 @pytest.fixture()
@@ -184,30 +206,24 @@ class TestRebuildFeaturesWithWindow:
         result: DataFrame = _rebuild_features_with_window(
             synthetic_modeling_df, window=2, repo=mini_repo
         )
-        assert not result["TEAM_A_OFF_EPA_PER_PLAY"].equals(
-            synthetic_modeling_df["TEAM_A_OFF_EPA_PER_PLAY"]
+        assert not result["AWAY_OFF_EPA_PER_PLAY"].equals(
+            synthetic_modeling_df["AWAY_OFF_EPA_PER_PLAY"]
         )
 
-    def test_output_has_all_expected_epa_columns(
-        self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
+    def test_output_has_all_canonical_epa_columns(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
     ) -> None:
-        """All EPA columns (per team) must be present in the output."""
-        result: DataFrame = _rebuild_features_with_window(
-            synthetic_modeling_df, window=3, repo=mini_repo
+        result = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=3,
+            repo=mini_repo,
         )
-        expected_suffixes: list[str] = [
-            "OFF_EPA_PER_PLAY",
-            "OFF_PASS_EPA",
-            "OFF_RUSH_EPA",
-            "OFF_SUCCESS_RATE",
-            "DEF_EPA_PER_PLAY",
-            "DEF_PASS_EPA",
-            "DEF_RUSH_EPA",
-            "DEF_SUCCESS_RATE",
-        ]
-        for suffix in expected_suffixes:
-            assert f"TEAM_A_{suffix}" in result.columns
-            assert f"TEAM_B_{suffix}" in result.columns
+
+        for column in HomeAwayEpaFeature.spec.produces:
+            assert column in result.columns
+            assert result.columns.tolist().count(column) == 1
 
     def test_output_row_count_matches_input(
         self, synthetic_modeling_df: pd.DataFrame, mini_repo: Path
@@ -230,16 +246,143 @@ class TestRebuildFeaturesWithWindow:
             (result["WEEK_NUM"] == 1) & (result["YEAR"] == first_season)
         ]
         if len(week1_first_season) > 0:
-            assert week1_first_season["TEAM_A_OFF_EPA_PER_PLAY"].isna().all(), (
+            assert week1_first_season["AWAY_OFF_EPA_PER_PLAY"].isna().all(), (
+                "First-season week-1 rows should have NaN EPA - rolling window requires prior games"
+            )
+            assert week1_first_season["HOME_OFF_EPA_PER_PLAY"].isna().all(), (
                 "First-season week-1 rows should have NaN EPA - rolling window requires prior games"
             )
 
-    def test_empty_epa_returns_df_unchanged(
-        self, synthetic_modeling_df: pd.DataFrame, tmp_path: Path
+    def test_empty_epa_source_replaces_values_with_nulls(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        tmp_path: Path,
     ) -> None:
-        """If epa_by_game.parquet is missing, return the original DataFrame."""
-        (tmp_path / "data" / "cleaned").mkdir(parents=True)
-        result: DataFrame = _rebuild_features_with_window(
-            synthetic_modeling_df, window=2, repo=tmp_path
+        """Unavailable EPA must not reuse the persisted window-four values."""
+        cleaned: Path = tmp_path / "data" / "cleaned"
+        cleaned.mkdir(parents=True)
+
+        pd.DataFrame().to_parquet(
+            cleaned / "epa_by_game.parquet",
+            index=False,
         )
-        pd.testing.assert_frame_equal(result, synthetic_modeling_df)
+
+        result: DataFrame = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=2,
+            repo=tmp_path,
+        )
+
+        assert len(result) == len(synthetic_modeling_df)
+
+        for column in HomeAwayEpaFeature.spec.produces:
+            assert column in result.columns
+            assert result[column].isna().all()
+
+    def test_rebuild_preserves_game_and_target_columns(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
+    ) -> None:
+        result = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=2,
+            repo=mini_repo,
+        )
+
+        preserved = [
+            "GAME_ID",
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_DATE",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "HOME_WIN",
+            "ACTUAL_MARGIN",
+            "ACTUAL_TOTAL",
+        ]
+
+        pd.testing.assert_frame_equal(
+            result.loc[:, preserved],
+            synthetic_modeling_df.loc[
+                :,
+                preserved,
+            ],
+        )
+
+    def test_rebuild_preserves_one_row_per_game(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
+    ) -> None:
+        result = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=6,
+            repo=mini_repo,
+        )
+
+        assert len(result) == len(synthetic_modeling_df)
+        assert result["GAME_ID"].is_unique
+
+    def test_rebuild_does_not_mutate_input(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
+    ) -> None:
+        expected = synthetic_modeling_df.copy(deep=True)
+
+        _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=2,
+            repo=mini_repo,
+        )
+
+        pd.testing.assert_frame_equal(
+            synthetic_modeling_df,
+            expected,
+        )
+
+    def test_rebuilt_frame_excludes_retired_orientation(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
+    ) -> None:
+        result = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=3,
+            repo=mini_repo,
+        )
+
+        retired = {
+            "TEAM_A",
+            "TEAM_B",
+            "HOME_FIELD",
+            "RESULT",
+        }
+
+        assert not (retired & set(result.columns))
+
+    def test_helper_source_excludes_retired_orientation(
+        self,
+    ) -> None:
+        import inspect
+
+        source = inspect.getsource(_rebuild_features_with_window)
+
+        assert "TEAM_A" not in source
+        assert "TEAM_B" not in source
+        assert "HOME_FIELD" not in source
+        assert "RESULT" not in source
+
+    def test_window_4_returns_same_object(
+        self,
+        synthetic_modeling_df: pd.DataFrame,
+        mini_repo: Path,
+    ) -> None:
+        result = _rebuild_features_with_window(
+            synthetic_modeling_df,
+            window=4,
+            repo=mini_repo,
+        )
+
+        assert result is synthetic_modeling_df

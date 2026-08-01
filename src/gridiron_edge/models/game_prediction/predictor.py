@@ -33,7 +33,6 @@ from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.loaders import load_modeling_file
 from gridiron_edge.features.pipeline import (
     CANONICAL_FEATURES,
-    FEATURES,
 )
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
@@ -51,7 +50,8 @@ from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
 from gridiron_edge.models.registry import ModelRegistry
 
 if TYPE_CHECKING:
-    from pandas import DataFrame, Series
+    from pandas import DataFrame
+
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -90,8 +90,6 @@ def get_known_model_names() -> tuple[str, ...]:
 def build_game_predictions(
     df: pd.DataFrame,
     home_win_probs: np.ndarray,
-    *,
-    totals: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Map canonical Home-win probabilities to one row per game.
 
@@ -99,15 +97,14 @@ def build_game_predictions(
         df: Canonical one-row-per-game modeling DataFrame.
         home_win_probs: Probability that the designated Home team wins,
             aligned one-to-one with ``df``.
-        totals: Optional predicted game totals aligned with ``df``.
 
     Returns:
         Canonical game prediction rows with Home-win probability stored
         directly and Away-win probability derived as its complement.
 
     Raises:
-        ValueError: If prediction lengths do not match the input rows or
-            canonical game identities are duplicated.
+        ValueError: If prediction count does not match the input rows or
+            canonical Game IDs are duplicated.
     """
     if len(home_win_probs) != len(df):
         raise ValueError("Home-win probability count must match canonical game rows.")
@@ -115,14 +112,8 @@ def build_game_predictions(
     if df["GAME_ID"].duplicated().any():
         raise ValueError("Canonical prediction input contains duplicate game IDs.")
 
-    if totals is not None and len(totals) != len(df):
-        raise ValueError("Total prediction count must match canonical game rows.")
-
-    work: DataFrame = df.copy()
+    work = df.copy()
     work["_HOME_WIN_PROB"] = home_win_probs
-
-    if totals is not None:
-        work["_MODEL_TOTAL"] = totals.reindex(work.index).to_numpy(dtype=float)
 
     work = work.sort_values(
         [
@@ -135,7 +126,7 @@ def build_game_predictions(
 
     home_probabilities = work["_HOME_WIN_PROB"].to_numpy(dtype=float)
 
-    result = pd.DataFrame(
+    return pd.DataFrame(
         {
             "season": work["YEAR"].values,
             "week": work["WEEK_NUM"].astype(int).values,
@@ -169,83 +160,61 @@ def build_game_predictions(
             "away_win_prob": (1.0 - home_probabilities),
             "home_win_prob": home_probabilities,
         }
-    )
-
-    if "_MODEL_TOTAL" in work.columns:
-        result["model_total"] = work["_MODEL_TOTAL"].to_numpy(dtype=float)
-
-    return result.reset_index(drop=True)
+    ).reset_index(drop=True)
 
 
 def build_regression_predictions(
     df: pd.DataFrame,
-    preds: np.ndarray,
+    predictions: np.ndarray,
 ) -> pd.DataFrame:
-    """Map regression outputs onto canonical game prediction rows.
-
-    Standard and neutral-site games use the same deterministic team
-    orientation as classification predictions.
+    """Map Total predictions directly to canonical game rows.
 
     Args:
-        df: Modeling DataFrame containing game, team, season, week, and
-            home-field identity.
-        preds: Predicted game totals aligned with ``df``.
+        df: Canonical one-row-per-game modeling DataFrame.
+        predictions: Predicted combined scores aligned one-to-one with
+            the input rows.
 
     Returns:
-        Canonical game-level total prediction rows with one row per game.
+        One Total prediction row per canonical game.
+
+    Raises:
+        ValueError: If prediction count does not match the input rows or
+            canonical Game IDs are duplicated.
     """
+    if len(predictions) != len(df):
+        raise ValueError("Total prediction count must match canonical game rows.")
+
+    if df["GAME_ID"].duplicated().any():
+        raise ValueError("Canonical Total prediction input contains duplicate game IDs.")
+
     work: DataFrame = df.copy()
-    work["_total"] = preds
+    work["_MODEL_TOTAL"] = predictions
 
-    has_home: pd.Series = work.groupby("GAME_ID")["HOME_FIELD"].transform("max") == 1
-
-    standard_rows: DataFrame | Series = work.loc[has_home & (work["HOME_FIELD"] == 0)]
-
-    neutral_rows: DataFrame = (
-        work.loc[~has_home]
-        # pyrefly: ignore [no-matching-overload]
-        .sort_values(
-            ["GAME_ID", "TEAM_A"],
-            kind="stable",
-        )
-        .drop_duplicates(
-            subset=["GAME_ID"],
-            keep="first",
-        )
-    )
-
-    away: DataFrame = (
-        pd.concat(
-            [standard_rows, neutral_rows],
-            ignore_index=False,
-        )
-        .drop_duplicates(
-            subset=["GAME_ID"],
-            keep="first",
-        )
-        .sort_values(
-            ["YEAR", "WEEK_NUM", "GAME_ID"],
-        )
+    work = work.sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_ID",
+        ],
+        kind="stable",
     )
 
     return pd.DataFrame(
         {
-            "season": away["YEAR"].values,
-            "week": away["WEEK_NUM"].astype(int).values,
-            "game_id": away["GAME_ID"].values,
-            "game_date": away.get(
+            "season": work["YEAR"].values,
+            "week": work["WEEK_NUM"].astype(int).values,
+            "game_id": work["GAME_ID"].values,
+            "game_date": work.get(
                 "GAME_DATE",
                 pd.Series(
-                    [None] * len(away),
-                    index=away.index,
+                    [None] * len(work),
+                    index=work.index,
                     dtype=object,
                 ),
             ).values,
-            "away_team": away["TEAM_A"].values,
-            "home_team": away["TEAM_B"].values,
-            "model_total": away["_total"].to_numpy(
-                dtype=float,
-            ),
+            "away_team": work["AWAY_TEAM"].values,
+            "home_team": work["HOME_TEAM"].values,
+            "model_total": work["_MODEL_TOTAL"].to_numpy(dtype=float),
         }
     ).reset_index(drop=True)
 
@@ -267,20 +236,12 @@ class GamesPredictor:
     / ``predict_upcoming``) and :class:`Trainable` (via ``train`` /
     ``is_trained``). Dispatch on classification vs regression happens
     internally based on the trainer's :attr:`GameModelSpec.task`.
-
-    For win_prob predictions, totals are attached via an internal call to
-    the predictor identified by :attr:`default_total_model_type`. If the
-    total model is not yet trained, totals are silently omitted.
     """
 
     # Set by subclasses.
     model_name: ClassVar[str] = ""
     model_type: ClassVar[str] = ""
     spec: ClassVar[ModelSpec]
-
-    #: Which total model to attach to win_prob predictions. Subclasses for
-    #: ``win_prob`` predictors can override; total predictors ignore this.
-    default_total_model_type: ClassVar[str] = "random_forest"
 
     # ------------------------------------------------------------------
     # Trainer / spec accessors
@@ -415,14 +376,9 @@ class GamesPredictor:
         x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
         probs = pipeline.predict_proba(x_feat_arr)[:, 1]
 
-        # Attach totals via the configured total model. Best-effort -
-        # totals are silently omitted if the total model isn't trained.
-        totals: Series | None = self._maybe_predict_totals(df_valid, repo=repo)
-
         result: DataFrame = build_game_predictions(
             df_valid,
             probs,
-            totals=totals,
         )
 
         return enrich_predictions(
@@ -496,14 +452,6 @@ class GamesPredictor:
             float("nan"),
         )
 
-        # Attach total point estimates if available.
-        totals: Series | None = self._maybe_predict_totals(
-            upcoming_valid,
-            repo=repo,
-        )
-        if totals is not None:
-            result["model_total"] = totals.reindex(upcoming_valid.index).to_numpy(dtype=float)
-
         result = enrich_predictions(
             result,
             model_name=self.model_name,
@@ -569,7 +517,9 @@ class GamesPredictor:
         datasets = DatasetAccessor(repo=repo)
 
         upcoming_df: DataFrame = run_features(
-            df=schedule, feature_names=FEATURES, datasets=datasets
+            df=schedule,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
         )
         feature_fn = self._feature_fn()
         features = feature_fn(upcoming_df)
@@ -588,53 +538,6 @@ class GamesPredictor:
         result["model_name"] = self.model_name
         result["model_type"] = self.model_type
         return result.reset_index(drop=True)
-
-    # ------------------------------------------------------------------
-    # Internal helper: attach totals for win_prob predictions
-    # ------------------------------------------------------------------
-
-    def _maybe_predict_totals(self, df: pd.DataFrame, *, repo: Path) -> Series | None:
-        """Return predicted totals for *df* using ``default_total_model_type``.
-
-        Returns ``None`` when:
-            - This predictor is itself a total predictor (no recursion).
-            - The configured total model artifact is not trained.
-
-        Best-effort - any other failure is logged at DEBUG and treated
-        as ``None`` so callers can attach totals optionally.
-        """
-        if self.model_name == "total":
-            return None
-
-        store = ArtifactStore(repo)
-        total_model_name: str = "total"
-        total_model_type: str = self.default_total_model_type
-
-        if not store.is_trained(total_model_name, total_model_type):
-            logger.debug(
-                "_maybe_predict_totals: (%s, %s) not trained - totals omitted.",
-                total_model_name,
-                total_model_type,
-            )
-            return None
-
-        # Build the total model's features for this DataFrame.
-        total_spec: GameModelSpec = TotalTrainer().spec
-        total_feature_fn = total_spec.feature_set[GameModelType(total_model_type)].feature_fn
-
-        features = total_feature_fn(df)
-        valid = features.notna().all(axis=1)
-
-        model = store.load(total_model_name, total_model_type)
-        scaler = store.load_scaler(total_model_name, total_model_type)
-        preds: Series[float] = pd.Series(np.nan, index=df.index, dtype=float)
-        if valid.sum() > 0:
-            features_valid = features.loc[valid]
-            features_arr = (
-                scaler.transform(features_valid) if scaler is not None else features_valid.values
-            )
-            preds.loc[valid] = model.predict(features_arr)
-        return preds
 
 
 # ---------------------------------------------------------------------------

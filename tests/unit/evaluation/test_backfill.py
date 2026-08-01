@@ -3,16 +3,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from gridiron_edge.evaluation.backfill import (
     _CURRENT_MODEL_DEFAULTS,
     BackfillMode,
     _resolve_mode,
+    _walk_forward_one_season,
 )
-from gridiron_edge.models.game_prediction.predictor import (
-    build_regression_predictions,
+from gridiron_edge.models.game_prediction.base import (
+    GameModelType,
 )
 
 
@@ -52,102 +58,231 @@ class TestCurrentModelDefaults:
         assert ("total", "xgboost") not in _CURRENT_MODEL_DEFAULTS
 
 
-class TestBuildRegressionPredictions:
-    def test_one_row_per_game(self) -> None:
-        """Should produce one prediction row per unique game (away perspective)."""
-        import numpy as np
+class TestWalkForwardOneSeason:
+    """Tests canonical walk-forward prediction dispatch."""
 
-        df = pd.DataFrame(
+    def _canonical_rows(self) -> pd.DataFrame:
+        """Return canonical rows across training and target seasons."""
+        return pd.DataFrame(
             {
-                "GAME_ID": ["g1", "g1", "g2", "g2"],
-                "TEAM_A": ["A1", "A2", "A3", "A4"],
-                "TEAM_B": ["B1", "B2", "B3", "B4"],
-                "YEAR": ["2024-2025"] * 4,
-                "WEEK_NUM": [1, 1, 1, 1],
-                "HOME_FIELD": [0, 1, 0, 1],
-                "GAME_DATE": [
-                    "2024-09-05",
-                    "2024-09-05",
-                    "2024-09-06",
-                    "2024-09-06",
+                "GAME_ID": [
+                    "TRAIN_GAME",
+                    "TARGET_COMPLETE",
+                    "TARGET_INCOMPLETE",
                 ],
-            }
-        )
-        preds = np.array([45.0, 45.0, 48.0, 48.0])
-        result = build_regression_predictions(
-            df,
-            preds,
-        )
-
-        assert len(result) == 2  # one row per game
-        assert result["model_total"].iloc[0] == 45.0
-        assert result["model_total"].iloc[1] == 48.0
-
-    def test_required_columns_present(self) -> None:
-        import numpy as np
-
-        df = pd.DataFrame(
-            {
-                "GAME_ID": ["g1", "g1"],
-                "TEAM_A": ["A1", "A2"],
-                "TEAM_B": ["B1", "B2"],
-                "YEAR": ["2024-2025", "2024-2025"],
-                "WEEK_NUM": [1, 1],
-                "HOME_FIELD": [0, 1],
-                "GAME_DATE": [
-                    "2024-09-05",
-                    "2024-09-05",
-                ],
-            }
-        )
-        preds = np.array([45.0, 45.0])
-        result = build_regression_predictions(
-            df,
-            preds,
-        )
-
-        expected_cols: set[str] = {
-            "season",
-            "week",
-            "game_id",
-            "game_date",
-            "away_team",
-            "home_team",
-            "model_total",
-        }
-        assert expected_cols <= set(result.columns)
-        assert "predicted_at" not in result.columns
-        assert "is_backfilled" not in result.columns
-        assert "model_name" not in result.columns
-        assert "model_type" not in result.columns
-
-    def test_preserves_game_identity(self) -> None:
-        df = pd.DataFrame(
-            {
-                "GAME_ID": ["g1", "g1"],
-                "GAME_DATE": [
-                    "2024-09-05",
-                    "2024-09-05",
-                ],
-                "TEAM_A": ["Chiefs", "Ravens"],
-                "TEAM_B": ["Ravens", "Chiefs"],
                 "YEAR": [
+                    "2023-2024",
                     "2024-2025",
                     "2024-2025",
                 ],
-                "WEEK_NUM": [1, 1],
-                "HOME_FIELD": [0, 1],
+                "WEEK_NUM": [1, 1, 2],
+                "GAME_DATE": [
+                    "2023-09-07",
+                    "2024-09-05",
+                    "2024-09-12",
+                ],
+                "AWAY_TEAM": [
+                    "Away Train",
+                    "Away Complete",
+                    "Away Incomplete",
+                ],
+                "HOME_TEAM": [
+                    "Home Train",
+                    "Home Complete",
+                    "Home Incomplete",
+                ],
+                "HOME_WIN": [1, 0, 1],
+                "ACTUAL_TOTAL": [
+                    41.0,
+                    47.0,
+                    44.0,
+                ],
+                "MODEL_FEATURE": [
+                    1.0,
+                    2.0,
+                    float("nan"),
+                ],
             }
         )
 
-        result = build_regression_predictions(
-            df,
-            np.array([45.0, 45.0]),
+    def _trainer(
+        self,
+        *,
+        task: str,
+    ) -> MagicMock:
+        """Return a controlled walk-forward trainer."""
+        trainer = MagicMock()
+
+        def feature_fn(frame):
+            return frame.loc[
+                :,
+                ["MODEL_FEATURE"],
+            ].copy()
+
+        trainer.spec = SimpleNamespace(
+            task=task,
+            feature_set={GameModelType.RANDOM_FOREST: (SimpleNamespace(feature_fn=feature_fn))},
         )
 
-        assert result["game_date"].iloc[0] == "2024-09-05"
-        assert result["away_team"].iloc[0] == "Chiefs"
-        assert result["home_team"].iloc[0] == "Ravens"
+        trainer.train.return_value = SimpleNamespace(
+            parameters={
+                "cv_brier": 0.21,
+                "cv_mae": 7.5,
+            }
+        )
+        trainer._scaler = None
+
+        return trainer
+
+    @patch("gridiron_edge.evaluation.backfill.build_game_predictions")
+    def test_classification_dispatches_canonical_rows(
+        self,
+        build_predictions_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        trainer = self._trainer(task="classification")
+        trainer._model.predict_proba.return_value = np.array(
+            [
+                [0.35, 0.65],
+            ]
+        )
+
+        expected = pd.DataFrame(
+            {
+                "game_id": ["TARGET_COMPLETE"],
+                "home_win_prob": [0.65],
+                "away_win_prob": [0.35],
+            }
+        )
+        build_predictions_mock.return_value = expected
+
+        result = _walk_forward_one_season(
+            trainer=trainer,
+            gm_type=(GameModelType.RANDOM_FOREST),
+            df=self._canonical_rows(),
+            target_season="2024-2025",
+            train_through_season="2023-2024",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        pd.testing.assert_frame_equal(
+            result,
+            expected,
+        )
+
+        trainer.train.assert_called_once()
+
+        train_kwargs = trainer.train.call_args.kwargs
+        assert train_kwargs["train_through_season"] == "2023-2024"
+        assert train_kwargs["persist"] is False
+
+        predicted_frame = build_predictions_mock.call_args.args[0]
+        probabilities = build_predictions_mock.call_args.args[1]
+
+        assert predicted_frame["GAME_ID"].tolist() == ["TARGET_COMPLETE"]
+        assert probabilities.tolist() == (pytest.approx([0.65]))
+
+    @patch("gridiron_edge.evaluation.backfill.build_regression_predictions")
+    def test_regression_dispatches_canonical_rows(
+        self,
+        build_predictions_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        trainer = self._trainer(task="regression")
+        trainer._model.predict.return_value = np.array([47.5])
+
+        expected = pd.DataFrame(
+            {
+                "game_id": ["TARGET_COMPLETE"],
+                "model_total": [47.5],
+            }
+        )
+        build_predictions_mock.return_value = expected
+
+        result = _walk_forward_one_season(
+            trainer=trainer,
+            gm_type=(GameModelType.RANDOM_FOREST),
+            df=self._canonical_rows(),
+            target_season="2024-2025",
+            train_through_season="2023-2024",
+            model_name="total",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        pd.testing.assert_frame_equal(
+            result,
+            expected,
+        )
+
+        predicted_frame = build_predictions_mock.call_args.args[0]
+        predictions = build_predictions_mock.call_args.args[1]
+
+        assert predicted_frame["GAME_ID"].tolist() == ["TARGET_COMPLETE"]
+        assert predictions.tolist() == (pytest.approx([47.5]))
+
+    def test_empty_target_season_returns_empty(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        trainer = self._trainer(task="classification")
+
+        result = _walk_forward_one_season(
+            trainer=trainer,
+            gm_type=(GameModelType.RANDOM_FOREST),
+            df=self._canonical_rows(),
+            target_season="2025-2026",
+            train_through_season="2024-2025",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        assert result.empty
+
+    def test_incomplete_target_features_are_excluded(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        trainer = self._trainer(task="classification")
+        trainer._model.predict_proba.return_value = np.array(
+            [
+                [0.35, 0.65],
+            ]
+        )
+
+        with patch(
+            "gridiron_edge.evaluation.backfill.build_game_predictions",
+            return_value=pd.DataFrame({"game_id": ["TARGET_COMPLETE"]}),
+        ) as build_predictions_mock:
+            _walk_forward_one_season(
+                trainer=trainer,
+                gm_type=(GameModelType.RANDOM_FOREST),
+                df=self._canonical_rows(),
+                target_season="2024-2025",
+                train_through_season=("2023-2024"),
+                model_name="win_prob",
+                model_type="random_forest",
+                repo=tmp_path,
+            )
+
+        valid_frame = build_predictions_mock.call_args.args[0]
+
+        assert valid_frame["GAME_ID"].tolist() == ["TARGET_COMPLETE"]
+
+    def test_walk_forward_rows_exclude_retired_orientation(
+        self,
+    ) -> None:
+        retired = {
+            "TEAM_A",
+            "TEAM_B",
+            "HOME_FIELD",
+            "RESULT",
+        }
+
+        assert not (retired & set(self._canonical_rows().columns))
 
 
 class TestBackfillModeType:
