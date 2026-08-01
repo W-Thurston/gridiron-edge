@@ -2813,31 +2813,31 @@ Migrated alternate EPA-window rebuilding to the canonical Away/Home schema.
 Alternate EPA windows now delegate to HomeAwayEpaFeature so standard feature
 generation and tuning share one implementation.
 
-Preserved canonical targets, one row per Game ID, lookahead prevention, explicit
-unavailable states, and caller immutability across alternate-window rebuilding.
-
 Validated canonical walk-forward classification and regression dispatch.
 
-Walk-forward evaluation now trains from the canonical modeling artifact, filters
-incomplete target-season feature rows, and passes one canonical row per game to
-the Win and Total prediction helpers.
+Walk-forward evaluation trains from the canonical modeling artifact, filters
+incomplete target-season rows, and passes one canonical row per game to the Win
+and Total prediction helpers.
 
-Classification walk-forward output uses the HOME_WIN positive-class
-probability, which the canonical prediction helper maps directly to Home Win
-Probability and complements to Away Win Probability.
+Updated walk-forward sizing documentation for one canonical row per game.
 
-Regression walk-forward output passes one Total prediction per canonical game.
+Migrated Win calibration refresh to canonical Actual Margin.
 
-Updated walk-forward data-sufficiency documentation for one canonical row per
-game rather than the retired doubled perspective-row count.
+Calibration now joins archived forecasts directly to the canonical modeling
+artifact by Game ID and consumes Home-oriented Actual Margin without
+reconstructing score orientation.
 
-Corrected walk-forward documentation so it describes the actual per-cutoff
-training behavior without claiming fixed hyperparameters.
+Loaded canonical actuals once per calibration stage rather than once per model
+pair.
 
-Removed duplicated evaluation tests for the retired two-row regression helper.
+Added explicit failures for a missing Actual Margin target and duplicate
+canonical Game IDs.
 
-Verified that production walk-forward code contains no TEAM_A, TEAM_B,
-HOME_FIELD, or RESULT dependency.
+Removed calibration dependence on WINNER, LOSER, WIN_OR_TIE, PTS_WINNER,
+PTS_LOSER, cleaned-game score joins, and row-wise Home-margin reconstruction.
+
+Verified that canonical Home Win Probability and signed Actual Margin values
+are passed unchanged to sigma and margin-standard-deviation calibration.
 
 #### Goal
 
@@ -2847,9 +2847,9 @@ retraining to the canonical one-row game contract.
 #### Tests
 
 Covered canonical alternate EPA-window rebuilding, walk-forward Win and Total
-dispatch, positive-class orientation, incomplete-feature filtering, training
-cutoff arguments, empty target seasons, canonical row identity, and
-retired-orientation exclusion.
+dispatch, incomplete-feature filtering, training cutoff arguments, canonical
+calibration inputs, negative Home margins, missing targets, duplicate Game IDs,
+calibration persistence, and retired-orientation exclusion.
 
 All scoped quality gates and tests pass.
 

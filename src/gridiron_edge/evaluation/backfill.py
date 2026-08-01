@@ -8,9 +8,8 @@ Two modes:
   season N, retrain the model on data strictly through season N-1 using
   fixed hyperparameters from the current spec, then predict season N.
   Intermediate models are discarded after their predictions are written.
-  Honest with respect to model weights; mild HP-leakage is an accepted
-  tradeoff against the substantially longer runtime of also walk-forward
-  searching hyperparameters per season.
+  Each cutoff uses only modeling rows available through the preceding
+  season.
 
 - **Current-model** (default for analytic models like elo): use the
   currently-trained predictor for all historical games. Honest for
@@ -98,10 +97,11 @@ _CURRENT_MODEL_DEFAULTS: frozenset[tuple[str, str]] = frozenset(
 # clear ``min_cv_train_rows``, otherwise the earliest cutoff will raise
 # and the whole retrain fails.
 #
-# ~272 games/season x 2 rows (home/away perspective) ≈ 544 rows/season.
-# At 3 seasons, training pool ≈ 1,632 rows; largest fold (5/6) ≈ 1,360.
-# The walk-forward override of ``min_cv_train_rows=200`` clears that with
-# ample margin.
+# ~272 games/season x 1 canonical row per game ≈ 272 rows/season.
+# At 3 seasons, the training pool is approximately 816 rows and the
+# largest TimeSeriesSplit training fold is approximately 680 rows.
+# The walk-forward override of ``min_cv_train_rows=200`` allows multiple
+# folds to survive at the earliest supported cutoff.
 #
 # ---------------------------------------------------------------------------
 
@@ -303,7 +303,7 @@ def _backfill_walk_forward(
     """Walk-forward retraining: for each season N, train on data through N-1, then predict season N.
 
     Each iteration retrains the model with ``train_through_season=N-1``
-    using fixed hyperparameters from the current spec. The intermediate
+    and predicts only the following target season. The intermediate
     model is discarded after writing its season-N predictions.
 
     Args:

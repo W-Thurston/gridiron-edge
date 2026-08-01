@@ -34,6 +34,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from pandas import DataFrame
+
 # pyrefly: ignore [missing-import]
 import typer
 
@@ -59,6 +61,9 @@ from gridiron_edge.models.catalog import (
 )
 from gridiron_edge.models.catalog import (
     PROP_STAT_FAMILIES as _PROP_STAT_FAMILIES,
+)
+from gridiron_edge.models.game_prediction.game_schema import (
+    ACTUAL_MARGIN_TARGET,
 )
 
 # ---------------------------------------------------------------------------
@@ -277,15 +282,57 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
     refreshed: list[str] = []
     skipped: list[str] = []
 
-    repo = get_settings().repo_root
+    repo: Path = get_settings().repo_root
+
+    modeling: DataFrame = loaders.load_modeling_file(repo)
+
+    if ACTUAL_MARGIN_TARGET not in modeling.columns:
+        return StageResult(
+            success=False,
+            detail=(f"canonical modeling artifact is missing {ACTUAL_MARGIN_TARGET}"),
+        )
+
+    actuals = (
+        modeling.loc[
+            :,
+            [
+                "GAME_ID",
+                ACTUAL_MARGIN_TARGET,
+            ],
+        ]
+        .dropna(
+            subset=[
+                "GAME_ID",
+                ACTUAL_MARGIN_TARGET,
+            ]
+        )
+        .copy()
+    )
+
+    if actuals["GAME_ID"].duplicated().any():
+        duplicate_ids: list = sorted(
+            actuals.loc[
+                actuals["GAME_ID"].duplicated(keep=False),
+                "GAME_ID",
+            ]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+        return StageResult(
+            success=False,
+            detail=(
+                "canonical modeling artifact contains "
+                "duplicate game IDs: " + ", ".join(duplicate_ids)
+            ),
+        )
 
     for pair in pairs:
         if pair.model_name != "win_prob":
-            # Sigma calibration is only meaningful for win-prob models.
             skipped.append(f"{pair.composite_key} (not win_prob)")
             continue
 
-        archive = load_prediction_log(
+        archive: DataFrame = load_prediction_log(
             model_name=pair.model_name,
             model_type=pair.model_type,
         )
@@ -293,57 +340,35 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
             skipped.append(f"{pair.composite_key} (empty archive)")
             continue
 
-        # Compute margins from the archive against actuals.
-        games = loaders.load_games(repo)
-        merged = archive.merge(
-            games[["GAME_ID", "WINNER", "LOSER", "WIN_OR_TIE"]],
+        merged: DataFrame = archive.merge(
+            actuals,
             left_on="game_id",
             right_on="GAME_ID",
             how="inner",
+            validate="many_to_one",
         )
+
         if merged.empty:
             skipped.append(f"{pair.composite_key} (no game matches)")
             continue
 
-        # Actual margin: home_score - away_score (proxy via WIN_OR_TIE)
-        # Since we don't have scores in this join, derive home_win
-        # from WIN_OR_TIE and use it as a rough margin proxy.
-        # For full calibration, a richer join with actual scores is
-        # needed; we skip if scores aren't in the games table.
-        if "PTS_WINNER" not in games.columns:
-            skipped.append(f"{pair.composite_key} (no scores in games table)")
-            continue
-
-        # Real flow: get home/away scores and compute margin.
-        merged_with_scores = archive.merge(
-            games[["GAME_ID", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"]],
-            left_on="game_id",
-            right_on="GAME_ID",
-            how="inner",
-        )
-        # Home margin = (home_score - away_score).
-        # WINNER is the actual winner; if winner == home_team, margin > 0.
-        merged_with_scores["home_margin"] = merged_with_scores.apply(
-            lambda r: (
-                r["PTS_WINNER"] - r["PTS_LOSER"]
-                if r["WINNER"] == r["home_team"]
-                else r["PTS_LOSER"] - r["PTS_WINNER"]
-            ),
-            axis=1,
+        sigma: float = calibrate_spread_sigma(
+            home_win_probs=merged["home_win_prob"],
+            actual_margins=merged[ACTUAL_MARGIN_TARGET],
         )
 
-        sigma = calibrate_spread_sigma(
-            home_win_probs=merged_with_scores["home_win_prob"],
-            actual_margins=merged_with_scores["home_margin"],
+        register_sigma(
+            pair.model_name,
+            pair.model_type,
+            sigma,
         )
 
-        register_sigma(pair.model_name, pair.model_type, sigma)
-
-        margin_std = compute_margin_std(
-            home_win_probs=merged_with_scores["home_win_prob"],
-            actual_margins=merged_with_scores["home_margin"],
+        margin_std: float = compute_margin_std(
+            home_win_probs=merged["home_win_prob"],
+            actual_margins=merged[ACTUAL_MARGIN_TARGET],
             sigma=sigma,
         )
+
         _MODEL_MARGIN_STDS[(pair.model_name, pair.model_type)] = margin_std
 
         save_model_calibration(

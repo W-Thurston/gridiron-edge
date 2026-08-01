@@ -348,14 +348,18 @@ class TestBaselineReportStage:
             }
         )
 
-        games = pd.DataFrame(
+        modeling = pd.DataFrame(
             {
-                "GAME_ID": ["g1", "g2", "g3"],
-                "WINNER": ["A", "X", "C"],
-                "LOSER": ["X", "B", "Y"],
-                "WIN_OR_TIE": [1, 1, 1],
-                "PTS_WINNER": [24, 21, 30],
-                "PTS_LOSER": [17, 20, 14],
+                "GAME_ID": [
+                    "g1",
+                    "g2",
+                    "g3",
+                ],
+                "ACTUAL_MARGIN": [
+                    7.0,
+                    -1.0,
+                    16.0,
+                ],
             }
         )
 
@@ -368,16 +372,38 @@ class TestBaselineReportStage:
             lambda **_: archive,
         )
         monkeypatch.setattr(
-            "gridiron_edge.datasets.loaders.load_games",
-            lambda repo: games,
+            "gridiron_edge.datasets.loaders.load_modeling_file",
+            lambda repo: modeling,
         )
+        calibration_calls: dict[str, object] = {}
+
+        def fake_calibrate_spread_sigma(
+            *,
+            home_win_probs: pd.Series,
+            actual_margins: pd.Series,
+        ) -> float:
+            calibration_calls["sigma_probs"] = home_win_probs.tolist()
+            calibration_calls["sigma_margins"] = actual_margins.tolist()
+            return 11.25
+
+        def fake_compute_margin_std(
+            *,
+            home_win_probs: pd.Series,
+            actual_margins: pd.Series,
+            sigma: float,
+        ) -> float:
+            calibration_calls["std_probs"] = home_win_probs.tolist()
+            calibration_calls["std_margins"] = actual_margins.tolist()
+            calibration_calls["sigma"] = sigma
+            return 13.75
+
         monkeypatch.setattr(
             "gridiron_edge.models.game_prediction.post_process.calibrate_spread_sigma",
-            lambda **_: 11.25,
+            fake_calibrate_spread_sigma,
         )
         monkeypatch.setattr(
             "gridiron_edge.models.game_prediction.post_process.compute_margin_std",
-            lambda **_: 13.75,
+            fake_compute_margin_std,
         )
 
         result = _stage_refresh_calibrations(
@@ -391,7 +417,107 @@ class TestBaselineReportStage:
 
         assert payload["sigma"] == pytest.approx(11.25)
         assert payload["margin_std"] == pytest.approx(13.75)
+        assert calibration_calls["sigma_probs"] == pytest.approx([0.60, 0.55, 0.70])
+        assert calibration_calls["sigma_margins"] == pytest.approx([7.0, -1.0, 16.0])
+        assert calibration_calls["std_probs"] == pytest.approx([0.60, 0.55, 0.70])
+        assert calibration_calls["std_margins"] == pytest.approx([7.0, -1.0, 16.0])
+        assert calibration_calls["sigma"] == (pytest.approx(11.25))
         assert "updated_at" in payload
+
+    def test_refresh_calibrations_rejects_missing_margin(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Calibration requires canonical Actual Margin."""
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_refresh_calibrations,
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_modeling_file",
+            lambda repo: pd.DataFrame(
+                {
+                    "GAME_ID": ["g1"],
+                }
+            ),
+        )
+
+        result = _stage_refresh_calibrations(
+            {
+                "game_pairs": [
+                    ModelPair(
+                        "win_prob",
+                        "random_forest",
+                    )
+                ]
+            }
+        )
+
+        assert result.success is False
+        assert "ACTUAL_MARGIN" in result.detail
+
+    def test_refresh_calibrations_rejects_duplicate_games(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Canonical actuals must contain one row per game."""
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_refresh_calibrations,
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        modeling = pd.DataFrame(
+            {
+                "GAME_ID": ["g1", "g1"],
+                "ACTUAL_MARGIN": [7.0, 7.0],
+            }
+        )
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_modeling_file",
+            lambda repo: modeling,
+        )
+
+        result = _stage_refresh_calibrations(
+            {
+                "game_pairs": [
+                    ModelPair(
+                        "win_prob",
+                        "random_forest",
+                    )
+                ]
+            }
+        )
+
+        assert result.success is False
+        assert "duplicate game IDs" in result.detail
 
     def test_appends_champions_block_when_manifest_exists(
         self,
