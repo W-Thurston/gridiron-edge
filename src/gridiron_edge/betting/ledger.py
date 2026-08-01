@@ -21,16 +21,13 @@ from datetime import UTC, datetime
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal
+from typing import Final, Literal
 import uuid
 
 import pandas as pd
 from pandas import DataFrame, Series
 
 from gridiron_edge.market.odds_math import american_to_decimal
-
-if TYPE_CHECKING:
-    pass
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -97,6 +94,28 @@ def _bet_ledger_path(repo: Path | None = None) -> Path:
 def _empty_ledger() -> pd.DataFrame:
     """Return an empty DataFrame with the correct ledger schema."""
     return pd.DataFrame(columns=_BET_COLUMNS)
+
+
+def _validate_model_identity(
+    model_name: str | None,
+    model_type: str | None,
+) -> None:
+    """Require model_name and model_type to form one optional identity.
+
+    A manual or otherwise unattributed bet omits both values. A
+    model-attributed bet supplies both nonempty values.
+    """
+    if model_name is None and model_type is None:
+        return
+
+    if model_name is None or model_type is None:
+        raise ValueError("model_name and model_type must be provided together.")
+
+    if not model_name.strip():
+        raise ValueError("model_name must be a nonempty string when model identity is provided.")
+
+    if not model_type.strip():
+        raise ValueError("model_type must be a nonempty string when model identity is provided.")
 
 
 def _read_ledger(repo: Path | None = None) -> pd.DataFrame:
@@ -179,12 +198,12 @@ def compute_pnl(
 
 def log_bet(
     game_id: str,
+    *,
     market_type: str,
     side: str,
     odds: int,
     stake: float,
     book: str,
-    *,
     line: float | None = None,
     model_name: str | None = None,
     model_type: str | None = None,
@@ -221,7 +240,13 @@ def log_bet(
 
     Returns:
         The generated ``bet_id`` (UUID string).
+
+    Raises:
+        ValueError: If model identity is incomplete or contains an empty
+            model_name or model_type.
     """
+    _validate_model_identity(model_name, model_type)
+
     bet_id = str(uuid.uuid4())
     if placed_at is None:
         placed_at = datetime.now(UTC)

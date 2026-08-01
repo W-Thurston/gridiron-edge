@@ -3021,6 +3021,47 @@ The only remaining PredictorSpec and PredictorRegistry alias references are
 their compatibility definitions and explanatory comments pending the runtime
 compatibility review.
 
+#### 19.2h-D3c.2 Completed
+
+Defined bet model identity as one optional model_name and model_type pair.
+
+Manual bets may omit both identity fields. Model-attributed bets must provide
+both as nonempty values.
+
+Added ledger-boundary validation before UUID generation or artifact writes and
+made log_bet configuration keyword-only after game_id.
+
+Updated the betting CLI to report invalid model identity cleanly without
+recording the bet or deducting bankroll.
+
+Replaced stale --model-version integration coverage with the current
+--model-name and --model-type options and verified the persisted identity.
+
+Preserved the current bet-ledger schema, artifact path, gridiron bet command
+group, --market interface, and existing real ledger.
+
+Deferred permissive persisted-ledger compatibility removal and strict schema
+validation to the runtime compatibility review.
+
+#### Goal
+
+Make bet model identity explicit and coherent across the ledger API, betting
+CLI, tests, and persisted current-schema rows.
+
+#### Tests
+
+Bet ledger, betting CLI helper, betting CLI integration, betting performance,
+and portfolio serializer tests pass. Ruff and Pyrefly pass.
+
+#### Acceptance
+
+Model-less bets persist both identity fields as unavailable, while
+model-attributed bets require and persist one complete model_name and
+model_type pair.
+
+Incomplete or empty model identities fail before ledger creation or bankroll
+mutation, and the betting CLI uses only the current model identity options.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

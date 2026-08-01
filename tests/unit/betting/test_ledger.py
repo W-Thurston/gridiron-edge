@@ -132,18 +132,14 @@ class TestLogBet:
 
 
 class TestLedgerSchema:
-    """Schema invariants for the bet ledger."""
+    """Current bet-ledger schema invariants."""
 
-    def test_includes_model_identity(self) -> None:
-        assert "model_name" in _BET_COLUMNS
-        assert "model_type" in _BET_COLUMNS
-
-    def test_excludes_model_version(self) -> None:
-        assert "model_version" not in _BET_COLUMNS
+    def test_model_identity_columns_are_canonical(self) -> None:
+        assert _BET_COLUMNS[9:11] == ["model_name", "model_type"]
 
 
 class TestLogBetModelIdentity:
-    """Bet identity uses (model_name, model_type), not model_version."""
+    """Bet model identity is one optional model_name/model_type pair."""
 
     def test_log_bet_records_model_identity(self, tmp_path: Path) -> None:
         bet_id: str = log_bet(
@@ -164,8 +160,20 @@ class TestLogBetModelIdentity:
         assert row["model_name"] == "win_prob"
         assert row["model_type"] == "random_forest"
 
-    def test_log_bet_does_not_collapse_model_variants(self, tmp_path: Path) -> None:
-        """Different algorithms for the same game must produce distinct rows."""
+    def test_model_identity_may_be_omitted(self, tmp_path: Path) -> None:
+        bet_id: str = _log_one(tmp_path)
+
+        df = load_bets(repo=tmp_path)
+        row = df.loc[df["bet_id"] == bet_id].iloc[0]
+
+        assert pd.isna(row["model_name"])
+        assert pd.isna(row["model_type"])
+
+    def test_log_bet_does_not_collapse_model_variants(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Different algorithms for one game remain distinct rows."""
         log_bet(
             game_id=_GAME_ID,
             market_type="moneyline",
@@ -174,7 +182,7 @@ class TestLogBetModelIdentity:
             stake=100.0,
             book="draftkings",
             model_name="win_prob",
-            model_type="elasticnet",
+            model_type="logistic",
             repo=tmp_path,
         )
         log_bet(
@@ -190,27 +198,90 @@ class TestLogBetModelIdentity:
         )
 
         df = load_bets(repo=tmp_path)
+
         assert len(df) == 2
-        assert set(df["model_type"]) == {"elasticnet", "random_forest"}
+        assert set(df["model_type"]) == {
+            "logistic",
+            "random_forest",
+        }
 
-    def test_log_bet_persists_both_identity_fields_independently(self, tmp_path: Path) -> None:
-        """model_name and model_type are independently nullable."""
-        log_bet(
-            game_id=_GAME_ID,
-            market_type="moneyline",
-            side="home",
-            odds=-110,
-            stake=100.0,
-            book="draftkings",
-            model_name="qb_pass_yards",
-            model_type=None,
-            repo=tmp_path,
-        )
+    @pytest.mark.parametrize(
+        ("model_name", "model_type"),
+        [
+            ("win_prob", None),
+            (None, "random_forest"),
+        ],
+    )
+    def test_rejects_incomplete_model_identity(
+        self,
+        tmp_path: Path,
+        model_name: str | None,
+        model_type: str | None,
+    ) -> None:
+        with pytest.raises(
+            ValueError,
+            match="model_name and model_type must be provided together",
+        ):
+            log_bet(
+                game_id=_GAME_ID,
+                market_type="moneyline",
+                side="home",
+                odds=-110,
+                stake=100.0,
+                book="draftkings",
+                model_name=model_name,
+                model_type=model_type,
+                repo=tmp_path,
+            )
 
-        df = load_bets(repo=tmp_path)
-        row = df.iloc[0]
-        assert row["model_name"] == "qb_pass_yards"
-        assert pd.isna(row["model_type"])
+        assert not (tmp_path / "data" / "betting" / "bet_ledger.parquet").exists()
+
+    @pytest.mark.parametrize(
+        ("model_name", "model_type", "message"),
+        [
+            (
+                "",
+                "random_forest",
+                "model_name must be a nonempty string",
+            ),
+            (
+                "win_prob",
+                "",
+                "model_type must be a nonempty string",
+            ),
+            (
+                "   ",
+                "random_forest",
+                "model_name must be a nonempty string",
+            ),
+            (
+                "win_prob",
+                "   ",
+                "model_type must be a nonempty string",
+            ),
+        ],
+    )
+    def test_rejects_empty_model_identity_values(
+        self,
+        tmp_path: Path,
+        model_name: str,
+        model_type: str,
+        message: str,
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            log_bet(
+                game_id=_GAME_ID,
+                market_type="moneyline",
+                side="home",
+                odds=-110,
+                stake=100.0,
+                book="draftkings",
+                model_name=model_name,
+                model_type=model_type,
+                repo=tmp_path,
+            )
+
+        assert not (tmp_path / "data" / "betting" / "bet_ledger.parquet").exists()
 
 
 # ---------------------------------------------------------------------------

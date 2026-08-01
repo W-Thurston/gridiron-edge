@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
@@ -83,19 +84,50 @@ class TestLogCommand:
         assert result.exit_code == 0, result.output
         assert "Bet logged:" in result.output
 
-    def test_log_with_model_context(self, cli_env: Path) -> None:
-        """Log command accepts optional model flags."""
+    def test_log_with_model_identity(self, cli_env: Path) -> None:
+        """Log command persists the complete current model identity."""
         flags: list[str] = [
             *_LOG_FLAGS,
-            "--model-version",
+            "--model-name",
+            "win_prob",
+            "--model-type",
             "random_forest",
             "--model-prob",
             "0.62",
             "--model-ev",
             "0.08",
         ]
+
         result = runner.invoke(betting_app, flags)
+
         assert result.exit_code == 0, result.output
+
+        ledger_path = cli_env / "data" / "betting" / "bet_ledger.parquet"
+        ledger = pd.read_parquet(ledger_path)
+        row = ledger.iloc[0]
+
+        assert row["model_name"] == "win_prob"
+        assert row["model_type"] == "random_forest"
+
+    @pytest.mark.parametrize(
+        "identity_flags",
+        [
+            ["--model-name", "win_prob"],
+            ["--model-type", "random_forest"],
+        ],
+    )
+    def test_log_rejects_incomplete_model_identity(
+        self,
+        cli_env: Path,
+        identity_flags: list[str],
+    ) -> None:
+        flags = [*_LOG_FLAGS, *identity_flags]
+
+        result = runner.invoke(betting_app, flags)
+
+        assert result.exit_code == 1
+        assert "model_name and model_type must be provided together" in result.output
+        assert not (cli_env / "data" / "betting" / "bet_ledger.parquet").exists()
 
     def test_log_spread(self, cli_env: Path) -> None:
         """Log command accepts spread bets with a line."""

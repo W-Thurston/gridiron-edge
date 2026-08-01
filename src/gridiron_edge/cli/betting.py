@@ -53,21 +53,26 @@ def log_cmd(
     from gridiron_edge.betting.bankroll import current_balance, record_bet_placed
     from gridiron_edge.betting.ledger import log_bet
 
-    bet_id: str = log_bet(
-        game_id=game_id,
-        market_type=market,
-        side=side,
-        odds=odds,
-        stake=stake,
-        book=book,
-        line=line,
-        model_name=model_name,
-        model_type=model_type,
-        model_prob=model_prob,
-        model_ev=model_ev,
-        edge_strength=edge_strength,
-        confidence_tier=confidence_tier,
-    )
+    try:
+        bet_id: str = log_bet(
+            game_id=game_id,
+            market_type=market,
+            side=side,
+            odds=odds,
+            stake=stake,
+            book=book,
+            line=line,
+            model_name=model_name,
+            model_type=model_type,
+            model_prob=model_prob,
+            model_ev=model_ev,
+            edge_strength=edge_strength,
+            confidence_tier=confidence_tier,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
     record_bet_placed(stake, bet_id=bet_id)
 
     balance: float = current_balance()
