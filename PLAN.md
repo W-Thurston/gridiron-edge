@@ -1721,14 +1721,29 @@ historical prediction and odds-ledger artifacts.
 
 19.2h-A   Legacy pipeline entry points             COMPLETE
 19.2h-B   Legacy feature implementations           COMPLETE
-19.2h-C1  Legacy shared modeling fixtures          COMPLETE
-19.2h-C2  Generic artifact examples                COMPLETE
+19.2h-C   Legacy fixtures and artifact examples    COMPLETE
+19.2h-D1  Retired orientation catalog              COMPLETE
+19.2h-D2  Artifact metadata migration              COMPLETE
+19.2h-D3a Prediction archive migration             COMPLETE
+19.2h-D3b Serialization terminology                COMPLETE
+19.2h-D3c Implementation-label cleanup             NEXT
+19.2h-D3d Runtime compatibility review             PENDING
+  D3b.1 Make prop enrichment configuration keyword-only
+  D3c.1  Migrate Predictor names to Model names
+  D3c.2  Make betting ledger and betting CLI identity current
+  D3c.3  Make prop archive schema strict
+  D3c.4  Remove remaining implementation labels
+  D3c.5  Final compatibility inventory
+  D3d.1  Migrate Predictor naming to Model naming
+  D3d.2  Make betting ledger schema strict
+  D3d.3  Make prop prediction archive schema strict
+  D3d.4  Final compatibility and terminology inventory
+  E      Rebuild, retrain, refresh, and validate artifacts
+19.2h-E   Rebuild and artifact validation           PENDING
 
 
 Then:
 
-  19.2h-C3 final fixture/test inventory
-  19.2h-D  remove migration guards and stale terminology
   19.2h-E  rebuild, retrain, refresh, and validate artifacts
 
 After 19.2h:
@@ -2895,362 +2910,78 @@ Tuning, evaluation, calibration, and retraining operate on canonical one-row
 game data without TEAM_A, TEAM_B, HOME_FIELD, RESULT, winner/loser score
 reconstruction, lowercase actual_total, or legacy probability orientation.
 
-### Unit 19.2h: Re*ove Retired Orientation and Rebuil* Artifacts
+### Unit 19.2h: Remove Retired Orientation and Rebuild Artifacts
 
 #### Completed
 
-Remove* the inactive legacy feature seque*ce from the modeling pipeline.
+Removed the inactive perspective-oriented feature pipeline, legacy feature
+registrations and implementations, doubled game-modeling fixtures, retired
+schema catalog, and development-era artifact metadata migration.
 
-Re*oved the symmetric two-row-per-gam* base modeling-table builder.
+The repository now exposes one canonical feature sequence, one one-row-per-game
+modeling-table builder, and ten canonical home/away game-feature registrations.
 
-The*pipeline now exposes one validated*canonical feature sequence and one*canonical one-row-per-game modelin*-table builder.
+Reworked shared game-modeling fixtures and artifact examples to use canonical
+Away and Home identity, targets, features, and normalized metadata.
 
-Removed legacy fe*ture-order validation from pipelin* import.
+Artifact metadata now requires the current schema version and an explicit Game
+or Prop discriminator.
 
-Updated feature manifest*and registry documentation to desc*ibe canonical
-Away/Home feature na*es and outputs.
+The prediction archive now requires the complete current schema on reads and
+writes, preserves supplied enrichment, and represents unavailable enrichment
+with explicit null values.
 
-Preserved the exi*ting canonical sequence name becau*e it is already the stable
-contrac* used across modeling, prediction,*tuning, and evaluation.
+Completed the final fixture and retired-orientation inventory. Remaining
+TEAM_A, TEAM_B, HOME_FIELD, and RESULT references are concrete negative
+assertions, canonical local result-history calculations, or unrelated dataset
+contracts.
 
-All scope* quality gates, canonical feature *ests, integration tests, and
-end-t*-end prediction-pipeline tests pas*.
-
-Removed the standalone HomeFieldFeature implementation and registration.
-
-Removed the retired TeamEloFeature and DivisionalFeature implementations and
-registrations.
-
-Deleted their dedicated legacy tests.
-
-Preserved shared Elo validation helpers used by HomeAwayEloFeature.
-
-Preserved canonical divisional metadata validation and
-HomeAwayDivisionalFeature.
-
-Updated feature-registry tests to require the canonical home_away_elo and
-home_away_divisional registrations instead of the retired keys.
-
-Verified that home_field, team_elo, and divisional are no longer registered.
-
-Verified that home_away_elo and home_away_divisional remain registered and
-fully covered.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Removed the retired PrimetimeFeature implementation, registration, helper, and
-dedicated test file.
-
-Preserved the canonical nullable primetime implementation for historical and
-upcoming schedule metadata.
-
-Canonical primetime state continues to distinguish known non-primetime games
-from unavailable or invalid schedule metadata.
-
-Updated feature-registry expectations to require home_away_primetime rather
-than primetime.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Removed the retired WeatherFeature implementation and registration.
-
-Extracted enriched-weather loading and conversion into module-level helpers
-used directly by HomeAwayWeatherFeature.
-
-Established one canonical Weather output contract containing roof-derived Dome
-state and enriched environmental values.
-
-Preserved controlled-environment overrides for covered venues and explicit null
-weather states for outdoor games without enriched weather.
-
-Migrated the detailed Weather test suite to canonical one-row game inputs and
-HomeAwayWeatherFeature execution.
-
-Preserved coverage for dome classification, unit conversions, precipitation,
-snow, low visibility, feels-like temperature, humidity, visibility fallback,
-wind-chill delta, missing weather, controlled defaults, exact feature outputs,
-registration, and input immutability.
-
-Verified that no WeatherFeature class or weather registry key remains.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Removed the retired RestFeature and RecordFeature implementations and
-registrations.
-
-Removed the retired vectorized record-table builder and all TEAM_A and TEAM_B
-record-output declarations.
-
-Deleted the dedicated legacy Rest and Record test suites.
-
-Preserved canonical completed-game date history, pregame rest calculation,
-nullable short-week and post-bye flags, and Home-minus-Away rest differential.
-
-Preserved canonical score-derived result history, same-season record
-calculation, tie handling, and active win and loss streak calculation.
-
-Updated registry expectations to require home_away_rest and home_away_record.
-
-Verified that no RestFeature, RecordFeature, rest registration, record
-registration, or legacy record-table builder remains.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Removed the retired TeamEpaFeature implementation and registration.
-
-Removed TEAM_A and TEAM_B EPA output declarations and the perspective-oriented
-EPA join helper.
-
-Preserved the shared shifted rolling-EPA calculation used by canonical feature
-generation and alternate-window model tuning.
-
-Preserved the complete canonical Away and Home EPA output contract.
-
-Retained focused coverage for EPA column definitions, rolling-window behavior,
-lookahead prevention, alternate windows, and optional playoff exclusion.
-
-Removed tests for the retired EPA registration and perspective-oriented output
-prefixes.
-
-Updated registry expectations to require home_away_epa.
-
-Verified that no TeamEpaFeature, epa registration, TEAM_A EPA output, TEAM_B EPA
-output, or legacy EPA join helper remains.
-
-All scoped quality gates, canonical feature tests, model-window tests,
-integration tests, and end-to-end tests pass.
-
-Removed the retired ScheduleStrengthFeature and VenueHFAFeature implementations
-and registrations.
-
-Removed the perspective-oriented SOS and SOV output declarations, legacy
-vectorized schedule-strength table, and TEAM_A and TEAM_B franchise-HFA
-outputs.
-
-Deleted the dedicated legacy Schedule Strength and Venue HFA test suites.
-
-Preserved canonical score-derived opponent history, historical pregame Elo
-joins, and same-season Away and Home SOS and SOV calculation.
-
-Preserved leakage-free Home franchise advantage calculation from completed,
-non-neutral games before the target week.
-
-Preserved zero Home franchise advantage for neutral-site games and franchises
-without the configured minimum historical Home sample.
-
-Removed the legacy Travel dependency from Venue HFA.
-
-Updated registry and ordering tests to require home_away_schedule_strength
-after home_away_elo and to require home_away_venue_hfa without legacy
-dependencies.
-
-Verified that no ScheduleStrengthFeature, VenueHFAFeature, schedule_strength
-registration, venue_hfa registration, legacy SOS/SOV table, or
-perspective-oriented feature output remains.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Removed the retired TravelFeature implementation and registration.
-
-Removed TEAM_A and TEAM_B travel assembly, HOME_FIELD dependency, winner/loser
-venue recovery, and GAME_LOCATION neutral-site inference from the feature
-layer.
-
-Deleted the dedicated legacy Travel feature test suite.
-
-Preserved canonical historical and upcoming venue resolution, actual game-site
-coordinates, franchise-season origins, Away and Home travel distances, Away and
-Home timezone shifts, and game-site altitude.
-
-Preserved explicit null outputs for unavailable venues or coordinates and
-validation for conflicting venue and coordinate identities.
-
-Updated the registry to contain only the ten canonical game-feature keys.
-
-All scoped quality gates, canonical feature tests, integration tests, and
-end-to-end tests pass.
-
-Moved the active vectorized Haversine and timezone-offset cache helpers into the
-canonical Travel feature module.
-
-Removed the retired add_travel_timezone_altitude API and its
-perspective-oriented metrics implementation.
-
-Moved focused Haversine tests from the retired metrics package to the canonical
-Travel feature test area.
-
-Preserved the generic geographic utility module used by Weather ingestion.
-
-Reduced the Travel metrics package initializer so it no longer exports a
-retired modeling API.
-
-Verified that no add_travel_timezone_altitude, metrics.travel.travel,
-TEAM_A travel output, TEAM_B travel output, or retired timezone-shift output
-remains.
-
-All scoped quality gates, canonical Travel tests, geographic utility tests,
-integration tests, and end-to-end tests pass.
-
-Removed the unused shared make_modeling_rows fixture and its retired
-TEAM_A, TEAM_B, RESULT, and HOME_FIELD defaults.
-
-Removed the retired factory from the shared fixture exports.
-
-Updated fixture documentation to demonstrate canonical Away and Home game
-identity.
-
-Verified that no make_modeling_rows, _MODELING_DEFAULTS, or small shared
-two-row modeling fixture remains.
-
-All scoped quality gates and feature tests pass.
-
-Replaced the shared doubled game-modeling fixture with one canonical Away/Home
-row per Game ID.
-
-The fixture schema now derives its feature columns from the active canonical
-feature sequence.
-
-Added explicit canonical game identity, scores, neutral-site state, Home Win,
-Actual Margin, and Actual Total.
-
-Reworked the matching cleaned-games fixture to copy Away/Home identity and
-scores directly. Winner, loser, game location, and winner/loser score fields
-are derived only for the separate cleaned-games contract.
-
-Added fixture validation for unique Game IDs, complete canonical features,
-score-consistent targets, duplicate rejection, absence of retired orientation,
-and identity preservation across modeling and cleaned-game fixtures.
-
-Balanced synthetic outcomes chronologically so classifier calibration folds
-contain both classes.
-
-Added a noisy, learnable pregame Elo signal so the Logistic lifecycle continues
-to exercise scaler persistence and inference.
-
-Updated model lifecycle tests to use normalized metadata metrics and direct
-canonical prediction payloads.
-
-Kept the strict probability-dispersion regression check specific to Logistic
-while requiring tree-model predictions to remain finite, bounded,
-complementary, and nonconstant.
-
-All scoped quality gates, fixture tests, backfill integration tests, and game
-fit-load-predict end-to-end tests pass.
-
-Updated current game-model artifact examples to canonical Away and Home feature
-columns.
-
-Replaced flattened holdout metric construction and assertions with the
-normalized metrics mapping.
-
-Added serialized-metadata coverage proving current artifact writes contain
-canonical feature columns and no flattened legacy metric fields.
-
-Updated the artifact integration test description to remove completed
-workstream terminology and accurately describe persistence behavior.
-
-Retained isolated legacy-read tests until the matching production
-compatibility logic is removed in the migration-guard cleanup.
-
-All scoped quality gates and artifact persistence tests pass.
-
-Completed the final source and test inventory for retired model orientation.
-
-Confirmed that no active production feature, modeling fixture, artifact
-example, integration path, or end-to-end lifecycle depends on TEAM_A, TEAM_B,
-HOME_FIELD, or the retired RESULT model target.
-
-Classified remaining RESULT uses as local team-history outcomes for canonical
-record and schedule-strength calculations.
-
-Classified remaining two-row terminology as unrelated market or cleaned-game
-behavior.
-
-Confirmed that all remaining retired-orientation test references are concrete
-negative assertions or migration-only schema-catalog tests.
-
-Removed the migration-only retired-orientation catalog from the canonical game
-schema.
-
-Removed tests that exposed or depended on the permanent retired-name catalog.
-
-Canonical schema tuples and concrete output-boundary tests remain the
-authoritative contracts.
-
-All scoped quality gates and tests pass.
-
-Removed development-era artifact metadata migration.
-
-Artifact metadata now requires an explicit game or prop kind discriminator and
-the current metadata schema version.
-
-Removed inference of Prop metadata from target_col and default-to-Game behavior
-for metadata without kind.
-
-Removed migration of flattened holdout metric fields into the normalized
-metrics mapping.
-
-Removed defensive unknown-field filtering. Current metadata payloads are now
-validated directly by the selected dataclass constructor.
-
-Replaced compatibility tests with strict rejection coverage for missing kind,
-unknown kind, obsolete schema versions, and flattened metric fields.
-
-Updated artifact documentation and usage examples to describe only the current
-normalized metadata contract.
-
-Current Game and Prop artifact round trips, model training, artifact loading,
-and end-to-end prediction lifecycles remain covered.
-
-All scoped quality gates and tests pass.
-
-### Completed
-
-Added strict current-schema validation to prediction archive reads and writes.
-
-Removed read-time synthesis of columns missing from obsolete archive files.
-
-Preserved enrichment values supplied by current prediction outputs and explicit
-null values for unavailable enrichment.
-
-Preserved prediction-log deduplication semantics.
-
-### Goal
-
-Require one current prediction archive schema without development-era migration.
-
-### Tests
-
-Archive unit tests, schema tests, and archive round-trip integration tests pass.
-
-### Acceptance
-
-Missing or unexpected archive columns are rejected, current rows round-trip
-successfully, and supplied enrichment values are preserved.
 #### Goal
 
-Remove the retired p*rspective-oriented feature archite*ture and rebuild all
-game-model ar*ifacts from the canonical one-row *way/Home contract.
+Remove development-era game-model compatibility paths and rebuild all persisted
+game-model artifacts from the canonical one-row Away/Home contract.
 
 #### Tests
 
-Le*acy pipeline entry-point removal a*d the active canonical pipeline ar*
-covered.
-
-Legacy feature implemen*ations, registrations, fixtures, s*hema guards, and
-artifacts remain *o be removed.
+Legacy pipeline removal, canonical feature registration, canonical fixtures,
+artifact persistence, strict artifact metadata, prediction archive schema,
+model training, historical prediction, integration, and end-to-end lifecycle
+tests pass.
 
 #### Acceptance
 
-Th* repository contains one canonical*game feature pipeline and no activ*
-TEAM_A, TEAM_B, HOME_FIELD, RESUL*, two-row modeling, compatibility,*or retired
-artifact dependency.
+The repository contains one active canonical game-feature and modeling path with
+no runtime dependency on TEAM_A, TEAM_B, HOME_FIELD, RESULT, doubled modeling
+rows, retired feature registrations, or obsolete artifact metadata.
 
+Current prediction archives and model metadata use explicit, strictly validated
+schemas.
+
+Canonical artifacts still require final rebuild, retraining, refresh, and
+real-data validation.
+
+#### 19.2h-D3b Completed
+
+Documented Lean and ConfidenceTier values as the current canonical serialized
+strings for DataFrame, archive, and API boundaries.
+
+Made prop enrichment configuration keyword-only while retaining the prediction
+DataFrame as the sole positional argument.
+
+#### Goal
+
+Define a clear current serialization and callable contract without compatibility
+rationale or excessive positional parameters.
+
+#### Tests
+
+Enum, prop post-processing, prop metrics, and Prop CLI tests pass. Ruff and
+Pyrefly pass.
+
+#### Acceptance
+
+Prop enrichment uses explicit named configuration, and serialized recommendation
+and confidence values remain unchanged.
 
 ---
 

@@ -196,6 +196,7 @@ def derive_confidence_tier(
 
 def enrich_prop_predictions(
     df: DataFrame,
+    *,
     model_rmse: float,
     target_std_col: str,
     line_col: str | None = None,
