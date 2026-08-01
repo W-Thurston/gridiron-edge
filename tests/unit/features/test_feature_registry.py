@@ -27,7 +27,6 @@ class TestFeatureRegistryGet:
 
         expected: set[str] = {
             "travel",
-            "epa",
             "schedule_strength",
             "venue_hfa",
             "home_away_elo",
@@ -36,6 +35,7 @@ class TestFeatureRegistryGet:
             "home_away_weather",
             "home_away_rest",
             "home_away_record",
+            "home_away_epa",
         }
         for name in expected:
             cls: type[Feature] = FeatureRegistry.get(name)

@@ -1,20 +1,16 @@
 # tests/unit/features/test_epa.py
-"""Tests for gridiron_edge.features.team.epa - TeamEpaFeature."""
+"""Tests for canonical EPA definitions and rolling-window calculation."""
 
 from __future__ import annotations
-
-from collections.abc import Sequence
 
 import pandas as pd
 from pandas import DataFrame
 import pytest
 from tests.fixtures.dataframes import make_epa_by_game
 
-from gridiron_edge.features.registry import FeatureRegistry
 from gridiron_edge.features.team.epa import (
     DEFAULT_ROLLING_WINDOW,
     EPA_COLS,
-    TeamEpaFeature,
     _build_rolling_epa,
 )
 
@@ -68,26 +64,6 @@ class TestEpaConstants:
         assert set(EPA_COLS) == expected
 
 
-class TestTeamEpaFeatureSpec:
-    def test_spec_name(self) -> None:
-        assert TeamEpaFeature().spec.name == "epa"
-
-    def test_produces_44_columns(self) -> None:
-        """36 EPA metrics x 2 teams = 44 columns."""
-
-        assert len(TeamEpaFeature().spec.produces) == 72
-
-    def test_produces_team_a_and_team_b_prefixes(self) -> None:
-        produces: Sequence[str] = TeamEpaFeature().spec.produces
-        team_a: list[str] = [c for c in produces if c.startswith("TEAM_A_")]
-        team_b: list[str] = [c for c in produces if c.startswith("TEAM_B_")]
-        assert len(team_a) == 36
-        assert len(team_b) == 36
-
-    def test_registered_under_epa(self) -> None:
-        assert FeatureRegistry.get("epa") is TeamEpaFeature
-
-
 class TestBuildRollingEpa:
     def test_returns_dataframe(self) -> None:
         epa = make_epa_by_game(teams=["KC", "SF"], seasons=[2024], weeks_per_season=6)
@@ -112,7 +88,7 @@ class TestBuildRollingEpa:
 
 
 class TestBuildRollingEpaExcludePlayoffs:
-    """Verify the playoff-exclusion flag in _build_rolling_epa (epa/C1)."""
+    """Verify optional playoff exclusion in rolling EPA history."""
 
     def _make_history_with_playoffs(self) -> pd.DataFrame:
         """Build epa_by_game spanning regular and playoff weeks for one team.
@@ -165,3 +141,15 @@ class TestBuildRollingEpaExcludePlayoffs:
 
         playoff_rows = rolled.loc[rolled["week"] > 18, :]
         assert playoff_rows.empty
+
+
+def test_retired_epa_registration_is_absent() -> None:
+    from gridiron_edge.features.registry import (
+        FeatureRegistry,
+    )
+
+    with pytest.raises(
+        KeyError,
+        match="Feature 'epa' is not registered",
+    ):
+        FeatureRegistry.get("epa")
