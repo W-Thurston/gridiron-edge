@@ -31,7 +31,10 @@ import pandas as pd
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.loaders import load_modeling_file
-from gridiron_edge.features.pipeline import FEATURES
+from gridiron_edge.features.pipeline import (
+    CANONICAL_FEATURES,
+    FEATURES,
+)
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.base import ModelSpec
@@ -86,113 +89,90 @@ def get_known_model_names() -> tuple[str, ...]:
 
 def build_game_predictions(
     df: pd.DataFrame,
-    probs: np.ndarray,
+    home_win_probs: np.ndarray,
     *,
     totals: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """Map classification outputs onto canonical game prediction rows.
-
-    The modeling DataFrame has one row per team-game, with two rows for
-    standard games. This function selects exactly one stable row per game
-    and returns the selected team's perspective as the away perspective.
-
-    For standard games, the ``HOME_FIELD == 0`` row is selected. For
-    neutral-site games, where both rows have ``HOME_FIELD == 0``, the row
-    whose ``TEAM_A`` value sorts first is selected deterministically.
+    """Map canonical Home-win probabilities to one row per game.
 
     Args:
-        df: Modeling DataFrame containing game, team, season, week, and
-            home-field identity.
-        probs: Probability that ``TEAM_A`` wins, aligned with ``df``.
+        df: Canonical one-row-per-game modeling DataFrame.
+        home_win_probs: Probability that the designated Home team wins,
+            aligned one-to-one with ``df``.
         totals: Optional predicted game totals aligned with ``df``.
 
     Returns:
-        Canonical game-level prediction rows with one row per game.
+        Canonical game prediction rows with Home-win probability stored
+        directly and Away-win probability derived as its complement.
+
+    Raises:
+        ValueError: If prediction lengths do not match the input rows or
+            canonical game identities are duplicated.
     """
+    if len(home_win_probs) != len(df):
+        raise ValueError("Home-win probability count must match canonical game rows.")
+
+    if df["GAME_ID"].duplicated().any():
+        raise ValueError("Canonical prediction input contains duplicate game IDs.")
+
+    if totals is not None and len(totals) != len(df):
+        raise ValueError("Total prediction count must match canonical game rows.")
+
     work: DataFrame = df.copy()
-    work["_prob"] = probs
+    work["_HOME_WIN_PROB"] = home_win_probs
 
     if totals is not None:
-        work["_total"] = totals
+        work["_MODEL_TOTAL"] = totals.reindex(work.index).to_numpy(dtype=float)
 
-    has_home: pd.Series = work.groupby("GAME_ID")["HOME_FIELD"].transform("max") == 1
-
-    standard_rows: DataFrame | Series = work.loc[has_home & (work["HOME_FIELD"] == 0)]
-
-    neutral_rows: DataFrame = (
-        work.loc[~has_home]
-        # pyrefly: ignore [no-matching-overload]
-        .sort_values(
-            ["GAME_ID", "TEAM_A"],
-            kind="stable",
-        )
-        .drop_duplicates(
-            subset=["GAME_ID"],
-            keep="first",
-        )
+    work = work.sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_ID",
+        ],
+        kind="stable",
     )
 
-    away: DataFrame = (
-        pd.concat(
-            [standard_rows, neutral_rows],
-            ignore_index=False,
-        )
-        .drop_duplicates(
-            subset=["GAME_ID"],
-            keep="first",
-        )
-        .sort_values(
-            ["YEAR", "WEEK_NUM", "GAME_ID"],
-        )
-    )
+    home_probabilities = work["_HOME_WIN_PROB"].to_numpy(dtype=float)
 
     result = pd.DataFrame(
         {
-            "season": away["YEAR"].values,
-            "week": away["WEEK_NUM"].astype(int).values,
-            "game_id": away["GAME_ID"].values,
-            "game_date": away.get(
+            "season": work["YEAR"].values,
+            "week": work["WEEK_NUM"].astype(int).values,
+            "game_id": work["GAME_ID"].values,
+            "game_date": work.get(
                 "GAME_DATE",
                 pd.Series(
-                    [None] * len(away),
-                    index=away.index,
+                    [None] * len(work),
+                    index=work.index,
                     dtype=object,
                 ),
             ).values,
-            "away_team": away["TEAM_A"].values,
-            "home_team": away["TEAM_B"].values,
-            "away_elo": away.get(
-                "TEAM_A_ELO",
+            "away_team": work["AWAY_TEAM"].values,
+            "home_team": work["HOME_TEAM"].values,
+            "away_elo": work.get(
+                "AWAY_ELO",
                 pd.Series(
-                    [float("nan")] * len(away),
-                    index=away.index,
+                    [float("nan")] * len(work),
+                    index=work.index,
                     dtype=float,
                 ),
             ).values,
-            "home_elo": away.get(
-                "TEAM_B_ELO",
+            "home_elo": work.get(
+                "HOME_ELO",
                 pd.Series(
-                    [float("nan")] * len(away),
-                    index=away.index,
+                    [float("nan")] * len(work),
+                    index=work.index,
                     dtype=float,
                 ),
             ).values,
-            "away_win_prob": away["_prob"].to_numpy(
-                dtype=float,
-            ),
-            "home_win_prob": (
-                1.0
-                - away["_prob"].to_numpy(
-                    dtype=float,
-                )
-            ),
+            "away_win_prob": (1.0 - home_probabilities),
+            "home_win_prob": home_probabilities,
         }
     )
 
-    if "_total" in away.columns:
-        result["model_total"] = away["_total"].to_numpy(
-            dtype=float,
-        )
+    if "_MODEL_TOTAL" in work.columns:
+        result["model_total"] = work["_MODEL_TOTAL"].to_numpy(dtype=float)
 
     return result.reset_index(drop=True)
 
@@ -474,7 +454,9 @@ class GamesPredictor:
         datasets = DatasetAccessor(repo=repo)
 
         upcoming_df: DataFrame = run_features(
-            df=schedule, feature_names=FEATURES, datasets=datasets
+            df=schedule,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
         )
         feature_fn = self._feature_fn()
         features = feature_fn(upcoming_df)
@@ -490,14 +472,20 @@ class GamesPredictor:
         x_feat_arr = scaler.transform(x_feat) if scaler is not None else x_feat.values
         probs = pipeline.predict_proba(x_feat_arr)[:, 1]
         result = upcoming_valid[["GAME_ID", "AWAY_TEAM", "HOME_TEAM", "WEEK_NUM"]].copy()
-        result["AWAY_WIN_PROB"] = probs
-        result["HOME_WIN_PROB"] = 1.0 - probs
+        result["HOME_WIN_PROB"] = probs
+        result["AWAY_WIN_PROB"] = 1.0 - probs
         result["AWAY_TEAM_WIN_PROB"] = (pd.Series(probs) * 100).map(lambda x: f"{x:.1f} %").values
         result["HOME_TEAM_WIN_PROB"] = (
             ((1.0 - pd.Series(probs)) * 100).map(lambda x: f"{x:.1f} %").values
         )
-        result["AWAY_TEAM_ELO"] = upcoming_valid.get("TEAM_A_ELO", float("nan"))
-        result["HOME_TEAM_ELO"] = upcoming_valid.get("TEAM_B_ELO", float("nan"))
+        result["AWAY_TEAM_ELO"] = upcoming_valid.get(
+            "AWAY_ELO",
+            float("nan"),
+        )
+        result["HOME_TEAM_ELO"] = upcoming_valid.get(
+            "HOME_ELO",
+            float("nan"),
+        )
 
         # Attach total point estimates if available.
         totals: Series | None = self._maybe_predict_totals(upcoming_valid, repo=repo)

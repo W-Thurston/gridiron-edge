@@ -33,6 +33,9 @@ from gridiron_edge.models.game_prediction.base import (
     _get_param_grid,
     _n_iter_for,
 )
+from gridiron_edge.models.game_prediction.game_schema import (
+    HOME_WIN_TARGET,
+)
 from gridiron_edge.models.game_prediction.total import TotalTrainer
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
 
@@ -66,19 +69,22 @@ class TestGameModelSpec:
         spec = GameModelSpec(
             name="win_prob",
             task="classification",
-            target_col="RESULT",
-            feature_set={GameModelType.LOGISTIC: object()},  # placeholder
+            target_col=HOME_WIN_TARGET,
+            feature_set={
+                GameModelType.LOGISTIC: object(),
+            },
         )
+
         assert spec.name == "win_prob"
         assert spec.task == "classification"
-        assert spec.target_col == "RESULT"
+        assert spec.target_col == HOME_WIN_TARGET
         assert spec.description == ""
 
     def test_frozen(self) -> None:
         spec = GameModelSpec(
             name="win_prob",
             task="classification",
-            target_col="RESULT",
+            target_col=HOME_WIN_TARGET,
             feature_set={},
         )
         with pytest.raises(FrozenInstanceError):
@@ -219,7 +225,7 @@ class TestWinProbSpec:
         assert WinProbTrainer().spec.task == "classification"
 
     def test_target_col(self) -> None:
-        assert WinProbTrainer().spec.target_col == "RESULT"
+        assert WinProbTrainer().spec.target_col == HOME_WIN_TARGET
 
     def test_supports_all_three_classifiers(self) -> None:
         spec = WinProbTrainer().spec

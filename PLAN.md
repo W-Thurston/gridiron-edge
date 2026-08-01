@@ -1719,7 +1719,6 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2d    Activate one-row feature pipeline
 19.2e    Migrate Win model
 19.2f    Migrate Total model
 19.2g    Migrate tuning, evaluation, and retraining
@@ -2567,10 +2566,7 @@ unchanged pending canonical model-contract migration.
 
 #### Completed
 
-Defined the canonical model-facing feature sets.
-
-Replaced TEAM_A, TEAM_B, and HOME_FIELD model feature declarations with stable
-Away and Home columns.
+Defined canonical model-facing feature sets using stable Away and Home columns.
 
 Defined all generated Elo and EPA differentials as Home minus Away.
 
@@ -2578,31 +2574,45 @@ Updated the feature-set contracts to 37 differential, 74 raw, 111 combined,
 and 152 expanded columns while preserving the diff, raw, combined, and expanded
 lookup keys.
 
-Activated the canonical historical modeling-table builder.
+Activated the canonical historical modeling-table builder and canonical feature
+sequence.
 
-The active modeling pipeline now produces one Away/Home-oriented base row per
-completed game and runs the canonical feature sequence.
+The active modeling pipeline now produces one Away/Home-oriented base and
+enriched row per completed game.
 
 Changed persisted and incremental artifact identity to one row per Game ID.
 
-Changed manifests to record the canonical feature sequence and canonical
-feature-column contract.
+Changed manifests to record the canonical feature sequence and feature-column
+contract.
 
-Replaced the data-version-only stale check with a combined schema-version and
-data-version compatibility check.
+Replaced the data-version-only stale check with combined schema-version and
+data-version compatibility validation.
 
 Bumped the modeling schema version to 5 and data version to 2 so retired
 development artifacts force a full canonical rebuild.
 
-Updated shared game fixtures with internally consistent canonical Away Team,
-Home Team, Away Score, Home Score, and neutral-site truth while retaining
-legacy result fields still required by Elo and transitional tests.
+Updated shared fixtures, integration tests, and end-to-end tests for the
+canonical source and artifact schemas.
 
-Updated integration and end-to-end pipeline tests to require one row per game,
-canonical targets, canonical feature columns, unique Game IDs, canonical
-manifest metadata, and absence of retired orientation fields.
+Completed a full real-data canonical rebuild in 65.8 seconds.
 
-All scoped quality gates, integration tests, and end-to-end tests pass.
+The rebuilt artifacts contain 7,276 cleaned games, 7,276 base rows, and 7,276
+enriched rows.
+
+Both modeling artifacts contain unique Game IDs, unique columns, all required
+canonical identity, target, and feature columns, and no TEAM_A, TEAM_B,
+HOME_FIELD, or RESULT columns.
+
+Validated Actual Margin as Home Score minus Away Score and Actual Total as Home
+Score plus Away Score across the complete artifact.
+
+Validated that the manifest contains the exact canonical feature sequence,
+canonical feature-column contract, schema version 5, data version 2, and 7,276
+rows.
+
+Reviewed canonical feature null counts. Missing values remain concentrated in
+truthfully unavailable rolling state, schedule strength, rest, and scheduling
+metadata rather than causing row loss or default substitution.
 
 #### Goal
 
@@ -2611,17 +2621,75 @@ feature pipeline.
 
 #### Tests
 
-Canonical feature-set, artifact-version, manifest, integration, and end-to-end
-pipeline tests are complete.
+Covered canonical model feature declarations, Home-minus-Away differential
+direction, feature-set ordering and metadata, artifact-version compatibility,
+manifest generation, one-row incremental identity, fixture consistency,
+integration pipeline execution, and end-to-end artifact creation.
 
-Real repository artifact rebuilding and validation remain before this unit is
+Completed a real full-history artifact rebuild and validated row counts, Game ID
+uniqueness, column uniqueness, canonical schema completeness, target identities,
+retired-orientation exclusion, manifest integrity, and feature null counts.
+
+All quality gates, scoped tests, integration tests, end-to-end tests, and
+real-data validation pass.
+
+#### Acceptance
+
+The active modeling build produces exactly one canonical Away/Home row for each
+of 7,276 cleaned historical games, runs the canonical feature sequence,
+persists the canonical schema and manifest, and contains no TEAM_A, TEAM_B,
+HOME_FIELD, or RESULT dependency.
+
+### Unit 19.2e: Migrate Win Model
+
+#### Completed
+
+Migrated the Win classification target from perspective-relative RESULT to
+canonical HOME_WIN.
+
+The positive classification class now means that the designated Home team won.
+
+Excluded ties through the nullable HOME_WIN target and preserved chronological
+training and holdout preparation.
+
+Migrated historical classification prediction assembly to the canonical
+one-row game schema.
+
+Model positive-class probability now maps directly to Home Win Probability.
+Away Win Probability is derived as its complement.
+
+Removed classification prediction dependence on two-row selection, TEAM_A,
+TEAM_B, HOME_FIELD, and neutral-site alphabetical orientation.
+
+Canonical Away Team and Home Team identity now pass directly from the source
+modeling row to the prediction row, including neutral-site games.
+
+Canonical Away Elo and Home Elo values pass directly to the prediction output.
+
+Added validation for duplicate Game IDs and misaligned probability or Total
+prediction counts.
+
+Preserved optional Total attachment, chronological output ordering, archive
+column identity, and caller immutability.
+
+#### Goal
+
+Train and predict Win probability directly from the canonical Home-team
+perspective.
+
+#### Tests
+
+Canonical Win target, training preparation, and direct historical prediction
+assembly tests are complete.
+
+Upcoming classification lifecycle verification remains before this unit is
 closed.
 
 #### Acceptance
 
-The active modeling build produces exactly one canonical Away/Home row per game,
-runs the canonical feature sequence, persists the canonical schema, and contains
-no TEAM_A, TEAM_B, HOME_FIELD, or RESULT dependency.
+Win models train on HOME_WIN and directly produce HOME_WIN_PROB, with
+AWAY_WIN_PROB derived as its complement and no TEAM_A, TEAM_B, HOME_FIELD,
+RESULT, two-row selection, or neutral-site alphabetical orientation.
 
 ---
 

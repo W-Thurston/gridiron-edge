@@ -22,6 +22,9 @@ from gridiron_edge.models.game_prediction.base import (
     GameModelType,
     GamesTrainer,
 )
+from gridiron_edge.models.game_prediction.game_schema import (
+    HOME_WIN_TARGET,
+)
 
 
 class WinProbTrainer(GamesTrainer):
@@ -33,7 +36,7 @@ class WinProbTrainer(GamesTrainer):
         return GameModelSpec(
             name="win_prob",
             task="classification",
-            target_col="RESULT",
+            target_col=HOME_WIN_TARGET,
             feature_set={
                 GameModelType.LOGISTIC: FEATURE_SETS["combined"],
                 GameModelType.RANDOM_FOREST: FEATURE_SETS["expanded"],

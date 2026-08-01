@@ -319,103 +319,148 @@ class TestModelTypeEnumRoundtrip:
 
 
 class TestBuildGamePredictions:
-    """Tests for canonical classification prediction rows.
-
-    The function lives at module scope in ``predictor.py`` (not a method
-    of ``GamesPredictor``) because it's a pure data-shape helper used by
-    the classification prediction path.
-    """
+    """Tests for direct canonical Home-oriented prediction rows."""
 
     def _make_modeling_df(self) -> pd.DataFrame:
-        """Minimal modeling DataFrame with two rows per game (home/away)."""
+        """Return two canonical game rows in non-chronological order."""
         return pd.DataFrame(
             {
-                "GAME_ID": ["G1", "G1", "G2", "G2"],
-                "TEAM_A": ["Chiefs", "Ravens", "Bills", "Dolphins"],
-                "TEAM_B": ["Ravens", "Chiefs", "Dolphins", "Bills"],
-                "YEAR": ["2024-2025"] * 4,
-                "WEEK_NUM": [1, 1, 1, 1],
-                "HOME_FIELD": [0, 1, 0, 1],
-                "GAME_DATE": [
-                    "2024-09-05",
-                    "2024-09-05",
-                    "2024-09-06",
-                    "2024-09-06",
-                ],
-                "TEAM_A_ELO": [
-                    1520.0,
-                    1480.0,
-                    1510.0,
-                    1500.0,
-                ],
-                "TEAM_B_ELO": [
-                    1480.0,
-                    1520.0,
-                    1500.0,
-                    1510.0,
-                ],
+                "GAME_ID": ["G2", "G1"],
+                "AWAY_TEAM": ["Bills", "Chiefs"],
+                "HOME_TEAM": ["Dolphins", "Ravens"],
+                "YEAR": ["2024-2025", "2024-2025"],
+                "WEEK_NUM": [2, 1],
+                "GAME_DATE": ["2024-09-12", "2024-09-05"],
+                "AWAY_ELO": [1510.0, 1520.0],
+                "HOME_ELO": [1500.0, 1480.0],
+                "IS_NEUTRAL_SITE": [0, 0],
             }
         )
 
-    def test_one_row_per_game(self) -> None:
-        """Output has one row per game, not two."""
+    def test_one_input_row_produces_one_output_row(self) -> None:
         df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
+        home_win_probs = np.array([0.40, 0.55])
 
         result = build_game_predictions(
             df,
-            probs,
+            home_win_probs,
         )
-        assert len(result) == 2
 
-    def test_away_team_perspective(self) -> None:
-        """Away team probability matches the HOME_FIELD==0 row."""
+        assert len(result) == len(df)
+        assert result["game_id"].is_unique
+
+    def test_home_probability_is_model_positive_class(self) -> None:
         df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
+        home_win_probs = np.array([0.40, 0.55])
 
         result = build_game_predictions(
             df,
-            probs,
+            home_win_probs,
         )
-        g1 = result[result["game_id"] == "G1"].iloc[0]
-        assert g1["away_win_prob"] == pytest.approx(0.45)
+
+        g1 = result.loc[result["game_id"] == "G1"].iloc[0]
+        g2 = result.loc[result["game_id"] == "G2"].iloc[0]
+
         assert g1["home_win_prob"] == pytest.approx(0.55)
+        assert g1["away_win_prob"] == pytest.approx(0.45)
+        assert g2["home_win_prob"] == pytest.approx(0.40)
+        assert g2["away_win_prob"] == pytest.approx(0.60)
 
-    def test_totals_included_when_provided(self) -> None:
-        """model_total column present when totals are passed."""
-        df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
-        totals = pd.Series([44.0, 44.0, 48.0, 48.0], index=df.index)
+    def test_probabilities_are_complements(self) -> None:
+        result = build_game_predictions(
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
+        )
+
+        sums = result["home_win_prob"] + result["away_win_prob"]
+
+        assert sums.tolist() == pytest.approx([1.0, 1.0])
+
+    def test_uses_canonical_team_identity_directly(self) -> None:
+        result = build_game_predictions(
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
+        )
+
+        g1 = result.loc[result["game_id"] == "G1"].iloc[0]
+
+        assert g1["away_team"] == "Chiefs"
+        assert g1["home_team"] == "Ravens"
+
+    def test_neutral_site_preserves_source_orientation(self) -> None:
+        df = pd.DataFrame(
+            {
+                "GAME_ID": ["G_NEUTRAL"],
+                "AWAY_TEAM": ["Ravens"],
+                "HOME_TEAM": ["Chiefs"],
+                "YEAR": ["2024-2025"],
+                "WEEK_NUM": [5],
+                "IS_NEUTRAL_SITE": [1],
+            }
+        )
 
         result = build_game_predictions(
             df,
-            probs,
+            np.array([0.65]),
+        )
+
+        assert len(result) == 1
+        assert result["away_team"].iloc[0] == "Ravens"
+        assert result["home_team"].iloc[0] == "Chiefs"
+        assert result["home_win_prob"].iloc[0] == pytest.approx(0.65)
+        assert result["away_win_prob"].iloc[0] == pytest.approx(0.35)
+
+    def test_output_is_chronologically_stable(self) -> None:
+        result = build_game_predictions(
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
+        )
+
+        assert result["game_id"].tolist() == ["G1", "G2"]
+
+    def test_preserves_game_date_and_canonical_elo(self) -> None:
+        result = build_game_predictions(
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
+        )
+
+        g1 = result.loc[result["game_id"] == "G1"].iloc[0]
+
+        assert g1["game_date"] == "2024-09-05"
+        assert g1["away_elo"] == pytest.approx(1520.0)
+        assert g1["home_elo"] == pytest.approx(1480.0)
+
+    def test_totals_are_aligned_after_sorting(self) -> None:
+        df = self._make_modeling_df()
+        totals = pd.Series(
+            [48.0, 44.0],
+            index=df.index,
+        )
+
+        result = build_game_predictions(
+            df,
+            np.array([0.40, 0.55]),
             totals=totals,
         )
-        assert "model_total" in result.columns
-        assert result["model_total"].notna().all()
 
-    def test_totals_absent_when_not_provided(self) -> None:
-        """model_total column absent when totals are not passed."""
-        df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
+        assert result["game_id"].tolist() == ["G1", "G2"]
+        assert result["model_total"].tolist() == pytest.approx([44.0, 48.0])
 
+    def test_totals_are_optional(self) -> None:
         result = build_game_predictions(
-            df,
-            probs,
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
         )
+
         assert "model_total" not in result.columns
 
-    def test_required_columns_present(self) -> None:
-        """Output contains all base archive columns."""
-        df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
-
+    def test_required_archive_columns_are_present(self) -> None:
         result = build_game_predictions(
-            df,
-            probs,
+            self._make_modeling_df(),
+            np.array([0.40, 0.55]),
         )
-        required: set[str] = {
+
+        required = {
             "season",
             "week",
             "game_id",
@@ -427,124 +472,63 @@ class TestBuildGamePredictions:
             "away_win_prob",
             "home_win_prob",
         }
-        assert required.issubset(set(result.columns))
-        assert required.issubset(set(result.columns))
+
+        assert required <= set(result.columns)
         assert "predicted_at" not in result.columns
         assert "is_backfilled" not in result.columns
         assert "model_name" not in result.columns
         assert "model_type" not in result.columns
 
-    def _make_neutral_site_df(self) -> pd.DataFrame:
-        """Modeling DataFrame with a neutral-site game (both rows HOME_FIELD=0)."""
-        return pd.DataFrame(
-            {
-                "GAME_ID": ["G_NEUTRAL", "G_NEUTRAL"],
-                "TEAM_A": ["Chiefs", "Ravens"],
-                "TEAM_B": ["Ravens", "Chiefs"],
-                "YEAR": ["2024-2025"] * 2,
-                "WEEK_NUM": [5, 5],
-                "HOME_FIELD": [0, 0],  # Neutral: both 0
-            }
-        )
-
-    def test_neutral_site_produces_one_row(self) -> None:
-        """Neutral games must produce exactly one prediction row, not two."""
-        df = self._make_neutral_site_df()
-        probs = np.array([0.55, 0.45])  # P(Chiefs beat Ravens), P(Ravens beat Chiefs)
-        result = build_game_predictions(
-            df,
-            probs,
-        )
-        assert len(result) == 1
-
-    def test_neutral_site_deterministic_labeling(self) -> None:
-        """Neutral games label the alphabetically-first team as away."""
-        df = self._make_neutral_site_df()
-        probs = np.array([0.55, 0.45])
-        result = build_game_predictions(
-            df,
-            probs,
-        )
-        # Chiefs < Ravens alphabetically, so Chiefs is labeled "away"
-        assert result["away_team"].iloc[0] == "Chiefs"
-        assert result["home_team"].iloc[0] == "Ravens"
-
-    def test_neutral_site_probability_matches_labeling(self) -> None:
-        """The away_win_prob must match the labeled away team's win probability."""
-        df = self._make_neutral_site_df()
-        # Row 1: TEAM_A=Chiefs, prob = P(Chiefs beats Ravens) = 0.55
-        # Row 2: TEAM_A=Ravens, prob = P(Ravens beats Chiefs) = 0.45
-        probs = np.array([0.55, 0.45])
-        result = build_game_predictions(
-            df,
-            probs,
-        )
-        # Chiefs is labeled away; away_win_prob should be P(Chiefs beats Ravens)
-        assert result["away_win_prob"].iloc[0] == pytest.approx(0.55)
-        assert result["home_win_prob"].iloc[0] == pytest.approx(0.45)
-
-    def test_neutral_site_stable_across_input_order(self) -> None:
-        """Reversing input row order must produce the same output."""
-        df1 = self._make_neutral_site_df()
-        probs1 = np.array([0.55, 0.45])
-
-        # Reverse input rows
-        df2 = df1.iloc[::-1].reset_index(drop=True)
-        probs2 = probs1[::-1]
-
-        result1 = build_game_predictions(
-            df1,
-            probs1,
-        )
-        result2 = build_game_predictions(
-            df2,
-            probs2,
-        )
-
-        # Same away team, same probability, regardless of input order
-        assert result1["away_team"].iloc[0] == result2["away_team"].iloc[0]
-        assert result1["away_win_prob"].iloc[0] == pytest.approx(result2["away_win_prob"].iloc[0])
-
-    def test_mixed_standard_and_neutral_games(self) -> None:
-        """Standard and neutral games can coexist in one call."""
-        df = pd.DataFrame(
-            {
-                "GAME_ID": ["G_STD", "G_STD", "G_NEUTRAL", "G_NEUTRAL"],
-                "TEAM_A": ["Bills", "Dolphins", "Chiefs", "Ravens"],
-                "TEAM_B": ["Dolphins", "Bills", "Ravens", "Chiefs"],
-                "YEAR": ["2024-2025"] * 4,
-                "WEEK_NUM": [1, 1, 5, 5],
-                "HOME_FIELD": [0, 1, 0, 0],  # Std: Dolphins home. Neutral: both 0.
-            }
-        )
-        probs = np.array([0.60, 0.40, 0.55, 0.45])
-        result = build_game_predictions(
-            df,
-            probs,
-        )
-        assert len(result) == 2
-
-        std_row = result[result["game_id"] == "G_STD"].iloc[0]
-        # Bills (HOME_FIELD=0) is the away team
-        assert std_row["away_team"] == "Bills"
-        assert std_row["away_win_prob"] == pytest.approx(0.60)
-
-        neutral_row = result[result["game_id"] == "G_NEUTRAL"].iloc[0]
-        # Chiefs alphabetically first, labeled away
-        assert neutral_row["away_team"] == "Chiefs"
-        assert neutral_row["away_win_prob"] == pytest.approx(0.55)
-
-    def test_preserves_game_date_and_elo_values(self) -> None:
+    def test_duplicate_game_ids_are_rejected(self) -> None:
         df = self._make_modeling_df()
-        probs = np.array([0.45, 0.55, 0.60, 0.40])
+        df.loc[1, "GAME_ID"] = "G2"
 
-        result = build_game_predictions(
+        with pytest.raises(
+            ValueError,
+            match="duplicate game IDs",
+        ):
+            build_game_predictions(
+                df,
+                np.array([0.40, 0.55]),
+            )
+
+    def test_probability_count_must_match_rows(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=("Home-win probability count must match canonical game rows"),
+        ):
+            build_game_predictions(
+                self._make_modeling_df(),
+                np.array([0.40]),
+            )
+
+    def test_total_count_must_match_rows(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=("Total prediction count must match canonical game rows"),
+        ):
+            build_game_predictions(
+                self._make_modeling_df(),
+                np.array([0.40, 0.55]),
+                totals=pd.Series([44.0]),
+            )
+
+    def test_input_is_not_mutated(self) -> None:
+        df = self._make_modeling_df()
+        expected = df.copy(deep=True)
+
+        build_game_predictions(
             df,
-            probs,
+            np.array([0.40, 0.55]),
         )
 
-        g1 = result.loc[result["game_id"] == "G1"].iloc[0]
+        pd.testing.assert_frame_equal(df, expected)
 
-        assert g1["game_date"] == "2024-09-05"
-        assert g1["away_elo"] == pytest.approx(1520.0)
-        assert g1["home_elo"] == pytest.approx(1480.0)
+    def test_helper_source_excludes_retired_orientation(self) -> None:
+        import inspect
+
+        source = inspect.getsource(build_game_predictions)
+
+        assert "TEAM_A" not in source
+        assert "TEAM_B" not in source
+        assert "HOME_FIELD" not in source

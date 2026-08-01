@@ -23,6 +23,7 @@ from collections.abc import Callable
 import logging
 from logging import Logger
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 from pandas import DataFrame, Series
@@ -39,6 +40,9 @@ from gridiron_edge.models.game_prediction._columns import (
     _RAW_FEATURES,
     _TEAM_FEATURES,
     FeatureSet,
+)
+from gridiron_edge.models.game_prediction.game_schema import (
+    HOME_WIN_TARGET,
 )
 
 logger: Logger = logging.getLogger(__name__)
@@ -136,32 +140,54 @@ FEATURE_SETS: dict[str, FeatureSet] = {
 def _prepare_data(
     df: pd.DataFrame,
     feature_fn: Callable,
-) -> tuple[pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
-    """Prepare train/holdout split for a given feature engineering function.
+) -> tuple[
+    pd.DataFrame,
+    Series,
+    pd.DataFrame,
+    Series,
+    list[str],
+    list[str],
+]:
+    """Prepare canonical Win train and holdout data.
 
-    Excludes:
-    - Ties (RESULT == 0.5)
-    - Rows with any NaN feature value (covers pre-2006 and week-1 rows)
+    Tied games have a null ``HOME_WIN`` target and are excluded.
+    Rows with any unavailable model feature are also excluded.
 
     Args:
-        df: Full modeling DataFrame.
-        feature_fn: Function that takes df and returns feature DataFrame.
+        df: Canonical one-row-per-game modeling DataFrame.
+        feature_fn: Function that returns the model feature matrix.
 
     Returns:
-        Tuple of (x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons).
-        Season lists are returned as ``"YYYY-YYYY"`` strings to match the
-        :class:`gridiron_edge.models.artifact.BaseModelMetadata` convention.
+        Train features, train target, holdout features, holdout target,
+        sorted training seasons, and sorted holdout seasons.
     """
-    df = df.loc[df["RESULT"] != 0.5, :].copy()
-    # Sort chronologically so TimeSeriesSplit respects temporal ordering.
-    df = df.sort_values(["YEAR", "WEEK_NUM"]).reset_index(drop=True)
+    if HOME_WIN_TARGET not in df.columns:
+        raise ValueError(
+            f"Canonical Win modeling data is missing required target column: {HOME_WIN_TARGET}"
+        )
+
+    df = df.dropna(subset=[HOME_WIN_TARGET]).copy()
+
+    df = df.sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_DATE",
+            "GAME_ID",
+        ],
+        kind="stable",
+        ignore_index=True,
+    )
 
     features = feature_fn(df)
     valid = features.notna().all(axis=1)
-    df = df.loc[valid].copy()
-    features = features.loc[valid].copy()
+    valid_index = features.index[valid]
 
-    y = df["RESULT"].astype(int)
+    df = df.reindex(valid_index).copy()
+    features = features.reindex(valid_index).copy()
+
+    y = df[HOME_WIN_TARGET].astype(int)
+
     train_mask = ~df["YEAR"].isin(HOLDOUT_SEASONS)
     hold_mask = df["YEAR"].isin(HOLDOUT_SEASONS)
 
@@ -171,14 +197,50 @@ def _prepare_data(
         hold_mask.sum(),
     )
 
-    train_seasons: list[str] = sorted(df.loc[train_mask, "YEAR"].unique().tolist())
-    hold_seasons: list[str] = sorted(df.loc[hold_mask, "YEAR"].unique().tolist())
+    train_seasons: list[str] = sorted(
+        df.loc[
+            train_mask,
+            "YEAR",
+        ]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+    hold_seasons: list[str] = sorted(
+        df.loc[
+            hold_mask,
+            "YEAR",
+        ]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    train_index = df.index[train_mask]
+    hold_index = df.index[hold_mask]
+
+    x_train = cast(
+        DataFrame,
+        features.reindex(train_index),
+    )
+    y_train = cast(
+        Series,
+        y.reindex(train_index),
+    )
+    x_hold = cast(
+        DataFrame,
+        features.reindex(hold_index),
+    )
+    y_hold = cast(
+        Series,
+        y.reindex(hold_index),
+    )
 
     return (
-        features.loc[train_mask],
-        y.loc[train_mask],
-        features.loc[hold_mask],
-        y.loc[hold_mask],
+        x_train,
+        y_train,
+        x_hold,
+        y_hold,
         train_seasons,
         hold_seasons,
     )
