@@ -6,12 +6,18 @@ patterns from individual test files into a single importable module.
 
 Usage::
 
-    from tests.fixtures.dataframes import make_games, make_modeling_rows
+    from tests.fixtures.dataframes import make_games
 
 
     def test_something():
-        games = make_games([{"WINNER": "KC", "LOSER": "LV"}])
-        modeling = make_modeling_rows([{"TEAM_A": "KC", "TEAM_B": "LV"}])
+        games = make_games(
+            [
+                {
+                    "AWAY_TEAM": "Las Vegas Raiders",
+                    "HOME_TEAM": "Kansas City Chiefs",
+                }
+            ]
+        )
 """
 
 from __future__ import annotations
@@ -74,51 +80,6 @@ def make_games(
         rows: list[dict[str, Any]] = [{**_GAME_DEFAULTS, **o} for o in overrides]
     else:
         rows = [{**_GAME_DEFAULTS, "GAME_ID": f"2024_0{i + 1}_KC_LV"} for i in range(n)]
-    return pd.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
-# Modeling rows (two-row-per-game structure)
-# ---------------------------------------------------------------------------
-
-_MODELING_DEFAULTS: dict[str, Any] = {
-    "GAME_ID": "2024_01_KC_LV",
-    "TEAM_A": "Kansas City Chiefs",
-    "TEAM_B": "Las Vegas Raiders",
-    "YEAR": "2024-2025",
-    "WEEK_NUM": 1,
-    "RESULT": 1,
-    "HOME_FIELD": 1,
-}
-
-
-def make_modeling_rows(
-    overrides: list[dict[str, Any]] | None = None,
-    *,
-    n: int = 2,
-) -> pd.DataFrame:
-    """Build a minimal modeling DataFrame (TEAM_A / TEAM_B structure).
-
-    Args:
-        overrides: Per-row field overrides.
-        n: Number of rows when *overrides* is not provided.
-
-    Returns:
-        DataFrame matching the modeling schema.
-    """
-    if overrides is not None:
-        rows: list[dict[str, Any]] = [{**_MODELING_DEFAULTS, **o} for o in overrides]
-    else:
-        rows = [
-            {
-                **_MODELING_DEFAULTS,
-                "GAME_ID": f"2024_0{i + 1}_KC_LV",
-                "TEAM_A": "Kansas City Chiefs" if i % 2 == 0 else "Las Vegas Raiders",
-                "TEAM_B": "Las Vegas Raiders" if i % 2 == 0 else "Kansas City Chiefs",
-                "HOME_FIELD": 1 if i % 2 == 0 else 0,
-            }
-            for i in range(n)
-        ]
     return pd.DataFrame(rows)
 
 
@@ -452,185 +413,425 @@ def make_accessor(
 
 # Game-side feature columns used by the expanded feature set. Order
 # matters for the trainer's NaN-detection logic.
-def _build_games_modeling_cols() -> list[str]:
-    """Build the games modeling column list from the production EPA schema.
+def _build_games_modeling_cols() -> list:
+    """Return the complete canonical game-modeling fixture schema."""
+    from gridiron_edge.features.pipeline import (
+        canonical_feature_columns,
+    )
 
-    Sources the EPA suffix list from ``features.team.epa.EPA_COLS`` so the
-    fixture stays in sync with production. Any new EPA stat added there
-    automatically becomes part of the synthetic schema.
-    """
-    from gridiron_edge.features.team.epa import EPA_COLS
-
-    base_cols: list[str] = [
+    identity_and_targets = [
         "GAME_ID",
-        "TEAM_A",
-        "TEAM_B",
         "YEAR",
         "WEEK_NUM",
-        "RESULT",
-        "HOME_FIELD",
-        "TEAM_A_ELO",
-        "TEAM_B_ELO",
+        "GAME_DATE",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+        "IS_NEUTRAL_SITE",
+        "HOME_WIN",
+        "ACTUAL_MARGIN",
+        "ACTUAL_TOTAL",
     ]
 
-    # EPA columns: TEAM_A_<UPPER_NAME>, TEAM_B_<UPPER_NAME> for every EPA stat.
-    epa_cols: list[str] = []
-    for epa_name in EPA_COLS:
-        upper = epa_name.upper()
-        epa_cols.append(f"TEAM_A_{upper}")
-    for epa_name in EPA_COLS:
-        upper = epa_name.upper()
-        epa_cols.append(f"TEAM_B_{upper}")
+    columns = [
+        *identity_and_targets,
+        *canonical_feature_columns(),
+    ]
 
-    tail_cols: list[str] = ["PTS_WINNER", "PTS_LOSER"]
-    return base_cols + epa_cols + tail_cols
+    duplicated = sorted({column for column in columns if columns.count(column) > 1})
+    if duplicated:
+        raise ValueError(
+            "Canonical modeling fixture contains duplicate columns: " + ", ".join(duplicated)
+        )
+
+    return columns
 
 
 _GAMES_MODELING_COLS: list[str] = _build_games_modeling_cols()
 
 
+def _synthetic_game_feature_value(
+    column: str,
+    rng: Generator,
+) -> int | float:
+    """Return a schema-appropriate synthetic feature value."""
+    binary_columns = {
+        "IS_DIV_GAME",
+        "IS_PRIMETIME",
+        "IS_DOME",
+        "AWAY_SHORT_WEEK",
+        "HOME_SHORT_WEEK",
+        "AWAY_POST_BYE",
+        "HOME_POST_BYE",
+        "PRECIP_FLAG",
+        "SNOW_FLAG",
+        "LOW_VIS_FLAG",
+    }
+    count_suffixes = (
+        "_WINS",
+        "_LOSSES",
+        "_WIN_STREAK",
+        "_LOSS_STREAK",
+    )
+    continuous_ranges: dict[
+        str,
+        tuple[float, float],
+    ] = {
+        "GAME_SITE_ALTITUDE": (
+            0.0,
+            1700.0,
+        ),
+        "TEMP_F": (
+            20.0,
+            95.0,
+        ),
+        "FEELS_LIKE_F": (
+            20.0,
+            95.0,
+        ),
+        "WIND_SPEED_MPH": (
+            0.0,
+            30.0,
+        ),
+        "HUMIDITY_PCT": (
+            20.0,
+            95.0,
+        ),
+        "VISIBILITY_M": (
+            2000.0,
+            10000.0,
+        ),
+        "WIND_CHILL_DELTA": (
+            0.0,
+            20.0,
+        ),
+    }
+
+    if column in binary_columns:
+        value: int | float = int(rng.integers(0, 2))
+    elif column.endswith(count_suffixes):
+        value = int(rng.integers(0, 12))
+    elif "ELO" in column or column.endswith("_SOS") or column.endswith("_SOV"):
+        value = float(
+            rng.uniform(
+                1400.0,
+                1600.0,
+            )
+        )
+    elif "KM_TRAVELED" in column:
+        value = float(
+            rng.uniform(
+                0.0,
+                4500.0,
+            )
+        )
+    elif column.endswith("_TZ_SHIFT"):
+        value = int(
+            rng.integers(
+                -3,
+                4,
+            )
+        )
+    elif column in continuous_ranges:
+        lower, upper = continuous_ranges[column]
+        value = float(
+            rng.uniform(
+                lower,
+                upper,
+            )
+        )
+    elif "RATE" in column or "PCT" in column:
+        value = float(
+            rng.uniform(
+                0.05,
+                0.95,
+            )
+        )
+    else:
+        value = float(
+            rng.uniform(
+                -0.3,
+                0.4,
+            )
+        )
+
+    return value
+
+
 def make_games_modeling_df(
     *,
-    seasons: tuple[int, ...] = (2006, 2007, 2008, 2009, 2010, 2023, 2024),
+    seasons: tuple[int, ...] = (
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2023,
+        2024,
+    ),
     games_per_season: int = 30,
-    teams: tuple[str, ...] = ("KC", "SF", "BUF", "PHI", "DAL", "NYG", "MIA", "LAR"),
+    teams: tuple[str, ...] = (
+        "KC",
+        "SF",
+        "BUF",
+        "PHI",
+        "DAL",
+        "NYG",
+        "MIA",
+        "LAR",
+    ),
     seed: int = 0,
 ) -> pd.DataFrame:
-    """Build a synthetic modeling DataFrame matching the games schema.
+    """Build a synthetic canonical game-modeling DataFrame.
 
-    Sized to produce non-empty train and holdout splits when
-    ``HOLDOUT_SEASONS`` filters apply. Default span covers both training
-    (2006-2010) and holdout (2023-2024) seasons, giving the trainer
-    enough rows to run a small HP search without crashing.
+    Each generated game produces one Away/Home-oriented row with stable
+    identity, scores, targets, and complete canonical feature outputs.
+
+    The default seasons contain both training and configured holdout
+    seasons so model lifecycle tests receive non-empty splits.
 
     Args:
-        seasons: Season years to generate. Use the "YYYY" format -
-            converted to "YYYY-YYYY" for the YEAR column.
-        games_per_season: Games per season. Each game produces TWO rows
-            (TEAM_A and TEAM_B perspectives) to match the real schema.
-        teams: Team abbreviations used as TEAM_A / TEAM_B values.
-        seed: RNG seed for reproducibility.
+        seasons: Starting season years. Each integer becomes a label such
+            as ``2024-2025``.
+        games_per_season: Number of unique games generated per season.
+        teams: Team identifiers used for Away and Home assignments.
+        seed: Random-number seed for deterministic fixture generation.
 
     Returns:
-        DataFrame conforming to the games modeling schema with EPA
-        features filled in.
+        One canonical modeling row per unique Game ID.
     """
+    if len(teams) < 2:
+        raise ValueError("At least two teams are required.")
+
     rng: Generator = np.random.default_rng(seed)
     rows: list[dict[str, Any]] = []
 
+    identity_columns = {
+        "GAME_ID",
+        "YEAR",
+        "WEEK_NUM",
+        "GAME_DATE",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+        "IS_NEUTRAL_SITE",
+        "HOME_WIN",
+        "ACTUAL_MARGIN",
+        "ACTUAL_TOTAL",
+    }
+
     for season_int in seasons:
-        season_str: str = f"{season_int}-{season_int + 1}"
-        for game_idx in range(games_per_season):
-            week: int = (game_idx % 17) + 1
-            team_a: str = teams[game_idx % len(teams)]
-            team_b: str = teams[(game_idx + 1) % len(teams)]
-            game_id: str = f"{season_int}_{week:02d}_{team_a}_{team_b}"
+        season = f"{season_int}-{season_int + 1}"
 
-            # Synthetic game outcome
-            home_won: int = int(rng.random() > 0.45)  # mild home-field bias
-            pts_winner: int = int(rng.uniform(17, 38))
-            pts_loser: int = int(rng.uniform(7, pts_winner))
+        for game_index in range(games_per_season):
+            week = (game_index % 18) + 1
 
-            # Generate two rows: TEAM_A=team_a (home), then swap
-            for home_field in (1, 0):
-                if home_field == 1:
-                    ta, tb = team_a, team_b
-                    result: int = home_won
-                else:
-                    ta, tb = team_b, team_a
-                    result = 1 - home_won
+            away_team = teams[game_index % len(teams)]
+            home_team = teams[(game_index + 1) % len(teams)]
 
-                row: dict[str, Any] = {
-                    "GAME_ID": game_id,
-                    "TEAM_A": ta,
-                    "TEAM_B": tb,
-                    "YEAR": season_str,
-                    "WEEK_NUM": week,
-                    "RESULT": result,
-                    "HOME_FIELD": home_field,
-                    "TEAM_A_ELO": rng.uniform(1400, 1600),
-                    "TEAM_B_ELO": rng.uniform(1400, 1600),
-                    "PTS_WINNER": pts_winner,
-                    "PTS_LOSER": pts_loser,
-                }
-                # Fill all EPA columns with realistic ranges
-                for col in _GAMES_MODELING_COLS:
-                    if col not in row:
-                        if "EPA" in col:
-                            row[col] = rng.uniform(-0.3, 0.4)
-                        elif "RATE" in col or "PCT" in col:
-                            row[col] = rng.uniform(0.2, 0.7)
-                        else:
-                            row[col] = rng.uniform(-0.2, 0.3)
-                rows.append(row)
+            game_id = f"{season_int}_{week:02d}_{away_team}_{home_team}"
 
-    return pd.DataFrame(rows)[_GAMES_MODELING_COLS]
+            # Alternate outcomes chronologically so every sufficiently sized
+            # time-series split contains both classes. This keeps calibration tests
+            # deterministic without making the feature relationship deterministic.
+            home_win = int((game_index + season_int) % 2 == 0)
+
+            winning_score = int(rng.integers(20, 39))
+            losing_score = int(
+                rng.integers(
+                    7,
+                    winning_score,
+                )
+            )
+
+            if home_win == 1:
+                home_score = winning_score
+                away_score = losing_score
+            else:
+                away_score = winning_score
+                home_score = losing_score
+
+            row: dict[str, Any] = {
+                "GAME_ID": game_id,
+                "YEAR": season,
+                "WEEK_NUM": week,
+                "GAME_DATE": (
+                    pd.Timestamp(
+                        year=season_int,
+                        month=9,
+                        day=1,
+                    )
+                    + pd.Timedelta(
+                        days=7 * (week - 1),
+                    )
+                ).strftime("%Y-%m-%d"),
+                "AWAY_TEAM": away_team,
+                "HOME_TEAM": home_team,
+                "AWAY_SCORE": away_score,
+                "HOME_SCORE": home_score,
+                "IS_NEUTRAL_SITE": 0,
+                "HOME_WIN": home_win,
+                "ACTUAL_MARGIN": (home_score - away_score),
+                "ACTUAL_TOTAL": (home_score + away_score),
+            }
+
+            for column in _GAMES_MODELING_COLS:
+                if column in identity_columns:
+                    continue
+
+                row[column] = _synthetic_game_feature_value(
+                    column,
+                    rng,
+                )
+
+            # Give the synthetic fixture a noisy pregame strength signal.
+            # Outcomes alternate so chronological calibration folds contain both
+            # classes. Overlapping Elo distributions give Logistic a learnable
+            # relationship without making the feature perfectly deterministic.
+            home_strength_edge = float(
+                rng.normal(
+                    loc=(45.0 if home_win else -45.0),
+                    scale=35.0,
+                )
+            )
+            row["HOME_ELO"] = 1500.0 + home_strength_edge
+            row["AWAY_ELO"] = 1500.0 - home_strength_edge
+
+            rows.append(row)
+
+    frame = pd.DataFrame(
+        rows,
+        columns=_GAMES_MODELING_COLS,
+    )
+
+    expected_rows = len(seasons) * games_per_season
+
+    assert len(frame) == expected_rows
+    assert frame["GAME_ID"].is_unique
+    assert frame.columns.is_unique
+
+    return frame
 
 
 def make_games_from_modeling_df(
     modeling_df: pd.DataFrame,
     seed: int = 0,
 ) -> pd.DataFrame:
-    """Build a games DataFrame matching the GAME_IDs in a modeling DataFrame.
+    """Build cleaned games matching a canonical modeling fixture.
 
-    Use this when a test needs both a modeling file and a corresponding
-    games file (e.g. for the total trainer, which joins them by GAME_ID).
-    The games DataFrame is sized to match exactly the unique GAME_IDs in
-    the modeling file.
+    Game identity and scores are copied directly from the canonical
+    modeling rows. Winner/loser compatibility fields are derived only
+    for consumers of the cleaned-games contract.
 
     Args:
-        modeling_df: Modeling DataFrame from :func:`make_games_modeling_df`.
-        seed: RNG seed for outcome generation.
+        modeling_df: Canonical one-row-per-game modeling DataFrame.
+        seed: Random-number seed for synthetic market metadata.
 
     Returns:
-        Games DataFrame with one row per unique GAME_ID, populated with
-        WINNER, LOSER, WIN_OR_TIE, GAME_LOCATION, PTS_WINNER, PTS_LOSER,
-        and the YEAR/WEEK_NUM/GAME_DATE fields needed for the join.
+        One cleaned-games row per canonical Game ID.
+
+    Raises:
+        ValueError: If required canonical columns are missing, Game IDs
+            are duplicated, or a synthetic tied game is encountered.
     """
-    rng: Generator = np.random.default_rng(seed)
-
-    # One row per game (away-team perspective in modeling)
-    away_rows = modeling_df.loc[modeling_df["HOME_FIELD"] == 0].drop_duplicates(subset=["GAME_ID"])
-
-    rows: list[dict[str, Any]] = []
-    for _, row in away_rows.iterrows():
-        # In modeling: TEAM_A=away, TEAM_B=home
-        # In games: WINNER/LOSER decided by RESULT; LOCATION marks side
-        away_team: str = row["TEAM_A"]
-        home_team: str = row["TEAM_B"]
-        away_won: int = int(row["RESULT"])
-
-        winner: str = away_team if away_won else home_team
-        loser: str = home_team if away_won else away_team
-        location: str = "@" if away_won else "NULL_VALUE"
-
-        pts_winner: int = int(rng.uniform(20, 38))
-        pts_loser: int = int(rng.uniform(7, pts_winner))
-
-        rows.append(
-            {
-                "GAME_ID": row["GAME_ID"],
-                "YEAR": row["YEAR"],
-                "WEEK_NUM": row["WEEK_NUM"],
-                "WINNER": winner,
-                "LOSER": loser,
-                "WIN_OR_TIE": 1,
-                "GAME_LOCATION": location,
-                "GAME_DATE": f"2024-{row['WEEK_NUM']:02d}-01",
-                "STADIUM": f"{home_team} Stadium",
-                "ROOF": "outdoors",
-                "SURFACE": "grass",
-                "GAMETIME": "13:00",
-                "GAME_DAY_OF_WEEK": "Sunday",
-                "PTS_WINNER": pts_winner,
-                "PTS_LOSER": pts_loser,
-                "VEGAS_LINE": float(rng.uniform(-10, 10)),
-                "OVER_UNDER": float(rng.uniform(40, 55)),
-                "FAVORITED": home_team,
-            }
+    required = {
+        "GAME_ID",
+        "YEAR",
+        "WEEK_NUM",
+        "GAME_DATE",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+        "IS_NEUTRAL_SITE",
+    }
+    missing = sorted(required - set(modeling_df.columns))
+    if missing:
+        raise ValueError(
+            "Canonical modeling fixture is missing required columns: " + ", ".join(missing)
         )
 
-    return pd.DataFrame(rows)
+    if modeling_df["GAME_ID"].duplicated().any():
+        raise ValueError("Canonical modeling fixture contains duplicate game IDs.")
+
+    games = modeling_df.loc[
+        :,
+        [
+            "GAME_ID",
+            "YEAR",
+            "WEEK_NUM",
+            "GAME_DATE",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "AWAY_SCORE",
+            "HOME_SCORE",
+            "IS_NEUTRAL_SITE",
+        ],
+    ].copy()
+
+    away_won = games["AWAY_SCORE"] > games["HOME_SCORE"]
+    home_won = games["HOME_SCORE"] > games["AWAY_SCORE"]
+    tied = ~away_won & ~home_won
+
+    if tied.any():
+        raise ValueError("Synthetic game fixtures must not contain tied scores.")
+
+    games["WINNER"] = games["HOME_TEAM"].where(
+        home_won,
+        games["AWAY_TEAM"],
+    )
+    games["LOSER"] = games["AWAY_TEAM"].where(
+        home_won,
+        games["HOME_TEAM"],
+    )
+    games["WIN_OR_TIE"] = 1.0
+
+    games["GAME_LOCATION"] = "@"
+    games.loc[
+        home_won,
+        "GAME_LOCATION",
+    ] = "NULL_VALUE"
+    games.loc[
+        games["IS_NEUTRAL_SITE"].eq(1),
+        "GAME_LOCATION",
+    ] = "N"
+
+    games["PTS_WINNER"] = games[
+        [
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+    ].max(axis=1)
+    games["PTS_LOSER"] = games[
+        [
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+    ].min(axis=1)
+
+    rng: Generator = np.random.default_rng(seed)
+
+    games["STADIUM"] = games["HOME_TEAM"].astype(str) + " Stadium"
+    games["ROOF"] = "outdoors"
+    games["SURFACE"] = "grass"
+    games["GAMETIME"] = "13:00"
+    games["GAME_DAY_OF_WEEK"] = "Sunday"
+    games["DIV_GAME"] = 0
+    games["VEGAS_LINE"] = rng.uniform(
+        -10.0,
+        10.0,
+        len(games),
+    )
+    games["OVER_UNDER"] = rng.uniform(
+        40.0,
+        55.0,
+        len(games),
+    )
+    games["FAVORITED"] = games["HOME_TEAM"]
+
+    return games.reset_index(drop=True)
 
 
 # Prop-side feature columns used by build_prop_features. Mirrors the

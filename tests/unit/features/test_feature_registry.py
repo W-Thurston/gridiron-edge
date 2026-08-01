@@ -26,7 +26,6 @@ class TestFeatureRegistryGet:
         """All expected feature names should be retrievable."""
 
         expected: set[str] = {
-            "travel",
             "home_away_elo",
             "home_away_epa",
             "home_away_rest",

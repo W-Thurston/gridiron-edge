@@ -54,9 +54,9 @@ pytestmark = [
 def games_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Module-scoped repo with games + modeling file + EPA data.
 
-    The modeling DataFrame is generated first, then the games DataFrame
-    is matched to its GAME_IDs so the total trainer (which joins games
-    to modeling by GAME_ID) finds non-empty data after the join.
+    The canonical modeling DataFrame is generated first, then a matching
+    cleaned-games fixture is derived from its explicit Away/Home identity
+    and scores.
     """
     from tests.fixtures.dataframes import (
         make_games_from_modeling_df,
@@ -90,10 +90,11 @@ def modeling_df() -> pd.DataFrame:
 
 
 def _fit_load_predict_classification(
-    predictor: WinProbLogisticPredictor | WinProbRandomForestPredictor | WinProbXGBoostPredictor,
+    predictor: (WinProbLogisticPredictor | WinProbRandomForestPredictor | WinProbXGBoostPredictor),
     *,
     repo: Path,
     modeling_df: pd.DataFrame,
+    enforce_scaler_band: bool = False,
 ) -> None:
     """Train classification model, persist, load, predict, assert reasonable.
 
@@ -111,8 +112,17 @@ def _fit_load_predict_classification(
         f"artifact missing at {store.artifact_dir(predictor.model_name, predictor.model_type)}"
     )
     assert metadata.task == "classification"
-    assert metadata.holdout_brier > 0.0
-    assert metadata.holdout_brier < 0.50  # sanity bound on synthetic data
+
+    holdout_brier = metadata.metrics.get("brier")
+
+    assert holdout_brier is not None
+    assert holdout_brier > 0.0
+    assert holdout_brier < 0.50
+    assert "brier" in metadata.metrics
+    assert not hasattr(
+        metadata,
+        "holdout_brier",
+    )
 
     # Now run the predict path - this is where the scaler bug surfaced.
     # Fresh predictor instance to confirm we're loading from disk, not
@@ -121,19 +131,35 @@ def _fit_load_predict_classification(
     result_df = fresh_predictor.predict_historical(pd.DataFrame(), repo=repo)
 
     assert not result_df.empty
-    assert "away_win_prob" in result_df.columns
-    assert "model_name" in result_df.columns
-    assert "model_type" in result_df.columns
-    assert (result_df["model_name"] == predictor.model_name).all()
-    assert (result_df["model_type"] == predictor.model_type).all()
+
+    expected_columns = {
+        "season",
+        "week",
+        "game_id",
+        "game_date",
+        "away_team",
+        "home_team",
+        "away_win_prob",
+        "home_win_prob",
+    }
+
+    assert expected_columns <= set(result_df.columns)
+    assert result_df["game_id"].is_unique
+
+    assert (result_df["away_win_prob"] + result_df["home_win_prob"]).to_numpy() == pytest.approx(
+        1.0
+    )
 
     # The critical regression assertion: catches the scaler-not-applied bug.
     # On the broken path, std was ~0.485; on the fixed path, it's ~0.15.
     assert_predictions_reasonable(
         result_df["away_win_prob"],
         task="classification",
-        name=f"{predictor.model_name}/{predictor.model_type}",
+        allow_extreme=not enforce_scaler_band,
+        name=(f"{predictor.model_name}/{predictor.model_type}"),
     )
+
+    assert result_df["away_win_prob"].nunique() > 1
 
 
 def _fit_load_predict_regression(
@@ -151,17 +177,35 @@ def _fit_load_predict_regression(
         f"artifact missing at {store.artifact_dir(predictor.model_name, predictor.model_type)}"
     )
     assert metadata.task == "regression"
-    # Regression should produce a finite, positive MAE.
-    assert metadata.holdout_mae > 0.0
+
+    holdout_mae = metadata.metrics.get("mae")
+
+    assert holdout_mae is not None
+    assert holdout_mae > 0.0
+    assert "mae" in metadata.metrics
+    assert not hasattr(
+        metadata,
+        "holdout_mae",
+    )
 
     # Fresh predictor for the load path
     fresh_predictor = type(predictor)()
     result_df = fresh_predictor.predict_historical(pd.DataFrame(), repo=repo)
 
     assert not result_df.empty
-    assert "model_total" in result_df.columns
-    assert "model_name" in result_df.columns
-    assert "model_type" in result_df.columns
+
+    expected_columns = {
+        "season",
+        "week",
+        "game_id",
+        "game_date",
+        "away_team",
+        "home_team",
+        "model_total",
+    }
+
+    assert expected_columns <= set(result_df.columns)
+    assert result_df["game_id"].is_unique
 
     assert_predictions_reasonable(
         result_df["model_total"],
@@ -191,6 +235,7 @@ class TestWinProbLogistic:
             predictor,
             repo=games_repo,
             modeling_df=modeling_df,
+            enforce_scaler_band=True,
         )
 
     def test_scaler_artifact_persisted(self, games_repo: Path, modeling_df: pd.DataFrame) -> None:
@@ -300,10 +345,27 @@ class TestWinProbElo:
         result_df: DataFrame = predictor.predict_historical(games, repo=games_repo)
 
         assert not result_df.empty
-        assert "away_win_prob" in result_df.columns
-        assert "model_name" in result_df.columns
-        assert (result_df["model_name"] == "win_prob").all()
-        assert (result_df["model_type"] == "elo").all()
+
+        expected_columns = {
+            "season",
+            "week",
+            "game_id",
+            "game_date",
+            "away_team",
+            "home_team",
+            "away_elo",
+            "home_elo",
+            "away_win_prob",
+            "home_win_prob",
+            "model_spread",
+        }
+
+        assert expected_columns <= set(result_df.columns)
+        assert result_df["game_id"].is_unique
+
+        assert (
+            result_df["away_win_prob"] + result_df["home_win_prob"]
+        ).to_numpy() == pytest.approx(1.0)
 
         # Allow tighter std for Elo because the synthetic ratings are
         # very similar (both ~1500) so Elo correctly predicts probabilities

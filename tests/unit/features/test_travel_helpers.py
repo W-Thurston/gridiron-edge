@@ -1,5 +1,5 @@
 # tests/unit/metrics/test_travel_metrics.py
-"""Tests for gridiron_edge.metrics.travel.travel - haversine and travel computation."""
+"""Tests for canonical Travel geospatial helpers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import numpy as np
 from numpy import ndarray
 import pytest
 
-from gridiron_edge.metrics.travel.travel import _haversine_km
+from gridiron_edge.features.team.travel import _haversine_km
 
 
 class TestHaversineKm:

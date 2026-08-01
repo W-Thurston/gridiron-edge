@@ -1719,17 +1719,21 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2h    Remove retired orientation and rebuild artifacts
-  19.2h-A  Remove the inactive legacy pipeline entry points
-  19.2h-B  Remove legacy feature registrations and implementations
-  19.2h-C  Remove legacy modeling fixtures and generic artifact examples
-  19.2h-D  Remove migration-only schema guards and stale terminology
-  19.2h-E  Rebuild, retrain, and validate canonical artifacts
-19.1b    Implement truthful availability inspection
-19.3     Execute policy-selected models
-19.4     Persist and select weekly product
-19.5     Readiness and publication hardening
-19.6     End-to-end orchestration acceptance
+Current:
+  finish 19.2h-C1b fixture lifecycle debugging
+
+Then:
+  19.2h-C2 canonicalize artifact examples
+  19.2h-C3 final fixture/test inventory
+  19.2h-D  remove migration guards and stale terminology
+  19.2h-E  rebuild, retrain, refresh, and validate artifacts
+
+After 19.2h:
+  19.1b truthful availability inspection
+  19.3  execute policy-selected models
+  19.4  persist and select weekly product
+  19.5  readiness and publication hardening
+  19.6  end-to-end orchestration acceptance
 
 #### Goal
 
@@ -3047,6 +3051,93 @@ perspective-oriented feature output remains.
 
 All scoped quality gates, canonical feature tests, integration tests, and
 end-to-end tests pass.
+
+Removed the retired TravelFeature implementation and registration.
+
+Removed TEAM_A and TEAM_B travel assembly, HOME_FIELD dependency, winner/loser
+venue recovery, and GAME_LOCATION neutral-site inference from the feature
+layer.
+
+Deleted the dedicated legacy Travel feature test suite.
+
+Preserved canonical historical and upcoming venue resolution, actual game-site
+coordinates, franchise-season origins, Away and Home travel distances, Away and
+Home timezone shifts, and game-site altitude.
+
+Preserved explicit null outputs for unavailable venues or coordinates and
+validation for conflicting venue and coordinate identities.
+
+Updated the registry to contain only the ten canonical game-feature keys.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
+Moved the active vectorized Haversine and timezone-offset cache helpers into the
+canonical Travel feature module.
+
+Removed the retired add_travel_timezone_altitude API and its
+perspective-oriented metrics implementation.
+
+Moved focused Haversine tests from the retired metrics package to the canonical
+Travel feature test area.
+
+Preserved the generic geographic utility module used by Weather ingestion.
+
+Reduced the Travel metrics package initializer so it no longer exports a
+retired modeling API.
+
+Verified that no add_travel_timezone_altitude, metrics.travel.travel,
+TEAM_A travel output, TEAM_B travel output, or retired timezone-shift output
+remains.
+
+All scoped quality gates, canonical Travel tests, geographic utility tests,
+integration tests, and end-to-end tests pass.
+
+Removed the unused shared make_modeling_rows fixture and its retired
+TEAM_A, TEAM_B, RESULT, and HOME_FIELD defaults.
+
+Removed the retired factory from the shared fixture exports.
+
+Updated fixture documentation to demonstrate canonical Away and Home game
+identity.
+
+Verified that no make_modeling_rows, _MODELING_DEFAULTS, or small shared
+two-row modeling fixture remains.
+
+All scoped quality gates and feature tests pass.
+
+Replaced the shared doubled game-modeling fixture with one canonical Away/Home
+row per Game ID.
+
+The fixture schema now derives its feature columns from the active canonical
+feature sequence.
+
+Added explicit canonical game identity, scores, neutral-site state, Home Win,
+Actual Margin, and Actual Total.
+
+Reworked the matching cleaned-games fixture to copy Away/Home identity and
+scores directly. Winner, loser, game location, and winner/loser score fields
+are derived only for the separate cleaned-games contract.
+
+Added fixture validation for unique Game IDs, complete canonical features,
+score-consistent targets, duplicate rejection, absence of retired orientation,
+and identity preservation across modeling and cleaned-game fixtures.
+
+Balanced synthetic outcomes chronologically so classifier calibration folds
+contain both classes.
+
+Added a noisy, learnable pregame Elo signal so the Logistic lifecycle continues
+to exercise scaler persistence and inference.
+
+Updated model lifecycle tests to use normalized metadata metrics and direct
+canonical prediction payloads.
+
+Kept the strict probability-dispersion regression check specific to Logistic
+while requiring tree-model predictions to remain finite, bounded,
+complementary, and nonconstant.
+
+All scoped quality gates, fixture tests, backfill integration tests, and game
+fit-load-predict end-to-end tests pass.
 
 #### Goal
 

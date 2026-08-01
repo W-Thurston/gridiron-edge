@@ -3,7 +3,7 @@
 
 Convenience re-exports so tests can write::
 
-    from tests.fixtures import make_games, make_modeling_rows, MiniRepoBuilder
+    from tests.fixtures import make_games, MiniRepoBuilder
 """
 
 from tests.fixtures.dataframes import (
@@ -12,7 +12,6 @@ from tests.fixtures.dataframes import (
     make_epa_by_game,
     make_eval_df,
     make_games,
-    make_modeling_rows,
     make_predictions,
     make_stadiums,
     make_weather_enriched,
@@ -26,7 +25,6 @@ __all__ = [
     "make_epa_by_game",
     "make_eval_df",
     "make_games",
-    "make_modeling_rows",
     "make_predictions",
     "make_stadiums",
     "make_weather_enriched",
