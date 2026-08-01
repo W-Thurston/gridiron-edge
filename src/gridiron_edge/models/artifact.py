@@ -7,7 +7,7 @@ Each trained model is identified by the pair (model_name, model_type) and
 lives under ``data/models/{model_name}/{model_type}/`` containing the
 serialised model, an optional scaler, and a ``metadata.json``.
 
-Directory layout (Workstream 2)::
+Directory layout::
 
     data/models/
         win_prob/
@@ -50,7 +50,9 @@ Typical usage::
         task="classification",
         trained_at=datetime.now(UTC).isoformat(),
         ...,
-        holdout_brier=0.220,
+        metrics={
+            "brier": 0.220,
+        },
     )
     store.save(metadata=meta, model_obj=fitted_pipeline)
 
@@ -70,14 +72,11 @@ Typical usage::
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +84,7 @@ _METADATA_FILENAME = "metadata.json"
 _MODEL_FILENAME = "model.joblib"
 _SCALER_FILENAME = "scaler.joblib"
 _MODELS_DIR = Path("data") / "models"
+_CURRENT_METADATA_SCHEMA_VERSION = 3
 
 
 @dataclass(kw_only=True)
@@ -100,7 +100,7 @@ class BaseModelMetadata:
     Construction is keyword-only (``kw_only=True``) so subclasses can add
     required fields without dataclass field-ordering errors.
 
-    Field naming convention (Workstream 2):
+    Field naming convention:
         - ``model_name``: model purpose (e.g. ``"win_prob"``, ``"total"``,
           ``"qb_pass_yards"``).
         - ``model_type``: algorithm (e.g. ``"random_forest"``, ``"xgboost"``,
@@ -122,7 +122,7 @@ class BaseModelMetadata:
     model_type: str
     task: str
     trained_at: str
-    schema_version: int = 3
+    schema_version: int = _CURRENT_METADATA_SCHEMA_VERSION
     kind: str = "game"
     training_seasons: list[str] = field(default_factory=list)
     holdout_seasons: list[str] = field(default_factory=list)
@@ -134,89 +134,39 @@ class BaseModelMetadata:
     metrics: dict[str, float] = field(default_factory=dict)
 
 
-def _read_metadata_subclass(data: dict[str, Any]) -> BaseModelMetadata:
-    """Discriminate metadata subclass from on-disk JSON.
+def _read_metadata_subclass(
+    data: dict[str, Any],
+) -> BaseModelMetadata:
+    """Deserialize current-format artifact metadata.
 
-    Preferred discriminator: explicit ``kind`` field. Backward-compat:
-    artifacts written before Unit 6b stored no ``kind`` field; fall back
-    to detecting prop metadata by the presence of ``target_col``.
-
-    Backward-compat also handles the Unit 9 metric migration: artifacts
-    written before Unit 9 stored each holdout metric as a top-level
-    field (``holdout_brier``, ``holdout_mae``, etc.). On read those
-    legacy fields are folded into the :attr:`BaseModelMetadata.metrics`
-    dict and the original keys are stripped so the dataclass constructor
-    does not see them.
-
-    Both branches strip unknown keys defensively so additions to the
-    *other* subclass do not crash on this load.
+    Metadata must declare its subclass explicitly through ``kind`` and
+    must use the current schema version. Unknown fields are rejected by
+    the selected dataclass constructor.
     """
-    from gridiron_edge.models.game_prediction.base import GameModelMetadata
-    from gridiron_edge.models.prop_prediction.base import PropModelMetadata
+    from gridiron_edge.models.game_prediction.base import (
+        GameModelMetadata,
+    )
+    from gridiron_edge.models.prop_prediction.base import (
+        PropModelMetadata,
+    )
 
-    data = _migrate_legacy_metrics(dict(data))
-
-    kind: str | None = data.get("kind")
-    if kind == "prop":
-        cls: type[BaseModelMetadata] = PropModelMetadata
-    elif kind == "game":
-        cls = GameModelMetadata
-    else:
-        cls = PropModelMetadata if "target_col" in data else GameModelMetadata
-
-    known: set[str] = {f.name for f in fields(cls)}
-    filtered: dict[str, Any] = {k: v for k, v in data.items() if k in known}
-    return cls(**filtered)
-
-
-_LEGACY_CLASSIFICATION_METRICS: dict[str, str] = {
-    "holdout_brier": "brier",
-    "holdout_ece": "ece",
-    "holdout_auc": "auc",
-    "holdout_log_loss": "log_loss",
-    "holdout_accuracy": "accuracy",
-}
-
-_LEGACY_REGRESSION_METRICS: dict[str, str] = {
-    "holdout_mae": "mae",
-    "holdout_rmse": "rmse",
-    "holdout_r2": "r2",
-}
-
-
-def _migrate_legacy_metrics(data: dict[str, Any]) -> dict[str, Any]:
-    """Fold legacy top-level metric fields into the new metrics dict.
-
-    Pre-Unit-9 artifacts persisted each metric as its own top-level
-    field. This helper drains those legacy keys into a single
-    ``metrics`` dict so the dataclass constructor only receives the new
-    schema.
-
-    NaN metrics from the legacy schema are dropped. The new schema does
-    not store NaNs - absence means "not recorded".
-    """
-    import math
-
-    metrics: dict[str, float] = dict(data.get("metrics", {}))
-    legacy_keys: set[str] = set(_LEGACY_CLASSIFICATION_METRICS) | set(_LEGACY_REGRESSION_METRICS)
-
-    for legacy_key in list(legacy_keys):
-        if legacy_key not in data:
-            continue
-        value = data.pop(legacy_key)
-        if value is None:
-            continue
-        if isinstance(value, float) and math.isnan(value):
-            continue
-        new_key = _LEGACY_CLASSIFICATION_METRICS.get(legacy_key) or _LEGACY_REGRESSION_METRICS.get(
-            legacy_key
+    schema_version = data.get("schema_version")
+    if schema_version != _CURRENT_METADATA_SCHEMA_VERSION:
+        raise ValueError(
+            "Artifact metadata schema_version "
+            f"must be {_CURRENT_METADATA_SCHEMA_VERSION}; "
+            f"received {schema_version!r}."
         )
-        if new_key is not None and new_key not in metrics:
-            metrics[new_key] = float(value)
 
-    if metrics:
-        data["metrics"] = metrics
-    return data
+    kind = data.get("kind")
+    if kind == "game":
+        metadata_class: type[BaseModelMetadata] = GameModelMetadata
+    elif kind == "prop":
+        metadata_class = PropModelMetadata
+    else:
+        raise ValueError(f"Artifact metadata kind must be 'game' or 'prop'; received {kind!r}.")
+
+    return metadata_class(**data)
 
 
 class ArtifactStore:
@@ -246,7 +196,7 @@ class ArtifactStore:
         """Load metadata for a trained artifact.
 
         Returns a :class:`GameModelMetadata` or :class:`PropModelMetadata`
-        instance based on the JSON shape on disk.
+        instance based on the explicit ``kind`` discriminator.
 
         Raises:
             FileNotFoundError: If no artifact exists for this pair.

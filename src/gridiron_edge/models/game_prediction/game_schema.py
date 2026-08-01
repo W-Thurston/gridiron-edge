@@ -81,14 +81,6 @@ MODEL_TOTAL_COLUMN: Final[str] = "MODEL_TOTAL"
 PROJECTED_AWAY_SCORE_COLUMN: Final[str] = "PROJECTED_AWAY_SCORE"
 PROJECTED_HOME_SCORE_COLUMN: Final[str] = "PROJECTED_HOME_SCORE"
 
-RETIRED_ORIENTATION_COLUMNS: Final[frozenset[str]] = frozenset(
-    {
-        "TEAM_A",
-        "TEAM_B",
-        "HOME_FIELD",
-    }
-)
-
 
 def home_minus_away_feature_name(base_name: str) -> str:
     """Return the canonical differential feature name.

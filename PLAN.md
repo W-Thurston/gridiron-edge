@@ -1719,11 +1719,14 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-Current:
-  finish 19.2h-C1b fixture lifecycle debugging
+19.2h-A   Legacy pipeline entry points             COMPLETE
+19.2h-B   Legacy feature implementations           COMPLETE
+19.2h-C1  Legacy shared modeling fixtures          COMPLETE
+19.2h-C2  Generic artifact examples                COMPLETE
+
 
 Then:
-  19.2h-C2 canonicalize artifact examples
+
   19.2h-C3 final fixture/test inventory
   19.2h-D  remove migration guards and stale terminology
   19.2h-E  rebuild, retrain, refresh, and validate artifacts
@@ -3155,6 +3158,56 @@ Retained isolated legacy-read tests until the matching production
 compatibility logic is removed in the migration-guard cleanup.
 
 All scoped quality gates and artifact persistence tests pass.
+
+Completed the final source and test inventory for retired model orientation.
+
+Confirmed that no active production feature, modeling fixture, artifact
+example, integration path, or end-to-end lifecycle depends on TEAM_A, TEAM_B,
+HOME_FIELD, or the retired RESULT model target.
+
+Classified remaining RESULT uses as local team-history outcomes for canonical
+record and schedule-strength calculations.
+
+Classified remaining two-row terminology as unrelated market or cleaned-game
+behavior.
+
+Confirmed that all remaining retired-orientation test references are concrete
+negative assertions or migration-only schema-catalog tests.
+
+Removed the migration-only retired-orientation catalog from the canonical game
+schema.
+
+Removed tests that exposed or depended on the permanent retired-name catalog.
+
+Canonical schema tuples and concrete output-boundary tests remain the
+authoritative contracts.
+
+All scoped quality gates and tests pass.
+
+Removed development-era artifact metadata migration.
+
+Artifact metadata now requires an explicit game or prop kind discriminator and
+the current metadata schema version.
+
+Removed inference of Prop metadata from target_col and default-to-Game behavior
+for metadata without kind.
+
+Removed migration of flattened holdout metric fields into the normalized
+metrics mapping.
+
+Removed defensive unknown-field filtering. Current metadata payloads are now
+validated directly by the selected dataclass constructor.
+
+Replaced compatibility tests with strict rejection coverage for missing kind,
+unknown kind, obsolete schema versions, and flattened metric fields.
+
+Updated artifact documentation and usage examples to describe only the current
+normalized metadata contract.
+
+Current Game and Prop artifact round trips, model training, artifact loading,
+and end-to-end prediction lifecycles remain covered.
+
+All scoped quality gates and tests pass.
 
 #### Goal
 

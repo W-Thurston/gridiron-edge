@@ -8,6 +8,7 @@ metadata-subclass discrimination on read.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -334,141 +335,77 @@ class TestExplicitKindDiscriminator:
         assert out.kind == "prop"
 
 
-class TestBackwardCompatNoKind:
-    def test_legacy_prop_metadata_detected_via_target_col(self, tmp_path: Path) -> None:
-        """Old artifacts without `kind` should still discriminate correctly."""
-        import json
-
-        artifact_dir = tmp_path / "data" / "models" / "qb_pass_yards" / "elasticnet"
-        artifact_dir.mkdir(parents=True)
-        legacy: dict[str, object] = {
-            "model_name": "qb_pass_yards",
-            "model_type": "elasticnet",
-            "task": "regression",
-            "trained_at": "2025-01-01T00:00:00",
-            "schema_version": 2,
-            "training_seasons": [],
-            "holdout_seasons": [],
-            "parameters": {},
-            "feature_columns": [],
-            "n_train_rows": 0,
-            "n_holdout_rows": 0,
-            "notes": "",
-            "target_col": "passing_yards",
-            "holdout_mae": 0.0,
-            "holdout_rmse": 0.0,
-            "holdout_r2": 0.0,
-        }
-        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
-
-        store = ArtifactStore(tmp_path)
-        out: BaseModelMetadata = store.read_metadata("qb_pass_yards", "elasticnet")
-        assert isinstance(out, PropModelMetadata)
-        assert out.target_col == "passing_yards"
-        # Legacy holdout fields migrated into metrics. Zeros from the legacy
-        # fixture survive (only NaNs are dropped).
-        assert out.metrics.get("mae") == pytest.approx(0.0)
-
-    def test_legacy_game_metadata_defaults_to_game(self, tmp_path: Path) -> None:
-        import json
-
+class TestMetadataValidation:
+    def test_metadata_without_kind_is_rejected(
+        self,
+        tmp_path: Path,
+    ) -> None:
         artifact_dir = tmp_path / "data" / "models" / "win_prob" / "random_forest"
         artifact_dir.mkdir(parents=True)
-        legacy: dict[str, object] = {
-            "model_name": "win_prob",
-            "model_type": "random_forest",
-            "task": "classification",
-            "trained_at": "2025-01-01T00:00:00",
-            "schema_version": 2,
-            "training_seasons": [],
-            "holdout_seasons": [],
-            "parameters": {},
-            "feature_columns": [],
-            "n_train_rows": 0,
-            "n_holdout_rows": 0,
-            "notes": "",
-            "holdout_brier": 0.5,
-        }
-        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        payload: dict[str, object] = asdict(_make_game_meta())
+        payload.pop("kind")
+
+        (artifact_dir / "metadata.json").write_text(json.dumps(payload))
 
         store = ArtifactStore(tmp_path)
-        out: BaseModelMetadata = store.read_metadata("win_prob", "random_forest")
-        assert isinstance(out, GameModelMetadata)
-        assert out.metrics.get("brier") == pytest.approx(0.5)
 
+        with pytest.raises(
+            ValueError,
+            match="kind",
+        ):
+            store.read_metadata(
+                "win_prob",
+                "random_forest",
+            )
 
-class TestLegacyMetricMigration:
-    """Pre-Unit-9 metadata fields should fold into the metrics dict."""
-
-    def test_legacy_classification_fields_migrate(self, tmp_path: Path) -> None:
-        import json
-
-        artifact_dir = tmp_path / "data" / "models" / "win_prob" / "logistic"
+    def test_unknown_metadata_kind_is_rejected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        artifact_dir = tmp_path / "data" / "models" / "win_prob" / "random_forest"
         artifact_dir.mkdir(parents=True)
-        legacy = {
-            "model_name": "win_prob",
-            "model_type": "logistic",
-            "task": "classification",
-            "trained_at": "2025-01-01T00:00:00",
-            "schema_version": 2,
-            "kind": "game",
-            "training_seasons": [],
-            "holdout_seasons": [],
-            "parameters": {},
-            "feature_columns": [],
-            "n_train_rows": 0,
-            "n_holdout_rows": 0,
-            "notes": "",
-            "holdout_brier": 0.22,
-            "holdout_ece": 0.02,
-            "holdout_auc": 0.76,
-            "holdout_log_loss": 0.63,
-            "holdout_accuracy": 0.68,
-        }
-        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        payload: dict[str, object] = asdict(_make_game_meta())
+        payload["kind"] = "unknown"
+
+        (artifact_dir / "metadata.json").write_text(json.dumps(payload))
 
         store = ArtifactStore(tmp_path)
-        out = store.read_metadata("win_prob", "logistic")
 
-        assert out.metrics["brier"] == pytest.approx(0.22)
-        assert out.metrics["accuracy"] == pytest.approx(0.68)
-        # Legacy fields no longer present on the dataclass.
-        assert not hasattr(out, "holdout_brier")
+        with pytest.raises(
+            ValueError,
+            match="kind",
+        ):
+            store.read_metadata(
+                "win_prob",
+                "random_forest",
+            )
 
-    def test_legacy_nan_metrics_are_dropped(self, tmp_path: Path) -> None:
-        import json
-
-        artifact_dir = tmp_path / "data" / "models" / "total" / "xgboost"
+    def test_flattened_holdout_metric_is_rejected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        artifact_dir: Path = tmp_path / "data" / "models" / "win_prob" / "logistic"
         artifact_dir.mkdir(parents=True)
-        legacy = {
-            "model_name": "total",
-            "model_type": "xgboost",
-            "task": "regression",
-            "trained_at": "2025-01-01T00:00:00",
-            "schema_version": 2,
-            "kind": "game",
-            "training_seasons": [],
-            "holdout_seasons": [],
-            "parameters": {},
-            "feature_columns": [],
-            "n_train_rows": 0,
-            "n_holdout_rows": 0,
-            "notes": "",
-            # Classification metrics that should be ignored because the
-            # task is regression and they're NaN.
-            "holdout_brier": float("nan"),
-            "holdout_ece": float("nan"),
-            "holdout_auc": float("nan"),
-            "holdout_log_loss": float("nan"),
-            "holdout_accuracy": float("nan"),
-            "holdout_mae": 8.2,
-            "holdout_rmse": 10.5,
-            "holdout_r2": 0.31,
-        }
-        (artifact_dir / "metadata.json").write_text(json.dumps(legacy))
+
+        payload: dict[str, object] = asdict(
+            _make_game_meta(
+                model_type="logistic",
+            )
+        )
+        payload["metrics"] = {}
+        payload["holdout_brier"] = 0.22
+
+        (artifact_dir / "metadata.json").write_text(json.dumps(payload))
 
         store = ArtifactStore(tmp_path)
-        out = store.read_metadata("total", "xgboost")
 
-        assert out.metrics["mae"] == pytest.approx(8.2)
-        assert "brier" not in out.metrics
+        with pytest.raises(
+            TypeError,
+            match="holdout_brier",
+        ):
+            store.read_metadata(
+                "win_prob",
+                "logistic",
+            )

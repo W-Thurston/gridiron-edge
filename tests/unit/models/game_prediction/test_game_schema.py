@@ -25,7 +25,6 @@ from gridiron_edge.models.game_prediction.game_schema import (
     OPTIONAL_GAME_IDENTITY_COLUMNS,
     PROJECTED_AWAY_SCORE_COLUMN,
     PROJECTED_HOME_SCORE_COLUMN,
-    RETIRED_ORIENTATION_COLUMNS,
     WIN_PROBABILITY_COLUMNS,
     away_feature_name,
     home_feature_name,
@@ -193,28 +192,3 @@ def test_feature_name_helpers_reject_surrounding_whitespace(
         match="surrounding whitespace",
     ):
         helper(" ELO ")
-
-
-def test_retired_orientation_columns_are_explicit() -> None:
-    assert (
-        frozenset(
-            {
-                "TEAM_A",
-                "TEAM_B",
-                "HOME_FIELD",
-            }
-        )
-        == RETIRED_ORIENTATION_COLUMNS
-    )
-
-
-def test_canonical_schema_contains_no_retired_orientation_columns() -> None:
-    canonical_columns = {
-        *GAME_IDENTITY_COLUMNS,
-        *OPTIONAL_GAME_IDENTITY_COLUMNS,
-        *GAME_SCORE_COLUMNS,
-        *GAME_TARGET_COLUMNS,
-        *GAME_PREDICTION_COLUMNS,
-    }
-
-    assert canonical_columns.isdisjoint(RETIRED_ORIENTATION_COLUMNS)
