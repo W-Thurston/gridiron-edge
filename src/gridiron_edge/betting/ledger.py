@@ -96,6 +96,35 @@ def _empty_ledger() -> pd.DataFrame:
     return pd.DataFrame(columns=_BET_COLUMNS)
 
 
+def _require_ledger_schema(
+    df: DataFrame,
+    *,
+    label: str,
+) -> None:
+    """Require the exact current persisted bet-ledger schema."""
+    actual: list[str] = df.columns.tolist()
+    expected: list[str] = _BET_COLUMNS
+
+    missing: list[str] = [column for column in expected if column not in actual]
+    extra: list[str] = [column for column in actual if column not in expected]
+
+    problems: list[str] = []
+
+    if missing:
+        problems.append("missing columns: " + ", ".join(missing))
+
+    if extra:
+        problems.append("extra columns: " + ", ".join(extra))
+
+    if not missing and not extra and actual != expected:
+        problems.append("columns are not in canonical order")
+
+    if problems:
+        raise ValueError(
+            f"{label} does not match the current bet-ledger schema: " + "; ".join(problems)
+        )
+
+
 def _validate_model_identity(
     model_name: str | None,
     model_type: str | None,
@@ -134,17 +163,11 @@ def _read_ledger(repo: Path | None = None) -> pd.DataFrame:
     if not path.exists():
         return _empty_ledger()
     df: DataFrame = pd.read_parquet(path)
-
-    # Backward compatibility for ledgers written before the
-    # model_name / model_type migration (Unit 6a). Old ledgers stored
-    # model identity as a single ``model_version`` column. New schema
-    # adds ``model_name`` and ``model_type`` as NA, and the obsolete
-    # ``model_version`` is dropped by the final column projection.
-    for col in _BET_COLUMNS:
-        if col not in df.columns:
-            df[col] = None
-
-    return df.loc[:, _BET_COLUMNS]
+    _require_ledger_schema(
+        df,
+        label="Existing bet ledger",
+    )
+    return df
 
 
 def _write_ledger(df: pd.DataFrame, repo: Path | None = None) -> Path:
@@ -157,6 +180,11 @@ def _write_ledger(df: pd.DataFrame, repo: Path | None = None) -> Path:
     Returns:
         Path to the written file.
     """
+    _require_ledger_schema(
+        df,
+        label="Bet ledger write",
+    )
+
     path: Path = _bet_ledger_path(repo)
     df.to_parquet(path, index=False)
     return path

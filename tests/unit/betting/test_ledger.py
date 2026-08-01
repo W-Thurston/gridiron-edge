@@ -11,6 +11,8 @@ import pytest
 
 from gridiron_edge.betting.ledger import (
     _BET_COLUMNS,
+    _read_ledger,
+    _write_ledger,
     compute_pnl,
     load_bets,
     log_bet,
@@ -282,6 +284,185 @@ class TestLogBetModelIdentity:
             )
 
         assert not (tmp_path / "data" / "betting" / "bet_ledger.parquet").exists()
+
+
+# ---------------------------------------------------------------------------
+# TestPersistedLedgerSchema
+# ---------------------------------------------------------------------------
+
+
+class TestPersistedLedgerSchema:
+    """Strict schema checks at the persisted ledger boundary."""
+
+    @staticmethod
+    def _ledger_path(repo: Path) -> Path:
+        return repo / "data" / "betting" / "bet_ledger.parquet"
+
+    def test_exact_current_ledger_loads(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bet_id = _log_one(tmp_path)
+
+        loaded = _read_ledger(tmp_path)
+
+        assert loaded["bet_id"].tolist() == [bet_id]
+        assert loaded.columns.tolist() == _BET_COLUMNS
+
+    def test_read_rejects_missing_column(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _log_one(tmp_path)
+        path = self._ledger_path(tmp_path)
+
+        malformed = pd.read_parquet(path).drop(columns=["model_name"])
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="missing columns: model_name",
+        ):
+            _read_ledger(tmp_path)
+
+        assert pd.read_parquet(path).columns.tolist() == (malformed.columns.tolist())
+
+    def test_read_rejects_extra_column(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _log_one(tmp_path)
+        path = self._ledger_path(tmp_path)
+
+        malformed = pd.read_parquet(path)
+        malformed["unexpected_field"] = "unexpected"
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="extra columns: unexpected_field",
+        ):
+            _read_ledger(tmp_path)
+
+        assert pd.read_parquet(path).columns.tolist() == (malformed.columns.tolist())
+
+    def test_read_rejects_reordered_columns(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _log_one(tmp_path)
+        path = self._ledger_path(tmp_path)
+
+        reordered_columns = [
+            _BET_COLUMNS[1],
+            _BET_COLUMNS[0],
+            *_BET_COLUMNS[2:],
+        ]
+        malformed = pd.read_parquet(path).loc[
+            :,
+            reordered_columns,
+        ]
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="columns are not in canonical order",
+        ):
+            _read_ledger(tmp_path)
+
+        assert pd.read_parquet(path).columns.tolist() == (reordered_columns)
+
+    @pytest.mark.parametrize(
+        "malformation",
+        [
+            "missing",
+            "extra",
+            "reordered",
+        ],
+    )
+    def test_write_rejects_invalid_schema(
+        self,
+        tmp_path: Path,
+        malformation: str,
+    ) -> None:
+        frame = pd.DataFrame(columns=_BET_COLUMNS)
+
+        if malformation == "missing":
+            frame = frame.drop(columns=["model_type"])
+            message = "missing columns: model_type"
+        elif malformation == "extra":
+            frame["unexpected_field"] = pd.Series(dtype="object")
+            message = "extra columns: unexpected_field"
+        else:
+            reordered_columns = [
+                _BET_COLUMNS[1],
+                _BET_COLUMNS[0],
+                *_BET_COLUMNS[2:],
+            ]
+            frame = frame.loc[:, reordered_columns]
+            message = "columns are not in canonical order"
+
+        with pytest.raises(ValueError, match=message):
+            _write_ledger(frame, tmp_path)
+
+        assert not self._ledger_path(tmp_path).exists()
+
+    def test_malformed_ledger_prevents_log_overwrite(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        _log_one(tmp_path)
+        path = self._ledger_path(tmp_path)
+
+        malformed = pd.read_parquet(path).drop(columns=["model_type"])
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="missing columns: model_type",
+        ):
+            _log_one(
+                tmp_path,
+                game_id="2026_02_BUF_MIA",
+            )
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == malformed.columns.tolist()
+        assert len(stored) == 1
+
+    def test_malformed_ledger_prevents_settlement_overwrite(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bet_id = _log_one(tmp_path)
+        path = self._ledger_path(tmp_path)
+
+        malformed = pd.read_parquet(path)
+        malformed["unexpected_field"] = "unexpected"
+        malformed.to_parquet(path, index=False)
+
+        with pytest.raises(
+            ValueError,
+            match="extra columns: unexpected_field",
+        ):
+            settle_bet(
+                bet_id,
+                "won",
+                repo=tmp_path,
+            )
+
+        stored = pd.read_parquet(path)
+        assert stored.columns.tolist() == malformed.columns.tolist()
+        assert stored.iloc[0]["status"] == "open"
+
+    def test_missing_ledger_returns_canonical_empty_frame(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        loaded = _read_ledger(tmp_path)
+
+        assert loaded.empty
+        assert loaded.columns.tolist() == _BET_COLUMNS
 
 
 # ---------------------------------------------------------------------------

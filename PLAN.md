@@ -3246,6 +3246,50 @@ or local Predictor terminology remains in source or tests.
 
 Game model registry keys and persisted model identity remain unchanged.
 
+#### 19.2h-D3d.2 Completed
+
+Replaced permissive bet-ledger schema repair with exact persisted-schema
+validation.
+
+Existing and newly written ledgers must contain all twenty-one canonical
+columns, no additional columns, and the canonical column order.
+
+Applied schema validation at both ledger I/O boundaries so malformed artifacts
+cannot be loaded, appended to, settled, or written.
+
+Removed historical model_version accommodation, missing-column synthesis,
+unknown-column projection, migration terminology, and the Unit 6a compatibility
+path.
+
+Added coverage for valid current-schema reads, missing columns, additional
+columns, reordered columns, invalid writes, non-destructive log failures,
+non-destructive settlement failures, and canonical empty-ledger behavior.
+
+Verified that the existing one-row bet ledger passes the strict reader without
+modification.
+
+#### Goal
+
+Require every persisted bet ledger to satisfy one exact current schema without
+repairing or translating historical artifact shapes.
+
+#### Tests
+
+Bet ledger, betting performance, betting CLI helper, betting CLI integration,
+and portfolio serializer tests pass. Ruff and Pyrefly pass.
+
+The current persisted bet ledger loads successfully through the strict schema
+boundary.
+
+#### Acceptance
+
+Missing, additional, or reordered persisted ledger columns fail before any
+artifact overwrite.
+
+The ledger read and write boundaries accept only the canonical twenty-one-column
+schema, and no model_version or historical ledger compatibility behavior
+remains.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
