@@ -40,25 +40,8 @@ from gridiron_edge.models.game_prediction.game_schema import (
     GAME_TARGET_COLUMNS,
 )
 
-# Feature order matters - dependencies between features:
-# - home_field before travel (travel reads HOME_FIELD)
-# - travel before venue_hfa (venue_hfa reads IS_NEUTRAL_SITE)
-# - team_elo before schedule_strength (SOS/SOV join on elo_state)
-# - record and schedule_strength can run any time after home_field
-# - primetime has no dependencies
-FEATURES: Final[list[str]] = [
-    "home_field",
-    "team_elo",
-    "travel",
-    "epa",
-    "rest",
-    "weather",
-    "divisional",
-    "venue_hfa",
-    "record",
-    "schedule_strength",
-    "primetime",
-]
+# Canonical feature order is explicit and validated at import time.
+# Each feature consumes and produces stable Away/Home-oriented columns.
 CANONICAL_FEATURES: Final[list[str]] = [
     "home_away_elo",
     "home_away_epa",
@@ -75,7 +58,6 @@ CANONICAL_FEATURES: Final[list[str]] = [
 # Validate that the ordering above satisfies all depends_on constraints.
 # This runs at import time - a mis-ordering raises ValueError immediately
 # rather than silently producing wrong features during training.
-validate_ordering(FEATURES)
 validate_ordering(CANONICAL_FEATURES)
 
 
@@ -327,34 +309,6 @@ def build_home_away_modeling_table(
         ],
         kind="stable",
         ignore_index=True,
-    )
-
-
-def build_base_modeling_table(games: pd.DataFrame) -> pd.DataFrame:
-    """Build the symmetric two-row-per-game base modeling table.
-
-    Produces two rows per game:
-      - TEAM_A=winner, TEAM_B=loser, RESULT=1
-      - TEAM_A=loser,  TEAM_B=winner, RESULT=0
-
-    This design ensures every model learns win probability symmetrically
-    across both team perspectives.
-    """
-    df: pd.DataFrame = games.copy()
-
-    df = df.loc[:, ["GAME_ID", "WINNER", "LOSER", "YEAR", "WEEK_NUM"]].copy()
-    df["RESULT"] = 1
-    df.columns = ["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM", "RESULT"]
-
-    flipped = df.loc[:, ["GAME_ID", "TEAM_B", "TEAM_A", "YEAR", "WEEK_NUM"]].copy()
-    flipped["RESULT"] = 0
-    flipped.columns = ["GAME_ID", "TEAM_A", "TEAM_B", "YEAR", "WEEK_NUM", "RESULT"]
-
-    return (
-        pd.concat([df, flipped], ignore_index=True)
-        .sort_values(["YEAR", "WEEK_NUM", "TEAM_A"], kind="stable")
-        .drop_duplicates()
-        .reset_index(drop=True)
     )
 
 

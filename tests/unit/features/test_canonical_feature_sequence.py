@@ -12,7 +12,6 @@ import pytest
 
 from gridiron_edge.features.pipeline import (
     CANONICAL_FEATURES,
-    FEATURES,
     canonical_feature_columns,
 )
 from gridiron_edge.features.registry import (
@@ -34,19 +33,6 @@ _EXPECTED_CANONICAL_FEATURES = [
     "home_away_weather",
 ]
 
-_EXPECTED_LEGACY_FEATURES = [
-    "home_field",
-    "team_elo",
-    "travel",
-    "epa",
-    "rest",
-    "weather",
-    "divisional",
-    "venue_hfa",
-    "record",
-    "schedule_strength",
-    "primetime",
-]
 
 _RETIRED_COLUMNS = {
     "TEAM_A",
@@ -58,12 +44,6 @@ _RETIRED_COLUMNS = {
 
 def test_canonical_sequence_is_exact() -> None:
     assert CANONICAL_FEATURES == _EXPECTED_CANONICAL_FEATURES
-
-
-def test_legacy_sequence_remains_unchanged() -> None:
-    assert FEATURES == _EXPECTED_LEGACY_FEATURES
-    assert CANONICAL_FEATURES is not FEATURES
-    assert set(CANONICAL_FEATURES).isdisjoint(FEATURES)
 
 
 def test_all_canonical_features_are_registered() -> None:

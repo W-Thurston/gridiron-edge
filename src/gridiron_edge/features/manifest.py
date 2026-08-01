@@ -100,9 +100,9 @@ def write_manifest(
     Args:
         df: The full modeling DataFrame that was written to disk.
         feature_names: Ordered list of feature keys that were applied
-            (e.g. ``["home_field", "team_elo", "travel"]``).
+            (e.g. ``["home_away_elo","home_away_epa","home_away_travel",]``).
         feature_columns: Flat list of all columns produced by those
-            features (e.g. ``["HOME_FIELD", "TEAM_A_ELO", ...]``).
+            features (e.g. ``["AWAY_ELO", "HOME_ELO", ...]``).
         modeling_dir: Directory where the modeling CSV lives.
         schema_version: Integer schema version. Increment when the
             feature set or column schema changes.

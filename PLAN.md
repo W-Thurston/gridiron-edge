@@ -1720,6 +1720,11 @@ historical prediction and odds-ledger artifacts.
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
 19.2h    Remove retired orientation and rebuild artifacts
+  19.2h-A  Remove the inactive legacy pipeline entry points
+  19.2h-B  Remove legacy feature registrations and implementations
+  19.2h-C  Remove legacy modeling fixtures and generic artifact examples
+  19.2h-D  Remove migration-only schema guards and stale terminology
+  19.2h-E  Rebuild, retrain, and validate canonical artifacts
 19.1b    Implement truthful availability inspection
 19.3     Execute policy-selected models
 19.4     Persist and select weekly product
@@ -2882,6 +2887,47 @@ All scoped quality gates and tests pass.
 Tuning, evaluation, calibration, and retraining operate on canonical one-row
 game data without TEAM_A, TEAM_B, HOME_FIELD, RESULT, winner/loser score
 reconstruction, lowercase actual_total, or legacy probability orientation.
+
+### Unit 19.2h: Re*ove Retired Orientation and Rebuil* Artifacts
+
+#### Completed
+
+Remove* the inactive legacy feature seque*ce from the modeling pipeline.
+
+Re*oved the symmetric two-row-per-gam* base modeling-table builder.
+
+The*pipeline now exposes one validated*canonical feature sequence and one*canonical one-row-per-game modelin*-table builder.
+
+Removed legacy fe*ture-order validation from pipelin* import.
+
+Updated feature manifest*and registry documentation to desc*ibe canonical
+Away/Home feature na*es and outputs.
+
+Preserved the exi*ting canonical sequence name becau*e it is already the stable
+contrac* used across modeling, prediction,*tuning, and evaluation.
+
+All scope* quality gates, canonical feature *ests, integration tests, and
+end-t*-end prediction-pipeline tests pas*.
+
+#### Goal
+
+Remove the retired p*rspective-oriented feature archite*ture and rebuild all
+game-model ar*ifacts from the canonical one-row *way/Home contract.
+
+#### Tests
+
+Le*acy pipeline entry-point removal a*d the active canonical pipeline ar*
+covered.
+
+Legacy feature implemen*ations, registrations, fixtures, s*hema guards, and
+artifacts remain *o be removed.
+
+#### Acceptance
+
+Th* repository contains one canonical*game feature pipeline and no activ*
+TEAM_A, TEAM_B, HOME_FIELD, RESUL*, two-row modeling, compatibility,*or retired
+artifact dependency.
+
 
 ---
 

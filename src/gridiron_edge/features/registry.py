@@ -97,7 +97,7 @@ def validate_ordering(feature_names: Sequence[str]) -> None:
 
     Args:
         feature_names: Ordered list of feature keys as they appear in the
-            pipeline (e.g. ``FEATURES`` in ``pipeline.py``).
+            pipeline feature sequence.
 
     Raises:
         ValueError: If any feature's ``depends_on`` constraint is violated,
