@@ -78,53 +78,43 @@ def _make_player_game_logs() -> pd.DataFrame:
 
 
 def _make_games() -> pd.DataFrame:
-    """5 games matching the player game logs."""
+    """Return canonical metadata for the five player games."""
     return pd.DataFrame(
         [
-            # Game 1: KC vs LAC at KC. KC wins. Home. KC favored. Dome.
             {
                 "GAME_ID": "2024_01_LAC_KC",
-                "GAME_LOCATION": "H",
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Los Angeles Chargers",
+                "AWAY_TEAM": ("Los Angeles Chargers"),
+                "HOME_TEAM": ("Kansas City Chiefs"),
                 "ROOF": "dome",
-                "FAVORITED": "Kansas City Chiefs",
+                "FAVORITED": ("Kansas City Chiefs"),
             },
-            # Game 2: KC at LAC. LAC wins. LAC home. KC away. LAC favored. Outdoors.
             {
                 "GAME_ID": "2024_02_KC_LAC",
-                "GAME_LOCATION": "H",
-                "WINNER": "Los Angeles Chargers",
-                "LOSER": "Kansas City Chiefs",
+                "AWAY_TEAM": ("Kansas City Chiefs"),
+                "HOME_TEAM": ("Los Angeles Chargers"),
                 "ROOF": "outdoors",
-                "FAVORITED": "Los Angeles Chargers",
+                "FAVORITED": ("Los Angeles Chargers"),
             },
-            # Game 3: KC vs BUF at KC. KC wins. KC home. KC favored. Dome.
             {
                 "GAME_ID": "2024_03_BUF_KC",
-                "GAME_LOCATION": "H",
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Buffalo Bills",
+                "AWAY_TEAM": "Buffalo Bills",
+                "HOME_TEAM": ("Kansas City Chiefs"),
                 "ROOF": "dome",
-                "FAVORITED": "Kansas City Chiefs",
+                "FAVORITED": ("Kansas City Chiefs"),
             },
-            # Game 4: KC at BAL. BAL wins. BAL home. KC away. BAL favored. Outdoors.
             {
                 "GAME_ID": "2024_04_KC_BAL",
-                "GAME_LOCATION": "H",
-                "WINNER": "Baltimore Ravens",
-                "LOSER": "Kansas City Chiefs",
+                "AWAY_TEAM": ("Kansas City Chiefs"),
+                "HOME_TEAM": ("Baltimore Ravens"),
                 "ROOF": "outdoors",
-                "FAVORITED": "Baltimore Ravens",
+                "FAVORITED": ("Baltimore Ravens"),
             },
-            # Game 5: KC vs MIA at KC. KC wins. KC home. KC favored. Outdoors.
             {
                 "GAME_ID": "2024_05_MIA_KC",
-                "GAME_LOCATION": "H",
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Miami Dolphins",
+                "AWAY_TEAM": "Miami Dolphins",
+                "HOME_TEAM": ("Kansas City Chiefs"),
                 "ROOF": "outdoors",
-                "FAVORITED": "Kansas City Chiefs",
+                "FAVORITED": ("Kansas City Chiefs"),
             },
         ]
     )
@@ -356,6 +346,182 @@ class TestComputePlayerSituationalSplits:
             "qb_pass_yards",
         )
         assert result.empty
+
+    def test_home_away_cohorts_do_not_require_results(
+        self,
+    ) -> None:
+        from gridiron_edge.evaluation.situational_splits import (
+            compute_player_situational_splits,
+        )
+
+        games = _make_games()
+
+        assert "WINNER" not in games.columns
+        assert "LOSER" not in games.columns
+        assert "GAME_LOCATION" not in games.columns
+
+        result = compute_player_situational_splits(
+            _make_player_game_logs(),
+            games,
+            LONG_TO_SHORT,
+            "qb_pass_yards",
+        )
+
+        home = result.loc[
+            result["cohort"] == "home",
+            :,
+        ]
+        away = result.loc[
+            result["cohort"] == "away",
+            :,
+        ]
+
+        assert home.iloc[0]["sample_size"] == 3
+        assert away.iloc[0]["sample_size"] == 2
+
+    def test_neutral_site_uses_designated_team_identity(
+        self,
+    ) -> None:
+        from gridiron_edge.evaluation.situational_splits import (
+            compute_player_situational_splits,
+        )
+
+        logs = pd.DataFrame(
+            [
+                {
+                    "player_id": "player-1",
+                    "team": "KC",
+                    "game_id": "neutral-1",
+                    "season": 2024,
+                    "week": 1,
+                    "passing_yards": 250,
+                }
+            ]
+        )
+        games = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "neutral-1",
+                    "AWAY_TEAM": ("Buffalo Bills"),
+                    "HOME_TEAM": ("Kansas City Chiefs"),
+                    "IS_NEUTRAL_SITE": 1,
+                    "ROOF": "dome",
+                    "FAVORITED": ("Kansas City Chiefs"),
+                }
+            ]
+        )
+
+        result = compute_player_situational_splits(
+            logs,
+            games,
+            LONG_TO_SHORT,
+            "qb_pass_yards",
+        )
+
+        home = result.loc[
+            result["cohort"] == "home",
+            :,
+        ]
+        away = result.loc[
+            result["cohort"] == "away",
+            :,
+        ]
+
+        assert home.iloc[0]["sample_size"] == 1
+        assert away.empty
+
+    def test_unmapped_team_is_neither_home_nor_away(
+        self,
+    ) -> None:
+        from gridiron_edge.evaluation.situational_splits import (
+            compute_player_situational_splits,
+        )
+
+        logs = _make_player_game_logs().iloc[[0]].copy()
+        logs["team"] = "UNKNOWN"
+
+        result = compute_player_situational_splits(
+            logs,
+            _make_games().iloc[[0]].copy(),
+            LONG_TO_SHORT,
+            "qb_pass_yards",
+        )
+
+        assert not (result["cohort"] == "home").any()
+        assert not (result["cohort"] == "away").any()
+        assert (result["cohort"] == "season").any()
+
+    def test_duplicate_game_ids_are_rejected(
+        self,
+    ) -> None:
+        from gridiron_edge.evaluation.situational_splits import (
+            compute_player_situational_splits,
+        )
+
+        games = pd.concat(
+            [
+                _make_games(),
+                _make_games().iloc[[0]],
+            ],
+            ignore_index=True,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=("Canonical games contain duplicate game IDs"),
+        ):
+            compute_player_situational_splits(
+                _make_player_game_logs(),
+                games,
+                LONG_TO_SHORT,
+                "qb_pass_yards",
+            )
+
+    def test_inputs_are_not_mutated(
+        self,
+    ) -> None:
+        from gridiron_edge.evaluation.situational_splits import (
+            compute_player_situational_splits,
+        )
+
+        logs = _make_player_game_logs()
+        games = _make_games()
+        expected_logs = logs.copy(deep=True)
+        expected_games = games.copy(deep=True)
+
+        compute_player_situational_splits(
+            logs,
+            games,
+            LONG_TO_SHORT,
+            "qb_pass_yards",
+        )
+
+        pd.testing.assert_frame_equal(
+            logs,
+            expected_logs,
+        )
+        pd.testing.assert_frame_equal(
+            games,
+            expected_games,
+        )
+
+    def test_source_excludes_result_orientation(
+        self,
+    ) -> None:
+        import inspect
+
+        from gridiron_edge.evaluation.situational_splits import (
+            _attach_cohort_flags,
+            compute_player_situational_splits,
+        )
+
+        source = inspect.getsource(compute_player_situational_splits) + inspect.getsource(
+            _attach_cohort_flags
+        )
+
+        assert "WINNER" not in source
+        assert "LOSER" not in source
+        assert "GAME_LOCATION" not in source
 
 
 class TestWriteSituationalSplits:

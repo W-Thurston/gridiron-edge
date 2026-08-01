@@ -235,22 +235,67 @@ def _split_train_holdout(
 # ---------------------------------------------------------------------------
 
 
-def _prepare_games(games: pd.DataFrame) -> tuple[pd.DataFrame, list[str], dict[str, set[str]]]:
-    """Clean and index the games DataFrame for the simulator."""
-    df = games.copy()
-    df = df.loc[df["WIN_OR_TIE"].notna()].copy()
-    df["WINNER"] = df["WINNER"].astype(str)
-    df["LOSER"] = df["LOSER"].astype(str)
+def _prepare_games(
+    games: pd.DataFrame,
+) -> tuple[
+    pd.DataFrame,
+    list[str],
+    dict[str, set[str]],
+]:
+    """Clean canonical games and index participating teams by season.
 
-    sorted_years = sorted(df["YEAR"].unique().tolist())
+    Args:
+        games: Canonical games DataFrame containing completed-game state,
+            season, Away Team, and Home Team.
+
+    Returns:
+        Completed games, sorted season labels, and the set of canonical
+        Away and Home teams participating in each season.
+
+    Raises:
+        ValueError: If required canonical game columns are unavailable.
+    """
+    required: set[str] = {
+        "YEAR",
+        "WIN_OR_TIE",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+    }
+    missing: list[str] = sorted(required - set(games.columns))
+    if missing:
+        raise ValueError(
+            "Canonical Elo tuning games are missing required columns: " + ", ".join(missing)
+        )
+
+    df = games.loc[
+        games["WIN_OR_TIE"].notna(),
+        :,
+    ].copy()
+
+    df["AWAY_TEAM"] = df["AWAY_TEAM"].astype(str).str.strip()
+    df["HOME_TEAM"] = df["HOME_TEAM"].astype(str).str.strip()
+
+    invalid_identity = df["AWAY_TEAM"].eq("") | df["HOME_TEAM"].eq("")
+    if invalid_identity.any():
+        raise ValueError("Canonical Elo tuning games contain empty team identities.")
+
+    sorted_years: list[str] = sorted(df["YEAR"].astype(str).unique().tolist())
 
     teams_by_year: dict[str, set[str]] = {}
     for year in sorted_years:
-        yr_df = df.loc[df["YEAR"] == year]
-        teams_by_year[year] = set(yr_df["WINNER"].tolist()) | set(yr_df["LOSER"].tolist())
+        year_games = df.loc[
+            df["YEAR"].astype(str) == year,
+            :,
+        ]
+        teams_by_year[year] = set(year_games["AWAY_TEAM"].tolist()) | set(
+            year_games["HOME_TEAM"].tolist()
+        )
 
-    # pyrefly: ignore [bad-return]
-    return df, sorted_years, teams_by_year
+    return (
+        df,
+        sorted_years,
+        teams_by_year,
+    )
 
 
 # ---------------------------------------------------------------------------

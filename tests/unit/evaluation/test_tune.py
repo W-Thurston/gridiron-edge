@@ -25,6 +25,7 @@ from gridiron_edge.evaluation.tune import (
     TuneResult,
     _brier,
     _k_for_week,
+    _prepare_games,
     run_grid_search,
 )
 
@@ -161,3 +162,116 @@ class TestRunGridSearchTiny:
         )
         assert "holdout_brier" in result.columns
         assert "train_brier" in result.columns
+
+
+def test_prepare_games_uses_canonical_team_identity() -> None:
+    games = pd.DataFrame(
+        {
+            "GAME_ID": ["g1", "g2"],
+            "YEAR": [
+                "2024-2025",
+                "2024-2025",
+            ],
+            "WIN_OR_TIE": [1, 1],
+            "AWAY_TEAM": ["Bills", "Chiefs"],
+            "HOME_TEAM": ["Dolphins", "Ravens"],
+        }
+    )
+
+    prepared, seasons, teams_by_year = _prepare_games(games)
+
+    assert len(prepared) == 2
+    assert seasons == ["2024-2025"]
+    assert teams_by_year == {
+        "2024-2025": {
+            "Bills",
+            "Chiefs",
+            "Dolphins",
+            "Ravens",
+        }
+    }
+
+
+def test_prepare_games_excludes_unplayed_games() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": [
+                "2024-2025",
+                "2024-2025",
+            ],
+            "WIN_OR_TIE": [1, pd.NA],
+            "AWAY_TEAM": ["Bills", "Chiefs"],
+            "HOME_TEAM": ["Dolphins", "Ravens"],
+        }
+    )
+
+    prepared, _seasons, teams_by_year = _prepare_games(games)
+
+    assert len(prepared) == 1
+    assert teams_by_year["2024-2025"] == {
+        "Bills",
+        "Dolphins",
+    }
+
+
+def test_prepare_games_rejects_missing_canonical_identity() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2024-2025"],
+            "WIN_OR_TIE": [1],
+            "WINNER": ["Bills"],
+            "LOSER": ["Dolphins"],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="AWAY_TEAM",
+    ):
+        _prepare_games(games)
+
+
+def test_prepare_games_rejects_empty_team_identity() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2024-2025"],
+            "WIN_OR_TIE": [1],
+            "AWAY_TEAM": [""],
+            "HOME_TEAM": ["Dolphins"],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="empty team identities",
+    ):
+        _prepare_games(games)
+
+
+def test_prepare_games_does_not_mutate_input() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2024-2025"],
+            "WIN_OR_TIE": [1],
+            "AWAY_TEAM": [" Bills "],
+            "HOME_TEAM": ["Dolphins"],
+        }
+    )
+    expected = games.copy(deep=True)
+
+    _prepare_games(games)
+
+    pd.testing.assert_frame_equal(
+        games,
+        expected,
+    )
+
+
+def test_prepare_games_source_excludes_result_orientation() -> None:
+    import inspect
+
+    source = inspect.getsource(_prepare_games)
+
+    assert "WINNER" not in source
+    assert "LOSER" not in source
+    assert "GAME_LOCATION" not in source

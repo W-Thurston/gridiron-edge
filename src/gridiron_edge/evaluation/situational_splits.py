@@ -3,19 +3,19 @@
 """Per-player situational splits computation and persistence.
 
 Computes per-(player_id, stat_type, cohort) splits by joining player
-game logs to the games CSV on game_id, then partitioning by cohort:
+game logs to canonical game metadata on Game ID, then partitioning by:
 
-    - season: all games (full sample)
-    - home / away: based on GAME_LOCATION
-    - favored / underdog: based on FAVORITED
-    - indoor / outdoor: based on ROOF
-    - l4: last 4 games (season/week ordered)
+- season: all games
+- home / away: direct canonical Home and Away team identity
+- favored / underdog: based on FAVORITED
+- indoor / outdoor: based on ROOF
+- l4: last four games ordered by season and week
 
-Produces DataFrame with columns:
+Produces:
     player_id, cohort, sample_size, mean_value
 
-Persisted per-stat-type at
-data/output/props/situational_splits/{stat_type}.parquet.
+Artifacts are persisted per stat type under:
+    data/output/props/situational_splits/{stat_type}.parquet
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def compute_player_situational_splits(
     Args:
         player_game_logs: DataFrame with columns player_id, team, game_id,
             season, week, and the stat column (e.g. passing_yards).
-        games: DataFrame with columns GAME_ID, GAME_LOCATION, WINNER,
-            LOSER, ROOF, VEGAS_LINE, FAVORITED.
+        games: DataFrame with GAME_ID, AWAY_TEAM, HOME_TEAM, ROOF,
+            and FAVORITED columns.
         long_to_short: Mapping from long team names to short codes.
         stat_type: Which stat family (must be in STAT_COLUMN_MAP).
 
@@ -85,11 +85,35 @@ def compute_player_situational_splits(
         return _empty_splits_df()
 
     # Join player game logs to games on game_id.
+    game_context = games.loc[
+        :,
+        [
+            "GAME_ID",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "ROOF",
+            "FAVORITED",
+        ],
+    ].copy()
+
+    if game_context["GAME_ID"].duplicated().any():
+        duplicate_ids = sorted(
+            game_context.loc[
+                game_context["GAME_ID"].duplicated(keep=False),
+                "GAME_ID",
+            ]
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+        raise ValueError("Canonical games contain duplicate game IDs: " + ", ".join(duplicate_ids))
+
     joined = player_game_logs.merge(
-        games[["GAME_ID", "GAME_LOCATION", "WINNER", "LOSER", "ROOF", "FAVORITED"]],
+        game_context,
         left_on="game_id",
         right_on="GAME_ID",
         how="inner",
+        validate="many_to_one",
     )
 
     if joined.empty:
@@ -188,8 +212,8 @@ def _attach_cohort_flags(
     """Attach boolean cohort flags per row.
 
     Uses the joined DataFrame's columns to compute:
-        - is_home: player's team was home (GAME_LOCATION == 'H' + team matches)
-        - is_away: opposite of is_home
+        - is_home: player's team matches canonical HOME_TEAM
+        - is_away: player's team matches canonical AWAY_TEAM
         - is_favored: player's team is in FAVORITED
         - is_underdog: player's team is NOT in FAVORITED (but game had a favorite)
         - is_indoor: ROOF is dome-like
@@ -201,13 +225,10 @@ def _attach_cohort_flags(
     short_to_long = {v: k for k, v in long_to_short.items()}
     df["player_team_long"] = df["team"].map(short_to_long).fillna(df["team"])
 
-    # is_home / is_away.
-    # GAME_LOCATION: "H" = winner played at home. "@" = winner played on road.
-    # We need to determine whether the player's team was home for THIS game.
-    # Home team = WINNER if GAME_LOCATION == "H", else LOSER.
-    home_team_long = df["WINNER"].where(df["GAME_LOCATION"] == "H", df["LOSER"])
-    df["is_home"] = df["player_team_long"] == home_team_long
-    df["is_away"] = ~df["is_home"]
+    # Home and Away cohorts follow the canonical schedule designation
+    # directly, including neutral-site games.
+    df["is_home"] = df["player_team_long"] == df["HOME_TEAM"]
+    df["is_away"] = df["player_team_long"] == df["AWAY_TEAM"]
 
     # is_favored / is_underdog.
     # FAVORITED = long team name of who was favored. NaN if no clear favorite.

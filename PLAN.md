@@ -2839,6 +2839,28 @@ PTS_LOSER, cleaned-game score joins, and row-wise Home-margin reconstruction.
 Verified that canonical Home Win Probability and signed Actual Margin values
 are passed unchanged to sigma and margin-standard-deviation calibration.
 
+Migrated player situational Home and Away cohorts to canonical team identity.
+
+Situational splits now compare each player's team directly with Home Team and
+Away Team rather than reconstructing venue orientation from Winner, Loser, and
+Game Location.
+
+Neutral-site games preserve their designated Away and Home schedule identities.
+
+An unmapped player team is classified as neither Home nor Away rather than
+silently defaulting to Away.
+
+Added duplicate Game ID validation before joining canonical game context to
+player-game logs.
+
+Preserved season, favored, underdog, indoor, outdoor, and last-four cohort
+behavior.
+
+Verified caller inputs remain unmodified and production source contains no
+Winner, Loser, or Game Location dependency.
+
+All scoped quality gates and tests pass.
+
 #### Goal
 
 Migrate alternate-window tuning, walk-forward evaluation, calibration, and full

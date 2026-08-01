@@ -282,8 +282,9 @@ def build_evaluation_df(
     games: DataFrame = loaders.load_games(resolved_repo)
 
     # Build a lookup: game_id → away_team_won (1 = away won, 0 = home won)
-    # The canonical games table uses WINNER/LOSER/GAME_LOCATION convention.
-    # GAME_LOCATION == _AWAY_WIN_LOCATION means the winner was the away team.
+    # Evaluation keeps an Away-oriented outcome contract. Until outcome
+    # construction moves fully to the canonical modeling target, the cleaned
+    # game location identifies whether the recorded winner was the Away team.
     away_won_mask: Series = games["GAME_LOCATION"] == _AWAY_WIN_LOCATION
     outcome_map: dict[str, int] = {}
     for _, row in games.iterrows():
