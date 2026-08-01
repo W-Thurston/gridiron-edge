@@ -474,9 +474,18 @@ class GamesPredictor:
         result = upcoming_valid[["GAME_ID", "AWAY_TEAM", "HOME_TEAM", "WEEK_NUM"]].copy()
         result["HOME_WIN_PROB"] = probs
         result["AWAY_WIN_PROB"] = 1.0 - probs
-        result["AWAY_TEAM_WIN_PROB"] = (pd.Series(probs) * 100).map(lambda x: f"{x:.1f} %").values
+        home_probabilities = pd.Series(
+            probs,
+            index=upcoming_valid.index,
+            dtype=float,
+        )
+        away_probabilities = 1.0 - home_probabilities
+
         result["HOME_TEAM_WIN_PROB"] = (
-            ((1.0 - pd.Series(probs)) * 100).map(lambda x: f"{x:.1f} %").values
+            home_probabilities.mul(100).map(lambda value: f"{value:.1f} %").to_numpy()
+        )
+        result["AWAY_TEAM_WIN_PROB"] = (
+            away_probabilities.mul(100).map(lambda value: f"{value:.1f} %").to_numpy()
         )
         result["AWAY_TEAM_ELO"] = upcoming_valid.get(
             "AWAY_ELO",
@@ -488,9 +497,12 @@ class GamesPredictor:
         )
 
         # Attach total point estimates if available.
-        totals: Series | None = self._maybe_predict_totals(upcoming_valid, repo=repo)
+        totals: Series | None = self._maybe_predict_totals(
+            upcoming_valid,
+            repo=repo,
+        )
         if totals is not None:
-            result["model_total"] = totals.loc[upcoming_valid.loc[valid].index].values
+            result["model_total"] = totals.reindex(upcoming_valid.index).to_numpy(dtype=float)
 
         result = enrich_predictions(
             result,

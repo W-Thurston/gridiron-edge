@@ -23,11 +23,18 @@ static surface only.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from gridiron_edge.features.pipeline import (
+    CANONICAL_FEATURES,
+)
 from gridiron_edge.models.base import PredictorSpec, Trainable
 from gridiron_edge.models.game_prediction.base import (
     GameModelType,
@@ -532,3 +539,201 @@ class TestBuildGamePredictions:
         assert "TEAM_A" not in source
         assert "TEAM_B" not in source
         assert "HOME_FIELD" not in source
+
+
+class TestUpcomingClassificationLifecycle:
+    """Tests for canonical upcoming Win prediction."""
+
+    def _schedule(self) -> pd.DataFrame:
+        """Return two canonical upcoming games."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": [
+                    "G_COMPLETE",
+                    "G_INCOMPLETE",
+                ],
+                "YEAR": [
+                    "2025-2026",
+                    "2025-2026",
+                ],
+                "WEEK_NUM": [1, 1],
+                "AWAY_TEAM": [
+                    "Bills",
+                    "Chiefs",
+                ],
+                "HOME_TEAM": [
+                    "Dolphins",
+                    "Ravens",
+                ],
+                "IS_NEUTRAL_SITE": [0, 0],
+            }
+        )
+
+    def _enriched_schedule(self) -> pd.DataFrame:
+        """Return canonical feature output with one incomplete row."""
+        return pd.DataFrame(
+            {
+                "GAME_ID": [
+                    "G_COMPLETE",
+                    "G_INCOMPLETE",
+                ],
+                "YEAR": [
+                    "2025-2026",
+                    "2025-2026",
+                ],
+                "WEEK_NUM": [1, 1],
+                "AWAY_TEAM": [
+                    "Bills",
+                    "Chiefs",
+                ],
+                "HOME_TEAM": [
+                    "Dolphins",
+                    "Ravens",
+                ],
+                "AWAY_ELO": [
+                    1510.0,
+                    1520.0,
+                ],
+                "HOME_ELO": [
+                    1490.0,
+                    1480.0,
+                ],
+                "MODEL_FEATURE": [
+                    1.0,
+                    float("nan"),
+                ],
+            }
+        )
+
+    @patch("gridiron_edge.models.game_prediction.predictor.enrich_predictions")
+    @patch("gridiron_edge.models.game_prediction.predictor.run_features")
+    @patch("gridiron_edge.models.game_prediction.predictor.ArtifactStore")
+    def test_upcoming_prediction_uses_home_orientation(
+        self,
+        store_cls: MagicMock,
+        run_features_mock: MagicMock,
+        enrich_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        store = store_cls.return_value
+        store.is_trained.return_value = True
+        store.load_scaler.return_value = None
+
+        model = MagicMock()
+        model.predict_proba.return_value = np.array([[0.35, 0.65]])
+        store.load.return_value = model
+
+        enriched = self._enriched_schedule()
+        run_features_mock.return_value = enriched
+
+        enrich_mock.side_effect = lambda frame, **_kwargs: frame
+
+        predictor = WinProbRandomForestPredictor()
+
+        with (
+            patch.object(
+                predictor,
+                "_feature_fn",
+                return_value=(
+                    lambda frame: frame.loc[
+                        :,
+                        ["MODEL_FEATURE"],
+                    ].copy()
+                ),
+            ),
+            patch.object(
+                predictor,
+                "_maybe_predict_totals",
+                return_value=None,
+            ),
+        ):
+            result = predictor.predict_upcoming(
+                self._schedule(),
+                repo=tmp_path,
+            )
+
+        assert len(result) == 1
+
+        row = result.iloc[0]
+
+        assert row["GAME_ID"] == "G_COMPLETE"
+        assert row["AWAY_TEAM"] == "Bills"
+        assert row["HOME_TEAM"] == "Dolphins"
+
+        assert row["HOME_WIN_PROB"] == pytest.approx(0.65)
+        assert row["AWAY_WIN_PROB"] == pytest.approx(0.35)
+
+        assert row["HOME_TEAM_WIN_PROB"] == "65.0 %"
+        assert row["AWAY_TEAM_WIN_PROB"] == "35.0 %"
+
+        assert row["AWAY_TEAM_ELO"] == pytest.approx(1510.0)
+        assert row["HOME_TEAM_ELO"] == pytest.approx(1490.0)
+
+        run_features_mock.assert_called_once()
+
+        call_kwargs = run_features_mock.call_args.kwargs
+        assert call_kwargs["feature_names"] == (CANONICAL_FEATURES)
+
+        enrich_mock.assert_called_once()
+        enriched_input = enrich_mock.call_args.args[0]
+
+        assert enriched_input["HOME_WIN_PROB"].iloc[0] == pytest.approx(0.65)
+        assert enriched_input["AWAY_WIN_PROB"].iloc[0] == pytest.approx(0.35)
+
+    @patch("gridiron_edge.models.game_prediction.predictor.enrich_predictions")
+    @patch("gridiron_edge.models.game_prediction.predictor.run_features")
+    @patch("gridiron_edge.models.game_prediction.predictor.ArtifactStore")
+    def test_upcoming_totals_remain_index_aligned(
+        self,
+        store_cls: MagicMock,
+        run_features_mock: MagicMock,
+        enrich_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        store = store_cls.return_value
+        store.is_trained.return_value = True
+        store.load_scaler.return_value = None
+
+        model = MagicMock()
+        model.predict_proba.return_value = np.array([[0.40, 0.60]])
+        store.load.return_value = model
+
+        enriched = self._enriched_schedule()
+        enriched.index = [10, 20]
+        run_features_mock.return_value = enriched
+
+        enrich_mock.side_effect = lambda frame, **_kwargs: frame
+
+        predictor = WinProbRandomForestPredictor()
+
+        totals = pd.Series(
+            [47.5],
+            index=[10],
+            dtype=float,
+        )
+
+        with (
+            patch.object(
+                predictor,
+                "_feature_fn",
+                return_value=(
+                    lambda frame: frame.loc[
+                        :,
+                        ["MODEL_FEATURE"],
+                    ].copy()
+                ),
+            ),
+            patch.object(
+                predictor,
+                "_maybe_predict_totals",
+                return_value=totals,
+            ),
+        ):
+            result = predictor.predict_upcoming(
+                self._schedule(),
+                repo=tmp_path,
+            )
+
+        assert len(result) == 1
+        assert result["GAME_ID"].iloc[0] == ("G_COMPLETE")
+        assert result["model_total"].iloc[0] == (pytest.approx(47.5))

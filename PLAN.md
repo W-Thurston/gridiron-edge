@@ -1719,7 +1719,6 @@ historical prediction and odds-ledger artifacts.
 
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2e    Migrate Win model
 19.2f    Migrate Total model
 19.2g    Migrate tuning, evaluation, and retraining
 19.2h    Remove retired orientation and rebuild artifacts
@@ -2649,11 +2648,20 @@ canonical HOME_WIN.
 
 The positive classification class now means that the designated Home team won.
 
-Excluded ties through the nullable HOME_WIN target and preserved chronological
-training and holdout preparation.
+Excluded tied games through the nullable HOME_WIN target rather than the retired
+RESULT value of 0.5.
 
-Migrated historical classification prediction assembly to the canonical
-one-row game schema.
+Added explicit validation when canonical Win modeling data does not contain the
+HOME_WIN target.
+
+Preserved deterministic chronological training order by Year, Week Number,
+Game Date, and Game ID.
+
+Preserved feature and target alignment while filtering rows with unavailable
+model features.
+
+Migrated historical classification prediction assembly to one canonical row per
+game.
 
 Model positive-class probability now maps directly to Home Win Probability.
 Away Win Probability is derived as its complement.
@@ -2661,16 +2669,26 @@ Away Win Probability is derived as its complement.
 Removed classification prediction dependence on two-row selection, TEAM_A,
 TEAM_B, HOME_FIELD, and neutral-site alphabetical orientation.
 
-Canonical Away Team and Home Team identity now pass directly from the source
-modeling row to the prediction row, including neutral-site games.
+Canonical Away Team and Home Team identities pass directly from source rows to
+prediction outputs, including neutral-site games.
 
-Canonical Away Elo and Home Elo values pass directly to the prediction output.
+Canonical Away Elo and Home Elo values pass directly to prediction outputs.
+
+Migrated upcoming Win prediction to the canonical feature sequence.
+
+Corrected numeric and formatted Home and Away probability orientation.
+
+Corrected optional Total alignment after incomplete upcoming rows are filtered.
 
 Added validation for duplicate Game IDs and misaligned probability or Total
 prediction counts.
 
-Preserved optional Total attachment, chronological output ordering, archive
-column identity, and caller immutability.
+Preserved optional Total attachment, chronological output order, archive
+columns, and caller immutability.
+
+Left Total-model training, regression prediction assembly, alternate EPA-window
+rebuilding, evaluation, retraining, and artifact regeneration for their
+designated later units.
 
 #### Goal
 
@@ -2679,11 +2697,22 @@ perspective.
 
 #### Tests
 
-Canonical Win target, training preparation, and direct historical prediction
-assembly tests are complete.
+Covered canonical target selection, Home and Away outcomes, tie exclusion,
+unavailable-feature exclusion, chronological preparation, holdout splitting,
+missing-target validation, and input immutability.
 
-Upcoming classification lifecycle verification remains before this unit is
-closed.
+Covered direct historical prediction cardinality, Home-positive-class mapping,
+Away complement derivation, canonical team and Elo identity, neutral-site
+identity preservation, chronological output, optional Total alignment,
+duplicate Game IDs, prediction-count validation, and retired-orientation
+exclusion.
+
+Covered the upcoming classification lifecycle, canonical feature-sequence
+execution, incomplete-row filtering, numeric and formatted probability
+orientation, canonical Elo propagation, enrichment input, and Total index
+alignment.
+
+All scoped quality gates and tests pass.
 
 #### Acceptance
 
