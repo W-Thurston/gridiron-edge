@@ -33,7 +33,7 @@ import pytest
 from gridiron_edge.features.pipeline import (
     CANONICAL_FEATURES,
 )
-from gridiron_edge.models.base import PredictorSpec, Trainable
+from gridiron_edge.models.base import ModelSpec, Trainable
 from gridiron_edge.models.game_prediction.base import (
     GameModelType,
 )
@@ -49,7 +49,7 @@ from gridiron_edge.models.game_prediction.predictor import (
 )
 from gridiron_edge.models.game_prediction.total import TotalTrainer
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
-from gridiron_edge.models.registry import PredictorRegistry
+from gridiron_edge.models.registry import ModelRegistry
 
 # ---------------------------------------------------------------------------
 # Trainer dispatch table
@@ -103,7 +103,7 @@ class TestCompositeRegistrations:
         model_type: str,
     ) -> None:
         # Importing predictor.py at test-module load time triggered registration.
-        cls = PredictorRegistry.get(registry_key)
+        cls = ModelRegistry.get(registry_key)
         assert cls is predictor_cls
 
     @pytest.mark.parametrize(
@@ -232,12 +232,12 @@ class TestPredictGracefulFallback:
 
 
 # ---------------------------------------------------------------------------
-# Type-coverage smoke: every predictor's spec round-trips through PredictorSpec
+# Type-coverage smoke: every model's spec round-trips through ModelSpec
 # ---------------------------------------------------------------------------
 
 
-class TestPredictorSpecShape:
-    """Every composite spec is a fully-formed ``PredictorSpec``."""
+class TestModelSpecShape:
+    """Every composite spec is a fully formed ``ModelSpec``."""
 
     @pytest.mark.parametrize(
         ("registry_key", "predictor_cls", "model_name", "model_type"),
@@ -250,7 +250,7 @@ class TestPredictorSpecShape:
         model_name: str,
         model_type: str,
     ) -> None:
-        assert isinstance(predictor_cls.spec, PredictorSpec)
+        assert isinstance(predictor_cls.spec, ModelSpec)
 
     @pytest.mark.parametrize(
         ("registry_key", "predictor_cls", "model_name", "model_type"),

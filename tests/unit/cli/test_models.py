@@ -301,7 +301,7 @@ class TestTrainChallengerIntoCandidate:
     """Verify candidate-pattern semantics during training."""
 
     def test_restores_champion_on_training_failure(self, tmp_path: Path) -> None:
-        """If predictor.train() raises, champion is restored from holding."""
+        """If model.train() raises, champion is restored from holding."""
         from gridiron_edge.cli.models import _train_challenger_into_candidate
 
         champion_dir = tmp_path / "rf"
@@ -309,15 +309,15 @@ class TestTrainChallengerIntoCandidate:
         champion_dir.mkdir()
         (champion_dir / "champion_marker").touch()
 
-        # Mock predictor whose train() raises
-        predictor = MagicMock()
-        predictor.train.side_effect = RuntimeError("training crashed")
+        # Mock model whose train() raises
+        model = MagicMock()
+        model.train.side_effect = RuntimeError("training crashed")
 
         df = MagicMock()
 
         with pytest.raises(RuntimeError, match="training crashed"):
             _train_challenger_into_candidate(
-                predictor=predictor,
+                model=model,
                 df=df,
                 repo=tmp_path,
                 champion_dir=champion_dir,
@@ -341,7 +341,7 @@ class TestTrainChallengerIntoCandidate:
         champion_dir = tmp_path / "rf"
         candidate_dir = tmp_path / "rf__candidate"
 
-        # Predictor that "trains" by creating files in champion_dir
+        # Model that "trains" by creating files in champion_dir
         def fake_train(_df: object, *, repo: Path) -> object:
             champion_dir.mkdir()
             (champion_dir / "trained_marker").touch()
@@ -355,13 +355,13 @@ class TestTrainChallengerIntoCandidate:
 
             return meta
 
-        predictor = MagicMock()
-        predictor.train.side_effect = fake_train
+        model = MagicMock()
+        model.train.side_effect = fake_train
 
         df = MagicMock()
 
         result = _train_challenger_into_candidate(
-            predictor=predictor,
+            model=model,
             df=df,
             repo=tmp_path,
             champion_dir=champion_dir,
@@ -377,7 +377,7 @@ class TestTrainChallengerIntoCandidate:
         # Holding never created
         holding = tmp_path / "rf__holding"
         assert not holding.exists()
-        # Returned meta comes from the fake predictor
+        # Returned meta comes from the fake model
         assert result.metrics["brier"] == 0.225
 
 

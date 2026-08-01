@@ -3,7 +3,7 @@
 
 Workstream 2 convention:
     Model identity uses the composite ``model_key`` - ``f"{model_name}_{model_type}"``
-    matching the ``PredictorRegistry`` keys (e.g. ``"win_prob_random_forest"``,
+    matching the ``ModelRegistry`` keys (e.g. ``"win_prob_random_forest"``,
     ``"total_xgboost"``). The ``backfill`` command takes ``--model-name`` +
     ``--model-type`` as separate options since it calls into ``backfill_model``
     directly; all other commands accept a single ``--model-key`` for display
@@ -458,9 +458,9 @@ def evaluate_diagnostics(
     if compare:
         import gridiron_edge.models.elo.predictor
         import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-        from gridiron_edge.models.registry import PredictorRegistry
+        from gridiron_edge.models.registry import ModelRegistry
 
-        all_keys: list[str] = PredictorRegistry.names()
+        all_keys: list[str] = ModelRegistry.names()
 
         with step("Load predictions - all models") as s:
             eval_dfs: dict = {}
@@ -537,7 +537,7 @@ def evaluate_select_model(
     from gridiron_edge.core.settings import get_settings
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
     console.header("evaluate select-model")
@@ -552,7 +552,7 @@ def evaluate_select_model(
 
     # Compute metrics for all models with archived predictions
     with step("Compute metrics for all models") as s:
-        rows: list[dict] = _collect_model_metrics(PredictorRegistry.names(), repo=repo)
+        rows: list[dict] = _collect_model_metrics(ModelRegistry.names(), repo=repo)
         s.set_detail(f"{len(rows)} models evaluated")
 
     if not rows:
@@ -809,7 +809,7 @@ def evaluate_report(
     from gridiron_edge.core.settings import get_settings
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
 
@@ -830,7 +830,7 @@ def evaluate_report(
 
     # ── Rank all models ─────────────────────────────────────────────────────
     with step("Compute metrics - all models") as s:
-        all_rows: list[dict] = _collect_model_metrics(PredictorRegistry.names(), repo=repo)
+        all_rows: list[dict] = _collect_model_metrics(ModelRegistry.names(), repo=repo)
         s.set_detail(f"{len(all_rows)} models with archived predictions")
 
     if not all_rows:

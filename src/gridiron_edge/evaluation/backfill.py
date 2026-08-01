@@ -151,11 +151,11 @@ def _backfill_current_model(
     from gridiron_edge.models.base import GameModel
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     registry_key: str = f"{model_name}_{model_type}"
 
-    predictor = cast(GameModel, PredictorRegistry.get(registry_key)())
+    predictor = cast(GameModel, ModelRegistry.get(registry_key)())
 
     games_raw: DataFrame = loaders.load_games(repo)
     games: DataFrame = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()

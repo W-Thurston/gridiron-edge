@@ -1,5 +1,5 @@
 # tests/unit/models/test_base.py
-"""Tests for gridiron_edge.models.base - PredictorSpec, Predictor, Trainable protocols."""
+"""Tests for gridiron_edge.models.base model and training protocols."""
 
 from __future__ import annotations
 
@@ -9,37 +9,37 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from gridiron_edge.models.base import Predictor, PredictorSpec, Trainable
+from gridiron_edge.models.base import GameModel, ModelSpec, Trainable
 
 
-class TestPredictorSpec:
+class TestModelSpec:
     def test_is_frozen(self) -> None:
-        spec = PredictorSpec(name="test_a", description="A test predictor")
+        spec = ModelSpec(name="test_a", description="A test model")
         with pytest.raises(dataclasses.FrozenInstanceError):
             spec.name = "changed"  # type: ignore[misc]
 
     def test_name_and_description(self) -> None:
-        spec = PredictorSpec(name="test_a", description="Test predictor A")
+        spec = ModelSpec(name="test_a", description="Test model A")
         assert spec.name == "test_a"
-        assert spec.description == "Test predictor A"
+        assert spec.description == "Test model A"
 
     def test_equality(self) -> None:
-        a = PredictorSpec(name="test_a", description="Spec A")
-        b = PredictorSpec(name="test_a", description="Spec A")
+        a = ModelSpec(name="test_a", description="Spec A")
+        b = ModelSpec(name="test_a", description="Spec A")
         assert a == b
 
     def test_inequality(self) -> None:
-        a = PredictorSpec(name="test_a", description="Spec A")
-        b = PredictorSpec(name="test_b", description="Spec B")
+        a = ModelSpec(name="test_a", description="Spec A")
+        b = ModelSpec(name="test_b", description="Spec B")
         assert a != b
 
 
-class TestPredictorProtocol:
+class TestGameModelProtocol:
     def test_runtime_checkable(self) -> None:
-        """Predictor should be a runtime-checkable Protocol."""
+        """GameModel should be a runtime-checkable Protocol."""
 
-        class DummyPredictor:
-            spec = PredictorSpec(name="dummy", description="Dummy")
+        class DummyGameModel:
+            spec = ModelSpec(name="dummy", description="Dummy")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
@@ -47,20 +47,20 @@ class TestPredictorProtocol:
             def predict_upcoming(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
 
-        dummy = DummyPredictor()
-        assert isinstance(dummy, Predictor)
+        dummy = DummyGameModel()
+        assert isinstance(dummy, GameModel)
 
     def test_class_without_predict_fails_check(self) -> None:
-        class NotAPredictor:
-            spec = PredictorSpec(name="bad", description="Missing methods")
+        class NotAGameModel:
+            spec = ModelSpec(name="bad", description="Missing methods")
 
-        assert not isinstance(NotAPredictor(), Predictor)
+        assert not isinstance(NotAGameModel(), GameModel)
 
 
 class TestTrainableProtocol:
     def test_runtime_checkable(self) -> None:
         class DummyTrainable:
-            spec = PredictorSpec(name="trainable_dummy", description="Trainable dummy")
+            spec = ModelSpec(name="trainable_dummy", description="Trainable dummy")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
@@ -74,9 +74,9 @@ class TestTrainableProtocol:
         dummy = DummyTrainable()
         assert isinstance(dummy, Trainable)
 
-    def test_predictor_without_is_trained_is_not_trainable(self) -> None:
-        class PredictorOnly:
-            spec = PredictorSpec(name="predict_only", description="Predict only")
+    def test_game_model_without_is_trained_is_not_trainable(self) -> None:
+        class GameModelOnly:
+            spec = ModelSpec(name="predict_only", description="Predict only")
 
             def predict_historical(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
@@ -84,5 +84,5 @@ class TestTrainableProtocol:
             def predict_upcoming(self, *, repo: Path) -> pd.DataFrame:
                 return pd.DataFrame()
 
-        assert isinstance(PredictorOnly(), Predictor)
-        assert not isinstance(PredictorOnly(), Trainable)
+        assert isinstance(GameModelOnly(), GameModel)
+        assert not isinstance(GameModelOnly(), Trainable)

@@ -6,7 +6,7 @@ Workstream 2 user surface:
     ``model_name`` (purpose, e.g. ``"win_prob"``) and ``model_type``
     (algorithm, e.g. ``"random_forest"``). This matches the ``ArtifactStore``
     storage scheme at ``data/models/{model_name}/{model_type}/`` and the
-    composite ``PredictorRegistry`` keys (e.g. ``"win_prob_random_forest"``).
+    composite ``ModelRegistry`` keys (e.g. ``"win_prob_random_forest"``).
 
 Examples:
     gridiron models train win_prob random_forest
@@ -14,16 +14,16 @@ Examples:
     gridiron models list
 
 Registry key resolution:
-    All ``PredictorRegistry`` keys are composite, so resolution is a
+    All ``ModelRegistry`` keys are composite, so resolution is a
     pure ``f"{model_name}_{model_type}"`` concatenation. Any pair that
     isn't a registered key surfaces as a ``KeyError`` from
-    ``PredictorRegistry.get`` - clear and loud.
+    ``ModelRegistry.get`` - clear and loud.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from pandas import DataFrame
 
@@ -34,7 +34,20 @@ from gridiron_edge.evaluation.champion import ClassificationComparisonResult
 
 if TYPE_CHECKING:
     from gridiron_edge.models.artifact import BaseModelMetadata
-    from gridiron_edge.models.base import Predictor
+
+
+class _ChallengerTrainer(Protocol):
+    """Training surface required by challenger artifact staging."""
+
+    def train(
+        self,
+        df: DataFrame,
+        *,
+        repo: Path | None = None,
+    ) -> BaseModelMetadata:
+        """Train and persist a challenger model artifact."""
+        ...
+
 
 models_app = typer.Typer(
     help="Train and manage prediction model artifacts.",
@@ -163,7 +176,7 @@ def _apply_promotion_decision(
 
 def _train_challenger_into_candidate(
     *,
-    predictor: Predictor,
+    model: _ChallengerTrainer,
     df: DataFrame,
     repo: Path,
     champion_dir: Path,
@@ -173,7 +186,7 @@ def _train_challenger_into_candidate(
     """Train challenger into ``candidate_dir`` without disturbing the champion.
 
     Mechanism: the existing champion (if any) is temporarily moved aside to
-    a ``__holding`` directory before training. The predictor's save target
+    a ``__holding`` directory before training. The model's save target
     is ``champion_dir`` (derived from the artifact store's path scheme), so
     we move the freshly-trained artifact to ``candidate_dir`` immediately
     after training and restore the champion from holding.
@@ -183,7 +196,7 @@ def _train_challenger_into_candidate(
     same champion they started with.
 
     Args:
-        predictor: Trainable predictor returned by ``PredictorRegistry.get()``.
+        model: Trainable model returned by ``ModelRegistry.get()``.
         df: Modeling feature matrix.
         repo: Repository root.
         champion_dir: Path where the artifact store writes by default.
@@ -195,7 +208,7 @@ def _train_challenger_into_candidate(
         Metadata from the trained challenger.
 
     Raises:
-        Any exception raised by ``predictor.train()``. Champion is
+        Any exception raised by ``model.train()``. Champion is
         restored before re-raising.
     """
     import shutil
@@ -203,7 +216,7 @@ def _train_challenger_into_candidate(
     if candidate_dir.exists():
         shutil.rmtree(candidate_dir)
 
-    # Temporarily move existing champion aside so the predictor's save
+    # Temporarily move existing champion aside so the model's save
     # to champion_dir succeeds without overwriting.
     champion_holding: Path | None = None
     if champion_dir.exists():
@@ -213,8 +226,7 @@ def _train_challenger_into_candidate(
         shutil.move(str(champion_dir), str(champion_holding))
 
     try:
-        # pyrefly: ignore [missing-attribute]
-        challenger_meta: BaseModelMetadata = predictor.train(df, repo=repo)
+        challenger_meta: BaseModelMetadata = model.train(df, repo=repo)
         # Move freshly-trained artifact to candidate location.
         shutil.move(str(champion_dir), str(candidate_dir))
         # Restore champion from holding so it's available for comparison.
@@ -331,7 +343,7 @@ def models_train(
     from gridiron_edge.models.base import Trainable
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
@@ -346,18 +358,18 @@ def models_train(
 
             from gridiron_edge.models.base import GameModel
 
-            predictor = cast(GameModel, PredictorRegistry.get(registry_key)())
+            model = cast(GameModel, ModelRegistry.get(registry_key)())
         except KeyError as exc:
             raise typer.BadParameter(
-                f"'{registry_key}' is not a registered predictor. "
-                f"Available: {PredictorRegistry.trainable_names()}"
+                f"'{registry_key}' is not a registered model. "
+                f"Available: {ModelRegistry.trainable_names()}"
             ) from exc
-        if not isinstance(predictor, Trainable):
+        if not isinstance(model, Trainable):
             raise typer.BadParameter(
                 f"'{registry_key}' does not implement Trainable. "
-                f"Trainable registry keys: {PredictorRegistry.trainable_names()}"
+                f"Trainable registry keys: {ModelRegistry.trainable_names()}"
             )
-        s.set_detail(predictor.spec.description)
+        s.set_detail(model.spec.description)
 
     # ── Resolve paths ──────────────────────────────────────────────
     champion_dir: Path = store.artifact_dir(model_name, model_type)
@@ -378,7 +390,7 @@ def models_train(
 
     with step(f"Train {model_name} {model_type}") as s:
         challenger_meta = _train_challenger_into_candidate(
-            predictor=predictor,
+            model=cast(_ChallengerTrainer, model),
             df=df,
             repo=repo,
             champion_dir=champion_dir,
@@ -422,15 +434,15 @@ def models_list() -> None:
     from gridiron_edge.models.base import GameModel, Trainable
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
 
     rows: list[dict[str, str]] = []
-    for key in PredictorRegistry.names():
-        predictor = cast(GameModel, PredictorRegistry.get(key)())
-        is_trainable: bool = isinstance(predictor, Trainable)
+    for key in ModelRegistry.names():
+        model = cast(GameModel, ModelRegistry.get(key)())
+        is_trainable: bool = isinstance(model, Trainable)
         kind: Literal["analytic", "trainable"] = "trainable" if is_trainable else "analytic"
 
         pair: tuple[str, str] | None = _split_composite_key(key)
@@ -483,25 +495,25 @@ def models_info(
     from gridiron_edge.models.artifact import ArtifactStore
     import gridiron_edge.models.elo.predictor
     import gridiron_edge.models.game_prediction.predictor  # noqa: F401
-    from gridiron_edge.models.registry import PredictorRegistry
+    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
     store = ArtifactStore(repo)
     registry_key: str = f"{model_name}_{model_type}"
 
     try:
-        PredictorRegistry.get(registry_key)
+        ModelRegistry.get(registry_key)
     except KeyError as exc:
         raise typer.BadParameter(
-            f"'{registry_key}' is not a registered predictor. "
-            f"Available: {sorted(PredictorRegistry.names())}"
+            f"'{registry_key}' is not a registered model. "
+            f"Available: {sorted(ModelRegistry.names())}"
         ) from exc
 
     if not store.is_trained(model_name, model_type):
         # Check whether this is an analytic model that doesn't persist artifacts
         try:
-            predictor = PredictorRegistry.get(registry_key)()
-            if hasattr(predictor, "spec") and not getattr(predictor.spec, "trainable", True):
+            model = ModelRegistry.get(registry_key)()
+            if hasattr(model, "spec") and not getattr(model.spec, "trainable", True):
                 typer.echo(
                     f"'{model_name} {model_type}' is an analytic model "
                     f"without persisted training state. Use 'gridiron evaluate "

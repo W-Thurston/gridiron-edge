@@ -61,7 +61,7 @@ _FIGSIZE_WIDE: Final[tuple[int, int]] = (12, 6)
 _FIGSIZE_GRID: Final[tuple[int, int]] = (14, 10)
 
 # Consistent colour palette for composite model keys. Keys match the
-# PredictorRegistry composite-key format f"{model_name}_{model_type}".
+# ModelRegistry composite-key format f"{model_name}_{model_type}".
 # Add new entries here when registering a new model variant.
 _MODEL_COLORS: Final[dict[str, str]] = {
     "win_prob_elo": "#2563eb",  # blue

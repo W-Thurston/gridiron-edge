@@ -3,9 +3,9 @@
 """Game prediction model package.
 
 Importing this package registers all prediction models with
-PredictorRegistry.  Any code that needs to enumerate or instantiate
+ModelRegistry.  Any code that needs to enumerate or instantiate
 game-prediction models should import this package (or any sub-module)
-before calling PredictorRegistry.names().
+before calling ModelRegistry.names().
 
 Sub-modules:
     _columns.py  - feature column definitions

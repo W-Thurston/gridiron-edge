@@ -8,7 +8,7 @@ intentionally CLI-agnostic so they can be called from tests or notebooks
 without importing the CLI layer.
 
 Workstream 2 convention:
-    All registered ``PredictorRegistry`` keys are composite strings
+    All registered ``ModelRegistry`` keys are composite strings
     of the form ``f"{model_name}_{model_type}"`` (e.g.
     ``"win_prob_random_forest"``, ``"total_xgboost"``, ``"win_prob_elo"``).
     Functions in this module split each key on the first underscore
@@ -31,7 +31,7 @@ from pandas import DataFrame, Series
 
 
 def _parse_composite_key(key: str) -> tuple[str, str]:
-    """Split a PredictorRegistry composite key into (model_name, model_type).
+    """Split a ModelRegistry composite key into (model_name, model_type).
 
     All registered keys follow ``f"{model_name}_{model_type}"``. Because both
     ``model_name`` (e.g. ``"win_prob"``) and ``model_type``
@@ -63,7 +63,7 @@ def collect_model_metrics(
     """Compute evaluation metrics for all models with archived predictions.
 
     Args:
-        model_keys: List of PredictorRegistry composite keys
+        model_keys: List of ModelRegistry composite keys
             (e.g. ``"win_prob_random_forest"``).
         repo: Repository root.
 
@@ -164,7 +164,7 @@ def compute_report_data(
     """Load predictions and compute all four report DataFrames.
 
     Args:
-        target_key: Composite PredictorRegistry key of the model to analyse
+        target_key: Composite ModelRegistry key of the model to analyse
             (e.g. ``"win_prob_random_forest"``).
         season: Optional season filter.
         top_misses: Number of worst predictions to surface.

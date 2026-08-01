@@ -23,9 +23,9 @@ import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
-from gridiron_edge.models.base import PredictorSpec
+from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
-from gridiron_edge.models.registry import PredictorRegistry
+from gridiron_edge.models.registry import ModelRegistry
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ def _merge_elo_predictions(
 # ---------------------------------------------------------------------------
 
 
-@PredictorRegistry.register
+@ModelRegistry.register
 class WinProbEloPredictor:
     """Elo predictor with production-default parameters.
 
@@ -238,7 +238,7 @@ class WinProbEloPredictor:
     model_name: ClassVar[str] = "win_prob"
     model_type: ClassVar[str] = "elo"
 
-    spec: ClassVar[PredictorSpec] = PredictorSpec(
+    spec: ClassVar[ModelSpec] = ModelSpec(
         name="win_prob_elo",
         description="Elo ratings - production defaults (K=20, div=480, regress=0.33).",
     )

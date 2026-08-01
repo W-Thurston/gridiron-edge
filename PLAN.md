@@ -2983,6 +2983,44 @@ Pyrefly pass.
 Prop enrichment uses explicit named configuration, and serialized recommendation
 and confidence values remain unchanged.
 
+#### 19.2h-D3c.1 Completed
+
+Migrated active model-registry consumers from PredictorRegistry to
+ModelRegistry and from PredictorSpec to ModelSpec.
+
+Updated registry, evaluation, CLI, Elo, and test terminology to use the
+canonical Model, GameModel, ModelSpec, and ModelRegistry contracts.
+
+Replaced the inaccurate CLI challenger-training annotation with a narrow
+_ChallengerTrainer protocol and removed the associated Pyrefly suppression.
+
+Preserved the current predictor.py module paths and concrete Predictor class
+names because they remain active implementation identities rather than
+compatibility aliases.
+
+Retained the Predictor, PredictorSpec, and PredictorRegistry compatibility
+aliases for removal during the runtime compatibility review.
+
+#### Goal
+
+Make Model terminology the active repository contract before removing the
+remaining Predictor compatibility aliases.
+
+#### Tests
+
+Model base, registry, game prediction, model CLI, evaluation selection,
+backfill, and evaluate CLI tests pass. Ruff and Pyrefly pass.
+
+#### Acceptance
+
+Active source and tests consume Model, GameModel, ModelSpec, and ModelRegistry
+rather than Predictor, PredictorSpec, or PredictorRegistry compatibility
+aliases.
+
+The only remaining PredictorSpec and PredictorRegistry alias references are
+their compatibility definitions and explanatory comments pending the runtime
+compatibility review.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
