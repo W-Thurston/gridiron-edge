@@ -2909,6 +2909,90 @@ contrac* used across modeling, prediction,*tuning, and evaluation.
 All scope* quality gates, canonical feature *ests, integration tests, and
 end-t*-end prediction-pipeline tests pas*.
 
+Removed the standalone HomeFieldFeature implementation and registration.
+
+Removed the retired TeamEloFeature and DivisionalFeature implementations and
+registrations.
+
+Deleted their dedicated legacy tests.
+
+Preserved shared Elo validation helpers used by HomeAwayEloFeature.
+
+Preserved canonical divisional metadata validation and
+HomeAwayDivisionalFeature.
+
+Updated feature-registry tests to require the canonical home_away_elo and
+home_away_divisional registrations instead of the retired keys.
+
+Verified that home_field, team_elo, and divisional are no longer registered.
+
+Verified that home_away_elo and home_away_divisional remain registered and
+fully covered.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
+Removed the retired PrimetimeFeature implementation, registration, helper, and
+dedicated test file.
+
+Preserved the canonical nullable primetime implementation for historical and
+upcoming schedule metadata.
+
+Canonical primetime state continues to distinguish known non-primetime games
+from unavailable or invalid schedule metadata.
+
+Updated feature-registry expectations to require home_away_primetime rather
+than primetime.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
+Removed the retired WeatherFeature implementation and registration.
+
+Extracted enriched-weather loading and conversion into module-level helpers
+used directly by HomeAwayWeatherFeature.
+
+Established one canonical Weather output contract containing roof-derived Dome
+state and enriched environmental values.
+
+Preserved controlled-environment overrides for covered venues and explicit null
+weather states for outdoor games without enriched weather.
+
+Migrated the detailed Weather test suite to canonical one-row game inputs and
+HomeAwayWeatherFeature execution.
+
+Preserved coverage for dome classification, unit conversions, precipitation,
+snow, low visibility, feels-like temperature, humidity, visibility fallback,
+wind-chill delta, missing weather, controlled defaults, exact feature outputs,
+registration, and input immutability.
+
+Verified that no WeatherFeature class or weather registry key remains.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
+Removed the retired RestFeature and RecordFeature implementations and
+registrations.
+
+Removed the retired vectorized record-table builder and all TEAM_A and TEAM_B
+record-output declarations.
+
+Deleted the dedicated legacy Rest and Record test suites.
+
+Preserved canonical completed-game date history, pregame rest calculation,
+nullable short-week and post-bye flags, and Home-minus-Away rest differential.
+
+Preserved canonical score-derived result history, same-season record
+calculation, tie handling, and active win and loss streak calculation.
+
+Updated registry expectations to require home_away_rest and home_away_record.
+
+Verified that no RestFeature, RecordFeature, rest registration, record
+registration, or legacy record-table builder remains.
+
+All scoped quality gates, canonical feature tests, integration tests, and
+end-to-end tests pass.
+
 #### Goal
 
 Remove the retired p*rspective-oriented feature archite*ture and rebuild all

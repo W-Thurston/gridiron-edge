@@ -1,6 +1,6 @@
 # src/gridiron_edge/features/team/elo.py
 
-"""Elo feature joins for legacy and canonical game orientations."""
+"""Canonical Away/Home Elo feature generation."""
 
 from __future__ import annotations
 
@@ -78,81 +78,6 @@ def _validate_elo_identity(
     ]
 
     raise ValueError("Elo state contains duplicate identities: " + ", ".join(formatted))
-
-
-@FeatureRegistry.register("team_elo")
-class TeamEloFeature:
-    """Join Elo ratings for the retired TEAM_A / TEAM_B orientation."""
-
-    spec = FeatureSpec(
-        name="team_elo",
-        produces=[
-            "TEAM_A_ELO",
-            "TEAM_B_ELO",
-        ],
-    )
-
-    def compute(
-        self,
-        *,
-        df: pd.DataFrame,
-        datasets: DatasetAccessor,
-    ) -> pd.DataFrame:
-        """Join Elo ratings for TEAM_A and TEAM_B."""
-        elo: DataFrame = datasets.elo_state().copy()
-
-        out: pd.DataFrame = df.merge(
-            elo,
-            how="left",
-            left_on=[
-                "TEAM_A",
-                "YEAR",
-                "WEEK_NUM",
-            ],
-            right_on=[
-                "NFL_TEAM",
-                "NFL_YEAR",
-                "NFL_WEEK",
-            ],
-        ).drop(
-            columns=[
-                "NFL_TEAM",
-                "NFL_YEAR",
-                "NFL_WEEK",
-            ]
-        )
-        out = out.rename(
-            columns={
-                "ELO": "TEAM_A_ELO",
-            }
-        )
-
-        out = out.merge(
-            elo,
-            how="left",
-            left_on=[
-                "TEAM_B",
-                "YEAR",
-                "WEEK_NUM",
-            ],
-            right_on=[
-                "NFL_TEAM",
-                "NFL_YEAR",
-                "NFL_WEEK",
-            ],
-        ).drop(
-            columns=[
-                "NFL_TEAM",
-                "NFL_YEAR",
-                "NFL_WEEK",
-            ]
-        )
-
-        return out.rename(
-            columns={
-                "ELO": "TEAM_B_ELO",
-            }
-        )
 
 
 @FeatureRegistry.register("home_away_elo")

@@ -26,7 +26,6 @@ from gridiron_edge.features.registry import FeatureRegistry, run_features, valid
 import gridiron_edge.features.team.divisional
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.epa
-import gridiron_edge.features.team.home_field
 import gridiron_edge.features.team.primetime
 import gridiron_edge.features.team.record
 import gridiron_edge.features.team.rest

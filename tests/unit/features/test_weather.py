@@ -1,10 +1,10 @@
 # tests/features/test_weather.py
 
-"""Unit tests for features/team/weather.py.
+"""Tests for canonical game-level weather feature generation.
 
-Tests cover IS_DOME derivation from ROOF column, unit conversions from
-OWM raw (Kelvin to Fahrenheit, m/s to mph), precipitation flag logic,
-dome-game environmental overrides, and missing-data NaN propagation.
+Covers roof-derived dome state, enriched-weather unit conversions,
+weather-category flags, controlled-environment overrides, and explicit
+missing-weather states.
 """
 
 from __future__ import annotations
@@ -13,6 +13,14 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+
+from gridiron_edge.features.registry import (
+    FeatureRegistry,
+)
+from gridiron_edge.features.team.weather import (
+    _DOME_TEMP_F,
+    HomeAwayWeatherFeature,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,17 +58,19 @@ def _make_games(roof: str = "outdoors", game_id: str = "2024_01_KC_LV") -> pd.Da
     )
 
 
-def _make_modeling_row(game_id: str = "2024_01_KC_LV") -> pd.DataFrame:
+def _make_modeling_row(
+    game_id: str = "2024_01_KC_LV",
+) -> pd.DataFrame:
+    """Return one canonical game row."""
     return pd.DataFrame(
         [
             {
                 "GAME_ID": game_id,
-                "TEAM_A": "Kansas City Chiefs",
-                "TEAM_B": "Las Vegas Raiders",
                 "YEAR": "2024-2025",
                 "WEEK_NUM": 1,
-                "RESULT": 1,
-                "HOME_FIELD": 1,
+                "AWAY_TEAM": ("Las Vegas Raiders"),
+                "HOME_TEAM": ("Kansas City Chiefs"),
+                "IS_NEUTRAL_SITE": 0,
             }
         ]
     )
@@ -99,27 +109,21 @@ class TestIsDome:
     """Tests for IS_DOME derivation from the ROOF column."""
 
     def test_outdoors_is_not_dome(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("outdoors")),
         )
         assert result.iloc[0]["IS_DOME"] == 0
 
     def test_open_is_not_dome(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("open")),
         )
         assert result.iloc[0]["IS_DOME"] == 0
 
     def test_dome_is_dome(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("dome")),
         )
@@ -127,9 +131,8 @@ class TestIsDome:
 
     def test_retractable_is_dome(self) -> None:
         """Retractable roof is treated as dome (conservative assumption)."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("retractable")),
         )
@@ -137,9 +140,8 @@ class TestIsDome:
 
     def test_case_insensitive(self) -> None:
         """ROOF column values should match regardless of capitalisation."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("DOME")),
         )
@@ -156,11 +158,10 @@ class TestUnitConversions:
 
     def test_freezing_point_kelvin_to_fahrenheit(self) -> None:
         """273.15 K should convert to exactly 32 degF."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=273.15, wind_mps=0.0)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -168,11 +169,10 @@ class TestUnitConversions:
 
     def test_boiling_point_kelvin_to_fahrenheit(self) -> None:
         """373.15 K should convert to 212 degF."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=373.15, wind_mps=0.0)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -180,22 +180,19 @@ class TestUnitConversions:
 
     def test_ten_mps_to_mph(self) -> None:
         """10 m/s should convert to approximately 22.4 mph."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=295.0, wind_mps=10.0)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(22.37, abs=0.05)
 
     def test_zero_wind_converts_to_zero(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
         games = _make_games("outdoors")
         weather = _make_weather_row(temp_k=295.0, wind_mps=0.0)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -212,11 +209,9 @@ class TestPrecipFlag:
 
     @pytest.mark.parametrize("weather_main", ["Rain", "Snow", "Drizzle", "Thunderstorm"])
     def test_precipitation_types_flag_as_1(self, weather_main: str) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
         games = _make_games("outdoors")
         weather = _make_weather_row(weather_main=weather_main)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -224,19 +219,16 @@ class TestPrecipFlag:
 
     @pytest.mark.parametrize("weather_main", ["Clear", "Clouds", "Mist", "Fog"])
     def test_non_precipitation_types_flag_as_0(self, weather_main: str) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
         games = _make_games("outdoors")
         weather = _make_weather_row(weather_main=weather_main)
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["PRECIP_FLAG"] == 0
 
-    def test_null_value_string_gives_nan(self) -> None:
-        """'NULL_VALUE' is not a precipitation type → 0, not NaN."""
-        from gridiron_edge.features.team.weather import WeatherFeature
+    def test_unknown_weather_string_is_not_precipitation(self) -> None:
+        """An unknown non-null category does not indicate precipitation."""
 
         # Build a game with WEATHER_MAIN = "NULL_VALUE" and outdoor roof
         games = _make_games(roof="outdoors", game_id="g_null")
@@ -248,7 +240,7 @@ class TestPrecipFlag:
             weather_main="NULL_VALUE",
         )
         acc = _make_accessor(games, weather)
-        out = WeatherFeature().compute(df=modeling, datasets=acc)
+        out = HomeAwayWeatherFeature().compute(df=modeling, datasets=acc)
         assert out["PRECIP_FLAG"].iloc[0] == 0
 
 
@@ -261,11 +253,9 @@ class TestDomeOverrides:
     """Tests for dome game environmental value overrides."""
 
     def test_dome_wind_is_zero(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
         games = _make_games("dome")
         weather = _make_weather_row(wind_mps=20.0, weather_main="Rain")
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -273,22 +263,19 @@ class TestDomeOverrides:
 
     def test_dome_temp_is_controlled(self) -> None:
         """Dome temperature should be the standard controlled value (72 degF)."""
-        from gridiron_edge.features.team.weather import _DOME_TEMP_F, WeatherFeature
 
         games = _make_games("dome")
         weather = _make_weather_row(temp_k=250.0)  # very cold outside
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
         assert result.iloc[0]["TEMP_F"] == pytest.approx(_DOME_TEMP_F)
 
     def test_dome_precip_is_zero(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
         games = _make_games("dome")
         weather = _make_weather_row(weather_main="Snow")
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games, weather=weather),
         )
@@ -296,10 +283,9 @@ class TestDomeOverrides:
 
     def test_dome_overrides_even_without_owm_data(self) -> None:
         """Dome values should be set even when no OWM data is available."""
-        from gridiron_edge.features.team.weather import _DOME_TEMP_F, WeatherFeature
 
         games = _make_games("dome")
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games),  # no weather data
         )
@@ -319,10 +305,9 @@ class TestMissingData:
 
     def test_outdoor_game_without_owm_gives_nan_weather(self) -> None:
         """Outdoor games with no OWM data should have NaN weather columns."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
         games = _make_games("outdoors")
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games),  # FileNotFoundError
         )
@@ -332,10 +317,9 @@ class TestMissingData:
 
     def test_is_dome_always_populated(self) -> None:
         """IS_DOME should never be NaN regardless of OWM availability."""
-        from gridiron_edge.features.team.weather import WeatherFeature
 
         games = _make_games("outdoors")
-        result = WeatherFeature().compute(
+        result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
             datasets=_make_accessor(games),
         )
@@ -347,13 +331,13 @@ class TestMissingData:
 # ---------------------------------------------------------------------------
 
 
-class TestWeatherFeatureSpec:
-    """Tests for FeatureSpec accuracy and registry registration."""
+class TestHomeAwayWeatherFeatureSpec:
+    """Tests the canonical Weather feature contract."""
 
-    def test_spec_produces_expected_columns(self) -> None:
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        assert set(WeatherFeature().spec.produces) == {
+    def test_spec_produces_expected_columns(
+        self,
+    ) -> None:
+        assert HomeAwayWeatherFeature.spec.produces == [
             "IS_DOME",
             "WIND_SPEED_MPH",
             "TEMP_F",
@@ -364,13 +348,40 @@ class TestWeatherFeatureSpec:
             "SNOW_FLAG",
             "LOW_VIS_FLAG",
             "WIND_CHILL_DELTA",
-        }
+        ]
 
-    def test_registered_under_weather(self) -> None:
-        from gridiron_edge.features.registry import FeatureRegistry
-        import gridiron_edge.features.team.weather  # noqa: F401
+    def test_registered_under_canonical_name(
+        self,
+    ) -> None:
+        assert FeatureRegistry.get("home_away_weather") is HomeAwayWeatherFeature
 
-        assert FeatureRegistry.get("weather") is not None
+    def test_retired_registration_is_absent(
+        self,
+    ) -> None:
+        with pytest.raises(
+            KeyError,
+            match="Feature 'weather' is not registered",
+        ):
+            FeatureRegistry.get("weather")
+
+    def test_compute_does_not_mutate_input(
+        self,
+    ) -> None:
+        frame = _make_modeling_row()
+        expected = frame.copy(deep=True)
+
+        HomeAwayWeatherFeature().compute(
+            df=frame,
+            datasets=_make_accessor(
+                _make_games("outdoors"),
+                weather=_make_weather_row(),
+            ),
+        )
+
+        pd.testing.assert_frame_equal(
+            frame,
+            expected,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -388,9 +399,7 @@ class TestFeelsLikeF:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         expected_f = (293.0 - 273.15) * 9.0 / 5.0 + 32.0
         assert abs(result["FEELS_LIKE_F"].iloc[0] - expected_f) < 0.01
 
@@ -401,9 +410,7 @@ class TestFeelsLikeF:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["FEELS_LIKE_F"].iloc[0] == 72.0
 
 
@@ -422,9 +429,7 @@ class TestHumidityPct:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["HUMIDITY_PCT"].iloc[0] == 85.0
 
     def test_dome_humidity_override(self) -> None:
@@ -434,9 +439,7 @@ class TestHumidityPct:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["HUMIDITY_PCT"].iloc[0] == 50.0
 
 
@@ -455,9 +458,7 @@ class TestVisibilityM:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["VISIBILITY_M"].iloc[0] == 5000.0
 
     def test_nan_visibility_filled_with_default(self) -> None:
@@ -468,9 +469,7 @@ class TestVisibilityM:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["VISIBILITY_M"].iloc[0] == 10000.0
 
     def test_dome_visibility_override(self) -> None:
@@ -480,9 +479,7 @@ class TestVisibilityM:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["VISIBILITY_M"].iloc[0] == 10000.0
 
 
@@ -501,9 +498,7 @@ class TestSnowFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["SNOW_FLAG"].iloc[0] == 1
 
     def test_rain_is_not_snow(self) -> None:
@@ -513,9 +508,7 @@ class TestSnowFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["SNOW_FLAG"].iloc[0] == 0
 
     def test_dome_snow_override(self) -> None:
@@ -525,9 +518,7 @@ class TestSnowFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["SNOW_FLAG"].iloc[0] == 0
 
 
@@ -547,9 +538,7 @@ class TestLowVisFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["LOW_VIS_FLAG"].iloc[0] == 1
 
     def test_clear_is_not_low_vis(self) -> None:
@@ -559,9 +548,7 @@ class TestLowVisFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["LOW_VIS_FLAG"].iloc[0] == 0
 
     def test_dome_low_vis_override(self) -> None:
@@ -571,9 +558,7 @@ class TestLowVisFlag:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["LOW_VIS_FLAG"].iloc[0] == 0
 
 
@@ -593,9 +578,7 @@ class TestWindChillDelta:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         delta = result["WIND_CHILL_DELTA"].iloc[0]
         assert delta > 0, f"Expected positive delta, got {delta}"
         expected = ((295.0 - 273.15) - (290.0 - 273.15)) * 9.0 / 5.0
@@ -608,7 +591,5 @@ class TestWindChillDelta:
         acc = _make_accessor(games, weather)
         df = _make_modeling_row()
 
-        from gridiron_edge.features.team.weather import WeatherFeature
-
-        result = WeatherFeature().compute(df=df, datasets=acc)
+        result = HomeAwayWeatherFeature().compute(df=df, datasets=acc)
         assert result["WIND_CHILL_DELTA"].iloc[0] == 0.0

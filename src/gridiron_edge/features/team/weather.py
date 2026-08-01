@@ -1,72 +1,12 @@
 # src/gridiron_edge/features/team/weather.py
 
-"""Weather and venue features.
+"""Canonical game-level weather and venue features.
 
-Produces game-level environmental context that affects play style and
-outcomes - particularly suppression of passing EPA in wind and cold.
-All features are game-level (not team-specific), so the same value
-appears in both TEAM_A and TEAM_B rows for a given game.
+Attaches nullable environmental context to one canonical game row.
+Historical and upcoming schedule metadata share the same output schema.
 
-Produces:
-    IS_DOME            int    1 if game played in a domed or retractable-roof
-                              stadium, 0 otherwise.  Source: ROOF column.
-                              Always populated - no OWM data required.
-    WIND_SPEED_MPH     float  Wind speed at kickoff in mph.
-                              0.0 for dome games (controlled environment).
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched WIND_SPEED (m/s -> mph).
-    TEMP_F             float  Ambient temperature at kickoff in Fahrenheit.
-                              72.0 for dome games (standard controlled temp).
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched TEMP (Kelvin -> degF).
-    PRECIP_FLAG        int    1 if precipitation detected, 0 if clear.
-                              0 for dome games.
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched WEATHER_MAIN column.
-    FEELS_LIKE_F       float  Feels-like temperature at kickoff in Fahrenheit.
-                              72.0 for dome games.
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched FEELS_LIKE (K -> degF).
-    HUMIDITY_PCT       float  Relative humidity at kickoff (0-100 scale).
-                              50.0 for dome games.
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched HUMIDITY.
-    VISIBILITY_M       float  Visibility in meters at kickoff.
-                              10000.0 for dome games.
-                              NaN filled with 10000.0 (clear-sky default).
-                              Source: weather_enriched VISIBILITY.
-    SNOW_FLAG          int    1 if snow detected, 0 otherwise.
-                              0 for dome games.
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched WEATHER_MAIN.
-    LOW_VIS_FLAG       int    1 if fog/mist/haze/smoke detected, 0 otherwise.
-                              0 for dome games.
-                              NaN if OWM data unavailable for outdoor games.
-                              Source: weather_enriched WEATHER_MAIN.
-    WIND_CHILL_DELTA   float  TEMP_F minus FEELS_LIKE_F.
-                              0.0 for dome games.
-                              Positive = wind chill / cold feels worse than temp.
-                              NaN if OWM data unavailable for outdoor games.
-
-Design notes:
-    - IS_DOME values: "dome"/"retractable" -> 1, "outdoors"/"open" -> 0.
-      Retractable treated as dome (conservative -- roof typically closed
-      during the weather conditions that matter most for game outcomes).
-
-    - Dome games receive definitional rather than observed values:
-        WIND_SPEED_MPH = 0.0    (no wind in a controlled environment)
-        TEMP_F         = 72.0   (standard HVAC set-point for NFL domes)
-        PRECIP_FLAG    = 0      (no precipitation indoors)
-      These override any OWM values that may exist for the location.
-
-    - Outdoor games without OWM coverage remain NaN.  _prepare_data
-      excludes NaN feature rows from training, so those games are
-      automatically withheld.  As OWM historical coverage expands via
-      ``gridiron ingest weather --all-years``, more rows become usable.
-
-    - Unit conversions from OWM raw:
-        TEMP:       Kelvin to Fahrenheit  =  (K - 273.15) x 9/5 + 32
-        WIND_SPEED: m/s to mph            =  m/s x 2.237
+Covered venues receive controlled-environment defaults. Outdoor games
+without enriched weather retain explicit null weather values.
 """
 
 from __future__ import annotations
@@ -139,160 +79,93 @@ _WEATHER_OUTPUT_COLS: Final[list[str]] = [
     "WIND_CHILL_DELTA",
 ]
 
+_WEATHER_FEATURE_COLUMNS: Final[list[str]] = [
+    "IS_DOME",
+    *[column for column in _WEATHER_OUTPUT_COLS if column != "GAME_ID"],
+]
 
-@FeatureRegistry.register("weather")
-class WeatherFeature:
-    """Weather and venue features: dome flag, wind, temperature, precipitation.
 
-    IS_DOME is always populated from the stadium reference ROOF column.
-    Wind, temperature, and precipitation are populated from OWM data where
-    available and set to controlled-environment constants for dome games.
-    Outdoor games without OWM coverage receive NaN and are excluded from
-    training by _prepare_data.
-    """
+def _load_weather(
+    datasets: DatasetAccessor,
+) -> DataFrame | None:
+    """Load enriched weather data when available."""
+    try:
+        return datasets.weather_enriched()
+    except (AttributeError, FileNotFoundError):
+        return None
 
-    spec = FeatureSpec(
-        name="weather",
-        produces=[
-            "IS_DOME",
-            "WIND_SPEED_MPH",
-            "TEMP_F",
-            "PRECIP_FLAG",
-            "FEELS_LIKE_F",
-            "HUMIDITY_PCT",
-            "VISIBILITY_M",
-            "SNOW_FLAG",
-            "LOW_VIS_FLAG",
-            "WIND_CHILL_DELTA",
-        ],
+
+def _process_weather(
+    weather_df: DataFrame,
+) -> DataFrame:
+    """Convert enriched weather data to canonical model features."""
+    weather = weather_df.copy()
+
+    def _coerce(
+        column: str,
+    ) -> Series:
+        """Return a numeric source column or an all-null Series."""
+        if column in weather.columns:
+            # pyrefly: ignore [bad-return]
+            return pd.to_numeric(
+                weather[column],
+                errors="coerce",
+            )
+
+        return Series(
+            float("nan"),
+            index=weather.index,
+            dtype=float,
+        )
+
+    weather["TEMP_F"] = (_coerce("TEMP") - _KELVIN_TO_CELSIUS) * 9 / 5 + 32
+    weather["FEELS_LIKE_F"] = (_coerce("FEELS_LIKE") - _KELVIN_TO_CELSIUS) * 9 / 5 + 32
+
+    weather["WIND_SPEED_MPH"] = _coerce("WIND_SPEED") * _MPS_TO_MPH
+    weather["HUMIDITY_PCT"] = _coerce("HUMIDITY").astype(float)
+    weather["VISIBILITY_M"] = _coerce("VISIBILITY").fillna(_DEFAULT_VISIBILITY_M)
+
+    if "WEATHER_MAIN" in weather.columns:
+        main_text = weather["WEATHER_MAIN"].astype(str)
+        main_available = weather["WEATHER_MAIN"].notna() & main_text.ne("")
+
+        for column, categories in (
+            (
+                "PRECIP_FLAG",
+                _PRECIP_WEATHER_MAINS,
+            ),
+            (
+                "SNOW_FLAG",
+                _SNOW_WEATHER_MAINS,
+            ),
+            (
+                "LOW_VIS_FLAG",
+                _LOW_VIS_WEATHER_MAINS,
+            ),
+        ):
+            weather[column] = np.where(
+                main_available,
+                main_text.isin(categories).astype(int),
+                float("nan"),
+            )
+    else:
+        weather["PRECIP_FLAG"] = float("nan")
+        weather["SNOW_FLAG"] = float("nan")
+        weather["LOW_VIS_FLAG"] = float("nan")
+
+    weather["WIND_CHILL_DELTA"] = weather["TEMP_F"] - weather["FEELS_LIKE_F"]
+
+    if "GAME_ID" not in weather.columns:
+        return DataFrame(columns=_WEATHER_OUTPUT_COLS)
+
+    return (
+        weather.loc[
+            :,
+            _WEATHER_OUTPUT_COLS,
+        ]
+        .drop_duplicates("GAME_ID")
+        .reset_index(drop=True)
     )
-
-    def compute(self, *, df: pd.DataFrame, datasets: DatasetAccessor) -> pd.DataFrame:
-        """Compute weather and venue features and join onto the modeling DataFrame.
-
-        Args:
-            df: Modeling DataFrame with GAME_ID, YEAR, WEEK_NUM,
-                TEAM_A, TEAM_B columns.
-            datasets: Provides ``games()`` (for ROOF column) and
-                ``weather_enriched()`` (optional OWM data).
-
-        Returns:
-            Input DataFrame with weather and venue columns appended:
-            IS_DOME, WIND_SPEED_MPH, TEMP_F, PRECIP_FLAG, FEELS_LIKE_F,
-            HUMIDITY_PCT, VISIBILITY_M, SNOW_FLAG, LOW_VIS_FLAG, and
-            WIND_CHILL_DELTA.  Dome games are fully populated with
-            controlled-environment defaults.  Outdoor games without OWM
-            data have NaN in the weather columns.
-        """
-        games = datasets.games()
-
-        # -- IS_DOME from ROOF column (always available) -------------------
-        # Vectorized via .isin() instead of per-row apply (weather/M2).
-        roof = games[["GAME_ID", "ROOF"]].copy()
-        _dome_lower: frozenset[str] = frozenset(v.lower() for v in _DOME_ROOF_VALUES)
-        roof["IS_DOME"] = roof["ROOF"].str.lower().str.strip().isin(_dome_lower).astype(int)
-        dome_lookup = roof[["GAME_ID", "IS_DOME"]].drop_duplicates("GAME_ID")
-
-        # -- Weather columns from weather_enriched (optional) --------------
-        weather_df = self._load_weather(datasets)
-        if weather_df is not None and not weather_df.empty:
-            weather_lookup = self._process_weather(weather_df)
-        else:
-            weather_lookup = pd.DataFrame(columns=_WEATHER_OUTPUT_COLS)
-
-        # -- Merge onto modeling DataFrame ---------------------------------
-        df = df.merge(dome_lookup, how="left", on="GAME_ID")
-
-        if not weather_lookup.empty:
-            df = df.merge(weather_lookup, how="left", on="GAME_ID")
-        else:
-            df["WIND_SPEED_MPH"] = float("nan")
-            df["TEMP_F"] = float("nan")
-            df["PRECIP_FLAG"] = float("nan")
-            df["FEELS_LIKE_F"] = float("nan")
-            df["HUMIDITY_PCT"] = float("nan")
-            df["VISIBILITY_M"] = float("nan")
-            df["SNOW_FLAG"] = float("nan")
-            df["LOW_VIS_FLAG"] = float("nan")
-            df["WIND_CHILL_DELTA"] = float("nan")
-
-        # -- Dome games: override with definitional controlled values ------
-        # Applied after the OWM merge so they always take precedence.
-        dome_mask = df["IS_DOME"] == 1
-        df.loc[dome_mask, "WIND_SPEED_MPH"] = 0.0
-        df.loc[dome_mask, "TEMP_F"] = _DOME_TEMP_F
-        df.loc[dome_mask, "PRECIP_FLAG"] = 0
-        df.loc[dome_mask, "FEELS_LIKE_F"] = _DOME_FEELS_LIKE_F
-        df.loc[dome_mask, "HUMIDITY_PCT"] = _DOME_HUMIDITY_PCT
-        df.loc[dome_mask, "VISIBILITY_M"] = _DOME_VISIBILITY_M
-        df.loc[dome_mask, "SNOW_FLAG"] = 0
-        df.loc[dome_mask, "LOW_VIS_FLAG"] = 0
-        df.loc[dome_mask, "WIND_CHILL_DELTA"] = 0.0
-
-        return df
-
-    def _load_weather(self, datasets: DatasetAccessor) -> pd.DataFrame | None:
-        """Load the weather_enriched dataset if it exists."""
-        try:
-            return datasets.weather_enriched()
-        except (AttributeError, FileNotFoundError):
-            return None
-
-    def _process_weather(self, weather_df: pd.DataFrame) -> pd.DataFrame:
-        """Convert OWM raw columns to model-ready features.
-
-        Args:
-            weather_df: Raw weather_enriched DataFrame with OWM columns.
-
-        Returns:
-            DataFrame with columns defined in ``_WEATHER_OUTPUT_COLS``.
-            One row per game.
-        """
-        w = weather_df.copy()
-
-        def _coerce(col: str) -> pd.Series:
-            """Return *col* as a numeric Series, or all-NaN if missing."""
-            if col in w.columns:
-                # pyrefly: ignore [bad-return]
-                return pd.to_numeric(w[col], errors="coerce")
-            return pd.Series(float("nan"), index=w.index)
-
-        # -- Kelvin -> Fahrenheit conversions ------------------------------
-        w["TEMP_F"] = (_coerce("TEMP") - _KELVIN_TO_CELSIUS) * 9 / 5 + 32
-        w["FEELS_LIKE_F"] = (_coerce("FEELS_LIKE") - _KELVIN_TO_CELSIUS) * 9 / 5 + 32
-
-        # -- Unit conversions & pass-throughs ------------------------------
-        w["WIND_SPEED_MPH"] = _coerce("WIND_SPEED") * _MPS_TO_MPH
-        w["HUMIDITY_PCT"] = _coerce("HUMIDITY").astype(float)
-        w["VISIBILITY_M"] = _coerce("VISIBILITY").fillna(_DEFAULT_VISIBILITY_M)
-
-        # -- WEATHER_MAIN-derived flags ------------------------------------
-        if "WEATHER_MAIN" in w.columns:
-            main_str = w["WEATHER_MAIN"].astype(str)
-            main_valid = w["WEATHER_MAIN"].notna() & (main_str != "")
-            for col, categories in (
-                ("PRECIP_FLAG", _PRECIP_WEATHER_MAINS),
-                ("SNOW_FLAG", _SNOW_WEATHER_MAINS),
-                ("LOW_VIS_FLAG", _LOW_VIS_WEATHER_MAINS),
-            ):
-                w[col] = np.where(
-                    main_valid,
-                    main_str.isin(categories).astype(int),
-                    float("nan"),
-                )
-        else:
-            w["PRECIP_FLAG"] = float("nan")
-            w["SNOW_FLAG"] = float("nan")
-            w["LOW_VIS_FLAG"] = float("nan")
-
-        # -- Derived features ----------------------------------------------
-        w["WIND_CHILL_DELTA"] = w["TEMP_F"] - w["FEELS_LIKE_F"]
-
-        if "GAME_ID" not in w.columns:
-            return pd.DataFrame(columns=_WEATHER_OUTPUT_COLS)
-
-        # pyrefly: ignore [no-matching-overload]
-        return w[_WEATHER_OUTPUT_COLS].drop_duplicates("GAME_ID").reset_index(drop=True)
 
 
 @FeatureRegistry.register("home_away_weather")
@@ -301,7 +174,7 @@ class HomeAwayWeatherFeature:
 
     spec = FeatureSpec(
         name="home_away_weather",
-        produces=list(WeatherFeature.spec.produces),
+        produces=list(_WEATHER_FEATURE_COLUMNS),
     )
 
     def compute(
@@ -340,10 +213,9 @@ class HomeAwayWeatherFeature:
         dome_values = dome_values.mask(metadata["ROOF"].isna())
         metadata["IS_DOME"] = dome_values
 
-        legacy = WeatherFeature()
-        weather_df: DataFrame | None = legacy._load_weather(datasets)
+        weather_df = _load_weather(datasets)
         if weather_df is not None and not weather_df.empty:
-            weather_lookup: DataFrame = legacy._process_weather(weather_df)
+            weather_lookup = _process_weather(weather_df)
         else:
             weather_lookup = DataFrame(columns=_WEATHER_OUTPUT_COLS)
 
