@@ -3616,6 +3616,27 @@ Edge publication reflects only the current selected product, and stale scope-bas
 
 Market failures remain isolated to the soft-fail edge stage and do not invalidate a prediction-ready selected weekly product.
 
+
+#### Runtime feature-context correction
+
+Added explicit target-identity rolling for Home/Away EPA features.
+
+Only completed epa_by_game rows contribute rolling observations.
+
+Historical or upcoming target identities receive pregame EPA values from completed same-team observations strictly before the target season and week.
+
+Prior regular-season history can seed future Week 1 games.
+
+Future schedule targets never become observations for later future targets.
+
+Historical explicit-target values remain equivalent to the existing shifted rolling implementation.
+
+Availability inspection and trained-model execution continue to share the same canonical feature pipeline.
+
+Real 2026 Week 1 validation confirmed that Win Logistic changed from unavailable to available across the complete 16-game schedule.
+
+The expanded tree and Total feature contract remains unavailable because record, schedule-strength, travel, weather, and venue fields are still incomplete.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

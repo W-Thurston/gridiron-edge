@@ -224,3 +224,37 @@ def test_window_must_be_positive() -> None:
         match="window must be at least 1",
     ):
         HomeAwayEpaFeature(window=0)
+
+
+def test_prior_season_history_seeds_upcoming_week_one() -> None:
+    game = _game()
+    game["GAME_ID"] = "2026_01_PHI_GB"
+    game["YEAR"] = "2026-2027"
+    game["WEEK_NUM"] = 1
+    history = _epa_history().copy()
+    history["season"] = 2025
+
+    result = HomeAwayEpaFeature().compute(
+        df=game,
+        datasets=_datasets(history),
+    )
+
+    assert result.iloc[0]["AWAY_OFF_EPA_PER_PLAY"] == pytest.approx((0.10 + 0.20 + 9.00) / 3)
+    assert result.iloc[0]["HOME_OFF_EPA_PER_PLAY"] == pytest.approx((0.30 + 0.50 + 9.00) / 3)
+
+
+def test_multiple_future_weeks_share_completed_history_only() -> None:
+    games = pd.concat([_game(), _game()], ignore_index=True)
+    games["GAME_ID"] = ["2026_01_PHI_GB", "2026_02_PHI_GB"]
+    games["YEAR"] = "2026-2027"
+    games["WEEK_NUM"] = [1, 2]
+    history = _epa_history().copy()
+    history["season"] = 2025
+
+    result = HomeAwayEpaFeature().compute(
+        df=games,
+        datasets=_datasets(history),
+    )
+
+    assert result["AWAY_OFF_EPA_PER_PLAY"].tolist() == pytest.approx([(0.10 + 0.20 + 9.00) / 3] * 2)
+    assert result["GAME_ID"].tolist() == games["GAME_ID"].tolist()

@@ -12,6 +12,7 @@ from gridiron_edge.features.team.epa import (
     DEFAULT_ROLLING_WINDOW,
     EPA_COLS,
     _build_rolling_epa,
+    _build_target_rolling_epa,
 )
 
 
@@ -153,3 +154,120 @@ def test_retired_epa_registration_is_absent() -> None:
         match="Feature 'epa' is not registered",
     ):
         FeatureRegistry.get("epa")
+
+
+class TestBuildTargetRollingEpa:
+    """Verify explicit future identities use completed history only."""
+
+    def test_prior_season_seeds_week_one(self) -> None:
+        epa = pd.DataFrame(
+            {
+                "game_id": ["2025_17_KC", "2025_18_KC"],
+                "season": [2025, 2025],
+                "week": [17, 18],
+                "team": ["KC", "KC"],
+                "off_epa_per_play": [0.10, 0.30],
+            }
+        )
+        targets = pd.DataFrame(
+            {
+                "game_id": ["2026_01_KC"],
+                "season": [2026],
+                "week": [1],
+                "team": ["KC"],
+            }
+        )
+
+        result = _build_target_rolling_epa(epa, targets, window=4)
+
+        assert result["rolling_off_epa_per_play"].iloc[0] == pytest.approx(0.20)
+
+    def test_future_targets_do_not_become_observations(self) -> None:
+        epa = pd.DataFrame(
+            {
+                "game_id": ["2025_18_KC"],
+                "season": [2025],
+                "week": [18],
+                "team": ["KC"],
+                "off_epa_per_play": [0.25],
+            }
+        )
+        targets = pd.DataFrame(
+            {
+                "game_id": ["2026_01_KC", "2026_02_KC"],
+                "season": [2026, 2026],
+                "week": [1, 2],
+                "team": ["KC", "KC"],
+            }
+        )
+
+        result = _build_target_rolling_epa(epa, targets, window=4)
+
+        assert result["rolling_off_epa_per_play"].tolist() == pytest.approx([0.25, 0.25])
+
+    def test_completed_current_season_game_seeds_later_target(self) -> None:
+        epa = pd.DataFrame(
+            {
+                "game_id": ["2025_18_KC", "2026_01_KC"],
+                "season": [2025, 2026],
+                "week": [18, 1],
+                "team": ["KC", "KC"],
+                "off_epa_per_play": [0.10, 0.50],
+            }
+        )
+        targets = pd.DataFrame(
+            {
+                "game_id": ["2026_02_KC"],
+                "season": [2026],
+                "week": [2],
+                "team": ["KC"],
+            }
+        )
+
+        result = _build_target_rolling_epa(epa, targets, window=2)
+
+        assert result["rolling_off_epa_per_play"].iloc[0] == pytest.approx(0.30)
+
+    def test_target_matches_historical_shifted_rolling_value(self) -> None:
+        epa = make_epa_by_game(teams=["KC"], seasons=[2024], weeks_per_season=4)
+        target = epa.loc[
+            epa["week"] == 4,
+            ["game_id", "season", "week", "team"],
+        ]
+
+        historical = _build_rolling_epa(epa, window=4)
+        explicit = _build_target_rolling_epa(epa, target, window=4)
+
+        expected = historical.loc[
+            historical["week"] == 4,
+            "rolling_off_epa_per_play",
+        ].iloc[0]
+        assert explicit["rolling_off_epa_per_play"].iloc[0] == pytest.approx(expected)
+
+    def test_duplicate_target_identity_is_computed_once(self) -> None:
+        epa = pd.DataFrame(
+            {
+                "game_id": ["2025_18_KC"],
+                "season": [2025],
+                "week": [18],
+                "team": ["KC"],
+                "off_epa_per_play": [0.25],
+            }
+        )
+        targets = pd.DataFrame(
+            {
+                "game_id": ["target-a", "target-b"],
+                "season": [2026, 2026],
+                "week": [1, 1],
+                "team": ["KC", "KC"],
+            }
+        )
+
+        result = _build_target_rolling_epa(
+            epa,
+            targets,
+            window=4,
+        )
+
+        assert len(result) == 1
+        assert result["rolling_off_epa_per_play"].iloc[0] == pytest.approx(0.25)

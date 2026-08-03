@@ -172,6 +172,75 @@ def _build_rolling_epa(
     return rolled.loc[:, ["game_id", "season", "week", "team", *rolling_cols]].copy()
 
 
+def _build_target_rolling_epa(
+    epa_by_game: DataFrame,
+    targets: DataFrame,
+    *,
+    window: int,
+    exclude_playoffs: bool = True,
+) -> DataFrame:
+    """Compute prior-game EPA means for explicit lookup identities.
+
+    Only completed rows from ``epa_by_game`` are observations. Target rows
+    identify historical or future games that need a pregame lookup and never
+    become observations for another target.
+    """
+    required_targets = {"game_id", "season", "week", "team"}
+    missing_targets = sorted(required_targets - set(targets.columns))
+    if missing_targets:
+        raise ValueError("EPA targets are missing required columns: " + ", ".join(missing_targets))
+    if window < 1:
+        raise ValueError("window must be at least 1.")
+
+    normalized_targets = targets.drop_duplicates(
+        subset=["season", "week", "team"],
+        keep="first",
+        ignore_index=True,
+    )
+
+    observations = epa_by_game.copy()
+    if exclude_playoffs:
+        observations = observations.loc[
+            observations["week"] <= _MAX_REG_SEASON_WEEK,
+            :,
+        ].copy()
+
+    available_cols = [column for column in _EPA_COLS if column in observations.columns]
+    rows: list[dict[str, object]] = []
+    for target in normalized_targets.itertuples(index=False):
+        target_season = int(str(target.season))
+        target_week = int(str(target.week))
+        history = observations.loc[
+            (observations["team"].astype(str) == str(target.team))
+            & (
+                (observations["season"] < target_season)
+                | ((observations["season"] == target_season) & (observations["week"] < target_week))
+            ),
+            :,
+        ].sort_values(["season", "week"], kind="stable")
+        history = history.tail(window)
+
+        row: dict[str, object] = {
+            "game_id": str(target.game_id),
+            "season": target_season,
+            "week": target_week,
+            "team": str(target.team),
+        }
+        for column in _EPA_COLS:
+            row[f"rolling_{column}"] = (
+                history[column].mean()
+                if column in available_cols and not history.empty
+                else float("nan")
+            )
+        rows.append(row)
+
+    rolling_columns = [f"rolling_{column}" for column in _EPA_COLS]
+    return DataFrame(
+        rows,
+        columns=["game_id", "season", "week", "team", *rolling_columns],
+    )
+
+
 def _require_home_away_epa_columns(
     frame: DataFrame,
     required: tuple[str, ...],
@@ -344,13 +413,37 @@ class HomeAwayEpaFeature:
         )
         _validate_home_away_epa_identity(epa_raw)
 
-        rolled = _build_rolling_epa(
-            epa_raw,
-            window=self.window,
-            exclude_playoffs=(self.exclude_playoffs),
-        )
-
         source["season"] = _season_numbers(source)
+        away_targets = source.loc[
+            :,
+            ["GAME_ID", "season", "WEEK_NUM", "AWAY_TEAM"],
+        ].rename(
+            columns={
+                "GAME_ID": "game_id",
+                "WEEK_NUM": "week",
+                "AWAY_TEAM": "team",
+            }
+        )
+        home_targets = source.loc[
+            :,
+            ["GAME_ID", "season", "WEEK_NUM", "HOME_TEAM"],
+        ].rename(
+            columns={
+                "GAME_ID": "game_id",
+                "WEEK_NUM": "week",
+                "HOME_TEAM": "team",
+            }
+        )
+        targets = pd.concat(
+            [away_targets, home_targets],
+            ignore_index=True,
+        )
+        rolled = _build_target_rolling_epa(
+            epa_raw,
+            targets,
+            window=self.window,
+            exclude_playoffs=self.exclude_playoffs,
+        )
 
         away_lookup = _canonical_epa_lookup(
             rolled,
