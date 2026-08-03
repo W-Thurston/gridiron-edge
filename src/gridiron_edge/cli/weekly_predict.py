@@ -271,6 +271,75 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+def _prediction_output_paths(
+    repo: Path,
+    *,
+    season: str,
+    week: int,
+) -> tuple[Path, Path]:
+    """Return the fixed publication paths for one weekly scope."""
+    output_dir = repo / "data" / "output" / "predictions" / season[:4]
+    return (
+        output_dir / f"week_{week:02d}_predictions.png",
+        output_dir / f"week_{week:02d}_predictions.html",
+    )
+
+
+def _remove_outputs(paths: tuple[Path, ...]) -> None:
+    """Remove stale scope-based publication artifacts when present."""
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
+def _stage_verify_weekly_readiness(ctx: dict[str, Any]) -> StageResult:
+    """Gate forecast publication on selected-product prediction readiness."""
+    from gridiron_edge.cli.verify_week import load_weekly_readiness
+
+    season: str = ctx["season"]
+    week: int = ctx["week"]
+    repo: Path = get_settings().repo_root
+    if not isinstance(ctx.get("weekly_product_id"), str):
+        return StageResult(success=False, detail="selected weekly product is unavailable")
+
+    readiness = load_weekly_readiness(
+        season=season,
+        week=week,
+        repo=repo,
+    )
+    ctx["weekly_readiness"] = readiness
+    if readiness.prediction_ready:
+        return StageResult(
+            success=True,
+            detail="selected weekly product is prediction-ready",
+        )
+
+    png_path, html_path = _prediction_output_paths(
+        repo,
+        season=season,
+        week=week,
+    )
+    _remove_outputs((png_path, html_path))
+    prediction_blockers = ", ".join(
+        blocker.value
+        for blocker in readiness.blockers
+        if blocker.value
+        not in {
+            "missing_market_data",
+            "market_scope_mismatch",
+            "stale_market_data",
+            "partial_market_coverage",
+            "zero_prediction_market_matches",
+            "incomplete_markets",
+            "missing_market_provenance",
+            "ambiguous_market_provenance",
+        }
+    )
+    return StageResult(
+        success=False,
+        detail=f"prediction publication blocked: {prediction_blockers}",
+    )
+
+
 def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     """Render predictions to PNG + HTML."""
     from gridiron_edge.viz.predictions import (
@@ -281,6 +350,18 @@ def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     year: str = ctx["season"]
     week: int = ctx["week"]
     repo: Path = get_settings().repo_root
+    readiness = ctx.get("weekly_readiness")
+    if readiness is None or not readiness.prediction_ready:
+        png_path, html_path = _prediction_output_paths(
+            repo,
+            season=year,
+            week=week,
+        )
+        _remove_outputs((png_path, html_path))
+        return StageResult(
+            success=False,
+            detail="selected weekly product is not prediction-ready",
+        )
 
     df = ctx.get("predictions_df")
     if df is None:
@@ -351,6 +432,8 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
 
     kelly_multiplier = 0.25
     min_ev = 0.0
+    ctx.pop("top_edges_preview", None)
+    out_path = repo / "data" / "output" / "edges" / f"edges_{season}_wk{week:02d}.csv"
     result = build_weekly_edge_result(
         season=season,
         week=week,
@@ -361,15 +444,15 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
     )
     detail = _edge_stage_detail(result, min_ev=min_ev)
     if result.diagnostics.blockers:
+        out_path.unlink(missing_ok=True)
         return StageResult(success=False, detail=detail)
     if result.rows.empty:
+        out_path.unlink(missing_ok=True)
         return StageResult(success=True, detail=detail)
 
     ranked = result.rows
     ctx["top_edges_preview"] = ranked.head(5).reset_index(drop=True).copy()
-    out_dir = repo / "data" / "output" / "edges"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"edges_{season}_wk{week:02d}.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     ranked.to_csv(out_path, index=False)
     return StageResult(
         success=True,
@@ -429,10 +512,16 @@ def _build_stages() -> list[CompositeStage]:
             depends_on=("predict-week",),
         ),
         CompositeStage(
+            name="verify-weekly-readiness",
+            description="Verify selected weekly product readiness",
+            func=_stage_verify_weekly_readiness,
+            depends_on=("compose-weekly-product",),
+        ),
+        CompositeStage(
             name="render-outputs",
             description="Render predictions PNG + HTML",
             func=_stage_render_outputs,
-            depends_on=("predict-week",),
+            depends_on=("verify-weekly-readiness",),
         ),
         CompositeStage(
             name="generate-edges",

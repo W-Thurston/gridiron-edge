@@ -26,6 +26,7 @@ def test_weekly_predict_has_no_external_odds_stage() -> None:
         "ensure-data-fresh",
         "predict-week",
         "compose-weekly-product",
+        "verify-weekly-readiness",
         "render-outputs",
         "generate-edges",
     ]

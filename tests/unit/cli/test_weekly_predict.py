@@ -69,6 +69,7 @@ class TestStageList:
             "ensure-data-fresh",
             "predict-week",
             "compose-weekly-product",
+            "verify-weekly-readiness",
             "render-outputs",
             "generate-edges",
         ]
@@ -80,9 +81,13 @@ class TestStageList:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
         assert "ensure-data-fresh" in stages["predict-week"].depends_on
 
-    def test_render_depends_on_predict(self) -> None:
+    def test_readiness_depends_on_selected_product(self) -> None:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
-        assert "predict-week" in stages["render-outputs"].depends_on
+        assert stages["verify-weekly-readiness"].depends_on == ("compose-weekly-product",)
+
+    def test_render_depends_on_readiness(self) -> None:
+        stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
+        assert stages["render-outputs"].depends_on == ("verify-weekly-readiness",)
 
     def test_product_composition_depends_on_predict(self) -> None:
         stages: dict[str, CompositeStage] = {s.name: s for s in _build_stages()}
@@ -317,6 +322,9 @@ class TestGenerateEdgesStage:
                 blockers=(EdgeDiagnosticBlocker.NO_MARKET_DATA,),
             ),
         )
+        stale = tmp_path / "data/output/edges/edges_2026-2027_wk01.csv"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("stale")
         with (
             patch(
                 "gridiron_edge.cli.weekly_predict.get_settings",
@@ -331,7 +339,7 @@ class TestGenerateEdgesStage:
 
         assert not result.success
         assert result.detail == "edge calculation blocked: no_market_data"
-        assert not (tmp_path / "data" / "output" / "edges").exists()
+        assert not stale.exists()
 
     @pytest.mark.parametrize(
         ("state", "calculated", "positive", "message"),
@@ -393,18 +401,64 @@ class TestGenerateEdgesStage:
         assert result.artifacts == []
 
 
+class TestPublicationReadinessStage:
+    """Cover selected-product publication gating and stale cleanup."""
+
+    def test_prediction_blocker_removes_stale_render_outputs(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.cli.weekly_predict import _stage_verify_weekly_readiness
+        from gridiron_edge.evaluation.weekly_readiness import (
+            WeeklyReadinessBlocker,
+        )
+
+        png = tmp_path / "data/output/predictions/2026/week_01_predictions.png"
+        html = tmp_path / "data/output/predictions/2026/week_01_predictions.html"
+        png.parent.mkdir(parents=True)
+        png.write_bytes(b"stale")
+        html.write_text("stale")
+        readiness = MagicMock(
+            prediction_ready=False,
+            blockers=(WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS,),
+        )
+        with (
+            patch(
+                "gridiron_edge.cli.weekly_predict.get_settings",
+                return_value=MagicMock(repo_root=tmp_path),
+            ),
+            patch(
+                "gridiron_edge.cli.verify_week.load_weekly_readiness",
+                return_value=readiness,
+            ),
+        ):
+            result = _stage_verify_weekly_readiness(
+                {
+                    "season": "2026-2027",
+                    "week": 1,
+                    "weekly_product_id": "product-1",
+                }
+            )
+
+        assert not result.success
+        assert not png.exists()
+        assert not html.exists()
+
+
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
 
     @patch("gridiron_edge.cli.weekly_predict._stage_ensure_data_fresh")
     @patch("gridiron_edge.cli.weekly_predict._stage_predict_week")
     @patch("gridiron_edge.cli.weekly_predict._stage_compose_weekly_product")
+    @patch("gridiron_edge.cli.weekly_predict._stage_verify_weekly_readiness")
     @patch("gridiron_edge.cli.weekly_predict._stage_render_outputs")
     @patch("gridiron_edge.cli.weekly_predict._stage_generate_edges")
     def test_runs_all_stages_when_all_succeed(
         self,
         mock_edges: MagicMock,
         mock_render: MagicMock,
+        mock_readiness: MagicMock,
         mock_product: MagicMock,
         mock_predict: MagicMock,
         mock_data: MagicMock,
@@ -417,6 +471,7 @@ class TestCommandInvocation:
         mock_data.return_value = StageResult(success=True, detail="ok")
         mock_predict.return_value = StageResult(success=True, detail="ok")
         mock_product.return_value = StageResult(success=True, detail="ok")
+        mock_readiness.return_value = StageResult(success=True, detail="ok")
         mock_render.return_value = StageResult(success=True, detail="ok")
         mock_edges.return_value = StageResult(success=True, detail="ok")
 

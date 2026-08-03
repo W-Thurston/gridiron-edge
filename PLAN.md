@@ -1749,8 +1749,8 @@ historical prediction and odds-ledger artifacts.
 19.1b  truthful availability inspection         COMPLETE
 19.3   execute policy-selected models           COMPLETE
 19.4   persist and select weekly product        COMPLETE
-19.5   readiness and publication hardening      NEXT
-19.6   end-to-end orchestration acceptance      PENDING
+19.5   readiness and publication hardening      COMPLETE
+19.6   end-to-end orchestration acceptance      NEXT
 
 #### Goal
 
@@ -3556,30 +3556,41 @@ Immutable products remain independently addressable, and current state changes o
 Selected-product consumers load the same explicitly selected immutable product without model inference or latest-file inference.
 
 
-
 ### Unit 19.5: Readiness and Publication Hardening
 
-#### Active
+#### Completed
 
 Operational readiness now derives from the explicitly selected immutable weekly product.
 
 verify-week loads the selected product for the requested season and week and adapts its persisted component values and storage-owned provenance to the pure weekly readiness evaluator.
 
-Champion resolution, forecast-event reselection, and arbitrary forecast-run verification were removed from operational readiness.
+Champion lookup, forecast-event reselection, and arbitrary forecast-run verification were removed from operational readiness.
 
 The retired --run-id option was removed because readiness describes the explicitly selected weekly product rather than an arbitrary forecast archive run.
 
 WeeklyReadiness retains complete operational readiness while exposing independent prediction_ready and market_ready properties.
 
-prediction_ready evaluates schedule, prediction-component, product, selection, and prediction-provenance blockers.
+prediction_ready evaluates schedule, selected-product, prediction-component, forecast-selection, and prediction-provenance blockers.
 
-market_ready evaluates market availability, scope, freshness, coverage, joins, completeness, and provenance blockers.
+market_ready evaluates market availability, scope, freshness, coverage, prediction-to-market joins, completeness, and market provenance blockers.
 
 The existing ready property remains true only when no operational blockers are present.
 
-Selected-product readiness remains read-only and performs no model inference, forecast selection, product selection, market ingestion, edge calculation, rendering, or persistence.
+weekly-predict now verifies selected-product prediction readiness after product composition and explicit selection.
 
-Publication gating and stale-output removal remain in progress.
+Forecast rendering depends on selected-product prediction readiness but does not require market readiness.
+
+Prediction blockers prevent rendering and remove stale scope-based PNG and HTML outputs.
+
+Market-only blockers do not invalidate or suppress a prediction-ready selected product.
+
+Edge generation remains a soft-fail stage because market unavailability does not invalidate the selected prediction product.
+
+Blocked, non-calculable, no-positive-edge, and below-threshold edge results remove the existing scope-based edge CSV.
+
+Edge evaluation clears any cached top-edge preview before processing the current selected product.
+
+Selected-product readiness remains read-only and performs no model inference, forecast selection, product selection, market ingestion, rendering, or persistence.
 
 #### Goal
 
@@ -3587,20 +3598,23 @@ Evaluate whether the selected schedule-complete product is safe to publish and p
 
 #### Tests
 
-Covered selected-product readiness assembly, missing selected products, prediction-only readiness, market-only blockers, complete operational readiness, removed forecast-run selection, removed --run-id support, read-only CLI behavior, and rich-schedule denominator preservation.
+Covered selected-product readiness assembly, missing selected products, prediction-only readiness, market-only blockers, complete operational readiness, removed forecast-run selection, removed --run-id support, read-only verification, rich-schedule denominator preservation, readiness stage ordering, prediction publication gating, stale PNG and HTML cleanup, stale edge CSV cleanup, preview clearing, and soft-fail market behavior.
 
-Ruff, Pyrefly, weekly readiness tests, and verify-week tests pass.
+Ruff, Pyrefly, weekly readiness tests, verify-week tests, weekly-predict tests, and weekly-product stage tests pass.
 
 #### Acceptance
 
 Readiness derives from the explicitly selected weekly product.
 
-Forecast publication can proceed when prediction readiness passes even if markets are unavailable.
+Forecast publication requires prediction readiness but does not require market readiness.
 
 Full operational readiness continues to require prediction, market, join, provenance, and edge-calculability inputs.
 
-Publication stages must still be gated by these readiness categories, and stale scope-based outputs must be removed when the current selected product cannot publish them.
+Prediction blockers remove stale scope-based forecast outputs before returning failure.
 
+Edge publication reflects only the current selected product, and stale scope-based edge output is removed whenever the current result cannot publish rows.
+
+Market failures remain isolated to the soft-fail edge stage and do not invalidate a prediction-ready selected weekly product.
 
 ---
 
