@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pandas import DataFrame
 
@@ -52,7 +52,10 @@ from gridiron_edge.datasets import loaders
 from gridiron_edge.evaluation.archive import load_prediction_log
 from gridiron_edge.evaluation.backfill import backfill_model
 from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
-from gridiron_edge.models.artifact import ArtifactStore
+from gridiron_edge.models.artifact import (
+    ArtifactStore,
+    BaseModelMetadata,
+)
 from gridiron_edge.models.catalog import (
     GAME_MODEL_PAIRS as _GAME_MODEL_PAIRS,
 )
@@ -80,6 +83,19 @@ __all__: list[str] = ["_GAME_MODEL_PAIRS", "_PROP_ALGORITHMS", "_PROP_STAT_FAMIL
 #: ``train_through`` raises "No training rows precede cutoff_season=N".
 #: Mirrors ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` in evaluation/backfill.py.
 _MIN_PROP_WALK_FORWARD_TRAIN_SEASONS: int = 3
+
+
+class _GameArtifactTrainer(Protocol):
+    """Training surface required for deployable game artifacts."""
+
+    def train(
+        self,
+        df: DataFrame,
+        *,
+        repo: Path | None = None,
+    ) -> BaseModelMetadata:
+        """Train and persist one deployable game model artifact."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -117,42 +133,6 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
         fit_elo_all_years=True,
     )
     return StageResult(success=True, detail="full-history pipeline complete")
-
-
-def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
-    """Rank all model families and persist the champion manifest.
-
-    Thin adapter over ``evaluation.champion.promote_champions``. See that
-    function for subset semantics.
-    """
-    from gridiron_edge.evaluation.champion import promote_champions
-
-    repo = get_settings().repo_root
-
-    game_pairs: list[ModelPair] = ctx["game_pairs"]
-    prop_pairs: list[tuple[str, str]] = ctx["prop_pairs"]
-
-    game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
-    prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
-
-    result = promote_champions(
-        game_pairs=game_pair_tuples,
-        prop_families=prop_families,
-        repo=repo,
-    )
-
-    detail = (
-        f"{len(result.fresh_entries)} fresh champion(s); "
-        f"{len(result.preserved_entries)} preserved from prior manifest"
-    )
-
-    return StageResult(
-        success=True,
-        detail=detail,
-        rows=result.total_count,
-        artifacts=[result.manifest_path],
-        warnings=result.warnings,
-    )
 
 
 def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
@@ -255,6 +235,83 @@ def _stage_backfill_prop_models(ctx: dict[str, Any]) -> StageResult:
         success=True,
         detail=f"{total_events:,} predictions across {len(pairs)} pairs",
         rows=total_events,
+    )
+
+
+def _stage_train_game_models(ctx: dict[str, Any]) -> StageResult:
+    """Train and persist selected deployable game model artifacts."""
+    from typing import cast
+
+    import gridiron_edge.models.game_prediction.model  # noqa: F401
+    from gridiron_edge.models.registry import ModelRegistry
+
+    pairs: list[ModelPair] = [pair for pair in ctx["game_pairs"] if pair.model_type != "elo"]
+    if not pairs:
+        return StageResult(
+            success=True,
+            detail="no trainable game pairs requested",
+        )
+
+    repo: Path = get_settings().repo_root
+    modeling: DataFrame = loaders.load_modeling_file(repo)
+    store = ArtifactStore(repo)
+    artifacts: list[Path] = []
+
+    for pair in pairs:
+        model = cast(
+            _GameArtifactTrainer,
+            ModelRegistry.get(pair.composite_key)(),
+        )
+        model.train(modeling, repo=repo)
+        artifacts.append(
+            store.artifact_dir(
+                pair.model_name,
+                pair.model_type,
+            )
+        )
+
+    return StageResult(
+        success=True,
+        detail=f"{len(pairs)} deployable game artifact(s) trained",
+        rows=len(pairs),
+        artifacts=artifacts,
+    )
+
+
+def _stage_train_prop_models(ctx: dict[str, Any]) -> StageResult:
+    """Train and persist selected deployable prop model artifacts."""
+    from gridiron_edge.cli.props import _get_trainer
+    from gridiron_edge.models.prop_prediction.base import PropModelType
+
+    pairs: list[tuple[str, str]] = ctx["prop_pairs"]
+    if not pairs:
+        return StageResult(
+            success=True,
+            detail="no prop pairs requested",
+        )
+
+    repo: Path = get_settings().repo_root
+    store = ArtifactStore(repo)
+    artifacts: list[Path] = []
+
+    for stat_family, algorithm in pairs:
+        trainer = _get_trainer(stat_family)
+        trainer.train_and_save(
+            model_type=PropModelType(algorithm),
+            repo=repo,
+        )
+        artifacts.append(
+            store.artifact_dir(
+                stat_family,
+                algorithm,
+            )
+        )
+
+    return StageResult(
+        success=True,
+        detail=f"{len(pairs)} deployable prop artifact(s) trained",
+        rows=len(pairs),
+        artifacts=artifacts,
     )
 
 
@@ -844,6 +901,18 @@ def _build_stages() -> list:
             depends_on=("refresh-all-data",),
         ),
         CompositeStage(
+            name="train-game-models",
+            description="Train deployable game model artifacts",
+            func=_stage_train_game_models,
+            depends_on=("refresh-all-data",),
+        ),
+        CompositeStage(
+            name="train-prop-models",
+            description="Train deployable prop model artifacts",
+            func=_stage_train_prop_models,
+            depends_on=("refresh-all-data",),
+        ),
+        CompositeStage(
             name="refresh-calibrations",
             description="Recompute sigma + margin_std from archive",
             func=_stage_refresh_calibrations,
@@ -853,7 +922,7 @@ def _build_stages() -> list:
             name="promote-champions",
             description="Rank families and persist champion manifest",
             func=_stage_promote_champions,
-            depends_on=("refresh-calibrations",),
+            depends_on=("refresh-calibrations", "train-game-models"),
         ),
         CompositeStage(
             name="baseline-report",
@@ -959,7 +1028,7 @@ def full_retrain_cmd(
     skip_prop_backfill: bool = typer.Option(
         False,
         "--skip-prop-backfill",
-        help=("Shorthand for --skip backfill-prop-models. Useful for game-only iterations."),
+        help=("Skip prop backfill, final prop training, and prop champion selection."),
     ),
     skip: list[str] = typer.Option(  # noqa: B008
         [],
@@ -983,7 +1052,7 @@ def full_retrain_cmd(
 ) -> None:
     r"""Heavy full-retrain workflow: all data, all models, all calibrations.
 
-    Composes five stages over the full historical archive. Designed
+    Composes eight stages over the full historical archive. Designed
     as a weekend batch job - runtime is hours.
 
     \b
@@ -995,8 +1064,13 @@ def full_retrain_cmd(
     """
     # Resolve --skip-prop-backfill into the standard skip list.
     effective_skip = list(skip)
-    if skip_prop_backfill and "backfill-prop-models" not in effective_skip:
-        effective_skip.append("backfill-prop-models")
+    if skip_prop_backfill:
+        for stage_name in (
+            "backfill-prop-models",
+            "train-prop-models",
+        ):
+            if stage_name not in effective_skip:
+                effective_skip.append(stage_name)
 
     stages = _build_stages()
     active = resolve_active_stages(
@@ -1008,7 +1082,7 @@ def full_retrain_cmd(
     context: dict[str, Any] = {
         "upcoming_season_int": upcoming_season,
         "game_pairs": _resolve_game_pairs(game_models),
-        "prop_pairs": _resolve_prop_pairs(prop_models),
+        "prop_pairs": [] if skip_prop_backfill else _resolve_prop_pairs(prop_models),
     }
 
     n_game = len(context["game_pairs"])

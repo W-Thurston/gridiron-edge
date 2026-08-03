@@ -30,6 +30,8 @@ class TestStageList:
             "refresh-all-data",
             "backfill-game-models",
             "backfill-prop-models",
+            "train-game-models",
+            "train-prop-models",
             "refresh-calibrations",
             "promote-champions",
             "baseline-report",
@@ -51,7 +53,10 @@ class TestStageList:
 
     def test_promote_champions_depends_on_calibrations(self) -> None:
         stages = {s.name: s for s in _build_stages()}
-        assert set(stages["promote-champions"].depends_on) == {"refresh-calibrations"}
+        assert set(stages["promote-champions"].depends_on) == {
+            "refresh-calibrations",
+            "train-game-models",
+        }
 
     def test_baseline_report_depends_on_promote_champions(self) -> None:
         stages = {s.name: s for s in _build_stages()}
@@ -144,6 +149,79 @@ class TestBackfillPropModelsStage:
         ctx = {"prop_pairs": []}
         result = _stage_backfill_prop_models(ctx)
         assert result.success
+        assert "no prop pairs requested" in result.detail
+
+
+class TestTrainGameModelsStage:
+    """Cover final deployable game artifact training."""
+
+    def test_elo_only_is_no_op(self) -> None:
+        from gridiron_edge.cli.full_retrain import _stage_train_game_models
+
+        result = _stage_train_game_models({"game_pairs": [ModelPair("win_prob", "elo")]})
+
+        assert result.success
+        assert result.rows is None
+        assert "no trainable game pairs" in result.detail
+
+    def test_trains_non_elo_pair(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import _stage_train_game_models
+
+        trained: list[tuple[int, Path | None]] = []
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        class FakeModel:
+            def train(
+                self,
+                df: pd.DataFrame,
+                *,
+                repo: Path | None = None,
+            ) -> object:
+                trained.append((len(df), repo))
+                return object()
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.loaders.load_modeling_file",
+            lambda repo: pd.DataFrame({"GAME_ID": ["g1"]}),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.registry.ModelRegistry.get",
+            lambda key: FakeModel,
+        )
+
+        result = _stage_train_game_models({"game_pairs": [ModelPair("win_prob", "logistic")]})
+
+        assert result.success
+        assert result.rows == 1
+        assert trained == [(1, tmp_path)]
+        assert result.artifacts == [tmp_path / "data" / "models" / "win_prob" / "logistic"]
+
+
+class TestTrainPropModelsStage:
+    """Cover final deployable prop artifact training."""
+
+    def test_returns_no_op_when_no_pairs(self) -> None:
+        from gridiron_edge.cli.full_retrain import _stage_train_prop_models
+
+        result = _stage_train_prop_models({"prop_pairs": []})
+
+        assert result.success
+        assert result.rows is None
         assert "no prop pairs requested" in result.detail
 
 
@@ -960,6 +1038,8 @@ class TestCommandInvocation:
     @patch("gridiron_edge.cli.full_retrain._stage_refresh_all_data")
     @patch("gridiron_edge.cli.full_retrain._stage_backfill_game_models")
     @patch("gridiron_edge.cli.full_retrain._stage_backfill_prop_models")
+    @patch("gridiron_edge.cli.full_retrain._stage_train_game_models")
+    @patch("gridiron_edge.cli.full_retrain._stage_train_prop_models")
     @patch("gridiron_edge.cli.full_retrain._stage_refresh_calibrations")
     @patch("gridiron_edge.cli.full_retrain._stage_promote_champions")
     @patch("gridiron_edge.cli.full_retrain._stage_baseline_report")
@@ -968,6 +1048,8 @@ class TestCommandInvocation:
         mock_report: MagicMock,
         mock_promote: MagicMock,
         mock_calib: MagicMock,
+        mock_train_props: MagicMock,
+        mock_train_games: MagicMock,
         mock_props: MagicMock,
         mock_games: MagicMock,
         mock_refresh: MagicMock,
@@ -981,6 +1063,8 @@ class TestCommandInvocation:
             mock_refresh,
             mock_games,
             mock_props,
+            mock_train_games,
+            mock_train_props,
             mock_calib,
             mock_promote,
             mock_report,
@@ -1004,6 +1088,8 @@ class TestCommandInvocation:
             patch("gridiron_edge.cli.full_retrain._stage_refresh_all_data") as mock_refresh,
             patch("gridiron_edge.cli.full_retrain._stage_backfill_game_models") as mock_games,
             patch("gridiron_edge.cli.full_retrain._stage_backfill_prop_models") as mock_props,
+            patch("gridiron_edge.cli.full_retrain._stage_train_game_models") as mock_train_games,
+            patch("gridiron_edge.cli.full_retrain._stage_train_prop_models") as mock_train_props,
             patch("gridiron_edge.cli.full_retrain._stage_refresh_calibrations") as mock_calib,
             patch("gridiron_edge.cli.full_retrain._stage_promote_champions") as mock_promote,
             patch("gridiron_edge.cli.full_retrain._stage_baseline_report") as mock_report,
@@ -1012,6 +1098,8 @@ class TestCommandInvocation:
                 mock_refresh,
                 mock_games,
                 mock_props,
+                mock_train_games,
+                mock_train_props,
                 mock_calib,
                 mock_promote,
                 mock_report,
@@ -1025,6 +1113,10 @@ class TestCommandInvocation:
             result = runner.invoke(app, ["--skip-prop-backfill"])
             assert result.exit_code == 0, result.output
             mock_props.assert_not_called()
+            mock_train_props.assert_not_called()
+            mock_train_games.assert_called_once()
+            promote_context = mock_promote.call_args.args[0]
+            assert promote_context["prop_pairs"] == []
 
 
 class TestBaselineReportDiffHelpers:

@@ -1739,12 +1739,13 @@ historical prediction and odds-ledger artifacts.
   D3d.3  Make prop prediction archive schema strict
   D3d.4  Final compatibility and terminology inventory
   E      Rebuild, retrain, refresh, and validate artifacts
-19.2h-E   Rebuild and artifact validation           PENDING
-
-
-Then:
-
-  19.2h-E  rebuild, retrain, refresh, and validate artifacts
+19.2h-E   Rebuild and artifact validation           IN PROGRESS
+  E1  Inventory current artifacts and rebuild commands
+  E2  Rebuild canonical modeling artifacts
+  E3  Retrain current champion model families
+  E4  Refresh calibrations and derived evaluation artifacts
+  E5  Validate persisted artifacts and runtime loading
+  E6  Run final quality gates and update PLAN.md
 
 After 19.2h:
   19.1b truthful availability inspection
@@ -3364,6 +3365,40 @@ Production contains no winner-oriented historical-game fields, obsolete game-loc
 The cleaned historical-games artifact uses the canonical eighteen-column Away/Home schema.
 
 The sole upcoming-schedule artifact is the canonical rich Parquet, and Elo, API, and simulation consume it directly.
+
+#### Unit 19.2h-E1
+
+#### Completed
+
+Audited the full-retrain workflow and confirmed that walk-forward backfills create historical forecast events but discard their intermediate trained models.
+
+Removed a duplicate champion-promotion implementation and retained the tested selector-based manifest writer.
+
+Added explicit final training stages for deployable game and prop artifacts.
+
+Game artifact training excludes analytic Elo and persists the five selected trainable game-model pairs.
+
+Prop artifact training persists every selected stat-family and algorithm pair.
+
+Expanded full-retrain from six to eight stages and required fresh game artifacts before champion promotion.
+
+Changed game-only execution to skip prop backfill, prop artifact training, and prop champion selection.
+
+#### Goal
+
+Ensure full-retrain produces fresh historical forecast archives, fresh deployable model artifacts, refreshed calibrations, a current champion manifest, and a baseline report from the same canonical rebuild.
+
+#### Tests
+
+Covered the eight-stage catalog, dependency ordering, analytic Elo exclusion, persisted game training, empty prop selection, full command execution, and truthful game-only execution.
+
+Ruff, Pyrefly, and the focused full-retrain test suite pass.
+
+#### Acceptance
+
+Full-retrain no longer promotes champions or writes baseline reports from stale deployable game artifacts.
+
+Selected trainable game and prop pairs receive explicit final artifact training after the canonical data refresh.
 
 ---
 
