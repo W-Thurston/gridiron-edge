@@ -143,121 +143,68 @@ class TestCanonicalizeLiveEloPredictions:
 
 
 class TestPredictWeekStage:
-    """Cover the predict-week stage's expected paths."""
-
-    @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
-    @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    def test_returns_failure_on_empty_predictions(
-        self,
-        mock_build: MagicMock,
-        mock_write: MagicMock,
-    ) -> None:
-        mock_build.return_value = pd.DataFrame()
-        ctx = {
-            "week": 1,
-            "season": "2026-2027",
-        }
-
-        result = _stage_predict_week(ctx)
-
-        assert not result.success
-        assert "no predictions" in result.detail
-        mock_write.assert_not_called()
+    """Cover policy-selected weekly execution orchestration."""
 
     @patch("gridiron_edge.cli.weekly_predict.datetime")
     @patch("gridiron_edge.cli.weekly_predict.new_forecast_run_id")
     @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
-    @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    def test_writes_live_events_and_caches_display_frame(
+    @patch("gridiron_edge.models.game_prediction.weekly_execution.execute_weekly_prediction_policy")
+    @patch("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich")
+    def test_persists_execution_and_caches_policy(
         self,
-        mock_build: MagicMock,
+        mock_schedule: MagicMock,
+        mock_execute: MagicMock,
         mock_write: MagicMock,
         mock_run_id: MagicMock,
         mock_datetime: MagicMock,
     ) -> None:
+        from types import SimpleNamespace
+
         from gridiron_edge.cli.weekly_predict import _stage_predict_week
 
-        predictions = _live_elo_predictions()
-        generated_at = datetime(
-            2026,
-            9,
-            1,
-            12,
-            tzinfo=UTC,
+        generated_at = datetime(2026, 9, 1, 12, tzinfo=UTC)
+        schedule = pd.DataFrame({"season": ["2026-2027"], "week": [1]})
+        events = pd.DataFrame({"event_id": ["e1", "e2"]})
+        display = pd.DataFrame({"GAME_ID": ["g1"]})
+        policy = MagicMock()
+        mock_schedule.return_value = schedule
+        mock_execute.return_value = SimpleNamespace(
+            policy=policy,
+            events=events,
+            win_display=display,
         )
-
-        mock_build.return_value = predictions
-        mock_write.return_value = Path("/tmp/forecast_events.parquet")
-        mock_run_id.return_value = "live-run"
+        mock_write.return_value = Path("/tmp/events.parquet")
+        mock_run_id.return_value = "run-1"
         mock_datetime.now.return_value = generated_at
-
-        ctx: dict = {
-            "week": 1,
-            "season": "2026-2027",
-        }
+        ctx = {"season": "2026-2027", "week": 1}
 
         result = _stage_predict_week(ctx)
 
         assert result.success
         assert result.rows == 2
-        assert result.detail == "2 live forecast events written"
-        assert ctx["predictions_df"] is predictions
+        assert ctx["prediction_policy"] is policy
+        assert ctx["predictions_df"] is display
+        assert ctx["forecast_run_id"] == "run-1"
+        assert ctx["forecast_generated_at"] == generated_at
+        mock_write.assert_called_once_with(events, repo=mock_write.call_args.kwargs["repo"])
 
-        written_events = mock_write.call_args.args[0]
-
-        assert written_events["run_id"].tolist() == [
-            "live-run",
-            "live-run",
-        ]
-        assert written_events["role"].tolist() == [
-            "live",
-            "live",
-        ]
-        assert written_events["generated_at"].tolist() == [
-            pd.Timestamp(generated_at),
-            pd.Timestamp(generated_at),
-        ]
-        assert written_events["event_id"].is_unique
-        assert (written_events["model_name"] == "win_prob").all()
-        assert (written_events["model_type"] == "elo").all()
-
-        assert mock_write.call_args.kwargs["repo"] is not None
-
-    @patch("gridiron_edge.cli.weekly_predict.new_forecast_run_id")
+    @patch("gridiron_edge.models.game_prediction.weekly_execution.execute_weekly_prediction_policy")
+    @patch("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich")
     @patch("gridiron_edge.cli.weekly_predict.write_forecast_events")
-    @patch("gridiron_edge.viz.predictions.build_predictions_df")
-    def test_separate_invocations_use_separate_run_ids(
+    def test_execution_failure_writes_nothing(
         self,
-        mock_build: MagicMock,
         mock_write: MagicMock,
-        mock_run_id: MagicMock,
+        mock_schedule: MagicMock,
+        mock_execute: MagicMock,
     ) -> None:
-        from gridiron_edge.cli.weekly_predict import _stage_predict_week
+        mock_schedule.return_value = pd.DataFrame()
+        mock_execute.side_effect = ValueError("no available models")
 
-        mock_build.return_value = _live_elo_predictions()
-        mock_write.return_value = Path("/tmp/forecast_events.parquet")
-        mock_run_id.side_effect = [
-            "live-run-1",
-            "live-run-2",
-        ]
+        result = _stage_predict_week({"season": "2026-2027", "week": 1})
 
-        ctx = {
-            "week": 1,
-            "season": "2026-2027",
-        }
-
-        _stage_predict_week(ctx.copy())
-        _stage_predict_week(ctx.copy())
-
-        first_events = mock_write.call_args_list[0].args[0]
-        second_events = mock_write.call_args_list[1].args[0]
-
-        assert set(first_events["run_id"]) == {
-            "live-run-1",
-        }
-        assert set(second_events["run_id"]) == {
-            "live-run-2",
-        }
+        assert not result.success
+        assert result.detail == "no available models"
+        mock_write.assert_not_called()
 
 
 class TestGenerateEdgesStage:

@@ -36,10 +36,8 @@ from gridiron_edge.cli._composites import (
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.evaluation.forecast_contracts import (
-    ForecastRole,
     new_forecast_run_id,
 )
-from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
 from gridiron_edge.models.game_prediction.prediction_policy import PredictionPolicy
 
@@ -99,61 +97,41 @@ def _canonicalize_live_elo_predictions(
 
 
 def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
-    """Generate and store live Elo forecasts for the upcoming week.
+    """Resolve policy, execute selected models, and persist one live run."""
+    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
+    from gridiron_edge.models.game_prediction.weekly_execution import (
+        execute_weekly_prediction_policy,
+    )
 
-    The original display-oriented prediction frame remains available to
-    downstream rendering. A separate canonical frame is composed into
-    immutable live forecast events.
-    """
-    from gridiron_edge.viz.predictions import build_predictions_df
-
-    year: str = ctx["season"]
+    season: str = ctx["season"]
     week: int = ctx["week"]
     repo: Path = get_settings().repo_root
-
-    predictions: DataFrame = build_predictions_df(
-        year=year,
-        week=week,
-        repo=repo,
-    )
-    if predictions.empty:
-        return StageResult(
-            success=False,
-            detail="no predictions produced (check schedule + Elo state)",
-        )
-
-    canonical = _canonicalize_live_elo_predictions(
-        predictions,
-        season=year,
-        week=week,
-    )
-
+    schedule = load_schedule_upcoming_rich(repo)
     run_id = new_forecast_run_id()
     generated_at = datetime.now(UTC)
 
-    events = build_forecast_events(
-        canonical,
-        model_name="win_prob",
-        model_type="elo",
-        run_id=run_id,
-        role=ForecastRole.LIVE,
-        generated_at=generated_at,
-    )
+    try:
+        execution = execute_weekly_prediction_policy(
+            schedule,
+            season=season,
+            week=week,
+            repo=repo,
+            run_id=run_id,
+            generated_at=generated_at,
+        )
+    except ValueError as exc:
+        return StageResult(success=False, detail=str(exc))
 
-    event_path = write_forecast_events(
-        events,
-        repo=repo,
-    )
-
-    # Downstream product composition selects this exact immutable run.
-    ctx["predictions_df"] = predictions
+    event_path = write_forecast_events(execution.events, repo=repo)
+    ctx["prediction_policy"] = execution.policy
+    ctx["predictions_df"] = execution.win_display
     ctx["forecast_run_id"] = run_id
     ctx["forecast_generated_at"] = generated_at
 
     return StageResult(
         success=True,
-        detail=f"{len(events)} live forecast events written",
-        rows=len(events),
+        detail=f"{len(execution.events)} live forecast events written",
+        rows=len(execution.events),
         artifacts=[event_path],
     )
 
@@ -172,12 +150,6 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
         select_forecast_run,
     )
     from gridiron_edge.evaluation.forecast_store import load_forecast_events
-    from gridiron_edge.models.game_prediction.availability import (
-        inspect_prediction_availability,
-    )
-    from gridiron_edge.models.game_prediction.prediction_policy import (
-        resolve_prediction_policy,
-    )
     from gridiron_edge.models.game_prediction.weekly_game_product import (
         build_weekly_game_product,
     )
@@ -219,29 +191,37 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     if not selected_run.found:
         return StageResult(success=False, detail="forecast run is not persisted")
 
-    availability = inspect_prediction_availability(
-        schedule,
-        season=season,
-        week=week,
-        repo=repo,
-    )
-    policy: PredictionPolicy = resolve_prediction_policy(
-        availability,
-        win_champion=None,
-        total_champion=None,
-        win_override="elo",
-    )
-    win_resolutions = resolve_forecast_candidates(
-        selected_run.events,
-        [
-            ForecastCandidateIdentity(
-                game_id=str(game_id),
-                model_name="win_prob",
-                model_type="elo",
-            )
-            for game_id in scoped_schedule["game_id"]
-        ],
-    )
+    policy_value = ctx.get("prediction_policy")
+    if not isinstance(policy_value, PredictionPolicy):
+        return StageResult(success=False, detail="prediction policy is unavailable")
+    policy = policy_value
+    win_resolutions = ()
+    if policy.win.model_type is not None:
+        win_resolutions = resolve_forecast_candidates(
+            selected_run.events,
+            [
+                ForecastCandidateIdentity(
+                    game_id=str(game_id),
+                    model_name="win_prob",
+                    model_type=policy.win.model_type,
+                )
+                for game_id in scoped_schedule["game_id"]
+            ],
+        )
+
+    total_resolutions = ()
+    if policy.total.model_type is not None:
+        total_resolutions = resolve_forecast_candidates(
+            selected_run.events,
+            [
+                ForecastCandidateIdentity(
+                    game_id=str(game_id),
+                    model_name="total",
+                    model_type=policy.total.model_type,
+                )
+                for game_id in scoped_schedule["game_id"]
+            ],
+        )
     win_product = build_weekly_win_product(
         scoped_schedule,
         selected_run.events,
@@ -257,7 +237,7 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     total_product = load_and_attach_selected_totals(
         spread_product,
         selected_run.events,
-        (),
+        total_resolutions,
         policy=policy,
         season=season,
         week=week,
@@ -294,7 +274,6 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
 def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     """Render predictions to PNG + HTML."""
     from gridiron_edge.viz.predictions import (
-        build_predictions_df,
         render_predictions_html,
         render_predictions_image,
     )
@@ -303,15 +282,12 @@ def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
     week: int = ctx["week"]
     repo: Path = get_settings().repo_root
 
-    # Prefer the context-cached DataFrame from predict-week, else rebuild.
     df = ctx.get("predictions_df")
     if df is None:
-        df = build_predictions_df(year=year, week=week, repo=repo)
-        if df.empty:
-            return StageResult(
-                success=False,
-                detail="no predictions to render",
-            )
+        return StageResult(
+            success=False,
+            detail="no selected Win predictions to render",
+        )
 
     artifacts: list[Path] = []
 

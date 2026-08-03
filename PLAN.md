@@ -1747,8 +1747,8 @@ historical prediction and odds-ledger artifacts.
   E5  Select game champions and write baseline       COMPLETE
   E6  Validate game artifacts and runtime loading    COMPLETE
 19.1b  truthful availability inspection         COMPLETE
-19.3   execute policy-selected models           NEXT
-19.4   persist and select weekly product        PENDING
+19.3   execute policy-selected models           COMPLETE
+19.4   persist and select weekly product        NEXT
 19.5   readiness and publication hardening      PENDING
 19.6   end-to-end orchestration acceptance      PENDING
 
@@ -3448,6 +3448,66 @@ Each availability boolean truthfully describes whether the exact model can execu
 Missing resources produce explicit model-specific unavailability, malformed current artifacts fail loudly, empty schedule scopes fail explicitly, and availability inspection performs no model inference or persistence.
 
 The current Elo-only forecast stage remains aligned with the policy serialized into the weekly product pending policy-selected execution in Unit 19.3.
+
+### Unit 19.3: Execute Policy-Selected Models
+
+#### Completed
+
+Added one policy-selected weekly execution service for independent Win and Total prediction families.
+
+The execution service scopes the rich upcoming schedule, inspects truthful model availability, loads current champion provenance, and resolves one prediction policy before inference.
+
+Selected models execute through their exact ModelRegistry identities.
+
+Win execution supports analytic Elo, logistic, Random Forest, and XGBoost.
+
+Total execution supports Random Forest and XGBoost independently from Win execution.
+
+Selected Win and Total forecast events share one run ID, generation timestamp, live role, season, and week while retaining their independent model identities.
+
+Every selected family must return exactly one prediction for every scheduled game.
+
+Null, duplicate, missing, additional, and mismatched Game IDs fail before forecast-event persistence.
+
+Unavailable families do not execute or produce forecast events.
+
+The prediction stage fails without writing a forecast run when policy selects no available family.
+
+Selected Win and Total outputs are normalized into canonical immutable forecast events without replacing one family’s identity with another.
+
+Selected Win output is adapted to the existing rendering contract without regenerating Elo as a hidden fallback.
+
+The resolved policy is cached by the prediction stage and consumed unchanged during weekly-product composition.
+
+Weekly-product candidate identities now come from the cached Win and Total policy decisions rather than hard-coded Elo and empty Total selections.
+
+#### Goal
+
+Execute the exact availability-aware Win and Total decisions selected by prediction policy and persist immutable live forecast events whose identities match those decisions.
+
+#### Tests
+
+Covered exact registry dispatch, selected Win and Total execution, shared run identity, independent model identities, complete schedule coverage, combined event generation, partial-family rejection, prediction-stage persistence, cached policy ownership, exact product candidate identities, unavailable execution failure, and absence of hidden rendering fallback.
+
+Ruff, Pyrefly, weekly execution tests, weekly-predict tests, product-stage tests, availability tests, prediction-policy tests, and weekly Win and Total product tests pass.
+
+The registered raw and rich upcoming-schedule artifacts currently contain zero rows, so a real weekly execution correctly has no valid schedule scope and was not used to create a forecast run.
+
+#### Acceptance
+
+weekly-predict resolves one availability-aware policy before inference and executes the exact selected Win and Total model implementations.
+
+Persisted forecast-event identities match the policy decisions that produced them.
+
+Every selected family covers the complete requested weekly schedule before any forecast events are written.
+
+Win and Total remain independently selectable and executable.
+
+Weekly-product composition consumes the same resolved policy and immutable forecast run created by the prediction stage.
+
+Rendering consumes only the selected Win prediction output and does not silently regenerate Elo.
+
+
 
 ---
 

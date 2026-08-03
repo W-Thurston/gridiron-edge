@@ -13,7 +13,10 @@ from pandas import DataFrame
 
 from gridiron_edge.cli.weekly_predict import _stage_compose_weekly_product
 from gridiron_edge.models.game_prediction.prediction_policy import (
+    ModelProvenance,
     PredictionAvailability,
+    PredictionModelSource,
+    resolve_prediction_policy,
 )
 
 SEASON = "2026-2027"
@@ -22,12 +25,39 @@ RUN_ID = "run-1"
 GENERATED_AT = datetime(2026, 9, 1, 12, tzinfo=UTC)
 
 
+def _policy():
+    availability = PredictionAvailability(
+        season=SEASON,
+        week=WEEK,
+        elo_available=True,
+        win_logistic_features_available=True,
+        win_random_forest_features_available=True,
+        win_xgboost_features_available=True,
+        total_random_forest_features_available=True,
+        total_xgboost_features_available=True,
+    )
+    return resolve_prediction_policy(
+        availability,
+        win_champion=ModelProvenance(
+            model_name="win_prob",
+            model_type="logistic",
+            source=PredictionModelSource.CHAMPION,
+        ),
+        total_champion=ModelProvenance(
+            model_name="total",
+            model_type="random_forest",
+            source=PredictionModelSource.CHAMPION,
+        ),
+    )
+
+
 def _context() -> dict[str, object]:
     return {
         "season": SEASON,
         "week": WEEK,
         "forecast_run_id": RUN_ID,
         "forecast_generated_at": GENERATED_AT,
+        "prediction_policy": _policy(),
     }
 
 
@@ -75,17 +105,6 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     artifact = tmp_path / "weekly.parquet"
     selected_run = SimpleNamespace(found=True, events=events)
     resolutions = (MagicMock(),)
-    inspected_availability = PredictionAvailability(
-        season=SEASON,
-        week=WEEK,
-        elo_available=True,
-        win_logistic_features_available=True,
-        win_random_forest_features_available=False,
-        win_xgboost_features_available=True,
-        total_random_forest_features_available=True,
-        total_xgboost_features_available=False,
-    )
-
     with (
         patch(
             "gridiron_edge.cli.weekly_predict.get_settings",
@@ -95,10 +114,6 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
             "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=schedule,
         ),
-        patch(
-            "gridiron_edge.models.game_prediction.availability.inspect_prediction_availability",
-            return_value=inspected_availability,
-        ) as inspect_availability,
         patch(
             "gridiron_edge.evaluation.forecast_store.load_forecast_events",
             return_value=events,
@@ -139,12 +154,6 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     assert result.success
     assert result.rows == 1
     assert result.artifacts == [artifact]
-    inspect_availability.assert_called_once_with(
-        schedule,
-        season=SEASON,
-        week=WEEK,
-        repo=tmp_path,
-    )
     load_events.assert_called_once_with(
         season=SEASON,
         week=WEEK,
@@ -152,20 +161,24 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
         repo=tmp_path,
     )
     select_run.assert_called_once_with(events, run_id=RUN_ID)
-    identity = resolve_candidates.call_args.args[1][0]
-    assert identity.game_id == "2026_01_KC_LAC"
-    assert identity.model_name == "win_prob"
-    assert identity.model_type == "elo"
+    assert resolve_candidates.call_count == 2
+
+    win_identity = resolve_candidates.call_args_list[0].args[1][0]
+    assert win_identity.game_id == "2026_01_KC_LAC"
+    assert win_identity.model_name == "win_prob"
+    assert win_identity.model_type == "logistic"
+
+    total_identity = resolve_candidates.call_args_list[1].args[1][0]
+    assert total_identity.game_id == "2026_01_KC_LAC"
+    assert total_identity.model_name == "total"
+    assert total_identity.model_type == "random_forest"
+
     build_win.assert_called_once()
     attach_spread.assert_called_once_with(win_product, repo=tmp_path)
-    assert attach_total.call_args.args[2] == ()
+    assert attach_total.call_args.args[2] == resolutions
     policy = attach_total.call_args.kwargs["policy"]
-    assert policy.availability is inspected_availability
-    assert policy.availability.win_logistic_features_available
-    assert policy.availability.win_xgboost_features_available
-    assert policy.availability.total_random_forest_features_available
-    assert policy.win.model_type == "elo"
-    assert policy.total.model_type is None
+    assert policy.win.model_type == "logistic"
+    assert policy.total.model_type == "random_forest"
     build_product.assert_called_once_with(total_product)
 
     written_identity = write_product.call_args.kwargs["identity"]
