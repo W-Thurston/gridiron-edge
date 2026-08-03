@@ -212,12 +212,32 @@ def _build_home_away_opponent_history(
     )
 
 
+def _league_average_elo(
+    elo: DataFrame,
+    *,
+    year: str,
+    week: int,
+) -> float:
+    """Return the empirical exact-week league-average Elo."""
+    if elo.empty:
+        return float("nan")
+
+    scoped = elo.loc[
+        (elo["NFL_YEAR"].astype(str) == year) & (elo["NFL_WEEK"].astype(int) == week),
+        "ELO",
+    ]
+    # pyrefly: ignore [missing-attribute]
+    values = pd.to_numeric(scoped, errors="coerce").dropna()
+    return float(values.mean()) if not values.empty else float("nan")
+
+
 def _strength_entering_week(
     history: DataFrame,
     *,
     team: str,
     year: str,
     week: int,
+    neutral_elo: float,
 ) -> tuple[float, float]:
     """Return one team's SOS and SOV entering the target week."""
     prior = history.loc[
@@ -228,13 +248,13 @@ def _strength_entering_week(
     ]
 
     opponent_elos = prior["OPP_ELO"].dropna()
-    sos = float(opponent_elos.mean()) if not opponent_elos.empty else float("nan")
+    sos = float(opponent_elos.mean()) if not opponent_elos.empty else neutral_elo
 
     defeated_opponent_elos = prior.loc[
         prior["RESULT"] == 1.0,
         "OPP_ELO",
     ].dropna()
-    sov = float(defeated_opponent_elos.mean()) if not defeated_opponent_elos.empty else float("nan")
+    sov = float(defeated_opponent_elos.mean()) if not defeated_opponent_elos.empty else neutral_elo
 
     return sos, sov
 
@@ -274,10 +294,22 @@ class HomeAwayScheduleStrengthFeature:
         )
         source["WEEK_NUM"] = weeks.astype(int)
 
+        elo = datasets.elo_state()
         history = _build_home_away_opponent_history(
             datasets.games(),
-            datasets.elo_state(),
+            elo,
         )
+        neutral_by_scope = {
+            (str(year), int(week)): _league_average_elo(
+                elo,
+                year=str(year),
+                week=int(week),
+            )
+            for year, week in source[["YEAR", "WEEK_NUM"]].itertuples(
+                index=False,
+                name=None,
+            )
+        }
 
         away_strength = [
             _strength_entering_week(
@@ -285,6 +317,7 @@ class HomeAwayScheduleStrengthFeature:
                 team=str(team),
                 year=str(year),
                 week=int(week),
+                neutral_elo=neutral_by_scope[(str(year), int(week))],
             )
             for team, year, week in zip(
                 source["AWAY_TEAM"],
@@ -300,6 +333,7 @@ class HomeAwayScheduleStrengthFeature:
                 team=str(team),
                 year=str(year),
                 week=int(week),
+                neutral_elo=neutral_by_scope[(str(year), int(week))],
             )
             for team, year, week in zip(
                 source["HOME_TEAM"],

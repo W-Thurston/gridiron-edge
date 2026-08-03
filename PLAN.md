@@ -3637,6 +3637,11 @@ Real 2026 Week 1 validation confirmed that Win Logistic changed from unavailable
 
 The expanded tree and Total feature contract remains unavailable because record, schedule-strength, travel, weather, and venue fields are still incomplete.
 
+
+#### Early-season expanded-feature defaults
+
+Teams with no prior same-season games now use WIN_PCT 0.0, consistent with zero credited wins and zero losses. SOS and SOV use the empirical exact-season, exact-week league-average Elo when no eligible opponent or defeated-opponent Elo exists. Missing exact-week Elo state remains unavailable rather than falling back to a hard-coded constant. These canonical feature-definition changes require rebuilding the modeling artifact and retraining all game models before runtime acceptance.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

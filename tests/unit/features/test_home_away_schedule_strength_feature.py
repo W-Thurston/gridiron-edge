@@ -248,17 +248,59 @@ def test_missing_opponent_elo_is_excluded() -> None:
     assert pd.isna(row["HOME_SOV"])
 
 
-def test_no_prior_history_and_other_season_produce_nulls() -> None:
-    week_one = _target()
-    week_one["WEEK_NUM"] = 1
-    other_season = _target()
-    other_season["YEAR"] = "2026-2027"
+def test_no_prior_history_uses_exact_week_league_average() -> None:
+    target = _target()
+    target["WEEK_NUM"] = 1
+    elo = DataFrame(
+        [
+            _elo_row(team="Away Team", week=1, elo=1400.0),
+            _elo_row(team="Home Team", week=1, elo=1500.0),
+            _elo_row(team="Other Team", week=1, elo=1600.0),
+        ]
+    )
 
-    for result in (
-        _compute(target=week_one),
-        _compute(target=other_season),
-    ):
-        assert result[["AWAY_SOS", "AWAY_SOV", "HOME_SOS", "HOME_SOV"]].isna().all().all()
+    row = _compute(target=target, elo=elo).iloc[0]
+
+    assert row["AWAY_SOS"] == pytest.approx(1500.0)
+    assert row["AWAY_SOV"] == pytest.approx(1500.0)
+    assert row["HOME_SOS"] == pytest.approx(1500.0)
+    assert row["HOME_SOV"] == pytest.approx(1500.0)
+
+
+def test_winless_team_uses_neutral_sov_only() -> None:
+    games = DataFrame(
+        [
+            _game(
+                game_id="away-loss",
+                week=1,
+                away_team="Away Team",
+                home_team="Opponent One",
+                away_score=10,
+                home_score=20,
+            )
+        ]
+    )
+    elo = DataFrame(
+        [
+            _elo_row(team="Opponent One", week=1, elo=1400.0),
+            _elo_row(team="Away Team", week=3, elo=1500.0),
+            _elo_row(team="Home Team", week=3, elo=1600.0),
+        ]
+    )
+
+    row = _compute(games=games, elo=elo).iloc[0]
+
+    assert row["AWAY_SOS"] == pytest.approx(1400.0)
+    assert row["AWAY_SOV"] == pytest.approx(1550.0)
+
+
+def test_missing_exact_week_league_prior_remains_null() -> None:
+    target = _target()
+    target["YEAR"] = "2026-2027"
+
+    result = _compute(target=target)
+
+    assert result[["AWAY_SOS", "AWAY_SOV", "HOME_SOS", "HOME_SOV"]].isna().all().all()
 
 
 def test_empty_history_produces_nulls() -> None:

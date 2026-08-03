@@ -218,7 +218,7 @@ def _record_entering_week(
         return (
             0.0,
             0.0,
-            float("nan"),
+            0.0,
             0,
             0,
         )

@@ -226,7 +226,7 @@ def test_record_resets_by_season() -> None:
 
     assert row["AWAY_WINS"] == 0
     assert row["AWAY_LOSSES"] == 0
-    assert pd.isna(row["AWAY_WIN_PCT"])
+    assert row["AWAY_WIN_PCT"] == pytest.approx(0.0)
     assert row["AWAY_WIN_STREAK"] == 0
     assert row["AWAY_LOSS_STREAK"] == 0
 
@@ -289,3 +289,24 @@ def test_duplicate_historical_game_ids_are_rejected() -> None:
             df=_target(),
             datasets=_datasets(history),
         )
+
+
+def test_week_one_uses_zero_record_defaults() -> None:
+    target = _target()
+    target["WEEK_NUM"] = 1
+
+    row = (
+        HomeAwayRecordFeature()
+        .compute(
+            df=target,
+            datasets=_datasets(_history()),
+        )
+        .iloc[0]
+    )
+
+    assert row["AWAY_WINS"] == pytest.approx(0.0)
+    assert row["AWAY_LOSSES"] == pytest.approx(0.0)
+    assert row["AWAY_WIN_PCT"] == pytest.approx(0.0)
+    assert row["HOME_WINS"] == pytest.approx(0.0)
+    assert row["HOME_LOSSES"] == pytest.approx(0.0)
+    assert row["HOME_WIN_PCT"] == pytest.approx(0.0)
