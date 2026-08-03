@@ -3642,6 +3642,11 @@ The expanded tree and Total feature contract remains unavailable because record,
 
 Teams with no prior same-season games now use WIN_PCT 0.0, consistent with zero credited wins and zero losses. SOS and SOV use the empirical exact-season, exact-week league-average Elo when no eligible opponent or defeated-opponent Elo exists. Missing exact-week Elo state remains unavailable rather than falling back to a hard-coded constant. These canonical feature-definition changes require rebuilding the modeling artifact and retraining all game models before runtime acceptance.
 
+
+#### Stadium reference synchronization
+
+Added a reviewed stadium metadata synchronization service with pure coverage audit, deterministic season carry-forward and explicit alias proposals, strict approved-row validation, and atomic application. Historical rows are preserved, franchise-season origins remain unique, conflicting coordinates are rejected, and every non-NFL HOME_TEAM identity must be exactly Alternate or International. CLI exposure remains a separate follow-up after the service contract is green.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
