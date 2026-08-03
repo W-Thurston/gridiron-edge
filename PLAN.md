@@ -1739,13 +1739,13 @@ historical prediction and odds-ledger artifacts.
   D3d.3  Make prop prediction archive schema strict
   D3d.4  Final compatibility and terminology inventory
   E      Rebuild, retrain, refresh, and validate artifacts
-19.2h-E   Rebuild and artifact validation           IN PROGRESS
-  E1  Inventory current artifacts and rebuild commands
-  E2  Rebuild canonical modeling artifacts
-  E3  Retrain current champion model families
-  E4  Refresh calibrations and derived evaluation artifacts
-  E5  Validate persisted artifacts and runtime loading
-  E6  Run final quality gates and update PLAN.md
+19.2h-E   Rebuild and artifact validation           COMPLETE
+  E1  Correct full-retrain workflow                  COMPLETE
+  E2  Rebuild canonical game modeling artifacts      COMPLETE
+  E3  Backfill and train game models                 COMPLETE
+  E4  Refresh game calibrations                      COMPLETE
+  E5  Select game champions and write baseline       COMPLETE
+  E6  Validate game artifacts and runtime loading    COMPLETE
 
 After 19.2h:
   19.1b truthful availability inspection
@@ -2958,8 +2958,9 @@ rows, retired feature registrations, or obsolete artifact metadata.
 Current prediction archives and model metadata use explicit, strictly validated
 schemas.
 
-Canonical artifacts still require final rebuild, retraining, refresh, and
-real-data validation.
+Canonical game-model artifacts have been rebuilt, retrained, refreshed, and
+validated against real data. Prop artifact rebuilding remains outside this
+game-model acceptance boundary.
 
 #### Unit 19.2h-D3b Completed
 
@@ -3366,75 +3367,46 @@ The cleaned historical-games artifact uses the canonical eighteen-column Away/Ho
 
 The sole upcoming-schedule artifact is the canonical rich Parquet, and Elo, API, and simulation consume it directly.
 
-#### Unit 19.2h-E1
+#### Unit 19.2h-E
 
 #### Completed
 
-Audited the full-retrain workflow and confirmed that walk-forward backfills create historical forecast events but discard their intermediate trained models.
+Corrected full-retrain so game-model rebuilding includes historical walk-forward backfills, final deployable artifact training, calibration refresh, champion selection, and baseline reporting.
 
-Removed a duplicate champion-promotion implementation and retained the tested selector-based manifest writer.
-
-Added explicit final training stages for deployable game and prop artifacts.
-
-Game artifact training excludes analytic Elo and persists the five selected trainable game-model pairs.
-
-Prop artifact training persists every selected stat-family and algorithm pair.
-
-Expanded full-retrain from six to eight stages and required fresh game artifacts before champion promotion.
-
-Changed game-only execution to skip prop backfill, prop artifact training, and prop champion selection.
-
-#### Goal
-
-Ensure full-retrain produces fresh historical forecast archives, fresh deployable model artifacts, refreshed calibrations, a current champion manifest, and a baseline report from the same canonical rebuild.
-
-#### Tests
-
-Covered the eight-stage catalog, dependency ordering, analytic Elo exclusion, persisted game training, empty prop selection, full command execution, and truthful game-only execution.
-
-Ruff, Pyrefly, and the focused full-retrain test suite pass.
-
-#### Acceptance
-
-Full-retrain no longer promotes champions or writes baseline reports from stale deployable game artifacts.
-
-Selected trainable game and prop pairs receive explicit final artifact training after the canonical data refresh.
-
-#### Unit 19.2h-E Game Artifact Rebuild
-
-#### Completed
-
-Corrected full-retrain so it explicitly trains deployable game and prop artifacts in addition to generating walk-forward forecast archives.
-
-Rebuilt the canonical historical data and one-row modeling artifacts with 7,276 unique games, modeling schema version 5, data version 2, and no retired orientation columns.
+Rebuilt the canonical historical and modeling artifacts with 7,276 unique games, modeling schema version 5, data version 2, and no retired orientation columns.
 
 Derived the classification CV row floor from actual temporal fold geometry when the configured default would reject every fold.
 
 Separated artifact metadata schema version 3 from modeling schema version 5.
 
-Regenerated historical forecast archives and trained all five deployable game-model artifacts.
+Regenerated historical game forecast archives and trained all five deployable game-model artifacts.
 
 Excluded tied games from binary champion-ranking metrics while preserving ties in the general evaluation dataset.
 
-Refreshed Elo, logistic, Random Forest, and XGBoost calibration values.
+Refreshed calibration values for Elo, logistic, Random Forest, and XGBoost.
 
-Selected win_prob_logistic and total_random_forest as the current game champions and generated the current baseline comparison report.
+Selected win_prob_logistic and total_random_forest as the current game champions and generated the baseline comparison report.
+
+Prop artifact rebuilding and validation remain outside this game-model workstream.
 
 #### Goal
 
-Rebuild and validate every canonical game-model artifact and downstream evaluation product before refreshing prop artifacts.
+Rebuild and validate the canonical game-model artifacts and all downstream game evaluation products.
 
 #### Tests
 
-Validated modeling row identity, manifest integrity, temporal CV floor resolution, artifact metadata loading, classification tie handling, deployable model metrics, calibration coverage, champion selection, baseline reporting, model listing, and evaluation summary execution.
+Validated modeling identity, manifest integrity, temporal CV resolution, strict artifact metadata loading, tie handling, deployable model metrics, calibration coverage, champion selection, baseline reporting, model listing, and evaluation summary execution.
 
 Ruff, Pyrefly, focused tests, and the full unit and non-slow suite pass.
 
 #### Acceptance
 
-Canonical modeling artifacts, historical game forecast archives, all five deployable game-model artifacts, four Win calibration entries, game champion selections, and the baseline report are current and load successfully through strict runtime boundaries.
+Canonical modeling artifacts, historical game forecast archives, all five deployable game-model artifacts, four Win calibration entries, game champion selections, and the baseline report are current and load through strict runtime boundaries.
 
-Analytic Elo remains artifact-free, and no candidate or holding directories remain.
+Analytic Elo remains artifact-free, no candidate or holding directories remain, and no retired game orientation is required.
+
+Prop model artifacts and preserved prop champion entries are not part of this acceptance boundary.
+
 
 ---
 
