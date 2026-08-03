@@ -3407,6 +3407,37 @@ Analytic Elo remains artifact-free, no candidate or holding directories remain, 
 
 Prop model artifacts and preserved prop champion entries are not part of this acceptance boundary.
 
+### Unit 19.1b: Truthful Prediction Availability Inspection
+
+#### Designing
+
+Replace weekly-predict’s hard-coded availability facts with read-only inspection of the exact requested weekly schedule.
+
+Availability remains model-specific and is true only when every scheduled game can be executed by that exact model.
+
+Elo availability requires complete exact-week Away and Home rating coverage.
+
+Trained-model availability requires a readable strict game artifact, a persisted model file, exact artifact identity, the correct task, agreement between persisted and current feature contracts, successful canonical feature construction, and complete model-specific feature coverage for every scheduled game.
+
+Availability inspection does not load estimators, run inference, resolve champions, apply fallback, write forecast events, or publish outputs.
+
+The existing pure prediction-policy resolver remains unchanged.
+
+#### Goal
+
+Provide truthful model-specific weekly availability facts before policy selection and model execution.
+
+#### Tests
+
+Cover weekly schedule scope, duplicate identities, complete and partial Elo coverage, strict trained-artifact inspection, exact feature-contract matching, complete and partial model-feature coverage, model independence, caller immutability, and absence of inference or writes.
+
+#### Acceptance
+
+weekly-predict no longer supplies hard-coded model availability.
+
+Each availability boolean describes whether the exact model can execute every game in the requested weekly schedule.
+
+Missing resources produce explicit unavailability, malformed current artifacts fail loudly, and availability inspection performs no model inference or persistence.
 
 ---
 

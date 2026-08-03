@@ -37,7 +37,7 @@ from gridiron_edge.features.pipeline import (
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.base import ModelSpec
-from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION
+from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION, FeatureSet
 from gridiron_edge.models.game_prediction.base import (
     GameModelMetadata,
     GameModelSpec,
@@ -260,10 +260,14 @@ class GamesModel:
         """Return ``"classification"`` or ``"regression"`` for this model."""
         return self._game_model_spec().task
 
+    def prediction_feature_set(self) -> FeatureSet:
+        """Return the exact current feature contract for prediction."""
+        gm_spec: GameModelSpec = self._game_model_spec()
+        return gm_spec.feature_set[GameModelType(self.model_type)]
+
     def _feature_fn(self):  # noqa: ANN202 - return type is a Callable
         """Return the feature engineering function for this model_type."""
-        gm_spec: GameModelSpec = self._game_model_spec()
-        return gm_spec.feature_set[GameModelType(self.model_type)].feature_fn
+        return self.prediction_feature_set().feature_fn
 
     # ------------------------------------------------------------------
     # Trainable protocol
