@@ -3695,6 +3695,36 @@ A repeated application added zero rows and left the canonical artifact unchanged
 
 Week 1 travel null coverage decreased from all 16 scheduled games to only the Melbourne Cricket Ground international game.
 
+#### International Stadium Enrichment
+
+##### Completed
+
+Added reviewed 2026-2027 metadata for Melbourne Cricket Ground.
+
+The venue is classified with HOME_TEAM International.
+
+The reviewed metadata includes coordinates, outdoor roof classification, grass surface, and site altitude.
+
+The Melbourne international game now resolves through the canonical stadium reference.
+
+Week 1 travel and site-altitude coverage is complete across all 16 scheduled games.
+
+Six later-season international venues remain unresolved.
+
+##### Goal
+
+Complete static venue metadata for scheduled international games without introducing noncanonical HOME_TEAM identities.
+
+##### Tests
+
+Validated reviewed-row application, stadium coverage audit, and Week 1 travel completeness.
+
+##### Acceptance
+
+Melbourne Cricket Ground is represented by one complete International venue row for 2026-2027.
+
+All Week 1 Away/Home travel distance, timezone shift, and game-site altitude fields are complete.
+
 ##### Goal
 
 Automate annual franchise-origin rollover and renamed-venue resolution while preserving an explicit review boundary for new, alternate, and international game sites.
