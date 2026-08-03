@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import pandas as pd
 from pandas import DataFrame
@@ -323,6 +324,65 @@ def prepare_stadium_updates(
     return DataFrame(rows).reindex(columns=list(_UPDATE_COLUMNS))
 
 
+def _remove_already_applied_updates(
+    stadiums: DataFrame,
+    approved: DataFrame,
+) -> DataFrame:
+    """Remove exact existing rows and reject conflicting identities."""
+    remaining: list[dict[Hashable, Any]] = []
+
+    for row in approved.to_dict(orient="records"):
+        home_team = str(row["HOME_TEAM"])
+        year = str(row["YEAR"])
+        stadium = str(row["STADIUM"])
+
+        if home_team in _SPECIAL_HOME_TEAMS:
+            existing = stadiums.loc[
+                (stadiums["HOME_TEAM"].astype(str) == home_team)
+                & (stadiums["YEAR"].astype(str) == year)
+                & (stadiums["STADIUM"].astype(str) == stadium),
+                :,
+            ]
+            identity = f"{home_team}/{year}/{stadium}"
+        else:
+            existing = stadiums.loc[
+                (stadiums["HOME_TEAM"].astype(str) == home_team)
+                & (stadiums["YEAR"].astype(str) == year),
+                :,
+            ]
+            identity = f"{home_team}/{year}"
+
+        if existing.empty:
+            remaining.append(row)
+            continue
+
+        candidate = DataFrame(
+            [row],
+            columns=list(_STADIUM_COLUMNS),
+        ).astype(
+            stadiums.dtypes.to_dict(),
+        )
+
+        exact = (
+            existing.loc[
+                :,
+                list(_STADIUM_COLUMNS),
+            ]
+            .eq(candidate.iloc[0])
+            .all(axis=1)
+        )
+
+        if exact.any():
+            continue
+
+        raise ValueError(f"Approved stadium update conflicts with an existing identity: {identity}")
+
+    return DataFrame(
+        remaining,
+        columns=approved.columns,
+    )
+
+
 def _validate_approved_updates(
     stadiums: DataFrame,
     updates: DataFrame,
@@ -365,21 +425,11 @@ def _validate_approved_updates(
     normal = ~approved["HOME_TEAM"].astype(str).isin(_SPECIAL_HOME_TEAMS)
     if approved.loc[normal].duplicated(["HOME_TEAM", "YEAR"]).any():
         raise ValueError("Approved updates contain duplicate franchise-season origins.")
-    existing = set(
-        zip(
-            stadiums["HOME_TEAM"].astype(str),
-            stadiums["YEAR"].astype(str),
-            strict=True,
-        )
+
+    return _remove_already_applied_updates(
+        stadiums,
+        approved,
     )
-    conflicts = [
-        f"{row.HOME_TEAM}/{row.YEAR}"
-        for row in approved.loc[normal].itertuples(index=False)
-        if (str(row.HOME_TEAM), str(row.YEAR)) in existing
-    ]
-    if conflicts:
-        raise ValueError("Approved updates would replace existing origins: " + ", ".join(conflicts))
-    return approved
 
 
 def apply_approved_stadium_updates(
@@ -395,15 +445,25 @@ def apply_approved_stadium_updates(
         updates,
         nfl_teams=_normal_teams(stadiums),
     )
-    additions = approved.loc[:, list(_STADIUM_COLUMNS)].copy()
-    combined = pd.concat(
-        [stadiums.copy(), additions],
-        ignore_index=True,
-    ).drop_duplicates(ignore_index=True)
+    additions = approved.loc[
+        :,
+        list(_STADIUM_COLUMNS),
+    ].copy()
 
-    combined = combined.astype(
-        stadiums.dtypes.to_dict(),
-    )
+    if additions.empty:
+        combined = stadiums.copy()
+    else:
+        combined = pd.concat(
+            [
+                stadiums.copy(),
+                additions,
+            ],
+            ignore_index=True,
+        ).drop_duplicates(ignore_index=True)
+
+        combined = combined.astype(
+            stadiums.dtypes.to_dict(),
+        )
 
     validate_stadium_reference(combined)
 

@@ -3652,6 +3652,71 @@ Added a reviewed stadium metadata synchronization service with pure coverage aud
 
 Added a version-controlled explicit stadium alias artifact for renamed franchise venues and a strict optional loader. Alias identities are trimmed, deterministically sorted, unique by current schedule stadium name, and cannot map a stadium to itself. The six known 2026 franchise venue renames can now produce reviewed alias_existing proposals without fuzzy matching.
 
+
+#### Stadium synchronization CLI
+
+Added top-level stadiums audit, prepare, and apply commands. Audit is read-only and exits nonzero when coverage remains incomplete. Prepare writes only a deterministic review CSV using the version-controlled alias artifact. Apply accepts a reviewed CSV, delegates atomic approved-row application to the synchronization service, and reports remaining coverage without applying unresolved rows.
+
+#### Stadium Reference Synchronization
+
+##### Completed
+
+Added a reviewed and automated stadium-reference synchronization workflow.
+
+The workflow audits missing franchise origins and unresolved scheduled game sites without modifying canonical metadata.
+
+Season preparation deterministically carries forward unchanged franchise origins and resolves renamed franchise venues only through version-controlled explicit aliases.
+
+Added aliases for Highmark Stadium, Huntington Bank Field, Reliant Stadium, EverBank Stadium, Caesars Superdome, and Northwest Stadium.
+
+Preparation writes a review CSV under data/output/stadium_sync and never modifies NFL_stadium_reference.csv.
+
+Application accepts only approved review rows and atomically updates the canonical stadium reference.
+
+Existing historical rows are preserved.
+
+Identical reapplication is a no-op.
+
+Conflicting reapplication is rejected.
+
+Franchise-season origins permit multiple stadium-name aliases only when their coordinates are identical.
+
+Conflicting franchise-origin or site-coordinate identities are rejected.
+
+Approved rows require complete latitude, longitude, roof, surface, and altitude metadata.
+
+Every non-NFL HOME_TEAM identity must be exactly Alternate or International.
+
+Added top-level stadiums audit, prepare, and apply CLI commands.
+
+Applied 32 approved 2026-2027 franchise-origin rows.
+
+A repeated application added zero rows and left the canonical artifact unchanged.
+
+Week 1 travel null coverage decreased from all 16 scheduled games to only the Melbourne Cricket Ground international game.
+
+##### Goal
+
+Automate annual franchise-origin rollover and renamed-venue resolution while preserving an explicit review boundary for new, alternate, and international game sites.
+
+##### Tests
+
+Covered coverage auditing, exact carry-forward preparation, explicit aliases, unresolved venues, alias validation, special HOME_TEAM validation, coordinate conflicts, historical preservation, atomic application, deterministic preparation, identical reapplication, conflicting reapplication, CLI registration, read-only audit, review-file generation, truthful applied-row reporting, and post-apply coverage reporting.
+
+Ruff, Pyrefly, stadium synchronization tests, stadium CLI tests, travel feature tests, loader tests, and dataset roundtrip tests pass.
+
+Real 2026-2027 validation confirmed 32 franchise origins were added and identical reapplication added zero rows.
+
+##### Acceptance
+
+Annual NFL franchise-origin metadata can be prepared and applied without manually editing NFL_stadium_reference.csv.
+
+Renamed franchise venues are resolved only through explicit version-controlled aliases.
+
+New alternate and international venues remain unresolved until complete metadata is reviewed and approved.
+
+Historical metadata is preserved, application is atomic and idempotent, and remaining schedule coverage is reported truthfully.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

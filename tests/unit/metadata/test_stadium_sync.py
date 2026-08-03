@@ -240,3 +240,68 @@ def test_alias_loader_rejects_invalid_contract(
 
     with pytest.raises(ValueError):
         load_stadium_aliases(path)
+
+
+def test_reapplying_identical_approved_row_is_a_noop(
+    tmp_path: Path,
+) -> None:
+    original = _stadiums()
+    updates = prepare_stadium_updates(
+        original,
+        _schedule(),
+        season="2026-2027",
+    )
+    index = updates.index[updates["HOME_TEAM"] == "Kansas City Chiefs"][0]
+    updates.loc[index, "REVIEW_STATUS"] = "approved"
+
+    path = tmp_path / "NFL_stadium_reference.csv"
+
+    first = apply_approved_stadium_updates(
+        original,
+        updates,
+        path=path,
+    )
+    second = apply_approved_stadium_updates(
+        first,
+        updates,
+        path=path,
+    )
+
+    pd.testing.assert_frame_equal(
+        second,
+        first,
+    )
+
+
+def test_reapplying_conflicting_origin_is_rejected(
+    tmp_path: Path,
+) -> None:
+    original = _stadiums()
+    updates = prepare_stadium_updates(
+        original,
+        _schedule(),
+        season="2026-2027",
+    )
+    index = updates.index[updates["HOME_TEAM"] == "Kansas City Chiefs"][0]
+    updates.loc[index, "REVIEW_STATUS"] = "approved"
+
+    path = tmp_path / "NFL_stadium_reference.csv"
+
+    first = apply_approved_stadium_updates(
+        original,
+        updates,
+        path=path,
+    )
+
+    conflicting = updates.copy()
+    conflicting.loc[index, "LATITUDE"] = 40.0
+
+    with pytest.raises(
+        ValueError,
+        match="conflicts with an existing identity",
+    ):
+        apply_approved_stadium_updates(
+            first,
+            conflicting,
+            path=path,
+        )
