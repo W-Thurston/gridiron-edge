@@ -12,6 +12,9 @@ from unittest.mock import MagicMock, patch
 from pandas import DataFrame
 
 from gridiron_edge.cli.weekly_predict import _stage_compose_weekly_product
+from gridiron_edge.models.game_prediction.prediction_policy import (
+    PredictionAvailability,
+)
 
 SEASON = "2026-2027"
 WEEK = 1
@@ -72,6 +75,16 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     artifact = tmp_path / "weekly.parquet"
     selected_run = SimpleNamespace(found=True, events=events)
     resolutions = (MagicMock(),)
+    inspected_availability = PredictionAvailability(
+        season=SEASON,
+        week=WEEK,
+        elo_available=True,
+        win_logistic_features_available=True,
+        win_random_forest_features_available=False,
+        win_xgboost_features_available=True,
+        total_random_forest_features_available=True,
+        total_xgboost_features_available=False,
+    )
 
     with (
         patch(
@@ -82,6 +95,10 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
             "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=schedule,
         ),
+        patch(
+            "gridiron_edge.models.game_prediction.availability.inspect_prediction_availability",
+            return_value=inspected_availability,
+        ) as inspect_availability,
         patch(
             "gridiron_edge.evaluation.forecast_store.load_forecast_events",
             return_value=events,
@@ -122,6 +139,12 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     assert result.success
     assert result.rows == 1
     assert result.artifacts == [artifact]
+    inspect_availability.assert_called_once_with(
+        schedule,
+        season=SEASON,
+        week=WEEK,
+        repo=tmp_path,
+    )
     load_events.assert_called_once_with(
         season=SEASON,
         week=WEEK,
@@ -137,6 +160,10 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     attach_spread.assert_called_once_with(win_product, repo=tmp_path)
     assert attach_total.call_args.args[2] == ()
     policy = attach_total.call_args.kwargs["policy"]
+    assert policy.availability is inspected_availability
+    assert policy.availability.win_logistic_features_available
+    assert policy.availability.win_xgboost_features_available
+    assert policy.availability.total_random_forest_features_available
     assert policy.win.model_type == "elo"
     assert policy.total.model_type is None
     build_product.assert_called_once_with(total_product)

@@ -1746,13 +1746,11 @@ historical prediction and odds-ledger artifacts.
   E4  Refresh game calibrations                      COMPLETE
   E5  Select game champions and write baseline       COMPLETE
   E6  Validate game artifacts and runtime loading    COMPLETE
-
-After 19.2h:
-  19.1b truthful availability inspection
-  19.3  execute policy-selected models
-  19.4  persist and select weekly product
-  19.5  readiness and publication hardening
-  19.6  end-to-end orchestration acceptance
+19.1b  truthful availability inspection         COMPLETE
+19.3   execute policy-selected models           NEXT
+19.4   persist and select weekly product        PENDING
+19.5   readiness and publication hardening      PENDING
+19.6   end-to-end orchestration acceptance      PENDING
 
 #### Goal
 
@@ -3409,19 +3407,25 @@ Prop model artifacts and preserved prop champion entries are not part of this ac
 
 ### Unit 19.1b: Truthful Prediction Availability Inspection
 
-#### Designing
+#### Completed
 
-Replace weekly-predict’s hard-coded availability facts with read-only inspection of the exact requested weekly schedule.
+Added read-only, model-specific availability inspection for one requested weekly schedule.
 
-Availability remains model-specific and is true only when every scheduled game can be executed by that exact model.
+Availability is true only when the exact model can execute every scheduled game in the requested season and week.
 
 Elo availability requires complete exact-week Away and Home rating coverage.
 
-Trained-model availability requires a readable strict game artifact, a persisted model file, exact artifact identity, the correct task, agreement between persisted and current feature contracts, successful canonical feature construction, and complete model-specific feature coverage for every scheduled game.
+Trained-model availability requires strict readable game metadata, the persisted model file, exact model identity, the correct task, agreement between persisted and current ordered feature contracts, successful canonical feature construction, and complete model-specific feature coverage.
 
-Availability inspection does not load estimators, run inference, resolve champions, apply fallback, write forecast events, or publish outputs.
+Added a public model feature-set contract so prediction execution and availability inspection use the same requirements.
 
-The existing pure prediction-policy resolver remains unchanged.
+Integrated inspected availability into weekly-product composition and removed the hard-coded availability booleans.
+
+Retained the explicit Elo policy selection because the current prediction stage still issues Elo-only forecast events. Policy-selected model execution remains assigned to Unit 19.3.
+
+Availability inspection does not load estimators or scalers, run inference, resolve champions, apply fallback, write forecast events, or publish outputs.
+
+The registered upcoming schedule currently contains zero rows. Real-artifact validation confirmed that an empty requested scope fails explicitly rather than returning fabricated availability.
 
 #### Goal
 
@@ -3429,15 +3433,21 @@ Provide truthful model-specific weekly availability facts before policy selectio
 
 #### Tests
 
-Cover weekly schedule scope, duplicate identities, complete and partial Elo coverage, strict trained-artifact inspection, exact feature-contract matching, complete and partial model-feature coverage, model independence, caller immutability, and absence of inference or writes.
+Covered exact season and week scope, empty schedules, duplicate game identities, complete and partial Elo coverage, strict trained-artifact inspection, persisted model-file requirements, exact feature-contract matching, complete and partial model-feature coverage, model independence, caller immutability, and absence of estimator loading or inference.
+
+Covered weekly-product integration, preservation of inspected availability in policy serialization, Elo-aligned interim selection, and unchanged product persistence behavior.
+
+Ruff, Pyrefly, focused availability tests, prediction-policy tests, and weekly-predict tests pass.
 
 #### Acceptance
 
 weekly-predict no longer supplies hard-coded model availability.
 
-Each availability boolean describes whether the exact model can execute every game in the requested weekly schedule.
+Each availability boolean truthfully describes whether the exact model can execute every game in the requested weekly schedule.
 
-Missing resources produce explicit unavailability, malformed current artifacts fail loudly, and availability inspection performs no model inference or persistence.
+Missing resources produce explicit model-specific unavailability, malformed current artifacts fail loudly, empty schedule scopes fail explicitly, and availability inspection performs no model inference or persistence.
+
+The current Elo-only forecast stage remains aligned with the policy serialized into the weekly product pending policy-selected execution in Unit 19.3.
 
 ---
 

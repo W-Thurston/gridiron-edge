@@ -172,8 +172,10 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
         select_forecast_run,
     )
     from gridiron_edge.evaluation.forecast_store import load_forecast_events
+    from gridiron_edge.models.game_prediction.availability import (
+        inspect_prediction_availability,
+    )
     from gridiron_edge.models.game_prediction.prediction_policy import (
-        PredictionAvailability,
         resolve_prediction_policy,
     )
     from gridiron_edge.models.game_prediction.weekly_game_product import (
@@ -217,17 +219,14 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     if not selected_run.found:
         return StageResult(success=False, detail="forecast run is not persisted")
 
+    availability = inspect_prediction_availability(
+        schedule,
+        season=season,
+        week=week,
+        repo=repo,
+    )
     policy: PredictionPolicy = resolve_prediction_policy(
-        PredictionAvailability(
-            season=season,
-            week=week,
-            elo_available=True,
-            win_logistic_features_available=False,
-            win_random_forest_features_available=False,
-            win_xgboost_features_available=False,
-            total_random_forest_features_available=False,
-            total_xgboost_features_available=False,
-        ),
+        availability,
         win_champion=None,
         total_champion=None,
         win_override="elo",
