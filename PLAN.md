@@ -1717,2134 +1717,267 @@ historical prediction and odds-ledger artifacts.
 
 ---
 
+Absolutely. The cleanest match to Unit 18 is one Completed / Goal / Tests / Acceptance block, with the implementation history condensed into current behavior and the final outstanding work stated explicitly.
+
+Replace the entire existing Unit 19 section, from ### Unit 19 through the end of the outdoor climatology subsection, with this:
+
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
-19.2h-A   Legacy pipeline entry points             COMPLETE
-19.2h-B   Legacy feature implementations           COMPLETE
-19.2h-C   Legacy fixtures and artifact examples    COMPLETE
-19.2h-D1  Retired orientation catalog              COMPLETE
-19.2h-D2  Artifact metadata migration              COMPLETE
-19.2h-D3a Prediction archive migration             COMPLETE
-19.2h-D3b Serialization terminology                COMPLETE
-19.2h-D3c Implementation-label cleanup             COMPLETE
-  D3b.1 Make prop enrichment configuration keyword-only
-  D3c.1  Migrate Predictor names to Model names
-  D3c.2  Make betting ledger and betting CLI identity current
-  D3c.3  Make prop archive schema strict
-  D3c.4  Remove remaining implementation labels
-  D3c.5  Final compatibility inventory
-19.2h-D3d Runtime compatibility review             COMPLETE
-  D3d.1  Migrate Predictor naming to Model naming
-  D3d.2  Make betting ledger schema strict
-  D3d.3  Make prop prediction archive schema strict
-  D3d.4  Final compatibility and terminology inventory
-  E      Rebuild, retrain, refresh, and validate artifacts
-19.2h-E   Rebuild and artifact validation           COMPLETE
-  E1  Correct full-retrain workflow                  COMPLETE
-  E2  Rebuild canonical game modeling artifacts      COMPLETE
-  E3  Backfill and train game models                 COMPLETE
-  E4  Refresh game calibrations                      COMPLETE
-  E5  Select game champions and write baseline       COMPLETE
-  E6  Validate game artifacts and runtime loading    COMPLETE
-19.1b  truthful availability inspection         COMPLETE
-19.3   execute policy-selected models           COMPLETE
-19.4   persist and select weekly product        COMPLETE
-19.5   readiness and publication hardening      COMPLETE
-19.6   end-to-end orchestration acceptance      NEXT
-
-#### Goal
-
-Make `weekly-predict` resolve prediction policy before model execution and
-produce one truthful, schedule-complete pregame product whose forecast events,
-model identities, readiness diagnostics, and published outputs are traceable to
-the exact persisted weekly product.
-
-Before policy-driven trained-model execution can be added, replace the
-historical `TEAM_A` / `TEAM_B` modeling orientation with the canonical
-`AWAY_TEAM` / `HOME_TEAM` game orientation already used by schedules, weekly
-products, markets, APIs, and frontend surfaces.
-
-#### Tests
-
-- prediction availability is model-specific;
-- explicit overrides are evaluated against the exact requested model identity;
-- an ineligible override does not silently fall back;
-- historical and upcoming model inputs share one stable home/away schema;
-- one modeling row represents one game;
-- Win targets and probabilities use the home-team perspective;
-- differential features use `HOME - AWAY`;
-- Total prediction remains independent from Win prediction;
-- schedule-complete upcoming features can be built without orientation adapters;
-- prediction policy controls the model implementations actually executed;
-- forecast-event model identities match policy decisions;
-- weekly-product component identities match selected forecast events;
-- missing market data does not fail forecast or weekly-product publication;
-- omitted bankroll leaves dollar stake unavailable;
-- published outputs identify the exact weekly product;
-- no-edge outcomes cannot leave stale files presented as current;
-- valid `--skip` and `--only` paths respect dependency closure;
-- one end-to-end workflow persists forecast events, selects the weekly product,
-  evaluates readiness, and publishes only current outputs.
-
-#### Acceptance
-
-One command resolves prediction policy, executes the selected available Win and
-Total model families, persists immutable forecast events, composes and
-explicitly selects a schedule-complete weekly product, evaluates readiness, and
-publishes only outputs traceable to that exact product.
-
-Historical training rows, upcoming prediction rows, forecast events, weekly
-products, and market joins use one stable home/away game orientation.
-
-No game-prediction feature, model, predictor, or orchestration path requires
-`TEAM_A` or `TEAM_B`.
-
-Win models directly predict home win probability. Away win probability is the
-complement.
-
-All differential features use `HOME - AWAY`.
-
-Unavailable components are represented explicitly and are never silently
-omitted, recomputed from another model identity, or substituted from stale
-artifacts.
-
-### Unit 19.2a: Canonical Game Schema
-
 #### Completed
 
-Defined one canonical home/away-oriented schema for the game-prediction domain.
+Migrated the game-prediction domain to one canonical Away/Home-oriented,
+one-row-per-game contract.
 
-Locked identity columns to game, season, week, away team, and home team.
+Historical games, modeling artifacts, upcoming schedules, features, model
+training, historical backfills, live forecast events, weekly products, market
+joins, APIs, and orchestration use stable Away Team and Home Team identity.
 
-Defined optional game date and neutral-site identity fields.
+Win models train on `HOME_WIN` and directly produce Home Win Probability. Away
+Win Probability is derived as its complement.
 
-Defined historical score and target columns using the home-team perspective.
+Total models train independently on `ACTUAL_TOTAL`.
 
-Defined Win prediction outputs as home win probability and its away-team
-complement.
+All differential features use Home minus Away.
 
-Documented the existing home-oriented Spread convention, where a negative model
-Spread means the home team is favored.
+Removed runtime dependence on `TEAM_A`, `TEAM_B`, `HOME_FIELD`, `RESULT` as a
+model target, doubled modeling rows, Predictor compatibility aliases, the
+focused upcoming-schedule artifact, permissive bet-ledger schemas, permissive
+prop-archive schemas, and retired game-model artifact compatibility.
 
-Established `HOME - AWAY` as the direction for every differential feature.
+Activated one canonical feature sequence and the 152-column expanded feature
+contract for historical and upcoming game rows.
 
-Added canonical helpers for Away, Home, and differential feature names.
+Canonical modeling artifacts use one row per Game ID and record the active
+feature sequence, feature contract, modeling schema version, and data version.
 
-Explicitly identified `TEAM_A`, `TEAM_B`, and `HOME_FIELD` as retired
-orientation columns.
+Migrated Win and Total training, prediction, walk-forward evaluation,
+calibration, champion selection, baseline reporting, and full-retrain
+orchestration to the canonical one-row game contract.
 
-No feature, modeling, training, prediction, or artifact behavior changed in this
-unit.
+Corrected `full-retrain` so game-model rebuilding includes historical
+walk-forward backfills, final deployable artifact training, game calibration
+refresh, game champion selection, and baseline reporting.
 
-#### Goal
-
-Establish one centrally defined home/away schema before migrating modeling rows,
-features, predictors, tests, and development artifacts.
-
-#### Tests
-
-Verified canonical game identity, optional identity, scores, targets,
-probabilities, prediction outputs, feature prefixes, differential naming, input
-validation, and exclusion of retired orientation columns.
-
-#### Acceptance
-
-The future game-prediction schema has one documented source of truth and no
-canonical field depends on `TEAM_A`, `TEAM_B`, or perspective-relative
-`HOME_FIELD`.
-
-### Unit 19.2b.1: Preserve Historical Home/Away Truth
-
-#### Completed
-
-Extended the cleaned historical games schema with explicit Away Team, Home Team,
-Away Score, Home Score, and neutral-site status.
-
-Preserved these values directly from nflverse schedule identity and score
-fields. They are never reconstructed from winner/loser fields, game location,
-game IDs, abbreviation reversal, or alphabetical ordering.
-
-Retained existing winner/loser fields for historical consumers not yet migrated
-to the canonical home/away schema.
-
-Added validation for required columns, unique and nonempty game IDs, nonempty
-team identities, distinct away and home teams, nonnegative scores, binary
-neutral-site values, ties, winner and loser score reconciliation, and winning
-team identity.
-
-Updated favorite identity derivation to use the preserved home and away teams.
-
-Updated the empty cleaned-games schema and added focused synthetic cleaner tests
-covering home wins, away wins, neutral-site games, ties, empty first runs,
-non-clobbering empty refreshes, duplicate game IDs, same-team rows, score
-mismatches, and invalid tie state.
-
-Restored the full nflverse raw history from 1999 through 2026 and regenerated
-the cleaned historical artifact.
-
-Validated 7,276 cleaned historical games with 7,182 standard-site games, 94
-neutral-site games, and 15 ties.
-
-Confirmed zero duplicate game IDs, same-team rows, negative scores, tie-state
-mismatches, winner-score mismatches, loser-score mismatches, home-winner
-identity mismatches, and away-winner identity mismatches.
-
-Confirmed that the standard current-season refresh replaces only the requested
-season while preserving all other seasons in the raw historical artifact.
-
-All quality gates and tests pass.
-
-#### Goal
-
-Prevent historical home/away information from being discarded during cleaning
-so all later modeling and prediction stages can consume explicit schedule
-truth.
-
-#### Tests
-
-Covered home wins, away wins, neutral-site games, ties, empty output schema,
-empty-refresh protection, duplicate IDs, invalid same-team rows, score
-mismatches, tie mismatches, historical regeneration, and complete artifact
-reconciliation.
-
-#### Acceptance
-
-The cleaned historical games artifact contains explicit, validated home/away
-identity and scores for every completed game without downstream orientation
-reconstruction.
-
-### Unit 19.2b.1a: Safe Seasonal nflverse Refresh
-
-#### Completed
-
-Changed explicit nflverse season ingestion from destructive artifact replacement
-to targeted season refresh.
-
-`--season` now removes and replaces only the requested seasons while preserving
-all other seasons in the shared raw historical artifact.
-
-Multiple explicit seasons are sorted, deduplicated, fetched together, and
-replaced atomically within the existing history.
-
-The default current-season refresh now delegates to the same selected-season
-refresh implementation.
-
-`--all-years` remains the only command mode that intentionally replaces the raw
-artifact with a selected historical range.
-
-Updated CLI help to distinguish selected-season refresh behavior from
-full-history replacement behavior.
-
-Added a dedicated nflverse game-ingestion test module covering preservation of
-unrequested seasons, multi-season replacement, sorting and deduplication,
-invalid season rejection, new-artifact creation, duplicate game-ID rejection,
-and single-season delegation.
-
-All quality gates and tests pass.
-
-#### Goal
-
-Prevent targeted nflverse ingestion from silently collapsing the shared raw
-historical artifact to only the requested season.
-
-#### Tests
-
-Covered targeted refresh, multi-season refresh, season normalization, invalid
-input, first-write behavior, duplicate identities, and current-season
-delegation.
-
-#### Acceptance
-
-Explicit season ingestion preserves all unrequested historical seasons, while
-full-history ingestion remains the only intentional replacement operation.
-
-### Unit 19.2b.2: Home/Away Modeling Table
-
-#### Completed
-
-Added a canonical one-row-per-game historical modeling-table builder.
-
-The builder consumes only explicit Away Team, Home Team, Away Score, Home
-Score, game identity, game date, and neutral-site fields from the cleaned
-historical games artifact.
-
-Derived a nullable Home Win target. Home wins are represented as one, away wins
-as zero, and ties as null.
-
-Defined Actual Margin as Home Score minus Away Score and Actual Total as the sum
-of Away and Home scores.
-
-Added strict validation for required columns, game identities, team identities,
-duplicate game IDs, week numbers, scores, neutral-site values, and same-team
-matchups.
-
-Separated identity, week, score, neutral-site, and target validation into
-focused helpers.
-
-Ensured the builder does not mutate its input and returns chronologically stable
-output.
-
-Confirmed the new modeling schema contains no `TEAM_A`, `TEAM_B`, `HOME_FIELD`,
-or `RESULT` columns.
-
-Retained the existing symmetric builder as the active `build_model_inputs()`
-input until the feature pipeline is migrated.
-
-#### Goal
-
-Create and validate the canonical one-row home/away modeling contract before
-migrating feature generation and model execution.
-
-#### Tests
-
-Covered home wins, away wins, ties, neutral-site games, output schema, retired
-column exclusion, ordering, input immutability, missing columns, duplicate game
-IDs, null and empty identities, same-team rows, invalid weeks, null and negative
-scores, and invalid neutral-site values.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-A cleaned historical game can be converted into exactly one validated,
-home/away-oriented modeling row without winner/loser reconstruction or
-perspective-relative fields.
-
-### Unit 19.2c.1: Canonical Home/Away Elo Feature
-
-#### Completed
-
-Added a canonical home/away Elo feature for one-row-per-game inputs.
-
-The feature consumes stable Away Team, Home Team, season, and week identity and
-produces Away Elo and Home Elo.
-
-Joined Elo state independently for Away and Home using exact team, season, and
-week identity.
-
-Preserved every input row, its order, and unrelated columns.
-
-Missing Away or Home ratings remain explicitly null and do not remove scheduled
-games.
-
-Ratings from another season or week do not satisfy the requested game identity.
-
-Rejected malformed game schemas, malformed Elo schemas, and duplicate Elo
-team-season-week identities.
-
-Confirmed that feature execution does not mutate its input.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B Elo feature.
-
-Left the active feature sequence and current modeling pipeline unchanged.
-
-#### Goal
-
-Provide the first shared historical and upcoming team feature using the
-canonical one-row home/away schema.
-
-#### Tests
-
-Covered registry identity, feature outputs, exact weekly joins, row and order
-preservation, immutability, missing Away ratings, missing Home ratings,
-other-week ratings, other-season ratings, duplicate Elo identities, missing
-game columns, missing Elo columns, empty frames, and exclusion of retired
-orientation names.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames can receive explicit Away and Home
-Elo ratings without TEAM_A, TEAM_B, HOME_FIELD, probability calculation, row
-loss, or model execution.
-
-### Unit 19.2c.2: Canonical Home/Away EPA Feature
-
-#### Completed
-
-Added a canonical home/away EPA feature for one-row-per-game inputs.
-
-The feature produces paired Away and Home columns for all 36 existing EPA
-metrics.
-
-Reused the established rolling EPA implementation, preserving prior-game-only
-shift behavior, configurable window length, cross-season history, playoff
-exclusion, and null handling for unavailable metrics.
-
-Joined Away and Home EPA independently using exact team, season, and week
-identity.
-
-Preserved every input game, original row order, and unrelated columns.
-
-Missing team history remains explicitly null without removing games or affecting
-the opposite team's available EPA values.
-
-An unavailable EPA artifact produces the complete canonical EPA schema with null
-values.
-
-Rejected missing game identity columns, malformed nonempty EPA source schemas,
-duplicate team-season-week identities, invalid season labels, and nonpositive
-rolling windows.
-
-Confirmed that the feature does not mutate its input.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B EPA feature.
-
-Left the active feature sequence, stored modeling pipeline, EPA-window tuning,
-and legacy EPA implementation unchanged.
-
-#### Goal
-
-Provide schedule-complete pregame EPA features using the canonical one-row
-home/away game orientation.
-
-#### Tests
-
-Covered registry identity, complete output schema, distinct Away and Home joins,
-current-game anti-lookahead, unavailable EPA artifacts, missing Away history,
-input preservation, duplicate EPA identities, invalid season labels, and
-rolling-window validation.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames can receive paired Away and Home
-pregame EPA features without TEAM_A, TEAM_B, HOME_FIELD, lost games, or current
-game leakage.
-
-### Unit 19.2c.3: Canonical Home/Away Rest Features
-
-#### Completed
-
-Added canonical home/away rest features for one-row-per-game historical and
-upcoming inputs.
-
-The feature produces Away Days Rest, Home Days Rest, Away Short Week, Home Short
-Week, Away Post Bye, Home Post Bye, and one Days Rest Differential.
-
-Defined Days Rest Differential as Home Days Rest minus Away Days Rest.
-
-Calculated rest from each target game's date against the latest completed game
-date strictly before it.
-
-This schedule-complete lookup supports upcoming games that do not yet exist in
-completed historical data.
-
-Prevented future-game leakage by excluding games on or after the target date.
-
-Preserved the existing short-week threshold of fewer than six days and the
-post-bye threshold of at least thirteen days.
-
-Preserved cross-season elapsed rest rather than resetting the value at the
-season boundary.
-
-Missing team history or invalid target dates remain explicitly null, including
-dependent flags and the differential.
-
-Rejected malformed target schemas and duplicate historical team-game
-identities.
-
-Preserved input rows, unrelated columns, and caller immutability.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B rest feature.
-
-Left the active feature sequence and existing modeling pipeline unchanged.
-
-#### Goal
-
-Provide schedule-complete pregame rest features using stable Away and Home
-identity without requiring target games to exist in completed history.
-
-#### Tests
-
-Covered registration, canonical output schema, distinct Away and Home values,
-home-minus-away differential direction, future-game exclusion, short-week and
-post-bye boundaries, missing history, cross-season elapsed rest, input
-preservation, missing target columns, duplicate historical identities, and
-exclusion of retired orientation names.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive truthful Away and Home rest
-features without TEAM_A, TEAM_B, HOME_FIELD, target-game archive dependency, or
-future leakage.
-
-### Unit 19.2c.4: Canonical Home/Away Record Features
-
-#### Completed
-
-Added canonical home/away season-record and streak features for
-one-row-per-game historical and upcoming inputs.
-
-The feature produces Away and Home wins, losses, win percentage, win streak,
-and loss streak.
-
-Calculated each team's state from completed games in the same season with week
-numbers strictly earlier than the target week.
-
-Target-week and future-week results cannot contribute to pregame features.
-
-Records reset at the season boundary.
-
-Preserved the existing tie convention: each tie contributes one-half win and
-one-half loss and resets both win and loss streaks.
-
-Teams without prior same-season history receive zero wins, zero losses, null win
-percentage, and zero-valued streaks.
-
-Derived result history directly from explicit Away Team, Home Team, Away Score,
-and Home Score fields.
-
-Rejected malformed target schemas, malformed historical schemas, duplicate game
-IDs, and duplicate team-game identities.
-
-Preserved target rows, unrelated columns, and caller immutability.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B record feature.
-
-Left the active feature sequence and existing modeling pipeline unchanged.
-
-#### Goal
-
-Provide schedule-complete pregame record and streak features using stable Away
-and Home identity.
-
-#### Tests
-
-Covered registration, canonical output schema, distinct Away and Home records,
-current-week exclusion, future-week exclusion, tie accounting, tie streak
-reset, season reset, initial-state values, input preservation, missing target
-columns, and duplicate historical identities.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive truthful same-season Away
-and Home records and streaks without TEAM_A, TEAM_B, HOME_FIELD, target-game
-archive dependency, or current and future result leakage.
-
-### Unit 19.2c.5: Canonical Home/Away Schedule-Strength Features
-
-#### Completed
-
-Added canonical home/away strength-of-schedule and strength-of-victory features
-for one-row-per-game historical and upcoming inputs.
-
-The feature produces Away SOS, Away SOV, Home SOS, and Home SOV.
-
-Derived historical team-opponent results directly from explicit Away Team, Home
-Team, Away Score, and Home Score fields.
-
-Joined each opponent's Elo from the exact season and week of the historical
-matchup.
-
-Calculated target values from same-season games with week numbers strictly
-earlier than the target week.
-
-Target-week, future-week, and unplayed games cannot contribute to pregame
-features.
-
-SOS includes prior wins, losses, and ties with available opponent Elo.
-
-SOV includes only outright wins with available opponent Elo. Ties are excluded
-from SOV.
-
-Historical games with unavailable opponent Elo are excluded from the applicable
-average rather than assigned a default rating.
-
-Teams without qualifying history receive explicit null SOS and SOV values.
-
-Rejected malformed target, historical-game, and Elo schemas, duplicate
-historical game IDs, and duplicate Elo team-season-week identities.
-
-Preserved target rows, unrelated columns, and caller immutability.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B schedule-strength feature.
-
-Left the active feature sequence and existing modeling pipeline unchanged.
-
-#### Goal
-
-Provide schedule-complete pregame schedule-strength features using stable Away
-and Home identity and historical opponent Elo from the original matchup week.
-
-#### Tests
-
-Covered registration, output schema, canonical Elo dependency, independent Away
-and Home calculations, strength of victory, ties, current-week exclusion,
-future-week exclusion, unplayed-game exclusion, missing opponent Elo, season
-reset, initial null states, input preservation, malformed schemas, duplicate
-game IDs, duplicate Elo identities, and exclusion of retired orientation names.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive truthful Away and Home SOS
-and SOV values without TEAM_A, TEAM_B, HOME_FIELD, target-game archive
-dependency, current or future result leakage, or default substitution for
-missing opponent Elo.
-
-### Unit 19.2c.6: Canonical Home/Away Travel Features
-
-#### Completed
-
-Added canonical Away and Home travel features for one-row-per-game historical
-and upcoming inputs.
-
-The feature produces game-site altitude, Away and Home kilometers traveled, and
-Away and Home timezone shifts.
-
-Resolved the actual game venue internally by Game ID from historical games and
-the rich upcoming schedule. The canonical modeling schema does not need to
-carry stadium identity solely for travel calculation.
-
-Joined actual venue coordinates by stadium name and franchise origins by team
-and season.
-
-Excluded special Alternate and International venue rows from franchise-origin
-selection.
-
-Allowed duplicate stadium aliases and franchise-season rows when they resolve
-to the same coordinate tuple. Rejected conflicting venue or coordinate
-identities.
-
-Calculated both teams' travel from franchise-season home coordinates to the
-actual game-site coordinates.
-
-Standard home games naturally produce zero Home travel and timezone shift when
-the actual venue matches the Home team's coordinates.
-
-Neutral, international, relocated, and alternate-site games calculate travel
-for both teams from their respective origins.
-
-Missing venue or coordinate data remains explicitly null without removing the
-target game or failing unrelated historical feature generation.
-
-Added access to the rich upcoming schedule through the repository-scoped
-dataset accessor. A missing rich upcoming artifact does not prevent historical
-travel calculation.
-
-Preserved target row order, unrelated columns, and caller immutability.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B travel feature.
-
-Left the active feature sequence, legacy travel implementation, and canonical
-modeling schema unchanged.
-
-#### Goal
-
-Provide schedule-complete Away and Home travel features using the actual game
-venue without requiring target rows to carry stadium metadata or use retired
-orientation fields.
-
-#### Tests
-
-Covered registration, canonical outputs, standard home games, upcoming venue
-resolution, historical venue resolution, neutral venues, unavailable rich
-schedule data, missing venues, missing team origins, coordinate aliases,
-conflicting venue identities, conflicting franchise and site coordinates, row
-and column preservation, input immutability, missing target fields, and
-exclusion of retired orientation names.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive truthful Away and Home
-travel distance, timezone shift, and game-site altitude without TEAM_A,
-TEAM_B, HOME_FIELD, venue assumptions, target-row stadium propagation, row
-loss, or concealed unavailable states.
-
-### Unit 19.2c.7: Canonical Home Franchise Advantage
-
-#### Completed
-
-Added a canonical Home franchise advantage feature for one-row-per-game
-historical and upcoming inputs.
-
-The feature produces one Home Franchise HFA value rather than mirrored Away and
-Home coefficients.
-
-Defined the coefficient as the Home franchise's prior home win rate minus the
-prior league-average home win rate.
-
-Calculated the coefficient from completed, non-neutral games strictly before
-the target season and week.
-
-Included all prior seasons and earlier weeks in the target season without using
-target-week or future results.
-
-Counted ties as one-half home wins.
-
-Preserved the established minimum sample policy. Franchises with fewer than
-twenty prior home games receive the intentional zero-valued league-average
-prior.
-
-Neutral target games receive zero Home Franchise HFA.
-
-Derived historical home results directly from Home Team, Away Score, Home Score,
-and neutral-site identity.
-
-Excluded unplayed and historical neutral-site games from coefficient
-calculation.
-
-Rejected malformed target and historical schemas, duplicate historical game
-IDs, invalid season labels, and invalid neutral-site values.
-
-Preserved target columns, unrelated values, and caller immutability.
-
-Registered the canonical implementation independently from the existing
-TEAM_A/TEAM_B venue-HFA feature.
-
-Left the active feature sequence and legacy implementation unchanged.
-
-#### Goal
-
-Provide one truthful pregame Home franchise advantage value using stable home
-identity and only information available before the target game.
-
-#### Tests
-
-Covered registration, the single canonical output, coefficient calculation,
-neutral targets, minimum sample behavior, tie accounting, historical neutral
-games, current and future exclusion, earlier target-season games, prior-season
-history, unplayed rows, empty history, input preservation, schema validation,
-duplicate game IDs, invalid neutral state, invalid season labels, and exclusion
-of retired orientation fields.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive one leakage-free Home
-franchise advantage value without TEAM_A, TEAM_B, HOME_FIELD, WINNER, LOSER,
-GAME_LOCATION, mirrored coefficients, target-week leakage, or future-result
-leakage.
-
-### Unit 19.2c.8: Canonical Game-Level Features
-
-#### Completed
-
-Added schedule-complete canonical divisional, primetime, dome, and weather
-features for one-row-per-game historical and upcoming inputs.
-
-Added a shared internal metadata resolver that combines completed historical
-game metadata with the rich upcoming schedule by Game ID.
-
-Normalized historical and upcoming field names while preserving one stable
-canonical Game ID lookup.
-
-Accepted identical overlapping metadata and selected a populated value when the
-other source was unavailable.
-
-Rejected conflicting non-null metadata for the same game and field.
-
-Tolerated an unavailable rich upcoming artifact so historical feature
-generation remains operational.
-
-Added canonical divisional-game identity using historical DIV_GAME and upcoming
-divisional metadata.
-
-Added canonical primetime identity using historical and upcoming weekday and
-kickoff-time metadata.
-
-Preserved the established Monday, Sunday night, Thursday night, and Saturday
-night primetime rules.
-
-Represented missing, unknown, or malformed required primetime metadata as null
-rather than silently classifying the game as non-primetime.
-
-Added canonical dome and weather features using historical and upcoming roof
-metadata plus weather observations keyed by Game ID.
-
-Reused the established weather conversions, precipitation classifications,
-visibility handling, derived fields, and controlled-environment defaults.
-
-Known dome games receive controlled environmental values even when no weather
-artifact is available.
-
-Known outdoor games without weather coverage retain explicit null weather
-values.
-
-Missing roof metadata leaves dome state explicitly null rather than defaulting
-to outdoor.
-
-Preserved target rows, target order, unrelated columns, and caller
-immutability.
-
-Confirmed that no canonical replacement for perspective-relative HOME_FIELD is
-needed. Stable Away Team, Home Team, and neutral-site identity already express
-the canonical game orientation.
-
-Registered the canonical implementations independently from the active legacy
-features.
-
-Left the active feature sequence, model columns, feature engineering, and
-modeling pipeline unchanged.
-
-#### Goal
-
-Complete the canonical game-level feature family so historical and upcoming
-one-row game inputs use the same schedule-complete metadata and weather path.
-
-#### Tests
-
-Covered shared historical and upcoming metadata resolution, identical
-overlaps, null-versus-populated values, conflicting metadata, missing rich
-schedule data, divisional state, primetime rules, nullable schedule metadata,
-historical and upcoming roof state, weather conversions, dome defaults,
-missing outdoor weather, missing roof metadata, row and order preservation,
-input immutability, required Game ID validation, and exclusion of retired
-orientation fields.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Historical and upcoming one-row game frames receive divisional, primetime,
-dome, and weather features through one canonical Game ID path without TEAM_A,
-TEAM_B, HOME_FIELD, completed-history dependence for upcoming games, silent
-metadata substitution, or row loss.
-
-### Unit 19.2c.9: Canonical Feature Sequence and Output Contract
-
-#### Completed
-
-Defined one ordered canonical feature sequence for historical and upcoming
-one-row game inputs.
-
-The sequence includes canonical Elo, EPA, rest, record, schedule strength,
-travel, Home franchise advantage, divisional, primetime, and weather features.
-
-Validated the canonical sequence independently from the active legacy feature
-sequence.
-
-Confirmed that canonical schedule strength executes after canonical Elo, its
-only declared feature dependency.
-
-Added a canonical feature-column helper that derives the ordered output contract
-directly from registered feature specifications.
-
-Rejected duplicate output declarations across canonical features.
-
-Verified that the declared canonical feature schema excludes TEAM_A, TEAM_B,
-HOME_FIELD, RESULT, and prefixed retired-orientation columns.
-
-Confirmed representative outputs from every canonical feature group are present
-in the declared schema.
-
-Verified sequence composition preserves one row per historical or upcoming
-input game, canonical identity and target fields, input order, unrelated
-columns, and caller immutability.
-
-Verified unavailable feature outputs remain explicit null values without
-dropping target games.
-
-Left the active legacy feature sequence, model-input builder, model columns,
-feature engineering, manifest schema version, and data version unchanged.
-
-#### Goal
-
-Define and validate the complete canonical feature sequence and its enriched
-output contract before activating the one-row modeling pipeline.
-
-#### Tests
-
-Covered the exact canonical sequence, registry identity, dependency ordering,
-Elo-before-schedule-strength ordering, ordered feature-spec output collection,
-output uniqueness, retired-orientation exclusion, feature-group coverage,
-duplicate-output rejection, legacy-sequence isolation, row and order
-preservation, canonical identity and target preservation, input immutability,
-unique output columns, and explicit null states.
-
-The sequence-composition test uses controlled feature stubs to validate
-orchestration and schema behavior. Individual canonical feature tests validate
-the underlying calculations and dataset interactions.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-The project has one registered and dependency-valid canonical feature sequence
-whose declared output schema is unique, schedule-complete, compatible with
-one-row historical and upcoming game inputs, and free of TEAM_A, TEAM_B,
-HOME_FIELD, and RESULT.
-
-The active legacy feature pipeline and persisted development artifacts remain
-unchanged pending canonical model-contract migration.
-
-### Unit 19.2d: Activate One-Row Feature Pipeline
-
-#### Completed
-
-Defined canonical model-facing feature sets using stable Away and Home columns.
-
-Defined all generated Elo and EPA differentials as Home minus Away.
-
-Updated the feature-set contracts to 37 differential, 74 raw, 111 combined,
-and 152 expanded columns while preserving the diff, raw, combined, and expanded
-lookup keys.
-
-Activated the canonical historical modeling-table builder and canonical feature
-sequence.
-
-The active modeling pipeline now produces one Away/Home-oriented base and
-enriched row per completed game.
-
-Changed persisted and incremental artifact identity to one row per Game ID.
-
-Changed manifests to record the canonical feature sequence and feature-column
-contract.
-
-Replaced the data-version-only stale check with combined schema-version and
-data-version compatibility validation.
-
-Bumped the modeling schema version to 5 and data version to 2 so retired
-development artifacts force a full canonical rebuild.
-
-Updated shared fixtures, integration tests, and end-to-end tests for the
-canonical source and artifact schemas.
-
-Completed a full real-data canonical rebuild in 65.8 seconds.
-
-The rebuilt artifacts contain 7,276 cleaned games, 7,276 base rows, and 7,276
-enriched rows.
-
-Both modeling artifacts contain unique Game IDs, unique columns, all required
-canonical identity, target, and feature columns, and no TEAM_A, TEAM_B,
-HOME_FIELD, or RESULT columns.
-
-Validated Actual Margin as Home Score minus Away Score and Actual Total as Home
-Score plus Away Score across the complete artifact.
-
-Validated that the manifest contains the exact canonical feature sequence,
-canonical feature-column contract, schema version 5, data version 2, and 7,276
-rows.
-
-Reviewed canonical feature null counts. Missing values remain concentrated in
-truthfully unavailable rolling state, schedule strength, rest, and scheduling
-metadata rather than causing row loss or default substitution.
-
-#### Goal
-
-Activate one canonical one-row-per-game historical modeling artifact and
-feature pipeline.
-
-#### Tests
-
-Covered canonical model feature declarations, Home-minus-Away differential
-direction, feature-set ordering and metadata, artifact-version compatibility,
-manifest generation, one-row incremental identity, fixture consistency,
-integration pipeline execution, and end-to-end artifact creation.
-
-Completed a real full-history artifact rebuild and validated row counts, Game ID
-uniqueness, column uniqueness, canonical schema completeness, target identities,
-retired-orientation exclusion, manifest integrity, and feature null counts.
-
-All quality gates, scoped tests, integration tests, end-to-end tests, and
-real-data validation pass.
-
-#### Acceptance
-
-The active modeling build produces exactly one canonical Away/Home row for each
-of 7,276 cleaned historical games, runs the canonical feature sequence,
-persists the canonical schema and manifest, and contains no TEAM_A, TEAM_B,
-HOME_FIELD, or RESULT dependency.
-
-### Unit 19.2e: Migrate Win Model
-
-#### Completed
-
-Migrated the Win classification target from perspective-relative RESULT to
-canonical HOME_WIN.
-
-The positive classification class now means that the designated Home team won.
-
-Excluded tied games through the nullable HOME_WIN target rather than the retired
-RESULT value of 0.5.
-
-Added explicit validation when canonical Win modeling data does not contain the
-HOME_WIN target.
-
-Preserved deterministic chronological training order by Year, Week Number,
-Game Date, and Game ID.
-
-Preserved feature and target alignment while filtering rows with unavailable
-model features.
-
-Migrated historical classification prediction assembly to one canonical row per
-game.
-
-Model positive-class probability now maps directly to Home Win Probability.
-Away Win Probability is derived as its complement.
-
-Removed classification prediction dependence on two-row selection, TEAM_A,
-TEAM_B, HOME_FIELD, and neutral-site alphabetical orientation.
-
-Canonical Away Team and Home Team identities pass directly from source rows to
-prediction outputs, including neutral-site games.
-
-Canonical Away Elo and Home Elo values pass directly to prediction outputs.
-
-Migrated upcoming Win prediction to the canonical feature sequence.
-
-Corrected numeric and formatted Home and Away probability orientation.
-
-Corrected optional Total alignment after incomplete upcoming rows are filtered.
-
-Added validation for duplicate Game IDs and misaligned probability or Total
-prediction counts.
-
-Preserved optional Total attachment, chronological output order, archive
-columns, and caller immutability.
-
-Left Total-model training, regression prediction assembly, alternate EPA-window
-rebuilding, evaluation, retraining, and artifact regeneration for their
-designated later units.
-
-#### Goal
-
-Train and predict Win probability directly from the canonical Home-team
-perspective.
-
-#### Tests
-
-Covered canonical target selection, Home and Away outcomes, tie exclusion,
-unavailable-feature exclusion, chronological preparation, holdout splitting,
-missing-target validation, and input immutability.
-
-Covered direct historical prediction cardinality, Home-positive-class mapping,
-Away complement derivation, canonical team and Elo identity, neutral-site
-identity preservation, chronological output, optional Total alignment,
-duplicate Game IDs, prediction-count validation, and retired-orientation
-exclusion.
-
-Covered the upcoming classification lifecycle, canonical feature-sequence
-execution, incomplete-row filtering, numeric and formatted probability
-orientation, canonical Elo propagation, enrichment input, and Total index
-alignment.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Win models train on HOME_WIN and directly produce HOME_WIN_PROB, with
-AWAY_WIN_PROB derived as its complement and no TEAM_A, TEAM_B, HOME_FIELD,
-RESULT, two-row selection, or neutral-site alphabetical orientation.
-
-### Unit 19.2f: Migrate Total Model
-
-#### Completed
-
-Migrated the Total regression target from reconstructed lowercase actual_total
-to canonical ACTUAL_TOTAL.
-
-Total training now reads ACTUAL_TOTAL directly from the persisted canonical
-modeling artifact.
-
-Removed Total-training dependence on the cleaned games dataset, PTS_WINNER,
-PTS_LOSER, and a secondary Game ID target merge.
-
-Preserved tied games because their combined score remains a valid Total target.
-
-Added explicit validation when canonical Total modeling data does not contain
-ACTUAL_TOTAL.
-
-Preserved deterministic chronological training order by Year, Week Number,
-Game Date, and Game ID.
-
-Preserved feature and target alignment while filtering rows with unavailable
-targets or model features.
-
-Migrated historical Total prediction assembly to one canonical input row and
-one canonical output row per game.
-
-Migrated upcoming Total prediction to the canonical feature sequence.
-
-Canonical Away Team and Home Team identities now pass directly to historical
-and upcoming Total prediction outputs, including neutral-site games.
-
-Removed regression prediction dependence on TEAM_A, TEAM_B, HOME_FIELD,
-two-row grouping, perspective selection, and neutral-site alphabetical
-orientation.
-
-Added validation for duplicate Game IDs and prediction-count mismatches.
-
-Removed opportunistic Total execution from historical and upcoming Win
-prediction.
-
-Removed the default Total model setting and the internal Win-to-Total prediction
-helper.
-
-Win predictors now produce only Win probabilities. Total predictors now produce
-only model_total. Weekly-product orchestration remains responsible for selecting
-and combining independent forecast events.
-
-Preserved Total model registration under total_random_forest and total_xgboost.
-
-#### Goal
-
-Train and predict Total points directly from the canonical one-row game
-perspective, independently from Win prediction.
-
-#### Tests
-
-Covered canonical ACTUAL_TOTAL target selection, persisted-target use, tie
-retention, unavailable-target and unavailable-feature filtering, chronological
-preparation, holdout splitting, missing-target validation, unique fixture
-columns, and caller immutability.
-
-Covered direct historical Total prediction cardinality, chronological
-alignment, canonical Away and Home identity, neutral-site identity
-preservation, output schema, duplicate Game ID rejection, prediction-count
-validation, input immutability, and exclusion of retired orientation fields.
-
-Covered the upcoming Total lifecycle, canonical feature-sequence execution,
-incomplete-row filtering, model execution, model identity, and independent
-model_total output.
-
-Verified that predictor production code contains no TEAM_A, TEAM_B, or
-HOME_FIELD references.
-
-Verified that no Win-to-Total execution helper or default Total model setting
-remains.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Total models train on ACTUAL_TOTAL and independently produce one model_total per
-canonical game without TEAM_A, TEAM_B, HOME_FIELD, winner/loser score
-reconstruction, two-row selection, neutral-site orientation recovery, or Win
-predictor side effects.
-
-### Unit 19.2g: Migrate Tuning, Evaluation, and Retraining
-
-#### Completed
-
-Migrated alternate EPA-window rebuilding to the canonical Away/Home schema.
-
-Alternate EPA windows delegate to HomeAwayEpaFeature so standard feature
-generation and tuning share one implementation for rolling values, lookahead
-prevention, source validation, missing-data behavior, and Away/Home joins.
-
-Preserved the four-game fast path and replaced persisted four-game values when
-another tuning window is requested.
-
-Validated canonical walk-forward Win and Total dispatch.
-
-Walk-forward evaluation trains from the canonical modeling artifact, filters
-incomplete target-season rows, and predicts one canonical row per game.
-
-Updated walk-forward row-sufficiency documentation for one row per game.
-
-Migrated calibration refresh to canonical Actual Margin.
-
-Calibration joins archived forecasts directly to the canonical modeling
-artifact by Game ID and consumes signed Home-oriented Actual Margin without
-winner/loser score reconstruction.
-
-Added validation for missing Actual Margin and duplicate canonical Game IDs.
-
-Migrated player situational Home and Away cohorts to direct Home Team and Away
-Team identity.
-
-Neutral-site situational splits preserve their designated schedule identity,
-and unmapped player teams are classified as neither Home nor Away.
-
-Migrated Elo tuning team-population construction to canonical Away Team and
-Home Team identity.
-
-WIN_OR_TIE remains only as the completed-game filter for Elo tuning and is not
-used for orientation.
-
-Updated evaluation manifest examples to canonical Away/Home identity and Elo
-features.
-
-Removed migrated execution-path dependence on TEAM_A, TEAM_B, HOME_FIELD,
-RESULT, winner/loser score reconstruction, and lowercase actual_total.
-
-#### Goal
-
-Migrate alternate-window tuning, walk-forward evaluation, calibration, and full
-retraining to the canonical one-row game contract.
-
-#### Tests
-
-Covered alternate EPA windows, lookahead prevention, missing EPA sources,
-canonical target preservation, one-row identity, and input immutability.
-
-Covered walk-forward Win and Total dispatch, positive-class orientation,
-incomplete-feature filtering, cutoff arguments, and empty target seasons.
-
-Covered canonical calibration margins, negative Home margins, missing targets,
-duplicate Game IDs, and persisted calibration values.
-
-Covered canonical situational Home and Away cohorts, neutral-site identity,
-unknown team handling, duplicate game metadata, all existing cohort outputs,
-and input immutability.
-
-Covered canonical Elo tuning team populations, unplayed-game filtering, missing
-source columns, empty identities, season grouping, and input immutability.
-
-Covered canonical evaluation manifest examples and generic manifest validation.
-
-All scoped quality gates and tests pass.
-
-#### Acceptance
-
-Tuning, evaluation, calibration, and retraining operate on canonical one-row
-game data without TEAM_A, TEAM_B, HOME_FIELD, RESULT, winner/loser score
-reconstruction, lowercase actual_total, or legacy probability orientation.
-
-### Unit 19.2h: Remove Retired Orientation and Rebuild Artifacts
-
-#### Completed
-
-Removed the inactive perspective-oriented feature pipeline, legacy feature
-registrations and implementations, doubled game-modeling fixtures, retired
-schema catalog, and development-era artifact metadata migration.
-
-The repository now exposes one canonical feature sequence, one one-row-per-game
-modeling-table builder, and ten canonical home/away game-feature registrations.
-
-Reworked shared game-modeling fixtures and artifact examples to use canonical
-Away and Home identity, targets, features, and normalized metadata.
-
-Artifact metadata now requires the current schema version and an explicit Game
-or Prop discriminator.
-
-The prediction archive now requires the complete current schema on reads and
-writes, preserves supplied enrichment, and represents unavailable enrichment
-with explicit null values.
-
-Completed the final fixture and retired-orientation inventory. Remaining
-TEAM_A, TEAM_B, HOME_FIELD, and RESULT references are concrete negative
-assertions, canonical local result-history calculations, or unrelated dataset
-contracts.
-
-#### Goal
-
-Remove development-era game-model compatibility paths and rebuild all persisted
-game-model artifacts from the canonical one-row Away/Home contract.
-
-#### Tests
-
-Legacy pipeline removal, canonical feature registration, canonical fixtures,
-artifact persistence, strict artifact metadata, prediction archive schema,
-model training, historical prediction, integration, and end-to-end lifecycle
-tests pass.
-
-#### Acceptance
-
-The repository contains one active canonical game-feature and modeling path with
-no runtime dependency on TEAM_A, TEAM_B, HOME_FIELD, RESULT, doubled modeling
-rows, retired feature registrations, or obsolete artifact metadata.
-
-Current prediction archives and model metadata use explicit, strictly validated
-schemas.
-
-Canonical game-model artifacts have been rebuilt, retrained, refreshed, and
-validated against real data. Prop artifact rebuilding remains outside this
-game-model acceptance boundary.
-
-#### Unit 19.2h-D3b Completed
-
-Documented Lean and ConfidenceTier values as the current canonical serialized
-strings for DataFrame, archive, and API boundaries.
-
-Made prop enrichment configuration keyword-only while retaining the prediction
-DataFrame as the sole positional argument.
-
-#### Goal
-
-Define a clear current serialization and callable contract without compatibility
-rationale or excessive positional parameters.
-
-#### Tests
-
-Enum, prop post-processing, prop metrics, and Prop CLI tests pass. Ruff and
-Pyrefly pass.
-
-#### Acceptance
-
-Prop enrichment uses explicit named configuration, and serialized recommendation
-and confidence values remain unchanged.
-
-#### Unit 19.2h-D3c.1 Completed
-
-Migrated active model-registry consumers from PredictorRegistry to
-ModelRegistry and from PredictorSpec to ModelSpec.
-
-Updated registry, evaluation, CLI, Elo, and test terminology to use the
-canonical Model, GameModel, ModelSpec, and ModelRegistry contracts.
-
-Replaced the inaccurate CLI challenger-training annotation with a narrow
-_ChallengerTrainer protocol and removed the associated Pyrefly suppression.
-
-Preserved the current predictor.py module paths and concrete Predictor class
-names because they remain active implementation identities rather than
-compatibility aliases.
-
-Retained the Predictor, PredictorSpec, and PredictorRegistry compatibility
-aliases for removal during the runtime compatibility review.
-
-#### Goal
-
-Make Model terminology the active repository contract before removing the
-remaining Predictor compatibility aliases.
-
-#### Tests
-
-Model base, registry, game prediction, model CLI, evaluation selection,
-backfill, and evaluate CLI tests pass. Ruff and Pyrefly pass.
-
-#### Acceptance
-
-Active source and tests consume Model, GameModel, ModelSpec, and ModelRegistry
-rather than Predictor, PredictorSpec, or PredictorRegistry compatibility
-aliases.
-
-The only remaining PredictorSpec and PredictorRegistry alias references are
-their compatibility definitions and explanatory comments pending the runtime
-compatibility review.
-
-#### Unit 19.2h-D3c.2 Completed
-
-Defined bet model identity as one optional model_name and model_type pair.
-
-Manual bets may omit both identity fields. Model-attributed bets must provide
-both as nonempty values.
-
-Added ledger-boundary validation before UUID generation or artifact writes and
-made log_bet configuration keyword-only after game_id.
-
-Updated the betting CLI to report invalid model identity cleanly without
-recording the bet or deducting bankroll.
-
-Replaced stale --model-version integration coverage with the current
---model-name and --model-type options and verified the persisted identity.
-
-Preserved the current bet-ledger schema, artifact path, gridiron bet command
-group, --market interface, and existing real ledger.
-
-Deferred permissive persisted-ledger compatibility removal and strict schema
-validation to the runtime compatibility review.
-
-#### Goal
-
-Make bet model identity explicit and coherent across the ledger API, betting
-CLI, tests, and persisted current-schema rows.
-
-#### Tests
-
-Bet ledger, betting CLI helper, betting CLI integration, betting performance,
-and portfolio serializer tests pass. Ruff and Pyrefly pass.
-
-#### Acceptance
-
-Model-less bets persist both identity fields as unavailable, while
-model-attributed bets require and persist one complete model_name and
-model_type pair.
-
-Incomplete or empty model identities fail before ledger creation or bankroll
-mutation, and the betting CLI uses only the current model identity options.
-
-#### Unit 19.2h-D3c.3 Completed
-
-Defined the complete current prop prediction payload required for new archive
-writes.
-
-New rows must provide all sixteen prediction columns before writer-owned
-metadata is added. Unavailable market-derived values remain explicit through
-present-but-null columns.
-
-Removed writer-side synthesis of missing prediction columns and preserved exact
-canonical ordering for the twenty persisted archive columns.
-
-Kept predicted_at, is_backfilled, model_name, and model_type authoritative at
-the archive boundary.
-
-Allowed enriched feature frames to contain additional source columns while
-excluding those columns from persisted archive rows.
-
-Updated prop archive tests for complete-column enforcement, deterministic
-missing-column errors, canonical serialization order, authoritative metadata,
-extra-column exclusion, and explicit null values.
-
-Corrected archive-ready prop prediction documentation to use confidence_tier.
-
-Verified that the existing 262,977-row prop prediction archive already contains
-the complete current schema in canonical order.
-
-Deferred persisted archive read validation and compatibility removal to the
-runtime compatibility review.
-
-#### Goal
-
-Ensure every newly written prop prediction row satisfies one complete current
-archive payload contract without silently synthesizing missing columns.
-
-#### Tests
-
-Prop archive, prop metrics, Prop CLI, full retraining, and prop champion tests
-pass. Ruff and Pyrefly pass.
-
-#### Acceptance
-
-Incomplete prop prediction payloads fail before archive I/O, while complete
-payloads serialize to the exact canonical twenty-column archive schema.
-
-Writer-owned metadata overrides caller-supplied values, unavailable market
-fields remain explicit nulls, and additional feature columns are not persisted.
-
-#### Unit 19.2h-D3c.4 Completed
-
-Removed workstream, unit, tier, phase, step, substep, and planning-document
-labels from current source comments, docstrings, API descriptions, and tests.
-
-Replaced development chronology with direct descriptions of model identity,
-selection rules, archive behavior, API dependencies, blocked fields, route
-domains, algorithm stages, and test responsibilities.
-
-Updated user-visible API schema descriptions to identify concrete unavailable
-datasets rather than internal PLAN.md or ROADMAP.md locations.
-
-Preserved ordinary technical uses of implementation terminology and retained
-runtime compatibility documentation with the behavior it describes.
-
-Confirmed that the only remaining matching planning label is the Unit 6a
-comment attached to the bet-ledger compatibility path scheduled for removal
-during the runtime compatibility review.
-
-#### Goal
-
-Make source and test documentation describe the system as it operates today
-rather than when or where functionality was introduced.
-
-#### Tests
-
-All scoped model, evaluation, market, CLI, API schema, serializer, loader, and
-passing integration tests pass. Ruff and Pyrefly pass.
-
-#### Acceptance
-
-Current source, tests, and API descriptions contain no workstream, tier, phase,
-step, or substep labels.
-
-The sole remaining unit label is isolated inside deferred bet-ledger runtime
-compatibility behavior and remains visible for D3d.2.
-
-#### Unit 19.2h-D3c.5 Completed
-
-Completed the final compatibility, terminology, persisted-schema, and retired
-game-orientation inventory.
-
-Confirmed that Predictor, PredictorSpec, and PredictorRegistry remain only as
-compatibility aliases with no active source or test consumers.
-
-Identified permissive persisted-schema handling in the bet ledger and prop
-prediction archive for removal during the runtime compatibility review.
-
-Verified that the current bet ledger contains one row and the exact current
-twenty-one-column schema.
-
-Verified that the current prop prediction archive contains 262,977 rows and the
-exact current twenty-column schema in canonical order.
-
-Confirmed that remaining TEAM_A, TEAM_B, and HOME_FIELD references are negative
-assertions proving retired fields are absent.
-
-Confirmed that remaining production RESULT columns are local canonical
-result-history calculations and are not persisted targets, modeling fields,
-orientation adapters, or prediction dependencies.
-
-Cataloged the remaining model-name aliases, tuning alias, package shim, CLI
-re-export, superseded command, protocol wording, source-format contracts, and
-explicit legacy integrations for the final runtime compatibility review.
-
-#### Goal
-
-Establish a complete, classified inventory of every remaining compatibility
-surface before runtime aliases, permissive schemas, and fallback behavior are
-removed.
-
-#### Tests
-
-Repository-wide compatibility, retired-orientation, planning-label, and
-persisted-artifact inventories completed.
-
-The current bet ledger and prop prediction archive were inspected directly and
-match their canonical schemas.
-
-#### Acceptance
-
-All remaining compatibility behavior is explicitly assigned to D3d.1 through
-D3d.4 or classified as an intentional current contract.
-
-No retired game-orientation field remains in active modeling, feature,
-prediction, archive, or orchestration behavior.
-
-No unclassified migration or compatibility surface remains hidden outside the
-runtime compatibility review.
-
-#### 19.2h-D3d.1 Completed
-
-Removed the Predictor, PredictorSpec, and PredictorRegistry compatibility
-aliases after confirming that no active consumers remained.
-
-Renamed the concrete game model hierarchy from Predictor terminology to Model
-terminology, including GamesModel and all registered win-probability and total
-model classes.
-
-Renamed the Elo and game-prediction modules from predictor.py to model.py and
-renamed the focused unit test file accordingly.
-
-Updated imports, registration triggers, patch targets, annotations, fixtures,
-integration coverage, end-to-end coverage, comments, docstrings, logger labels,
-and local variables to use Model terminology.
-
-Removed the obsolete game-prediction package compatibility-shim documentation
-without retaining forwarding modules or aliases.
-
-Preserved all registry keys, artifact identities, model_name values, model_type
-values, persisted schemas, and prediction behavior.
-
-Corrected a test variable collision exposed by the terminology migration by
-distinguishing the persisted estimator from the project game model wrapper.
-
-#### Goal
-
-Complete the Predictor-to-Model naming migration without retaining aliases,
-module shims, or retired import paths.
-
-#### Tests
-
-Model base, model registry, game model, game backfill, and game fit-load-predict
-tests pass. Ruff and Pyrefly pass.
-
-Canonical model imports and registration succeed, while removed Predictor
-aliases and predictor.py module imports fail as intended.
-
-#### Acceptance
-
-No Predictor, PredictorSpec, PredictorRegistry, concrete Predictor class,
-predictor.py source module, predictor test filename, import path, patch target,
-or local Predictor terminology remains in source or tests.
-
-Game model registry keys and persisted model identity remain unchanged.
-
-#### Unit 19.2h-D3d.2 Completed
-
-Replaced permissive bet-ledger schema repair with exact persisted-schema
-validation.
-
-Existing and newly written ledgers must contain all twenty-one canonical
-columns, no additional columns, and the canonical column order.
-
-Applied schema validation at both ledger I/O boundaries so malformed artifacts
-cannot be loaded, appended to, settled, or written.
-
-Removed historical model_version accommodation, missing-column synthesis,
-unknown-column projection, migration terminology, and the Unit 6a compatibility
-path.
-
-Added coverage for valid current-schema reads, missing columns, additional
-columns, reordered columns, invalid writes, non-destructive log failures,
-non-destructive settlement failures, and canonical empty-ledger behavior.
-
-Verified that the existing one-row bet ledger passes the strict reader without
-modification.
-
-#### Goal
-
-Require every persisted bet ledger to satisfy one exact current schema without
-repairing or translating historical artifact shapes.
-
-#### Tests
-
-Bet ledger, betting performance, betting CLI helper, betting CLI integration,
-and portfolio serializer tests pass. Ruff and Pyrefly pass.
-
-The current persisted bet ledger loads successfully through the strict schema
-boundary.
-
-#### Acceptance
-
-Missing, additional, or reordered persisted ledger columns fail before any
-artifact overwrite.
-
-The ledger read and write boundaries accept only the canonical twenty-one-column
-schema, and no model_version or historical ledger compatibility behavior
-remains.
-
-#### Unit 19.2h-D3d.3 Completed
-
-Replaced permissive persisted prop archive repair with exact schema validation.
-
-Existing, loaded, and newly written prop prediction archives must contain all
-twenty canonical columns, no additional columns, and the canonical column
-order.
-
-Applied schema validation before appending to an existing archive, before
-writing the merged archive, and when loading persisted predictions.
-
-Removed persisted missing-column synthesis and unknown-column projection.
-
-Added coverage for valid current-schema loads, missing columns, additional
-columns, reordered columns, canonical empty archives, and non-destructive
-append failures against malformed existing artifacts.
-
-Verified that the existing 262,977-row prop prediction archive passes the
-strict reader without modification.
-
-#### Goal
-
-Require every persisted prop prediction archive to satisfy one exact current
-schema without repairing or translating malformed artifact shapes.
-
-#### Tests
-
-Prop archive, prop metrics, prop champion, Prop CLI, full retraining, API
-loader, and prop route tests pass. Ruff and Pyrefly pass.
-
-The current persisted prop prediction archive loads successfully through the
-strict schema boundary.
-
-#### Acceptance
-
-Missing, additional, or reordered persisted archive columns fail before any
-artifact overwrite.
-
-Archive load, append, and write boundaries accept only the canonical
-twenty-column schema, and no persisted prop archive repair behavior remains.
-
-#### Unit 19.2h-D3d.4
-
-#### Completed
-
-Removed remaining runtime compatibility aliases, superseded commands, implementation labels, permissive completion markers, winner-oriented historical-game fields, and the duplicate focused upcoming-schedule artifact.
-
-Migrated evaluation, Elo, simulation, weather, API, and test fixtures to explicit Away Team, Home Team, Away Score, and Home Score identity.
-
-Reduced the cleaned historical-games artifact to its canonical eighteen-column schema and made game completion depend on both canonical scores.
-
-Migrated Elo prediction, API loading, projection serialization, default schedule scope, and season simulation to the canonical rich upcoming-schedule Parquet.
-
-Removed the focused schedule registry key, loader, persisted projection, CSV output, and game-ID reconstruction path.
-
-Regenerated and validated the canonical rich schedule with 272 unique games for the 2026-2027 regular season.
-
-#### Goal
-
-Remove remaining development-era runtime compatibility behavior so historical games and upcoming schedules each have one explicit current persisted contract.
-
-#### Tests
-
-Covered strict ledger and prop archive schemas, canonical completion detection, historical outcomes, Elo tuning and prediction, weather backfill, team and projection serializers, regular-season and playoff simulation, rich schedule cleaning, registered dataset loading, artifact isolation, and integration routing.
-
-Ruff, Pyrefly, focused unit tests, and affected integration tests pass.
-
-#### Acceptance
-
-Production contains no winner-oriented historical-game fields, obsolete game-location constants, Predictor compatibility aliases, focused schedule loader, focused schedule registry entry, focused schedule projection, or focused schedule CSV dependency.
-
-The cleaned historical-games artifact uses the canonical eighteen-column Away/Home schema.
-
-The sole upcoming-schedule artifact is the canonical rich Parquet, and Elo, API, and simulation consume it directly.
-
-#### Unit 19.2h-E
-
-#### Completed
-
-Corrected full-retrain so game-model rebuilding includes historical walk-forward backfills, final deployable artifact training, calibration refresh, champion selection, and baseline reporting.
-
-Rebuilt the canonical historical and modeling artifacts with 7,276 unique games, modeling schema version 5, data version 2, and no retired orientation columns.
-
-Derived the classification CV row floor from actual temporal fold geometry when the configured default would reject every fold.
-
-Separated artifact metadata schema version 3 from modeling schema version 5.
-
-Regenerated historical game forecast archives and trained all five deployable game-model artifacts.
-
-Excluded tied games from binary champion-ranking metrics while preserving ties in the general evaluation dataset.
-
-Refreshed calibration values for Elo, logistic, Random Forest, and XGBoost.
-
-Selected win_prob_logistic and total_random_forest as the current game champions and generated the baseline comparison report.
-
-Prop artifact rebuilding and validation remain outside this game-model workstream.
-
-#### Goal
-
-Rebuild and validate the canonical game-model artifacts and all downstream game evaluation products.
-
-#### Tests
-
-Validated modeling identity, manifest integrity, temporal CV resolution, strict artifact metadata loading, tie handling, deployable model metrics, calibration coverage, champion selection, baseline reporting, model listing, and evaluation summary execution.
-
-Ruff, Pyrefly, focused tests, and the full unit and non-slow suite pass.
-
-#### Acceptance
-
-Canonical modeling artifacts, historical game forecast archives, all five deployable game-model artifacts, four Win calibration entries, game champion selections, and the baseline report are current and load through strict runtime boundaries.
-
-Analytic Elo remains artifact-free, no candidate or holding directories remain, and no retired game orientation is required.
-
-Prop model artifacts and preserved prop champion entries are not part of this acceptance boundary.
-
-### Unit 19.1b: Truthful Prediction Availability Inspection
-
-#### Completed
-
-Added read-only, model-specific availability inspection for one requested weekly schedule.
-
-Availability is true only when the exact model can execute every scheduled game in the requested season and week.
+Added truthful, model-specific weekly availability inspection.
 
 Elo availability requires complete exact-week Away and Home rating coverage.
 
-Trained-model availability requires strict readable game metadata, the persisted model file, exact model identity, the correct task, agreement between persisted and current ordered feature contracts, successful canonical feature construction, and complete model-specific feature coverage.
+Trained-model availability requires strict readable artifact metadata, the
+persisted model file, exact model and task identity, agreement between persisted
+and current feature contracts, successful canonical feature construction, and
+complete model-specific feature coverage for every scheduled game.
 
-Added a public model feature-set contract so prediction execution and availability inspection use the same requirements.
+Availability inspection and prediction execution consume the same public model
+feature-set contract.
 
-Integrated inspected availability into weekly-product composition and removed the hard-coded availability booleans.
+Added one policy-selected weekly execution service for independent Win and Total
+prediction families.
 
-Retained the explicit Elo policy selection because the current prediction stage still issues Elo-only forecast events. Policy-selected model execution remains assigned to Unit 19.3.
+The service scopes the rich upcoming schedule, inspects model availability,
+loads current champion provenance, resolves one prediction policy, and executes
+the exact selected `ModelRegistry` identities.
 
-Availability inspection does not load estimators or scalers, run inference, resolve champions, apply fallback, write forecast events, or publish outputs.
+Win execution supports analytic Elo, Logistic Regression, Random Forest, and
+XGBoost.
 
-The registered upcoming schedule currently contains zero rows. Real-artifact validation confirmed that an empty requested scope fails explicitly rather than returning fabricated availability.
+Total execution supports Random Forest and XGBoost independently from Win
+execution.
 
-#### Goal
+Selected Win and Total forecasts share one invocation run ID, UTC generation
+timestamp, live role, season, and week while retaining independent model
+identities.
 
-Provide truthful model-specific weekly availability facts before policy selection and model execution.
+Every selected family must produce exactly one valid prediction for every
+scheduled game before any forecast events are persisted.
 
-#### Tests
+Unavailable families do not execute and do not produce forecast events.
 
-Covered exact season and week scope, empty schedules, duplicate game identities, complete and partial Elo coverage, strict trained-artifact inspection, persisted model-file requirements, exact feature-contract matching, complete and partial model-feature coverage, model independence, caller immutability, and absence of estimator loading or inference.
+Persisted live forecasts are immutable events. Multiple coherent runs for the
+same game and model may coexist without replacement.
 
-Covered weekly-product integration, preservation of inspected availability in policy serialization, Elo-aligned interim selection, and unchanged product persistence behavior.
+Weekly-product composition consumes the exact resolved policy and immutable
+forecast run created by the prediction stage.
 
-Ruff, Pyrefly, focused availability tests, prediction-policy tests, and weekly-predict tests pass.
+Available Win and Total components preserve their selected event ID, model
+identity, forecast run ID, UTC generation timestamp, live role, and explicit
+selection status.
 
-#### Acceptance
+Derived Spread values use the exact selected Win model and its persisted
+calibration.
 
-weekly-predict no longer supplies hard-coded model availability.
+Total values and Total uncertainty use the independently selected Total model
+and its exact artifact metadata.
 
-Each availability boolean truthfully describes whether the exact model can execute every game in the requested weekly schedule.
+Projected scores are composed only when the required Spread and Total point
+estimates are available.
 
-Missing resources produce explicit model-specific unavailability, malformed current artifacts fail loudly, empty schedule scopes fail explicitly, and availability inspection performs no model inference or persistence.
+Persisted weekly products reconcile component forecast runs to the product run
+identity before writing.
 
-The current Elo-only forecast stage remains aligned with the policy serialized into the weekly product pending policy-selected execution in Unit 19.3.
+Multiple immutable products for the same season and week can coexist.
 
-### Unit 19.3: Execute Policy-Selected Models
+Writing a newer product does not change current state. Current product selection
+changes only through an explicit season-and-week selection operation.
 
-#### Completed
+Operational readiness derives from the explicitly selected immutable weekly
+product.
 
-Added one policy-selected weekly execution service for independent Win and Total prediction families.
+`verify-week` reads the selected product and reports schedule, prediction,
+provenance, market, join, eligible-market, and edge coverage without performing
+model inference or forecast selection.
 
-The execution service scopes the rich upcoming schedule, inspects truthful model availability, loads current champion provenance, and resolves one prediction policy before inference.
+Prediction readiness is independent from market readiness.
 
-Selected models execute through their exact ModelRegistry identities.
+Prediction-ready products may be persisted and published when market data is
+missing, incomplete, stale, or otherwise unavailable.
 
-Win execution supports analytic Elo, logistic, Random Forest, and XGBoost.
+Forecast publication requires prediction readiness and removes stale
+scope-specific PNG and HTML outputs when prediction blockers are present.
 
-Total execution supports Random Forest and XGBoost independently from Win execution.
+Edge generation remains a soft-fail stage.
 
-Selected Win and Total forecast events share one run ID, generation timestamp, live role, season, and week while retaining their independent model identities.
+Blocked, non-calculable, zero-positive-edge, and below-threshold edge results
+remove stale scope-specific edge CSV output.
 
-Every selected family must return exactly one prediction for every scheduled game.
+Added empirical early-season defaults for expanded game features.
 
-Null, duplicate, missing, additional, and mismatched Game IDs fail before forecast-event persistence.
+Teams without prior same-season games receive zero wins, zero losses, and a
+zero-valued Win Percentage.
 
-Unavailable families do not execute or produce forecast events.
+Schedule Strength and Strength of Victory use empirical exact-season,
+exact-week league-average Elo when no eligible opponent history exists.
 
-The prediction stage fails without writing a forecast run when policy selects no available family.
+Missing exact-week Elo remains explicitly unavailable.
 
-Selected Win and Total outputs are normalized into canonical immutable forecast events without replacing one family’s identity with another.
+Added reviewed annual stadium-reference synchronization.
 
-Selected Win output is adapted to the existing rendering contract without regenerating Elo as a hidden fallback.
+The workflow audits franchise-origin and scheduled-site coverage, prepares
+deterministic carry-forward and explicit alias proposals, writes a review
+artifact, and atomically applies only approved rows.
 
-The resolved policy is cached by the prediction stage and consumed unchanged during weekly-product composition.
+Historical stadium rows are preserved.
 
-Weekly-product candidate identities now come from the cached Win and Total policy decisions rather than hard-coded Elo and empty Total selections.
+Identical stadium updates are idempotent, conflicting updates are rejected, and
+non-NFL `HOME_TEAM` identities must be exactly `Alternate` or `International`.
 
-#### Goal
+Added version-controlled aliases for renamed franchise venues.
 
-Execute the exact availability-aware Win and Total decisions selected by prediction policy and persist immutable live forecast events whose identities match those decisions.
+Added all 32 franchise origins for the 2026-2027 season.
 
-#### Tests
+Added Melbourne Cricket Ground as a reviewed 2026-2027 `International` venue.
 
-Covered exact registry dispatch, selected Win and Total execution, shared run identity, independent model identities, complete schedule coverage, combined event generation, partial-family rejection, prediction-stage persistence, cached policy ownership, exact product candidate identities, unavailable execution failure, and absence of hidden rendering fallback.
+Week 1 travel distance, timezone shift, and game-site altitude are complete
+across all 16 scheduled games.
 
-Ruff, Pyrefly, weekly execution tests, weekly-predict tests, product-stage tests, availability tests, prediction-policy tests, and weekly Win and Total product tests pass.
+Added static roof fallback from canonical stadium metadata when game-level roof
+metadata is unavailable.
 
-The registered raw and rich upcoming-schedule artifacts currently contain zero rows, so a real weekly execution correctly has no valid schedule scope and was not used to create a forecast run.
+Game-level roof state remains authoritative when populated.
 
-#### Acceptance
+Covered venues receive controlled-environment weather defaults.
 
-weekly-predict resolves one availability-aware policy before inference and executes the exact selected Win and Total model implementations.
+Added forecast-preferred outdoor weather climatology.
 
-Persisted forecast-event identities match the policy decisions that produced them.
-
-Every selected family covers the complete requested weekly schedule before any forecast events are written.
-
-Win and Total remain independently selectable and executable.
-
-Weekly-product composition consumes the same resolved policy and immutable forecast run created by the prediction stage.
-
-Rendering consumes only the selected Win prediction output and does not silently regenerate Elo.
-
-### Unit 19.4: Persist and Select Weekly Product
-
-#### Completed
-
-Hardened the existing immutable weekly-product boundary with complete selected-event provenance for available Win and Total components.
-
-Available Win components now require the selected event ID, model identity, forecast run ID, UTC generation timestamp, live forecast role, and selected resolution status.
-
-Available and uncertainty-unavailable Total components require the equivalent Total provenance.
-
-Unavailable Win and Total components retain explicit selection statuses while requiring prediction values, model identities, event identities, run identities, generation timestamps, and roles to remain unavailable.
-
-Added strict UTC validation for component forecast generation timestamps.
-
-Reconciled every available component forecast run with the run recorded by WeeklyProductIdentity.
-
-Weekly-product persistence rejects cross-run Win or Total components before creating an artifact or updating the product index.
-
-Preserved the existing immutable product artifacts, indexed product records, idempotent rewrite behavior, explicit season-and-week current selection, and selected-product readers.
-
-Multiple coherent forecast runs for the same week continue to coexist as independently addressable immutable products.
-
-Writing a newer product does not implicitly change the selected current product.
-
-API and CLI edge generation continue to consume only the explicitly selected weekly product.
-
-#### Goal
-
-Persist and explicitly select one immutable weekly product whose component event provenance is traceable to the exact forecast run recorded by the product.
-
-#### Tests
-
-Covered required Win and Total event provenance, selected live roles, explicit selection statuses, UTC component generation timestamps, stale provenance on unavailable components, Win and Total run reconciliation, failure before artifact or index creation, coherent multiple-run products, immutable product round trips, conflicting rewrites, explicit current selection, reselection, and selected-product loading.
-
-Ruff, Pyrefly, final product tests, immutable product-store tests, weekly Win and Total product tests, and weekly-predict product-stage tests pass.
-
-#### Acceptance
-
-Every available weekly-product component identifies the exact selected live forecast event, model, and run that produced it.
-
-Component forecast runs must match the product run identity before persistence.
-
-Unavailable components cannot retain stale prediction or forecast provenance.
-
-Immutable products remain independently addressable, and current state changes only through explicit season-and-week product selection.
-
-Selected-product consumers load the same explicitly selected immutable product without model inference or latest-file inference.
-
-
-### Unit 19.5: Readiness and Publication Hardening
-
-#### Completed
-
-Operational readiness now derives from the explicitly selected immutable weekly product.
-
-verify-week loads the selected product for the requested season and week and adapts its persisted component values and storage-owned provenance to the pure weekly readiness evaluator.
-
-Champion lookup, forecast-event reselection, and arbitrary forecast-run verification were removed from operational readiness.
-
-The retired --run-id option was removed because readiness describes the explicitly selected weekly product rather than an arbitrary forecast archive run.
-
-WeeklyReadiness retains complete operational readiness while exposing independent prediction_ready and market_ready properties.
-
-prediction_ready evaluates schedule, selected-product, prediction-component, forecast-selection, and prediction-provenance blockers.
-
-market_ready evaluates market availability, scope, freshness, coverage, prediction-to-market joins, completeness, and market provenance blockers.
-
-The existing ready property remains true only when no operational blockers are present.
-
-weekly-predict now verifies selected-product prediction readiness after product composition and explicit selection.
-
-Forecast rendering depends on selected-product prediction readiness but does not require market readiness.
-
-Prediction blockers prevent rendering and remove stale scope-based PNG and HTML outputs.
-
-Market-only blockers do not invalidate or suppress a prediction-ready selected product.
-
-Edge generation remains a soft-fail stage because market unavailability does not invalidate the selected prediction product.
-
-Blocked, non-calculable, no-positive-edge, and below-threshold edge results remove the existing scope-based edge CSV.
-
-Edge evaluation clears any cached top-edge preview before processing the current selected product.
-
-Selected-product readiness remains read-only and performs no model inference, forecast selection, product selection, market ingestion, rendering, or persistence.
-
-#### Goal
-
-Evaluate whether the selected schedule-complete product is safe to publish and prevent stale forecast or edge outputs from appearing current.
-
-#### Tests
-
-Covered selected-product readiness assembly, missing selected products, prediction-only readiness, market-only blockers, complete operational readiness, removed forecast-run selection, removed --run-id support, read-only verification, rich-schedule denominator preservation, readiness stage ordering, prediction publication gating, stale PNG and HTML cleanup, stale edge CSV cleanup, preview clearing, and soft-fail market behavior.
-
-Ruff, Pyrefly, weekly readiness tests, verify-week tests, weekly-predict tests, and weekly-product stage tests pass.
-
-#### Acceptance
-
-Readiness derives from the explicitly selected weekly product.
-
-Forecast publication requires prediction readiness but does not require market readiness.
-
-Full operational readiness continues to require prediction, market, join, provenance, and edge-calculability inputs.
-
-Prediction blockers remove stale scope-based forecast outputs before returning failure.
-
-Edge publication reflects only the current selected product, and stale scope-based edge output is removed whenever the current result cannot publish rows.
-
-Market failures remain isolated to the soft-fail edge stage and do not invalidate a prediction-ready selected weekly product.
-
-
-#### Runtime feature-context correction
-
-Added explicit target-identity rolling for Home/Away EPA features.
-
-Only completed epa_by_game rows contribute rolling observations.
-
-Historical or upcoming target identities receive pregame EPA values from completed same-team observations strictly before the target season and week.
-
-Prior regular-season history can seed future Week 1 games.
-
-Future schedule targets never become observations for later future targets.
-
-Historical explicit-target values remain equivalent to the existing shifted rolling implementation.
-
-Availability inspection and trained-model execution continue to share the same canonical feature pipeline.
-
-Real 2026 Week 1 validation confirmed that Win Logistic changed from unavailable to available across the complete 16-game schedule.
-
-The expanded tree and Total feature contract remains unavailable because record, schedule-strength, travel, weather, and venue fields are still incomplete.
-
-
-#### Early-season expanded-feature defaults
-
-Teams with no prior same-season games now use WIN_PCT 0.0, consistent with zero credited wins and zero losses. SOS and SOV use the empirical exact-season, exact-week league-average Elo when no eligible opponent or defeated-opponent Elo exists. Missing exact-week Elo state remains unavailable rather than falling back to a hard-coded constant. These canonical feature-definition changes require rebuilding the modeling artifact and retraining all game models before runtime acceptance.
-
-
-#### Stadium reference synchronization
-
-Added a reviewed stadium metadata synchronization service with pure coverage audit, deterministic season carry-forward and explicit alias proposals, strict approved-row validation, and atomic application. Historical rows are preserved, franchise-season origins remain unique, conflicting coordinates are rejected, and every non-NFL HOME_TEAM identity must be exactly Alternate or International. CLI exposure remains a separate follow-up after the service contract is green.
-
-
-#### Stadium alias artifact
-
-Added a version-controlled explicit stadium alias artifact for renamed franchise venues and a strict optional loader. Alias identities are trimmed, deterministically sorted, unique by current schedule stadium name, and cannot map a stadium to itself. The six known 2026 franchise venue renames can now produce reviewed alias_existing proposals without fuzzy matching.
-
-
-#### Stadium synchronization CLI
-
-Added top-level stadiums audit, prepare, and apply commands. Audit is read-only and exits nonzero when coverage remains incomplete. Prepare writes only a deterministic review CSV using the version-controlled alias artifact. Apply accepts a reviewed CSV, delegates atomic approved-row application to the synchronization service, and reports remaining coverage without applying unresolved rows.
-
-#### Stadium Reference Synchronization
-
-##### Completed
-
-Added a reviewed and automated stadium-reference synchronization workflow.
-
-The workflow audits missing franchise origins and unresolved scheduled game sites without modifying canonical metadata.
-
-Season preparation deterministically carries forward unchanged franchise origins and resolves renamed franchise venues only through version-controlled explicit aliases.
-
-Added aliases for Highmark Stadium, Huntington Bank Field, Reliant Stadium, EverBank Stadium, Caesars Superdome, and Northwest Stadium.
-
-Preparation writes a review CSV under data/output/stadium_sync and never modifies NFL_stadium_reference.csv.
-
-Application accepts only approved review rows and atomically updates the canonical stadium reference.
-
-Existing historical rows are preserved.
-
-Identical reapplication is a no-op.
-
-Conflicting reapplication is rejected.
-
-Franchise-season origins permit multiple stadium-name aliases only when their coordinates are identical.
-
-Conflicting franchise-origin or site-coordinate identities are rejected.
-
-Approved rows require complete latitude, longitude, roof, surface, and altitude metadata.
-
-Every non-NFL HOME_TEAM identity must be exactly Alternate or International.
-
-Added top-level stadiums audit, prepare, and apply CLI commands.
-
-Applied 32 approved 2026-2027 franchise-origin rows.
-
-A repeated application added zero rows and left the canonical artifact unchanged.
-
-Week 1 travel null coverage decreased from all 16 scheduled games to only the Melbourne Cricket Ground international game.
-
-#### International Stadium Enrichment
-
-##### Completed
-
-Added reviewed 2026-2027 metadata for Melbourne Cricket Ground.
-
-The venue is classified with HOME_TEAM International.
-
-The reviewed metadata includes coordinates, outdoor roof classification, grass surface, and site altitude.
-
-The Melbourne international game now resolves through the canonical stadium reference.
-
-Week 1 travel and site-altitude coverage is complete across all 16 scheduled games.
-
-Six later-season international venues remain unresolved.
-
-##### Goal
-
-Complete static venue metadata for scheduled international games without introducing noncanonical HOME_TEAM identities.
-
-##### Tests
-
-Validated reviewed-row application, stadium coverage audit, and Week 1 travel completeness.
-
-##### Acceptance
-
-Melbourne Cricket Ground is represented by one complete International venue row for 2026-2027.
-
-All Week 1 Away/Home travel distance, timezone shift, and game-site altitude fields are complete.
-
-##### Goal
-
-Automate annual franchise-origin rollover and renamed-venue resolution while preserving an explicit review boundary for new, alternate, and international game sites.
-
-##### Tests
-
-Covered coverage auditing, exact carry-forward preparation, explicit aliases, unresolved venues, alias validation, special HOME_TEAM validation, coordinate conflicts, historical preservation, atomic application, deterministic preparation, identical reapplication, conflicting reapplication, CLI registration, read-only audit, review-file generation, truthful applied-row reporting, and post-apply coverage reporting.
-
-Ruff, Pyrefly, stadium synchronization tests, stadium CLI tests, travel feature tests, loader tests, and dataset roundtrip tests pass.
-
-Real 2026-2027 validation confirmed 32 franchise origins were added and identical reapplication added zero rows.
-
-##### Acceptance
-
-Annual NFL franchise-origin metadata can be prepared and applied without manually editing NFL_stadium_reference.csv.
-
-Renamed franchise venues are resolved only through explicit version-controlled aliases.
-
-New alternate and international venues remain unresolved until complete metadata is reviewed and approved.
-
-Historical metadata is preserved, application is atomic and idempotent, and remaining schedule coverage is reported truthfully.
-
-
-#### Static roof fallback
-
-Home/Away weather metadata now preserves populated game-level roof state and falls back to the canonical stadium reference only when the game roof is missing. Conflicting per-stadium roof identities are rejected, unknown roofs remain nullable, and covered venues continue to receive controlled-environment defaults. This repairs schedule metadata gaps without changing outdoor missing-weather policy.
-
-#### Static Roof Fallback
-
-##### Completed
-
-Home/Away weather metadata now preserves populated game-level roof state and falls back to the canonical stadium reference only when game-level roof metadata is absent.
-
-The weather feature includes actual game stadium identity in its shared historical and upcoming metadata lookup.
-
-Stadium-reference roof values are joined by exact stadium identity.
-
-Game-level roof metadata remains authoritative when populated.
-
-The stadium-reference spelling retractable roof is normalized to the canonical retractable covered-venue classification.
-
-Covered venues resolved through the fallback receive the existing controlled-environment defaults.
-
-Outdoor venues resolved through the fallback retain explicit null weather values when enriched weather is unavailable.
-
-Unknown stadiums with missing roof metadata retain nullable IS_DOME state.
-
-Conflicting roof identities for one stadium are rejected.
-
-Real 2026 Week 1 validation confirmed IS_DOME is complete across all 16 scheduled games.
-
-The Indianapolis and Houston retractable-roof games now receive controlled-environment weather defaults.
-
-Weather-incomplete Week 1 games decreased from 11 to 9.
-
-##### Goal
-
-Resolve deterministic roof state from static canonical venue metadata without changing the outdoor missing-weather policy.
-
-##### Tests
-
-Covered retractable-roof reference fallback, outdoor reference fallback, game-level metadata precedence, unknown stadium behavior, conflicting stadium roof identities, case-insensitive classification, canonical roof spelling normalization, and controlled-environment defaults.
-
-Ruff, Pyrefly, weather feature tests, and travel feature tests pass.
-
-##### Acceptance
-
-IS_DOME is complete for every 2026 Week 1 scheduled game.
-
-Known covered venues receive deterministic controlled-environment values even when enriched weather is unavailable.
-
-Outdoor venues continue to require enriched weather or a separately defined training-serving fallback policy.
-
-#### Outdoor Weather Climatology Fallback
-
-##### Completed
-
-Outdoor games now preserve available game-specific weather and fill only missing weather fields from empirical historical climatology.
+Outdoor games preserve every available game-specific weather field and fill
+only remaining null fields from empirical historical climatology.
 
 Continuous weather values use historical medians.
 
-Binary precipitation, snow, and low-visibility flags use historical modes.
+Precipitation, snow, and low-visibility flags use historical modes.
 
-The fallback first uses outdoor stadium-month climatology and then league-month climatology when an exact stadium-month sample is unavailable.
+The fallback first uses outdoor stadium-month climatology and then league-month
+climatology when the exact stadium-month identity has no historical sample.
 
-Covered venues retain controlled-environment defaults.
+Climatology is computed only in the canonical feature layer and is never written
+to the source weather artifact.
 
-Climatology is computed only in the canonical feature layer and is never persisted into the source weather artifact.
+A later weather observation or forecast for the same Game ID automatically
+supersedes climatology because fallback values fill only null fields.
 
-Later forecasts for the same GAME_ID automatically supersede climatology because fallback values fill only null fields.
+All 16 scheduled 2026 Week 1 games are complete across the 152-column expanded
+feature contract.
 
-Wind-chill delta is recomputed after final weather-source resolution.
+The previous canonical game-model rebuild produced current modeling artifacts,
+historical forecast backfills, five deployable game-model artifacts, Win
+calibrations, game champion selections, and a baseline comparison report.
 
-Private weather metadata identities prevent GAME_DATE and STADIUM merge collisions while preserving canonical input columns.
+A final game-only rebuild and retrain remains required because the early-season,
+stadium, roof, and climatology feature corrections were completed after that
+artifact cycle.
 
-Reduced roof-only historical and upcoming metadata fixtures remain supported.
+#### Goal
 
-Real 2026 Week 1 validation confirmed all 16 games are complete across all 152 expanded-model features.
+Complete one final game-only artifact rebuild and one real end-to-end weekly
+rehearsal using the final canonical feature definitions.
 
-##### Goal
+The workflow must resolve prediction policy before inference, execute the exact
+selected Win and Total models, persist immutable live forecast events, compose
+and explicitly select one schedule-complete weekly product, evaluate readiness,
+calculate edges when market data permits, and publish only outputs traceable to
+that selected product.
 
-Provide deterministic, empirically derived outdoor weather values before forecasts are available while allowing authoritative game-specific forecasts to replace fallback values automatically.
+#### Tests
 
-##### Tests
+Run the game-only full-retrain workflow with the explicit upcoming season:
 
-Covered stadium-month climatology, league-month fallback, forecast precedence, roof-only metadata compatibility, canonical column preservation, controlled covered-venue defaults, static roof fallback, weather conversions, travel compatibility, and model availability behavior.
+```bash
+uv run gridiron full-retrain \
+  --upcoming-season 2026 \
+  --skip-prop-backfill
+```
 
-Ruff, Pyrefly, focused feature tests, and availability tests pass.
+- Validate the rebuilt base and enriched modeling artifacts contain one unique row per canonical Game ID, the expected schema and data versions, the exact current feature sequence, the exact current feature contracts, and no retired orientation columns.
+- Validate historical Win and Total forecast backfills through the strict forecast-event boundary.
+- Validate all five deployable game-model artifacts through strict metadata readers.
+- Validate task identity, model identity, ordered feature contracts, estimator files, training timestamps, and task-appropriate metrics.
+- Validate refreshed Win calibration entries.
+- Validate Win and Total champion selections and the baseline comparison report.
+- Confirm trained-model availability for every scheduled 2026 Week 1 game.
 
-Real 2026 Week 1 validation confirmed zero null weather fields and 16 complete expanded-feature rows.
+Run:
+```bash
+uv run gridiron weekly-predict \
+  --season 2026-2027 \
+  --week 1
+```
 
-##### Acceptance
+- Verify that the executed Win and Total model identities match the resolved prediction policy.
+- Verify that persisted Win and Total forecast events share the invocation run identity while retaining independent model identity.
+- Verify that each selected model family produces exactly one event for every scheduled game.
+- Verify that the weekly product contains all 16 scheduled games.
+- Verify that available Win and Total components reference the exact persisted forecast events from the invocation.
+- Verify that component run identities match the weekly-product run identity.
+- Verify derived Spread, independent Total, projected-score, status, uncertainty, and provenance fields satisfy the final weekly-product contract.
+- Verify that the new product is explicitly selected as current for 2026-2027 Week 1.
 
-All 2026 Week 1 games are feature-complete for the 152-column expanded model contract.
+Run:
+```bash
+uv run gridiron verify-week \
+  --season 2026-2027 \
+  --week 1
+```
 
-Outdoor games without forecasts receive empirical climatology rather than arbitrary constants.
+- Verify that prediction readiness succeeds from the selected product.
+- Verify that missing or incomplete market data does not invalidate the selected prediction product or suppress forecast publication.
+- Verify that market blockers, non-calculable edges, valid zero-positive-edge results, and below-threshold results remain distinct.
+- Verify that blocked publication cannot leave stale forecast or edge files presented as current.
+- Run the full relevant Python quality gates after the real weekly rehearsal.
 
-Forecast ingestion requires no cleanup or overwrite of imputed source rows because climatology is never persisted.
+#### Acceptance
 
-Game-specific weather remains authoritative whenever available.
+- The final modeling artifacts and deployable game-model artifacts use the same canonical feature definitions as weekly inference.
+- All selected trained models can execute every scheduled 2026 Week 1 game.
+- One weekly-predict invocation resolves one availability-aware policy before inference and executes the exact selected Win and Total model identities.
+- That invocation persists immutable live forecast events, composes one schedule-complete weekly product, and explicitly selects that product as current.
+- Every available weekly-product component is traceable to the exact immutable forecast event, model identity, forecast run, calibration or uncertainty artifact, and product run that produced it.
+- Win and Total model identity remain independent.
+- All 16 scheduled games remain present regardless of prediction or market state.
+- Prediction readiness and market readiness remain independently visible.
+- Missing market data does not invalidate a prediction-ready selected product.
+- Blocked, unavailable, incomplete-market, non-calculable-edge, zero-positive-edge, and below-threshold states remain explicit and cannot leave stale outputs presented as current.
+- Published forecast and edge outputs identify the exact selected weekly product.
+- No runtime game-prediction path depends on TEAM_A, TEAM_B, HOME_FIELD, RESULT as a model target, doubled modeling rows, implicit forecast recency, hidden Elo fallback, or development-era persisted-artifact compatibility.
+- Unit 19 is complete when the final game-only retrain, real 2026 Week 1 weekly-predict run, selected-product and forecast-provenance inspection, verify-week result, stale-publication checks, and full relevant quality gates all pass.
 
 
 ---
