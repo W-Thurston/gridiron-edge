@@ -3556,6 +3556,52 @@ Immutable products remain independently addressable, and current state changes o
 Selected-product consumers load the same explicitly selected immutable product without model inference or latest-file inference.
 
 
+
+### Unit 19.5: Readiness and Publication Hardening
+
+#### Active
+
+Operational readiness now derives from the explicitly selected immutable weekly product.
+
+verify-week loads the selected product for the requested season and week and adapts its persisted component values and storage-owned provenance to the pure weekly readiness evaluator.
+
+Champion resolution, forecast-event reselection, and arbitrary forecast-run verification were removed from operational readiness.
+
+The retired --run-id option was removed because readiness describes the explicitly selected weekly product rather than an arbitrary forecast archive run.
+
+WeeklyReadiness retains complete operational readiness while exposing independent prediction_ready and market_ready properties.
+
+prediction_ready evaluates schedule, prediction-component, product, selection, and prediction-provenance blockers.
+
+market_ready evaluates market availability, scope, freshness, coverage, joins, completeness, and provenance blockers.
+
+The existing ready property remains true only when no operational blockers are present.
+
+Selected-product readiness remains read-only and performs no model inference, forecast selection, product selection, market ingestion, edge calculation, rendering, or persistence.
+
+Publication gating and stale-output removal remain in progress.
+
+#### Goal
+
+Evaluate whether the selected schedule-complete product is safe to publish and prevent stale forecast or edge outputs from appearing current.
+
+#### Tests
+
+Covered selected-product readiness assembly, missing selected products, prediction-only readiness, market-only blockers, complete operational readiness, removed forecast-run selection, removed --run-id support, read-only CLI behavior, and rich-schedule denominator preservation.
+
+Ruff, Pyrefly, weekly readiness tests, and verify-week tests pass.
+
+#### Acceptance
+
+Readiness derives from the explicitly selected weekly product.
+
+Forecast publication can proceed when prediction readiness passes even if markets are unavailable.
+
+Full operational readiness continues to require prediction, market, join, provenance, and edge-calculability inputs.
+
+Publication stages must still be gated by these readiness categories, and stale scope-based outputs must be removed when the current selected product cannot publish them.
+
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

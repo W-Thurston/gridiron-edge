@@ -79,6 +79,39 @@ _PREDICTION_PROVENANCE_COLUMNS: Final[tuple[str, ...]] = (
     "generated_at",
 )
 
+_PREDICTION_BLOCKERS: Final[frozenset[WeeklyReadinessBlocker]] = frozenset(
+    {
+        WeeklyReadinessBlocker.MISSING_SCHEDULE,
+        WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT,
+        WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS,
+        WeeklyReadinessBlocker.PARTIAL_WIN_PREDICTION_COVERAGE,
+        WeeklyReadinessBlocker.MISSING_SPREAD_VALUES,
+        WeeklyReadinessBlocker.PARTIAL_SPREAD_COVERAGE,
+        WeeklyReadinessBlocker.MISSING_TOTAL_PREDICTIONS,
+        WeeklyReadinessBlocker.PARTIAL_TOTAL_PREDICTION_COVERAGE,
+        WeeklyReadinessBlocker.MISSING_PROJECTED_SCORES,
+        WeeklyReadinessBlocker.PARTIAL_PROJECTED_SCORE_COVERAGE,
+        WeeklyReadinessBlocker.MISSING_MODEL_PROVENANCE,
+        WeeklyReadinessBlocker.PARTIAL_MODEL_PROVENANCE,
+        WeeklyReadinessBlocker.MISSING_PREDICTION_PROVENANCE,
+        WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,
+        WeeklyReadinessBlocker.AMBIGUOUS_FORECAST_SELECTION,
+    }
+)
+
+_MARKET_BLOCKERS: Final[frozenset[WeeklyReadinessBlocker]] = frozenset(
+    {
+        WeeklyReadinessBlocker.MISSING_MARKET_DATA,
+        WeeklyReadinessBlocker.MARKET_SCOPE_MISMATCH,
+        WeeklyReadinessBlocker.STALE_MARKET_DATA,
+        WeeklyReadinessBlocker.PARTIAL_MARKET_COVERAGE,
+        WeeklyReadinessBlocker.ZERO_PREDICTION_MARKET_MATCHES,
+        WeeklyReadinessBlocker.INCOMPLETE_MARKETS,
+        WeeklyReadinessBlocker.MISSING_MARKET_PROVENANCE,
+        WeeklyReadinessBlocker.AMBIGUOUS_MARKET_PROVENANCE,
+    }
+)
+
 
 @dataclass(frozen=True)
 class WeeklyReadiness:
@@ -167,6 +200,16 @@ class WeeklyReadiness:
     def ready(self) -> bool:
         """Return whether no operational blockers are present."""
         return not self.blockers
+
+    @property
+    def prediction_ready(self) -> bool:
+        """Return whether selected-product prediction inputs are publishable."""
+        return not any(blocker in _PREDICTION_BLOCKERS for blocker in self.blockers)
+
+    @property
+    def market_ready(self) -> bool:
+        """Return whether current market and join inputs are operationally ready."""
+        return not any(blocker in _MARKET_BLOCKERS for blocker in self.blockers)
 
     @property
     def has_positive_edges(self) -> bool:

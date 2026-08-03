@@ -22,17 +22,12 @@ from gridiron_edge.cli.verify_week import (
     validate_season_label,
     verify_week_cmd,
 )
-from gridiron_edge.evaluation.forecast_contracts import (
-    ForecastRole,
-)
-from gridiron_edge.evaluation.forecast_store import (
-    empty_forecast_events,
-)
 from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
     WeeklyReadinessBlocker,
 )
 from gridiron_edge.market.edge_diagnostics import (
+    EdgeDiagnosticBlocker,
     EdgeDiagnostics,
     EdgeResultState,
 )
@@ -64,99 +59,52 @@ def test_accepts_valid_season_label() -> None:
 
 @patch("gridiron_edge.market.weekly_edge_service.build_weekly_edge_result")
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
-@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_current_weekly_product")
 @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
-def test_explicit_run_builds_readiness_without_writes(
+def test_selected_product_builds_readiness_without_writes(
     mock_schedule: MagicMock,
-    mock_events: MagicMock,
+    mock_product: MagicMock,
     mock_markets: MagicMock,
     mock_edges: MagicMock,
     tmp_path: Path,
 ) -> None:
     generated_at = pd.Timestamp("2026-09-01T12:00:00Z")
     fetched_at = pd.Timestamp("2026-09-01T13:00:00Z")
-
     mock_schedule.return_value = pd.DataFrame(
-        {
-            "season": ["2026-2027"],
-            "week": [1],
-            "game_id": ["game-1"],
-        }
+        {"season": ["2026-2027"], "week": [1], "game_id": ["game-1"]}
     )
-
-    mock_events.return_value = pd.DataFrame(
+    mock_product.return_value = pd.DataFrame(
         {
-            "event_id": ["event-1"],
-            "run_id": ["run-1"],
-            "role": [ForecastRole.LIVE.value],
-            "generated_at": [generated_at],
             "season": ["2026-2027"],
             "week": [1],
             "game_id": ["game-1"],
-            "model_name": ["win_prob"],
-            "model_type": ["elo"],
-            "game_date": ["2026-09-05"],
-            "away_team": ["Away"],
-            "home_team": ["Home"],
-            "away_elo": [1500.0],
-            "home_elo": [1500.0],
-            "away_win_prob": [0.45],
             "home_win_prob": [0.55],
             "model_spread": [-1.5],
             "model_total": [44.5],
             "projected_home_score": [23.0],
             "projected_away_score": [21.5],
-            "margin_std": [13.0],
-            "win_prob_lo": [0.47],
-            "win_prob_hi": [0.63],
-            "confidence_tier": ["Low"],
+            "win_event_id": ["event-1"],
+            "product_run_id": ["run-1"],
+            "win_model_name": ["win_prob"],
+            "win_model_type": ["elo"],
+            "product_generated_at": [generated_at],
         }
     )
-
     mock_markets.return_value = pd.DataFrame(
         {
-            "fetched_at": [
-                fetched_at,
-                fetched_at,
-            ],
-            "sportsbook": [
-                "draftkings",
-                "draftkings",
-            ],
-            "season": [
-                "2026-2027",
-                "2026-2027",
-            ],
+            "fetched_at": [fetched_at, fetched_at],
+            "sportsbook": ["draftkings", "draftkings"],
+            "season": ["2026-2027", "2026-2027"],
             "week": [1, 1],
-            "game_id": [
-                "game-1",
-                "game-1",
-            ],
-            "market": [
-                "moneyline",
-                "moneyline",
-            ],
-            "side": [
-                "home",
-                "away",
-            ],
-            "odds": [
-                -110.0,
-                -110.0,
-            ],
-            "line": [
-                None,
-                None,
-            ],
+            "game_id": ["game-1", "game-1"],
+            "market": ["moneyline", "moneyline"],
+            "side": ["home", "away"],
+            "odds": [-110.0, -110.0],
+            "line": [None, None],
         }
     )
-
     mock_edges.return_value = EdgeResult(
-        rows=pd.DataFrame(
-            {
-                "ev": [0.04],
-            }
-        ),
+        rows=pd.DataFrame({"ev": [0.04]}),
         diagnostics=EdgeDiagnostics(
             season="2026-2027",
             week=1,
@@ -177,82 +125,60 @@ def test_explicit_run_builds_readiness_without_writes(
     result = load_weekly_readiness(
         season="2026-2027",
         week=1,
-        run_id="run-1",
-        repo=tmp_path,
-    )
-
-    mock_edges.assert_called_once_with(
-        season="2026-2027",
-        week=1,
-        bankroll=None,
-        kelly_multiplier=0.25,
-        min_ev=0.0,
         repo=tmp_path,
     )
 
     assert result.ready
-    assert result.scheduled_game_count == 1
+    assert result.prediction_ready
+    assert result.market_ready
     assert result.selected_win_prediction_count == 1
     assert result.positive_edge_count == 1
-    assert result.market_source == "draftkings"
 
 
+@patch("gridiron_edge.market.weekly_edge_service.build_weekly_edge_result")
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
-@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_current_weekly_product")
 @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
-def test_missing_explicit_run_is_blocked(
+def test_missing_selected_product_is_blocked(
     mock_schedule: MagicMock,
-    mock_events: MagicMock,
+    mock_product: MagicMock,
     mock_markets: MagicMock,
+    mock_edges: MagicMock,
     tmp_path: Path,
 ) -> None:
     mock_schedule.return_value = pd.DataFrame(
-        {
-            "season": ["2026-2027"],
-            "week": [1],
-            "game_id": ["game-1"],
-        }
+        {"season": ["2026-2027"], "week": [1], "game_id": ["game-1"]}
     )
-    mock_events.return_value = pd.DataFrame(
-        columns=[
-            "event_id",
-            "run_id",
-            "role",
-            "generated_at",
-            "season",
-            "week",
-            "game_id",
-            "model_name",
-            "model_type",
-            "game_date",
-            "away_team",
-            "home_team",
-            "away_elo",
-            "home_elo",
-            "away_win_prob",
-            "home_win_prob",
-            "model_spread",
-            "model_total",
-            "projected_home_score",
-            "projected_away_score",
-            "margin_std",
-            "win_prob_lo",
-            "win_prob_hi",
-            "confidence_tier",
-        ]
-    )
+    mock_product.side_effect = FileNotFoundError
     mock_markets.return_value = None
+    mock_edges.return_value = EdgeResult(
+        rows=pd.DataFrame(),
+        diagnostics=EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=0,
+            market_game_count=0,
+            matched_game_count=0,
+            complete_moneyline_count=0,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=0,
+            calculated_edge_count=0,
+            positive_edge_count=0,
+            filtered_edge_count=0,
+            state=EdgeResultState.BLOCKED,
+            blockers=(EdgeDiagnosticBlocker.NO_PREDICTIONS,),
+        ),
+    )
 
     result = load_weekly_readiness(
         season="2026-2027",
         week=1,
-        run_id="missing-run",
         repo=tmp_path,
     )
 
-    assert not result.ready
-    assert WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION in result.blockers
-    assert WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS in result.blockers
+    assert not result.prediction_ready
+    assert WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT in result.blockers
 
 
 def test_rejects_invalid_week(
@@ -345,16 +271,9 @@ class TestVerifyWeekCommand:
         mock_load.assert_called_once_with(
             season="2026-2027",
             week=1,
-            run_id=None,
         )
 
-    @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
-    def test_explicit_run_is_forwarded(
-        self,
-        mock_load: MagicMock,
-    ) -> None:
-        mock_load.return_value = _cli_readiness()
-
+    def test_run_id_option_is_not_supported(self) -> None:
         result = runner.invoke(
             _command_app(),
             [
@@ -367,12 +286,7 @@ class TestVerifyWeekCommand:
             ],
         )
 
-        assert result.exit_code == 0
-        mock_load.assert_called_once_with(
-            season="2026-2027",
-            week=1,
-            run_id="run-1",
-        )
+        assert result.exit_code != 0
 
     @patch("gridiron_edge.cli.verify_week.load_weekly_readiness")
     def test_blocked_readiness_exits_nonzero(
@@ -639,22 +553,21 @@ def test_rich_schedule_projects_to_readiness_identity() -> None:
 
 
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
-@patch("gridiron_edge.cli.verify_week.load_forecast_events")
+@patch("gridiron_edge.cli.verify_week.load_current_weekly_product")
 @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
 def test_missing_rich_schedule_remains_visible(
     mock_schedule: MagicMock,
-    mock_events: MagicMock,
+    mock_product: MagicMock,
     mock_markets: MagicMock,
     tmp_path: Path,
 ) -> None:
     mock_schedule.side_effect = FileNotFoundError
-    mock_events.return_value = empty_forecast_events()
+    mock_product.side_effect = FileNotFoundError
     mock_markets.return_value = None
 
     result = load_weekly_readiness(
         season="2026-2027",
         week=1,
-        run_id="run-1",
         repo=tmp_path,
     )
 

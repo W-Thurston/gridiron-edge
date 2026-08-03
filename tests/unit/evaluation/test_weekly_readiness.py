@@ -212,6 +212,8 @@ def test_blocker_makes_result_not_ready() -> None:
     )
 
     assert not result.ready
+    assert result.prediction_ready
+    assert not result.market_ready
     assert result.blockers == (WeeklyReadinessBlocker.MISSING_MARKET_DATA,)
 
 
@@ -224,6 +226,8 @@ def test_partial_prediction_coverage_is_representable() -> None:
     assert result.scheduled_game_count == 16
     assert result.selected_win_prediction_count == 15
     assert not result.ready
+    assert not result.prediction_ready
+    assert result.market_ready
 
 
 def test_no_predictions_is_distinct_from_no_market_data() -> None:

@@ -18,25 +18,8 @@ import typer
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.loaders import (
+    load_current_weekly_product,
     load_schedule_upcoming_rich,
-)
-from gridiron_edge.evaluation.champion_resolver import (
-    ChampionNotFoundError,
-    resolve_current_champion,
-)
-from gridiron_edge.evaluation.forecast_contracts import (
-    SelectedForecast,
-)
-from gridiron_edge.evaluation.forecast_selection import (
-    ForecastCandidateIdentity,
-    ForecastCandidateStatus,
-    resolve_forecast_candidates,
-    select_forecast_events,
-    select_forecast_run,
-)
-from gridiron_edge.evaluation.forecast_store import (
-    empty_forecast_events,
-    load_forecast_events,
 )
 from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
@@ -167,120 +150,66 @@ def _load_markets(
     return markets.copy()
 
 
-def _scheduled_game_ids(
-    schedule: DataFrame,
-    *,
-    season: str,
-    week: int,
-) -> list:
-    """Return scheduled rich-artifact game IDs deterministically."""
-    required: set[str] = {
+def _empty_predictions() -> DataFrame:
+    """Return the minimum prediction contract for readiness evaluation."""
+    return DataFrame(
+        columns=[
+            "season",
+            "week",
+            "game_id",
+            "home_win_prob",
+            "model_spread",
+            "model_total",
+            "projected_home_score",
+            "projected_away_score",
+            "event_id",
+            "run_id",
+            "model_name",
+            "model_type",
+            "generated_at",
+        ]
+    )
+
+
+def _selected_product_for_readiness(product: DataFrame) -> DataFrame:
+    """Adapt one explicitly selected weekly product to readiness inputs."""
+    required = {
         "season",
         "week",
         "game_id",
+        "home_win_prob",
+        "model_spread",
+        "model_total",
+        "projected_home_score",
+        "projected_away_score",
+        "win_event_id",
+        "product_run_id",
+        "win_model_name",
+        "win_model_type",
+        "product_generated_at",
     }
-    if not required.issubset(schedule.columns):
-        return []
-
-    scoped = schedule.loc[
-        (schedule["season"].astype(str) == season) & (schedule["week"] == week),
-        "game_id",
-    ]
-
-    return sorted({str(game_id) for game_id in scoped.dropna() if str(game_id).strip()})
-
-
-def _select_run_predictions(
-    events: DataFrame,
-    *,
-    run_id: str,
-) -> tuple[
-    DataFrame,
-    tuple[WeeklyReadinessBlocker, ...],
-]:
-    """Select one explicit run and retain its win-probability rows."""
-    result = select_forecast_run(
-        events,
-        run_id=run_id,
-    )
-
-    if not result.found:
-        return (
-            empty_forecast_events(),
-            (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,),
-        )
-
-    predictions = result.events.loc[
-        result.events["model_name"] == "win_prob",
-        :,
-    ].copy()
-
-    if predictions.empty:
-        return (
-            predictions,
-            (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,),
-        )
-
-    if predictions["game_id"].duplicated().any():
-        return (
-            predictions.iloc[0:0].copy(),
-            (WeeklyReadinessBlocker.AMBIGUOUS_FORECAST_SELECTION,),
-        )
-
-    return predictions.reset_index(drop=True), ()
-
-
-def _select_current_predictions(
-    events: DataFrame,
-    *,
-    scheduled_game_ids: list[str],
-    model_type: str,
-) -> tuple[
-    DataFrame,
-    tuple[WeeklyReadinessBlocker, ...],
-]:
-    """Select uniquely eligible champion events for scheduled games."""
-    identities = [
-        ForecastCandidateIdentity(
-            game_id=game_id,
-            model_name="win_prob",
-            model_type=model_type,
-        )
-        for game_id in scheduled_game_ids
-    ]
-
-    resolutions = resolve_forecast_candidates(
-        events,
-        identities,
-    )
-
-    references: list[SelectedForecast] = []
-    missing = False
-    ambiguous = False
-
-    for resolution in resolutions:
-        if resolution.status is ForecastCandidateStatus.SELECTED:
-            if resolution.selected is not None:
-                references.append(resolution.selected)
-        elif resolution.status is ForecastCandidateStatus.MISSING:
-            missing = True
-        elif resolution.status is ForecastCandidateStatus.AMBIGUOUS:
-            ambiguous = True
-
-    blockers: list[WeeklyReadinessBlocker] = []
-
+    missing = sorted(required - set(product.columns))
     if missing:
-        blockers.append(WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION)
-
-    if ambiguous:
-        blockers.append(WeeklyReadinessBlocker.AMBIGUOUS_FORECAST_SELECTION)
-
-    selected = select_forecast_events(
-        events,
-        references,
+        raise ValueError(
+            "Selected weekly product is missing required columns: " + ", ".join(missing)
+        )
+    return DataFrame(
+        {
+            "season": product["season"],
+            "week": product["week"],
+            "game_id": product["game_id"],
+            "home_win_prob": product["home_win_prob"],
+            "model_spread": product["model_spread"],
+            "model_total": product["model_total"],
+            "projected_home_score": product["projected_home_score"],
+            "projected_away_score": product["projected_away_score"],
+            "event_id": product["win_event_id"],
+            "run_id": product["product_run_id"],
+            "model_name": product["win_model_name"],
+            "model_type": product["win_model_type"],
+            "generated_at": product["product_generated_at"],
+        }
     )
-
-    return selected.events, tuple(blockers)
 
 
 def _load_edge_result(
@@ -392,67 +321,36 @@ def load_weekly_readiness(
     *,
     season: str,
     week: int,
-    run_id: str | None = None,
     repo: Path | None = None,
 ) -> WeeklyReadiness:
-    """Load existing weekly artifacts and derive readiness.
-
-    This function performs reads and in-memory analysis only. It does not
-    fetch, generate, enrich, persist, or render artifacts.
-    """
+    """Load the selected weekly product and derive read-only readiness."""
     validate_season_label(season)
-
     if week < 1 or week > 22:
         raise ValueError("week must be between 1 and 22.")
 
-    if run_id is not None and not run_id.strip():
-        raise ValueError("run_id must not be empty when provided.")
-
     resolved_repo = repo or get_settings().repo_root
-
     rich_schedule = _load_schedule(resolved_repo)
     readiness_schedule = _schedule_for_readiness(rich_schedule)
     markets = _load_markets(resolved_repo)
 
-    events = load_forecast_events(
-        season=season,
-        week=week,
-        repo=resolved_repo,
-    )
-
-    game_ids = _scheduled_game_ids(
-        rich_schedule,
-        season=season,
-        week=week,
-    )
-
-    if run_id is not None:
-        predictions, selection_blockers = _select_run_predictions(
-            events,
-            run_id=run_id,
+    selection_blockers: tuple[WeeklyReadinessBlocker, ...] = ()
+    try:
+        product = load_current_weekly_product(
+            resolved_repo,
+            season=season,
+            week=week,
         )
+    except FileNotFoundError:
+        predictions = _empty_predictions()
+        selection_blockers = (WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT,)
     else:
-        try:
-            _, model_type = resolve_current_champion(
-                "win_prob",
-                repo=resolved_repo,
-            )
-        except ChampionNotFoundError:
-            predictions = empty_forecast_events()
-            selection_blockers = (WeeklyReadinessBlocker.MISSING_FORECAST_SELECTION,)
-        else:
-            predictions, selection_blockers = _select_current_predictions(
-                events,
-                scheduled_game_ids=game_ids,
-                model_type=model_type,
-            )
+        predictions = _selected_product_for_readiness(product)
 
     edge_result = _load_edge_result(
         season=season,
         week=week,
         repo=resolved_repo,
     )
-
     readiness = evaluate_weekly_readiness(
         season=season,
         week=week,
@@ -461,15 +359,13 @@ def load_weekly_readiness(
         markets=markets,
         edges=edge_result.rows,
     )
-
     readiness = replace(
         readiness,
-        market_game_count=(edge_result.diagnostics.market_game_count),
-        prediction_market_match_count=(edge_result.diagnostics.matched_game_count),
-        eligible_market_count=(edge_result.diagnostics.eligible_market_count),
-        positive_edge_count=(edge_result.diagnostics.positive_edge_count),
+        market_game_count=edge_result.diagnostics.market_game_count,
+        prediction_market_match_count=edge_result.diagnostics.matched_game_count,
+        eligible_market_count=edge_result.diagnostics.eligible_market_count,
+        positive_edge_count=edge_result.diagnostics.positive_edge_count,
     )
-
     return _with_selection_blockers(
         readiness,
         (
@@ -534,15 +430,6 @@ def verify_week_cmd(
         max=22,
         help="NFL week number from 1 through 22.",
     ),
-    run_id: str | None = typer.Option(
-        None,
-        "--run-id",
-        help=(
-            "Exact forecast run to verify. When omitted, "
-            "resolve the current win-probability champion's "
-            "eligible events without using recency."
-        ),
-    ),
 ) -> None:
     """Verify weekly operational readiness without modifying data."""
     try:
@@ -550,7 +437,6 @@ def verify_week_cmd(
         readiness = load_weekly_readiness(
             season=validated_season,
             week=week,
-            run_id=run_id,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
