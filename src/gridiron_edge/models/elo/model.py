@@ -22,7 +22,6 @@ from typing import ClassVar, Final
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
 from gridiron_edge.models.registry import ModelRegistry
@@ -69,9 +68,8 @@ def _build_elo_predictions(
     for gid in game_ids:
         try:
             row = games_indexed.loc[gid]
-            away_won = row["GAME_LOCATION"] == _AWAY_WIN_LOCATION
-            away_teams.append(str(row["WINNER"]) if away_won else str(row["LOSER"]))
-            home_teams.append(str(row["LOSER"]) if away_won else str(row["WINNER"]))
+            away_teams.append(str(row["AWAY_TEAM"]))
+            home_teams.append(str(row["HOME_TEAM"]))
             game_dates.append(str(row.get("GAME_DATE", "")))
         except KeyError:
             away_teams.append("")

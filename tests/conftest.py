@@ -6,7 +6,7 @@ Markers are applied automatically based on the test file's directory:
   tests/integration → @pytest.mark.integration
   tests/e2e/        → @pytest.mark.e2e
 
-Existing unmarked tests (during migration) are treated as unit tests.
+Tests outside a marker directory are treated as unit tests.
 """
 
 from __future__ import annotations
@@ -44,6 +44,6 @@ def pytest_collection_modifyitems(
                 matched = True
                 break
 
-        # During migration: unmarked top-level tests get 'unit' by default
+        # Tests outside a marker directory default to the unit marker.
         if not matched:
             item.add_marker(pytest.mark.unit)

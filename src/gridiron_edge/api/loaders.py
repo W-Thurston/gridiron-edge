@@ -63,35 +63,96 @@ def load_current_bankroll(settings: Settings) -> float:
     return current_balance(repo=settings.repo_root)
 
 
-def resolve_current_week(settings: Settings) -> tuple[int, int, str]:
-    """Resolve the current NFL (season, week) from the schedule.
+def resolve_current_week(
+    settings: Settings,
+) -> tuple[int, int, str]:
+    """Resolve the current NFL season start year and week.
 
-    Returns (season, week, source_label). If the schedule is unavailable
-    or empty, falls back to (current_nfl_season(), 1, "fallback").
+    Returns:
+        Tuple of season start year, week, and source label.
+        If the rich upcoming schedule is unavailable, empty, or
+        structurally invalid, returns the current NFL season,
+        Week 1, and ``"fallback"``.
     """
-    from gridiron_edge.core.settings import current_nfl_season
-    from gridiron_edge.datasets.loaders import load_schedule_upcoming
+    from gridiron_edge.core.settings import (
+        current_nfl_season,
+    )
+    from gridiron_edge.datasets.loaders import (
+        load_schedule_upcoming_rich,
+    )
 
-    season = current_nfl_season()
+    fallback_season = current_nfl_season()
 
     try:
-        schedule = load_schedule_upcoming(settings.repo_root)
+        schedule = load_schedule_upcoming_rich(settings.repo_root)
     except FileNotFoundError:
-        return (season, 1, "fallback")
+        return (
+            fallback_season,
+            1,
+            "fallback",
+        )
 
-    if schedule.empty:
-        return (season, 1, "fallback")
+    required = {
+        "season",
+        "week",
+    }
+    if schedule.empty or not required.issubset(schedule.columns):
+        return (
+            fallback_season,
+            1,
+            "fallback",
+        )
 
-    # The schedule is upcoming games; the first row after sorting is the
-    # nearest upcoming week, which we treat as "current" for scheduling.
-    # NOTE: column names assumed to be `season` and `week`. If the actual
-    # columns differ, this is the one line to update.
-    sort_cols = [c for c in ("season", "week") if c in schedule.columns]
-    if not sort_cols:
-        return (season, 1, "fallback")
+    valid = schedule.dropna(
+        subset=[
+            "season",
+            "week",
+        ]
+    ).copy()
+    if valid.empty:
+        return (
+            fallback_season,
+            1,
+            "fallback",
+        )
 
-    latest = schedule.sort_values(sort_cols).iloc[0]
-    return (int(latest["season"]), int(latest["week"]), "schedule")
+    valid["week"] = pd.to_numeric(
+        valid["week"],
+        errors="coerce",
+    )
+    valid = valid.dropna(
+        subset=[
+            "week",
+        ]
+    )
+    if valid.empty:
+        return (
+            fallback_season,
+            1,
+            "fallback",
+        )
+
+    first = valid.sort_values(
+        [
+            "season",
+            "week",
+        ],
+        kind="stable",
+    ).iloc[0]
+
+    season_label = str(first["season"])
+    season_start = int(
+        season_label.split(
+            "-",
+            maxsplit=1,
+        )[0]
+    )
+
+    return (
+        season_start,
+        int(first["week"]),
+        "schedule",
+    )
 
 
 def load_evaluation_df(
@@ -150,7 +211,7 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
     """
     from gridiron_edge.datasets.loaders import (
         load_games,
-        load_schedule_upcoming,
+        load_schedule_upcoming_rich,
     )
 
     games = load_games(settings.repo_root)
@@ -165,18 +226,43 @@ def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
     # Season complete (SB played) → look forward to the upcoming slate.
     if latest_week >= 22:
         try:
-            upcoming = load_schedule_upcoming(settings.repo_root)
+            upcoming = load_schedule_upcoming_rich(settings.repo_root)
         except FileNotFoundError:
             upcoming = None
 
-        if upcoming is not None and not upcoming.empty:
-            # Upcoming schedule columns: confirm the season/week columns.
-            season_col = next((c for c in ("YEAR", "season") if c in upcoming.columns), None)
-            week_col = next((c for c in ("WEEK_NUM", "week") if c in upcoming.columns), None)
-            if season_col and week_col:
-                up_sorted = upcoming.sort_values([season_col, week_col])
-                up_first = up_sorted.iloc[0]
-                return (str(up_first[season_col]), int(up_first[week_col]))
+        rich_required = {
+            "season",
+            "week",
+        }
+        if upcoming is not None and not upcoming.empty and rich_required.issubset(upcoming.columns):
+            valid_upcoming = upcoming.dropna(
+                subset=[
+                    "season",
+                    "week",
+                ]
+            ).copy()
+            valid_upcoming["week"] = pd.to_numeric(
+                valid_upcoming["week"],
+                errors="coerce",
+            )
+            valid_upcoming = valid_upcoming.dropna(
+                subset=[
+                    "week",
+                ]
+            )
+
+            if not valid_upcoming.empty:
+                up_first = valid_upcoming.sort_values(
+                    [
+                        "season",
+                        "week",
+                    ],
+                    kind="stable",
+                ).iloc[0]
+                return (
+                    str(up_first["season"]),
+                    int(up_first["week"]),
+                )
 
     return (latest_season, latest_week)
 
@@ -330,7 +416,7 @@ def load_projection_grid_data(
     Sources:
         - ``data/output/temp/season_grid.csv`` for Week 1-18 win
           probabilities.
-        - The cleaned upcoming schedule for matchup, venue perspective,
+        - The rich upcoming schedule for matchup, venue perspective,
           date, time, and confirmed bye detection.
         - The cleaned games dataset for completed regular-season results.
         - The unified team-name mapping for long-name to abbreviation
@@ -348,7 +434,7 @@ def load_projection_grid_data(
     """
     from gridiron_edge.datasets.loaders import (
         load_games,
-        load_schedule_upcoming,
+        load_schedule_upcoming_rich,
     )
 
     probability_path = settings.repo_root / "data" / "output" / "temp" / "season_grid.csv"
@@ -357,14 +443,14 @@ def load_projection_grid_data(
 
     schedule_available = True
     try:
-        schedule = load_schedule_upcoming(settings.repo_root)
+        schedule = load_schedule_upcoming_rich(settings.repo_root)
     except FileNotFoundError:
         schedule = pd.DataFrame()
         schedule_available = False
 
     season = ""
-    if not schedule.empty and "YEAR" in schedule.columns:
-        season_values = schedule["YEAR"].dropna().astype(str)
+    if not schedule.empty and "season" in schedule.columns:
+        season_values = schedule["season"].dropna().astype(str)
         if not season_values.empty:
             season = sorted(season_values.unique())[-1]
 
@@ -374,9 +460,27 @@ def load_projection_grid_data(
         except FileNotFoundError:
             season = ""
 
-    if not schedule.empty and season and {"YEAR", "WEEK_NUM"}.issubset(schedule.columns):
+    rich_required = {
+        "season",
+        "week",
+        "game_id",
+        "away_team",
+        "home_team",
+    }
+
+    if not schedule.empty and season and rich_required.issubset(schedule.columns):
+        schedule_weeks = pd.to_numeric(
+            schedule["week"],
+            errors="coerce",
+        )
         schedule = schedule.loc[
-            (schedule["YEAR"].astype(str) == season) & schedule["WEEK_NUM"].between(1, 18)
+            (schedule["season"].astype(str).eq(season))
+            # pyrefly: ignore [missing-attribute]
+            & schedule_weeks.between(
+                1,
+                18,
+            ),
+            :,
         ].copy()
     elif not schedule.empty:
         schedule = pd.DataFrame()

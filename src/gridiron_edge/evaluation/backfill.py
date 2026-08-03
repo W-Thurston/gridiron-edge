@@ -158,7 +158,11 @@ def _backfill_current_model(
     model = cast(GameModel, ModelRegistry.get(registry_key)())
 
     games_raw: DataFrame = loaders.load_games(repo)
-    games: DataFrame = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()
+    completed_mask = games_raw["AWAY_SCORE"].notna() & games_raw["HOME_SCORE"].notna()
+    games: DataFrame = games_raw.loc[
+        completed_mask,
+        :,
+    ].copy()
 
     return model.predict_historical(games, repo=repo)
 

@@ -12,8 +12,8 @@ class TestDatasetRegistry:
     def test_datasets_not_empty(self) -> None:
         assert len(DATASETS) > 0
 
-    def test_has_21_keys(self) -> None:
-        assert len(DATASETS) == 21
+    def test_has_20_keys(self) -> None:
+        assert len(DATASETS) == 20
 
     def test_all_values_are_dataset_spec(self) -> None:
         for key, spec in DATASETS.items():
@@ -31,7 +31,6 @@ class TestDatasetRegistry:
             "schedule_upcoming_raw_nflverse",
             # Cleaned datasets
             "games",
-            "schedule_upcoming",
             "schedule_upcoming_rich",
             "weather_enriched",
             "elo_state",
@@ -54,6 +53,7 @@ class TestDatasetRegistry:
             "weekly_products",
         }
         assert set(DATASETS.keys()) == expected
+        assert DATASETS["schedule_upcoming_rich"].relpath.endswith(".parquet")
 
     def test_raw_datasets_are_parquet(self) -> None:
         for key in ("games_raw_nflverse", "schedule_upcoming_raw_nflverse"):

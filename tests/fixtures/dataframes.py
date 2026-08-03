@@ -35,13 +35,9 @@ import pandas as pd
 
 _GAME_DEFAULTS: dict[str, Any] = {
     "GAME_ID": "2024_01_KC_LV",
-    "WINNER": "Kansas City Chiefs",
-    "LOSER": "Las Vegas Raiders",
-    "WIN_OR_TIE": 1,
     "YEAR": "2024-2025",
     "WEEK_NUM": 1,
     "GAME_DATE": "2024-09-05",
-    "GAME_LOCATION": "NULL_VALUE",
     "AWAY_TEAM": "Las Vegas Raiders",
     "HOME_TEAM": "Kansas City Chiefs",
     "AWAY_SCORE": 20,
@@ -53,8 +49,6 @@ _GAME_DEFAULTS: dict[str, Any] = {
     "GAMETIME": "20:20",
     "GAME_DAY_OF_WEEK": "Thursday",
     "DIV_GAME": 1,
-    "PTS_WINNER": 27,
-    "PTS_LOSER": 20,
     "VEGAS_LINE": -3.5,
     "OVER_UNDER": 47.5,
     "FAVORITED": "Kansas City Chiefs",
@@ -771,45 +765,10 @@ def make_games_from_modeling_df(
         ],
     ].copy()
 
-    away_won = games["AWAY_SCORE"] > games["HOME_SCORE"]
-    home_won = games["HOME_SCORE"] > games["AWAY_SCORE"]
-    tied = ~away_won & ~home_won
+    tied = games["AWAY_SCORE"] == games["HOME_SCORE"]
 
     if tied.any():
         raise ValueError("Synthetic game fixtures must not contain tied scores.")
-
-    games["WINNER"] = games["HOME_TEAM"].where(
-        home_won,
-        games["AWAY_TEAM"],
-    )
-    games["LOSER"] = games["AWAY_TEAM"].where(
-        home_won,
-        games["HOME_TEAM"],
-    )
-    games["WIN_OR_TIE"] = 1.0
-
-    games["GAME_LOCATION"] = "@"
-    games.loc[
-        home_won,
-        "GAME_LOCATION",
-    ] = "NULL_VALUE"
-    games.loc[
-        games["IS_NEUTRAL_SITE"].eq(1),
-        "GAME_LOCATION",
-    ] = "N"
-
-    games["PTS_WINNER"] = games[
-        [
-            "AWAY_SCORE",
-            "HOME_SCORE",
-        ]
-    ].max(axis=1)
-    games["PTS_LOSER"] = games[
-        [
-            "AWAY_SCORE",
-            "HOME_SCORE",
-        ]
-    ].min(axis=1)
 
     rng: Generator = np.random.default_rng(seed)
 

@@ -87,15 +87,19 @@ def test_modeling_fixture_excludes_retired_orientation() -> None:
         games_per_season=2,
     )
 
-    retired = {
+    retired: set[str] = {
         "TEAM_A",
         "TEAM_B",
         "HOME_FIELD",
         "RESULT",
         "TEAM_A_ELO",
         "TEAM_B_ELO",
+        "WINNER",
+        "LOSER",
+        "GAME_LOCATION",
         "PTS_WINNER",
         "PTS_LOSER",
+        "WIN_OR_TIE",
     }
 
     assert retired.isdisjoint(frame.columns)
@@ -111,6 +115,16 @@ def test_games_fixture_copies_canonical_identity() -> None:
     )
 
     games = make_games_from_modeling_df(modeling)
+    retired = {
+        "WINNER",
+        "LOSER",
+        "GAME_LOCATION",
+        "PTS_WINNER",
+        "PTS_LOSER",
+        "WIN_OR_TIE",
+    }
+
+    assert retired.isdisjoint(games.columns)
 
     pd.testing.assert_frame_equal(
         games.loc[

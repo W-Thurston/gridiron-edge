@@ -39,11 +39,11 @@ def _make_games() -> pd.DataFrame:
             "GAME_ID",
             "WEEK_NUM",
             "GAME_DATE",
-            "WINNER",
-            "LOSER",
-            "GAME_LOCATION",
-            "PTS_WINNER",
-            "PTS_LOSER",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "AWAY_SCORE",
+            "HOME_SCORE",
+            "IS_NEUTRAL_SITE",
             "YEAR",
         ]
     )

@@ -5,7 +5,6 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from gridiron_edge.core.constants import AWAY_WIN_LOCATION
 from gridiron_edge.ratings.elo.simulator import (
     EloSimulationResult,
     simulate_elo_history,
@@ -14,16 +13,19 @@ from gridiron_edge.ratings.elo.simulator import (
 
 
 def _make_games() -> pd.DataFrame:
-    """Tiny fake history with one game per season for two seasons."""
+    """Tiny canonical history with one game in each season."""
     return pd.DataFrame(
         {
             "YEAR": ["2023-2024", "2024-2025"],
             "WEEK_NUM": [1, 1],
-            "WINNER": ["KC", "BUF"],
-            "LOSER": ["LAC", "MIA"],
-            "WIN_OR_TIE": [1.0, 1.0],
-            "GAME_LOCATION": [AWAY_WIN_LOCATION, "H"],
-            "GAME_ID": ["2023_01_KC_LAC", "2024_01_BUF_MIA"],
+            "AWAY_TEAM": ["KC", "BUF"],
+            "HOME_TEAM": ["LAC", "MIA"],
+            "AWAY_SCORE": [27, 17],
+            "HOME_SCORE": [20, 24],
+            "GAME_ID": [
+                "2023_01_KC_LAC",
+                "2024_01_BUF_MIA",
+            ],
         }
     )
 
@@ -97,12 +99,75 @@ def test_winner_gains_loser_loses() -> None:
         regress_frac=0.0,
     )
 
-    # In the first game KC beat LAC (away win since GAME_LOCATION == "@").
+    # In the first game, Away team KC beat Home team LAC.
     kc_week2 = result.elo[("KC", "2023-2024", 2)]
     lac_week2 = result.elo[("LAC", "2023-2024", 2)]
 
     assert kc_week2 > 1500.0
     assert lac_week2 < 1500.0
+    assert result.away_outcomes == [1.0]
+
+
+def test_home_winner_gains_and_away_loser_loses() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2023-2024"],
+            "WEEK_NUM": [1],
+            "AWAY_TEAM": ["KC"],
+            "HOME_TEAM": ["LAC"],
+            "AWAY_SCORE": [17],
+            "HOME_SCORE": [24],
+            "GAME_ID": ["2023_01_KC_LAC"],
+        }
+    )
+
+    result = simulate_elo_history(
+        games,
+        ["2023-2024"],
+        {"2023-2024": {"KC", "LAC"}},
+        expansion_start={},
+        k_early=20.0,
+        k_mid=20.0,
+        k_week18=20.0,
+        k_post=20.0,
+        divisor=480.0,
+        regress_frac=0.0,
+    )
+
+    assert result.away_outcomes == [0.0]
+    assert result.elo[("KC", "2023-2024", 2)] < 1500.0
+    assert result.elo[("LAC", "2023-2024", 2)] > 1500.0
+
+
+def test_tie_records_half_outcome_and_preserves_ratings() -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2023-2024"],
+            "WEEK_NUM": [1],
+            "AWAY_TEAM": ["KC"],
+            "HOME_TEAM": ["LAC"],
+            "AWAY_SCORE": [21],
+            "HOME_SCORE": [21],
+            "GAME_ID": ["2023_01_KC_LAC"],
+        }
+    )
+
+    result = simulate_elo_history(
+        games,
+        ["2023-2024"],
+        {"2023-2024": {"KC", "LAC"}},
+        expansion_start={},
+        k_early=20.0,
+        k_mid=20.0,
+        k_week18=20.0,
+        k_post=20.0,
+        divisor=480.0,
+        regress_frac=0.0,
+    )
+
+    assert result.away_outcomes == [0.5]
+    assert result.elo[("KC", "2023-2024", 2)] == pytest.approx(1500.0)
+    assert result.elo[("LAC", "2023-2024", 2)] == pytest.approx(1500.0)
 
 
 def test_zero_sum_invariant_within_a_game() -> None:

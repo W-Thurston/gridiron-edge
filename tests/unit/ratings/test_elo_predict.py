@@ -12,6 +12,7 @@ import pytest
 
 from gridiron_edge.datasets.writers import (
     write_csv,
+    write_parquet,
 )
 from gridiron_edge.ratings.elo.predict import (
     EloPredictionStatus,
@@ -22,49 +23,53 @@ from gridiron_edge.ratings.elo.predict import (
 
 
 def _schedule() -> DataFrame:
-    """Create focused schedule rows with location context."""
+    """Create canonical rich upcoming schedule rows."""
     return DataFrame(
         {
-            "WEEK_NUM": [1, 1, 2],
-            "GAME_DAY_OF_WEEK": [
-                "Sunday",
-                "Sunday",
-                "Thursday",
-            ],
-            "GAME_DATE": [
-                "2026-09-06",
-                "2026-09-06",
-                "2026-09-10",
-            ],
-            "AWAY_TEAM": [
-                "Kansas City Chiefs",
-                "Baltimore Ravens",
-                "Green Bay Packers",
-            ],
-            "HOME_TEAM": [
-                "Los Angeles Chargers",
-                "Buffalo Bills",
-                "Chicago Bears",
-            ],
-            "GAMETIME": [
-                "20:20:00",
-                "13:00:00",
-                "20:15:00",
-            ],
-            "YEAR": [
+            "season": [
                 "2026-2027",
                 "2026-2027",
                 "2026-2027",
             ],
-            "GAME_ID": [
+            "week": [
+                1,
+                1,
+                2,
+            ],
+            "game_id": [
                 "2026_01_KC_LAC",
                 "2026_01_BAL_BUF",
                 "2026_02_GB_CHI",
             ],
-            "GAME_LOCATION": [
-                "H",
-                "N",
-                "H",
+            "game_day_of_week": [
+                "Sunday",
+                "Sunday",
+                "Thursday",
+            ],
+            "game_date": [
+                "2026-09-06",
+                "2026-09-06",
+                "2026-09-10",
+            ],
+            "game_time": [
+                "20:20:00",
+                "13:00:00",
+                "20:15:00",
+            ],
+            "away_team": [
+                "Kansas City Chiefs",
+                "Baltimore Ravens",
+                "Green Bay Packers",
+            ],
+            "home_team": [
+                "Los Angeles Chargers",
+                "Buffalo Bills",
+                "Chicago Bears",
+            ],
+            "neutral_site": [
+                0,
+                1,
+                0,
             ],
         }
     )
@@ -160,7 +165,7 @@ def test_neutral_site_identity_is_preserved() -> None:
 
     neutral = result.loc[result["GAME_ID"] == "2026_01_BAL_BUF"].iloc[0]
 
-    assert neutral["GAME_LOCATION"] == "N"
+    assert neutral["IS_NEUTRAL_SITE"] == 1
     assert neutral["AWAY_TEAM"] == "Baltimore Ravens"
     assert neutral["HOME_TEAM"] == "Buffalo Bills"
 
@@ -243,8 +248,8 @@ def test_rejects_duplicate_elo_identity() -> None:
     [
         (
             "schedule",
-            "GAME_ID",
-            "Schedule is missing required columns: GAME_ID",
+            "game_id",
+            "Rich upcoming schedule is missing required columns: game_id",
         ),
         (
             "elo",
@@ -281,9 +286,9 @@ def test_rejects_missing_required_columns(
 def test_file_loading_entrypoint_uses_registered_datasets(
     tmp_path: Path,
 ) -> None:
-    write_csv(
+    write_parquet(
         tmp_path,
-        "schedule_upcoming",
+        "schedule_upcoming_rich",
         _schedule(),
     )
     write_csv(

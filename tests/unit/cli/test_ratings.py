@@ -66,3 +66,31 @@ def test_elo_predict_requires_week() -> None:
     )
 
     assert result.exit_code == 2
+
+
+def test_elo_help_exposes_only_current_commands() -> None:
+    result = runner.invoke(
+        ratings_app,
+        [
+            "elo",
+            "--help",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "fit" in result.output
+    assert "predict" in result.output
+    assert "evaluate" not in result.output
+
+
+def test_removed_elo_evaluate_command_is_rejected() -> None:
+    result = runner.invoke(
+        ratings_app,
+        [
+            "elo",
+            "evaluate",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "No such command" in result.output

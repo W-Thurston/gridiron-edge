@@ -1,6 +1,6 @@
 # tests/integration/test_upcoming_schedule_artifacts.py
 
-"""Integration tests for dual upcoming-schedule artifacts."""
+"""Integration tests for the canonical rich upcoming schedule."""
 
 from __future__ import annotations
 
@@ -12,13 +12,11 @@ from pandas import DataFrame
 import pytest
 
 from gridiron_edge.datasets.loaders import (
-    load_schedule_upcoming,
     load_schedule_upcoming_rich,
 )
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.datasets.writers import write_parquet
 from gridiron_edge.transform.clean.schedule_nflverse import (
-    ELO_UPCOMING_COLUMNS,
     RICH_UPCOMING_COLUMNS,
     clean_nflverse_upcoming,
 )
@@ -145,53 +143,29 @@ def _raw_schedule() -> DataFrame:
     )
 
 
-def test_raw_schedule_builds_complete_rich_and_focused_artifacts(
-    tmp_path: Path,
-) -> None:
+def test_raw_schedule_builds_complete_rich_artifact(tmp_path: Path) -> None:
     raw = _raw_schedule()
-    timestamp = datetime(
-        2026,
-        7,
-        30,
-        18,
-        tzinfo=UTC,
-    )
-
+    timestamp = datetime(2026, 7, 30, 18, tzinfo=UTC)
     raw_path = write_parquet(
         tmp_path,
         "schedule_upcoming_raw_nflverse",
         raw,
     )
-
-    focused_path = clean_nflverse_upcoming(
-        repo=tmp_path,
-        ingested_at=timestamp,
-    )
-
-    rich_path = dataset_path(
-        tmp_path,
-        "schedule_upcoming_rich",
-    )
+    result_path = clean_nflverse_upcoming(repo=tmp_path, ingested_at=timestamp)
+    rich_path = dataset_path(tmp_path, "schedule_upcoming_rich")
+    old_focused_path = tmp_path / "data" / "cleaned" / "NFL_upcoming_schedule_cleaned.csv"
 
     assert raw_path.exists()
+    assert result_path == rich_path
     assert rich_path.exists()
-    assert focused_path.exists()
+    assert not old_focused_path.exists()
 
     rich = load_schedule_upcoming_rich(tmp_path)
-    focused = load_schedule_upcoming(tmp_path)
-
     assert list(rich.columns) == list(RICH_UPCOMING_COLUMNS)
-    assert list(focused.columns) == list(ELO_UPCOMING_COLUMNS)
-
     assert len(rich) == len(raw)
-    assert len(focused) == len(raw)
-
     assert set(rich["game_id"]) == set(raw["game_id"])
-    assert set(focused["GAME_ID"]) == set(raw["game_id"])
-    assert set(rich["game_id"]) == set(focused["GAME_ID"])
 
     no_market = rich.loc[rich["game_id"] == "2026_01_BAL_BUF"].iloc[0]
-
     for column in (
         "away_moneyline",
         "home_moneyline",
@@ -210,40 +184,22 @@ def test_raw_schedule_builds_complete_rich_and_focused_artifacts(
 
 
 @pytest.mark.filterwarnings("ignore::FutureWarning")
-def test_completed_source_rows_do_not_enter_upcoming_artifacts(
-    tmp_path: Path,
-) -> None:
+def test_completed_source_rows_do_not_enter_rich_artifact(tmp_path: Path) -> None:
     raw = _raw_schedule()
     raw["result"] = raw["result"].astype("Float64")
 
     completed = raw.iloc[0].copy()
     completed["game_id"] = "2026_01_COMPLETED_GAME"
     completed["result"] = 7.0
-
     mixed = raw.copy()
     mixed.loc[len(mixed)] = completed
 
-    write_parquet(
-        tmp_path,
-        "schedule_upcoming_raw_nflverse",
-        mixed,
-    )
-
+    write_parquet(tmp_path, "schedule_upcoming_raw_nflverse", mixed)
     clean_nflverse_upcoming(
         repo=tmp_path,
-        ingested_at=datetime(
-            2026,
-            7,
-            30,
-            18,
-            tzinfo=UTC,
-        ),
+        ingested_at=datetime(2026, 7, 30, 18, tzinfo=UTC),
     )
-
     rich = load_schedule_upcoming_rich(tmp_path)
-    focused = load_schedule_upcoming(tmp_path)
 
     assert len(rich) == len(raw)
-    assert len(focused) == len(raw)
     assert "2026_01_COMPLETED_GAME" not in set(rich["game_id"])
-    assert "2026_01_COMPLETED_GAME" not in set(focused["GAME_ID"])

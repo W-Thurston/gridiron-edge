@@ -73,15 +73,15 @@ class ModelRegistry:
         if spec.trainable and not is_structurally_trainable:
             raise TypeError(
                 f"Model '{name}' declares spec.trainable=True but does not "
-                f"satisfy the Trainable protocol. Missing train() or "
-                f"is_trained()."
+                "satisfy the Trainable protocol. Missing spec or "
+                "is_trained()."
             )
 
         if not spec.trainable and is_structurally_trainable:
             raise TypeError(
                 f"Model '{name}' implements the Trainable protocol but "
-                f"declares spec.trainable=False. Update its spec or remove "
-                f"the train() / is_trained() methods."
+                "declares spec.trainable=False. Update its spec or remove "
+                "the is_trained() method."
             )
 
         cls._models[name] = model_cls

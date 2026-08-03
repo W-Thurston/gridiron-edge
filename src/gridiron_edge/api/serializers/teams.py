@@ -80,21 +80,38 @@ def _percentile_for_team(
     }
 
 
-def _compute_record(games: DataFrame, team_long_name: str) -> TeamRecord:
-    """Count wins/losses/ties for a team in the given games slice."""
+def _compute_record(
+    games: DataFrame,
+    team_long_name: str,
+) -> TeamRecord:
+    """Count canonical Away/Home results for one team."""
     if games.empty:
         return TeamRecord()
 
-    won_mask: Series[bool] = games["WINNER"] == team_long_name
-    lost_mask: Series[bool] = games["LOSER"] == team_long_name
+    away_mask: Series[bool] = games["AWAY_TEAM"] == team_long_name
+    home_mask: Series[bool] = games["HOME_TEAM"] == team_long_name
+    participant_mask: Series[bool] = away_mask | home_mask
 
-    # Ties: score equal AND team is one of the two participants.
-    tie_mask: Series[bool] = (games["PTS_WINNER"] == games["PTS_LOSER"]) & (won_mask | lost_mask)
+    away_scores = pd.to_numeric(
+        games["AWAY_SCORE"],
+        errors="coerce",
+    )
+    home_scores = pd.to_numeric(
+        games["HOME_SCORE"],
+        errors="coerce",
+    )
+    completed_mask = away_scores.notna() & home_scores.notna()
+
+    away_wins = away_mask & completed_mask & (away_scores > home_scores)
+    home_wins = home_mask & completed_mask & (home_scores > away_scores)
+    away_losses = away_mask & completed_mask & (away_scores < home_scores)
+    home_losses = home_mask & completed_mask & (home_scores < away_scores)
+    ties = participant_mask & completed_mask & (away_scores == home_scores)
 
     return TeamRecord(
-        wins=(won_mask & ~tie_mask).sum(),
-        losses=(lost_mask & ~tie_mask).sum(),
-        ties=tie_mask.sum(),
+        wins=int((away_wins | home_wins).sum()),
+        losses=int((away_losses | home_losses).sum()),
+        ties=int(ties.sum()),
     )
 
 
@@ -185,32 +202,38 @@ def _serialize_result(
     team_long_name: str,
     long_to_short: dict[str, str],
 ) -> RecentResult:
-    """Translate one row of games to a RecentResult from `team_long_name`'s POV.
+    """Serialize one canonical game from the requested team's view."""
+    is_away = row["AWAY_TEAM"] == team_long_name
+    is_designated_home = row["HOME_TEAM"] == team_long_name
 
-    GAME_LOCATION semantics (verified against data):
-    - "@" → the WINNER played on the road.
-    - "H" → the WINNER played at home.
+    if not is_away and not is_designated_home:
+        raise ValueError(
+            f"Team {team_long_name!r} is not a participant in game {row.get('GAME_ID', '')!r}."
+        )
 
-    So if the team is the WINNER and location is "@", team was away.
-    If the team is the LOSER and location is "@", team was home.
-    """
-    won = row["WINNER"] == team_long_name
-    winner_at_home = row["GAME_LOCATION"] == "H"
-    is_home = winner_at_home if won else not winner_at_home
-
-    if won:
-        opponent_long = row["LOSER"]
-        score_for = int(row["PTS_WINNER"])
-        score_against = int(row["PTS_LOSER"])
+    if is_away:
+        opponent_long = str(row["HOME_TEAM"])
+        score_for = int(row["AWAY_SCORE"])
+        score_against = int(row["HOME_SCORE"])
     else:
-        opponent_long = row["WINNER"]
-        score_for = int(row["PTS_LOSER"])
-        score_against = int(row["PTS_WINNER"])
+        opponent_long = str(row["AWAY_TEAM"])
+        score_for = int(row["HOME_SCORE"])
+        score_against = int(row["AWAY_SCORE"])
 
-    # Ties: same score for both sides.
-    result: Literal["L", "T", "W"] = "T" if score_for == score_against else "W" if won else "L"
+    if score_for > score_against:
+        result: Literal["L", "T", "W"] = "W"
+    elif score_for < score_against:
+        result = "L"
+    else:
+        result = "T"
 
-    opponent_short = long_to_short.get(opponent_long, opponent_long[:3].upper())
+    is_neutral = int(row.get("IS_NEUTRAL_SITE", 0)) == 1
+    is_home = is_designated_home and not is_neutral
+
+    opponent_short = long_to_short.get(
+        opponent_long,
+        opponent_long[:3].upper(),
+    )
 
     return RecentResult(
         week=int(row["WEEK_NUM"]),
@@ -300,9 +323,15 @@ def serialize_team_profile(
     # ------------------------------------------------------------------
     team_games = (
         season_games.loc[
-            (season_games["WINNER"] == long_name) | (season_games["LOSER"] == long_name),
+            (season_games["AWAY_TEAM"] == long_name) | (season_games["HOME_TEAM"] == long_name),
             :,
         ]
+        .dropna(
+            subset=[
+                "AWAY_SCORE",
+                "HOME_SCORE",
+            ]
+        )
         .sort_values("WEEK_NUM")
         .tail(6)
     )

@@ -1733,7 +1733,7 @@ historical prediction and odds-ledger artifacts.
   D3c.3  Make prop archive schema strict
   D3c.4  Remove remaining implementation labels
   D3c.5  Final compatibility inventory
-19.2h-D3d Runtime compatibility review             PENDING
+19.2h-D3d Runtime compatibility review             COMPLETE
   D3d.1  Migrate Predictor naming to Model naming
   D3d.2  Make betting ledger schema strict
   D3d.3  Make prop prediction archive schema strict
@@ -3330,6 +3330,40 @@ artifact overwrite.
 
 Archive load, append, and write boundaries accept only the canonical
 twenty-column schema, and no persisted prop archive repair behavior remains.
+
+#### Unit 19.2h-D3d.4
+
+#### Completed
+
+Removed remaining runtime compatibility aliases, superseded commands, implementation labels, permissive completion markers, winner-oriented historical-game fields, and the duplicate focused upcoming-schedule artifact.
+
+Migrated evaluation, Elo, simulation, weather, API, and test fixtures to explicit Away Team, Home Team, Away Score, and Home Score identity.
+
+Reduced the cleaned historical-games artifact to its canonical eighteen-column schema and made game completion depend on both canonical scores.
+
+Migrated Elo prediction, API loading, projection serialization, default schedule scope, and season simulation to the canonical rich upcoming-schedule Parquet.
+
+Removed the focused schedule registry key, loader, persisted projection, CSV output, and game-ID reconstruction path.
+
+Regenerated and validated the canonical rich schedule with 272 unique games for the 2026-2027 regular season.
+
+#### Goal
+
+Remove remaining development-era runtime compatibility behavior so historical games and upcoming schedules each have one explicit current persisted contract.
+
+#### Tests
+
+Covered strict ledger and prop archive schemas, canonical completion detection, historical outcomes, Elo tuning and prediction, weather backfill, team and projection serializers, regular-season and playoff simulation, rich schedule cleaning, registered dataset loading, artifact isolation, and integration routing.
+
+Ruff, Pyrefly, focused unit tests, and affected integration tests pass.
+
+#### Acceptance
+
+Production contains no winner-oriented historical-game fields, obsolete game-location constants, Predictor compatibility aliases, focused schedule loader, focused schedule registry entry, focused schedule projection, or focused schedule CSV dependency.
+
+The cleaned historical-games artifact uses the canonical eighteen-column Away/Home schema.
+
+The sole upcoming-schedule artifact is the canonical rich Parquet, and Elo, API, and simulation consume it directly.
 
 ---
 

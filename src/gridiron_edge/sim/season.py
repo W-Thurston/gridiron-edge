@@ -121,7 +121,7 @@ def build_team_index_from_results(
         df_wk_by_wk: Historical games DataFrame.
         long_to_short: Long name → short code mapping.
         season_year: Season label (e.g. ``"2026-2027"``).
-        df_schedule: Upcoming schedule DataFrame. Used as fallback when no
+        df_schedule: Rich upcoming schedule DataFrame. Used as fallback when no
             completed games exist for ``season_year``.
 
     Returns:
@@ -139,12 +139,24 @@ def build_team_index_from_results(
         shorts.add(h_s)
 
     if len(shorts) < N_TEAMS and df_schedule is not None:
-        for col in ("AWAY_TEAM", "HOME_TEAM"):
-            if col in df_schedule.columns:
-                for long_name in df_schedule[col].dropna().unique():
-                    short = long_to_short.get(str(long_name))
-                    if short:
-                        shorts.add(short)
+        required_schedule: set[str] = {
+            "away_team",
+            "home_team",
+        }
+        if not required_schedule.issubset(df_schedule.columns):
+            missing: list[str] = sorted(required_schedule - set(df_schedule.columns))
+            raise ValueError(
+                "Rich upcoming schedule is missing team identity columns: " + ", ".join(missing)
+            )
+
+        for column in (
+            "away_team",
+            "home_team",
+        ):
+            for long_name in df_schedule[column].dropna().unique():
+                short = long_to_short.get(str(long_name))
+                if short:
+                    shorts.add(short)
 
     short_names = sorted(shorts)
     if len(short_names) != N_TEAMS:
@@ -158,37 +170,8 @@ def build_team_index_from_results(
     )
 
 
-def add_game_id_to_schedule(
-    df_schedule: pd.DataFrame,
-    long_to_short: dict[str, str],
-) -> pd.DataFrame:
-    """Add standardized GAME_ID column to schedule DataFrame."""
-    required = {"YEAR", "WEEK_NUM", "AWAY_TEAM", "HOME_TEAM"}
-    if not required.issubset(df_schedule.columns):
-        raise ValueError(f"Schedule missing columns: {required - set(df_schedule.columns)}")
-
-    sched = df_schedule.copy()
-    away_short = sched["AWAY_TEAM"].map(long_to_short)
-    home_short = sched["HOME_TEAM"].map(long_to_short)
-
-    missing = sorted(
-        set(
-            sched.loc[away_short.isna(), "AWAY_TEAM"].tolist()
-            + sched.loc[home_short.isna(), "HOME_TEAM"].tolist()
-        )
-    )
-    if missing:
-        raise ValueError(f"Missing long->short mappings: {', '.join(missing)}")
-
-    year4 = sched["YEAR"].astype(str).str.slice(0, 4)
-    week2 = sched["WEEK_NUM"].astype(int).map(lambda w: f"{w:02d}").astype(str)
-    sep = pd.Series(["_"] * len(sched), index=sched.index, dtype=str)
-    sched["GAME_ID"] = year4 + sep + week2 + sep + away_short + sep + home_short
-    return sched
-
-
 def build_schedule_arrays(
-    df_schedule_with_gid: pd.DataFrame,
+    df_schedule: pd.DataFrame,
     df_wk_by_wk: pd.DataFrame,
     team_index: TeamIndex,
     season_year: str,
@@ -198,60 +181,155 @@ def build_schedule_arrays(
     Returns:
         (ScheduleArrays, final_actual_week)
     """
-    sched = df_schedule_with_gid.loc[df_schedule_with_gid["YEAR"] == season_year].copy()
-    sched = sched.loc[(sched["WEEK_NUM"] >= 1) & (sched["WEEK_NUM"] <= N_WEEKS_REG)]
+    required_schedule: set[str] = {
+        "season",
+        "week",
+        "game_id",
+        "away_team",
+        "home_team",
+    }
+    if not required_schedule.issubset(df_schedule.columns):
+        missing: list[str] = sorted(required_schedule - set(df_schedule.columns))
+        raise ValueError(
+            "Rich upcoming schedule is missing required columns: " + ", ".join(missing)
+        )
 
-    sort_cols = [c for c in ("WEEK_NUM", "GAME_DATE", "GAMETIME") if c in sched.columns]
+    schedule_weeks = pd.to_numeric(
+        df_schedule["week"],
+        errors="coerce",
+    )
+    sched = df_schedule.loc[
+        (df_schedule["season"].astype(str).eq(season_year))
+        # pyrefly: ignore [missing-attribute]
+        & schedule_weeks.between(
+            1,
+            N_WEEKS_REG,
+        ),
+        :,
+    ].copy()
+
+    # pyrefly: ignore [missing-attribute]
+    sched["week"] = pd.to_numeric(
+        sched["week"],
+        errors="raise",
+    ).astype(int)
+
+    sort_cols: list[str] = [
+        column
+        for column in (
+            "week",
+            "game_date",
+            "game_time",
+            "game_id",
+        )
+        if column in sched.columns
+    ]
     if sort_cols:
-        sched = sched.sort_values(sort_cols, kind="mergesort")
+        sched = sched.sort_values(
+            sort_cols,
+            kind="mergesort",
+        )
     sched = sched.reset_index(drop=True)
 
     away_ids: list[int] = []
     home_ids: list[int] = []
-    for gid in sched["GAME_ID"].astype(str).tolist():
-        a_s, h_s = _parse_game_id(gid)
-        away_ids.append(team_index.short_to_id[a_s])
-        home_ids.append(team_index.short_to_id[h_s])
 
-    away = np.asarray(away_ids, dtype=np.int16)
-    home = np.asarray(home_ids, dtype=np.int16)
-    week = sched["WEEK_NUM"].to_numpy(np.int16)
+    for row in sched.itertuples(index=False):
+        away_long = str(row.away_team)
+        home_long = str(row.home_team)
 
-    wk_vals = df_wk_by_wk.loc[df_wk_by_wk["YEAR"] == season_year, "WEEK_NUM"].to_numpy()
-    final_actual_week = int(wk_vals.max()) if wk_vals.size else 0
+        away_short: str | None = team_index.long_to_short.get(away_long)
+        home_short: str | None = team_index.long_to_short.get(home_long)
 
-    needed = {"YEAR", "GAME_ID", "WINNER", "WIN_OR_TIE"}
+        if away_short is None:
+            raise ValueError("Missing long->short mapping for Away team: " + away_long)
+        if home_short is None:
+            raise ValueError("Missing long->short mapping for Home team: " + home_long)
+
+        away_id: int | None = team_index.short_to_id.get(away_short)
+        home_id: int | None = team_index.short_to_id.get(home_short)
+
+        if away_id is None:
+            raise ValueError(f"Team {away_short} not found in team_index")
+        if home_id is None:
+            raise ValueError(f"Team {home_short} not found in team_index")
+
+        away_ids.append(away_id)
+        home_ids.append(home_id)
+
+    away = np.asarray(
+        away_ids,
+        dtype=np.int16,
+    )
+    home = np.asarray(
+        home_ids,
+        dtype=np.int16,
+    )
+    week = sched["week"].to_numpy(np.int16)
+
+    needed = {
+        "YEAR",
+        "WEEK_NUM",
+        "GAME_ID",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    }
     if not needed.issubset(df_wk_by_wk.columns):
-        raise ValueError(f"wk_by_wk missing columns: {needed - set(df_wk_by_wk.columns)}")
+        missing = sorted(needed - set(df_wk_by_wk.columns))
+        raise ValueError("wk_by_wk missing columns: " + ", ".join(missing))
 
-    season_res = df_wk_by_wk.loc[
-        df_wk_by_wk["YEAR"] == season_year, ["GAME_ID", "WINNER", "WIN_OR_TIE"]
+    season_history = df_wk_by_wk.loc[
+        df_wk_by_wk["YEAR"] == season_year,
+        :,
+    ].copy()
+
+    completed = season_history.dropna(
+        subset=[
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+    )
+    completed_weeks = completed["WEEK_NUM"].to_numpy()
+
+    final_actual_week = int(completed_weeks.max()) if completed_weeks.size else 0
+
+    season_res = season_history.loc[
+        :,
+        [
+            "GAME_ID",
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ],
     ].copy()
 
     gid_to_code: dict[str, np.int8] = {}
+
     for row in season_res.itertuples(index=False):
         gid = str(row.GAME_ID)
-        win_or_tie = float(row.WIN_OR_TIE)  # type: ignore[arg-type]
+        away_score = row.AWAY_SCORE
+        home_score = row.HOME_SCORE
 
-        if win_or_tie == 0.5:
-            gid_to_code[gid] = TIE
+        if pd.isna(away_score) or pd.isna(home_score):
+            gid_to_code[gid] = UNPLAYED
             continue
 
-        winner_long = str(row.WINNER)
-        winner_short = team_index.long_to_short.get(winner_long)
-        if winner_short is None:
-            raise ValueError(f"Missing long->short mapping for WINNER: {winner_long}")
+        away_score_value = float(str(away_score))
+        home_score_value = float(str(home_score))
 
-        a_s, h_s = _parse_game_id(gid)
-        if winner_short == h_s:
+        if home_score_value > away_score_value:
             gid_to_code[gid] = HOME_WIN
-        elif winner_short == a_s:
+        elif away_score_value > home_score_value:
             gid_to_code[gid] = AWAY_WIN
         else:
-            gid_to_code[gid] = UNPLAYED
+            gid_to_code[gid] = TIE
 
-    result = np.full(len(sched), UNPLAYED, dtype=np.int8)
-    for i, gid in enumerate(sched["GAME_ID"].astype(str).tolist()):
+    result = np.full(
+        len(sched),
+        UNPLAYED,
+        dtype=np.int8,
+    )
+
+    for i, gid in enumerate(sched["game_id"].astype(str).tolist()):
         code = gid_to_code.get(gid)
         if code is not None:
             result[i] = code
@@ -411,13 +489,32 @@ def extract_fixed_playoff_winners(
 
     round_by_week = {19: ROUND_WC, 20: ROUND_DIV, 21: ROUND_CONF, 22: ROUND_SB}
 
-    game_to_pair: dict[str, tuple[int, int]] = {}
-    for _, row in df_schedule.iterrows():
-        gid = str(row["GAME_ID"])
-        a = team_name_to_id(str(row["AWAY_TEAM"]))
-        b = team_name_to_id(str(row["HOME_TEAM"]))
-        if a is not None and b is not None:
-            game_to_pair[gid] = (a, b)
+    required_schedule = {
+        "game_id",
+        "away_team",
+        "home_team",
+    }
+    if not required_schedule.issubset(df_schedule.columns):
+        missing = sorted(required_schedule - set(df_schedule.columns))
+        raise ValueError(
+            "Rich upcoming schedule is missing playoff identity columns: " + ", ".join(missing)
+        )
+
+    game_to_pair: dict[
+        str,
+        tuple[int, int],
+    ] = {}
+
+    for row in df_schedule.itertuples(index=False):
+        game_id = str(row.game_id)
+        away_id = team_name_to_id(str(row.away_team))
+        home_id = team_name_to_id(str(row.home_team))
+
+        if away_id is not None and home_id is not None:
+            game_to_pair[game_id] = (
+                away_id,
+                home_id,
+            )
 
     df = df_wk_by_wk.loc[df_wk_by_wk["YEAR"] == season_year].copy()
     df = df.loc[df["WEEK_NUM"].isin(round_by_week.keys())]
@@ -432,14 +529,23 @@ def extract_fixed_playoff_winners(
         if gid not in game_to_pair:
             continue
 
-        a, b = game_to_pair[gid]
-        w = team_name_to_id(str(row["WINNER"]))
-        if w is None:
+        away_id, home_id = game_to_pair[gid]
+        away_score = row["AWAY_SCORE"]
+        home_score = row["HOME_SCORE"]
+
+        if pd.isna(away_score) or pd.isna(home_score):
             continue
 
-        lo = min(a, b)
-        hi = max(a, b)
-        fixed[rnd, lo, hi] = np.int16(w)
+        if float(away_score) > float(home_score):
+            winner_id = away_id
+        elif float(home_score) > float(away_score):
+            winner_id = home_id
+        else:
+            continue
+
+        lo = min(away_id, home_id)
+        hi = max(away_id, home_id)
+        fixed[rnd, lo, hi] = np.int16(winner_id)
 
     return fixed
 
@@ -548,8 +654,8 @@ def run_full_simulation(
         paths.validate()
         logger.info("Data dir: %s", paths.data_cleaned)
 
-    with _log_phase("Load CSV inputs"):
-        df_schedule = pd.read_csv(paths.schedule_file)
+    with _log_phase("Load simulation inputs"):
+        df_schedule: DataFrame = pd.read_parquet(paths.schedule_file)
         df_wk_by_wk = pd.read_csv(paths.wk_by_wk_file)
         df_elo = pd.read_csv(paths.elo_file)
 
@@ -559,7 +665,25 @@ def run_full_simulation(
                 "to fetch the schedule before simulating."
             )
 
-        season_year = str(df_schedule["YEAR"].iloc[0])
+        required_schedule = {
+            "season",
+            "week",
+            "game_id",
+            "away_team",
+            "home_team",
+        }
+        if not required_schedule.issubset(df_schedule.columns):
+            missing = sorted(required_schedule - set(df_schedule.columns))
+            raise ValueError(
+                "Rich upcoming schedule is missing required "
+                "simulation columns: " + ", ".join(missing)
+            )
+
+        season_values = df_schedule["season"].dropna().astype(str).unique().tolist()
+        if len(season_values) != 1:
+            raise ValueError("Rich upcoming schedule must contain exactly one season.")
+
+        season_year = season_values[0]
         logger.info("Season year: %s", season_year)
         logger.info("Schedule rows: %d", len(df_schedule))
         logger.info("Week-by-week rows: %d", len(df_wk_by_wk))
@@ -572,7 +696,6 @@ def run_full_simulation(
         )
         logger.info("Teams detected: %d", len(team_index.short_names))
 
-        df_schedule = add_game_id_to_schedule(df_schedule, long_to_short)
         schedule, final_actual_week = build_schedule_arrays(
             df_schedule,
             df_wk_by_wk,

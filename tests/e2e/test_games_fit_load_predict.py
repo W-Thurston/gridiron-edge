@@ -341,7 +341,11 @@ class TestWinProbElo:
         # rather than the modeling file. Loading via the same path the
         # backfill CLI uses keeps the test honest about real usage.
         games_raw: DataFrame = loaders.load_games(games_repo)
-        games = games_raw.loc[games_raw["WIN_OR_TIE"].notna(), :].copy()
+        completed_mask = games_raw["AWAY_SCORE"].notna() & games_raw["HOME_SCORE"].notna()
+        games = games_raw.loc[
+            completed_mask,
+            :,
+        ].copy()
         result_df: DataFrame = model.predict_historical(games, repo=games_repo)
 
         assert not result_df.empty

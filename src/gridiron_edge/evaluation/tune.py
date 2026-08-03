@@ -134,24 +134,6 @@ class TuneResultZoneK:
 # ---------------------------------------------------------------------------
 
 
-def _k_for_week(
-    week: int,
-    k_early: float,
-    k_mid: float,
-    k_week18: float,
-    k_post: float,
-) -> float:
-    """Backwards-compatible alias for the canonical simulator's K-zone helper.
-
-    Kept so existing tests against the tuner's zone-based K logic continue
-    to import a stable callable. Delegates to
-    :func:`gridiron_edge.ratings.elo.simulator._k_for_week`.
-    """
-    from gridiron_edge.ratings.elo.simulator import _k_for_week as _canonical
-
-    return _canonical(week, k_early, k_mid, k_week18, k_post)
-
-
 def _simulate_and_score(
     games: pd.DataFrame,
     sorted_years: list[str],
@@ -257,9 +239,10 @@ def _prepare_games(
     """
     required: set[str] = {
         "YEAR",
-        "WIN_OR_TIE",
         "AWAY_TEAM",
         "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
     }
     missing: list[str] = sorted(required - set(games.columns))
     if missing:
@@ -267,10 +250,8 @@ def _prepare_games(
             "Canonical Elo tuning games are missing required columns: " + ", ".join(missing)
         )
 
-    df = games.loc[
-        games["WIN_OR_TIE"].notna(),
-        :,
-    ].copy()
+    completed_mask = games["AWAY_SCORE"].notna() & games["HOME_SCORE"].notna()
+    df = games.loc[completed_mask, :].copy()
 
     df["AWAY_TEAM"] = df["AWAY_TEAM"].astype(str).str.strip()
     df["HOME_TEAM"] = df["HOME_TEAM"].astype(str).str.strip()

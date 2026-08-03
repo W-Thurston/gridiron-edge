@@ -7,22 +7,9 @@ import re
 from re import Pattern
 
 from gridiron_edge.core.constants import (
-    AWAY_WIN_LOCATION,
     EXPANSION_TEAMS,
     HOLDOUT_SEASONS,
-    HOME_GAME_LOCATION,
 )
-
-
-class TestGameLocationSentinels:
-    def test_home_game_location_is_h(self) -> None:
-        assert HOME_GAME_LOCATION == "H"
-
-    def test_away_win_location_is_at(self) -> None:
-        assert AWAY_WIN_LOCATION == "@"
-
-    def test_home_and_away_are_distinct(self) -> None:
-        assert HOME_GAME_LOCATION != AWAY_WIN_LOCATION
 
 
 class TestHoldoutSeasons:

@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.ratings.elo.core import (
     DEFAULT_ELO_DIVISOR,
     elo_win_probability,
@@ -137,9 +136,9 @@ def simulate_elo_history(  # noqa: PLR0912, PLR0915
     """Simulate Elo across the full historical games DataFrame.
 
     Args:
-        games: Prepared games DataFrame. Must contain
-            ``YEAR, WEEK_NUM, WINNER, LOSER, WIN_OR_TIE, GAME_LOCATION,
-            GAME_ID`` columns.
+        games: Prepared games DataFrame. Must contain ``YEAR``,
+            ``WEEK_NUM``, ``AWAY_TEAM``, ``HOME_TEAM``, ``AWAY_SCORE``,
+            ``HOME_SCORE``, and ``GAME_ID`` columns.
         sorted_years: Chronologically ordered season labels.
         teams_by_year: Season label to active team name set.
         expansion_start: Team name to first active season label.
@@ -191,45 +190,70 @@ def simulate_elo_history(  # noqa: PLR0912, PLR0915
                 week_df = pd.DataFrame()
 
             for _, row in week_df.iterrows():
-                winner = str(row["WINNER"])
-                loser = str(row["LOSER"])
-                win_or_tie = float(row["WIN_OR_TIE"])
+                away_team = str(row["AWAY_TEAM"])
+                home_team = str(row["HOME_TEAM"])
+                away_score = float(row["AWAY_SCORE"])
+                home_score = float(row["HOME_SCORE"])
 
-                w_elo: float = elo.get((winner, curr_year, wk), initial_elo)
-                l_elo: float = elo.get((loser, curr_year, wk), initial_elo)
+                away_elo = elo.get(
+                    (away_team, curr_year, wk),
+                    initial_elo,
+                )
+                home_elo = elo.get(
+                    (home_team, curr_year, wk),
+                    initial_elo,
+                )
 
-                away_team: str = winner if row["GAME_LOCATION"] == _AWAY_WIN_LOCATION else loser
-                away_elo: float = w_elo if away_team == winner else l_elo
-                home_elo: float = l_elo if away_team == winner else w_elo
-
-                away_prob, _ = elo_win_probability(away_elo, home_elo, divisor=divisor)
-                if win_or_tie == 0.5:
-                    outcome = 0.5
-                elif away_team == winner:
-                    outcome = 1.0
-                else:
-                    outcome = 0.0
-
-                away_probs.append(away_prob)
-                away_outcomes.append(outcome)
-                game_seasons.append(curr_year)
-                game_ids.append(str(row.get("GAME_ID", "")))
-
-                winner_new, loser_new = update_elo(
-                    w_elo,
-                    l_elo,
-                    win_or_tie=win_or_tie,
-                    k=k,
+                away_prob, _ = elo_win_probability(
+                    away_elo,
+                    home_elo,
                     divisor=divisor,
                 )
 
+                if away_score > home_score:
+                    away_result = 1.0
+                elif away_score == home_score:
+                    away_result = 0.5
+                else:
+                    away_result = 0.0
+
+                away_probs.append(away_prob)
+                away_outcomes.append(away_result)
+                game_seasons.append(curr_year)
+                game_ids.append(str(row.get("GAME_ID", "")))
+
+                if away_result == 1.0:
+                    away_new, home_new = update_elo(
+                        away_elo,
+                        home_elo,
+                        win_or_tie=1.0,
+                        k=k,
+                        divisor=divisor,
+                    )
+                elif away_result == 0.0:
+                    home_new, away_new = update_elo(
+                        home_elo,
+                        away_elo,
+                        win_or_tie=1.0,
+                        k=k,
+                        divisor=divisor,
+                    )
+                else:
+                    away_new, home_new = update_elo(
+                        away_elo,
+                        home_elo,
+                        win_or_tie=0.5,
+                        k=k,
+                        divisor=divisor,
+                    )
+
                 is_last_week = wk == max_week
                 if is_last_week and next_year is not None:
-                    elo[(winner, next_year, 1)] = winner_new
-                    elo[(loser, next_year, 1)] = loser_new
+                    elo[(away_team, next_year, 1)] = away_new
+                    elo[(home_team, next_year, 1)] = home_new
                 else:
-                    elo[(winner, curr_year, wk + 1)] = winner_new
-                    elo[(loser, curr_year, wk + 1)] = loser_new
+                    elo[(away_team, curr_year, wk + 1)] = away_new
+                    elo[(home_team, curr_year, wk + 1)] = home_new
 
             is_last_week = wk == max_week
             for team in teams_this_season:

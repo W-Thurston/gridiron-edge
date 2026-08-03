@@ -82,7 +82,7 @@ class TestResolveCurrentWeek:
     def test_falls_back_when_schedule_missing(self, tmp_path: Path) -> None:
         settings = _make_settings(tmp_path)
         with patch(
-            "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             side_effect=FileNotFoundError,
         ):
             season, week, source = resolve_current_week(settings)
@@ -93,7 +93,7 @@ class TestResolveCurrentWeek:
     def test_falls_back_when_schedule_empty(self, tmp_path: Path) -> None:
         settings = _make_settings(tmp_path)
         with patch(
-            "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=pd.DataFrame(columns=["season", "week"]),
         ):
             _season, week, source = resolve_current_week(settings)
@@ -104,12 +104,20 @@ class TestResolveCurrentWeek:
         settings = _make_settings(tmp_path)
         schedule = pd.DataFrame(
             {
-                "season": [2025, 2025, 2025],
-                "week": [10, 11, 12],
+                "season": [
+                    "2025-2026",
+                    "2025-2026",
+                    "2025-2026",
+                ],
+                "week": [
+                    10,
+                    11,
+                    12,
+                ],
             },
         )
         with patch(
-            "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=schedule,
         ):
             season, week, source = resolve_current_week(settings)
@@ -119,10 +127,60 @@ class TestResolveCurrentWeek:
         settings = _make_settings(tmp_path)
         schedule = pd.DataFrame({"unexpected_col": [1, 2, 3]})
         with patch(
-            "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=schedule,
         ):
             _season, week, source = resolve_current_week(settings)
+        assert week == 1
+        assert source == "fallback"
+
+    def test_falls_back_when_schedule_identity_is_null(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        schedule = pd.DataFrame(
+            {
+                "season": [
+                    None,
+                ],
+                "week": [
+                    None,
+                ],
+            }
+        )
+
+        with patch(
+            ("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich"),
+            return_value=schedule,
+        ):
+            _season, week, source = resolve_current_week(settings)
+
+        assert week == 1
+        assert source == "fallback"
+
+    def test_falls_back_when_schedule_week_is_invalid(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        schedule = pd.DataFrame(
+            {
+                "season": [
+                    "2026-2027",
+                ],
+                "week": [
+                    "not-a-week",
+                ],
+            }
+        )
+
+        with patch(
+            ("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich"),
+            return_value=schedule,
+        ):
+            _season, week, source = resolve_current_week(settings)
+
         assert week == 1
         assert source == "fallback"
 
@@ -1124,24 +1182,26 @@ class TestLoadProjectionGridData:
         return pd.DataFrame(
             [
                 {
-                    "WEEK_NUM": 1,
-                    "GAME_DAY_OF_WEEK": "Sunday",
-                    "GAME_DATE": "2026-09-13",
-                    "AWAY_TEAM": "Buffalo Bills",
-                    "HOME_TEAM": "Seattle Seahawks",
-                    "GAMETIME": "13:00:00",
-                    "YEAR": "2026-2027",
-                    "GAME_ID": "2026_01_BUF_SEA",
+                    "week": 1,
+                    "game_day_of_week": "Sunday",
+                    "game_date": "2026-09-13",
+                    "away_team": "Buffalo Bills",
+                    "home_team": "Seattle Seahawks",
+                    "game_time": "13:00:00",
+                    "season": "2026-2027",
+                    "game_id": "2026_01_BUF_SEA",
+                    "neutral_site": 0,
                 },
                 {
-                    "WEEK_NUM": 19,
-                    "GAME_DAY_OF_WEEK": "Sunday",
-                    "GAME_DATE": "2027-01-17",
-                    "AWAY_TEAM": "Buffalo Bills",
-                    "HOME_TEAM": "Seattle Seahawks",
-                    "GAMETIME": "13:00:00",
-                    "YEAR": "2026-2027",
-                    "GAME_ID": "2026_19_BUF_SEA",
+                    "week": 19,
+                    "game_day_of_week": "Sunday",
+                    "game_date": "2027-01-17",
+                    "away_team": "Buffalo Bills",
+                    "home_team": "Seattle Seahawks",
+                    "game_time": "13:00:00",
+                    "season": "2026-2027",
+                    "game_id": "2026_19_BUF_SEA",
+                    "neutral_site": 0,
                 },
             ]
         )
@@ -1153,25 +1213,31 @@ class TestLoadProjectionGridData:
                     "GAME_ID": "2025_18_BUF_SEA",
                     "YEAR": "2025-2026",
                     "WEEK_NUM": 18,
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 1.0,
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": 20,
+                    "HOME_SCORE": 27,
+                    "IS_NEUTRAL_SITE": 0,
                 },
                 {
                     "GAME_ID": "2026_01_BUF_SEA",
                     "YEAR": "2026-2027",
                     "WEEK_NUM": 1,
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 1.0,
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": 20,
+                    "HOME_SCORE": 27,
+                    "IS_NEUTRAL_SITE": 0,
                 },
                 {
                     "GAME_ID": "2026_19_BUF_SEA",
                     "YEAR": "2026-2027",
                     "WEEK_NUM": 19,
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 1.0,
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": 20,
+                    "HOME_SCORE": 27,
+                    "IS_NEUTRAL_SITE": 0,
                 },
             ]
         )
@@ -1224,7 +1290,7 @@ class TestLoadProjectionGridData:
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 return_value=self._schedule(),
             ),
             patch(
@@ -1244,7 +1310,7 @@ class TestLoadProjectionGridData:
         assert len(result.probabilities) == 2
 
         # Week 19 is outside the regular-season grid.
-        assert result.schedule["WEEK_NUM"].tolist() == [1]
+        assert result.schedule["week"].tolist() == [1]
 
         assert result.games.empty
         assert result.long_to_short == {
@@ -1261,7 +1327,7 @@ class TestLoadProjectionGridData:
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 return_value=self._schedule(),
             ),
             patch(
@@ -1287,7 +1353,7 @@ class TestLoadProjectionGridData:
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 return_value=self._schedule(),
             ),
             patch(
@@ -1318,16 +1384,18 @@ class TestLoadProjectionGridData:
                     "GAME_ID": "2025_22_SEA_BUF",
                     "YEAR": "2025-2026",
                     "WEEK_NUM": 22,
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 1.0,
+                    "AWAY_TEAM": "Seattle Seahawks",
+                    "HOME_TEAM": "Buffalo Bills",
+                    "AWAY_SCORE": 27,
+                    "HOME_SCORE": 20,
+                    "IS_NEUTRAL_SITE": 0,
                 },
             ]
         )
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 side_effect=FileNotFoundError,
             ),
             patch(
@@ -1355,7 +1423,7 @@ class TestLoadProjectionGridData:
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 return_value=self._schedule(),
             ),
             patch(
@@ -1387,15 +1455,16 @@ class TestLoadProjectionGridData:
                 pd.DataFrame(
                     [
                         {
-                            "WEEK_NUM": 1,
-                            "GAME_DAY_OF_WEEK": "Sunday",
-                            "GAME_DATE": "2025-09-07",
-                            "AWAY_TEAM": "Seattle Seahawks",
-                            "HOME_TEAM": "Buffalo Bills",
-                            "GAMETIME": "13:00:00",
-                            "YEAR": "2025-2026",
-                            "GAME_ID": "2025_01_SEA_BUF",
-                        },
+                            "week": 1,
+                            "game_day_of_week": "Sunday",
+                            "game_date": "2025-09-07",
+                            "away_team": "Seattle Seahawks",
+                            "home_team": "Buffalo Bills",
+                            "game_time": "13:00:00",
+                            "season": "2025-2026",
+                            "game_id": "2025_01_SEA_BUF",
+                            "neutral_site": 0,
+                        }
                     ]
                 ),
             ],
@@ -1404,7 +1473,7 @@ class TestLoadProjectionGridData:
 
         with (
             patch(
-                "gridiron_edge.datasets.loaders.load_schedule_upcoming",
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
                 return_value=schedule,
             ),
             patch(
@@ -1419,4 +1488,4 @@ class TestLoadProjectionGridData:
             result = load_projection_grid_data(settings)
 
         assert result.season == "2026-2027"
-        assert result.schedule["YEAR"].unique().tolist() == ["2026-2027"]
+        assert result.schedule["season"].unique().tolist() == ["2026-2027"]

@@ -98,6 +98,28 @@ _OUTPUT_COLS: Final[list[str]] = [
 ]
 
 
+def _completed_games(
+    games: DataFrame,
+) -> DataFrame:
+    """Return games with both canonical final scores."""
+    required = {
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    }
+    missing = sorted(required - set(games.columns))
+
+    if missing:
+        raise ValueError(
+            "Historical games are missing canonical score columns: " + ", ".join(missing)
+        )
+
+    completed_mask = games["AWAY_SCORE"].notna() & games["HOME_SCORE"].notna()
+    return games.loc[
+        completed_mask,
+        :,
+    ].copy()
+
+
 # ---------------------------------------------------------------------------
 # Core backfill function
 # ---------------------------------------------------------------------------
@@ -145,8 +167,8 @@ def backfill_weather(
 
     stadiums_df: DataFrame = pd.read_csv(dataset_path(resolved_repo, "stadiums"))
 
-    # Only completed games (WIN_OR_TIE is non-null for completed games)
-    completed: DataFrame = games_df.loc[games_df["WIN_OR_TIE"].notna(), :].copy()
+    # Only games with both canonical final scores are complete.
+    completed: DataFrame = _completed_games(games_df)
 
     if season_year is not None:
         completed = completed.loc[completed["YEAR"] == season_year, :].copy()

@@ -194,25 +194,29 @@ def _index_grid_schedule(
     schedule: DataFrame,
     long_to_short: dict[str, str],
 ) -> dict[tuple[str, int], dict[str, Any]]:
-    """Index each scheduled game from both teams' perspectives."""
+    """Index each rich schedule row from both team perspectives."""
     if schedule.empty:
         return {}
 
     required = {
-        "WEEK_NUM",
-        "AWAY_TEAM",
-        "HOME_TEAM",
-        "GAME_ID",
+        "week",
+        "away_team",
+        "home_team",
+        "game_id",
     }
     if not required.issubset(schedule.columns):
         return {}
 
-    indexed: dict[tuple[str, int], dict[str, Any]] = {}
+    indexed: dict[
+        tuple[str, int],
+        dict[str, Any],
+    ] = {}
 
     for row in schedule.itertuples(index=False):
-        week = int(str(row.WEEK_NUM))
-        away_long = str(row.AWAY_TEAM)
-        home_long = str(row.HOME_TEAM)
+        week = int(str(row.week))
+        away_long = str(row.away_team)
+        home_long = str(row.home_team)
+
         away = data_value(long_to_short.get(away_long))
         home = data_value(long_to_short.get(home_long))
 
@@ -220,9 +224,9 @@ def _index_grid_schedule(
             continue
 
         common = {
-            "game_id": data_value(getattr(row, "GAME_ID", None)),
-            "game_date": data_value(getattr(row, "GAME_DATE", None)),
-            "game_time": data_value(getattr(row, "GAMETIME", None)),
+            "game_id": data_value(getattr(row, "game_id", None)),
+            "game_date": data_value(getattr(row, "game_date", None)),
+            "game_time": data_value(getattr(row, "game_time", None)),
         }
 
         indexed[(away, week)] = {
@@ -243,24 +247,43 @@ def _index_completed_games(
     games: DataFrame,
     long_to_short: dict[str, str],
 ) -> dict[str, dict[str, Any]]:
-    """Index completed regular-season games by canonical game ID."""
-    if games.empty or "GAME_ID" not in games.columns:
+    """Index completed canonical games by game ID."""
+    required = {
+        "GAME_ID",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    }
+    if games.empty or not required.issubset(games.columns):
         return {}
 
     indexed: dict[str, dict[str, Any]] = {}
 
     for row in games.itertuples(index=False):
-        game_id = str(row.GAME_ID)
+        away_score = _none_if_nan(getattr(row, "AWAY_SCORE", None))
+        home_score = _none_if_nan(getattr(row, "HOME_SCORE", None))
 
-        winner = data_value(getattr(row, "WINNER", None))
-        loser = data_value(getattr(row, "LOSER", None))
+        if away_score is None or home_score is None:
+            continue
 
-        indexed[game_id] = {
-            "winner": winner,
-            "loser": loser,
-            "winner_abbr": (long_to_short.get(winner) if winner is not None else None),
-            "loser_abbr": (long_to_short.get(loser) if loser is not None else None),
-            "win_or_tie": _none_if_nan(getattr(row, "WIN_OR_TIE", None)),
+        away_long = data_value(getattr(row, "AWAY_TEAM", None))
+        home_long = data_value(getattr(row, "HOME_TEAM", None))
+
+        if away_long is None or home_long is None:
+            continue
+
+        away_abbr = long_to_short.get(away_long)
+        home_abbr = long_to_short.get(home_long)
+
+        if away_abbr is None or home_abbr is None:
+            continue
+
+        indexed[str(row.GAME_ID)] = {
+            "away_abbr": away_abbr,
+            "home_abbr": home_abbr,
+            "away_score": float(away_score),
+            "home_score": float(home_score),
         }
 
     return indexed
@@ -351,28 +374,29 @@ def _actual_result(
     abbr: str,
     completed_game: dict[str, Any],
 ) -> Literal["W", "L", "T"] | None:
-    """Resolve W/L/T for one team from a completed-game record."""
-    tie_value = completed_game.get("win_or_tie")
-    if tie_value is not None and float(tie_value) == 0.5:
-        return "T"
+    """Resolve W/L/T from canonical Away/Home scores."""
+    away_abbr = completed_game.get("away_abbr")
+    home_abbr = completed_game.get("home_abbr")
+    away_score = completed_game.get("away_score")
+    home_score = completed_game.get("home_score")
 
-    winner = completed_game.get("winner")
-    loser = completed_game.get("loser")
+    if away_score is None or home_score is None:
+        return None
 
-    # Completed-games sources use long names. The schedule index has already
-    # established the row team's short code, so callers add short-name fields
-    # before invoking this helper.
-    if completed_game.get("winner_abbr") == abbr:
+    if abbr == away_abbr:
+        score_for = float(away_score)
+        score_against = float(home_score)
+    elif abbr == home_abbr:
+        score_for = float(home_score)
+        score_against = float(away_score)
+    else:
+        return None
+
+    if score_for > score_against:
         return "W"
-    if completed_game.get("loser_abbr") == abbr:
+    if score_for < score_against:
         return "L"
-
-    if winner == abbr:
-        return "W"
-    if loser == abbr:
-        return "L"
-
-    return None
+    return "T"
 
 
 def data_value(value: object) -> str | None:

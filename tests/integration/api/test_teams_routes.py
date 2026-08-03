@@ -37,7 +37,7 @@ def _write_percentiles(tmp_path: Path, rows: list[dict]) -> None:
 
 
 def _make_games_df() -> pd.DataFrame:
-    """Minimal games DataFrame for team routes."""
+    """Minimal canonical games frame for team routes."""
     return pd.DataFrame(
         [
             {
@@ -45,11 +45,11 @@ def _make_games_df() -> pd.DataFrame:
                 "YEAR": "2026-2027",
                 "WEEK_NUM": 1,
                 "GAME_DATE": "2026-09-05",
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Los Angeles Chargers",
-                "GAME_LOCATION": "H",
-                "PTS_WINNER": 27,
-                "PTS_LOSER": 20,
+                "AWAY_TEAM": "Los Angeles Chargers",
+                "HOME_TEAM": "Kansas City Chiefs",
+                "AWAY_SCORE": 20,
+                "HOME_SCORE": 27,
+                "IS_NEUTRAL_SITE": 0,
             },
         ]
     )

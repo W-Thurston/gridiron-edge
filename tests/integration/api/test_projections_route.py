@@ -57,10 +57,16 @@ def _write_schedule(
     tmp_path: Path,
     rows: list[dict],
 ) -> None:
-    """Write the cleaned upcoming schedule artifact."""
-    schedule_path: Path = tmp_path / "data" / "cleaned" / "NFL_upcoming_schedule_cleaned.csv"
-    schedule_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(schedule_path, index=False)
+    """Write the rich upcoming schedule artifact."""
+    schedule_path = tmp_path / "data" / "cleaned" / "NFL_upcoming_schedule_rich.parquet"
+    schedule_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    pd.DataFrame(rows).to_parquet(
+        schedule_path,
+        index=False,
+    )
 
 
 def _empty_games_df() -> pd.DataFrame:
@@ -70,9 +76,10 @@ def _empty_games_df() -> pd.DataFrame:
             "GAME_ID",
             "YEAR",
             "WEEK_NUM",
-            "WINNER",
-            "LOSER",
-            "WIN_OR_TIE",
+            "AWAY_TEAM",
+            "HOME_TEAM",
+            "AWAY_SCORE",
+            "HOME_SCORE",
             "GAME_DATE",
             "GAMETIME",
         ]
@@ -293,24 +300,26 @@ class TestProjectionGridRoute:
     def _schedule_rows(self) -> list[dict]:
         return [
             {
-                "WEEK_NUM": 1,
-                "GAME_DAY_OF_WEEK": "Wednesday",
-                "GAME_DATE": "2026-09-09",
-                "AWAY_TEAM": "Buffalo Bills",
-                "HOME_TEAM": "Seattle Seahawks",
-                "GAMETIME": "20:20:00",
-                "YEAR": "2026-2027",
-                "GAME_ID": "2026_01_BUF_SEA",
+                "week": 1,
+                "game_day_of_week": "Wednesday",
+                "game_date": "2026-09-09",
+                "away_team": "Buffalo Bills",
+                "home_team": "Seattle Seahawks",
+                "game_time": "20:20:00",
+                "season": "2026-2027",
+                "game_id": "2026_01_BUF_SEA",
+                "neutral_site": 0,
             },
             {
-                "WEEK_NUM": 2,
-                "GAME_DAY_OF_WEEK": "Sunday",
-                "GAME_DATE": "2026-09-20",
-                "AWAY_TEAM": "Seattle Seahawks",
-                "HOME_TEAM": "Buffalo Bills",
-                "GAMETIME": "16:25:00",
-                "YEAR": "2026-2027",
-                "GAME_ID": "2026_02_SEA_BUF",
+                "week": 2,
+                "game_day_of_week": "Sunday",
+                "game_date": "2026-09-20",
+                "away_team": "Seattle Seahawks",
+                "home_team": "Buffalo Bills",
+                "game_time": "16:25:00",
+                "season": "2026-2027",
+                "game_id": "2026_02_SEA_BUF",
+                "neutral_site": 0,
             },
         ]
 
@@ -392,9 +401,10 @@ class TestProjectionGridRoute:
                     "GAME_ID": "2026_01_BUF_SEA",
                     "YEAR": "2026-2027",
                     "WEEK_NUM": 1,
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 1.0,
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": 20,
+                    "HOME_SCORE": 27,
                     "GAME_DATE": "2026-09-09",
                     "GAMETIME": "20:20:00",
                 },
@@ -482,9 +492,10 @@ class TestProjectionGridRoute:
                             "GAME_ID": "2025_22_SEA_BUF",
                             "YEAR": "2025-2026",
                             "WEEK_NUM": 22,
-                            "WINNER": "Seattle Seahawks",
-                            "LOSER": "Buffalo Bills",
-                            "WIN_OR_TIE": 1.0,
+                            "AWAY_TEAM": "Buffalo Bills",
+                            "HOME_TEAM": "Seattle Seahawks",
+                            "AWAY_SCORE": 20,
+                            "HOME_SCORE": 27,
                         },
                     ]
                 )

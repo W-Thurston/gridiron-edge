@@ -1,19 +1,10 @@
 # src/gridiron_edge/transform/clean/schedule_nflverse.py
 
-"""Transform nflverse upcoming schedule data into the canonical schedule schema.
+"""Transform nflverse upcoming games into the rich schedule artifact.
 
-Maps unplayed nflverse games to the AWAY_TEAM/HOME_TEAM-oriented canonical
-upcoming schedule schema used by Elo predict and simulation.
-
-Canonical schedule schema (NFL_upcoming_schedule_cleaned.csv):
-    WEEK_NUM            int     1-22
-    GAME_DAY_OF_WEEK    str     "Sunday"
-    GAME_DATE           str     "2025-10-05"
-    AWAY_TEAM           str     "Kansas City Chiefs"   (long name)
-    HOME_TEAM           str     "Los Angeles Chargers" (long name)
-    GAMETIME            str     "16:25:00"
-    YEAR                str     "2025-2026"
-    GAME_ID             str     "2025_05_KC_LAC"
+The canonical upcoming schedule is stored as Parquet with explicit
+Away/Home identity, venue, rest, market, source, and ingestion metadata.
+Consumers read this rich schema directly.
 """
 
 from __future__ import annotations
@@ -30,7 +21,6 @@ from pandas import DataFrame, Series
 from gridiron_edge.core.settings import Settings, get_settings
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.datasets.writers import (
-    write_csv,
     write_parquet,
 )
 from gridiron_edge.transform.clean._nflverse_common import (
@@ -70,17 +60,6 @@ RICH_UPCOMING_COLUMNS: Final[tuple[str, ...]] = (
     "under_odds",
     "source",
     "ingested_at",
-)
-
-ELO_UPCOMING_COLUMNS: Final[tuple[str, ...]] = (
-    "WEEK_NUM",
-    "GAME_DAY_OF_WEEK",
-    "GAME_DATE",
-    "AWAY_TEAM",
-    "HOME_TEAM",
-    "GAMETIME",
-    "YEAR",
-    "GAME_ID",
 )
 
 _RICH_NUMERIC_COLUMNS: Final[tuple[str, ...]] = (
@@ -479,70 +458,24 @@ def build_rich_upcoming_schedule(
     )
 
 
-def build_elo_upcoming_schedule(
-    rich: DataFrame,
-) -> DataFrame:
-    """Project rich upcoming rows onto the focused Elo schedule schema."""
-    missing: list[str] = sorted(
-        {
-            "season",
-            "week",
-            "game_id",
-            "game_day_of_week",
-            "game_date",
-            "game_time",
-            "away_team",
-            "home_team",
-        }
-        - set(rich.columns)
-    )
-    if missing:
-        raise ValueError(
-            "Rich upcoming schedule is missing required columns: " + ", ".join(missing)
-        )
-
-    focused = DataFrame(
-        {
-            "WEEK_NUM": rich["week"].astype(int),
-            "GAME_DAY_OF_WEEK": (rich["game_day_of_week"].fillna("").astype(str)),
-            "GAME_DATE": (rich["game_date"].fillna("").astype(str)),
-            "AWAY_TEAM": rich["away_team"].astype(str),
-            "HOME_TEAM": rich["home_team"].astype(str),
-            "GAMETIME": (rich["game_time"].fillna("").astype(str)),
-            "YEAR": rich["season"].astype(str),
-            "GAME_ID": rich["game_id"].astype(str),
-        }
-    )
-
-    return focused.loc[
-        :,
-        list(ELO_UPCOMING_COLUMNS),
-    ].reset_index(drop=True)
-
-
 def clean_nflverse_upcoming(
     *,
     repo: Path | None = None,
     ingested_at: datetime | None = None,
 ) -> Path:
-    """Transform nflverse raw upcoming schedule into the canonical schedule CSV.
+    """Build the canonical rich upcoming schedule artifact.
 
-    Reads ``data/raw/NFL_upcoming_schedule_nflverse.csv``, maps to the
-    canonical AWAY_TEAM/HOME_TEAM schema, and writes to
-    ``data/cleaned/NFL_upcoming_schedule_cleaned.csv``.
-
-    Also performs a stadium coverage check: any stadium in the upcoming
-    schedule that is absent from the stadium reference CSV is logged as a
-    WARNING so it can be added before weather ingest runs.
+    Reads the registered raw nflverse upcoming schedule, retains unplayed
+    games, validates stadium coverage when the reference artafact exists,
+    and writes the canonical rich schedule Parquet.
 
     Args:
-        repo: Absolute path to the repository root. Defaults to the value
-            from ``get_settings()``.
-        ingested_at: Optional timezone-aware UTC timestamp attached to all
-            rich rows. Defaults to the current UTC time.
+        repo: Repository roof. Defaults to the configured repository.
+        ingested_at: Optional timezone-aware UTC ingestion timestamp.
+            Defaults to the current UTC time.
 
     Returns:
-        Absolute path to the written canonical upcoming schedule CSV.
+        Absolute path to the rich upcoming schedule Parquet.
     """
     settings: Settings = get_settings()
     resolved_repo: Path = repo or settings.repo_root
@@ -593,17 +526,11 @@ def clean_nflverse_upcoming(
         upcoming,
         ingested_at=ingested_at,
     )
-    focused: DataFrame = build_elo_upcoming_schedule(rich)
 
     rich_path: Path = write_parquet(
         resolved_repo,
         "schedule_upcoming_rich",
         rich,
-    )
-    focused_path: Path = write_csv(
-        resolved_repo,
-        "schedule_upcoming",
-        focused,
     )
 
     logger.info(
@@ -611,10 +538,5 @@ def clean_nflverse_upcoming(
         len(rich),
         rich_path,
     )
-    logger.info(
-        "Wrote %d focused Elo schedule rows to %s",
-        len(focused),
-        focused_path,
-    )
 
-    return focused_path
+    return rich_path

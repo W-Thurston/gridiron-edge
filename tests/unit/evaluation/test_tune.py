@@ -24,10 +24,10 @@ from gridiron_edge.evaluation.tune import (
     REGRESS_VALUES,
     TuneResult,
     _brier,
-    _k_for_week,
     _prepare_games,
     run_grid_search,
 )
+from gridiron_edge.ratings.elo.simulator import _k_for_week
 
 
 class TestGridConstants:
@@ -172,9 +172,10 @@ def test_prepare_games_uses_canonical_team_identity() -> None:
                 "2024-2025",
                 "2024-2025",
             ],
-            "WIN_OR_TIE": [1, 1],
             "AWAY_TEAM": ["Bills", "Chiefs"],
             "HOME_TEAM": ["Dolphins", "Ravens"],
+            "AWAY_SCORE": [24, 20],
+            "HOME_SCORE": [17, 27],
         }
     )
 
@@ -199,9 +200,10 @@ def test_prepare_games_excludes_unplayed_games() -> None:
                 "2024-2025",
                 "2024-2025",
             ],
-            "WIN_OR_TIE": [1, pd.NA],
             "AWAY_TEAM": ["Bills", "Chiefs"],
             "HOME_TEAM": ["Dolphins", "Ravens"],
+            "AWAY_SCORE": [24, pd.NA],
+            "HOME_SCORE": [17, pd.NA],
         }
     )
 
@@ -214,13 +216,49 @@ def test_prepare_games_excludes_unplayed_games() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    (
+        "away_score",
+        "home_score",
+    ),
+    [
+        (
+            24,
+            pd.NA,
+        ),
+        (
+            pd.NA,
+            17,
+        ),
+    ],
+)
+def test_prepare_games_excludes_partial_scores(
+    away_score: object,
+    home_score: object,
+) -> None:
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2024-2025"],
+            "AWAY_TEAM": ["Bills"],
+            "HOME_TEAM": ["Dolphins"],
+            "AWAY_SCORE": [away_score],
+            "HOME_SCORE": [home_score],
+        }
+    )
+
+    prepared, seasons, teams_by_year = _prepare_games(games)
+
+    assert prepared.empty
+    assert seasons == []
+    assert teams_by_year == {}
+
+
 def test_prepare_games_rejects_missing_canonical_identity() -> None:
     games = pd.DataFrame(
         {
             "YEAR": ["2024-2025"],
-            "WIN_OR_TIE": [1],
-            "WINNER": ["Bills"],
-            "LOSER": ["Dolphins"],
+            "AWAY_SCORE": [24],
+            "HOME_SCORE": [17],
         }
     )
 
@@ -235,9 +273,10 @@ def test_prepare_games_rejects_empty_team_identity() -> None:
     games = pd.DataFrame(
         {
             "YEAR": ["2024-2025"],
-            "WIN_OR_TIE": [1],
             "AWAY_TEAM": [""],
             "HOME_TEAM": ["Dolphins"],
+            "AWAY_SCORE": [24],
+            "HOME_SCORE": [17],
         }
     )
 
@@ -252,9 +291,10 @@ def test_prepare_games_does_not_mutate_input() -> None:
     games = pd.DataFrame(
         {
             "YEAR": ["2024-2025"],
-            "WIN_OR_TIE": [1],
             "AWAY_TEAM": [" Bills "],
             "HOME_TEAM": ["Dolphins"],
+            "AWAY_SCORE": [24],
+            "HOME_SCORE": [17],
         }
     )
     expected = games.copy(deep=True)
@@ -267,7 +307,7 @@ def test_prepare_games_does_not_mutate_input() -> None:
     )
 
 
-def test_prepare_games_source_excludes_result_orientation() -> None:
+def test_prepare_games_uses_score_completion_contract() -> None:
     import inspect
 
     source = inspect.getsource(_prepare_games)
@@ -275,3 +315,6 @@ def test_prepare_games_source_excludes_result_orientation() -> None:
     assert "WINNER" not in source
     assert "LOSER" not in source
     assert "GAME_LOCATION" not in source
+    assert "WIN_OR_TIE" not in source
+    assert 'games["AWAY_SCORE"].notna()' in source
+    assert 'games["HOME_SCORE"].notna()' in source

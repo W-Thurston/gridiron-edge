@@ -30,7 +30,7 @@ def clean_games() -> None:
 
 @transform_app.command("clean-upcoming")
 def clean_upcoming() -> None:
-    """Clean nflverse raw upcoming schedule into canonical schedule CSV."""
+    """Clean nflverse raw upcoming games into the rich schedule Parquet."""
     from gridiron_edge.core.console import console, step
 
     # pyrefly: ignore [missing-module-attribute]

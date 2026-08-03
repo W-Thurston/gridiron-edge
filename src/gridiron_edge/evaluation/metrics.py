@@ -11,7 +11,7 @@ All functions accept a standard *evaluation DataFrame* produced by
     away_team        str
     home_team        str
     away_win_prob    float - model's predicted probability that away team wins
-    away_team_won    int   - 1 if away team won, 0 if home team won
+    away_team_won    float - 1.0 if away won, 0.0 if home won, 0.5 if tied
     model_name       str   - model purpose (e.g. "win_prob", "total")
     model_type       str   - model algorithm (e.g. "random_forest", "elo")
 
@@ -45,7 +45,6 @@ from numpy import dtype, float64, ndarray, signedinteger
 import pandas as pd
 from pandas import DataFrame, Series
 
-from gridiron_edge.core.constants import AWAY_WIN_LOCATION as _AWAY_WIN_LOCATION
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.evaluation.archive import load_prediction_log
@@ -263,7 +262,8 @@ def build_evaluation_df(
 
     Returns:
         DataFrame with columns: game_id, season, week, away_team, home_team,
-        away_win_prob, away_team_won, model_name, model_type.
+        away_win_prob, away_team_won, model_name, model_type. Tied games use
+        away_team_won=0.5.
         Empty if no data.
     """
     resolved_repo: Path = repo or get_settings().repo_root
@@ -281,21 +281,45 @@ def build_evaluation_df(
     # Join outcomes from canonical games table
     games: DataFrame = loaders.load_games(resolved_repo)
 
-    # Build a lookup: game_id → away_team_won (1 = away won, 0 = home won)
-    # Evaluation keeps an Away-oriented outcome contract. Until outcome
-    # construction moves fully to the canonical modeling target, the cleaned
-    # game location identifies whether the recorded winner was the Away team.
-    away_won_mask: Series = games["GAME_LOCATION"] == _AWAY_WIN_LOCATION
-    outcome_map: dict[str, int] = {}
-    for _, row in games.iterrows():
-        gid = row["GAME_ID"]
-        if pd.isna(row.get("WIN_OR_TIE")):
-            continue  # upcoming game
-        outcome_map[gid] = 1 if away_won_mask[row.name] else 0  # type: ignore[index]
+    # Build an Away-oriented outcome directly from canonical scores.
+    scored_games = games.dropna(
+        subset=[
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        ]
+    ).copy()
+
+    away_scores = pd.to_numeric(
+        scored_games["AWAY_SCORE"],
+        errors="coerce",
+    )
+    home_scores = pd.to_numeric(
+        scored_games["HOME_SCORE"],
+        errors="coerce",
+    )
+
+    scored_games["away_team_won"] = 0.0
+    scored_games.loc[
+        away_scores > home_scores,
+        "away_team_won",
+    ] = 1.0
+    scored_games.loc[
+        away_scores == home_scores,
+        "away_team_won",
+    ] = 0.5
+
+    # pyrefly: ignore [bad-assignment]
+    outcome_map: dict[str, float] = dict(
+        zip(
+            scored_games["GAME_ID"].astype(str),
+            scored_games["away_team_won"].astype(float),
+            strict=True,
+        )
+    )
 
     log["away_team_won"] = log["game_id"].map(outcome_map)
     log = log.dropna(subset=["away_team_won"]).copy()
-    log["away_team_won"] = log["away_team_won"].astype(int)
+    log["away_team_won"] = log["away_team_won"].astype(float)
 
     cols: list[str] = [
         "game_id",

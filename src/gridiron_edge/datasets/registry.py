@@ -8,7 +8,6 @@ DatasetKey = Literal[
     "schedule_upcoming_raw_nflverse",
     # ---- Canonical cleaned datasets ----
     "games",
-    "schedule_upcoming",
     "schedule_upcoming_rich",
     "weather_enriched",
     "elo_state",
@@ -51,7 +50,6 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     ),
     # ---- Canonical cleaned datasets ----
     "games": DatasetSpec("data/cleaned/NFL_wk_by_wk_cleaned.csv"),
-    "schedule_upcoming": DatasetSpec("data/cleaned/NFL_upcoming_schedule_cleaned.csv"),
     "schedule_upcoming_rich": DatasetSpec("data/cleaned/NFL_upcoming_schedule_rich.parquet"),
     "weather_enriched": DatasetSpec("data/cleaned/NFL_wk_by_wk_w_weather.csv"),
     "stadiums": DatasetSpec("data/cleaned/NFL_stadium_reference.csv"),

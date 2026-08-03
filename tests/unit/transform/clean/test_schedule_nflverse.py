@@ -1,6 +1,6 @@
 # tests/unit/transform/clean/test_schedule_nflverse.py
 
-"""Tests for rich and focused nflverse upcoming-schedule cleaning."""
+"""Tests for canonical rich nflverse upcoming-schedule cleaning."""
 
 from __future__ import annotations
 
@@ -12,14 +12,12 @@ from pandas import DataFrame
 import pytest
 
 from gridiron_edge.datasets.loaders import (
-    load_schedule_upcoming,
     load_schedule_upcoming_rich,
 )
+from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.datasets.writers import write_parquet
 from gridiron_edge.transform.clean.schedule_nflverse import (
-    ELO_UPCOMING_COLUMNS,
     RICH_UPCOMING_COLUMNS,
-    build_elo_upcoming_schedule,
     build_rich_upcoming_schedule,
     clean_nflverse_upcoming,
 )
@@ -186,44 +184,15 @@ def test_location_context_is_preserved() -> None:
     assert bool(neutral["neutral_site"])
 
 
-def test_focused_schedule_preserves_legacy_schema() -> None:
-    rich = build_rich_upcoming_schedule(
-        _raw_upcoming(),
-        ingested_at=datetime(
-            2026,
-            7,
-            30,
-            18,
-            tzinfo=UTC,
-        ),
-    )
-
-    focused = build_elo_upcoming_schedule(rich)
-
-    assert list(focused.columns) == list(ELO_UPCOMING_COLUMNS)
-    assert set(focused["GAME_ID"]) == set(rich["game_id"])
-    assert len(focused) == len(rich)
-
-
-def test_empty_source_produces_both_empty_schemas() -> None:
+def test_empty_source_produces_exact_rich_schema() -> None:
     raw = _raw_upcoming().iloc[0:0].copy()
-
     rich = build_rich_upcoming_schedule(
         raw,
-        ingested_at=datetime(
-            2026,
-            7,
-            30,
-            18,
-            tzinfo=UTC,
-        ),
+        ingested_at=datetime(2026, 7, 30, 18, tzinfo=UTC),
     )
-    focused = build_elo_upcoming_schedule(rich)
 
     assert rich.empty
-    assert focused.empty
     assert list(rich.columns) == list(RICH_UPCOMING_COLUMNS)
-    assert list(focused.columns) == list(ELO_UPCOMING_COLUMNS)
 
 
 def test_ingestion_timestamp_requires_timezone_aware_utc() -> None:
@@ -259,32 +228,21 @@ def test_ingestion_timestamp_requires_timezone_aware_utc() -> None:
         )
 
 
-def test_cleaner_writes_rich_and_focused_registered_outputs(
-    tmp_path: Path,
-) -> None:
+def test_cleaner_writes_only_registered_rich_output(tmp_path: Path) -> None:
     raw = _raw_upcoming()
+    write_parquet(tmp_path, "schedule_upcoming_raw_nflverse", raw)
 
-    write_parquet(
-        tmp_path,
-        "schedule_upcoming_raw_nflverse",
-        raw,
-    )
-
-    focused_path = clean_nflverse_upcoming(
+    result_path = clean_nflverse_upcoming(
         repo=tmp_path,
-        ingested_at=datetime(
-            2026,
-            7,
-            30,
-            18,
-            tzinfo=UTC,
-        ),
+        ingested_at=datetime(2026, 7, 30, 18, tzinfo=UTC),
     )
-
+    rich_path = dataset_path(tmp_path, "schedule_upcoming_rich")
+    old_focused_path = tmp_path / "data" / "cleaned" / "NFL_upcoming_schedule_cleaned.csv"
     rich = load_schedule_upcoming_rich(tmp_path)
-    focused = load_schedule_upcoming(tmp_path)
 
+    assert result_path == rich_path
+    assert rich_path.exists()
+    assert not old_focused_path.exists()
     assert len(rich) == len(raw)
-    assert len(focused) == len(raw)
-    assert set(rich["game_id"]) == set(focused["GAME_ID"])
-    assert focused_path.exists()
+    assert list(rich.columns) == list(RICH_UPCOMING_COLUMNS)
+    assert set(rich["game_id"]) == set(raw["game_id"])

@@ -113,9 +113,6 @@ def test_register_rejects_structural_without_flag() -> None:
             trainable=False,
         )
 
-        def train(self, df, *, repo=None):
-            return None
-
         def is_trained(self, *, repo=None) -> bool:
             return False
 
@@ -147,8 +144,8 @@ def test_trainable_names_reflects_spec_trainable() -> None:
     assert "win_prob_elo" not in names
 
 
-def test_register_rejects_train_methods_without_flag() -> None:
-    """A class that implements Trainable but sets trainable=False must fail."""
+def test_register_rejects_trainable_protocol_without_flag() -> None:
+    """A model satisfying Trainable cannot declare trainable=False."""
     from pathlib import Path
 
     from gridiron_edge.models.base import ModelSpec

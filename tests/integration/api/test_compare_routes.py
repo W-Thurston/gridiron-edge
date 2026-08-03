@@ -24,33 +24,31 @@ class _FakeSettings:
 
 
 def _make_games_for_teams() -> pd.DataFrame:
-    """Games DataFrame for two-team comparison tests."""
+    """Canonical games frame for two-team comparison tests."""
     return pd.DataFrame(
         [
             {
-                "GAME_ID": "2026_01_KC_LAC",
+                "GAME_ID": "2026_01_LAC_KC",
                 "YEAR": "2026-2027",
                 "WEEK_NUM": 1,
                 "GAME_DATE": "2026-09-05",
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Los Angeles Chargers",
-                "WIN_OR_TIE": 1,
-                "PTS_WINNER": 27,
-                "PTS_LOSER": 20,
-                "GAME_LOCATION": "H",
+                "AWAY_TEAM": "Los Angeles Chargers",
+                "HOME_TEAM": "Kansas City Chiefs",
+                "AWAY_SCORE": 20,
+                "HOME_SCORE": 27,
+                "IS_NEUTRAL_SITE": 0,
                 "STADIUM": "Arrowhead Stadium",
             },
             {
-                "GAME_ID": "2026_02_LAC_KC",
+                "GAME_ID": "2026_02_KC_LAC",
                 "YEAR": "2026-2027",
                 "WEEK_NUM": 2,
                 "GAME_DATE": "2026-09-12",
-                "WINNER": "Los Angeles Chargers",
-                "LOSER": "Kansas City Chiefs",
-                "WIN_OR_TIE": 1,
-                "PTS_WINNER": 24,
-                "PTS_LOSER": 21,
-                "GAME_LOCATION": "H",
+                "AWAY_TEAM": "Kansas City Chiefs",
+                "HOME_TEAM": "Los Angeles Chargers",
+                "AWAY_SCORE": 21,
+                "HOME_SCORE": 24,
+                "IS_NEUTRAL_SITE": 0,
                 "STADIUM": "SoFi Stadium",
             },
         ]

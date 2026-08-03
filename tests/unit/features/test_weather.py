@@ -40,17 +40,22 @@ def _make_accessor(
     return acc
 
 
-def _make_games(roof: str = "outdoors", game_id: str = "2024_01_KC_LV") -> pd.DataFrame:
+def _make_games(
+    roof: str = "outdoors",
+    game_id: str = "2024_01_KC_LV",
+) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
                 "GAME_ID": game_id,
-                "WINNER": "Kansas City Chiefs",
-                "LOSER": "Las Vegas Raiders",
                 "YEAR": "2024-2025",
                 "WEEK_NUM": 1,
                 "GAME_DATE": "2024-09-05",
-                "GAME_LOCATION": "NULL_VALUE",
+                "AWAY_TEAM": "Las Vegas Raiders",
+                "HOME_TEAM": "Kansas City Chiefs",
+                "AWAY_SCORE": 20,
+                "HOME_SCORE": 27,
+                "IS_NEUTRAL_SITE": 0,
                 "STADIUM": "Arrowhead Stadium",
                 "ROOF": roof,
             }

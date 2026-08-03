@@ -33,11 +33,6 @@ def load_games(repo_root: Path) -> pd.DataFrame:
     return load_csv(repo_root, "games")
 
 
-def load_schedule_upcoming(repo_root: Path) -> pd.DataFrame:
-    """Load the cleaned upcoming schedule dataset."""
-    return load_csv(repo_root, "schedule_upcoming")
-
-
 def load_schedule_upcoming_rich(repo_root: Path) -> pd.DataFrame:
     """Load the rich schedule-complete upcoming-game artifact."""
     path: Path = dataset_path(repo_root, "schedule_upcoming_rich")

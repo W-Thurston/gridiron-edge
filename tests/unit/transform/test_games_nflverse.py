@@ -14,6 +14,23 @@ from gridiron_edge.transform.clean.games_nflverse import (
     clean_nflverse_games,
 )
 
+_SYNTHETIC_COMPATIBILITY_COLUMNS: set[str] = {
+    "BOXSCORE_LINK",
+    "YARDS_WINNER",
+    "TURNOVERS_WINNER",
+    "YARDS_LOSER",
+    "TURNOVERS_LOSER",
+}
+
+_RETIRED_RESULT_COLUMNS = {
+    "WINNER",
+    "LOSER",
+    "GAME_LOCATION",
+    "PTS_WINNER",
+    "PTS_LOSER",
+    "WIN_OR_TIE",
+}
+
 
 def _raw_game(
     *,
@@ -65,20 +82,19 @@ def _cleaned_games(repo: Path) -> pd.DataFrame:
 
 
 def _valid_home_away_games() -> pd.DataFrame:
-    """Return one valid cleaned home/away game."""
+    """Return one valid canonical home/away game."""
     return pd.DataFrame(
         {
             "GAME_ID": ["2025_01_PHI_GB"],
-            "AWAY_TEAM": ["Philadelphia Eagles"],
-            "HOME_TEAM": ["Green Bay Packers"],
+            "AWAY_TEAM": [
+                "Philadelphia Eagles",
+            ],
+            "HOME_TEAM": [
+                "Green Bay Packers",
+            ],
             "AWAY_SCORE": [20],
             "HOME_SCORE": [17],
             "IS_NEUTRAL_SITE": [0],
-            "WINNER": ["Philadelphia Eagles"],
-            "LOSER": ["Green Bay Packers"],
-            "PTS_WINNER": [20],
-            "PTS_LOSER": [17],
-            "WIN_OR_TIE": [1.0],
         }
     )
 
@@ -105,10 +121,6 @@ def test_preserves_home_away_identity_for_away_win(
     assert row["HOME_SCORE"] == 17
     assert row["IS_NEUTRAL_SITE"] == 0
 
-    assert row["WINNER"] == "Philadelphia Eagles"
-    assert row["LOSER"] == "Green Bay Packers"
-    assert row["GAME_LOCATION"] == "@"
-
 
 def test_preserves_home_away_identity_for_home_win(
     tmp_path: Path,
@@ -131,10 +143,6 @@ def test_preserves_home_away_identity_for_home_win(
     assert row["AWAY_SCORE"] == 17
     assert row["HOME_SCORE"] == 24
     assert row["IS_NEUTRAL_SITE"] == 0
-
-    assert row["WINNER"] == "Green Bay Packers"
-    assert row["LOSER"] == "Philadelphia Eagles"
-    assert row["GAME_LOCATION"] == "H"
 
 
 def test_preserves_source_orientation_for_neutral_game(
@@ -160,10 +168,6 @@ def test_preserves_source_orientation_for_neutral_game(
     assert row["AWAY_SCORE"] == 27
     assert row["HOME_SCORE"] == 24
     assert row["IS_NEUTRAL_SITE"] == 1
-    assert row["GAME_LOCATION"] == "N"
-
-    # The winner remains result-oriented, while Away/Home remains stable.
-    assert row["WINNER"] == "Philadelphia Eagles"
 
 
 def test_preserves_source_orientation_for_tie(
@@ -186,11 +190,6 @@ def test_preserves_source_orientation_for_tie(
     assert row["HOME_TEAM"] == "Green Bay Packers"
     assert row["AWAY_SCORE"] == 21
     assert row["HOME_SCORE"] == 21
-    assert row["WIN_OR_TIE"] == pytest.approx(0.5)
-
-    # Existing historical convention remains separate from orientation.
-    assert row["WINNER"] == "Green Bay Packers"
-    assert row["LOSER"] == "Philadelphia Eagles"
 
 
 def test_empty_first_run_writes_extended_schema(
@@ -224,6 +223,43 @@ def test_empty_first_run_writes_extended_schema(
         "HOME_SCORE",
         "IS_NEUTRAL_SITE",
     ]
+
+
+def test_cleaned_games_exclude_synthetic_compatibility_columns(
+    tmp_path: Path,
+) -> None:
+    _write_raw_games(
+        tmp_path,
+        [
+            _raw_game(),
+        ],
+    )
+
+    games = _cleaned_games(tmp_path)
+
+    assert _SYNTHETIC_COMPATIBILITY_COLUMNS.isdisjoint(games.columns)
+
+
+def test_empty_schema_excludes_synthetic_compatibility_columns(
+    tmp_path: Path,
+) -> None:
+    _write_raw_games(
+        tmp_path,
+        [
+            {
+                **_raw_game(),
+                "away_score": None,
+                "home_score": None,
+                "result": None,
+            }
+        ],
+    )
+
+    path: Path = clean_nflverse_games(repo=tmp_path)
+    games = pd.read_csv(path)
+
+    assert games.empty
+    assert _SYNTHETIC_COMPATIBILITY_COLUMNS.isdisjoint(games.columns)
 
 
 def test_empty_refresh_does_not_clobber_existing_history(
@@ -286,23 +322,97 @@ def test_home_away_validation_rejects_same_team() -> None:
         _validate_home_away_games(games)
 
 
-def test_home_away_validation_rejects_score_mismatch() -> None:
+@pytest.mark.parametrize(
+    (
+        "away_score",
+        "home_score",
+    ),
+    [
+        (
+            20,
+            None,
+        ),
+        (
+            None,
+            17,
+        ),
+    ],
+)
+def test_home_away_validation_rejects_partial_scores(
+    away_score: int | None,
+    home_score: int | None,
+) -> None:
     games = _valid_home_away_games()
-    games.loc[0, "PTS_WINNER"] = 21
+    games.loc[0, "AWAY_SCORE"] = away_score
+    games.loc[0, "HOME_SCORE"] = home_score
 
     with pytest.raises(
         ValueError,
-        match="PTS_WINNER does not reconcile",
+        match=("AWAY_SCORE and HOME_SCORE must both be present or both be missing"),
     ):
         _validate_home_away_games(games)
 
 
-def test_home_away_validation_rejects_invalid_tie_state() -> None:
+@pytest.mark.parametrize(
+    "column",
+    [
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    ],
+)
+def test_home_away_validation_rejects_negative_scores(
+    column: str,
+) -> None:
     games = _valid_home_away_games()
-    games.loc[0, "WIN_OR_TIE"] = 0.5
+    games.loc[0, column] = -1
 
     with pytest.raises(
         ValueError,
-        match="scores do not reconcile with WIN_OR_TIE",
+        match=f"{column} must not contain negative",
     ):
         _validate_home_away_games(games)
+
+
+def test_home_away_validation_accepts_tied_scores() -> None:
+    games = _valid_home_away_games()
+    games.loc[0, "AWAY_SCORE"] = 21
+    games.loc[0, "HOME_SCORE"] = 21
+
+    _validate_home_away_games(games)
+
+
+def test_cleaned_games_exclude_result_oriented_columns(
+    tmp_path: Path,
+) -> None:
+    _write_raw_games(
+        tmp_path,
+        [
+            _raw_game(),
+        ],
+    )
+
+    games = _cleaned_games(tmp_path)
+
+    assert _RETIRED_RESULT_COLUMNS.isdisjoint(games.columns)
+
+
+def test_empty_schema_excludes_result_oriented_columns(
+    tmp_path: Path,
+) -> None:
+    _write_raw_games(
+        tmp_path,
+        [
+            {
+                **_raw_game(),
+                "away_score": None,
+                "home_score": None,
+                "result": None,
+            }
+        ],
+    )
+
+    path = clean_nflverse_games(repo=tmp_path)
+    games = pd.read_csv(path)
+
+    assert games.empty
+    assert _RETIRED_RESULT_COLUMNS.isdisjoint(games.columns)

@@ -24,46 +24,43 @@ LONG_TO_SHORT = {
 
 
 def _make_games() -> pd.DataFrame:
-    """Build a small games DataFrame for testing."""
+    """Build canonical Away/Home games for testing."""
     return pd.DataFrame(
         [
-            # BAL wins @ CLE
             {
                 "GAME_ID": "2025_01_BAL_CLE",
                 "WEEK_NUM": 1,
                 "GAME_DATE": "2025-09-07",
-                "WINNER": "Baltimore Ravens",
-                "GAME_LOCATION": "@",
-                "LOSER": "Cleveland Browns",
-                "PTS_WINNER": 27,
-                "PTS_LOSER": 14,
+                "AWAY_TEAM": "Baltimore Ravens",
+                "HOME_TEAM": "Cleveland Browns",
+                "AWAY_SCORE": 27,
+                "HOME_SCORE": 14,
+                "IS_NEUTRAL_SITE": 0,
                 "YEAR": "2025-2026",
             },
-            # KC wins at home over CLE
             {
                 "GAME_ID": "2025_02_CLE_KC",
                 "WEEK_NUM": 2,
                 "GAME_DATE": "2025-09-14",
-                "WINNER": "Kansas City Chiefs",
-                "GAME_LOCATION": "H",
-                "LOSER": "Cleveland Browns",
-                "PTS_WINNER": 30,
-                "PTS_LOSER": 10,
+                "AWAY_TEAM": "Cleveland Browns",
+                "HOME_TEAM": "Kansas City Chiefs",
+                "AWAY_SCORE": 10,
+                "HOME_SCORE": 30,
+                "IS_NEUTRAL_SITE": 0,
                 "YEAR": "2025-2026",
             },
-            # BAL wins at home over KC (BAL is winner, "H" location)
             {
                 "GAME_ID": "2025_03_KC_BAL",
                 "WEEK_NUM": 3,
                 "GAME_DATE": "2025-09-21",
-                "WINNER": "Baltimore Ravens",
-                "GAME_LOCATION": "H",
-                "LOSER": "Kansas City Chiefs",
-                "PTS_WINNER": 24,
-                "PTS_LOSER": 17,
+                "AWAY_TEAM": "Kansas City Chiefs",
+                "HOME_TEAM": "Baltimore Ravens",
+                "AWAY_SCORE": 17,
+                "HOME_SCORE": 24,
+                "IS_NEUTRAL_SITE": 0,
                 "YEAR": "2025-2026",
             },
-        ],
+        ]
     )
 
 
@@ -117,6 +114,53 @@ class TestComputeRecord:
         rec = _compute_record(pd.DataFrame(), "Baltimore Ravens")
         assert rec.wins == 0
 
+    def test_tie_is_counted_for_both_teams(self) -> None:
+        games = pd.DataFrame(
+            [
+                {
+                    "AWAY_TEAM": "Baltimore Ravens",
+                    "HOME_TEAM": "Kansas City Chiefs",
+                    "AWAY_SCORE": 21,
+                    "HOME_SCORE": 21,
+                }
+            ]
+        )
+
+        baltimore = _compute_record(
+            games,
+            "Baltimore Ravens",
+        )
+        kansas_city = _compute_record(
+            games,
+            "Kansas City Chiefs",
+        )
+
+        assert baltimore.ties == 1
+        assert kansas_city.ties == 1
+        assert baltimore.wins == 0
+        assert kansas_city.losses == 0
+
+    def test_unplayed_game_is_not_counted(self) -> None:
+        games = pd.DataFrame(
+            [
+                {
+                    "AWAY_TEAM": "Baltimore Ravens",
+                    "HOME_TEAM": "Kansas City Chiefs",
+                    "AWAY_SCORE": None,
+                    "HOME_SCORE": None,
+                }
+            ]
+        )
+
+        record = _compute_record(
+            games,
+            "Baltimore Ravens",
+        )
+
+        assert record.wins == 0
+        assert record.losses == 0
+        assert record.ties == 0
+
 
 class TestLatestRatings:
     def test_returns_one_row_per_team(self) -> None:
@@ -166,6 +210,38 @@ class TestSerializeResult:
         assert result.opponent == "KC"
         assert result.is_home is True
         assert result.result == "W"
+
+    def test_neutral_game_is_not_home_for_either_team(
+        self,
+    ) -> None:
+        row = pd.Series(
+            {
+                "GAME_ID": "2025_21_KC_BAL",
+                "WEEK_NUM": 21,
+                "GAME_DATE": "2026-01-25",
+                "AWAY_TEAM": "Kansas City Chiefs",
+                "HOME_TEAM": "Baltimore Ravens",
+                "AWAY_SCORE": 24,
+                "HOME_SCORE": 27,
+                "IS_NEUTRAL_SITE": 1,
+            }
+        )
+
+        baltimore = _serialize_result(
+            row,
+            "Baltimore Ravens",
+            LONG_TO_SHORT,
+        )
+        kansas_city = _serialize_result(
+            row,
+            "Kansas City Chiefs",
+            LONG_TO_SHORT,
+        )
+
+        assert baltimore.is_home is False
+        assert kansas_city.is_home is False
+        assert baltimore.result == "W"
+        assert kansas_city.result == "L"
 
 
 class TestSerializeTeamRankings:
@@ -293,7 +369,16 @@ class TestTeamRankingsPercentiles:
                 },
             ]
         )
-        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        games = pd.DataFrame(
+            columns=[
+                "YEAR",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "AWAY_SCORE",
+                "HOME_SCORE",
+                "IS_NEUTRAL_SITE",
+            ]
+        )
         long_to_short = {"Kansas City Chiefs": "KC", "Los Angeles Chargers": "LAC"}
         percentiles = pd.DataFrame(
             [
@@ -345,7 +430,16 @@ class TestTeamRankingsPercentiles:
                 },
             ]
         )
-        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        games = pd.DataFrame(
+            columns=[
+                "YEAR",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "AWAY_SCORE",
+                "HOME_SCORE",
+                "IS_NEUTRAL_SITE",
+            ]
+        )
         long_to_short = {"Kansas City Chiefs": "KC"}
         percentiles = pd.DataFrame()  # Empty
 
@@ -382,7 +476,16 @@ class TestTrendPopulation:
                 },
             ]
         )
-        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        games = pd.DataFrame(
+            columns=[
+                "YEAR",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "AWAY_SCORE",
+                "HOME_SCORE",
+                "IS_NEUTRAL_SITE",
+            ]
+        )
         long_to_short = {"Kansas City Chiefs": "KC"}
         trends = pd.DataFrame(
             [
@@ -414,7 +517,16 @@ class TestTrendPopulation:
                 },
             ]
         )
-        games = pd.DataFrame(columns=["YEAR", "WINNER", "LOSER", "PTS_WINNER", "PTS_LOSER"])
+        games = pd.DataFrame(
+            columns=[
+                "YEAR",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "AWAY_SCORE",
+                "HOME_SCORE",
+                "IS_NEUTRAL_SITE",
+            ]
+        )
         long_to_short = {"Kansas City Chiefs": "KC"}
 
         result = serialize_team_rankings(

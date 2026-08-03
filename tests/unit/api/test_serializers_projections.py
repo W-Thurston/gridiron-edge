@@ -231,31 +231,31 @@ class TestSerializeProjectionGrid:
         return pd.DataFrame(
             [
                 {
-                    "WEEK_NUM": 1,
-                    "GAME_DATE": "2026-09-13",
-                    "GAMETIME": "13:00:00",
-                    "AWAY_TEAM": "Buffalo Bills",
-                    "HOME_TEAM": "Seattle Seahawks",
-                    "YEAR": "2026-2027",
-                    "GAME_ID": "2026_01_BUF_SEA",
+                    "week": 1,
+                    "game_date": "2026-09-13",
+                    "game_time": "13:00:00",
+                    "away_team": "Buffalo Bills",
+                    "home_team": "Seattle Seahawks",
+                    "season": "2026-2027",
+                    "game_id": "2026_01_BUF_SEA",
                 },
                 {
-                    "WEEK_NUM": 2,
-                    "GAME_DATE": "2026-09-20",
-                    "GAMETIME": "16:25:00",
-                    "AWAY_TEAM": "Seattle Seahawks",
-                    "HOME_TEAM": "Buffalo Bills",
-                    "YEAR": "2026-2027",
-                    "GAME_ID": "2026_02_SEA_BUF",
+                    "week": 2,
+                    "game_date": "2026-09-20",
+                    "game_time": "16:25:00",
+                    "away_team": "Seattle Seahawks",
+                    "home_team": "Buffalo Bills",
+                    "season": "2026-2027",
+                    "game_id": "2026_02_SEA_BUF",
                 },
                 {
-                    "WEEK_NUM": 4,
-                    "GAME_DATE": "2026-10-04",
-                    "GAMETIME": "13:00:00",
-                    "AWAY_TEAM": "Seattle Seahawks",
-                    "HOME_TEAM": "Buffalo Bills",
-                    "YEAR": "2026-2027",
-                    "GAME_ID": "2026_04_SEA_BUF",
+                    "week": 4,
+                    "game_date": "2026-10-04",
+                    "game_time": "13:00:00",
+                    "away_team": "Seattle Seahawks",
+                    "home_team": "Buffalo Bills",
+                    "season": "2026-2027",
+                    "game_id": "2026_04_SEA_BUF",
                 },
             ]
         )
@@ -277,9 +277,10 @@ class TestSerializeProjectionGrid:
                     [
                         {
                             "GAME_ID": "2026_01_BUF_SEA",
-                            "WINNER": "Seattle Seahawks",
-                            "LOSER": "Buffalo Bills",
-                            "WIN_OR_TIE": 1.0,
+                            "AWAY_TEAM": "Buffalo Bills",
+                            "HOME_TEAM": "Seattle Seahawks",
+                            "AWAY_SCORE": 20,
+                            "HOME_SCORE": 27,
                         }
                     ]
                 )
@@ -334,9 +335,10 @@ class TestSerializeProjectionGrid:
             [
                 {
                     "GAME_ID": "2026_01_BUF_SEA",
-                    "WINNER": "Seattle Seahawks",
-                    "LOSER": "Buffalo Bills",
-                    "WIN_OR_TIE": 0.5,
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": 21,
+                    "HOME_SCORE": 21,
                 }
             ]
         )
@@ -344,6 +346,49 @@ class TestSerializeProjectionGrid:
         result = serialize_projection_grid(self._data(games=games))
 
         assert {row.weeks[0].actual_result for row in result.items} == {"T"}
+
+    def test_unplayed_game_is_not_marked_played(
+        self,
+    ) -> None:
+        games = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2026_01_BUF_SEA",
+                    "AWAY_TEAM": "Buffalo Bills",
+                    "HOME_TEAM": "Seattle Seahawks",
+                    "AWAY_SCORE": None,
+                    "HOME_SCORE": None,
+                }
+            ]
+        )
+
+        result = serialize_projection_grid(self._data(games=games))
+
+        by_team = {row.abbr: row for row in result.items}
+
+        assert by_team["SEA"].weeks[0].state == ("projected")
+        assert by_team["BUF"].weeks[0].state == ("projected")
+        assert by_team["SEA"].weeks[0].actual_result is None
+        assert by_team["BUF"].weeks[0].actual_result is None
+
+    def test_unmapped_completed_game_is_not_played(
+        self,
+    ) -> None:
+        games = pd.DataFrame(
+            [
+                {
+                    "GAME_ID": "2026_01_BUF_SEA",
+                    "AWAY_TEAM": "Unknown Away",
+                    "HOME_TEAM": "Unknown Home",
+                    "AWAY_SCORE": 20,
+                    "HOME_SCORE": 27,
+                }
+            ]
+        )
+
+        result = serialize_projection_grid(self._data(games=games))
+
+        assert {row.weeks[0].state for row in result.items} == {"projected"}
 
     def test_scheduled_week_without_probability_is_unavailable(self) -> None:
         probabilities = self._probabilities().drop(columns=["W04_WIN_P"])

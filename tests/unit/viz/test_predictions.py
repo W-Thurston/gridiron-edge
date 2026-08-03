@@ -50,9 +50,9 @@ def _domain_predictions() -> DataFrame:
                 "2026_01_KC_LAC",
                 "2026_01_BAL_BUF",
             ],
-            "GAME_LOCATION": [
-                "H",
-                "N",
+            "IS_NEUTRAL_SITE": [
+                0,
+                1,
             ],
             "AWAY_TEAM_ELO": [
                 1520.0,
@@ -177,7 +177,7 @@ def test_neutral_site_identity_is_preserved(
 
     neutral = result.loc[result["GAME_ID"] == "2026_01_BAL_BUF"].iloc[0]
 
-    assert neutral["GAME_LOCATION"] == "N"
+    assert neutral["IS_NEUTRAL_SITE"] == 1
     assert neutral["AWAY_TEAM"] == "Baltimore Ravens"
     assert neutral["HOME_TEAM"] == "Buffalo Bills"
 

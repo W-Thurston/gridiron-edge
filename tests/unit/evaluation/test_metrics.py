@@ -7,8 +7,11 @@ use synthetic DataFrames so no real data or archive files are needed.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
+import pandas as pd
 from pandas import DataFrame, Series
 import pytest
 
@@ -366,3 +369,110 @@ class TestBiggestMisses:
             n=10,
         )
         assert result.empty
+
+
+class TestBuildEvaluationDfCanonicalOutcomes:
+    """Build evaluation outcomes from canonical Away/Home scores."""
+
+    @staticmethod
+    def _prediction_log() -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "game_id": [
+                    "away-win",
+                    "home-win",
+                    "tie",
+                    "unplayed",
+                ],
+                "season": ["2026-2027"] * 4,
+                "week": [1, 2, 3, 4],
+                "away_team": ["Away"] * 4,
+                "home_team": ["Home"] * 4,
+                "away_win_prob": [0.60, 0.40, 0.50, 0.55],
+                "model_name": ["win_prob"] * 4,
+                "model_type": ["elo"] * 4,
+            }
+        )
+
+    @staticmethod
+    def _games() -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "GAME_ID": [
+                    "away-win",
+                    "home-win",
+                    "tie",
+                    "unplayed",
+                ],
+                "AWAY_SCORE": [
+                    24.0,
+                    17.0,
+                    21.0,
+                    float("nan"),
+                ],
+                "HOME_SCORE": [
+                    20.0,
+                    27.0,
+                    21.0,
+                    float("nan"),
+                ],
+            }
+        )
+
+    def test_uses_home_away_scores_and_preserves_ties(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.evaluation.metrics import (
+            build_evaluation_df,
+        )
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.metrics.load_prediction_log",
+                return_value=self._prediction_log(),
+            ),
+            patch(
+                "gridiron_edge.evaluation.metrics.loaders.load_games",
+                return_value=self._games(),
+            ),
+        ):
+            result = build_evaluation_df(repo=tmp_path)
+
+        outcomes = result.set_index("game_id")["away_team_won"].to_dict()
+
+        assert outcomes == {
+            "away-win": 1.0,
+            "home-win": 0.0,
+            "tie": 0.5,
+        }
+        assert result["away_team_won"].dtype == float
+
+    def test_does_not_require_result_or_location_columns(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from gridiron_edge.evaluation.metrics import (
+            build_evaluation_df,
+        )
+
+        games = self._games()
+
+        assert "WINNER" not in games.columns
+        assert "LOSER" not in games.columns
+        assert "GAME_LOCATION" not in games.columns
+        assert "WIN_OR_TIE" not in games.columns
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.metrics.load_prediction_log",
+                return_value=self._prediction_log(),
+            ),
+            patch(
+                "gridiron_edge.evaluation.metrics.loaders.load_games",
+                return_value=games,
+            ),
+        ):
+            result = build_evaluation_df(repo=tmp_path)
+
+        assert len(result) == 3

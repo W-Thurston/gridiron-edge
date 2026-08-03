@@ -21,7 +21,6 @@ from gridiron_edge.datasets.loaders import (
     load_epa_by_game,
     load_games,
     load_parquet_if_exists,
-    load_schedule_upcoming,
     load_schedule_upcoming_rich,
     load_stadiums,
     load_weekly_product,
@@ -118,44 +117,8 @@ def test_loads_rich_upcoming_schedule_from_registry(tmp_path: Path) -> None:
     pd.testing.assert_frame_equal(loaded, expected)
 
 
-def test_rich_loader_does_not_fall_back_to_legacy_schedule(tmp_path: Path) -> None:
-    legacy = pd.DataFrame(
-        {
-            "WEEK_NUM": [1],
-            "GAME_DAY_OF_WEEK": ["Sunday"],
-            "GAME_DATE": ["2026-09-05"],
-            "AWAY_TEAM": ["Kansas City Chiefs"],
-            "HOME_TEAM": ["Los Angeles Chargers"],
-            "GAMETIME": ["20:20:00"],
-            "YEAR": ["2026-2027"],
-            "GAME_ID": ["2026_01_KC_LAC"],
-        }
-    )
-    write_csv(tmp_path, "schedule_upcoming", legacy)
-    with pytest.raises(FileNotFoundError):
-        load_schedule_upcoming_rich(tmp_path)
-
-
-def test_legacy_schedule_loader_remains_compatible(tmp_path: Path) -> None:
-    expected = pd.DataFrame(
-        {
-            "WEEK_NUM": [1],
-            "GAME_DAY_OF_WEEK": ["Sunday"],
-            "GAME_DATE": ["2026-09-05"],
-            "AWAY_TEAM": ["Kansas City Chiefs"],
-            "HOME_TEAM": ["Los Angeles Chargers"],
-            "GAMETIME": ["20:20:00"],
-            "YEAR": ["2026-2027"],
-            "GAME_ID": ["2026_01_KC_LAC"],
-        }
-    )
-    write_csv(tmp_path, "schedule_upcoming", expected)
-    loaded = load_schedule_upcoming(tmp_path)
-    pd.testing.assert_frame_equal(loaded, expected)
-
-
 class TestUpcomingScheduleLoaders:
-    """Verify focused and rich upcoming-schedule loader contracts."""
+    """Verify the canonical rich upcoming-schedule loader."""
 
     def test_loads_rich_schedule_from_registry(self, tmp_path: Path) -> None:
         expected = pd.DataFrame(
@@ -178,39 +141,12 @@ class TestUpcomingScheduleLoaders:
         loaded: DataFrame = load_schedule_upcoming_rich(tmp_path)
         pd.testing.assert_frame_equal(loaded, expected)
 
-    def test_rich_loader_does_not_fall_back_to_legacy(self, tmp_path: Path) -> None:
-        legacy = pd.DataFrame(
-            {
-                "WEEK_NUM": [1],
-                "GAME_DAY_OF_WEEK": ["Sunday"],
-                "GAME_DATE": ["2026-09-05"],
-                "AWAY_TEAM": ["Kansas City Chiefs"],
-                "HOME_TEAM": ["Los Angeles Chargers"],
-                "GAMETIME": ["20:20:00"],
-                "YEAR": ["2026-2027"],
-                "GAME_ID": ["2026_01_KC_LAC"],
-            }
-        )
-        write_csv(tmp_path, "schedule_upcoming", legacy)
+    def test_missing_rich_schedule_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
         with pytest.raises(FileNotFoundError):
             load_schedule_upcoming_rich(tmp_path)
-
-    def test_legacy_loader_remains_compatible(self, tmp_path: Path) -> None:
-        expected = pd.DataFrame(
-            {
-                "WEEK_NUM": [1],
-                "GAME_DAY_OF_WEEK": ["Sunday"],
-                "GAME_DATE": ["2026-09-05"],
-                "AWAY_TEAM": ["Kansas City Chiefs"],
-                "HOME_TEAM": ["Los Angeles Chargers"],
-                "GAMETIME": ["20:20:00"],
-                "YEAR": ["2026-2027"],
-                "GAME_ID": ["2026_01_KC_LAC"],
-            }
-        )
-        write_csv(tmp_path, "schedule_upcoming", expected)
-        loaded: DataFrame = load_schedule_upcoming(tmp_path)
-        pd.testing.assert_frame_equal(loaded, expected)
 
 
 class TestWeeklyProductLoaders:

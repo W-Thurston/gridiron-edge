@@ -14,7 +14,7 @@ from pandas import DataFrame
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets.loaders import (
     load_elo_state,
-    load_schedule_upcoming,
+    load_schedule_upcoming_rich,
 )
 from gridiron_edge.ratings.elo.core import elo_win_probability
 
@@ -28,12 +28,16 @@ class EloPredictionStatus(StrEnum):
     MISSING_BOTH_ELO = "missing_both_elo"
 
 
-_SCHEDULE_IDENTITY_COLUMNS: Final[tuple[str, ...]] = (
-    "YEAR",
-    "WEEK_NUM",
-    "GAME_ID",
-    "AWAY_TEAM",
-    "HOME_TEAM",
+_RICH_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
+    "season",
+    "week",
+    "game_id",
+    "game_day_of_week",
+    "game_date",
+    "game_time",
+    "away_team",
+    "home_team",
+    "neutral_site",
 )
 
 _ELO_COLUMNS: Final[tuple[str, ...]] = (
@@ -54,6 +58,37 @@ def _require_columns(
     missing = sorted(set(columns) - set(frame.columns))
     if missing:
         raise ValueError(f"{label} is missing required columns: " + ", ".join(missing))
+
+
+def _build_elo_schedule(
+    rich_schedule: DataFrame,
+) -> DataFrame:
+    """Build the Elo prediction output schedule from rich rows."""
+    _require_columns(
+        rich_schedule,
+        _RICH_SCHEDULE_COLUMNS,
+        label="Rich upcoming schedule",
+    )
+
+    return DataFrame(
+        {
+            "YEAR": (rich_schedule["season"].astype(str)),
+            "WEEK_NUM": (rich_schedule["week"].astype(int)),
+            "GAME_ID": (rich_schedule["game_id"].astype(str)),
+            "GAME_DAY_OF_WEEK": (rich_schedule["game_day_of_week"].fillna("").astype(str)),
+            "GAME_DATE": (rich_schedule["game_date"].fillna("").astype(str)),
+            "GAMETIME": (rich_schedule["game_time"].fillna("").astype(str)),
+            "AWAY_TEAM": (rich_schedule["away_team"].astype(str)),
+            "HOME_TEAM": (rich_schedule["home_team"].astype(str)),
+            "IS_NEUTRAL_SITE": (
+                # pyrefly: ignore [missing-attribute]
+                pd.to_numeric(
+                    rich_schedule["neutral_site"],
+                    errors="raise",
+                ).astype(int)
+            ),
+        }
+    )
 
 
 def _validate_elo_identity(
@@ -106,17 +141,19 @@ def predict_schedule_with_elo(
     year: str,
     week: int,
 ) -> DataFrame:
-    """Attach Elo ratings and numeric probabilities to scheduled games.
+    """Attach Elo ratings and probabilities to rich schedule rows.
 
-    Schedule truth is authoritative. Every schedule row in the requested
+    Rich schedule truth is authoritative. Every row in the requested
     season and week remains in the result, including games with missing
     Elo ratings.
 
+    The returned frame uses the established uppercase Elo prediction
+    output contract consumed by archives, CLI output, and visualization.
     Missing ratings produce null probabilities and an explicit prediction
     status. Ratings are never replaced with a default value.
 
     Args:
-        schedule: Focused upcoming schedule rows.
+        schedule: Canonical rich upcoming schedule rows.
         elo_state: Elo state keyed by team, season, and week.
         year: NFL season label, such as ``"2026-2027"``.
         week: NFL week number.
@@ -127,8 +164,8 @@ def predict_schedule_with_elo(
     """
     _require_columns(
         schedule,
-        _SCHEDULE_IDENTITY_COLUMNS,
-        label="Schedule",
+        _RICH_SCHEDULE_COLUMNS,
+        label="Rich upcoming schedule",
     )
     _require_columns(
         elo_state,
@@ -137,11 +174,19 @@ def predict_schedule_with_elo(
     )
     _validate_elo_identity(elo_state)
 
-    scoped_schedule = schedule.loc[
-        (schedule["YEAR"].astype(str) == year) & (schedule["WEEK_NUM"] == week),
+    scoped_rich = schedule.loc[
+        (schedule["season"].astype(str) == year)
+        & (
+            pd.to_numeric(
+                schedule["week"],
+                errors="coerce",
+            )
+            == week
+        ),
         :,
     ].copy()
 
+    scoped_schedule = _build_elo_schedule(scoped_rich)
     scoped_schedule["_SCHEDULE_ORDER"] = range(len(scoped_schedule))
 
     away_state = elo_state.rename(
@@ -277,7 +322,7 @@ def predict_elo_for_week(
     """Load schedule and Elo state and predict the requested week."""
     resolved_repo = repo or repo_root()
 
-    schedule = load_schedule_upcoming(resolved_repo)
+    schedule = load_schedule_upcoming_rich(resolved_repo)
     elo_state = load_elo_state(resolved_repo)
 
     return predict_schedule_with_elo(

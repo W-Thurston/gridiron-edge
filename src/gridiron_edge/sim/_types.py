@@ -114,8 +114,8 @@ class SimPaths:
 
     @property
     def schedule_file(self) -> Path:
-        """Absolute path to the cleaned upcoming schedule CSV."""
-        return self.data_cleaned / "NFL_upcoming_schedule_cleaned.csv"
+        """Absolute path to the rich upcoming schedule Parquet."""
+        return self.data_cleaned / "NFL_upcoming_schedule_rich.parquet"
 
     @property
     def wk_by_wk_file(self) -> Path:
