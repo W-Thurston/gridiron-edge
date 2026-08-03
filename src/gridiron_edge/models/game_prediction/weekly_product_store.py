@@ -307,6 +307,16 @@ def _stamp_product(
     if not (validated["week"].astype(int) == identity.week).all():
         raise ValueError("Weekly product rows must match identity week.")
 
+    win_available = validated["win_status"].astype(str) == "available"
+    if not (validated.loc[win_available, "win_run_id"].astype(str) == identity.run_id).all():
+        raise ValueError("Available Win run_id must match product run_id.")
+
+    total_available = (
+        validated["total_status"].astype(str).isin({"available", "uncertainty_unavailable"})
+    )
+    if not (validated.loc[total_available, "total_run_id"].astype(str) == identity.run_id).all():
+        raise ValueError("Available Total run_id must match product run_id.")
+
     generated_at = pd.Timestamp(identity.generated_at)
     stamped = validated.copy()
     stamped.insert(0, "product_generated_at", generated_at)

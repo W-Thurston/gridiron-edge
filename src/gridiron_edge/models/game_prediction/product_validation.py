@@ -24,11 +24,15 @@ _REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
     "away_team",
     "home_team",
     "win_status",
+    "win_selection_status",
     "away_win_prob",
     "home_win_prob",
     "win_model_name",
     "win_model_type",
     "win_event_id",
+    "win_run_id",
+    "win_generated_at",
+    "win_role",
     "spread_status",
     "model_spread",
     "spread_uncertainty",
@@ -43,6 +47,10 @@ _REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
     "total_model_name",
     "total_model_type",
     "total_event_id",
+    "total_run_id",
+    "total_generated_at",
+    "total_role",
+    "total_selection_status",
     "total_uncertainty_trained_at",
     "projected_score_status",
     "projected_home_score",
@@ -81,8 +89,36 @@ def _null(row: Series, columns: tuple[str, ...], *, context: str) -> None:
         raise ValueError(f"{context} requires null fields: " + ", ".join(populated))
 
 
+def _require_utc_timestamp(row: Series, column: str, *, context: str) -> None:
+    value = row[column]
+    if pd.isna(value):
+        raise ValueError(f"{context} requires {column}.")
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        raise ValueError(f"{context} requires a valid {column}.")
+    offset = timestamp.utcoffset()
+    if timestamp.tzinfo is None or offset is None or offset.total_seconds() != 0:
+        raise ValueError(f"{context} requires timezone-aware UTC {column}.")
+
+
 def _validate_win(row: Series) -> None:
-    if str(row["win_status"]) != WeeklyWinStatus.AVAILABLE.value:
+    status = str(row["win_status"])
+    _require_text(row, ("win_selection_status",), context="Win selection")
+    if status != WeeklyWinStatus.AVAILABLE.value:
+        _null(
+            row,
+            (
+                "away_win_prob",
+                "home_win_prob",
+                "win_model_name",
+                "win_model_type",
+                "win_event_id",
+                "win_run_id",
+                "win_generated_at",
+                "win_role",
+            ),
+            context="Unavailable win",
+        )
         return
 
     away = _finite(row, "away_win_prob", context="Available win")
@@ -93,7 +129,23 @@ def _validate_win(row: Series) -> None:
         raise ValueError("Available win probabilities must sum to 1.")
     _require_text(
         row,
-        ("win_model_name", "win_model_type", "win_event_id"),
+        (
+            "win_model_name",
+            "win_model_type",
+            "win_event_id",
+            "win_run_id",
+            "win_role",
+            "win_selection_status",
+        ),
+        context="Available win",
+    )
+    if str(row["win_role"]) != "live":
+        raise ValueError("Available win must use live forecast role.")
+    if str(row["win_selection_status"]) != "selected":
+        raise ValueError("Available win must use selected forecast status.")
+    _require_utc_timestamp(
+        row,
+        "win_generated_at",
         context="Available win",
     )
 
@@ -132,21 +184,52 @@ def _validate_spread(row: Series) -> None:
 
 def _validate_total(row: Series) -> None:
     status = str(row["total_status"])
+    _require_text(row, ("total_selection_status",), context="Total selection")
     if status not in {
         WeeklyTotalStatus.AVAILABLE.value,
         WeeklyTotalStatus.UNCERTAINTY_UNAVAILABLE.value,
     }:
-        _null(row, ("model_total", "total_uncertainty"), context="Unavailable total")
+        _null(
+            row,
+            (
+                "model_total",
+                "total_uncertainty",
+                "total_model_name",
+                "total_model_type",
+                "total_event_id",
+                "total_run_id",
+                "total_generated_at",
+                "total_role",
+                "total_uncertainty_trained_at",
+            ),
+            context="Unavailable total",
+        )
         return
 
     _finite(row, "model_total", context="Available total")
     _require_text(
         row,
-        ("total_model_name", "total_model_type", "total_event_id"),
+        (
+            "total_model_name",
+            "total_model_type",
+            "total_event_id",
+            "total_run_id",
+            "total_role",
+            "total_selection_status",
+        ),
         context="Available total",
     )
     if str(row["total_model_name"]) != "total":
         raise ValueError("Available total must use model_name 'total'.")
+    if str(row["total_role"]) != "live":
+        raise ValueError("Available total must use live forecast role.")
+    if str(row["total_selection_status"]) != "selected":
+        raise ValueError("Available total must use selected forecast status.")
+    _require_utc_timestamp(
+        row,
+        "total_generated_at",
+        context="Available total",
+    )
 
     if status == WeeklyTotalStatus.AVAILABLE.value:
         uncertainty = _finite(row, "total_uncertainty", context="Available total")

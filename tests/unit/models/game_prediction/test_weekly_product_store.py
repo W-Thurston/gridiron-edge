@@ -26,7 +26,10 @@ from gridiron_edge.models.game_prediction.weekly_product_store import (
 )
 
 
-def _product() -> DataFrame:
+def _product(
+    *,
+    run_id: str = "run-1",
+) -> DataFrame:
     return DataFrame(
         {
             "season": ["2026-2027", "2026-2027"],
@@ -36,11 +39,15 @@ def _product() -> DataFrame:
             "home_team": ["Home One", "Home Two"],
             "neutral_site": [False, True],
             "win_status": ["available", "forecast_missing"],
+            "win_selection_status": ["selected", "missing"],
             "away_win_prob": [0.40, pd.NA],
             "home_win_prob": [0.60, pd.NA],
             "win_model_name": ["win_prob", pd.NA],
             "win_model_type": ["elo", pd.NA],
             "win_event_id": ["win-1", pd.NA],
+            "win_run_id": [run_id, pd.NA],
+            "win_generated_at": ["2026-10-20T12:00:00+00:00", pd.NaT],
+            "win_role": ["live", pd.NA],
             "spread_status": ["available", "win_unavailable"],
             "model_spread": [-3.0, pd.NA],
             "spread_uncertainty": [13.5, pd.NA],
@@ -55,6 +62,10 @@ def _product() -> DataFrame:
             "total_model_name": ["total", pd.NA],
             "total_model_type": ["xgboost", pd.NA],
             "total_event_id": ["total-1", pd.NA],
+            "total_run_id": [run_id, pd.NA],
+            "total_generated_at": ["2026-10-20T12:00:00+00:00", pd.NaT],
+            "total_role": ["live", pd.NA],
+            "total_selection_status": ["selected", "missing"],
             "total_uncertainty_trained_at": ["2026-07-01T14:20:00", pd.NA],
             "projected_score_status": ["available", "spread_and_total_unavailable"],
             "projected_home_score": [23.5, pd.NA],
@@ -121,7 +132,7 @@ def test_multiple_runs_for_same_week_coexist(tmp_path: Path) -> None:
     )
 
     write_weekly_product(source, identity=first, repo=tmp_path)
-    changed = source.copy()
+    changed = _product(run_id=second.run_id)
     changed.loc[0, "model_total"] = 45.0
     changed.loc[0, "projected_home_score"] = 24.0
     changed.loc[0, "projected_away_score"] = 21.0
@@ -166,7 +177,7 @@ def test_conflicting_rewrite_is_rejected(
     mutate: bool,
 ) -> None:
     write_weekly_product(_product(), identity=_identity(), repo=tmp_path)
-    incoming = _product()
+    incoming = _product(run_id=identity.run_id)
     if mutate:
         incoming.loc[0, "model_total"] = 45.0
         incoming.loc[0, "projected_home_score"] = 24.0
@@ -174,6 +185,28 @@ def test_conflicting_rewrite_is_rejected(
 
     with pytest.raises(ValueError, match="cannot be reused"):
         write_weekly_product(incoming, identity=identity, repo=tmp_path)
+
+
+def test_win_run_mismatch_fails_before_store_write(tmp_path: Path) -> None:
+    product = _product()
+    product.loc[0, "win_run_id"] = "different-run"
+
+    with pytest.raises(ValueError, match="Win run_id must match"):
+        write_weekly_product(product, identity=_identity(), repo=tmp_path)
+
+    assert not weekly_product_artifact_path("product-1", repo=tmp_path).exists()
+    assert not _index_path(tmp_path).exists()
+
+
+def test_total_run_mismatch_fails_before_store_write(tmp_path: Path) -> None:
+    product = _product()
+    product.loc[0, "total_run_id"] = "different-run"
+
+    with pytest.raises(ValueError, match="Total run_id must match"):
+        write_weekly_product(product, identity=_identity(), repo=tmp_path)
+
+    assert not weekly_product_artifact_path("product-1", repo=tmp_path).exists()
+    assert not _index_path(tmp_path).exists()
 
 
 def test_index_schema_mismatch_fails_clearly(tmp_path: Path) -> None:
@@ -280,7 +313,7 @@ def test_current_product_selection_is_explicit(tmp_path: Path) -> None:
         generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
     )
     write_weekly_product(_product(), identity=first, repo=tmp_path)
-    write_weekly_product(_product(), identity=second, repo=tmp_path)
+    write_weekly_product(_product(run_id=second.run_id), identity=second, repo=tmp_path)
 
     selected_at = datetime(2026, 10, 20, 14, tzinfo=UTC)
     selection = select_current_weekly_product(
@@ -317,7 +350,7 @@ def test_writing_newer_product_does_not_change_current(tmp_path: Path) -> None:
         run_id="run-2",
         generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
     )
-    write_weekly_product(_product(), identity=second, repo=tmp_path)
+    write_weekly_product(_product(run_id=second.run_id), identity=second, repo=tmp_path)
 
     current = load_current_weekly_product(
         season=first.season,
@@ -335,7 +368,7 @@ def test_current_selection_can_be_changed_explicitly(tmp_path: Path) -> None:
         generated_at=datetime(2026, 10, 20, 13, tzinfo=UTC),
     )
     write_weekly_product(_product(), identity=first, repo=tmp_path)
-    write_weekly_product(_product(), identity=second, repo=tmp_path)
+    write_weekly_product(_product(run_id=second.run_id), identity=second, repo=tmp_path)
     select_current_weekly_product(
         first.product_id,
         season=first.season,

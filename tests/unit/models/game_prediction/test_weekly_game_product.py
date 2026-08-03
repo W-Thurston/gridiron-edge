@@ -31,11 +31,15 @@ def _product() -> DataFrame:
             "home_team": ["Home One", "Home Two", "Home Three"],
             "neutral_site": [False, True, False],
             "win_status": [WeeklyWinStatus.AVAILABLE.value] * 3,
+            "win_selection_status": ["selected"] * 3,
             "away_win_prob": [0.40, 0.50, 0.55],
             "home_win_prob": [0.60, 0.50, 0.45],
             "win_model_name": ["win_prob"] * 3,
             "win_model_type": ["elo"] * 3,
             "win_event_id": ["win-1", "win-2", "win-3"],
+            "win_run_id": ["run-1"] * 3,
+            "win_generated_at": ["2026-10-20T12:00:00+00:00"] * 3,
+            "win_role": ["live"] * 3,
             "spread_status": [
                 WeeklySpreadStatus.AVAILABLE.value,
                 WeeklySpreadStatus.CALIBRATION_UNAVAILABLE.value,
@@ -58,6 +62,14 @@ def _product() -> DataFrame:
             "total_model_name": ["total", "total", pd.NA],
             "total_model_type": ["xgboost", "xgboost", pd.NA],
             "total_event_id": ["total-1", "total-2", pd.NA],
+            "total_run_id": ["run-1", "run-1", pd.NA],
+            "total_generated_at": [
+                "2026-10-20T12:00:00+00:00",
+                "2026-10-20T12:00:00+00:00",
+                pd.NaT,
+            ],
+            "total_role": ["live", "live", pd.NA],
+            "total_selection_status": ["selected", "selected", "missing"],
             "total_uncertainty_trained_at": ["2026-07-01", "2026-07-01", pd.NA],
         }
     )
@@ -177,3 +189,19 @@ def test_both_missing_inputs_have_combined_status() -> None:
     assert product.iloc[0]["projected_score_status"] == (
         ProjectedScoreStatus.SPREAD_AND_TOTAL_UNAVAILABLE.value
     )
+
+
+def test_validator_rejects_stale_win_provenance_on_unavailable_row() -> None:
+    product = attach_projected_scores(_product())
+    product.loc[0, "win_status"] = WeeklyWinStatus.FORECAST_MISSING.value
+
+    with pytest.raises(ValueError, match="Unavailable win requires null fields"):
+        validate_weekly_game_product(product)
+
+
+def test_validator_rejects_non_utc_total_generation_time() -> None:
+    product = attach_projected_scores(_product())
+    product.loc[0, "total_generated_at"] = "2026-10-20T12:00:00"
+
+    with pytest.raises(ValueError, match="timezone-aware UTC"):
+        validate_weekly_game_product(product)

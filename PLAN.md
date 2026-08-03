@@ -1748,8 +1748,8 @@ historical prediction and odds-ledger artifacts.
   E6  Validate game artifacts and runtime loading    COMPLETE
 19.1b  truthful availability inspection         COMPLETE
 19.3   execute policy-selected models           COMPLETE
-19.4   persist and select weekly product        NEXT
-19.5   readiness and publication hardening      PENDING
+19.4   persist and select weekly product        COMPLETE
+19.5   readiness and publication hardening      NEXT
 19.6   end-to-end orchestration acceptance      PENDING
 
 #### Goal
@@ -3507,6 +3507,53 @@ Weekly-product composition consumes the same resolved policy and immutable forec
 
 Rendering consumes only the selected Win prediction output and does not silently regenerate Elo.
 
+### Unit 19.4: Persist and Select Weekly Product
+
+#### Completed
+
+Hardened the existing immutable weekly-product boundary with complete selected-event provenance for available Win and Total components.
+
+Available Win components now require the selected event ID, model identity, forecast run ID, UTC generation timestamp, live forecast role, and selected resolution status.
+
+Available and uncertainty-unavailable Total components require the equivalent Total provenance.
+
+Unavailable Win and Total components retain explicit selection statuses while requiring prediction values, model identities, event identities, run identities, generation timestamps, and roles to remain unavailable.
+
+Added strict UTC validation for component forecast generation timestamps.
+
+Reconciled every available component forecast run with the run recorded by WeeklyProductIdentity.
+
+Weekly-product persistence rejects cross-run Win or Total components before creating an artifact or updating the product index.
+
+Preserved the existing immutable product artifacts, indexed product records, idempotent rewrite behavior, explicit season-and-week current selection, and selected-product readers.
+
+Multiple coherent forecast runs for the same week continue to coexist as independently addressable immutable products.
+
+Writing a newer product does not implicitly change the selected current product.
+
+API and CLI edge generation continue to consume only the explicitly selected weekly product.
+
+#### Goal
+
+Persist and explicitly select one immutable weekly product whose component event provenance is traceable to the exact forecast run recorded by the product.
+
+#### Tests
+
+Covered required Win and Total event provenance, selected live roles, explicit selection statuses, UTC component generation timestamps, stale provenance on unavailable components, Win and Total run reconciliation, failure before artifact or index creation, coherent multiple-run products, immutable product round trips, conflicting rewrites, explicit current selection, reselection, and selected-product loading.
+
+Ruff, Pyrefly, final product tests, immutable product-store tests, weekly Win and Total product tests, and weekly-predict product-stage tests pass.
+
+#### Acceptance
+
+Every available weekly-product component identifies the exact selected live forecast event, model, and run that produced it.
+
+Component forecast runs must match the product run identity before persistence.
+
+Unavailable components cannot retain stale prediction or forecast provenance.
+
+Immutable products remain independently addressable, and current state changes only through explicit season-and-week product selection.
+
+Selected-product consumers load the same explicitly selected immutable product without model inference or latest-file inference.
 
 
 ---
