@@ -229,6 +229,157 @@ def _add_optional_weather_metadata_columns(
     return result
 
 
+_CLIMATOLOGY_CONTINUOUS: Final[tuple[str, ...]] = (
+    "WIND_SPEED_MPH",
+    "TEMP_F",
+    "FEELS_LIKE_F",
+    "HUMIDITY_PCT",
+    "VISIBILITY_M",
+)
+_CLIMATOLOGY_FLAGS: Final[tuple[str, ...]] = (
+    "PRECIP_FLAG",
+    "SNOW_FLAG",
+    "LOW_VIS_FLAG",
+)
+
+
+def _binary_mode(values: Series) -> float:
+    """Return the observed binary mode, or NaN when unavailable."""
+    modes = values.dropna().mode()
+    return float(modes.iloc[0]) if not modes.empty else float("nan")
+
+
+def _normalize_roof_values(values: Series) -> Series:
+    """Normalize roof vocabulary before covered-venue classification."""
+    return values.astype("string").str.lower().str.strip().replace(_ROOF_VALUE_ALIASES)
+
+
+def _build_weather_climatology(
+    games: DataFrame,
+    weather_df: DataFrame,
+) -> tuple[DataFrame, DataFrame]:
+    """Build outdoor stadium-month and league-month climatology."""
+    climate_columns = [
+        *_CLIMATOLOGY_CONTINUOUS,
+        *_CLIMATOLOGY_FLAGS,
+    ]
+    stadium_columns = ["STADIUM", "MONTH", *climate_columns]
+    league_columns = ["MONTH", *climate_columns]
+
+    required = {"GAME_ID", "GAME_DATE", "STADIUM", "ROOF"}
+    if games.empty or weather_df.empty or required - set(games.columns):
+        return (
+            DataFrame(columns=stadium_columns),
+            DataFrame(columns=league_columns),
+        )
+
+    history = games.loc[
+        :,
+        ["GAME_ID", "GAME_DATE", "STADIUM", "ROOF"],
+    ].copy()
+    history["GAME_DATE"] = pd.to_datetime(
+        history["GAME_DATE"],
+        errors="coerce",
+    )
+    # pyrefly: ignore [missing-attribute]
+    history["MONTH"] = history["GAME_DATE"].dt.month
+    roof_text = _normalize_roof_values(history["ROOF"])
+    history = history.loc[
+        ~roof_text.isin(_DOME_ROOF_VALUES),
+        :,
+    ]
+    history = history.merge(
+        _process_weather(weather_df),
+        how="inner",
+        on="GAME_ID",
+        validate="one_to_one",
+    )
+    history = history.loc[
+        history["MONTH"].notna() & history["STADIUM"].notna(),
+        :,
+    ].copy()
+    if history.empty:
+        return (
+            DataFrame(columns=stadium_columns),
+            DataFrame(columns=league_columns),
+        )
+
+    aggregations = {
+        **dict.fromkeys(_CLIMATOLOGY_CONTINUOUS, "median"),
+        **dict.fromkeys(_CLIMATOLOGY_FLAGS, _binary_mode),
+    }
+    stadium = (
+        history.groupby(
+            ["STADIUM", "MONTH"],
+            dropna=False,
+        )
+        .agg(aggregations)
+        .reset_index()
+    )
+    league = history.groupby("MONTH", dropna=False).agg(aggregations).reset_index()
+    return stadium, league
+
+
+def _fill_missing_outdoor_weather(
+    result: DataFrame,
+    *,
+    stadium_climatology: DataFrame,
+    league_climatology: DataFrame,
+) -> DataFrame:
+    """Fill null outdoor fields, preferring stadium-month history."""
+    output = result.copy()
+    # pyrefly: ignore [missing-attribute]
+    output["MONTH"] = pd.to_datetime(
+        output["_WEATHER_GAME_DATE"],
+        errors="coerce",
+    ).dt.month
+    climate_columns = (
+        *_CLIMATOLOGY_CONTINUOUS,
+        *_CLIMATOLOGY_FLAGS,
+    )
+    stadium_renames = {column: f"_STADIUM_CLIMATE_{column}" for column in climate_columns}
+    league_renames = {column: f"_LEAGUE_CLIMATE_{column}" for column in climate_columns}
+    stadium_lookup = stadium_climatology.rename(
+        columns={
+            "STADIUM": "_WEATHER_STADIUM",
+            **stadium_renames,
+        }
+    )
+    output = output.merge(
+        stadium_lookup,
+        how="left",
+        on=["_WEATHER_STADIUM", "MONTH"],
+        sort=False,
+        validate="many_to_one",
+    )
+    output = output.merge(
+        league_climatology.rename(columns=league_renames),
+        how="left",
+        on="MONTH",
+        sort=False,
+        validate="many_to_one",
+    )
+
+    outdoor = output["IS_DOME"].eq(0)
+    for column in climate_columns:
+        fallback = output[f"_STADIUM_CLIMATE_{column}"].combine_first(
+            output[f"_LEAGUE_CLIMATE_{column}"]
+        )
+        missing = outdoor & output[column].isna()
+        output.loc[missing, column] = fallback.loc[missing]
+
+    return output.drop(
+        columns=[
+            "MONTH",
+            *[
+                f"_{scope}_CLIMATE_{column}"
+                for scope in ("STADIUM", "LEAGUE")
+                for column in climate_columns
+            ],
+        ]
+    )
+
+
 @FeatureRegistry.register("home_away_weather")
 class HomeAwayWeatherFeature:
     """Attach schedule-complete game-level weather and dome features."""
@@ -272,11 +423,13 @@ class HomeAwayWeatherFeature:
             upcoming=upcoming_metadata,
             historical_mapping={
                 "GAME_ID": "GAME_ID",
+                "GAME_DATE": "GAME_DATE",
                 "STADIUM": "STADIUM",
                 "ROOF": "ROOF",
             },
             upcoming_mapping={
                 "game_id": "GAME_ID",
+                "game_date": "GAME_DATE",
                 "stadium": "STADIUM",
                 "roof": "ROOF",
             },
@@ -293,9 +446,7 @@ class HomeAwayWeatherFeature:
                 metadata,
                 stadiums,
             )
-        roof_text: Series[str] = (
-            metadata["ROOF"].astype("string").str.lower().str.strip().replace(_ROOF_VALUE_ALIASES)
-        )
+        roof_text: Series[str] = _normalize_roof_values(metadata["ROOF"])
         dome_values: Series[int] = roof_text.isin(
             frozenset(value.lower() for value in _DOME_ROOF_VALUES)
         ).astype("Int64")
@@ -308,8 +459,23 @@ class HomeAwayWeatherFeature:
         else:
             weather_lookup = DataFrame(columns=_WEATHER_OUTPUT_COLS)
 
+        weather_metadata = metadata.loc[
+            :,
+            [
+                "GAME_ID",
+                "GAME_DATE",
+                "STADIUM",
+                "IS_DOME",
+            ],
+        ].rename(
+            columns={
+                "GAME_DATE": "_WEATHER_GAME_DATE",
+                "STADIUM": "_WEATHER_STADIUM",
+            }
+        )
+
         result: DataFrame = source.merge(
-            metadata[["GAME_ID", "IS_DOME"]],
+            weather_metadata,
             how="left",
             on="GAME_ID",
             sort=False,
@@ -328,6 +494,19 @@ class HomeAwayWeatherFeature:
                 validate="many_to_one",
             )
 
+        if weather_df is not None and not weather_df.empty:
+            stadium_climate, league_climate = _build_weather_climatology(
+                historical_games,
+                weather_df,
+            )
+            if not stadium_climate.empty or not league_climate.empty:
+                result = _fill_missing_outdoor_weather(
+                    result,
+                    stadium_climatology=stadium_climate,
+                    league_climatology=league_climate,
+                )
+
+        result["WIND_CHILL_DELTA"] = result["TEMP_F"] - result["FEELS_LIKE_F"]
         dome_mask: Series[bool] = result["IS_DOME"].eq(1)
         result.loc[dome_mask, "WIND_SPEED_MPH"] = 0.0
         result.loc[dome_mask, "TEMP_F"] = _DOME_TEMP_F
@@ -341,6 +520,12 @@ class HomeAwayWeatherFeature:
 
         return (
             result.sort_values("_INPUT_ORDER", kind="stable")
-            .drop(columns=["_INPUT_ORDER"])
+            .drop(
+                columns=[
+                    "_INPUT_ORDER",
+                    "_WEATHER_GAME_DATE",
+                    "_WEATHER_STADIUM",
+                ]
+            )
             .reset_index(drop=True)
         )

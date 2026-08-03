@@ -3798,6 +3798,54 @@ Known covered venues receive deterministic controlled-environment values even wh
 
 Outdoor venues continue to require enriched weather or a separately defined training-serving fallback policy.
 
+#### Outdoor Weather Climatology Fallback
+
+##### Completed
+
+Outdoor games now preserve available game-specific weather and fill only missing weather fields from empirical historical climatology.
+
+Continuous weather values use historical medians.
+
+Binary precipitation, snow, and low-visibility flags use historical modes.
+
+The fallback first uses outdoor stadium-month climatology and then league-month climatology when an exact stadium-month sample is unavailable.
+
+Covered venues retain controlled-environment defaults.
+
+Climatology is computed only in the canonical feature layer and is never persisted into the source weather artifact.
+
+Later forecasts for the same GAME_ID automatically supersede climatology because fallback values fill only null fields.
+
+Wind-chill delta is recomputed after final weather-source resolution.
+
+Private weather metadata identities prevent GAME_DATE and STADIUM merge collisions while preserving canonical input columns.
+
+Reduced roof-only historical and upcoming metadata fixtures remain supported.
+
+Real 2026 Week 1 validation confirmed all 16 games are complete across all 152 expanded-model features.
+
+##### Goal
+
+Provide deterministic, empirically derived outdoor weather values before forecasts are available while allowing authoritative game-specific forecasts to replace fallback values automatically.
+
+##### Tests
+
+Covered stadium-month climatology, league-month fallback, forecast precedence, roof-only metadata compatibility, canonical column preservation, controlled covered-venue defaults, static roof fallback, weather conversions, travel compatibility, and model availability behavior.
+
+Ruff, Pyrefly, focused feature tests, and availability tests pass.
+
+Real 2026 Week 1 validation confirmed zero null weather fields and 16 complete expanded-feature rows.
+
+##### Acceptance
+
+All 2026 Week 1 games are feature-complete for the 152-column expanded model contract.
+
+Outdoor games without forecasts receive empirical climatology rather than arbitrary constants.
+
+Forecast ingestion requires no cleanup or overwrite of imputed source rows because climatology is never persisted.
+
+Game-specific weather remains authoritative whenever available.
+
 
 ---
 

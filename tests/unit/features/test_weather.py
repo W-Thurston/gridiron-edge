@@ -431,6 +431,104 @@ class TestMissingData:
 
 
 # ---------------------------------------------------------------------------
+# Outdoor climatology fallback
+# ---------------------------------------------------------------------------
+
+
+class TestOutdoorClimatology:
+    """Tests forecast precedence and empirical outdoor fallback."""
+
+    @staticmethod
+    def _games() -> pd.DataFrame:
+        history = _make_games(
+            roof="outdoors",
+            game_id="2023_01_KC_LV",
+        )
+        history["GAME_DATE"] = "2023-09-10"
+        target = _make_games(
+            roof="outdoors",
+            game_id="2024_01_KC_LV",
+        )
+        target["GAME_DATE"] = "2024-09-08"
+        return pd.concat(
+            [history, target],
+            ignore_index=True,
+        )
+
+    def test_missing_forecast_uses_stadium_month_climatology(
+        self,
+    ) -> None:
+        weather = _make_weather_row(
+            game_id="2023_01_KC_LV",
+            temp_k=300.0,
+            wind_mps=4.0,
+            feels_like_k=299.0,
+            humidity=60,
+            visibility=9000.0,
+        )
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(game_id="2024_01_KC_LV"),
+            datasets=_make_accessor(
+                self._games(),
+                weather=weather,
+            ),
+        )
+        assert result.iloc[0]["TEMP_F"] == pytest.approx(
+            80.33,
+            abs=0.1,
+        )
+        assert result.iloc[0]["HUMIDITY_PCT"] == pytest.approx(60.0)
+        assert result.iloc[0]["VISIBILITY_M"] == pytest.approx(9000.0)
+
+    def test_game_weather_overrides_climatology(self) -> None:
+        weather = pd.concat(
+            [
+                _make_weather_row(
+                    game_id="2023_01_KC_LV",
+                    temp_k=300.0,
+                ),
+                _make_weather_row(
+                    game_id="2024_01_KC_LV",
+                    temp_k=280.0,
+                ),
+            ],
+            ignore_index=True,
+        )
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(game_id="2024_01_KC_LV"),
+            datasets=_make_accessor(
+                self._games(),
+                weather=weather,
+            ),
+        )
+        assert result.iloc[0]["TEMP_F"] == pytest.approx(
+            44.33,
+            abs=0.1,
+        )
+
+    def test_unknown_stadium_uses_league_month_climatology(
+        self,
+    ) -> None:
+        games = self._games()
+        games.loc[
+            games["GAME_ID"].eq("2024_01_KC_LV"),
+            "STADIUM",
+        ] = "New Stadium"
+        weather = _make_weather_row(
+            game_id="2023_01_KC_LV",
+            humidity=64,
+        )
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(game_id="2024_01_KC_LV"),
+            datasets=_make_accessor(
+                games,
+                weather=weather,
+            ),
+        )
+        assert result.iloc[0]["HUMIDITY_PCT"] == pytest.approx(64.0)
+
+
+# ---------------------------------------------------------------------------
 # Column completeness and registration
 # ---------------------------------------------------------------------------
 
