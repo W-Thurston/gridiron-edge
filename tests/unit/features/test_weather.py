@@ -30,9 +30,13 @@ from gridiron_edge.features.team.weather import (
 def _make_accessor(
     games: pd.DataFrame,
     weather: pd.DataFrame | None = None,
+    stadiums: pd.DataFrame | None = None,
 ) -> MagicMock:
     acc = MagicMock()
     acc.games.return_value = games
+    if stadiums is None:
+        stadiums = games.loc[:, ["STADIUM", "ROOF"]].copy()
+    acc.stadiums.return_value = stadiums
     if weather is not None:
         acc.weather_enriched.return_value = weather
     else:
@@ -150,6 +154,101 @@ class TestIsDome:
             df=_make_modeling_row(),
             datasets=_make_accessor(_make_games("DOME")),
         )
+        assert result.iloc[0]["IS_DOME"] == 1
+
+    def test_missing_game_roof_uses_retractable_reference(self) -> None:
+        games = _make_games(roof=pd.NA)
+        stadiums = pd.DataFrame(
+            {
+                "STADIUM": ["Arrowhead Stadium"],
+                "ROOF": ["retractable roof"],
+            }
+        )
+
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(games, stadiums=stadiums),
+        )
+
+        assert result.iloc[0]["IS_DOME"] == 1
+        assert result.iloc[0]["TEMP_F"] == pytest.approx(_DOME_TEMP_F)
+        assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(0.0)
+
+    def test_missing_game_roof_uses_outdoor_reference(self) -> None:
+        games = _make_games(roof=pd.NA)
+        stadiums = pd.DataFrame(
+            {
+                "STADIUM": ["Arrowhead Stadium"],
+                "ROOF": ["outdoors"],
+            }
+        )
+
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(games, stadiums=stadiums),
+        )
+
+        assert result.iloc[0]["IS_DOME"] == 0
+        assert pd.isna(result.iloc[0]["TEMP_F"])
+
+    def test_game_roof_overrides_stadium_reference(self) -> None:
+        stadiums = pd.DataFrame(
+            {
+                "STADIUM": ["Arrowhead Stadium"],
+                "ROOF": ["dome"],
+            }
+        )
+
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(
+                _make_games(roof="outdoors"),
+                stadiums=stadiums,
+            ),
+        )
+
+        assert result.iloc[0]["IS_DOME"] == 0
+
+    def test_unknown_stadium_with_missing_roof_remains_nullable(self) -> None:
+        games = _make_games(roof=pd.NA)
+        stadiums = pd.DataFrame(
+            {
+                "STADIUM": ["Different Stadium"],
+                "ROOF": ["dome"],
+            }
+        )
+
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(games, stadiums=stadiums),
+        )
+
+        assert pd.isna(result.iloc[0]["IS_DOME"])
+
+    def test_conflicting_stadium_roofs_are_rejected(self) -> None:
+        games = _make_games(roof=pd.NA)
+        stadiums = pd.DataFrame(
+            {
+                "STADIUM": ["Arrowhead Stadium", "Arrowhead Stadium"],
+                "ROOF": ["outdoors", "dome"],
+            }
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="conflicting roof identities",
+        ):
+            HomeAwayWeatherFeature().compute(
+                df=_make_modeling_row(),
+                datasets=_make_accessor(games, stadiums=stadiums),
+            )
+
+    def test_retractable_roof_spelling_is_dome(self) -> None:
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(_make_games("retractable roof")),
+        )
+
         assert result.iloc[0]["IS_DOME"] == 1
 
 

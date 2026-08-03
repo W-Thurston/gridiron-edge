@@ -34,6 +34,9 @@ if TYPE_CHECKING:
 # See :data:`gridiron_edge.core.enums.COVERED_STADIUMS` for the
 # canonical semantic grouping.
 _DOME_ROOF_VALUES: Final[frozenset[str]] = frozenset(r.value for r in COVERED_STADIUMS)
+_ROOF_VALUE_ALIASES: Final[dict[str, str]] = {
+    "retractable roof": "retractable",
+}
 
 # OWM WEATHER_MAIN values that indicate precipitation
 _PRECIP_WEATHER_MAINS: Final[frozenset[str]] = frozenset(
@@ -168,6 +171,64 @@ def _process_weather(
     )
 
 
+def _fill_missing_roof_from_stadiums(
+    metadata: DataFrame,
+    stadiums: DataFrame,
+) -> DataFrame:
+    """Fill missing game roof values from canonical stadium metadata."""
+    if metadata.empty or stadiums.empty:
+        return metadata
+
+    required = {"STADIUM", "ROOF"}
+    missing = sorted(required - set(stadiums.columns))
+    if missing:
+        raise ValueError("Stadium reference is missing required columns: " + ", ".join(missing))
+
+    reference = stadiums.loc[:, ["STADIUM", "ROOF"]].copy()
+    reference["STADIUM"] = reference["STADIUM"].fillna("").astype(str).str.strip()
+    reference["ROOF"] = reference["ROOF"].astype("string").str.strip()
+    reference = reference.loc[reference["STADIUM"].ne(""), :].drop_duplicates()
+
+    roof_counts = reference.dropna(subset=["ROOF"]).groupby("STADIUM")["ROOF"].nunique()
+    if roof_counts.gt(1).any():
+        raise ValueError("Stadium reference contains conflicting roof identities.")
+
+    roof_lookup = (
+        reference.dropna(subset=["ROOF"])
+        .drop_duplicates(subset=["STADIUM"], keep="first")
+        .rename(columns={"ROOF": "_REFERENCE_ROOF"})
+    )
+    result = metadata.merge(
+        roof_lookup,
+        how="left",
+        on="STADIUM",
+        sort=False,
+        validate="many_to_one",
+    )
+    result["ROOF"] = result["ROOF"].where(
+        result["ROOF"].notna(),
+        result["_REFERENCE_ROOF"],
+    )
+    return result.drop(columns=["_REFERENCE_ROOF"])
+
+
+def _add_optional_weather_metadata_columns(
+    frame: DataFrame,
+    *,
+    historical: bool,
+) -> DataFrame:
+    """Add nullable weather metadata columns absent from a source."""
+    result = frame.copy()
+
+    optional_columns = ("GAME_DATE", "STADIUM") if historical else ("game_date", "stadium")
+
+    for column in optional_columns:
+        if column not in result.columns:
+            result[column] = pd.NA
+
+    return result
+
+
 @FeatureRegistry.register("home_away_weather")
 class HomeAwayWeatherFeature:
     """Attach schedule-complete game-level weather and dome features."""
@@ -194,19 +255,47 @@ class HomeAwayWeatherFeature:
         )
         source["_INPUT_ORDER"] = range(len(source))
 
+        historical_games = datasets.games()
+        upcoming_games = load_optional_upcoming_metadata(datasets)
+
+        historical_metadata = _add_optional_weather_metadata_columns(
+            historical_games,
+            historical=True,
+        )
+        upcoming_metadata = _add_optional_weather_metadata_columns(
+            upcoming_games,
+            historical=False,
+        )
+
         metadata: DataFrame = build_game_metadata_lookup(
-            historical=datasets.games(),
-            upcoming=load_optional_upcoming_metadata(datasets),
+            historical=historical_metadata,
+            upcoming=upcoming_metadata,
             historical_mapping={
                 "GAME_ID": "GAME_ID",
+                "STADIUM": "STADIUM",
                 "ROOF": "ROOF",
             },
             upcoming_mapping={
                 "game_id": "GAME_ID",
+                "stadium": "STADIUM",
                 "roof": "ROOF",
             },
         )
-        roof_text: Series[str] = metadata["ROOF"].astype("string").str.lower().str.strip()
+        missing_roof = metadata["ROOF"].isna()
+
+        if missing_roof.any():
+            try:
+                stadiums = datasets.stadiums()
+            except (AttributeError, FileNotFoundError):
+                stadiums = DataFrame()
+
+            metadata = _fill_missing_roof_from_stadiums(
+                metadata,
+                stadiums,
+            )
+        roof_text: Series[str] = (
+            metadata["ROOF"].astype("string").str.lower().str.strip().replace(_ROOF_VALUE_ALIASES)
+        )
         dome_values: Series[int] = roof_text.isin(
             frozenset(value.lower() for value in _DOME_ROOF_VALUES)
         ).astype("Int64")

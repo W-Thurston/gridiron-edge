@@ -3747,6 +3747,58 @@ New alternate and international venues remain unresolved until complete metadata
 
 Historical metadata is preserved, application is atomic and idempotent, and remaining schedule coverage is reported truthfully.
 
+
+#### Static roof fallback
+
+Home/Away weather metadata now preserves populated game-level roof state and falls back to the canonical stadium reference only when the game roof is missing. Conflicting per-stadium roof identities are rejected, unknown roofs remain nullable, and covered venues continue to receive controlled-environment defaults. This repairs schedule metadata gaps without changing outdoor missing-weather policy.
+
+#### Static Roof Fallback
+
+##### Completed
+
+Home/Away weather metadata now preserves populated game-level roof state and falls back to the canonical stadium reference only when game-level roof metadata is absent.
+
+The weather feature includes actual game stadium identity in its shared historical and upcoming metadata lookup.
+
+Stadium-reference roof values are joined by exact stadium identity.
+
+Game-level roof metadata remains authoritative when populated.
+
+The stadium-reference spelling retractable roof is normalized to the canonical retractable covered-venue classification.
+
+Covered venues resolved through the fallback receive the existing controlled-environment defaults.
+
+Outdoor venues resolved through the fallback retain explicit null weather values when enriched weather is unavailable.
+
+Unknown stadiums with missing roof metadata retain nullable IS_DOME state.
+
+Conflicting roof identities for one stadium are rejected.
+
+Real 2026 Week 1 validation confirmed IS_DOME is complete across all 16 scheduled games.
+
+The Indianapolis and Houston retractable-roof games now receive controlled-environment weather defaults.
+
+Weather-incomplete Week 1 games decreased from 11 to 9.
+
+##### Goal
+
+Resolve deterministic roof state from static canonical venue metadata without changing the outdoor missing-weather policy.
+
+##### Tests
+
+Covered retractable-roof reference fallback, outdoor reference fallback, game-level metadata precedence, unknown stadium behavior, conflicting stadium roof identities, case-insensitive classification, canonical roof spelling normalization, and controlled-environment defaults.
+
+Ruff, Pyrefly, weather feature tests, and travel feature tests pass.
+
+##### Acceptance
+
+IS_DOME is complete for every 2026 Week 1 scheduled game.
+
+Known covered venues receive deterministic controlled-environment values even when enriched weather is unavailable.
+
+Outdoor venues continue to require enriched weather or a separately defined training-serving fallback policy.
+
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer
