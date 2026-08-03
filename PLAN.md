@@ -3647,6 +3647,11 @@ Teams with no prior same-season games now use WIN_PCT 0.0, consistent with zero 
 
 Added a reviewed stadium metadata synchronization service with pure coverage audit, deterministic season carry-forward and explicit alias proposals, strict approved-row validation, and atomic application. Historical rows are preserved, franchise-season origins remain unique, conflicting coordinates are rejected, and every non-NFL HOME_TEAM identity must be exactly Alternate or International. CLI exposure remains a separate follow-up after the service contract is green.
 
+
+#### Stadium alias artifact
+
+Added a version-controlled explicit stadium alias artifact for renamed franchise venues and a strict optional loader. Alias identities are trimmed, deterministically sorted, unique by current schedule stadium name, and cannot map a stadium to itself. The six known 2026 franchise venue renames can now produce reviewed alias_existing proposals without fuzzy matching.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

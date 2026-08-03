@@ -11,6 +11,7 @@ import pytest
 from gridiron_edge.metadata.stadium_sync import (
     apply_approved_stadium_updates,
     audit_stadium_coverage,
+    load_stadium_aliases,
     prepare_stadium_updates,
     validate_stadium_reference,
 )
@@ -182,3 +183,60 @@ def test_conflicting_franchise_origin_coordinates_are_rejected() -> None:
         match="conflicting franchise-season origin coordinates",
     ):
         validate_stadium_reference(stadiums)
+
+
+def test_missing_alias_file_returns_empty_contract(tmp_path: Path) -> None:
+    aliases = load_stadium_aliases(tmp_path / "missing.csv")
+    assert aliases.empty
+    assert aliases.columns.tolist() == [
+        "SOURCE_STADIUM",
+        "CANONICAL_STADIUM",
+    ]
+
+
+def test_alias_loader_trims_and_sorts(tmp_path: Path) -> None:
+    path = tmp_path / "aliases.csv"
+    path.write_text(
+        "SOURCE_STADIUM,CANONICAL_STADIUM\n"
+        " Highmark Stadium , New Era Field \n"
+        "Caesars Superdome,Mercedes-Benz Superdome\n",
+        encoding="utf-8",
+    )
+
+    aliases = load_stadium_aliases(path)
+
+    assert aliases.to_dict(orient="records") == [
+        {
+            "SOURCE_STADIUM": "Caesars Superdome",
+            "CANONICAL_STADIUM": "Mercedes-Benz Superdome",
+        },
+        {
+            "SOURCE_STADIUM": "Highmark Stadium",
+            "CANONICAL_STADIUM": "New Era Field",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            ("Highmark Stadium", "New Era Field"),
+            ("Highmark Stadium", "Another Field"),
+        ],
+        [("Highmark Stadium", "Highmark Stadium")],
+        [("", "New Era Field")],
+    ],
+)
+def test_alias_loader_rejects_invalid_contract(
+    tmp_path: Path,
+    rows: list[tuple[str, str]],
+) -> None:
+    path = tmp_path / "aliases.csv"
+    DataFrame(
+        rows,
+        columns=["SOURCE_STADIUM", "CANONICAL_STADIUM"],
+    ).to_csv(path, index=False)
+
+    with pytest.raises(ValueError):
+        load_stadium_aliases(path)

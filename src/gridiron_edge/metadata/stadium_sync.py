@@ -61,6 +61,30 @@ def _normal_teams(stadiums: DataFrame) -> frozenset[str]:
     )
 
 
+def load_stadium_aliases(path: Path) -> DataFrame:
+    """Load and validate an optional explicit stadium-alias artifact."""
+    columns = ["SOURCE_STADIUM", "CANONICAL_STADIUM"]
+    if not path.exists():
+        return DataFrame(columns=columns)
+
+    aliases = pd.read_csv(path, dtype="string")
+    _require_columns(
+        aliases,
+        ("SOURCE_STADIUM", "CANONICAL_STADIUM"),
+        label="Stadium aliases",
+    )
+    aliases = aliases.loc[:, columns].copy()
+    for column in columns:
+        aliases[column] = aliases[column].fillna("").str.strip()
+    if aliases[columns].eq("").any().any():
+        raise ValueError("Stadium aliases must not contain empty identities.")
+    if aliases["SOURCE_STADIUM"].duplicated().any():
+        raise ValueError("Stadium aliases contain duplicate source identities.")
+    if aliases["SOURCE_STADIUM"].eq(aliases["CANONICAL_STADIUM"]).any():
+        raise ValueError("Stadium aliases must not map a stadium to itself.")
+    return aliases.sort_values("SOURCE_STADIUM", kind="stable").reset_index(drop=True)
+
+
 def validate_stadium_reference(stadiums: DataFrame) -> None:
     """Validate canonical stadium identities and coordinate contracts."""
     _require_columns(stadiums, _STADIUM_COLUMNS, label="Stadium reference")
