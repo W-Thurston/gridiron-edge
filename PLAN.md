@@ -3400,6 +3400,42 @@ Full-retrain no longer promotes champions or writes baseline reports from stale 
 
 Selected trainable game and prop pairs receive explicit final artifact training after the canonical data refresh.
 
+#### Unit 19.2h-E Game Artifact Rebuild
+
+#### Completed
+
+Corrected full-retrain so it explicitly trains deployable game and prop artifacts in addition to generating walk-forward forecast archives.
+
+Rebuilt the canonical historical data and one-row modeling artifacts with 7,276 unique games, modeling schema version 5, data version 2, and no retired orientation columns.
+
+Derived the classification CV row floor from actual temporal fold geometry when the configured default would reject every fold.
+
+Separated artifact metadata schema version 3 from modeling schema version 5.
+
+Regenerated historical forecast archives and trained all five deployable game-model artifacts.
+
+Excluded tied games from binary champion-ranking metrics while preserving ties in the general evaluation dataset.
+
+Refreshed Elo, logistic, Random Forest, and XGBoost calibration values.
+
+Selected win_prob_logistic and total_random_forest as the current game champions and generated the current baseline comparison report.
+
+#### Goal
+
+Rebuild and validate every canonical game-model artifact and downstream evaluation product before refreshing prop artifacts.
+
+#### Tests
+
+Validated modeling row identity, manifest integrity, temporal CV floor resolution, artifact metadata loading, classification tie handling, deployable model metrics, calibration coverage, champion selection, baseline reporting, model listing, and evaluation summary execution.
+
+Ruff, Pyrefly, focused tests, and the full unit and non-slow suite pass.
+
+#### Acceptance
+
+Canonical modeling artifacts, historical game forecast archives, all five deployable game-model artifacts, four Win calibration entries, game champion selections, and the baseline report are current and load successfully through strict runtime boundaries.
+
+Analytic Elo remains artifact-free, and no candidate or holding directories remain.
+
 ---
 
 ### Unit 20: Make `output predictions` a Pure Renderer

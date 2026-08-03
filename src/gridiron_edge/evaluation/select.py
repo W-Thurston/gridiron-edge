@@ -100,6 +100,17 @@ def collect_model_metrics(
         if df_eval["away_win_prob"].isna().all():
             continue
 
+        # Win-probability metrics require a binary outcome. Tied games are
+        # represented as 0.5 by build_evaluation_df and remain available to
+        # general evaluation surfaces, but they are excluded from binary
+        # champion ranking.
+        df_eval = df_eval.loc[
+            df_eval["away_team_won"].isin([0, 1]),
+            :,
+        ].copy()
+        if df_eval.empty:
+            continue
+
         p: Series = df_eval["away_win_prob"]
         y: Series = df_eval["away_team_won"]
         rows.append(

@@ -63,6 +63,45 @@ class TestCollectModelMetrics:
             assert len(result) == 1
             assert result[0]["model_key"] == "win_prob_good"
 
+    def test_excludes_ties_from_binary_metrics(self, tmp_path: Path) -> None:
+        eval_df = pd.DataFrame(
+            {
+                "away_win_prob": [0.8, 0.2, 0.5],
+                "away_team_won": [1.0, 0.0, 0.5],
+            }
+        )
+        with patch(
+            "gridiron_edge.evaluation.metrics.build_evaluation_df",
+            return_value=eval_df,
+        ):
+            result = collect_model_metrics(
+                ["win_prob_test"],
+                repo=tmp_path,
+            )
+
+        assert len(result) == 1
+        assert result[0]["n_games"] == 2
+        assert result[0]["brier"] == pytest.approx(0.04)
+        assert result[0]["auc"] == pytest.approx(1.0)
+
+    def test_skips_tie_only_archive(self, tmp_path: Path) -> None:
+        eval_df = pd.DataFrame(
+            {
+                "away_win_prob": [0.5],
+                "away_team_won": [0.5],
+            }
+        )
+        with patch(
+            "gridiron_edge.evaluation.metrics.build_evaluation_df",
+            return_value=eval_df,
+        ):
+            result = collect_model_metrics(
+                ["win_prob_test"],
+                repo=tmp_path,
+            )
+
+        assert result == []
+
 
 class TestRankModels:
     def test_ranks_by_brier_ascending(self) -> None:

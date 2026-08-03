@@ -32,6 +32,7 @@ from gridiron_edge.models.game_prediction.base import (
     _create_model,
     _get_param_grid,
     _n_iter_for,
+    _resolve_cv_min_train_rows,
 )
 from gridiron_edge.models.game_prediction.game_schema import (
     ACTUAL_TOTAL_TARGET,
@@ -310,6 +311,132 @@ class TestGameModelMetadataContract:
         assert meta.metrics["mae"] == pytest.approx(8.2)
         assert meta.metrics["rmse"] == pytest.approx(10.5)
         assert meta.metrics["r2"] == pytest.approx(0.31)
+
+
+# ---------------------------------------------------------------------------
+# CV row-floor resolution and metadata schema separation
+# ---------------------------------------------------------------------------
+
+
+class TestCvMinTrainRows:
+    """Resolve classification CV floors from actual temporal fold geometry."""
+
+    def test_explicit_floor_is_preserved(self) -> None:
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        frame = pd.DataFrame({"feature": range(4757)})
+
+        resolved = _resolve_cv_min_train_rows(
+            x_train=frame,
+            tscv=TimeSeriesSplit(n_splits=5),
+            requested=200,
+        )
+
+        assert resolved == 200
+
+    def test_canonical_geometry_uses_second_largest_fold(self) -> None:
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        frame = pd.DataFrame({"feature": range(4757)})
+        splitter = TimeSeriesSplit(n_splits=5)
+
+        resolved = _resolve_cv_min_train_rows(
+            x_train=frame,
+            tscv=splitter,
+            requested=None,
+        )
+        surviving = [
+            len(train_idx) for train_idx, _ in splitter.split(frame) if len(train_idx) >= resolved
+        ]
+
+        assert resolved == 3173
+        assert surviving == [3173, 3965]
+
+    def test_large_pool_retains_configured_default(self) -> None:
+        # pyrefly: ignore [missing-import]
+        from sklearn.model_selection import TimeSeriesSplit
+
+        frame = pd.DataFrame({"feature": range(12000)})
+
+        resolved = _resolve_cv_min_train_rows(
+            x_train=frame,
+            tscv=TimeSeriesSplit(n_splits=5),
+            requested=None,
+        )
+
+        assert resolved == 4000
+
+
+class TestGameMetadataSchemaSeparation:
+    """Keep artifact serialization and modeling schemas independent."""
+
+    def test_classification_metadata_uses_artifact_schema_default(self) -> None:
+        import numpy as np
+
+        class FakeClassifier:
+            def predict_proba(self, values: object) -> np.ndarray:
+                length = len(values)  # type: ignore[arg-type]
+                positive = np.full(length, 0.6)
+                return np.column_stack((1.0 - positive, positive))
+
+        trainer = WinProbTrainer()
+        trainer._model = FakeClassifier()
+        trainer._scaler = None
+        x_train = pd.DataFrame({"feature": [0.0, 1.0, 2.0, 3.0]})
+        y_train = pd.Series([0, 1, 0, 1])
+        x_hold = pd.DataFrame({"feature": [4.0, 5.0]})
+        y_hold = pd.Series([0, 1])
+
+        metadata = trainer._build_classification_metadata(
+            model_type=GameModelType.LOGISTIC,
+            best_params={},
+            best_score=0.22,
+            feature_names=["feature"],
+            x_train=x_train,
+            y_train=y_train,
+            x_hold=x_hold,
+            y_hold=y_hold,
+            train_seasons=["2022-2023"],
+            hold_seasons=["2023-2024"],
+            modeling_schema_version=5,
+        )
+
+        assert metadata.schema_version == 3
+        assert metadata.parameters["modeling_schema_version"] == 5
+
+    def test_regression_metadata_uses_artifact_schema_default(self) -> None:
+        import numpy as np
+
+        class FakeRegressor:
+            def predict(self, values: object) -> np.ndarray:
+                return np.full(len(values), 42.0)  # type: ignore[arg-type]
+
+        trainer = TotalTrainer()
+        trainer._model = FakeRegressor()
+        trainer._scaler = None
+        x_train = pd.DataFrame({"feature": [0.0, 1.0, 2.0, 3.0]})
+        y_train = pd.Series([40.0, 41.0, 42.0, 43.0])
+        x_hold = pd.DataFrame({"feature": [4.0, 5.0]})
+        y_hold = pd.Series([44.0, 45.0])
+
+        metadata = trainer._build_regression_metadata(
+            model_type=GameModelType.RANDOM_FOREST,
+            best_params={},
+            best_score=9.5,
+            feature_names=["feature"],
+            x_train=x_train,
+            y_train=y_train,
+            x_hold=x_hold,
+            y_hold=y_hold,
+            train_seasons=["2022-2023"],
+            hold_seasons=["2023-2024"],
+            modeling_schema_version=5,
+        )
+
+        assert metadata.schema_version == 3
+        assert metadata.parameters["modeling_schema_version"] == 5
 
 
 # ---------------------------------------------------------------------------

@@ -347,10 +347,6 @@ def _n_iter_for(model_type: GameModelType, task: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# GamesTrainer
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Internal search result type
 # ---------------------------------------------------------------------------
 
@@ -453,6 +449,36 @@ def _filter_for_walk_forward(
     hold_seasons = sorted(year_series.loc[hold_mask].unique().tolist())
 
     return x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons
+
+
+# ---------------------------------------------------------------------------
+# GamesTrainer
+# ---------------------------------------------------------------------------
+
+
+def _resolve_cv_min_train_rows(
+    *,
+    x_train: pd.DataFrame,
+    tscv: TimeSeriesSplit,
+    requested: int | None,
+) -> int:
+    """Resolve a per-fold row floor from the actual temporal split geometry."""
+    from gridiron_edge.models.game_prediction._features import (
+        MIN_CV_TRAIN_ROWS,
+    )
+
+    if requested is not None:
+        return requested
+
+    fold_sizes: list[int] = [len(train_idx) for train_idx, _ in tscv.split(x_train)]
+    if len(fold_sizes) < 2:
+        return MIN_CV_TRAIN_ROWS
+
+    second_largest: int = sorted(fold_sizes)[-2]
+    return min(
+        MIN_CV_TRAIN_ROWS,
+        second_largest,
+    )
 
 
 class GamesTrainer(ABC):
@@ -558,7 +584,7 @@ class GamesTrainer(ABC):
                 y_hold=search.y_hold,
                 train_seasons=search.train_seasons,
                 hold_seasons=search.hold_seasons,
-                schema_version=CURRENT_SCHEMA_VERSION,
+                modeling_schema_version=CURRENT_SCHEMA_VERSION,
             )
         else:
             metadata = self._build_regression_metadata(
@@ -572,7 +598,7 @@ class GamesTrainer(ABC):
                 y_hold=search.y_hold,
                 train_seasons=search.train_seasons,
                 hold_seasons=search.hold_seasons,
-                schema_version=CURRENT_SCHEMA_VERSION,
+                modeling_schema_version=CURRENT_SCHEMA_VERSION,
             )
 
         if persist:
@@ -667,13 +693,19 @@ class GamesTrainer(ABC):
             )
             last_train_pool_size = len(x_train)
 
+            effective_min = _resolve_cv_min_train_rows(
+                x_train=x_train,
+                tscv=tscv,
+                requested=min_cv_train_rows,
+            )
+
             score, n_folds_scored = self._cv_score(
                 x_train=x_train,
                 y_train=y_train,
                 params=sampled,
                 model_type=model_type,
                 tscv=tscv,
-                min_cv_train_rows=min_cv_train_rows,
+                min_cv_train_rows=effective_min,
             )
             if n_folds_scored == 0:
                 n_combos_all_folds_skipped += 1
@@ -868,7 +900,7 @@ class GamesTrainer(ABC):
         y_hold: Series,
         train_seasons: list[str],
         hold_seasons: list[str],
-        schema_version: int,
+        modeling_schema_version: int,
     ) -> GameModelMetadata:
         """Evaluate holdout for classification + apply XGB post-calibration."""
         from sklearn.calibration import CalibratedClassifierCV
@@ -956,7 +988,6 @@ class GamesTrainer(ABC):
             model_type=model_type.value,
             task=spec.task,
             trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
-            schema_version=schema_version,
             training_seasons=train_seasons,
             holdout_seasons=hold_seasons,
             parameters={
@@ -965,6 +996,7 @@ class GamesTrainer(ABC):
                 "train_brier": round(train_brier, 6),
                 "overfit_gap": round(holdout_brier - train_brier, 6),
                 "calibration_applied": calibration_applied,
+                "modeling_schema_version": modeling_schema_version,
             },
             feature_columns=feature_names,
             n_train_rows=len(x_train),
@@ -991,7 +1023,7 @@ class GamesTrainer(ABC):
         y_hold: Series,
         train_seasons: list[str],
         hold_seasons: list[str],
-        schema_version: int,
+        modeling_schema_version: int,
     ) -> GameModelMetadata:
         """Evaluate holdout for regression."""
         spec: GameModelSpec = self.spec
@@ -1021,7 +1053,6 @@ class GamesTrainer(ABC):
             model_type=model_type.value,
             task=spec.task,
             trained_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
-            schema_version=schema_version,
             training_seasons=train_seasons,
             holdout_seasons=hold_seasons,
             parameters={
@@ -1031,6 +1062,7 @@ class GamesTrainer(ABC):
                 "train_rmse": round(train_rmse, 6),
                 "mean_target_train": float(np.mean(y_train_arr)),
                 "mean_target_holdout": float(np.mean(y_hold_arr)),
+                "modeling_schema_version": modeling_schema_version,
             },
             feature_columns=feature_names,
             n_train_rows=len(x_train),
