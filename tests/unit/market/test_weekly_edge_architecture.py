@@ -62,7 +62,7 @@ def test_api_edge_loader_has_no_retired_edge_dependencies() -> None:
 
     start = source.index("def load_edges_for_week(")
     end = source.index(
-        "\ndef _finalize_games_frame(",
+        "\ndef _parse_season_int(",
         start,
     )
     function_source = source[start:end]

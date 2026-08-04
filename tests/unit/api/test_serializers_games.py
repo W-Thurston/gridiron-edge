@@ -1,16 +1,11 @@
-# tests/unit/api/test_serializers_games.py
-
-"""Tests for /games serializers."""
+"""Tests for schedule-complete /games serializers."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from gridiron_edge.api.meta import BlockedStatus, FieldStatus
-from gridiron_edge.api.schemas.games import GameDetail, GameList, GameSummary, PredictionBlock
 from gridiron_edge.api.serializers.games import (
-    _build_prediction_block,
     _derive_day_of_week,
     serialize_game_detail,
     serialize_game_summary,
@@ -18,210 +13,124 @@ from gridiron_edge.api.serializers.games import (
 )
 
 
-def _valid_row() -> dict:
-    """A canonical valid loader row for reuse across tests."""
+def _row() -> dict[str, object]:
     return {
         "game_id": "2026_01_KC_LAC",
-        "game_date": "2026-09-05",
-        "week": 1,
         "season": "2026-2027",
-        "away_team": "KC",
-        "home_team": "LAC",
-        "home_win_prob": 0.55,
+        "week": 1,
+        "game_day_of_week": "Saturday",
+        "game_date": "2026-09-05",
+        "game_time": "18:00:00",
+        "stadium": "SoFi Stadium",
+        "away_team": "Kansas City Chiefs",
+        "home_team": "Los Angeles Chargers",
+        "win_status": "available",
+        "win_selection_status": "selected",
         "away_win_prob": 0.45,
+        "home_win_prob": 0.55,
+        "win_model_name": "win_prob",
+        "win_model_type": "elo",
+        "win_event_id": "win-event",
+        "win_run_id": "win-run",
+        "win_generated_at": "2026-08-01T00:00:00+00:00",
+        "win_role": "live",
+        "spread_status": "available",
         "model_spread": -2.5,
+        "spread_uncertainty": 13.0,
+        "spread_source_event_id": "win-event",
+        "spread_model_name": "win_prob",
+        "spread_model_type": "elo",
+        "spread_calibration_key": "win_prob_elo",
+        "spread_calibration_updated_at": "2026-08-01T00:00:00+00:00",
+        "total_status": "available",
+        "total_selection_status": "selected",
         "model_total": 47.5,
+        "total_uncertainty": 12.0,
+        "total_model_name": "total",
+        "total_model_type": "random_forest",
+        "total_event_id": "total-event",
+        "total_run_id": "total-run",
+        "total_generated_at": "2026-08-01T00:00:00+00:00",
+        "total_role": "live",
+        "total_uncertainty_trained_at": "2026-07-31T00:00:00+00:00",
+        "projected_score_status": "available",
         "projected_home_score": 25.0,
         "projected_away_score": 22.5,
-        "confidence_tier": "Moderate",
-        "win_prob_lo": 0.42,
-        "win_prob_hi": 0.68,
     }
 
 
-class TestDeriveDayOfWeek:
-    def test_iso_date_returns_weekday_name(self) -> None:
-        assert _derive_day_of_week("2026-09-05") == "Saturday"
+def test_serializes_separate_component_provenance() -> None:
+    summary = serialize_game_summary(_row())
 
-    def test_none_returns_none(self) -> None:
-        assert _derive_day_of_week(None) is None
-
-    def test_nan_returns_none(self) -> None:
-        assert _derive_day_of_week(np.nan) is None
-
-    def test_empty_string_returns_none(self) -> None:
-        assert _derive_day_of_week("") is None
-
-    def test_unparseable_returns_none(self) -> None:
-        assert _derive_day_of_week("not a date") is None
+    assert summary.away_team == "Kansas City Chiefs"
+    assert summary.win.event_id == "win-event"
+    assert summary.win.model_type == "elo"
+    assert summary.total.event_id == "total-event"
+    assert summary.total.model_type == "random_forest"
+    assert summary.spread.source_event_id == "win-event"
 
 
-class TestBuildPredictionBlock:
-    def test_full_row_builds_block(self) -> None:
-        block: PredictionBlock | None = _build_prediction_block(_valid_row())
-        assert block is not None
-        assert block.home_win_prob == 0.55
-        assert block.confidence_tier == "Moderate"
-        assert block.home_win_lo == 0.42
-
-    def test_all_none_row_returns_none(self) -> None:
-        row: dict[str, None] = {
-            "home_win_prob": None,
-            "away_win_prob": None,
-            "win_prob_lo": None,
-            "win_prob_hi": None,
-            "confidence_tier": None,
-            "model_spread": None,
-            "model_total": None,
-            "projected_home_score": None,
-            "projected_away_score": None,
+def test_unavailable_prediction_values_do_not_remove_status_blocks() -> None:
+    row = _row()
+    row.update(
+        {
+            "win_status": "forecast_missing",
+            "win_selection_status": "no_eligible_candidate",
+            "home_win_prob": np.nan,
+            "away_win_prob": pd.NA,
+            "win_event_id": pd.NA,
+            "total_status": "forecast_missing",
+            "model_total": pd.NA,
+            "total_event_id": pd.NA,
+            "projected_score_status": "spread_and_total_unavailable",
+            "projected_home_score": pd.NA,
+            "projected_away_score": pd.NA,
         }
-        assert _build_prediction_block(row) is None
+    )
 
-    def test_nan_fields_become_none(self) -> None:
-        row: dict = _valid_row()
-        row["model_total"] = np.nan
-        row["projected_home_score"] = np.nan
-        block: PredictionBlock | None = _build_prediction_block(row)
-        assert block is not None
-        assert block.model_total is None
-        assert block.projected_home_score is None
-        # Non-NaN fields still populate.
-        assert block.home_win_prob == 0.55
+    summary = serialize_game_summary(row)
+
+    assert summary.win.status == "forecast_missing"
+    assert summary.win.home_win_prob is None
+    assert summary.win.event_id is None
+    assert summary.total.status == "forecast_missing"
+    assert summary.total.model_total is None
+    assert summary.projected_score.home is None
 
 
-class TestSerializeGameSummary:
-    def test_full_row(self) -> None:
-        summary: GameSummary = serialize_game_summary(_valid_row())
-        assert isinstance(summary, GameSummary)
-        assert summary.game_id == "2026_01_KC_LAC"
-        assert summary.away_team == "KC"
-        assert summary.home_team == "LAC"
-        assert summary.prediction is not None
-        assert summary.prediction.home_win_prob == 0.55
+def test_list_serializes_every_scheduled_row() -> None:
+    missing = _row() | {
+        "game_id": "2026_01_BUF_MIA",
+        "win_status": "forecast_missing",
+        "home_win_prob": pd.NA,
+    }
+    response = serialize_games_list(
+        pd.DataFrame([_row(), missing]),
+        season="2026-2027",
+        week=1,
+    )
 
-    def test_nan_scalar_fields_become_none(self) -> None:
-        row: dict = _valid_row()
-        row["week"] = np.nan
-        row["game_date"] = np.nan
-        summary: GameSummary = serialize_game_summary(row)
-        assert summary.week is None
-        assert summary.game_date is None
-
-
-class TestSerializeGamesList:
-    def test_empty_dataframe_returns_empty_list(self) -> None:
-        response: GameList = serialize_games_list(
-            pd.DataFrame(),
-            season="2026-2027",
-            week=1,
-        )
-        assert isinstance(response, GameList)
-        assert response.items == []
-        assert response.total == 0
-        assert response.season == "2026-2027"
-        assert response.week == 1
-
-    def test_dataframe_of_rows_serializes_each(self) -> None:
-        df = pd.DataFrame([_valid_row(), _valid_row() | {"game_id": "2026_01_BUF_MIA"}])
-        response: GameList = serialize_games_list(df, season="2026-2027", week=1)
-        assert len(response.items) == 2
-        assert response.total == 2
-        assert response.items[0].game_id == "2026_01_KC_LAC"
-        assert response.items[1].game_id == "2026_01_BUF_MIA"
-
-    def test_none_season_and_week_pass_through(self) -> None:
-        response: GameList = serialize_games_list(pd.DataFrame(), season=None, week=None)
-        assert response.season is None
-        assert response.week is None
+    assert response.total == 2
+    assert [item.game_id for item in response.items] == [
+        "2026_01_KC_LAC",
+        "2026_01_BUF_MIA",
+    ]
+    assert response.items[1].win.status == "forecast_missing"
 
 
-class TestSerializeGameDetail:
-    def test_full_row(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert isinstance(detail, GameDetail)
-        assert detail.game_id == "2026_01_KC_LAC"
-        assert detail.game_date == "2026-09-05"
-        assert detail.day_of_week == "Saturday"
-        assert detail.away_team == "KC"
-        assert detail.home_team == "LAC"
+def test_detail_uses_persisted_schedule_metadata() -> None:
+    detail = serialize_game_detail(_row())
 
-    def test_prediction_populated_from_row(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.prediction is not None
-        assert detail.prediction.home_win_prob == 0.55
-        assert detail.prediction.confidence_tier == "Moderate"
-
-    def test_kick_venue_weather_ship_null(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.kick is None
-        assert detail.venue is None
-        assert detail.weather is None
-
-    def test_field_status_marks_pending_fields(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.response_meta is not None
-        status: dict[str, FieldStatus] = detail.response_meta.field_status
-        assert status["kick"] == "pending"
-        assert status["venue"] == "pending"
-        assert status["weather"] == "pending"
-        assert status["team_comparison"] == "pending"
-        assert status["top_prop_edges"] == "pending"
-
-    def test_field_status_marks_swing_factors_blocked(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.response_meta is not None
-        status: FieldStatus = detail.response_meta.field_status["swing_factors"]
-        assert isinstance(status, BlockedStatus)
-        assert status.blocker == "feature_attribution"
-
-    def test_field_status_marks_injuries_blocked(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.response_meta is not None
-        status: FieldStatus = detail.response_meta.field_status["injuries"]
-        assert isinstance(status, BlockedStatus)
-        assert status.blocker == "injury_data_source"
-
-    def test_scaffolded_fields_are_null(self) -> None:
-        detail: GameDetail = serialize_game_detail(_valid_row())
-        assert detail.team_comparison is None
-        assert detail.swing_factors is None
-        assert detail.injuries is None
-        assert detail.top_prop_edges is None
-
-    def test_day_of_week_derived_from_game_date(self) -> None:
-        row: dict = _valid_row()
-        row["game_date"] = "2026-09-14"  # Monday
-        detail: GameDetail = serialize_game_detail(row)
-        assert detail.day_of_week == "Monday"
-
-    def test_missing_game_date_yields_none_day_of_week(self) -> None:
-        row: dict = _valid_row()
-        row["game_date"] = None
-        detail: GameDetail = serialize_game_detail(row)
-        assert detail.day_of_week is None
+    assert detail.day_of_week == "Saturday"
+    assert detail.kick == "18:00:00"
+    assert detail.venue == "SoFi Stadium"
+    assert detail.response_meta is not None
+    assert "kick" not in detail.response_meta.field_status
+    assert "venue" not in detail.response_meta.field_status
 
 
-class TestGameDetailTeamComparison:
-    def test_populates_team_comparison(self) -> None:
-        team_comparison = {
-            "KC": {"season": {"off_epa_per_play": 0.15, "sample_size": 4}},
-            "LAC": {"season": {"off_epa_per_play": 0.10, "sample_size": 4}},
-        }
-
-        detail: GameDetail = serialize_game_detail(
-            _valid_row(),
-            team_comparison=team_comparison,
-        )
-
-        assert detail.team_comparison == team_comparison
-        # Marker removed when populated
-        assert "team_comparison" not in detail.response_meta.field_status
-
-    def test_none_leaves_pending_marker(self) -> None:
-        detail: GameDetail = serialize_game_detail(
-            _valid_row(),
-            team_comparison=None,
-        )
-        assert detail.team_comparison is None
-        assert detail.response_meta.field_status["team_comparison"] == "pending"
+def test_derive_day_of_week_handles_missing_and_invalid_values() -> None:
+    assert _derive_day_of_week("2026-09-05") == "Saturday"
+    assert _derive_day_of_week(None) is None
+    assert _derive_day_of_week(np.nan) is None
+    assert _derive_day_of_week("invalid") is None

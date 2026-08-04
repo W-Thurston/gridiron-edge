@@ -1,4 +1,4 @@
-"""Tests for /games response schemas."""
+"""Tests for schedule-complete /games response schemas."""
 
 from __future__ import annotations
 
@@ -7,182 +7,83 @@ import pytest
 
 from gridiron_edge.api.schemas.games import (
     GameDetail,
-    GameList,
     GameSummary,
-    PredictionBlock,
-    WeatherBlock,
+    ProjectedScoreBlock,
+    SpreadPredictionBlock,
+    TotalPredictionBlock,
+    WinPredictionBlock,
 )
 
 
-class TestPredictionBlock:
-    def test_accepts_full_prediction(self) -> None:
-        block = PredictionBlock(
-            home_win_prob=0.55,
-            away_win_prob=0.45,
-            home_win_lo=0.42,
-            home_win_hi=0.68,
-            confidence_tier="Moderate",
-            model_spread=-2.5,
-            model_total=47.5,
-            projected_home_score=25.0,
-            projected_away_score=22.5,
-        )
-        assert block.home_win_prob == 0.55
-        assert block.confidence_tier == "Moderate"
-
-    def test_all_fields_default_to_none(self) -> None:
-        block = PredictionBlock()
-        assert block.home_win_prob is None
-        assert block.confidence_tier is None
-
-    def test_rejects_extra_fields(self) -> None:
-        with pytest.raises(ValidationError):
-            PredictionBlock(home_win_prob=0.5, mystery_field=1)  # type: ignore[call-arg]
-
-    def test_frozen(self) -> None:
-        block = PredictionBlock(home_win_prob=0.5)
-        with pytest.raises(ValidationError):
-            block.home_win_prob = 0.6  # type: ignore[misc]
+def _blocks():
+    return {
+        "win": WinPredictionBlock(status="forecast_missing"),
+        "spread": SpreadPredictionBlock(status="win_unavailable"),
+        "total": TotalPredictionBlock(status="forecast_missing"),
+        "projected_score": ProjectedScoreBlock(status="spread_and_total_unavailable"),
+    }
 
 
-class TestWeatherBlock:
-    def test_accepts_full_weather(self) -> None:
-        weather = WeatherBlock(
-            temp_f=72.0,
-            wind_mph=8.0,
-            conditions="Clear",
-            precip_pct=0.05,
-        )
-        assert weather.temp_f == 72.0
-        assert weather.conditions == "Clear"
+def test_unavailable_component_blocks_remain_present() -> None:
+    summary = GameSummary(
+        game_id="2026_01_KC_LAC",
+        away_team="Kansas City Chiefs",
+        home_team="Los Angeles Chargers",
+        **_blocks(),
+    )
 
-    def test_all_fields_default_to_none(self) -> None:
-        weather = WeatherBlock()
-        assert weather.temp_f is None
-
-    def test_frozen(self) -> None:
-        weather = WeatherBlock(temp_f=72.0)
-        with pytest.raises(ValidationError):
-            weather.temp_f = 60.0  # type: ignore[misc]
+    assert summary.win.status == "forecast_missing"
+    assert summary.win.home_win_prob is None
+    assert summary.total.status == "forecast_missing"
+    assert summary.projected_score.home is None
 
 
-class TestGameSummary:
-    def test_minimum_shape(self) -> None:
-        summary = GameSummary(
+def test_win_and_total_provenance_are_independent() -> None:
+    summary = GameSummary(
+        game_id="2026_01_KC_LAC",
+        away_team="Kansas City Chiefs",
+        home_team="Los Angeles Chargers",
+        win=WinPredictionBlock(
+            status="available",
+            event_id="win-event",
+            run_id="win-run",
+            model_type="elo",
+        ),
+        spread=SpreadPredictionBlock(status="available", source_event_id="win-event"),
+        total=TotalPredictionBlock(
+            status="available",
+            event_id="total-event",
+            run_id="total-run",
+            model_type="random_forest",
+        ),
+        projected_score=ProjectedScoreBlock(status="available", home=25.0, away=22.5),
+    )
+
+    assert summary.win.event_id == "win-event"
+    assert summary.total.event_id == "total-event"
+    assert summary.win.run_id != summary.total.run_id
+
+
+def test_spread_schema_documents_runtime_sign_convention() -> None:
+    schema = SpreadPredictionBlock.model_json_schema()
+    description = schema["properties"]["model_spread"]["description"]
+
+    assert "negative means the Home team is favored" in description
+    assert "Away score minus projected Home score" in description
+
+
+def test_game_detail_requires_component_status_blocks() -> None:
+    with pytest.raises(ValidationError):
+        GameDetail(
             game_id="2026_01_KC_LAC",
-            away_team="KC",
-            home_team="LAC",
+            away_team="Kansas City Chiefs",
+            home_team="Los Angeles Chargers",
         )
-        assert summary.game_id == "2026_01_KC_LAC"
-        assert summary.prediction is None
-
-    def test_with_prediction(self) -> None:
-        summary = GameSummary(
-            game_id="2026_01_KC_LAC",
-            game_date="2026-09-05",
-            week=1,
-            season="2026-2027",
-            away_team="KC",
-            home_team="LAC",
-            prediction=PredictionBlock(
-                home_win_prob=0.55,
-                away_win_prob=0.45,
-                confidence_tier="Moderate",
-            ),
-        )
-        assert summary.prediction is not None
-        assert summary.prediction.home_win_prob == 0.55
-
-    def test_rejects_missing_required_teams(self) -> None:
-        with pytest.raises(ValidationError):
-            GameSummary(game_id="x")  # type: ignore[call-arg]
 
 
-class TestGameList:
-    def test_empty_list(self) -> None:
-        response = GameList()
-        assert response.items == []
-        assert response.total is None
-        assert response.season is None
-        assert response.week is None
-
-    def test_with_summaries(self) -> None:
-        response = GameList(
-            items=[
-                GameSummary(
-                    game_id="2026_01_KC_LAC",
-                    away_team="KC",
-                    home_team="LAC",
-                ),
-                GameSummary(
-                    game_id="2026_01_BUF_MIA",
-                    away_team="BUF",
-                    home_team="MIA",
-                ),
-            ],
-            season="2026-2027",
-            week=1,
-        )
-        assert len(response.items) == 2
-        assert response.season == "2026-2027"
-
-
-class TestGameDetail:
-    def test_minimum_shape(self) -> None:
-        detail = GameDetail(
-            game_id="2026_01_KC_LAC",
-            away_team="KC",
-            home_team="LAC",
-        )
-        assert detail.game_id == "2026_01_KC_LAC"
-        assert detail.weather is None
-        assert detail.prediction is None
-        assert detail.team_comparison is None
-        assert detail.swing_factors is None
-        assert detail.injuries is None
-        assert detail.top_prop_edges is None
-        assert detail.response_meta is None
-
-    def test_with_all_populated_blocks(self) -> None:
-        detail = GameDetail(
-            game_id="2026_01_KC_LAC",
-            game_date="2026-09-05",
-            week=1,
-            season="2026-2027",
-            day_of_week="Thursday",
-            kick="8:20 PM ET",
-            venue="Arrowhead Stadium",
-            away_team="KC",
-            home_team="LAC",
-            weather=WeatherBlock(temp_f=72.0, wind_mph=5.0),
-            prediction=PredictionBlock(
-                home_win_prob=0.55,
-                confidence_tier="Moderate",
-            ),
-        )
-        assert detail.weather is not None
-        assert detail.weather.temp_f == 72.0
-        assert detail.prediction is not None
-        assert detail.day_of_week == "Thursday"
-
-    def test_scaffolded_fields_accept_dicts_and_lists(self) -> None:
-        detail = GameDetail(
-            game_id="2026_01_KC_LAC",
-            away_team="KC",
-            home_team="LAC",
-            team_comparison={"placeholder": "shape TBD"},
-            swing_factors=[{"factor": "example"}],
-            injuries=[{"player": "example"}],
-            top_prop_edges=[{"edge": "example"}],
-        )
-        assert detail.team_comparison == {"placeholder": "shape TBD"}
-        assert detail.swing_factors == [{"factor": "example"}]
-
-    def test_rejects_extra_fields(self) -> None:
-        with pytest.raises(ValidationError):
-            GameDetail(
-                game_id="2026_01_KC_LAC",
-                away_team="KC",
-                home_team="LAC",
-                mystery_field="oops",  # type: ignore[call-arg]
-            )
+def test_component_blocks_are_frozen_and_forbid_extras() -> None:
+    block = WinPredictionBlock(status="available")
+    with pytest.raises(ValidationError):
+        block.status = "other"  # type: ignore[misc]
+    with pytest.raises(ValidationError):
+        WinPredictionBlock(status="available", mystery=True)  # type: ignore[call-arg]

@@ -754,147 +754,72 @@ def _none_if_nan_float(v: Any) -> float | None:  # noqa: ANN401
     return float(v)  # type: ignore[arg-type]
 
 
-# Upcoming weeks only ever have elo predictions (trained models need a
-# feature matrix that doesn't exist for unplayed games). When the champion
-# has no rows for a (season, week), fall back to elo so upcoming weeks
-# still serve.
-_UPCOMING_FALLBACK_MODEL_TYPE: str = "elo"
-
-
-def _resolve_win_prob_archive(
-    settings: Settings,
-    *,
-    season: str | None,
-    week: int | None,
-) -> tuple[DataFrame, str]:
-    """Load win_prob predictions, champion-first with an elo fallback.
-
-    Returns (archive, model_type_used). Tries the current champion; if
-    that yields no rows for the requested scope (e.g. an upcoming week,
-    which only elo can predict), retries with elo. Empty frame + champion
-    type if neither has rows.
-    """
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
-
-    _, champion_type = resolve_current_champion("win_prob", repo=settings.repo_root)
-
-    archive: DataFrame = load_prediction_log(
-        season=season,
-        week=week,
-        model_name="win_prob",
-        model_type=champion_type,
-        repo=settings.repo_root,
-    )
-    if not archive.empty:
-        return archive, champion_type
-
-    # Champion has no rows for this scope — try elo (upcoming-week model).
-    if champion_type != _UPCOMING_FALLBACK_MODEL_TYPE:
-        fallback: DataFrame = load_prediction_log(
-            season=season,
-            week=week,
-            model_name="win_prob",
-            model_type=_UPCOMING_FALLBACK_MODEL_TYPE,
-            repo=settings.repo_root,
-        )
-        if not fallback.empty:
-            return fallback, _UPCOMING_FALLBACK_MODEL_TYPE
-
-    return archive, champion_type  # empty
-
-
 def load_games_for_week(
     settings: Settings,
     *,
     season: str,
     week: int,
-) -> pd.DataFrame:
-    """Load champion-model predictions for all games in (season, week).
+) -> DataFrame:
+    """Load every scheduled row from the explicitly selected weekly product.
 
-    Filters the prediction archive to the current win_prob champion's
-    output. Joins to the games table for schedule truth (game_date,
-    game_time, venue) and converts team names to short codes.
-
-    Args:
-        settings: API settings, source of repo_root.
-        season: Season label, e.g. "2026-2027".
-        week: Week number.
-
-    Returns:
-        DataFrame with one row per game. Columns:
-            game_id, game_date, week, season,
-            away_team, home_team (short codes),
-            home_win_prob, away_win_prob,
-            model_spread, model_total,
-            projected_home_score, projected_away_score,
-            confidence_tier,
-            win_prob_lo, win_prob_hi (uncertainty band).
-        Empty DataFrame if no games match.
-
-    Raises:
-        ChampionNotFoundError: If the champion manifest is missing or
-            has no win_prob entry.
+    This API boundary performs no model resolution, prediction, fallback,
+    archive selection, or schedule join. Missing prediction components remain
+    represented by their persisted status columns.
     """
-    archive, _ = _resolve_win_prob_archive(settings, season=season, week=week)
-    if archive.empty:
-        return archive
+    from gridiron_edge.datasets.loaders import load_current_weekly_product
 
-    games: DataFrame = load_games_df(settings)
-    long_to_short: dict[str, str] = load_team_name_map(settings)
+    return load_current_weekly_product(
+        settings.repo_root,
+        season=season,
+        week=week,
+    ).copy()
 
-    return _finalize_games_frame(archive, games, long_to_short)
+
+def _game_scope(game_id: str) -> tuple[str, int] | None:
+    """Return the weekly scope encoded by ``YYYY_WW_AWAY_HOME``."""
+    parts = game_id.split("_")
+    if len(parts) != 4:
+        return None
+    year_text, week_text, away_team, home_team = parts
+    if (
+        len(year_text) != 4
+        or not year_text.isdigit()
+        or not week_text.isdigit()
+        or not away_team
+        or not home_team
+    ):
+        return None
+    start_year = int(year_text)
+    week = int(week_text)
+    if week < 1:
+        return None
+    return (f"{start_year}-{start_year + 1}", week)
 
 
 def load_game(
     settings: Settings,
     *,
     game_id: str,
-) -> dict | None:
-    """Load champion-model prediction for one game.
-
-    Same champion-filtering and enrichment as ``load_games_for_week``,
-    but returns a dict for a single game rather than a DataFrame.
-
-    Args:
-        settings: API settings, source of repo_root.
-        game_id: Composite game_id, e.g. "2026_01_KC_LAC".
-
-    Returns:
-        Dict of the fields listed in ``load_games_for_week``'s docstring,
-        or ``None`` if the game_id is not in the archive.
-
-    Raises:
-        ChampionNotFoundError: If the champion manifest is missing or
-            has no win_prob entry.
-    """
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.evaluation.champion_resolver import resolve_current_champion
-
-    _, champion_type = resolve_current_champion("win_prob", repo=settings.repo_root)
-
-    def _load_for_game(mtype: str) -> DataFrame:
-        a = load_prediction_log(
-            model_name="win_prob",
-            model_type=mtype,
-            repo=settings.repo_root,
+) -> dict[str, object] | None:
+    """Load one scheduled row from its explicitly selected weekly product."""
+    scope = _game_scope(game_id)
+    if scope is None:
+        return None
+    season, week = scope
+    try:
+        product = load_games_for_week(
+            settings,
+            season=season,
+            week=week,
         )
-        return a.loc[a["game_id"] == game_id, :].copy() if not a.empty else a
-
-    archive = _load_for_game(champion_type)
-    if archive.empty and champion_type != _UPCOMING_FALLBACK_MODEL_TYPE:
-        archive = _load_for_game(_UPCOMING_FALLBACK_MODEL_TYPE)
-    if archive.empty:
+    except FileNotFoundError:
         return None
-
-    games: DataFrame = load_games_df(settings)
-    long_to_short: dict[str, str] = load_team_name_map(settings)
-
-    enriched: DataFrame = _finalize_games_frame(archive, games, long_to_short)
-    if enriched.empty:
+    matches = product.loc[product["game_id"].astype(str).eq(game_id), :]
+    if matches.empty:
         return None
-
-    return enriched.iloc[0].to_dict()
+    if len(matches) != 1:
+        raise ValueError(f"Selected weekly product contains duplicate game_id={game_id!r}.")
+    return matches.iloc[0].to_dict()
 
 
 def load_edges_for_week(
@@ -931,56 +856,6 @@ def load_edges_for_week(
         rows=rows,
         diagnostics=result.diagnostics,
     )
-
-
-def _finalize_games_frame(
-    archive: pd.DataFrame,
-    games: pd.DataFrame,
-    long_to_short: dict[str, str],
-) -> pd.DataFrame:
-    """Convert archive rows to the API-facing games shape.
-
-    Shared by ``load_games_for_week`` and ``load_game``. Joins the
-    archive to the games table for schedule truth, converts long team
-    names to short codes, and selects the API-relevant columns.
-    """
-    # Join to games for schedule truth. Left join preserves archive
-    # rows that might reference upcoming games not yet in the games
-    # table (games table is populated post-week).
-    merged: DataFrame = archive.merge(
-        games[["GAME_ID", "YEAR", "WEEK_NUM", "GAME_DATE"]],
-        left_on="game_id",
-        right_on="GAME_ID",
-        how="left",
-        suffixes=("", "_games"),
-    )
-
-    # Prefer games table for game_date when available (schedule truth);
-    # fall back to archive's game_date.
-    merged["game_date"] = merged["GAME_DATE"].fillna(merged["game_date"])
-
-    # Team name conversion to short codes.
-    merged["away_team"] = merged["away_team"].map(long_to_short).fillna(merged["away_team"])
-    merged["home_team"] = merged["home_team"].map(long_to_short).fillna(merged["home_team"])
-
-    columns: list[str] = [
-        "game_id",
-        "game_date",
-        "week",
-        "season",
-        "away_team",
-        "home_team",
-        "home_win_prob",
-        "away_win_prob",
-        "model_spread",
-        "model_total",
-        "projected_home_score",
-        "projected_away_score",
-        "confidence_tier",
-        "win_prob_lo",
-        "win_prob_hi",
-    ]
-    return merged.loc[:, columns].copy()
 
 
 def _parse_season_int(season: str) -> int:

@@ -1,23 +1,31 @@
-# tests/integration/api/test_games_routes.py
-
-"""Integration tests for /games and /games/{game_id} routes.
-
-Exercises the loader → serializer → route stack
-end-to-end via MiniRepoBuilder + FastAPI dependency_overrides.
-"""
+"""Integration tests for schedule-complete /games routes."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 import pandas as pd
+from pandas import DataFrame
 import pytest
 from tests.fixtures.repos import MiniRepoBuilder
 
 from gridiron_edge.api.app import create_app
 from gridiron_edge.api.deps import settings_dependency
+from gridiron_edge.datasets.writers import (
+    select_current_weekly_product,
+    write_weekly_product,
+)
+from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
+from gridiron_edge.models.game_prediction.weekly_game_product import (
+    build_weekly_game_product,
+)
+
+SEASON = "2026-2027"
+WEEK = 1
+GENERATED_AT = datetime(2026, 9, 1, 12, tzinfo=UTC)
 
 
 @dataclass
@@ -25,295 +33,194 @@ class _FakeSettings:
     repo_root: Path
 
 
-def _make_prediction(
-    game_id: str = "2026_01_KC_LAC",
-    model_type: str = "elo",
-    home_team: str = "Los Angeles Chargers",
-    away_team: str = "Kansas City Chiefs",
-) -> dict:
-    return {
-        "predicted_at": pd.Timestamp("2026-08-01"),
-        "is_backfilled": False,
-        "model_name": "win_prob",
-        "model_type": model_type,
-        "season": "2026-2027",
-        "week": 1,
-        "game_id": game_id,
-        "game_date": "2026-09-05",
-        "away_team": away_team,
-        "home_team": home_team,
-        "away_elo": 1550.0,
-        "home_elo": 1520.0,
-        "away_win_prob": 0.45,
-        "home_win_prob": 0.55,
-        "model_total": 47.5,
-        "model_spread": -2.5,
-        "margin_std": 13.5,
-        "win_prob_lo": 0.42,
-        "win_prob_hi": 0.68,
-        "confidence_tier": "Moderate",
-        "projected_home_score": 25.0,
-        "projected_away_score": 22.5,
-    }
+def _selected_product() -> DataFrame:
+    """Return one available and one forecast-missing scheduled game."""
+    base = DataFrame(
+        {
+            "season": [SEASON, SEASON],
+            "week": [WEEK, WEEK],
+            "game_id": ["2026_01_KC_LAC", "2026_01_BUF_MIA"],
+            "game_day_of_week": ["Saturday", "Sunday"],
+            "game_date": ["2026-09-05", "2026-09-06"],
+            "game_time": ["18:00:00", "13:00:00"],
+            "away_team": ["Kansas City Chiefs", "Buffalo Bills"],
+            "home_team": ["Los Angeles Chargers", "Miami Dolphins"],
+            "neutral_site": [False, False],
+            "stadium": ["SoFi Stadium", "Hard Rock Stadium"],
+            "win_status": ["available", "forecast_missing"],
+            "win_selection_status": ["selected", "no_eligible_candidate"],
+            "away_win_prob": [0.45, pd.NA],
+            "home_win_prob": [0.55, pd.NA],
+            "win_model_name": ["win_prob", pd.NA],
+            "win_model_type": ["elo", pd.NA],
+            "win_event_id": ["win-event-1", pd.NA],
+            "win_run_id": ["api-games-run", pd.NA],
+            "win_generated_at": [GENERATED_AT, pd.NaT],
+            "win_role": ["live", pd.NA],
+            "spread_status": ["available", "win_unavailable"],
+            "model_spread": [-2.5, pd.NA],
+            "spread_uncertainty": [13.0, pd.NA],
+            "spread_source_event_id": ["win-event-1", pd.NA],
+            "spread_model_name": ["win_prob", pd.NA],
+            "spread_model_type": ["elo", pd.NA],
+            "spread_calibration_key": ["win_prob_elo", pd.NA],
+            "spread_calibration_updated_at": [
+                "2026-09-01T12:00:00+00:00",
+                pd.NA,
+            ],
+            "total_status": ["available", "forecast_missing"],
+            "total_selection_status": ["selected", "no_eligible_candidate"],
+            "model_total": [47.5, pd.NA],
+            "total_uncertainty": [12.0, pd.NA],
+            "total_model_name": ["total", pd.NA],
+            "total_model_type": ["random_forest", pd.NA],
+            "total_event_id": ["total-event-1", pd.NA],
+            "total_run_id": ["api-games-run", pd.NA],
+            "total_generated_at": [GENERATED_AT, pd.NaT],
+            "total_role": ["live", pd.NA],
+            "total_uncertainty_trained_at": [
+                "2026-08-31T12:00:00+00:00",
+                pd.NA,
+            ],
+        }
+    )
+    return build_weekly_game_product(base)
 
 
-def _make_games_df(game_ids: list[str] | None = None) -> pd.DataFrame:
-    """Build a games DataFrame with rows keyed by GAME_ID."""
-    if game_ids is None:
-        game_ids = ["2026_01_KC_LAC"]
-    return pd.DataFrame(
-        [
-            {
-                "GAME_ID": gid,
-                "YEAR": "2026-2027",
-                "WEEK_NUM": 1,
-                "GAME_DATE": "2026-09-05",
-            }
-            for gid in game_ids
-        ]
+def _persist_selected_product(repo: Path) -> None:
+    """Persist and explicitly select the schedule-complete product."""
+    identity = WeeklyProductIdentity(
+        product_id="api-games-product",
+        run_id="api-games-run",
+        season=SEASON,
+        week=WEEK,
+        generated_at=GENERATED_AT,
+    )
+    write_weekly_product(repo, _selected_product(), identity=identity)
+    select_current_weekly_product(
+        repo,
+        identity.product_id,
+        season=SEASON,
+        week=WEEK,
+        selected_at=datetime(2026, 9, 1, 13, tzinfo=UTC),
     )
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """TestClient with settings pointing at tmp_path via dependency_overrides.
-
-    Callers populate tmp_path with MiniRepoBuilder in each test — this
-    fixture only wires the settings redirect.
-
-    load_team_name_map is monkeypatched because MiniRepoBuilder doesn't
-    yet have a with_teams_reference method. Tracked as a follow-up.
-    """
-    monkeypatch.setattr(
-        "gridiron_edge.api.loaders.load_team_name_map",
-        lambda _settings: {
-            "Kansas City Chiefs": "KC",
-            "Los Angeles Chargers": "LAC",
-            "Buffalo Bills": "BUF",
-            "Miami Dolphins": "MIA",
-        },
-    )
-
+def client(tmp_path: Path) -> TestClient:
+    """Return a client whose API repository is the test repository."""
+    MiniRepoBuilder(tmp_path).with_games()
     app = create_app()
     app.dependency_overrides[settings_dependency] = lambda: _FakeSettings(repo_root=tmp_path)
     return TestClient(app)
 
 
-class TestListGamesRoute:
-    def test_returns_games_for_week(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame(
-            [
-                _make_prediction("2026_01_KC_LAC"),
-                _make_prediction(
-                    "2026_01_BUF_MIA",
-                    home_team="Miami Dolphins",
-                    away_team="Buffalo Bills",
-                ),
-            ]
-        )
-        games = _make_games_df(["2026_01_KC_LAC", "2026_01_BUF_MIA"])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(games)
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
+def test_list_returns_every_selected_scheduled_game(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
 
-        response = client.get("/games?season=2026-2027&week=1")
+    response = client.get(f"/games?season={SEASON}&week={WEEK}")
 
-        assert response.status_code == 200
-        body = response.json()
-        assert body["season"] == "2026-2027"
-        assert body["week"] == 1
-        assert body["total"] == 2
-        assert len(body["items"]) == 2
-        game_ids = {item["game_id"] for item in body["items"]}
-        assert game_ids == {"2026_01_KC_LAC", "2026_01_BUF_MIA"}
-        first = next(i for i in body["items"] if i["game_id"] == "2026_01_KC_LAC")
-        assert first["home_team"] == "LAC"
-        assert first["prediction"]["home_win_prob"] == 0.55
-
-    def test_missing_manifest_returns_empty_with_field_status(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction()])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_predictions_archive(predictions)
-            # no with_champion_manifest
-        )
-
-        response = client.get("/games?season=2026-2027&week=1")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["items"] == []
-        assert body["total"] == 0
-        status = body["_meta"]["field_status"]["items"]
-        assert status["status"] == "blocked"
-        assert status["blocker"] == "no_champion_manifest"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert [item["game_id"] for item in body["items"]] == [
+        "2026_01_KC_LAC",
+        "2026_01_BUF_MIA",
+    ]
 
 
-class TestGetGameRoute:
-    def test_returns_detail_for_known_game(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
+def test_list_keeps_missing_prediction_components_visible(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
 
-        response = client.get("/games/2026_01_KC_LAC")
+    body = client.get(f"/games?season={SEASON}&week={WEEK}").json()
+    missing = next(item for item in body["items"] if item["game_id"] == "2026_01_BUF_MIA")
 
-        assert response.status_code == 200
-        body = response.json()
-        assert body["game_id"] == "2026_01_KC_LAC"
-        assert body["home_team"] == "LAC"
-        assert body["away_team"] == "KC"
-        assert body["day_of_week"] == "Saturday"
-        assert body["prediction"]["home_win_prob"] == 0.55
-        assert body["prediction"]["confidence_tier"] == "Moderate"
-
-    def test_field_status_marks_pending_and_blocked(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
-
-        response = client.get("/games/2026_01_KC_LAC")
-
-        body = response.json()
-        status = body["_meta"]["field_status"]
-        assert status["kick"] == "pending"
-        assert status["venue"] == "pending"
-        assert status["weather"] == "pending"
-        assert status["team_comparison"] == "pending"
-        assert status["top_prop_edges"] == "pending"
-        assert status["swing_factors"]["blocker"] == "feature_attribution"
-        assert status["injuries"]["blocker"] == "injury_data_source"
-
-    def test_unknown_game_returns_404(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
-
-        response = client.get("/games/bogus_game_id")
-
-        assert response.status_code == 404
-        assert "Unknown game_id" in response.json()["detail"]
-
-    def test_missing_manifest_returns_200_with_field_status(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_predictions_archive(predictions)
-            # no with_champion_manifest
-        )
-
-        response = client.get("/games/2026_01_KC_LAC")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["game_id"] == "2026_01_KC_LAC"
-        assert body["prediction"] is None
-        status = body["_meta"]["field_status"]["prediction"]
-        assert status["status"] == "blocked"
-        assert status["blocker"] == "no_champion_manifest"
+    assert missing["win"]["status"] == "forecast_missing"
+    assert missing["win"]["home_win_prob"] is None
+    assert missing["spread"]["status"] == "win_unavailable"
+    assert missing["total"]["status"] == "forecast_missing"
+    assert missing["total"]["model_total"] is None
+    assert missing["projected_score"]["status"] == "spread_and_total_unavailable"
 
 
-class TestGameDetailTeamComparison:
-    def test_team_comparison_populated_when_artifact_exists(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
+def test_list_serializes_separate_win_spread_and_total_provenance(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
 
-        # Write cohort splits artifact for both teams
-        cohort_dir = tmp_path / "data" / "output" / "rankings"
-        cohort_dir.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(
-            [
-                {
-                    "team_abbr": "KC",
-                    "cohort": "season",
-                    "off_epa_per_play": 0.15,
-                    "sample_size": 4,
-                },
-                {
-                    "team_abbr": "LAC",
-                    "cohort": "season",
-                    "off_epa_per_play": 0.10,
-                    "sample_size": 4,
-                },
-            ]
-        ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
+    body = client.get(f"/games?season={SEASON}&week={WEEK}").json()
+    available = next(item for item in body["items"] if item["game_id"] == "2026_01_KC_LAC")
 
-        response = client.get("/games/2026_01_KC_LAC")
+    assert available["away_team"] == "Kansas City Chiefs"
+    assert available["home_team"] == "Los Angeles Chargers"
+    assert available["win"]["event_id"] == "win-event-1"
+    assert available["win"]["run_id"] == "api-games-run"
+    assert available["win"]["model_type"] == "elo"
+    assert available["spread"]["source_event_id"] == "win-event-1"
+    assert available["spread"]["model_spread"] == pytest.approx(-2.5)
+    assert available["total"]["event_id"] == "total-event-1"
+    assert available["total"]["run_id"] == "api-games-run"
+    assert available["total"]["model_type"] == "random_forest"
 
-        assert response.status_code == 200
-        body = response.json()
-        assert body["team_comparison"] is not None
-        assert "KC" in body["team_comparison"]
-        assert "LAC" in body["team_comparison"]
-        assert body["team_comparison"]["KC"]["season"]["off_epa_per_play"] == 0.15
-        # Marker removed
-        assert "team_comparison" not in body["_meta"]["field_status"]
 
-    def test_team_comparison_pending_when_artifact_missing(
-        self,
-        client: TestClient,
-        tmp_path: Path,
-    ) -> None:
-        predictions = pd.DataFrame([_make_prediction("2026_01_KC_LAC")])
-        (
-            MiniRepoBuilder(tmp_path)
-            .with_games(_make_games_df())
-            .with_champion_manifest()
-            .with_predictions_archive(predictions)
-        )
-        # No cohort splits artifact.
+def test_scheduled_game_detail_is_200_when_predictions_are_missing(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
 
-        response = client.get("/games/2026_01_KC_LAC")
+    response = client.get("/games/2026_01_BUF_MIA")
 
-        body = response.json()
-        assert body["team_comparison"] is None
-        assert body["_meta"]["field_status"]["team_comparison"] == "pending"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["game_id"] == "2026_01_BUF_MIA"
+    assert body["away_team"] == "Buffalo Bills"
+    assert body["home_team"] == "Miami Dolphins"
+    assert body["win"]["status"] == "forecast_missing"
+    assert body["total"]["status"] == "forecast_missing"
+    assert body["projected_score"]["home"] is None
+
+
+def test_game_detail_uses_persisted_schedule_metadata(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
+
+    body = client.get("/games/2026_01_KC_LAC").json()
+
+    assert body["day_of_week"] == "Saturday"
+    assert body["kick"] == "18:00:00"
+    assert body["venue"] == "SoFi Stadium"
+    assert "kick" not in body["_meta"]["field_status"]
+    assert "venue" not in body["_meta"]["field_status"]
+
+
+def test_unknown_game_returns_404(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    _persist_selected_product(tmp_path)
+
+    response = client.get("/games/2026_01_NYJ_NE")
+
+    assert response.status_code == 404
+    assert "Unknown game_id" in response.json()["detail"]
+
+
+def test_missing_selected_product_returns_empty_list(
+    client: TestClient,
+) -> None:
+    response = client.get(f"/games?season={SEASON}&week={WEEK}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["total"] == 0

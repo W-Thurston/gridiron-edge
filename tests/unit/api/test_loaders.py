@@ -186,7 +186,7 @@ class TestResolveCurrentWeek:
 
 
 class TestLoadGamesForWeek:
-    """Cover weekly game loading."""
+    """Cover selected-product weekly game loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -197,143 +197,74 @@ class TestLoadGamesForWeek:
 
         return FakeSettings(repo_root=tmp_path)
 
-    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
-        import json
-
-        manifest_dir = tmp_path / "data" / "output" / "champions"
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        manifest = {
-            "schema_version": 1,
-            "updated_at": "2026-07-01T14:00:00+00:00",
-            "models": {
-                "win_prob": {
-                    "model_type": model_type,
-                    "promoted_at": "2026-07-01T14:00:00",
-                    "source_run_id": "RUN_X",
-                    "metrics": {"brier": 0.213},
-                },
-            },
-        }
-        (manifest_dir / "champions.json").write_text(json.dumps(manifest))
-
-    def test_returns_champion_filtered_predictions(
+    def test_returns_schedule_complete_selected_product(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from gridiron_edge.api.loaders import load_games_for_week
 
-        self._write_manifest(tmp_path, "random_forest")
-        settings = self._fake_settings(tmp_path)
-
-        # Two archived predictions, only one from the champion model.
-        archive = pd.DataFrame(
-            [
-                {
-                    "game_id": "2026_01_KC_LAC",
-                    "model_name": "win_prob",
-                    "model_type": "random_forest",
-                    "season": "2026-2027",
-                    "week": 1,
-                    "game_date": "2026-09-05",
-                    "away_team": "Kansas City Chiefs",
-                    "home_team": "Los Angeles Chargers",
-                    "home_win_prob": 0.55,
-                    "away_win_prob": 0.45,
-                    "model_spread": -2.0,
-                    "model_total": 47.5,
-                    "projected_home_score": 25.0,
-                    "projected_away_score": 23.0,
-                    "confidence_tier": "Moderate",
-                    "win_prob_lo": 0.42,
-                    "win_prob_hi": 0.68,
-                },
-            ]
+        product = pd.DataFrame(
+            {
+                "game_id": ["2026_01_KC_LAC", "2026_01_BUF_MIA"],
+                "season": ["2026-2027", "2026-2027"],
+                "week": [1, 1],
+                "away_team": ["Kansas City Chiefs", "Buffalo Bills"],
+                "home_team": ["Los Angeles Chargers", "Miami Dolphins"],
+                "win_status": ["available", "forecast_missing"],
+                "home_win_prob": [0.55, pd.NA],
+                "total_status": ["available", "forecast_missing"],
+                "model_total": [47.5, pd.NA],
+            }
         )
+        calls: list[dict[str, object]] = []
 
-        games_df = pd.DataFrame(
-            [
-                {
-                    "GAME_ID": "2026_01_KC_LAC",
-                    "YEAR": "2026-2027",
-                    "WEEK_NUM": 1,
-                    "GAME_DATE": "2026-09-05",
-                },
-            ]
-        )
+        def fake_load(repo_root, *, season, week):
+            calls.append({"repo_root": repo_root, "season": season, "week": week})
+            return product
 
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
+            "gridiron_edge.datasets.loaders.load_current_weekly_product",
+            fake_load,
         )
-        monkeypatch.setattr(
-            "gridiron_edge.api.loaders.load_games_df",
-            lambda s: games_df,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.api.loaders.load_team_name_map",
-            lambda s: {
-                "Kansas City Chiefs": "KC",
-                "Los Angeles Chargers": "LAC",
-            },
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: archive,
+        result = load_games_for_week(
+            self._fake_settings(tmp_path),
+            season="2026-2027",
+            week=1,
         )
 
-        result = load_games_for_week(settings, season="2026-2027", week=1)
+        assert len(result) == 2
+        assert result["game_id"].tolist() == ["2026_01_KC_LAC", "2026_01_BUF_MIA"]
+        assert result.loc[1, "win_status"] == "forecast_missing"
+        assert result.loc[1, "total_status"] == "forecast_missing"
+        assert calls == [{"repo_root": tmp_path, "season": "2026-2027", "week": 1}]
+        assert result is not product
 
-        assert len(result) == 1
-        assert result.iloc[0]["game_id"] == "2026_01_KC_LAC"
-        assert result.iloc[0]["away_team"] == "KC"
-        assert result.iloc[0]["home_team"] == "LAC"
-        assert result.iloc[0]["home_win_prob"] == 0.55
-
-    def test_empty_archive_returns_empty(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    def test_does_not_load_archive_or_resolve_champion(self, tmp_path: Path) -> None:
         from gridiron_edge.api.loaders import load_games_for_week
 
-        self._write_manifest(tmp_path, "random_forest")
         settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
+        product = pd.DataFrame(
+            {"game_id": ["2026_01_KC_LAC"], "season": ["2026-2027"], "week": [1]}
         )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame(),
-        )
-
-        result = load_games_for_week(settings, season="2026-2027", week=1)
-        assert result.empty
-
-    def test_raises_champion_not_found_when_no_manifest(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from gridiron_edge.api.loaders import load_games_for_week
-        from gridiron_edge.evaluation.champion_resolver import ChampionNotFoundError
-
-        # No manifest written.
-        settings = self._fake_settings(tmp_path)
-
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-
-        with pytest.raises(ChampionNotFoundError):
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_current_weekly_product",
+                return_value=product,
+            ),
+            patch("gridiron_edge.evaluation.archive.load_prediction_log") as archive,
+            patch(
+                "gridiron_edge.evaluation.champion_resolver.resolve_current_champion"
+            ) as champion,
+        ):
             load_games_for_week(settings, season="2026-2027", week=1)
+
+        archive.assert_not_called()
+        champion.assert_not_called()
 
 
 class TestLoadGame:
-    """Cover individual game loading."""
+    """Cover selected-product individual game loading."""
 
     def _fake_settings(self, tmp_path: Path):
         from dataclasses import dataclass
@@ -344,118 +275,69 @@ class TestLoadGame:
 
         return FakeSettings(repo_root=tmp_path)
 
-    def _write_manifest(self, tmp_path: Path, model_type: str) -> None:
-        import json
-
-        manifest_dir = tmp_path / "data" / "output" / "champions"
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        (manifest_dir / "champions.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "updated_at": "2026-07-01T14:00:00+00:00",
-                    "models": {
-                        "win_prob": {
-                            "model_type": model_type,
-                            "promoted_at": "2026-07-01T14:00:00",
-                            "source_run_id": "RUN_X",
-                            "metrics": {"brier": 0.213},
-                        },
-                    },
-                }
-            )
-        )
-
-    def test_returns_dict_for_matching_game(
+    def test_returns_scheduled_game_when_prediction_is_missing(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from gridiron_edge.api.loaders import load_game
 
-        self._write_manifest(tmp_path, "random_forest")
-        settings = self._fake_settings(tmp_path)
-
-        archive = pd.DataFrame(
-            [
-                {
-                    "game_id": "2026_01_KC_LAC",
-                    "model_name": "win_prob",
-                    "model_type": "random_forest",
-                    "season": "2026-2027",
-                    "week": 1,
-                    "game_date": "2026-09-05",
-                    "away_team": "Kansas City Chiefs",
-                    "home_team": "Los Angeles Chargers",
-                    "home_win_prob": 0.55,
-                    "away_win_prob": 0.45,
-                    "model_spread": -2.0,
-                    "model_total": 47.5,
-                    "projected_home_score": 25.0,
-                    "projected_away_score": 23.0,
-                    "confidence_tier": "Moderate",
-                    "win_prob_lo": 0.42,
-                    "win_prob_hi": 0.68,
-                },
-            ]
+        product = pd.DataFrame(
+            {
+                "game_id": ["2026_01_KC_LAC"],
+                "season": ["2026-2027"],
+                "week": [1],
+                "away_team": ["Kansas City Chiefs"],
+                "home_team": ["Los Angeles Chargers"],
+                "win_status": ["forecast_missing"],
+                "total_status": ["forecast_missing"],
+            }
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_games_for_week",
+            lambda settings, *, season, week: product.copy(),
         )
 
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
+        result = load_game(
+            self._fake_settings(tmp_path),
+            game_id="2026_01_KC_LAC",
         )
-        monkeypatch.setattr(
-            "gridiron_edge.api.loaders.load_games_df",
-            lambda s: pd.DataFrame(
-                [
-                    {
-                        "GAME_ID": "2026_01_KC_LAC",
-                        "YEAR": "2026-2027",
-                        "WEEK_NUM": 1,
-                        "GAME_DATE": "2026-09-05",
-                    }
-                ]
-            ),
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.api.loaders.load_team_name_map",
-            lambda s: {
-                "Kansas City Chiefs": "KC",
-                "Los Angeles Chargers": "LAC",
-            },
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: archive,
-        )
-
-        result = load_game(settings, game_id="2026_01_KC_LAC")
 
         assert result is not None
-        assert result["game_id"] == "2026_01_KC_LAC"
-        assert result["away_team"] == "KC"
-        assert result["home_team"] == "LAC"
+        assert result["win_status"] == "forecast_missing"
+        assert result["total_status"] == "forecast_missing"
 
-    def test_returns_none_for_unknown_game_id(
+    def test_unknown_or_malformed_game_returns_none(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from gridiron_edge.api.loaders import load_game
 
-        self._write_manifest(tmp_path, "random_forest")
+        product = pd.DataFrame(
+            {"game_id": ["2026_01_KC_LAC"], "season": ["2026-2027"], "week": [1]}
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.api.loaders.load_games_for_week",
+            lambda settings, *, season, week: product.copy(),
+        )
         settings = self._fake_settings(tmp_path)
 
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion_resolver.get_settings",
-            lambda: settings,
-        )
-        monkeypatch.setattr(
-            "gridiron_edge.evaluation.archive.load_prediction_log",
-            lambda **kwargs: pd.DataFrame(),
-        )
+        assert load_game(settings, game_id="2026_01_BUF_MIA") is None
+        assert load_game(settings, game_id="bogus_game_id") is None
 
-        result = load_game(settings, game_id="bogus_game_id")
+    def test_missing_selected_scope_returns_none(self, tmp_path: Path) -> None:
+        from gridiron_edge.api.loaders import load_game
+
+        with patch(
+            "gridiron_edge.api.loaders.load_games_for_week",
+            side_effect=FileNotFoundError,
+        ):
+            result = load_game(
+                self._fake_settings(tmp_path),
+                game_id="2026_01_KC_LAC",
+            )
+
         assert result is None
 
 

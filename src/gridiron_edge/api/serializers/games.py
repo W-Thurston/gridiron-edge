@@ -1,9 +1,5 @@
 # src/gridiron_edge/api/serializers/games.py
-
-"""Serializers for /games and /games/{game_id}.
-
-Per D17, hand-written. Per D18, owns _meta.field_status construction.
-"""
+"""Serializers for the selected, schedule-complete weekly game product."""
 
 from __future__ import annotations
 
@@ -18,69 +14,107 @@ from gridiron_edge.api.schemas.games import (
     GameDetail,
     GameList,
     GameSummary,
-    PredictionBlock,
+    ProjectedScoreBlock,
+    SpreadPredictionBlock,
+    TotalPredictionBlock,
+    WinPredictionBlock,
 )
 
 
-def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
-    """Return None for NaN or None; else the value."""
-    if v is None:
+def _none_if_nan(value: Any) -> Any:  # noqa: ANN401
+    """Return None for pandas-null values and preserve concrete values."""
+    if value is None:
         return None
-    if isinstance(v, float) and pd.isna(v):
-        return None
-    return v
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _text(row: dict, key: str) -> str | None:
+    """Return one nullable persisted value as text."""
+    value = _none_if_nan(row.get(key))
+    return None if value is None else str(value)
 
 
 def _derive_day_of_week(game_date: str | float | None) -> str | None:
-    """Parse an ISO date string and return the weekday name.
-
-    Returns None for missing, NaN, or unparseable input. Serializer-side
-    derivation (not loader-side) keeps display concerns out of the domain
-    loader.
-    """
-    game_date = _none_if_nan(game_date)
-    if not game_date:
+    """Parse an ISO date string and return the weekday name."""
+    normalized = _none_if_nan(game_date)
+    if not normalized:
         return None
     try:
-        return date.fromisoformat(str(game_date)).strftime("%A")
+        return date.fromisoformat(str(normalized)).strftime("%A")
     except (ValueError, TypeError):
         return None
 
 
-def _build_prediction_block(row: dict) -> PredictionBlock | None:
-    """Extract champion-prediction fields from a loader row.
+def _build_win_block(row: dict) -> WinPredictionBlock:
+    return WinPredictionBlock(
+        status=str(row["win_status"]),
+        selection_status=_text(row, "win_selection_status"),
+        away_win_prob=_none_if_nan(row.get("away_win_prob")),
+        home_win_prob=_none_if_nan(row.get("home_win_prob")),
+        model_name=_text(row, "win_model_name"),
+        model_type=_text(row, "win_model_type"),
+        event_id=_text(row, "win_event_id"),
+        run_id=_text(row, "win_run_id"),
+        generated_at=_text(row, "win_generated_at"),
+        role=_text(row, "win_role"),
+    )
 
-    Returns None if every prediction field is None/NaN (the loader
-    returned a game with no champion data — should not normally happen
-    once the loader has resolved the champion, but defensive).
-    """
-    fields: dict[str, Any] = {
-        "home_win_prob": _none_if_nan(row.get("home_win_prob")),
-        "away_win_prob": _none_if_nan(row.get("away_win_prob")),
-        "home_win_lo": _none_if_nan(row.get("win_prob_lo")),
-        "home_win_hi": _none_if_nan(row.get("win_prob_hi")),
-        "confidence_tier": _none_if_nan(row.get("confidence_tier")),
-        "model_spread": _none_if_nan(row.get("model_spread")),
-        "model_total": _none_if_nan(row.get("model_total")),
-        "projected_home_score": _none_if_nan(row.get("projected_home_score")),
-        "projected_away_score": _none_if_nan(row.get("projected_away_score")),
-    }
-    if all(v is None for v in fields.values()):
-        return None
-    return PredictionBlock(**fields)
+
+def _build_spread_block(row: dict) -> SpreadPredictionBlock:
+    return SpreadPredictionBlock(
+        status=str(row["spread_status"]),
+        model_spread=_none_if_nan(row.get("model_spread")),
+        uncertainty=_none_if_nan(row.get("spread_uncertainty")),
+        source_event_id=_text(row, "spread_source_event_id"),
+        model_name=_text(row, "spread_model_name"),
+        model_type=_text(row, "spread_model_type"),
+        calibration_key=_text(row, "spread_calibration_key"),
+        calibration_updated_at=_text(row, "spread_calibration_updated_at"),
+    )
+
+
+def _build_total_block(row: dict) -> TotalPredictionBlock:
+    return TotalPredictionBlock(
+        status=str(row["total_status"]),
+        selection_status=_text(row, "total_selection_status"),
+        model_total=_none_if_nan(row.get("model_total")),
+        uncertainty=_none_if_nan(row.get("total_uncertainty")),
+        model_name=_text(row, "total_model_name"),
+        model_type=_text(row, "total_model_type"),
+        event_id=_text(row, "total_event_id"),
+        run_id=_text(row, "total_run_id"),
+        generated_at=_text(row, "total_generated_at"),
+        role=_text(row, "total_role"),
+        uncertainty_trained_at=_text(row, "total_uncertainty_trained_at"),
+    )
+
+
+def _build_projected_score_block(row: dict) -> ProjectedScoreBlock:
+    return ProjectedScoreBlock(
+        status=str(row["projected_score_status"]),
+        home=_none_if_nan(row.get("projected_home_score")),
+        away=_none_if_nan(row.get("projected_away_score")),
+    )
 
 
 def serialize_game_summary(row: dict) -> GameSummary:
-    """Convert one loader row (Series-as-dict) to GameSummary."""
-    prediction: PredictionBlock | None = _build_prediction_block(row)
+    """Convert one persisted weekly-product row to a list item."""
     return GameSummary(
         game_id=str(row["game_id"]),
-        game_date=_none_if_nan(row.get("game_date")),
+        game_date=_text(row, "game_date"),
         week=_none_if_nan(row.get("week")),
-        season=_none_if_nan(row.get("season")),
+        season=_text(row, "season"),
         away_team=str(row["away_team"]),
         home_team=str(row["home_team"]),
-        prediction=prediction,
+        win=_build_win_block(row),
+        spread=_build_spread_block(row),
+        total=_build_total_block(row),
+        projected_score=_build_projected_score_block(row),
     )
 
 
@@ -90,45 +124,26 @@ def serialize_games_list(
     season: str | None,
     week: int | None,
 ) -> GameList:
-    """Build the /games list response from a loader DataFrame.
-
-    Empty rows return an empty items list; per D14, no field_status is
-    attached because the concrete-empty case is legitimate (no games
-    yet scheduled, or filter matched nothing).
-    """
-    items: list[GameSummary] = [serialize_game_summary(r.to_dict()) for _, r in rows.iterrows()]
-    return GameList(
-        items=items,
-        total=len(items),
-        season=season,
-        week=week,
-    )
+    """Serialize every selected scheduled row without prediction filtering."""
+    items = [serialize_game_summary(row.to_dict()) for _, row in rows.iterrows()]
+    return GameList(items=items, total=len(items), season=season, week=week)
 
 
 def serialize_game_detail(
     row: dict,
     team_comparison: dict[str, dict] | None = None,
 ) -> GameDetail:
-    """Build the /games/{game_id} response.
-
-    Populated fields come from the loader row. Pending/blocked fields
-    are marked in _meta.field_status per D14. See PLAN.md substep 5c
-    for the field-scope rationale.
-    """
-    prediction: PredictionBlock | None = _build_prediction_block(row)
-    game_date = _none_if_nan(row.get("game_date"))
-    day_of_week: str | None = _derive_day_of_week(game_date)
-
+    """Build detail from one persisted selected-product row."""
+    game_date = _text(row, "game_date")
     meta = ResponseMeta()
-    # Backend work planned: schedule join for kick/venue, weather join.
-    meta: ResponseMeta = meta.with_pending("kick")
-    meta = meta.with_pending("venue")
+    if _none_if_nan(row.get("game_time")) is None:
+        meta = meta.with_pending("kick")
+    if _none_if_nan(row.get("stadium")) is None:
+        meta = meta.with_pending("venue")
     meta = meta.with_pending("weather")
-    # Optional derived datasets that are not yet available.
     if team_comparison is None:
         meta = meta.with_pending("team_comparison")
     meta = meta.with_pending("top_prop_edges")
-    # Blocked on upstream workstreams.
     meta = meta.with_blocked("swing_factors", *Blocker.FEATURE_ATTRIBUTION)
     meta = meta.with_blocked("injuries", *Blocker.INJURY_DATA)
 
@@ -136,14 +151,17 @@ def serialize_game_detail(
         game_id=str(row["game_id"]),
         game_date=game_date,
         week=_none_if_nan(row.get("week")),
-        season=_none_if_nan(row.get("season")),
-        day_of_week=day_of_week,
-        kick=None,
-        venue=None,
+        season=_text(row, "season"),
+        day_of_week=_text(row, "game_day_of_week") or _derive_day_of_week(game_date),
+        kick=_text(row, "game_time"),
+        venue=_text(row, "stadium"),
         away_team=str(row["away_team"]),
         home_team=str(row["home_team"]),
+        win=_build_win_block(row),
+        spread=_build_spread_block(row),
+        total=_build_total_block(row),
+        projected_score=_build_projected_score_block(row),
         weather=None,
-        prediction=prediction,
         team_comparison=team_comparison,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )

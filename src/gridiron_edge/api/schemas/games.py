@@ -1,6 +1,5 @@
 # src/gridiron_edge/api/schemas/games.py
-
-"""Schemas for /games and /games/{game_id}."""
+"""Schedule-complete schemas for /games and /games/{game_id}."""
 
 from __future__ import annotations
 
@@ -10,12 +9,7 @@ from gridiron_edge.api.schemas._base import BaseListResponse, BaseResponse
 
 
 class WeatherBlock(BaseModel):
-    """Weather snapshot for a game.
-
-    Fields populate from the schedule/weather join. When the join produces
-    no data (e.g., domed venue, missing feed), all fields are None and
-    the serializer marks the block as UNAVAILABLE_NO_WEATHER.
-    """
+    """Weather snapshot for a game."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -25,46 +19,75 @@ class WeatherBlock(BaseModel):
     precip_pct: float | None = None
 
 
-class PredictionBlock(BaseModel):
-    """Champion-model prediction for a game.
-
-    All fields populate from the win_prob champion's archived row. When
-    the champion manifest is missing, the entire block is None and the
-    serializer marks CHAMPION_NOT_WRITTEN in field_status.
-    """
+class WinPredictionBlock(BaseModel):
+    """Persisted Win component and its independent forecast provenance."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    home_win_prob: float | None = None
+    status: str
+    selection_status: str | None = None
     away_win_prob: float | None = None
-    home_win_lo: float | None = Field(
-        default=None,
-        description="Lower bound of 90% uncertainty band on home_win_prob.",
-    )
-    home_win_hi: float | None = Field(
-        default=None,
-        description="Upper bound of 90% uncertainty band on home_win_prob.",
-    )
-    confidence_tier: str | None = Field(
-        default=None,
-        description="'Low', 'Moderate', or 'High'.",
-    )
+    home_win_prob: float | None = None
+    model_name: str | None = None
+    model_type: str | None = None
+    event_id: str | None = None
+    run_id: str | None = None
+    generated_at: str | None = None
+    role: str | None = None
+
+
+class SpreadPredictionBlock(BaseModel):
+    """Persisted spread component derived from its selected Win source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: str
     model_spread: float | None = Field(
         default=None,
-        description="Predicted point spread (home - away).",
+        description=(
+            "NFL home-line convention: negative means the Home team is favored; "
+            "positive means the Away team is favored. The value equals "
+            "projected Away score minus projected Home score."
+        ),
     )
+    uncertainty: float | None = None
+    source_event_id: str | None = None
+    model_name: str | None = None
+    model_type: str | None = None
+    calibration_key: str | None = None
+    calibration_updated_at: str | None = None
+
+
+class TotalPredictionBlock(BaseModel):
+    """Persisted Total component and its independent forecast provenance."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: str
+    selection_status: str | None = None
     model_total: float | None = None
-    projected_home_score: float | None = None
-    projected_away_score: float | None = None
+    uncertainty: float | None = None
+    model_name: str | None = None
+    model_type: str | None = None
+    event_id: str | None = None
+    run_id: str | None = None
+    generated_at: str | None = None
+    role: str | None = None
+    uncertainty_trained_at: str | None = None
+
+
+class ProjectedScoreBlock(BaseModel):
+    """Persisted projected-score availability and score values."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: str
+    home: float | None = None
+    away: float | None = None
 
 
 class GameSummary(BaseModel):
-    """A single row in the /games list response.
-
-    Slimmer than GameDetail — omits weather, team comparison, swing
-    factors, injuries, and prop edges. Sufficient for the games-list
-    screen's per-game card.
-    """
+    """One scheduled row in the /games list response."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -74,7 +97,10 @@ class GameSummary(BaseModel):
     season: str | None = None
     away_team: str
     home_team: str
-    prediction: PredictionBlock | None = None
+    win: WinPredictionBlock
+    spread: SpreadPredictionBlock
+    total: TotalPredictionBlock
+    projected_score: ProjectedScoreBlock
 
 
 class GameList(BaseListResponse[GameSummary]):
@@ -92,35 +118,16 @@ class GameDetail(BaseResponse):
     week: int | None = None
     season: str | None = None
     day_of_week: str | None = None
-    kick: str | None = Field(
-        default=None,
-        description="Local kickoff time, e.g. '1:00 PM ET'.",
-    )
+    kick: str | None = Field(default=None, description="Persisted local kickoff time.")
     venue: str | None = None
     away_team: str
     home_team: str
+    win: WinPredictionBlock
+    spread: SpreadPredictionBlock
+    total: TotalPredictionBlock
+    projected_score: ProjectedScoreBlock
     weather: WeatherBlock | None = None
-    prediction: PredictionBlock | None = None
-
-    # Optional fields awaiting their required derived datasets.
-    team_comparison: dict | None = Field(
-        default=None,
-        description=(
-            "Opponent-adjusted percentile stats table. Pending: no "
-            "backend for percentile computation."
-        ),
-    )
-    swing_factors: list[dict] | None = Field(
-        default=None,
-        description=("Per-game swing factors. Blocked on feature-attribution workstream."),
-    )
-    injuries: list[dict] | None = Field(
-        default=None,
-        description=(
-            "Injury reports for both teams. Blocked on injury data source (ROADMAP §5.3)."
-        ),
-    )
-    top_prop_edges: list[dict] | None = Field(
-        default=None,
-        description=("Top prop edges for this game. Pending the required edges data source."),
-    )
+    team_comparison: dict | None = None
+    swing_factors: list[dict] | None = None
+    injuries: list[dict] | None = None
+    top_prop_edges: list[dict] | None = None

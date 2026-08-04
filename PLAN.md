@@ -2513,35 +2513,74 @@ Expected request-validation failures render
 
 ### Unit 24: Make API Games Schedule-First
 
+#### Completed
+
+Replaced the archive-first game API with a pure serialization boundary over the explicitly selected persisted weekly product.
+Changed `load_games_for_week()` to load the selected weekly product for the requested season and week and return a defensive copy.
+Changed `load_game()` to derive the season and week from the canonical game ID, load the selected product for that scope, and return the exact scheduled row.
+Removed Win champion resolution, prediction archive loading, Elo fallback behavior, historical-games enrichment, and team-name rewriting from the game API loader path.
+Removed the retired `_UPCOMING_FALLBACK_MODEL_TYPE`, `_resolve_win_prob_archive()`, and `_finalize_games_frame()` game-loading infrastructure.
+Preserved champion resolution in the separate prop API path.
+Replaced the conflated nullable `PredictionBlock` with independent required component blocks for Win, Spread, Total, and projected scores.
+Win responses now serialize persisted availability status, selection status, probabilities, model identity, event identity, run identity, generation timestamp, and forecast role.
+Spread responses now serialize persisted availability status, value, uncertainty, source Win event, source model identity, calibration key, and calibration timestamp.
+Total responses now serialize persisted availability status, selection status, value, uncertainty, independent model identity, event identity, run identity, generation timestamp, forecast role, and uncertainty-training timestamp.
+Projected-score responses now serialize persisted availability status and nullable Home and Away scores.
+Missing prediction components remain represented by their persisted status blocks rather than causing the scheduled game to disappear.
+Win and Total provenance remain independent while satisfying the weekly product invariant that available component run IDs match the enclosing product run ID.
+Spread provenance remains explicitly linked to its selected Win source event.
+Corrected `model_spread` API documentation to the runtime NFL home-line convention.
+Negative spread values mean the Home team is favored.
+Positive spread values mean the Away team is favored.
+The spread value equals projected Away score minus projected Home score.
+Updated the game serializers to preserve persisted weekly-product team identities without silently converting long names to abbreviations.
+Updated game detail serialization to use persisted game day, kickoff time, and stadium metadata.
+Removed champion-manifest fallback behavior from the game routes.
+`GET /games` now serializes every row in the explicitly selected weekly product.
+A missing selected product produces a concrete empty list for the requested scope.
+`GET /games/{game_id}` now returns a scheduled selected-product row regardless of Win, Spread, Total, or projected-score availability.
+A game detail request returns 404 only when the selected scheduled row does not exist.
+The `/games` loader, serializer, and route path performs no runtime prediction, champion resolution, model loading, archive selection, or Elo fallback.
+
 #### Goal
 
-Serialize the persisted weekly product for every scheduled game.
-
-#### Production files
-
-- `src/gridiron_edge/api/loaders.py`
-- game API schemas
-- game routes
-
-#### Test files
-
-- update:
-  `tests/unit/api/test_loaders.py`
-- update game route tests
-- update API integration tests
+Serialize the explicitly selected persisted weekly product for every scheduled game without runtime model behavior or prediction-dependent row filtering.
 
 #### Tests
 
-- every scheduled game is returned;
-- missing predictions produce status rather than disappearance;
-- no runtime model fallback occurs in the API;
-- win and total provenance are serialized separately;
-- spread sign documentation matches runtime behavior;
-- valid scheduled game detail does not return 404 because prediction is missing.
+Covered selected weekly-product loading with exact repository, season, and week forwarding.
+Covered defensive-copy behavior at the API loader boundary.
+Covered schedule-complete loading with available and forecast-missing rows in the same product.
+Covered retention of games with missing Win and Total predictions.
+Covered absence of prediction archive and champion resolver calls from the game loader path.
+Covered canonical game ID scope parsing and selected-product detail lookup.
+Covered malformed, unknown, and unselected game detail behavior.
+Covered required Win, Spread, Total, and projected-score component blocks.
+Covered unavailable component blocks with null values and explicit persisted statuses.
+Covered independent Win and Total event, model, and provenance serialization.
+Covered Spread source-event and calibration provenance serialization.
+Covered persisted schedule metadata including game day, kickoff time, and stadium.
+Covered preservation of persisted long team identities.
+Covered corrected spread sign and projected-score reconciliation documentation.
+Integration tests persist and explicitly select an immutable weekly product containing both an available game and a forecast-missing game.
+Integration tests verify that `/games` returns every scheduled row.
+Integration tests verify that missing prediction components produce status blocks rather than missing games.
+Integration tests verify that scheduled game detail returns 200 when predictions are unavailable.
+Integration tests verify that only an unknown selected scheduled game returns 404.
+Integration tests require neither a champion manifest nor a prediction archive.
+Ruff, Pyrefly, API unit tests, API integration tests, and the full project quality boundary pass.
 
 #### Acceptance
 
-`/games` is a pure schedule-complete serialization surface.
+`/games` is a pure schedule-complete serialization surface over the explicitly selected persisted weekly product.
+Every selected scheduled game is returned regardless of prediction availability.
+Missing Win, Spread, Total, or projected-score values are represented by persisted component statuses and nullable values.
+The game API performs no runtime model resolution, prediction, archive selection, or fallback behavior.
+Win and Total provenance are serialized separately.
+Spread provenance identifies its selected Win source.
+Spread sign documentation matches runtime behavior.
+Valid selected scheduled game detail never returns 404 solely because a prediction component is missing.
+Only a missing selected scheduled row returns 404.
 
 ---
 
