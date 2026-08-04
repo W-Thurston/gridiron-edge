@@ -602,7 +602,7 @@ def weekly_predict_cmd(
 
     console.header(
         "weekly-predict",
-        subtitle=f"week {week} · {season} · model=elo",
+        subtitle=f"week {week} · {season} · policy-selected models",
     )
 
     summary: CompositeSummary = run_composite(

@@ -489,6 +489,8 @@ class TestCommandInvocation:
             ],
         )
         assert result.exit_code == 0, result.output
+        assert "policy-selected models" in result.output
+        assert "model=elo" not in result.output
 
     def test_invalid_season_raises(self) -> None:
         import typer

@@ -1725,30 +1725,21 @@ Replace the entire existing Unit 19 section, from ### Unit 19 through the end of
 
 #### Completed
 
-Migrated the game-prediction domain to one canonical Away/Home-oriented,
-one-row-per-game contract.
+Migrated the game-prediction domain to one canonical Away/Home-oriented, one-row-per-game contract.
 
-Historical games, modeling artifacts, upcoming schedules, features, model
-training, historical backfills, live forecast events, weekly products, market
-joins, APIs, and orchestration use stable Away Team and Home Team identity.
+Historical games, modeling artifacts, upcoming schedules, features, model training, historical backfills, live forecast events, weekly products, market joins, APIs, and orchestration use stable Away Team and Home Team identity.
 
-Win models train on `HOME_WIN` and directly produce Home Win Probability. Away
-Win Probability is derived as its complement.
+Win models train on `HOME_WIN` and directly produce Home Win Probability. Away Win Probability is derived as its complement.
 
 Total models train independently on `ACTUAL_TOTAL`.
 
 All differential features use Home minus Away.
 
-Removed runtime dependence on `TEAM_A`, `TEAM_B`, `HOME_FIELD`, `RESULT` as a
-model target, doubled modeling rows, Predictor compatibility aliases, the
-focused upcoming-schedule artifact, permissive bet-ledger schemas, permissive
-prop-archive schemas, and retired game-model artifact compatibility.
+Removed runtime dependence on `TEAM_A`, `TEAM_B`, `HOME_FIELD`, `RESULT` as a model target, doubled modeling rows, Predictor compatibility aliases, the focused upcoming-schedule artifact, permissive bet-ledger schemas, permissive prop-archive schemas, and retired game-model artifact compatibility.
 
-Activated one canonical feature sequence and the 152-column expanded feature
-contract for historical and upcoming game rows.
+Activated one canonical feature sequence and the 152-column expanded feature contract for historical and upcoming game rows.
 
-Canonical modeling artifacts use one row per Game ID and record the active
-feature sequence, feature contract, modeling schema version, and data version.
+Canonical modeling artifacts use one row per Game ID and record the active feature sequence, feature contract, modeling schema version, and data version.
 
 Migrated Win and Total training, prediction, walk-forward evaluation,
 calibration, champion selection, baseline reporting, and full-retrain
@@ -1864,7 +1855,8 @@ Added version-controlled aliases for renamed franchise venues.
 
 Added all 32 franchise origins for the 2026-2027 season.
 
-Added Melbourne Cricket Ground as a reviewed 2026-2027 `International` venue.
+Added reviewed metadata for all required 2026 Week 1 venues, including Melbourne
+Cricket Ground as an `International` venue.
 
 Week 1 travel distance, timezone shift, and game-site altitude are complete
 across all 16 scheduled games.
@@ -1897,87 +1889,150 @@ supersedes climatology because fallback values fill only null fields.
 All 16 scheduled 2026 Week 1 games are complete across the 152-column expanded
 feature contract.
 
-The previous canonical game-model rebuild produced current modeling artifacts,
-historical forecast backfills, five deployable game-model artifacts, Win
-calibrations, game champion selections, and a baseline comparison report.
+Completed new deployable artifacts for Win Logistic, Win Random Forest, Win
+XGBoost, and Total Random Forest under the final canonical feature definition.
 
-A final game-only rebuild and retrain remains required because the early-season,
-stadium, roof, and climatology feature corrections were completed after that
-artifact cycle.
+Completed historical walk-forward backfills for Win Logistic, Win Random Forest,
+Win XGBoost, and Total Random Forest.
+
+Each completed walk-forward model pair produced all 24 requested predictions
+with zero skipped targets.
+
+Completed a real 2026 Week 1 `weekly-predict` rehearsal.
+
+The resolved policy selected `win_prob / logistic` and
+`total / random_forest`.
+
+The invocation persisted 16 Win forecast events and 16 Total forecast events.
+
+All 32 forecast events use the live role, one shared run ID, one UTC generation
+timestamp, and independent Win and Total model identities.
+
+The persisted weekly product contains all 16 scheduled games.
+
+All 16 Win components are available and reference their exact selected immutable
+Win event.
+
+All 16 Total components are available and reference their exact selected
+immutable Total event.
+
+All 16 Spread components are available and reference the exact selected Win
+event used for derivation.
+
+All 16 projected-score components are available.
+
+Win, Total, Spread, and weekly-product provenance reconcile to the shared
+invocation run identity.
+
+The weekly product was persisted immutably and explicitly selected as current.
+
+Selected-product prediction readiness passed.
+
+Forecast PNG and HTML outputs were published from the selected product.
+
+Missing market data soft-failed only the edge stage.
+
+`verify-week` reported 16 scheduled games, 16 selected Win predictions, 16
+Spread values, 16 Total predictions, 16 projected-score rows, and 16 rows with
+complete provenance.
+
+`verify-week` reported `missing_market_data` separately from prediction
+readiness.
+
+Corrected the `weekly-predict` startup banner to describe policy-selected models
+rather than claiming that the workflow executes Elo.
+
+The startup banner remains policy-neutral because exact Win and Total identities
+are resolved during prediction execution.
+
+Persisted policy, forecast-event, and weekly-product provenance remain the
+authoritative record of the exact selected models.
 
 #### Goal
 
-Complete one final game-only artifact rebuild and one real end-to-end weekly
-rehearsal using the final canonical feature definitions.
-
-The workflow must resolve prediction policy before inference, execute the exact
-selected Win and Total models, persist immutable live forecast events, compose
-and explicitly select one schedule-complete weekly product, evaluate readiness,
-calculate edges when market data permits, and publish only outputs traceable to
-that selected product.
+Finish the deferred Total XGBoost artifact cycle, refresh downstream game-model
+products, and repeat the real Week 1 rehearsal against the final promoted
+champion set.
 
 #### Tests
 
-Run the game-only full-retrain workflow with the explicit upcoming season:
+Verified that the startup banner contains `policy-selected models` and does not
+contain `model=elo`.
 
-```bash
-uv run gridiron full-retrain \
-  --upcoming-season 2026 \
-  --skip-prop-backfill
-```
+Complete the Total XGBoost historical walk-forward backfill.
 
-- Validate the rebuilt base and enriched modeling artifacts contain one unique row per canonical Game ID, the expected schema and data versions, the exact current feature sequence, the exact current feature contracts, and no retired orientation columns.
-- Validate historical Win and Total forecast backfills through the strict forecast-event boundary.
-- Validate all five deployable game-model artifacts through strict metadata readers.
-- Validate task identity, model identity, ordered feature contracts, estimator files, training timestamps, and task-appropriate metrics.
-- Validate refreshed Win calibration entries.
-- Validate Win and Total champion selections and the baseline comparison report.
-- Confirm trained-model availability for every scheduled 2026 Week 1 game.
+Verify Total XGBoost produces all 24 requested historical predictions with zero
+skipped targets.
 
-Run:
-```bash
-uv run gridiron weekly-predict \
-  --season 2026-2027 \
-  --week 1
-```
+Train the final deployable Total XGBoost artifact under the final canonical
+feature definition.
 
-- Verify that the executed Win and Total model identities match the resolved prediction policy.
-- Verify that persisted Win and Total forecast events share the invocation run identity while retaining independent model identity.
-- Verify that each selected model family produces exactly one event for every scheduled game.
-- Verify that the weekly product contains all 16 scheduled games.
-- Verify that available Win and Total components reference the exact persisted forecast events from the invocation.
-- Verify that component run identities match the weekly-product run identity.
-- Verify derived Spread, independent Total, projected-score, status, uncertainty, and provenance fields satisfy the final weekly-product contract.
-- Verify that the new product is explicitly selected as current for 2026-2027 Week 1.
+Validate the Total XGBoost model file, strict artifact metadata, task identity,
+model identity, ordered feature contract, training timestamp, and Total metrics.
 
-Run:
-```bash
-uv run gridiron verify-week \
-  --season 2026-2027 \
-  --week 1
-```
+Refresh game calibrations after the complete game-model artifact cycle.
 
-- Verify that prediction readiness succeeds from the selected product.
-- Verify that missing or incomplete market data does not invalidate the selected prediction product or suppress forecast publication.
-- Verify that market blockers, non-calculable edges, valid zero-positive-edge results, and below-threshold results remain distinct.
-- Verify that blocked publication cannot leave stale forecast or edge files presented as current.
-- Run the full relevant Python quality gates after the real weekly rehearsal.
+Promote Win and Total champions using the complete historical comparison set.
+
+Regenerate the baseline comparison report.
+
+Rerun `weekly-predict` for 2026-2027 Week 1 after final promotion.
+
+Verify that the executed Win and Total identities match the newly resolved
+policy.
+
+Verify the new invocation writes 16 Win events and 16 Total events with one
+shared run identity and independent model identities.
+
+Verify the new weekly product contains all 16 games and references the exact
+events from the new invocation.
+
+Rerun `verify-week` against the newly selected product.
+
+Verify prediction readiness remains complete when market data is unavailable.
+
+Verify that blocked edge calculation leaves no stale scope-specific edge output.
+
+Run the full relevant Python quality gates after the final rehearsal.
 
 #### Acceptance
 
-- The final modeling artifacts and deployable game-model artifacts use the same canonical feature definitions as weekly inference.
-- All selected trained models can execute every scheduled 2026 Week 1 game.
-- One weekly-predict invocation resolves one availability-aware policy before inference and executes the exact selected Win and Total model identities.
-- That invocation persists immutable live forecast events, composes one schedule-complete weekly product, and explicitly selects that product as current.
-- Every available weekly-product component is traceable to the exact immutable forecast event, model identity, forecast run, calibration or uncertainty artifact, and product run that produced it.
-- Win and Total model identity remain independent.
-- All 16 scheduled games remain present regardless of prediction or market state.
-- Prediction readiness and market readiness remain independently visible.
-- Missing market data does not invalidate a prediction-ready selected product.
-- Blocked, unavailable, incomplete-market, non-calculable-edge, zero-positive-edge, and below-threshold states remain explicit and cannot leave stale outputs presented as current.
-- Published forecast and edge outputs identify the exact selected weekly product.
-- No runtime game-prediction path depends on TEAM_A, TEAM_B, HOME_FIELD, RESULT as a model target, doubled modeling rows, implicit forecast recency, hidden Elo fallback, or development-era persisted-artifact compatibility.
-- Unit 19 is complete when the final game-only retrain, real 2026 Week 1 weekly-predict run, selected-product and forecast-provenance inspection, verify-week result, stale-publication checks, and full relevant quality gates all pass.
+The canonical game-model and weekly-prediction architecture is accepted by the
+successful real 2026 Week 1 rehearsal.
+
+The temporary closeout remains pending only on Total XGBoost backfill,
+deployable artifact training, downstream calibration and promotion refresh, and
+one final rehearsal using the resulting champions.
+
+The deferred Total XGBoost work must satisfy the same strict feature, artifact,
+coverage, and provenance contracts already validated for the other game-model
+families.
+
+One final `weekly-predict` invocation must resolve policy before inference,
+execute the exact selected Win and Total model identities, persist immutable
+live forecast events, compose and explicitly select one schedule-complete
+weekly product, and preserve complete component provenance.
+
+All 16 scheduled games must remain present.
+
+Prediction readiness and market readiness must remain independently visible.
+
+Missing market data must not invalidate a prediction-ready selected product.
+
+Blocked, unavailable, incomplete-market, non-calculable-edge,
+zero-positive-edge, and below-threshold states must remain explicit and must not
+leave stale outputs presented as current.
+
+Published forecast and edge outputs must identify the exact selected weekly
+product.
+
+No runtime game-prediction path may depend on `TEAM_A`, `TEAM_B`, `HOME_FIELD`,
+`RESULT` as a model target, doubled modeling rows, implicit forecast recency,
+hidden Elo fallback, or development-era persisted-artifact compatibility.
+
+Unit 19 may be marked fully complete after the pending Total XGBoost cycle,
+downstream refresh, final Week 1 rehearsal, and full relevant quality gates
+pass.
 
 
 ---
