@@ -1717,10 +1717,6 @@ historical prediction and odds-ledger artifacts.
 
 ---
 
-Absolutely. The cleanest match to Unit 18 is one Completed / Goal / Tests / Acceptance block, with the implementation history condensed into current behavior and the final outstanding work stated explicitly.
-
-Replace the entire existing Unit 19 section, from ### Unit 19 through the end of the outdoor climatology subsection, with this:
-
 ### Unit 19: Policy-Driven Weekly Prediction Orchestration
 
 #### Completed
@@ -2039,32 +2035,103 @@ pass.
 
 ### Unit 20: Make `output predictions` a Pure Renderer
 
+#### Completed
+
+Rebuilt `gridiron output predictions` as a pure downstream renderer over the
+explicitly selected immutable weekly product.
+
+The command loads the current product for one exact season and week through the
+standard weekly-product serialization boundary.
+
+It no longer loads schedule or Elo state, calculates Elo probabilities,
+executes a trained model, builds features, resolves champions, resolves
+prediction policy, selects forecast events, writes forecast events, writes
+weekly products, or changes current-product selection.
+
+Replaced the inaccurate `--year` option with `--season`.
+
+Added strict output-format validation for PNG and HTML.
+
+Unsupported formats fail before product loading or output creation.
+
+A missing selected weekly product exits nonzero and produces no render outputs.
+
+Added a pure weekly-product display adapter.
+
+The adapter validates its required persisted-product columns, copies its input,
+maps persisted schedule identity into the visual contract, preserves nullable
+Win probabilities, adds formatted display probabilities, and retains product
+and selected-Win provenance.
+
+Formatted probabilities are derived exclusively from persisted selected-product
+values.
+
+Removed the visualization-layer Elo prediction builder from the standalone
+render path.
+
+PNG and HTML rendering now use the Moneyline values persisted in the selected
+weekly product.
+
+Rendering no longer loads the mutable current market snapshot.
+
+Changed renderer terminology from Elo-specific and DraftKings-specific wording
+to selected-prediction and source-neutral market wording.
+
+Removed unused Elo fields from visualization separator rows.
+
+Reworked separator-row assembly to avoid pandas all-null concatenation warnings.
+
+Repeated rendering of the same immutable selected product produces byte-identical
+PNG and HTML outputs.
+
+Real 2026 Week 1 rendering loaded the explicitly selected sixteen-game product
+and produced both output formats successfully.
+
+Rendering left the current-product manifest and immutable forecast-event
+artifact byte-for-byte unchanged.
+
 #### Goal
 
-Render an existing weekly product without inference or storage mutation.
-
-#### Production files
-
-- `src/gridiron_edge/cli/output.py`
-- `src/gridiron_edge/viz/predictions.py`
-
-#### Test files
-
-- update:
-  `tests/unit/cli/test_output.py`
-- update visualization tests
+Render an existing explicitly selected weekly product without inference,
+artifact selection, mutable market loading, or storage mutation.
 
 #### Tests
 
-- rendering does not write forecast events;
-- rendering does not change selected product state;
-- missing product exits nonzero;
-- supported formats are validated;
-- repeated rendering is deterministic for the same product.
+Covered exact selected-product loading, pure display adaptation, persisted
+probability preservation, nullable prediction preservation, schedule and
+provenance mapping, persisted Moneyline use, input immutability, missing-column
+validation, default PNG and HTML rendering, single-format rendering, unsupported
+format rejection, missing selected-product failure, and prevention of rendering
+after load failure.
+
+Verified that the command and visualization module contain no Elo prediction,
+current-market loading, forecast-event writing, weekly-product writing, or
+current-product selection dependency.
+
+Verified against the real selected 2026 Week 1 product that rendering leaves the
+current-product manifest and immutable forecast-event storage unchanged.
+
+Verified repeated rendering produces byte-identical PNG and HTML outputs.
+
+Verified real rendering completes without pandas warnings.
+
+Ruff, Pyrefly, focused CLI tests, and visualization tests pass.
 
 #### Acceptance
 
-Output generation is a pure downstream operation.
+`gridiron output predictions` loads only the explicitly selected immutable
+weekly product and renders its persisted prediction and market values.
+
+Output generation performs no inference, feature construction, champion
+resolution, prediction-policy resolution, forecast selection, forecast-event
+persistence, weekly-product persistence, current-product mutation, or mutable
+market-snapshot loading.
+
+Missing products and unsupported formats fail explicitly without creating
+outputs.
+
+PNG and HTML outputs are deterministic downstream representations of the exact
+selected weekly product.
 
 ---
 

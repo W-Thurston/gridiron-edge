@@ -35,11 +35,6 @@ from plottable import ColDef, ColumnDefinition, Table
 from plottable.plots import image
 
 from gridiron_edge.core.settings import get_settings
-from gridiron_edge.ingest.odds.store import load_current_odds
-from gridiron_edge.ratings.elo.predict import (
-    format_elo_prediction_percentages,
-    predict_elo_for_week,
-)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -253,15 +248,21 @@ def _build_predictions_df(
                     "_sort_key": [row["_sort_key"]],
                     "AWAY_TEAM": [np.nan],
                     "HOME_TEAM": [np.nan],
-                    "AWAY_TEAM_ELO": [np.nan],
-                    "HOME_TEAM_ELO": [np.nan],
                 }
             )
             separator_rows.append(sep)
 
     df["_is_separator"] = False
+    df["EMPTY_COL_END"] = ""
 
-    all_rows: DataFrame = pd.concat([df, *separator_rows], ignore_index=True)
+    separator_records = [
+        separator.iloc[0].reindex(df.columns).to_dict() for separator in separator_rows
+    ]
+    all_rows = DataFrame.from_records(
+        [*df.to_dict(orient="records"), *separator_records],
+        columns=df.columns,
+    )
+
     all_rows = all_rows.sort_values(
         ["_sort_key", "_is_separator"],
         ascending=[True, False],
@@ -289,46 +290,58 @@ def _build_predictions_df(
 # ---------------------------------------------------------------------------
 
 
-def build_predictions_df(
-    *,
-    year: str,
-    week: int,
-    repo: Path | None = None,
-) -> DataFrame:
-    """Build the canonical display prediction frame for one week.
+def build_weekly_product_display_frame(product: DataFrame) -> DataFrame:
+    """Adapt one persisted weekly product to the renderer input contract."""
+    required = {
+        "product_id",
+        "product_run_id",
+        "product_generated_at",
+        "season",
+        "week",
+        "game_id",
+        "game_day_of_week",
+        "game_date",
+        "game_time",
+        "away_team",
+        "home_team",
+        "neutral_site",
+        "away_moneyline",
+        "home_moneyline",
+        "win_status",
+        "away_win_prob",
+        "home_win_prob",
+        "win_model_name",
+        "win_model_type",
+        "win_event_id",
+        "win_run_id",
+    }
+    missing = sorted(required - set(product.columns))
+    if missing:
+        raise ValueError("Weekly product is missing renderer columns: " + ", ".join(missing))
 
-    Elo lookup, schedule preservation, availability status, and numeric
-    probability calculation are owned by
-    ``ratings.elo.predict.predict_schedule_with_elo``.
-
-    This adapter adds only the human-readable percentage columns needed by
-    image and HTML rendering.
-
-    Args:
-        year: NFL season label, such as ``"2026-2027"``.
-        week: NFL week number.
-        repo: Optional repository root override.
-
-    Returns:
-        Schedule rows with Elo ratings, numeric complementary
-        probabilities, explicit prediction status, and formatted display
-        percentages.
-    """
-    predictions = predict_elo_for_week(
-        year=year,
-        week=week,
-        repo=repo,
+    display = product.loc[:, sorted(required)].copy()
+    display = display.rename(
+        columns={
+            "game_id": "GAME_ID",
+            "game_day_of_week": "GAME_DAY_OF_WEEK",
+            "game_date": "GAME_DATE",
+            "game_time": "GAMETIME",
+            "away_team": "AWAY_TEAM",
+            "home_team": "HOME_TEAM",
+            "neutral_site": "IS_NEUTRAL_SITE",
+            "away_moneyline": "AWAY_MONEYLINE",
+            "home_moneyline": "HOME_MONEYLINE",
+            "away_win_prob": "AWAY_WIN_PROB",
+            "home_win_prob": "HOME_WIN_PROB",
+        }
     )
-
-    if predictions.empty:
-        logger.warning(
-            "No upcoming games found for %s week %d.",
-            year,
-            week,
-        )
-        return predictions
-
-    return format_elo_prediction_percentages(predictions)
+    display["AWAY_TEAM_WIN_PROB"] = display["AWAY_WIN_PROB"].map(
+        lambda value: pd.NA if pd.isna(value) else f"{float(value) * 100:.1f} %"
+    )
+    display["HOME_TEAM_WIN_PROB"] = display["HOME_WIN_PROB"].map(
+        lambda value: pd.NA if pd.isna(value) else f"{float(value) * 100:.1f} %"
+    )
+    return display
 
 
 def render_predictions_image(
@@ -347,7 +360,7 @@ def render_predictions_image(
     snapshot exists, the underdog highlight is silently skipped.
 
     Args:
-        df_schedule: DataFrame from ``build_predictions_df()``.
+        df_schedule: Adapted persisted weekly-product DataFrame.
         year: NFL season label (e.g. ``"2026-2027"``).
         week: NFL week number.
         repo: Repository root path.
@@ -362,14 +375,13 @@ def render_predictions_image(
     logo_map: dict[str, Path] = _build_logo_map(logo_dir)
     empty_logo: Path = _empty_logo_path(logo_dir)
 
-    # --- Load DK odds (optional) ---
-    df_ml: DataFrame | None = load_current_odds(market="moneyline", repo=resolved_repo)
-    moneylines: dict[str, float] = {}
-    if df_ml is not None and not df_ml.empty:
-        for _, row in df_ml.iterrows():
-            team: str = str(row["away_team"]) if row["side"] == "away" else str(row["home_team"])
-            short: str = team.split(" ")[-1]
-            moneylines[short] = float(row["odds"])
+    moneylines: dict[str, tuple[float | None, float | None]] = {
+        str(row["AWAY_TEAM"]).split(" ")[-1]: (
+            None if pd.isna(row["AWAY_MONEYLINE"]) else float(row["AWAY_MONEYLINE"]),
+            None if pd.isna(row["HOME_MONEYLINE"]) else float(row["HOME_MONEYLINE"]),
+        )
+        for _, row in df_schedule.iterrows()
+    }
 
     # --- Build display DataFrame ---
     display_df, table_cols = _build_predictions_df(df_schedule, logo_map, empty_logo)
@@ -458,7 +470,7 @@ def render_predictions_image(
     top = table.rows[0]
     top_ax = top.cells[3].ax
 
-    # DK Underdog legend box
+    # Market Underdog legend box
     lx = top.cells[1].x
     by = top.cells[3].y - 1
     h = top.cells[3].height
@@ -473,7 +485,7 @@ def render_predictions_image(
     )
     top_ax.add_patch(underdog_rect)
     top_ax.annotate(
-        "DK Underdog",
+        "Market Underdog",
         ((lx + w / 2), by + h / 2),
         color="w",
         weight="bold",
@@ -568,8 +580,8 @@ def render_predictions_image(
             )
 
             if moneylines:
-                away_ml: float | None = moneylines.get(away_short)
-                home_ml: float | None = moneylines.get(home_short)
+                away_ml: float | None = moneylines.get(away_short, (None, None))[0]
+                home_ml: float | None = moneylines.get(away_short, (None, None))[1]
                 if away_ml is not None and home_ml is not None and away_ml > home_ml:
                     rect = Rectangle(
                         (lx, by),
@@ -602,8 +614,8 @@ def render_predictions_image(
             )
 
             if moneylines:
-                away_ml = moneylines.get(away_short)
-                home_ml = moneylines.get(home_short)
+                away_ml = moneylines.get(away_short, (None, None))[0]
+                home_ml = moneylines.get(away_short, (None, None))[1]
                 if away_ml is not None and home_ml is not None and away_ml < home_ml:
                     rect = Rectangle(
                         (lx, by),
@@ -647,7 +659,7 @@ def render_predictions_html(
     No external dependencies - the file is shareable as-is.
 
     Args:
-        df_schedule: DataFrame from ``build_predictions_df()``.
+        df_schedule: Adapted persisted weekly-product DataFrame.
         year: NFL season label (e.g. ``"2026-2027"``).
         week: NFL week number.
         repo: Repository root path.
@@ -657,13 +669,6 @@ def render_predictions_html(
     """
     settings = get_settings()
     resolved_repo: Path = repo or settings.repo_root
-
-    df_ml: DataFrame | None = load_current_odds(market="moneyline", repo=resolved_repo)
-    moneylines: dict[str, float] = {}
-    if df_ml is not None and not df_ml.empty:
-        for _, row in df_ml.iterrows():
-            team: str = str(row["away_team"]) if row["side"] == "away" else str(row["home_team"])
-            moneylines[team] = float(row["odds"])
 
     rows_html: list[str] = []
     prev_time = ""
@@ -695,15 +700,15 @@ def render_predictions_html(
         winner_color: str = TEAM_COLORS.get(winner, "#333")
         loser_cell_style = "color: #888;"
 
-        away_ml: float | None = moneylines.get(away)
-        home_ml: float | None = moneylines.get(home)
-        away_is_dk_dog: bool = (
+        away_ml = None if pd.isna(row["AWAY_MONEYLINE"]) else float(row["AWAY_MONEYLINE"])
+        home_ml = None if pd.isna(row["HOME_MONEYLINE"]) else float(row["HOME_MONEYLINE"])
+        away_is_market_dog: bool = (
             away_ml is not None
             and home_ml is not None
             and away_ml > home_ml
             and away_prob >= home_prob
         )
-        home_is_dk_dog: bool = (
+        home_is_market_dog: bool = (
             away_ml is not None
             and home_ml is not None
             and home_ml > away_ml
@@ -717,10 +722,10 @@ def render_predictions_html(
         home_style: Literal["", "color: #888;"] = "" if home_prob > away_prob else loser_cell_style
 
         away_dog: Literal["", "outline: 2px solid gold; outline-offset: -2px;"] = (
-            dog_style if away_is_dk_dog else ""
+            dog_style if away_is_market_dog else ""
         )
         home_dog: Literal["", "outline: 2px solid gold; outline-offset: -2px;"] = (
-            dog_style if home_is_dk_dog else ""
+            dog_style if home_is_market_dog else ""
         )
 
         away_label = escape(away.split(" ")[-1])
@@ -766,8 +771,8 @@ def render_predictions_html(
 <div>
   <h1>NFL Week {week} Predictions &mdash; {escape(year)}</h1>
   <p class="legend">
-    Elo win probability &nbsp;|&nbsp;
-    <span class="dk-legend">DK Underdog</span>
+    Selected win probability &nbsp;|&nbsp;
+    <span class="dk-legend">Market Underdog</span>
   </p>
   <table>
     <thead>

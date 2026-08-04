@@ -1,220 +1,78 @@
 # tests/unit/viz/test_predictions.py
 
-"""Tests for visualization prediction-frame assembly."""
+"""Tests for pure weekly-product visualization adaptation."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pandas as pd
-from pandas import DataFrame
+import pytest
 
-from gridiron_edge.ratings.elo.predict import (
-    EloPredictionStatus,
-)
-from gridiron_edge.viz.predictions import (
-    build_predictions_df,
-)
+from gridiron_edge.viz.predictions import build_weekly_product_display_frame
 
 
-def _domain_predictions() -> DataFrame:
-    """Create ready and missing-Elo domain prediction rows."""
-    return DataFrame(
+def _product() -> pd.DataFrame:
+    return pd.DataFrame(
         {
-            "WEEK_NUM": [1, 1],
-            "GAME_DAY_OF_WEEK": [
-                "Sunday",
-                "Sunday",
-            ],
-            "GAME_DATE": [
-                "2026-09-06",
-                "2026-09-06",
-            ],
-            "AWAY_TEAM": [
-                "Kansas City Chiefs",
-                "Baltimore Ravens",
-            ],
-            "HOME_TEAM": [
-                "Los Angeles Chargers",
-                "Buffalo Bills",
-            ],
-            "GAMETIME": [
-                "20:20:00",
-                "13:00:00",
-            ],
-            "YEAR": [
-                "2026-2027",
-                "2026-2027",
-            ],
-            "GAME_ID": [
-                "2026_01_KC_LAC",
-                "2026_01_BAL_BUF",
-            ],
-            "IS_NEUTRAL_SITE": [
-                0,
-                1,
-            ],
-            "AWAY_TEAM_ELO": [
-                1520.0,
-                1510.0,
-            ],
-            "HOME_TEAM_ELO": [
-                1480.0,
-                pd.NA,
-            ],
-            "AWAY_WIN_PROB": pd.Series(
-                [
-                    0.547835,
-                    pd.NA,
-                ],
-                dtype="Float64",
-            ),
-            "HOME_WIN_PROB": pd.Series(
-                [
-                    0.452165,
-                    pd.NA,
-                ],
-                dtype="Float64",
-            ),
-            "PREDICTION_STATUS": pd.Series(
-                [
-                    EloPredictionStatus.READY.value,
-                    (EloPredictionStatus.MISSING_HOME_ELO.value),
-                ],
-                dtype="string",
-            ),
+            "product_id": ["product-1", "product-1"],
+            "product_run_id": ["run-1", "run-1"],
+            "product_generated_at": ["2026-08-04T16:39:38+00:00"] * 2,
+            "season": ["2026-2027"] * 2,
+            "week": [1, 1],
+            "game_id": ["g1", "g2"],
+            "game_day_of_week": ["Sunday", "Monday"],
+            "game_date": ["2026-09-06", "2026-09-07"],
+            "game_time": ["13:00:00", "20:15:00"],
+            "away_team": ["Kansas City Chiefs", "Baltimore Ravens"],
+            "home_team": ["Los Angeles Chargers", "Buffalo Bills"],
+            "neutral_site": [0, 1],
+            "away_moneyline": [120.0, pd.NA],
+            "home_moneyline": [-140.0, pd.NA],
+            "win_status": ["available", "unavailable"],
+            "away_win_prob": pd.Series([0.55, pd.NA], dtype="Float64"),
+            "home_win_prob": pd.Series([0.45, pd.NA], dtype="Float64"),
+            "win_model_name": ["win_prob", pd.NA],
+            "win_model_type": ["logistic", pd.NA],
+            "win_event_id": ["event-1", pd.NA],
+            "win_run_id": ["run-1", pd.NA],
         }
     )
 
 
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_builder_delegates_to_domain_prediction(
-    mock_predict: MagicMock,
-) -> None:
-    mock_predict.return_value = _domain_predictions()
+def test_maps_persisted_product_to_display_contract() -> None:
+    result = build_weekly_product_display_frame(_product())
 
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    mock_predict.assert_called_once_with(
-        year="2026-2027",
-        week=1,
-        repo=None,
-    )
-
-    assert len(result) == 2
+    ready = result.loc[result["GAME_ID"] == "g1"].iloc[0]
+    assert ready["AWAY_TEAM"] == "Kansas City Chiefs"
+    assert ready["HOME_TEAM"] == "Los Angeles Chargers"
+    assert ready["AWAY_WIN_PROB"] == pytest.approx(0.55)
+    assert ready["HOME_WIN_PROB"] == pytest.approx(0.45)
+    assert ready["AWAY_TEAM_WIN_PROB"] == "55.0 %"
+    assert ready["HOME_TEAM_WIN_PROB"] == "45.0 %"
+    assert ready["AWAY_MONEYLINE"] == pytest.approx(120.0)
+    assert ready["HOME_MONEYLINE"] == pytest.approx(-140.0)
+    assert ready["win_model_type"] == "logistic"
+    assert ready["product_id"] == "product-1"
 
 
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_builder_preserves_numeric_probabilities(
-    mock_predict: MagicMock,
-) -> None:
-    mock_predict.return_value = _domain_predictions()
+def test_preserves_unavailable_probabilities() -> None:
+    result = build_weekly_product_display_frame(_product())
+    missing = result.loc[result["GAME_ID"] == "g2"].iloc[0]
 
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    ready = result.loc[result["GAME_ID"] == "2026_01_KC_LAC"].iloc[0]
-
-    assert float(ready["AWAY_WIN_PROB"]) == 0.547835
-    assert float(ready["HOME_WIN_PROB"]) == 0.452165
-    assert (float(ready["AWAY_WIN_PROB"]) + float(ready["HOME_WIN_PROB"])) == 1.0
-
-
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_builder_adds_formatted_display_probabilities(
-    mock_predict: MagicMock,
-) -> None:
-    mock_predict.return_value = _domain_predictions()
-
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    ready = result.loc[result["GAME_ID"] == "2026_01_KC_LAC"].iloc[0]
-
-    assert ready["AWAY_TEAM_WIN_PROB"] == "54.8 %"
-    assert ready["HOME_TEAM_WIN_PROB"] == "45.2 %"
-
-
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_missing_elo_row_remains_visible(
-    mock_predict: MagicMock,
-) -> None:
-    mock_predict.return_value = _domain_predictions()
-
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    missing = result.loc[result["GAME_ID"] == "2026_01_BAL_BUF"].iloc[0]
-
-    assert len(result) == 2
-    assert missing["PREDICTION_STATUS"] == (EloPredictionStatus.MISSING_HOME_ELO.value)
-    assert pd.isna(missing["HOME_TEAM_ELO"])
     assert pd.isna(missing["AWAY_WIN_PROB"])
     assert pd.isna(missing["HOME_WIN_PROB"])
     assert pd.isna(missing["AWAY_TEAM_WIN_PROB"])
     assert pd.isna(missing["HOME_TEAM_WIN_PROB"])
 
 
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_neutral_site_identity_is_preserved(
-    mock_predict: MagicMock,
-) -> None:
-    mock_predict.return_value = _domain_predictions()
+def test_does_not_mutate_product() -> None:
+    product = _product()
+    original = product.copy(deep=True)
 
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
+    build_weekly_product_display_frame(product)
 
-    neutral = result.loc[result["GAME_ID"] == "2026_01_BAL_BUF"].iloc[0]
-
-    assert neutral["IS_NEUTRAL_SITE"] == 1
-    assert neutral["AWAY_TEAM"] == "Baltimore Ravens"
-    assert neutral["HOME_TEAM"] == "Buffalo Bills"
+    pd.testing.assert_frame_equal(product, original)
 
 
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_empty_domain_result_remains_empty(
-    mock_predict: MagicMock,
-) -> None:
-    expected = _domain_predictions().iloc[0:0].copy()
-    mock_predict.return_value = expected
-
-    result = build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    assert result.empty
-    pd.testing.assert_frame_equal(
-        result,
-        expected,
-    )
-
-
-@patch("gridiron_edge.viz.predictions.predict_elo_for_week")
-def test_builder_does_not_mutate_domain_result(
-    mock_predict: MagicMock,
-) -> None:
-    predictions = _domain_predictions()
-    original = predictions.copy(deep=True)
-    mock_predict.return_value = predictions
-
-    build_predictions_df(
-        year="2026-2027",
-        week=1,
-    )
-
-    pd.testing.assert_frame_equal(
-        predictions,
-        original,
-    )
+def test_rejects_missing_required_columns() -> None:
+    with pytest.raises(ValueError, match="away_win_prob"):
+        build_weekly_product_display_frame(_product().drop(columns=["away_win_prob"]))

@@ -15,7 +15,7 @@ output_app = typer.Typer(
 @output_app.command("predictions")
 def output_predictions(
     *,
-    year: str = typer.Option(
+    season: str = typer.Option(
         ...,
         help="NFL season label like '2026-2027'.",
     ),
@@ -32,50 +32,61 @@ def output_predictions(
 
     \b
     Examples:
-      gridiron output predictions --year 2026-2027 --week 1
-      gridiron output predictions --year 2026-2027 --week 1 --format png
-      gridiron output predictions --year 2026-2027 --week 1 --format html
+      gridiron output predictions --season 2026-2027 --week 1
+      gridiron output predictions --season 2026-2027 --week 1 --format png
+      gridiron output predictions --season 2026-2027 --week 1 --format html
     """
     from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_current_weekly_product
     from gridiron_edge.viz.predictions import (
-        build_predictions_df,
+        build_weekly_product_display_frame,
         render_predictions_html,
         render_predictions_image,
     )
 
     formats = set(format) or {"png", "html"}
+    unsupported = sorted(formats - {"png", "html"})
+    if unsupported:
+        raise typer.BadParameter(
+            "Unsupported format(s): " + ", ".join(unsupported),
+            param_hint="--format",
+        )
+
     console.header(
         "output predictions",
-        subtitle=f"{year}  week {week}",
+        subtitle=f"{season}  week {week}",
     )
+    repo = get_settings().repo_root
 
-    with step("Build predictions dataframe") as s:
-        df = build_predictions_df(
-            year=year,
+    with step("Load selected weekly product") as s:
+        product = load_current_weekly_product(
+            repo,
+            season=season,
             week=week,
         )
-        if df.empty:
-            s.set_detail("no data - check schedule and Elo state")
-        else:
-            s.set_detail(f"{len(df)} games")
+        df = build_weekly_product_display_frame(product)
+        product_id = str(product["product_id"].iloc[0])
+        s.set_detail(f"{len(df)} games · {product_id}")
 
-    if not df.empty:
-        if "png" in formats:
-            with step("Render PNG") as s:
-                path = render_predictions_image(
-                    df,
-                    year=year,
-                    week=week,
-                )
-                s.set_detail(str(path))
+    if "png" in formats:
+        with step("Render PNG") as s:
+            path = render_predictions_image(
+                df,
+                year=season,
+                week=week,
+                repo=repo,
+            )
+            s.set_detail(str(path))
 
-        if "html" in formats:
-            with step("Render HTML") as s:
-                path = render_predictions_html(
-                    df,
-                    year=year,
-                    week=week,
-                )
-                s.set_detail(str(path))
+    if "html" in formats:
+        with step("Render HTML") as s:
+            path = render_predictions_html(
+                df,
+                year=season,
+                week=week,
+                repo=repo,
+            )
+            s.set_detail(str(path))
 
     console.summary()
