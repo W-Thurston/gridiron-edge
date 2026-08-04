@@ -181,7 +181,7 @@ def test_report_renders_blocker_reason(
             ["report", "--week", "1", "--season", "2026-2027"],
         )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert message in result.output
 
 

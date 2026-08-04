@@ -2137,32 +2137,114 @@ selected weekly product.
 
 ### Unit 21: Rewire `edges report`
 
+#### Completed
+
+Confirmed that `gridiron edges report` consumes the unified weekly edge service.
+
+The command uses the explicitly selected immutable weekly product and current
+source-labeled market snapshot through one shared domain boundary.
+
+It does not resolve champions, load prediction archives, load calibrations,
+resolve uncertainty, construct recommendations, or rank edge rows directly.
+
+Historical `gridiron edges clv` remains the intentional archive-and-ledger
+exception.
+
+Added explicit exit semantics for structured edge diagnostics.
+
+Missing selected products, missing market snapshots, wrong-scope markets, stale
+markets, zero matching game IDs, and incomplete markets exit nonzero.
+
+Valid analytical results with no calculable rows, no positive expected-value
+rows, or positive rows below the requested minimum-EV threshold exit
+successfully with deterministic explanations.
+
+Added strict output-format validation.
+
+Only table and CSV output are accepted.
+
+Unsupported formats fail before shared-service execution.
+
+Added command-boundary validation for optional bankroll, Kelly multiplier, and
+minimum expected value.
+
+A supplied bankroll must be nonnegative.
+
+Kelly multiplier must remain in the closed zero-to-one range.
+
+Minimum expected value must be nonnegative.
+
+Centralized the scope-specific standalone edge CSV path.
+
+Every report invocation removes any existing CSV for the requested season and
+week before handling the current result.
+
+CSV output writes a fresh file only when the current result contains publishable
+rows and CSV format was requested.
+
+Table output, blocked results, and valid analytical empty results cannot leave a
+prior CSV presented as current.
+
+Preserved source-neutral blocker messages and valid zero-positive-edge
+semantics.
+
+Real 2026 Week 1 validation confirmed that missing market data produces a
+source-neutral message and nonzero exit status.
+
+Real validation also confirmed that a stale scope-specific edge CSV is removed
+when the current report is blocked.
+
 #### Goal
 
-Use the unified edge service and return correct exit semantics.
-
-#### Production files
-
-- `src/gridiron_edge/cli/edges.py`
-
-#### Test files
-
-- update:
-  `tests/unit/cli/test_edges.py`
+Use the unified edge service and expose truthful CLI validation, exit semantics,
+and output freshness.
 
 #### Tests
 
-- missing weekly product exits nonzero;
-- missing market snapshot exits nonzero;
-- zero joins exits nonzero;
-- valid zero-positive-edge result exits successfully;
-- `--format` is validated;
-- bankroll and Kelly multiplier are validated at the CLI boundary;
-- CSV output cannot silently remain stale.
+Covered unified service invocation, table rendering, CSV writing, selected
+season and week forwarding, optional bankroll forwarding, Kelly multiplier
+forwarding, minimum-EV forwarding, structured blocked states, valid analytical
+empty states, unsupported formats, invalid bankroll values, invalid Kelly
+multipliers, negative minimum EV, and prevention of service execution after
+invalid CLI input.
+
+Covered nonzero exits for missing prediction products, missing market data,
+zero game-ID matches, and incomplete market coverage.
+
+Covered successful exits for no calculable edges and no positive expected-value
+edges.
+
+Verified stale scope-specific CSV removal for blocked and analytically empty
+results.
+
+Verified positive CSV results replace the prior artifact with current
+service-returned rows.
+
+Verified against the real 2026 Week 1 selected product that missing market data
+exits with status one and removes an existing stale edge CSV.
+
+Verified unsupported formats, negative bankroll, out-of-range Kelly
+multipliers, and negative minimum EV fail explicitly.
+
+Ruff, Pyrefly, focused report tests, and existing historical CLV tests pass.
 
 #### Acceptance
 
-Direct edge inspection matches `weekly-predict` and API behavior.
+`gridiron edges report`, `weekly-predict`, and the API consume the same unified
+weekly edge result derived from the explicitly selected immutable weekly product
+and current source-labeled market snapshot.
+
+Blocked input states exit nonzero.
+
+Valid analytical empty states exit successfully.
+
+CLI inputs and output formats are validated before service execution.
+
+A stale standalone edge CSV cannot remain presented as current after a later
+report invocation.
+
+Historical CLV remains separate because it intentionally operates over
+historical forecast and odds-ledger artifacts.
 
 ---
 

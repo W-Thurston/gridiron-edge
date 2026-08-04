@@ -70,9 +70,31 @@ def report(
 ) -> None:
     """Generate a weekly betting edge report from the selected product."""
     from gridiron_edge.core.console import console, step
+    from gridiron_edge.market.edge_diagnostics import EdgeResultState
     from gridiron_edge.market.weekly_edge_service import (
         build_weekly_edge_result,
     )
+
+    if output_format not in {"table", "csv"}:
+        raise typer.BadParameter(
+            "Output format must be 'table' or 'csv'.",
+            param_hint="--format",
+        )
+    if bankroll is not None and bankroll < 0.0:
+        raise typer.BadParameter(
+            "Bankroll must be greater than or equal to 0.",
+            param_hint="--bankroll",
+        )
+    if not 0.0 <= kelly_multiplier <= 1.0:
+        raise typer.BadParameter(
+            "Kelly multiplier must be in [0, 1].",
+            param_hint="--kelly-multiplier",
+        )
+    if min_ev < 0.0:
+        raise typer.BadParameter(
+            "Minimum EV must be greater than or equal to 0.",
+            param_hint="--min-ev",
+        )
 
     console.header(f"Edge Report - {season} Week {week}")
 
@@ -85,9 +107,13 @@ def report(
             min_ev=min_ev,
         )
 
+    _remove_edge_csv(season, week)
+
     if result.rows.empty:
         typer.echo(_edge_result_message(result.diagnostics, min_ev=min_ev))
-        raise typer.Exit()
+        if result.diagnostics.state is EdgeResultState.BLOCKED:
+            raise typer.Exit(code=1)
+        return
 
     if output_format == "csv":
         _write_csv(result.rows, season, week)
@@ -310,19 +336,26 @@ def _render_clv_summary(stats: dict[str, float]) -> None:
     typer.echo(f"  % Positive CLV:    {stats['pct_positive_clv']:.1%}")
 
 
+def _edge_csv_path(season: str, week: int) -> Path:
+    """Return the scope-specific standalone edge-report path."""
+    from gridiron_edge.core.settings import get_settings
+
+    settings: Settings = get_settings()
+    return settings.data_output / "edges" / f"edges_{season}_wk{week:02d}.csv"
+
+
+def _remove_edge_csv(season: str, week: int) -> None:
+    """Remove a prior CSV so it cannot be mistaken for the current result."""
+    _edge_csv_path(season, week).unlink(missing_ok=True)
+
+
 def _write_csv(
     ranked_df: DataFrame,
     season: str,
     week: int,
 ) -> None:
     """Write ranked edges to a CSV file."""
-    from gridiron_edge.core.settings import get_settings
-
-    settings: Settings = get_settings()
-    out_dir: Path = settings.data_output / "edges"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    filename: str = f"edges_{season}_wk{week:02d}.csv"
-    path: Path = out_dir / filename
+    path = _edge_csv_path(season, week)
+    path.parent.mkdir(parents=True, exist_ok=True)
     ranked_df.to_csv(path, index=False)
     typer.echo(f"  Saved to {path}")
