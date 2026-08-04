@@ -254,10 +254,29 @@ class TestRunComposite:
         assert summary.succeeded == ["set", "read"]
         assert ctx["upstream_value"] == 42
 
+    # ---------------------------------------------------------------------------
+    # render_composite_summary
+    # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# render_composite_summary
-# ---------------------------------------------------------------------------
+    def test_hard_failed_stage_preserves_result_warnings(self) -> None:
+        stage = CompositeStage(
+            name="close-live-forecasts",
+            description="Close selected live forecasts",
+            func=lambda _ctx: StageResult(
+                success=False,
+                detail="incomplete closeout",
+                warnings=["missing outcomes: game-1, game-2"],
+            ),
+        )
+
+        summary = run_composite(
+            name="post-week",
+            stages=[stage],
+            active={stage.name},
+        )
+
+        assert summary.failed == [stage.name]
+        assert summary.warnings == ["missing outcomes: game-1, game-2"]
 
 
 class TestRenderCompositeSummary:

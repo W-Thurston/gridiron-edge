@@ -2250,38 +2250,151 @@ historical forecast and odds-ledger artifacts.
 
 ### Unit 22: Rebuild `post-week` Around Live Forecast Closeout
 
+#### Completed
+
+Rebuilt `gridiron post-week` around evaluation of the exact immutable live
+forecasts selected and published before kickoff.
+
+Removed season-level historical forecast reconstruction from the completed-week
+workflow.
+
+`post-week` no longer invokes `backfill_model`, loads a model-oriented prediction
+archive, selects a model family, or evaluates forecasts reconstructed after game
+completion.
+
+Historical reconstruction remains exclusively under
+`gridiron evaluate backfill`.
+
+Removed the `--model-name` and `--model-type` options from `post-week`.
+
+The explicitly selected immutable weekly product is the completed-week closeout
+authority.
+
+Available Win and Total components identify their exact selected live forecast
+events through persisted event IDs, run IDs, model identities, roles, season,
+week, and Game IDs.
+
+Added a dedicated live forecast closeout service.
+
+The service validates the selected product, immutable forecast events, and
+canonical completed games before reconciliation.
+
+A selected event matches only when its event ID, Game ID, run ID, season, week,
+model name, model type, and live role agree with the product reference.
+
+Backfilled events cannot substitute for missing selected live events.
+
+Additional unrelated forecast events do not affect closeout.
+
+Cleaned outcomes are scoped to the exact requested season and week.
+
+Completed results derive Home Win outcome, Home-minus-Away margin, and total
+points from canonical Away and Home scores.
+
+Tied games remain visible, are excluded from binary Win metrics, and remain
+eligible for Total evaluation.
+
+Win closeout reports Brier score, binary log loss, and accuracy from the
+selected live Home Win probability.
+
+Total closeout reports mean absolute error, root mean squared error, and signed
+bias from the selected live Total prediction.
+
+Added schedule-complete row-level reconciliation.
+
+Every scheduled product row remains visible with selected component status,
+event match state, persisted prediction, completed scores, actual result, and
+task-specific evaluability.
+
+Missing Win components, missing Total components, missing referenced live Win
+events, missing referenced live Total events, and missing outcomes remain
+distinct structured states.
+
+Unavailable components are not mislabeled as missing referenced events.
+
+Replaced the old `post-week` stages with independently executable
+`refresh-results`, `refresh-next-week-state`, and `close-live-forecasts` stages.
+
+`refresh-results` runs only completed-game fetch and cleaning.
+
+`refresh-next-week-state` refreshes the upcoming schedule, EPA, Elo, and
+canonical model inputs separately from completed-week evaluation.
+
+`close-live-forecasts` performs no model inference, forecast generation,
+forecast selection, forecast persistence, product persistence, or current
+selection mutation.
+
+Updated shared composite orchestration so warnings supplied by an unsuccessful
+hard stage remain visible in the final summary.
+
+Incomplete closeout coverage exits nonzero while retaining the exact missing
+Game IDs.
+
+Real 2026 Week 1 validation matched the selected live Win and Total events,
+reported all sixteen not-yet-completed outcomes individually, and exited
+nonzero.
+
+Real closeout validation left the current-product manifest and immutable
+forecast-event artifact byte-for-byte unchanged.
+
 #### Goal
 
-Evaluate immutable live forecasts rather than running historical backfill.
-
-#### Production files
-
-- `src/gridiron_edge/cli/post_week.py`
-- new closeout service under `src/gridiron_edge/evaluation/`
-
-#### Test files
-
-- update:
-  `tests/unit/cli/test_post_week.py`
-- create:
-  `tests/unit/evaluation/test_live_forecast_closeout.py`
-- add an integration test for forecast-to-outcome joining
+Evaluate the immutable live forecasts actually selected and issued before
+kickoff for one exact completed season and week.
 
 #### Tests
 
-- exact requested week is closed;
-- live forecasts are selected explicitly;
-- backfilled forecasts are excluded;
-- missing live forecasts remain visible;
-- missing outcomes remain visible;
-- schedule and forecast coverage counts reconcile;
-- no historical backfill is invoked;
-- next-week state refresh is tested independently;
-- documented `--skip` and `--only` examples are executable.
+Covered exact product-reference matching, live-role enforcement, backfilled
+event exclusion, model and run provenance verification, selected component
+coverage, missing event coverage, missing outcome visibility, unavailable
+component classification, tie handling, Home-oriented Win metrics, Total error
+metrics, row-level schedule reconciliation, required-column validation, and
+input immutability.
+
+Covered result-only pipeline refresh, independent next-week state refresh,
+live-closeout stage behavior, incomplete closeout failure, metric rendering,
+missing-coverage warnings, independent `--only` execution, command help,
+removed model options, removed historical backfill stages, and invalid season
+handling.
+
+Covered preservation and rendering of warnings returned by unsuccessful hard
+composite stages.
+
+Added an integration test that persists a canonical completed game, immutable
+live Win and Total forecast events, a validated immutable weekly product, and an
+explicit current-product selection.
+
+Verified through repository loaders that the exact selected event references
+join to the completed outcome and produce the expected Win and Total metrics.
+
+Verified against the real selected 2026 Week 1 product that all sixteen missing
+outcomes remain visible and no forecast or product state is mutated.
+
+Ruff, Pyrefly, focused unit tests, integration tests, and real-artifact checks
+pass.
 
 #### Acceptance
 
-`post-week` evaluates what the system actually forecast before kickoff.
+`gridiron post-week` evaluates the exact immutable live forecasts referenced by
+the explicitly selected weekly product for the requested completed week.
+
+It does not reconstruct historical forecasts, use backfilled events as live
+substitutes, infer current forecasts from write order, or select models during
+closeout.
+
+Schedule, selected forecast, event-match, and completed-outcome coverage
+reconcile explicitly.
+
+Missing live forecasts and missing outcomes remain visible and cause a nonzero
+closeout result.
+
+Next-week state refresh remains operationally separate from evaluation.
+
+Historical backfill remains the explicit reconstruction workflow under
+`gridiron evaluate backfill`.
+
+Closeout is read-only with respect to immutable forecast events, persisted
+weekly products, and explicit current-product selection.
 
 ---
 

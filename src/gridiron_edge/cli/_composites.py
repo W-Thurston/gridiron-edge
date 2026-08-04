@@ -249,6 +249,7 @@ def run_composite(
                 raise
 
             if not result.success:
+                summary.warnings.extend(result.warnings)
                 if soft_fail:
                     summary.warnings.append(f"{stage.name}: {result.detail}")
                     summary.soft_failed.append(stage.name)
