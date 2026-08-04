@@ -10,9 +10,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
+
+from gridiron_edge.evaluation.backfill import (
+    BackfillMode,
+    BackfillResult,
+    BackfillSeasonResult,
+    BackfillSeasonStatus,
+)
 
 
 class TestSelectModelWriteManifestFlag:
@@ -179,3 +187,97 @@ class TestSelectModelWriteManifestFlag:
         manifest_path = tmp_path / "data" / "output" / "champions" / "champions.json"
         assert not manifest_path.exists()
         assert "Manifest written:" not in result.output
+
+
+class TestEvaluateBackfill:
+    @staticmethod
+    def _result(*, generated: bool = True) -> BackfillResult:
+        seasons = (
+            (
+                BackfillSeasonResult(
+                    season="2024-2025",
+                    status=BackfillSeasonStatus.PREDICTED,
+                    generated_count=2,
+                ),
+            )
+            if generated
+            else ()
+        )
+        return BackfillResult(
+            model_name="win_prob",
+            model_type="random_forest",
+            mode=BackfillMode.WALK_FORWARD,
+            run_id="run-1" if generated else None,
+            generated_count=2 if generated else 0,
+            inserted_count=2 if generated else 0,
+            existing_count=0,
+            seasons=seasons,
+        )
+
+    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    def test_renders_structured_result(self, backfill_model) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        backfill_model.return_value = self._result()
+        result = CliRunner().invoke(
+            evaluate_app,
+            ["backfill", "--model-type", "random_forest"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Mode: walk-forward" in result.output
+        assert "Run ID: run-1" in result.output
+        assert "Generated events: 2" in result.output
+        assert "Inserted events: 2" in result.output
+        assert "Predicted seasons: 2024-2025" in result.output
+
+    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    def test_zero_generation_is_successfully_visible(self, backfill_model) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        backfill_model.return_value = self._result(generated=False)
+        result = CliRunner().invoke(
+            evaluate_app,
+            ["backfill", "--model-type", "random_forest"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Run ID: none" in result.output
+        assert "Generated events: 0" in result.output
+        assert "Predicted seasons: none" in result.output
+
+    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    def test_invalid_mode_fails_before_service(self, backfill_model) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        result = CliRunner().invoke(
+            evaluate_app,
+            ["backfill", "--mode", "nonsense"],
+        )
+
+        assert result.exit_code != 0
+        backfill_model.assert_not_called()
+
+    @patch("gridiron_edge.evaluation.backfill.backfill_model")
+    def test_validation_error_is_clean_cli_failure(self, backfill_model) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        backfill_model.side_effect = ValueError(
+            "start_season must use consecutive years, got '2025-2027'."
+        )
+        result = CliRunner().invoke(
+            evaluate_app,
+            [
+                "backfill",
+                "--model-type",
+                "random_forest",
+                "--mode",
+                "walk-forward",
+                "--start-season",
+                "2025-2027",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "must use consecutive years" in result.output
+        assert "Traceback" not in result.output

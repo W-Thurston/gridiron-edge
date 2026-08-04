@@ -178,7 +178,12 @@ class TestPredictWeekStage:
             events=events,
             win_display=display,
         )
-        mock_write.return_value = Path("/tmp/events.parquet")
+        mock_write.return_value = SimpleNamespace(
+            path=Path("/tmp/events.parquet"),
+            incoming_count=2,
+            inserted_count=2,
+            existing_count=0,
+        )
         mock_run_id.return_value = "run-1"
         mock_datetime.now.return_value = generated_at
         ctx = {"season": "2026-2027", "week": 1}

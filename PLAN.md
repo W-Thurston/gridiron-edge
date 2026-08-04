@@ -2398,37 +2398,116 @@ weekly products, and explicit current-product selection.
 
 ---
 
-### Unit 23: Harden Historical Backfill
+### Unit 23: Harden Historical Forecast Backfill
 
-#### Goal
+#### Completed
 
-Keep `evaluate backfill` as the explicit historical reconstruction workflow.
+Hardened historical game forecast reconstruction around explicit runtime modes,
+structured run accounting, per-season outcomes, immutable event write
+accounting, canonical request validation, and truthful CLI reporting.
 
-#### Production files
+Replaced the static backfill mode type alias with a runtime `BackfillMode`
+enum supporting `walk-forward` and `current-model`.
 
-- `src/gridiron_edge/evaluation/backfill.py`
-- `src/gridiron_edge/cli/evaluate.py`
+Automatic mode resolution remains model-aware.
 
-#### Test files
+Trained Win and Total models default to walk-forward reconstruction.
 
-- update:
-  `tests/unit/evaluation/test_backfill.py`
-- update:
-  `tests/unit/cli/test_evaluate.py`
+Elo defaults to current-model reconstruction because its historical state is
+built chronologically.
 
-#### Tests
+Explicit invalid API and CLI mode values are rejected rather than silently
+falling through to walk-forward behavior.
 
-- mode is validated as an enum;
-- live rows are never replaced;
-- generated count and inserted count are distinguished;
-- season-level walk-forward boundaries remain correct;
-- zero generated rows are visible;
-- classification and regression backfills retain task-appropriate provenance;
-- skipped seasons are identified.
+Added `ForecastEventWriteResult` to immutable forecast-event storage.
 
-#### Acceptance
+Every forecast-event write now reports incoming, inserted, and already-existing
+event counts alongside the artifact path.
 
-Historical backtests remain rigorous and cannot alter live forecast history.
+New stores report every incoming event as inserted.
+
+Identical event-ID retries remain idempotent and report existing rows without
+rewriting them.
+
+Mixed batches distinguish newly inserted event IDs from identical existing
+event IDs.
+
+Event-ID reuse with different content remains prohibited.
+
+Removed a duplicate internal `new_ids` declaration from forecast-event storage.
+
+Migrated live weekly prediction persistence to consume the structured writer
+result while preserving the forecast-event artifact path in composite output.
+
+Added structured historical reconstruction results.
+
+`BackfillResult` records model identity, resolved mode, run ID, generated event
+count, inserted event count, existing event count, and per-season outcomes.
+
+Generated, inserted, and existing counts reconcile explicitly.
+
+Zero-generation results contain no run ID and do not invoke forecast-event
+persistence.
+
+Successful reconstruction results require a run ID.
+
+Added explicit per-season terminal outcomes.
+
+Predicted seasons record their generated forecast count.
+
+Skipped seasons distinguish missing prior-season training data, missing target
+rows, and target rows without complete model features.
+
+Skipped seasons retain exact human-readable reasons.
+
+`BackfillResult` exposes predicted and skipped season collections separately.
+
+Walk-forward reconstruction continues to retrain each target season using data
+only through the immediately preceding season.
+
+Intermediate walk-forward models remain non-persistent.
+
+Win classification continues to use probability prediction and canonical game
+prediction construction.
+
+Total regression continues to use numeric prediction and canonical regression
+prediction construction.
+
+Current-model reconstruction derives generated counts per represented season
+without fabricating walk-forward skip states.
+
+Every historical forecast event continues to use the `backfilled` role.
+
+Each successful invocation continues to create a distinct immutable run and new
+event identities.
+
+Repeated reconstruction runs coexist without replacing live events or prior
+backfilled runs.
+
+Migrated full-retrain game-model backfill accounting to structured inserted
+counts.
+
+Migrated standalone evaluation backfill and Elo tuning callers to structured
+backfill results.
+
+Added canonical season-label validation requiring `YYYY-YYYY+1` with consecutive
+years.
+
+Malformed season labels are rejected before repository or model access.
+
+Reversed start and end season ranges are rejected.
+
+Season bounds are rejected when the resolved mode is current-model rather than
+being silently ignored.
+
+The `evaluate backfill` command now reports resolved mode, run ID, generated
+events, inserted events, existing events, predicted seasons, and skipped seasons
+with reasons.
+
+Valid zero-generation runs remain successful and visibly report zero counts,
+no run ID, and no predicted seasons.
+
+Expected request-validation failures render
 
 ---
 

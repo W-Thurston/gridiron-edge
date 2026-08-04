@@ -14,7 +14,12 @@ import pytest
 from gridiron_edge.evaluation.backfill import (
     _CURRENT_MODEL_DEFAULTS,
     BackfillMode,
+    BackfillResult,
+    BackfillSeasonResult,
+    BackfillSeasonStatus,
     _resolve_mode,
+    _validate_backfill_request,
+    _validate_season_label,
     _walk_forward_one_season,
 )
 from gridiron_edge.models.game_prediction.base import (
@@ -156,7 +161,7 @@ class TestWalkForwardOneSeason:
         )
         build_predictions_mock.return_value = expected
 
-        result = _walk_forward_one_season(
+        output = _walk_forward_one_season(
             trainer=trainer,
             gm_type=(GameModelType.RANDOM_FOREST),
             df=self._canonical_rows(),
@@ -168,9 +173,11 @@ class TestWalkForwardOneSeason:
         )
 
         pd.testing.assert_frame_equal(
-            result,
+            output.predictions,
             expected,
         )
+        assert output.result.status is BackfillSeasonStatus.PREDICTED
+        assert output.result.generated_count == 1
 
         trainer.train.assert_called_once()
 
@@ -201,7 +208,7 @@ class TestWalkForwardOneSeason:
         )
         build_predictions_mock.return_value = expected
 
-        result = _walk_forward_one_season(
+        output = _walk_forward_one_season(
             trainer=trainer,
             gm_type=(GameModelType.RANDOM_FOREST),
             df=self._canonical_rows(),
@@ -213,7 +220,7 @@ class TestWalkForwardOneSeason:
         )
 
         pd.testing.assert_frame_equal(
-            result,
+            output.predictions,
             expected,
         )
 
@@ -229,7 +236,7 @@ class TestWalkForwardOneSeason:
     ) -> None:
         trainer = self._trainer(task="classification")
 
-        result = _walk_forward_one_season(
+        output = _walk_forward_one_season(
             trainer=trainer,
             gm_type=(GameModelType.RANDOM_FOREST),
             df=self._canonical_rows(),
@@ -240,7 +247,9 @@ class TestWalkForwardOneSeason:
             repo=tmp_path,
         )
 
-        assert result.empty
+        assert output.predictions.empty
+        assert output.result.status is BackfillSeasonStatus.SKIPPED_NO_TARGET_ROWS
+        assert output.result.reason == "no target rows"
 
     def test_incomplete_target_features_are_excluded(
         self,
@@ -284,9 +293,123 @@ class TestWalkForwardOneSeason:
 
         assert not (retired & set(self._canonical_rows().columns))
 
+    def test_no_valid_features_returns_explicit_skip(self, tmp_path: Path) -> None:
+        trainer = self._trainer(task="classification")
+        rows = self._canonical_rows()
+        rows.loc[rows["YEAR"].eq("2024-2025"), "MODEL_FEATURE"] = float("nan")
+
+        output = _walk_forward_one_season(
+            trainer=trainer,
+            gm_type=GameModelType.RANDOM_FOREST,
+            df=rows,
+            target_season="2024-2025",
+            train_through_season="2023-2024",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        assert output.predictions.empty
+        assert output.result.status is BackfillSeasonStatus.SKIPPED_NO_VALID_ROWS
+        assert output.result.generated_count == 0
+        assert output.result.reason == "no target rows with complete model features"
+
 
 class TestBackfillModeType:
     def test_type_alias_exists(self) -> None:
         """BackfillMode should be importable for type-checking purposes."""
         # Verify it's a valid type alias
         assert BackfillMode is not None
+
+
+class TestBackfillResult:
+    def test_predicted_seasons_and_count_invariants(self) -> None:
+        result = BackfillResult(
+            model_name="win_prob",
+            model_type="logistic",
+            mode=BackfillMode.WALK_FORWARD,
+            run_id="run-1",
+            generated_count=3,
+            inserted_count=3,
+            existing_count=0,
+            seasons=(
+                BackfillSeasonResult(
+                    "2023-2024",
+                    BackfillSeasonStatus.PREDICTED,
+                    1,
+                ),
+                BackfillSeasonResult(
+                    "2024-2025",
+                    BackfillSeasonStatus.PREDICTED,
+                    2,
+                ),
+            ),
+        )
+
+        assert result.predicted_seasons == ("2023-2024", "2024-2025")
+        assert result.skipped_seasons == ()
+
+    def test_zero_generation_has_no_run_or_seasons(self) -> None:
+        result = BackfillResult(
+            model_name="win_prob",
+            model_type="elo",
+            mode=BackfillMode.CURRENT_MODEL,
+            run_id=None,
+            generated_count=0,
+            inserted_count=0,
+            existing_count=0,
+            seasons=(),
+        )
+
+        assert result.predicted_seasons == ()
+
+    def test_rejects_inconsistent_write_accounting(self) -> None:
+        with pytest.raises(ValueError, match="must equal generated_count"):
+            BackfillResult(
+                model_name="win_prob",
+                model_type="elo",
+                mode=BackfillMode.CURRENT_MODEL,
+                run_id="run-1",
+                generated_count=2,
+                inserted_count=1,
+                existing_count=0,
+                seasons=(
+                    BackfillSeasonResult(
+                        "2024-2025",
+                        BackfillSeasonStatus.PREDICTED,
+                        2,
+                    ),
+                ),
+            )
+
+
+class TestBackfillRequestValidation:
+    @pytest.mark.parametrize("value", ["2025", "2025-27", "2025-2027", "abcd-efgh", "2025-"])
+    def test_rejects_noncanonical_season_labels(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            _validate_season_label(value, field_name="start_season")
+
+    def test_accepts_canonical_season_label(self) -> None:
+        assert (
+            _validate_season_label(
+                "2025-2026",
+                field_name="start_season",
+            )
+            == "2025-2026"
+        )
+
+    def test_rejects_reversed_walk_forward_range(self) -> None:
+        with pytest.raises(ValueError, match="must not be later"):
+            _validate_backfill_request(
+                mode=BackfillMode.WALK_FORWARD,
+                start_season="2025-2026",
+                end_season="2024-2025",
+            )
+
+    def test_current_model_rejects_season_bounds(self) -> None:
+        with pytest.raises(ValueError, match="walk-forward mode"):
+            _validate_backfill_request(
+                mode=BackfillMode.CURRENT_MODEL,
+                start_season="2024-2025",
+                end_season=None,
+            )

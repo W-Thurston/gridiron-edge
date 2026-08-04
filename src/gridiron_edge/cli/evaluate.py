@@ -13,7 +13,7 @@ Composite model identity:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, LiteralString
+from typing import TYPE_CHECKING, Literal, LiteralString
 
 from pandas import DataFrame, Series
 
@@ -30,6 +30,10 @@ from gridiron_edge.evaluation.select import (
 from gridiron_edge.evaluation.select import (
     rank_models as _rank_models,
 )
+
+if TYPE_CHECKING:
+    from gridiron_edge.evaluation.backfill import BackfillResult
+
 
 evaluate_app = typer.Typer(
     help="Evaluate model predictions against outcomes.", no_args_is_help=True
@@ -175,6 +179,25 @@ def evaluate_calibration(
     console.summary()
 
 
+def _render_backfill_result(result: BackfillResult) -> None:
+    """Render structured historical reconstruction accounting."""
+    import typer
+
+    typer.echo("")
+    typer.echo(f"Mode: {result.mode.value}")
+    typer.echo(f"Run ID: {result.run_id or 'none'}")
+    typer.echo(f"Generated events: {result.generated_count:,}")
+    typer.echo(f"Inserted events: {result.inserted_count:,}")
+    typer.echo(f"Existing events: {result.existing_count:,}")
+    predicted = ", ".join(result.predicted_seasons) or "none"
+    typer.echo(f"Predicted seasons: {predicted}")
+    skipped = [item for item in result.seasons if item.reason is not None]
+    if skipped:
+        typer.echo("Skipped seasons:")
+        for item in skipped:
+            typer.echo(f"  {item.season}: {item.reason}")
+
+
 @evaluate_app.command("backfill")
 def evaluate_backfill(
     *,
@@ -227,24 +250,33 @@ def evaluate_backfill(
         --start-season 2010-2011
     """
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.backfill import backfill_model
+    from gridiron_edge.evaluation.backfill import BackfillMode, backfill_model
 
-    resolved_mode: str | None = None if mode == "auto" else mode
+    if mode not in {"auto", *(item.value for item in BackfillMode)}:
+        raise typer.BadParameter(
+            "Mode must be one of: auto, walk-forward, current-model.",
+            param_hint="--mode",
+        )
+    resolved_mode = None if mode == "auto" else BackfillMode(mode)
     subtitle_parts: list[str] = [f"model={model_name}_{model_type}"]
     if resolved_mode is not None:
         subtitle_parts.append(f"mode={resolved_mode}")
     console.header("evaluate backfill", subtitle="  ".join(subtitle_parts))
 
-    with step("Generate historical forecast events") as s:
-        n: int = backfill_model(
-            model_name=model_name,
-            model_type=model_type,
-            mode=resolved_mode,  # type: ignore[arg-type]
-            start_season=start_season,
-            end_season=end_season,
-        )
-        s.set_detail(f"{n:,} forecast events written")
+    try:
+        with step("Generate historical forecast events") as s:
+            result = backfill_model(
+                model_name=model_name,
+                model_type=model_type,
+                mode=resolved_mode,
+                start_season=start_season,
+                end_season=end_season,
+            )
+            s.set_detail(f"{result.inserted_count:,} forecast events written")
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
+    _render_backfill_result(result)
     console.summary()
 
 
@@ -356,11 +388,13 @@ def evaluate_tune(
                 # (K, divisor, regression_frac). After the search, the newly
                 # tuned Elo model is backfilled to the archive. Not a
                 # champion decision — the model just got tuned.
-                n: int = backfill_model(
+                result = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
                 )
-                s.set_detail(f"{n:,} backfilled forecast events written as win_prob/elo")
+                s.set_detail(
+                    f"{result.inserted_count:,} backfilled forecast events written as win_prob/elo"
+                )
         else:
             params = best_params(results)
             k_val: float = params["k"]
@@ -377,11 +411,13 @@ def evaluate_tune(
                 # (K, divisor, regression_frac). After the search, the newly
                 # tuned Elo model is backfilled to the archive. Not a
                 # champion decision — the model just got tuned.
-                n = backfill_model(
+                result = backfill_model(
                     model_name="win_prob",
                     model_type="elo",
                 )
-                s.set_detail(f"{n:,} backfilled forecast events written as win_prob/elo")
+                s.set_detail(
+                    f"{result.inserted_count:,} backfilled forecast events written as win_prob/elo"
+                )
 
     console.summary()
 

@@ -150,13 +150,13 @@ def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
     pair_summaries: list[str] = []
 
     for pair in pairs:
-        n = backfill_model(
+        result = backfill_model(
             model_name=pair.model_name,
             model_type=pair.model_type,
             mode=None,  # auto-resolve per model
         )
-        total_events += n
-        pair_summaries.append(f"{pair.composite_key}={n:,}")
+        total_events += result.inserted_count
+        pair_summaries.append(f"{pair.composite_key}={result.inserted_count:,}")
 
     return StageResult(
         success=True,

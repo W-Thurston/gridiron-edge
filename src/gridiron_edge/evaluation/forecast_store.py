@@ -11,6 +11,7 @@ are identical. Reusing an event ID for different content is rejected.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Final, cast
@@ -63,6 +64,17 @@ _REQUIRED_TEXT_COLUMNS: Final[tuple[str, ...]] = (
     "away_team",
     "home_team",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ForecastEventWriteResult:
+    """Accounting for one immutable forecast-event store write."""
+
+    path: Path
+    incoming_count: int
+    inserted_count: int
+    existing_count: int
+
 
 _NULLABLE_FLOAT_COLUMNS: Final[tuple[str, ...]] = (
     "away_elo",
@@ -235,13 +247,14 @@ def write_forecast_events(
     events: DataFrame,
     *,
     repo: Path | None = None,
-) -> Path:
-    """Append immutable forecast events to the event store.
+) -> ForecastEventWriteResult:
+    """Append immutable events and report inserted versus existing rows.
 
     An existing event ID with identical content is an idempotent no-op.
     An existing event ID with different content violates event immutability.
     """
     normalized = validate_forecast_events(events)
+    incoming_count = len(normalized)
     path = forecast_event_path(repo)
 
     if not path.exists():
@@ -249,7 +262,12 @@ def write_forecast_events(
             ["generated_at", "run_id", "event_id"],
             kind="stable",
         ).to_parquet(path, index=False)
-        return path
+        return ForecastEventWriteResult(
+            path=path,
+            incoming_count=incoming_count,
+            inserted_count=incoming_count,
+            existing_count=0,
+        )
 
     existing = validate_forecast_events(
         pd.read_parquet(path),
@@ -267,8 +285,6 @@ def write_forecast_events(
     overlapping_ids = set(existing_by_id.index).intersection(
         incoming_by_id.index,
     )
-
-    new_ids: list[str] = []
 
     new_ids: list[str] = []
 
@@ -292,7 +308,12 @@ def write_forecast_events(
             )
 
     if not new_ids:
-        return path
+        return ForecastEventWriteResult(
+            path=path,
+            incoming_count=incoming_count,
+            inserted_count=0,
+            existing_count=incoming_count,
+        )
 
     new_rows = normalized.loc[
         normalized["event_id"].isin(new_ids),
@@ -308,7 +329,13 @@ def write_forecast_events(
     )
 
     combined.to_parquet(path, index=False)
-    return path
+    inserted_count = len(new_ids)
+    return ForecastEventWriteResult(
+        path=path,
+        incoming_count=incoming_count,
+        inserted_count=inserted_count,
+        existing_count=incoming_count - inserted_count,
+    )
 
 
 def load_forecast_events(

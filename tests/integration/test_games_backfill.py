@@ -90,14 +90,14 @@ class TestBackfillWritesForecastEvents:
         self,
         trained_repo: Path,
     ) -> None:
-        n_written = backfill_model(
+        result = backfill_model(
             model_name="win_prob",
             model_type="logistic",
             mode="current-model",
             repo=trained_repo,
         )
 
-        assert n_written > 0
+        assert result.inserted_count > 0
 
         events = load_forecast_events(
             model_name="win_prob",
@@ -106,7 +106,7 @@ class TestBackfillWritesForecastEvents:
             repo=trained_repo,
         )
 
-        assert len(events) >= n_written
+        assert len(events) >= result.inserted_count
         assert not events.empty
         assert list(events.columns) == FORECAST_EVENT_COLUMNS
         assert (events["role"] == ForecastRole.BACKFILLED.value).all()
@@ -124,7 +124,7 @@ class TestBackfillWritesForecastEvents:
             repo=trained_repo,
         )
 
-        n_written = backfill_model(
+        result = backfill_model(
             model_name="win_prob",
             model_type="logistic",
             mode="current-model",
@@ -143,7 +143,7 @@ class TestBackfillWritesForecastEvents:
             :,
         ]
 
-        assert len(new_events) == n_written
+        assert len(new_events) == result.inserted_count
         assert new_events["run_id"].nunique() == 1
         assert new_events["generated_at"].nunique() == 1
         assert new_events["event_id"].is_unique
@@ -168,7 +168,7 @@ class TestRepeatedBackfillRuns:
             repo=trained_repo,
         )
 
-        first_written = backfill_model(
+        first_result = backfill_model(
             model_name="win_prob",
             model_type="logistic",
             mode="current-model",
@@ -181,7 +181,7 @@ class TestRepeatedBackfillRuns:
             repo=trained_repo,
         )
 
-        second_written = backfill_model(
+        second_result = backfill_model(
             model_name="win_prob",
             model_type="logistic",
             mode="current-model",
@@ -203,10 +203,10 @@ class TestRepeatedBackfillRuns:
             :,
         ]
 
-        assert first_written > 0
-        assert second_written > 0
-        assert len(first_events) == first_written
-        assert len(second_events) == second_written
+        assert first_result.inserted_count > 0
+        assert second_result.inserted_count > 0
+        assert len(first_events) == first_result.inserted_count
+        assert len(second_events) == second_result.inserted_count
 
         first_run_ids = set(first_events["run_id"])
         second_run_ids = set(second_events["run_id"])
@@ -214,6 +214,9 @@ class TestRepeatedBackfillRuns:
         assert len(first_run_ids) == 1
         assert len(second_run_ids) == 1
         assert first_run_ids.isdisjoint(second_run_ids)
+        assert first_result.run_id != second_result.run_id
+        assert first_result.existing_count == 0
+        assert second_result.existing_count == 0
 
         assert set(first_events["event_id"]).issubset(set(after_second["event_id"]))
 

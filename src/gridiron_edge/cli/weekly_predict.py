@@ -122,7 +122,7 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     except ValueError as exc:
         return StageResult(success=False, detail=str(exc))
 
-    event_path = write_forecast_events(execution.events, repo=repo)
+    write_result = write_forecast_events(execution.events, repo=repo)
     ctx["prediction_policy"] = execution.policy
     ctx["predictions_df"] = execution.win_display
     ctx["forecast_run_id"] = run_id
@@ -132,7 +132,7 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
         success=True,
         detail=f"{len(execution.events)} live forecast events written",
         rows=len(execution.events),
-        artifacts=[event_path],
+        artifacts=[write_result.path],
     )
 
 

@@ -154,6 +154,9 @@ class TestEvaluateBackfillHelpSmoke:
         assert result.exit_code == 0
         assert "--model-name" in result.stdout
         assert "--model-type" in result.stdout
+        assert "--mode" in result.stdout
+        assert "--start-season" in result.stdout
+        assert "--end-season" in result.stdout
 
 
 class TestModelsTrainHelpSmoke:

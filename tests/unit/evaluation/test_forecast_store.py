@@ -358,3 +358,48 @@ def test_filters_do_not_select_by_write_order(
 
     assert live["event_id"].tolist() == ["live-event"]
     assert backfilled["event_id"].tolist() == ["backfill-event"]
+
+
+def test_write_result_reports_new_store_insertions(tmp_path: Path) -> None:
+    """A new store reports every incoming event as inserted."""
+    result = write_forecast_events(_event(), repo=tmp_path)
+
+    assert result.incoming_count == 1
+    assert result.inserted_count == 1
+    assert result.existing_count == 0
+    assert result.path.exists()
+
+
+def test_write_result_reports_idempotent_existing_events(tmp_path: Path) -> None:
+    """An identical event retry reports an existing immutable event."""
+    events = _event()
+    write_forecast_events(events, repo=tmp_path)
+
+    result = write_forecast_events(events.copy(), repo=tmp_path)
+
+    assert result.incoming_count == 1
+    assert result.inserted_count == 0
+    assert result.existing_count == 1
+
+
+def test_write_result_reports_mixed_batch_accounting(tmp_path: Path) -> None:
+    """A mixed batch distinguishes new and existing event IDs."""
+    existing = _event(event_id="event-1")
+    write_forecast_events(existing, repo=tmp_path)
+    incoming = pd.concat(
+        [
+            existing,
+            _event(
+                event_id="event-2",
+                run_id="run-2",
+                generated_at=datetime(2026, 9, 2, 12, tzinfo=UTC),
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    result = write_forecast_events(incoming, repo=tmp_path)
+
+    assert result.incoming_count == 2
+    assert result.inserted_count == 1
+    assert result.existing_count == 1

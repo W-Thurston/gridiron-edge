@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -122,7 +123,9 @@ class TestBackfillGameModelsStage:
             _stage_backfill_game_models,
         )
 
-        mock_backfill.return_value = 100
+        mock_backfill.return_value = SimpleNamespace(
+            inserted_count=100,
+        )
         ctx = {
             "game_pairs": [
                 ModelPair(model_name="win_prob", model_type="elo"),
