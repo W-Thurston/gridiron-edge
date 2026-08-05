@@ -12,7 +12,7 @@ import pytest
 
 from gridiron_edge.ingest.odds.nflverse_schedule import (
     MARKET_COLUMNS,
-    NFLVERSE_SCHEDULE_SOURCE,
+    NFLVERSE_PROVIDER,
     adapt_nflverse_schedule_markets,
 )
 
@@ -53,15 +53,19 @@ def _schedule() -> DataFrame:
     )
 
 
-def test_labels_source_without_draftkings() -> None:
+def test_labels_provider_without_fabricating_sportsbook() -> None:
     result = adapt_nflverse_schedule_markets(
         _schedule(),
         season="2026-2027",
         week=1,
     )
 
-    assert set(result["sportsbook"]) == {NFLVERSE_SCHEDULE_SOURCE}
-    assert "draftkings" not in set(result["sportsbook"])
+    assert set(result["provider"]) == {NFLVERSE_PROVIDER}
+    assert result["provider_event_id"].isna().all()
+    assert result["sportsbook"].isna().all()
+    assert result["sportsbook_updated_at"].isna().all()
+    assert result["commence_time"].isna().all()
+    assert not result["is_live"].any()
 
 
 def test_preserves_ingestion_timestamp_as_fetched_at() -> None:
@@ -179,7 +183,7 @@ def test_rejects_mixed_ingestion_timestamps() -> None:
 
 def test_rejects_non_nflverse_source() -> None:
     schedule = _schedule()
-    schedule.loc[0, "source"] = "draftkings"
+    schedule.loc[0, "source"] = "other_source"
 
     with pytest.raises(ValueError, match="requires source 'nflverse'"):
         adapt_nflverse_schedule_markets(

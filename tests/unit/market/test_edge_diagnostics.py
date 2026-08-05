@@ -57,7 +57,7 @@ def test_contracts_are_frozen() -> None:
     with pytest.raises(FrozenInstanceError):
         diagnostics.week = 2  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
-        provenance.market_sources = ("changed",)  # type: ignore[misc]
+        provenance.market_providers = ("changed",)  # type: ignore[misc]
 
 
 @pytest.mark.parametrize(
@@ -188,7 +188,7 @@ def test_valid_terminal_states() -> None:
     [
         ("win_event_ids", ("b", "a")),
         ("win_run_ids", ("run", "run")),
-        ("market_sources", ("z", "a")),
+        ("market_providers", ("z", "a")),
     ],
 )
 def test_provenance_text_values_require_sorted_unique_tuples(
@@ -201,7 +201,7 @@ def test_provenance_text_values_require_sorted_unique_tuples(
 
 def test_provenance_rejects_empty_text() -> None:
     with pytest.raises(ValueError, match="must not contain empty values"):
-        EdgeProvenance(market_sources=("",))
+        EdgeProvenance(market_providers=("",))
 
 
 def test_market_timestamps_require_timezone_aware_utc() -> None:
@@ -241,7 +241,8 @@ def test_provenance_and_diagnostics_serialize_to_json() -> None:
         total_model_types=("random_forest",),
         product_ids=("product",),
         product_run_ids=("product-run",),
-        market_sources=("nflverse_schedule",),
+        market_providers=("nflverse",),
+        market_sportsbooks=(),
         market_fetched_at=(timestamp,),
     )
     diagnostics = _diagnostics(provenance=provenance)
@@ -250,7 +251,7 @@ def test_provenance_and_diagnostics_serialize_to_json() -> None:
     assert decoded["state"] == "positive_edges"
     assert decoded["blockers"] == []
     assert decoded["provenance"]["market_fetched_at"] == ["2026-09-05T12:00:00+00:00"]
-    assert decoded["provenance"]["market_sources"] == ["nflverse_schedule"]
+    assert decoded["provenance"]["market_providers"] == ["nflverse"]
 
 
 def test_equal_values_produce_equal_contracts() -> None:

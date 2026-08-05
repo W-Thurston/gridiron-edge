@@ -4,7 +4,7 @@
 
 Generates the weekly predictions image: a matchup table with team logos,
 win probabilities, team colour gradient bars highlighting the predicted
-winner, and an optional DraftKings underdog highlight.
+winner, and an optional underdog highlight.
 
 Migrated from ``notebooks/exploratory/Weekly_Prediction_Visualisation.ipynb``.
 

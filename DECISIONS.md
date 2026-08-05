@@ -87,8 +87,8 @@ Official references:
   sportsbook.
 - Multi-book current snapshots require a sportsbook-aware recommendation pivot;
   game-only row overwrites are not valid.
-- The legacy DraftKings adapter remains best-effort and cannot be the supported
-  recovery path.
+- The legacy DraftKings adapter, resolver, and CLI command are retired rather
+  than carried through the provider-aware quote contract.
 - Historical backfill may use The Odds API or another compatible provider later
   without changing the normalized row contract.
 
@@ -96,7 +96,6 @@ Official references:
 
 - `src/gridiron_edge/ingest/odds/store.py`
 - `src/gridiron_edge/ingest/odds/nflverse_schedule.py`
-- `src/gridiron_edge/ingest/odds/draftkings.py`
 - `src/gridiron_edge/market/recommendations.py`
 - `src/gridiron_edge/market/weekly_edge_service.py`
 - `PLAN.md`

@@ -41,7 +41,12 @@ _EMPTY_RICH_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
 
 _EMPTY_MARKET_COLUMNS: Final[tuple[str, ...]] = (
     "fetched_at",
+    "provider",
+    "provider_event_id",
     "sportsbook",
+    "sportsbook_updated_at",
+    "commence_time",
+    "is_live",
     "season",
     "week",
     "game_id",
@@ -303,7 +308,10 @@ def _render_weekly_readiness(
     typer.echo(
         f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
     )
-    typer.echo(f"  Market source                   {readiness.market_source or 'unavailable'}")
+    providers = ", ".join(readiness.market_providers) or "unavailable"
+    sportsbooks = ", ".join(readiness.market_sportsbooks) or "unavailable"
+    typer.echo(f"  Market provider(s)              {providers}")
+    typer.echo(f"  Sportsbook(s)                   {sportsbooks}")
 
     typer.echo("")
 
@@ -402,7 +410,10 @@ def _render_weekly_readiness(
     typer.echo(
         f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
     )
-    typer.echo(f"  Market source                   {readiness.market_source or 'unavailable'}")
+    providers = ", ".join(readiness.market_providers) or "unavailable"
+    sportsbooks = ", ".join(readiness.market_sportsbooks) or "unavailable"
+    typer.echo(f"  Market provider(s)              {providers}")
+    typer.echo(f"  Sportsbook(s)                   {sportsbooks}")
 
     typer.echo("")
 

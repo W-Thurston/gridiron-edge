@@ -93,7 +93,12 @@ def _odds_snapshot() -> pd.DataFrame:
     timestamp = pd.Timestamp("2026-09-05T12:00:00Z")
     base: dict[str, object] = {
         "fetched_at": timestamp,
-        "sportsbook": "nflverse_schedule",
+        "provider": "nflverse",
+        "provider_event_id": None,
+        "sportsbook": None,
+        "sportsbook_updated_at": pd.NaT,
+        "commence_time": pd.NaT,
+        "is_live": False,
         "season": SEASON,
         "week": WEEK,
         "game_id": GAME_ID,
@@ -260,7 +265,8 @@ class TestListEdgesRoute:
         assert provenance["total_model_types"] == ["xgboost"]
         assert provenance["product_ids"] == ["api-weekly-product"]
         assert provenance["product_run_ids"] == ["api-weekly-run"]
-        assert provenance["market_sources"] == ["nflverse_schedule"]
+        assert provenance["market_providers"] == ["nflverse"]
+        assert provenance["market_sportsbooks"] == []
         assert provenance["market_fetched_at"] == ["2026-09-05T12:00:00Z"]
 
     def test_omitted_bankroll_keeps_dollar_stake_unavailable(

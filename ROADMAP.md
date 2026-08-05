@@ -250,7 +250,7 @@ Future tooling work:
 
 ### Market data
 
-A dependable supported long-term provider is not yet selected. Multi-book execution features remain blocked on that decision. The legacy DraftKings adapter may fail behind anti-bot responses.
+The Odds API v4 is the selected supported current-market provider. Current provider ingestion, same-book evaluation, operational integration, and multi-book execution features remain active program work.
 
 ### Injury, news, and live state
 

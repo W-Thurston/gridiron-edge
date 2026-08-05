@@ -54,7 +54,7 @@ class TestPipelineContract:
         assert result.exit_code == 0, result.output
         assert "all registered stages run" in result.output
         assert "not part of this command" in result.output
-        assert "ingest dk-odds" in result.output
+        assert "ingest dk-odds" not in result.output
 
 
 class TestStageStalenessCheck:

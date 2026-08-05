@@ -72,7 +72,8 @@ def _markets(
         "game_date": "2026-09-05",
         "away_team": "Kansas City Chiefs",
         "home_team": "Los Angeles Chargers",
-        "sportsbook": "nflverse_schedule",
+        "provider": "nflverse",
+        "sportsbook": None,
         "fetched_at": timestamp,
     }
     return DataFrame(
@@ -114,7 +115,7 @@ def test_positive_result_pairs_rows_and_diagnostics() -> None:
     assert result.diagnostics.provenance.win_event_ids == ("win-event",)
     assert result.diagnostics.provenance.total_event_ids == ("total-event",)
     assert result.diagnostics.provenance.product_ids == ("weekly-product",)
-    assert result.diagnostics.provenance.market_sources == ("nflverse_schedule",)
+    assert result.diagnostics.provenance.market_providers == ("nflverse",)
 
 
 def test_no_predictions_returns_explicit_empty_reason() -> None:

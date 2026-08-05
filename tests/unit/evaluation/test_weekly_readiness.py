@@ -1,3 +1,5 @@
+# tests/unit/evaluation/test_weekly_readiness.py
+
 """Tests for weekly readiness domain contracts."""
 
 from __future__ import annotations
@@ -46,7 +48,8 @@ def _readiness(
             13,
             tzinfo=UTC,
         ),
-        "market_source": "draftkings",
+        "market_providers": ("the_odds_api",),
+        "market_sportsbooks": ("draftkings",),
         "blockers": (),
     }
     values.update(overrides)
@@ -115,6 +118,7 @@ def _markets(
         game_id = f"2026_01_GAME_{index}"
         base = {
             "fetched_at": fetched_at,
+            "provider": "the_odds_api",
             "sportsbook": "draftkings",
             "season": "2026-2027",
             "week": 1,
@@ -171,6 +175,7 @@ def _markets(
         rows,
         columns=[
             "fetched_at",
+            "provider",
             "sportsbook",
             "season",
             "week",
@@ -207,7 +212,8 @@ def test_blocker_makes_result_not_ready() -> None:
         eligible_market_count=0,
         positive_edge_count=0,
         market_fetched_at=None,
-        market_source=None,
+        market_providers=(),
+        market_sportsbooks=(),
         blockers=(WeeklyReadinessBlocker.MISSING_MARKET_DATA,),
     )
 
@@ -249,7 +255,8 @@ def test_no_predictions_is_distinct_from_no_market_data() -> None:
         eligible_market_count=0,
         positive_edge_count=0,
         market_fetched_at=None,
-        market_source=None,
+        market_providers=(),
+        market_sportsbooks=(),
         blockers=(WeeklyReadinessBlocker.MISSING_MARKET_DATA,),
     )
 
@@ -402,21 +409,23 @@ def test_nullable_provenance_is_allowed() -> None:
     result = _readiness(
         prediction_generated_at=None,
         market_fetched_at=None,
-        market_source=None,
+        market_providers=(),
+        market_sportsbooks=(),
     )
 
     assert result.prediction_generated_at is None
     assert result.market_fetched_at is None
-    assert result.market_source is None
+    assert result.market_providers == ()
+    assert result.market_sportsbooks == ()
 
 
-def test_rejects_empty_market_source() -> None:
+def test_rejects_empty_market_providers() -> None:
     with pytest.raises(
         ValueError,
-        match="market_source must not be empty",
+        match="market_providers must not contain empty values",
     ):
         _readiness(
-            market_source=" ",
+            market_providers=(" ",),
         )
 
 
@@ -492,7 +501,8 @@ class TestEvaluateWeeklyReadiness:
         assert result.prediction_market_match_count == 2
         assert result.eligible_market_count == 6
         assert result.positive_edge_count == 1
-        assert result.market_source == "draftkings"
+        assert result.market_providers == ("the_odds_api",)
+        assert result.market_sportsbooks == ("draftkings",)
 
     def test_sixteen_scheduled_and_fifteen_predicted(
         self,
@@ -640,7 +650,8 @@ class TestEvaluateWeeklyReadiness:
             edges=pd.DataFrame(columns=["ev"]),
         )
 
-        assert result.market_source == "draftkings"
+        assert result.market_providers == ("the_odds_api",)
+        assert result.market_sportsbooks == ("draftkings",)
         assert result.market_fetched_at == datetime(
             2026,
             9,
@@ -649,14 +660,11 @@ class TestEvaluateWeeklyReadiness:
             tzinfo=UTC,
         )
 
-    def test_mixed_market_sources_are_ambiguous(
+    def test_mixed_market_providers_are_ambiguous(
         self,
     ) -> None:
         markets = _markets()
-        markets.loc[
-            markets.index[0],
-            "sportsbook",
-        ] = "other_source"
+        markets.loc[markets.index[0], "provider"] = "other_source"
 
         result = evaluate_weekly_readiness(
             season="2026-2027",
@@ -667,7 +675,8 @@ class TestEvaluateWeeklyReadiness:
             edges=pd.DataFrame(columns=["ev"]),
         )
 
-        assert result.market_source is None
+        assert result.market_providers == ("other_source", "the_odds_api")
+        assert result.market_sportsbooks == ("draftkings",)
         assert WeeklyReadinessBlocker.AMBIGUOUS_MARKET_PROVENANCE in result.blockers
 
     def test_does_not_mutate_inputs(self) -> None:
@@ -818,6 +827,7 @@ class TestEvaluateWeeklyReadiness:
         markets = _markets().drop(
             columns=[
                 "fetched_at",
+                "provider",
                 "sportsbook",
             ]
         )
@@ -832,7 +842,8 @@ class TestEvaluateWeeklyReadiness:
         )
 
         assert result.market_fetched_at is None
-        assert result.market_source is None
+        assert result.market_providers == ()
+        assert result.market_sportsbooks == ()
         assert WeeklyReadinessBlocker.MISSING_MARKET_PROVENANCE in result.blockers
 
     def test_mixed_market_timestamps_are_ambiguous(

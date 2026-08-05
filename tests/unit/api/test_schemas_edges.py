@@ -176,7 +176,8 @@ class TestEdgeDiagnosticsResponse:
             total_model_types=("xgboost",),
             product_ids=("weekly-product-1",),
             product_run_ids=("weekly-run-1",),
-            market_sources=("nflverse_schedule",),
+            market_providers=("nflverse",),
+            market_sportsbooks=(),
             market_fetched_at=(fetched_at,),
         )
         diagnostics = EdgeDiagnosticsResponse(
@@ -200,7 +201,7 @@ class TestEdgeDiagnosticsResponse:
         assert diagnostics.state is EdgeResultState.POSITIVE_EDGES
         assert diagnostics.provenance.win_event_ids == ("win-event-1",)
         assert diagnostics.provenance.total_model_types == ("xgboost",)
-        assert diagnostics.provenance.market_sources == ("nflverse_schedule",)
+        assert diagnostics.provenance.market_providers == ("nflverse",)
         assert diagnostics.provenance.market_fetched_at == (fetched_at,)
 
     @pytest.mark.parametrize("blocker", list(EdgeDiagnosticBlocker))

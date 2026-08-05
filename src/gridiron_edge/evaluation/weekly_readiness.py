@@ -134,7 +134,8 @@ class WeeklyReadiness:
 
     prediction_generated_at: datetime | None = None
     market_fetched_at: datetime | None = None
-    market_source: str | None = None
+    market_providers: tuple[str, ...] = ()
+    market_sportsbooks: tuple[str, ...] = ()
 
     blockers: tuple[WeeklyReadinessBlocker, ...] = ()
 
@@ -175,8 +176,12 @@ class WeeklyReadiness:
             self.market_fetched_at,
         )
 
-        if self.market_source is not None and not self.market_source.strip():
-            raise ValueError("market_source must not be empty when provided.")
+        for field_name in ("market_providers", "market_sportsbooks"):
+            values: tuple[str, ...] = getattr(self, field_name)
+            if tuple(sorted(set(values))) != values:
+                raise ValueError(f"{field_name} must contain sorted unique values.")
+            if any(not value.strip() for value in values):
+                raise ValueError(f"{field_name} must not contain empty values.")
 
         if len(set(self.blockers)) != len(self.blockers):
             raise ValueError("blockers must not contain duplicate values.")
@@ -478,32 +483,33 @@ def _unique_utc_timestamp(
     return unique.iloc[0].to_pydatetime()
 
 
-def _market_source(markets: DataFrame) -> str | None:
-    """Return one explicit market source, otherwise None."""
-    if markets.empty or "sportsbook" not in markets.columns:
-        return None
-
-    sources = sorted(
-        {str(value).strip() for value in markets["sportsbook"].dropna() if str(value).strip()}
+def _market_providers(markets: DataFrame) -> tuple[str, ...]:
+    """Return sorted provider identities from scoped market rows."""
+    if markets.empty or "provider" not in markets.columns:
+        return ()
+    return tuple(
+        sorted({str(value).strip() for value in markets["provider"].dropna() if str(value).strip()})
     )
 
-    return sources[0] if len(sources) == 1 else None
+
+def _market_sportsbooks(markets: DataFrame) -> tuple[str, ...]:
+    """Return sorted offered-price sportsbook identities when available."""
+    if markets.empty or "sportsbook" not in markets.columns:
+        return ()
+    return tuple(
+        sorted(
+            {str(value).strip() for value in markets["sportsbook"].dropna() if str(value).strip()}
+        )
+    )
 
 
 def _market_provenance_is_ambiguous(markets: DataFrame) -> bool:
-    """Return whether market rows contain mixed provenance."""
+    """Return whether one current snapshot contains mixed provenance."""
     if markets.empty:
         return False
-
-    if "sportsbook" in markets.columns:
-        sources = {
-            str(value).strip() for value in markets["sportsbook"].dropna() if str(value).strip()
-        }
-        if len(sources) > 1:
-            return True
-
+    if len(_market_providers(markets)) > 1:
+        return True
     if "fetched_at" in markets.columns:
-        # pyrefly: ignore [missing-attribute]
         timestamps = pd.to_datetime(
             markets["fetched_at"],
             utc=True,
@@ -511,7 +517,6 @@ def _market_provenance_is_ambiguous(markets: DataFrame) -> bool:
         ).dropna()
         if timestamps.nunique() > 1:
             return True
-
     return False
 
 
@@ -632,7 +637,7 @@ def _artifact_provenance_blockers(
     markets: DataFrame,
     prediction_generated_at: datetime | None,
     market_fetched_at: datetime | None,
-    market_source: str | None,
+    market_providers: tuple[str, ...],
 ) -> list:
     """Derive prediction and market artifact-provenance blockers."""
     blockers: list[WeeklyReadinessBlocker] = []
@@ -645,7 +650,7 @@ def _artifact_provenance_blockers(
 
     if _market_provenance_is_ambiguous(markets):
         blockers.append(WeeklyReadinessBlocker.AMBIGUOUS_MARKET_PROVENANCE)
-    elif market_fetched_at is None or market_source is None:
+    elif market_fetched_at is None or len(market_providers) != 1:
         blockers.append(WeeklyReadinessBlocker.MISSING_MARKET_PROVENANCE)
 
     return blockers
@@ -737,9 +742,8 @@ def evaluate_weekly_readiness(
         scoped_markets,
         "fetched_at",
     )
-    market_source = _market_source(
-        scoped_markets,
-    )
+    market_providers = _market_providers(scoped_markets)
+    market_sportsbooks = _market_sportsbooks(scoped_markets)
 
     market_game_count = len(market_game_ids)
 
@@ -766,7 +770,7 @@ def evaluate_weekly_readiness(
             markets=scoped_markets,
             prediction_generated_at=prediction_generated_at,
             market_fetched_at=market_fetched_at,
-            market_source=market_source,
+            market_providers=market_providers,
         )
     )
 
@@ -785,6 +789,7 @@ def evaluate_weekly_readiness(
         positive_edge_count=positive_edge_count,
         prediction_generated_at=prediction_generated_at,
         market_fetched_at=market_fetched_at,
-        market_source=market_source,
+        market_providers=market_providers,
+        market_sportsbooks=market_sportsbooks,
         blockers=tuple(blockers),
     )

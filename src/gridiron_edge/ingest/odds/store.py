@@ -1,29 +1,9 @@
-# src/gridiron_edge/ingest/odds/store.py
+"""Provider-aware quote storage for observations and the current snapshot.
 
-"""Source-neutral odds storage with an append ledger and current snapshot.
-
-All markets use one long-format contract with one row per market side, game,
-and ingestion snapshot. Sources may retain incomplete canonical side rows with
-nullable odds or lines so missing market values remain distinguishable from
-missing games.
-
-Storage layout:
-    data/odds/odds_log.parquet     - historical source-labeled snapshots
-    data/odds/odds_current.parquet - explicitly written current snapshot
-
-Schema:
-    fetched_at      datetime64[ns, UTC]  UTC timestamp of ingestion
-    sportsbook      str                 source identifier
-    season          str                 "2026-2027"
-    week            int                 NFL week number
-    game_id         str                 canonical game ID
-    game_date       str                 "2026-09-05"
-    away_team       str                 long away-team name
-    home_team       str                 long home-team name
-    market          str                 "moneyline" | "spread" | "total"
-    side            str                 "away" | "home" | "over" | "under"
-    odds            float               American odds, nullable
-    line            float               spread or total value, nullable
+The canonical long-format contract contains one row per provider, sportsbook,
+game, market, side, and local observation. Generic storage owns validation and
+atomic persistence only; provider parsing and canonical game matching belong to
+provider adapters.
 """
 
 from __future__ import annotations
@@ -32,7 +12,7 @@ import datetime
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 from pandas import DataFrame
@@ -41,10 +21,14 @@ from gridiron_edge.core.settings import get_settings
 
 logger: Logger = logging.getLogger(__name__)
 
-# Column order for the ledger - enforced on every write.
-_LEDGER_COLUMNS: list[str] = [
+QUOTE_COLUMNS: tuple[str, ...] = (
     "fetched_at",
+    "provider",
+    "provider_event_id",
     "sportsbook",
+    "sportsbook_updated_at",
+    "commence_time",
+    "is_live",
     "season",
     "week",
     "game_id",
@@ -55,7 +39,21 @@ _LEDGER_COLUMNS: list[str] = [
     "side",
     "odds",
     "line",
-]
+)
+
+OBSERVATION_IDENTITY_COLUMNS: tuple[str, ...] = (
+    "fetched_at",
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "game_id",
+    "market",
+    "side",
+    "odds",
+    "line",
+    "sportsbook_updated_at",
+    "is_live",
+)
 
 _VALID_MARKET_SIDES: dict[str, frozenset[str]] = {
     "moneyline": frozenset({"away", "home"}),
@@ -64,368 +62,206 @@ _VALID_MARKET_SIDES: dict[str, frozenset[str]] = {
 }
 
 _REQUIRED_TEXT_COLUMNS: tuple[str, ...] = (
-    "sportsbook",
+    "provider",
     "season",
     "game_id",
+    "game_date",
     "away_team",
     "home_team",
     "market",
     "side",
 )
 
+_NULLABLE_TEXT_COLUMNS: tuple[str, ...] = (
+    "provider_event_id",
+    "sportsbook",
+)
 
-def _normalize_odds_schema(rows: DataFrame) -> DataFrame:
-    """Require the exact generic odds schema and canonical column order."""
-    missing = sorted(set(_LEDGER_COLUMNS) - set(rows.columns))
-    unknown = sorted(set(rows.columns) - set(_LEDGER_COLUMNS))
 
+def empty_quote_frame() -> DataFrame:
+    """Return an empty frame with the canonical quote column order."""
+    return DataFrame(columns=list(QUOTE_COLUMNS))
+
+
+def _require_exact_schema(rows: DataFrame) -> DataFrame:
+    """Require the exact provider-aware quote schema and column order."""
+    missing = sorted(set(QUOTE_COLUMNS) - set(rows.columns))
+    unknown = sorted(set(rows.columns) - set(QUOTE_COLUMNS))
     if missing:
-        raise ValueError("Invalid odds schema; missing columns: " + ", ".join(missing))
+        raise ValueError("Invalid quote schema; missing columns: " + ", ".join(missing))
     if unknown:
-        raise ValueError("Invalid odds schema; unknown columns: " + ", ".join(unknown))
+        raise ValueError("Invalid quote schema; unknown columns: " + ", ".join(unknown))
+    return rows.loc[:, QUOTE_COLUMNS].copy()
 
-    return rows.loc[:, _LEDGER_COLUMNS].copy()
 
-
-def _validate_odds_text_columns(rows: DataFrame) -> None:
-    """Require nonempty market identity and provenance values."""
+def _validate_required_text(rows: DataFrame) -> None:
+    """Require nonempty canonical and provider identity text."""
     for column in _REQUIRED_TEXT_COLUMNS:
         values = rows[column]
-        if values.isna().any():
-            raise ValueError(f"Odds column {column!r} must contain nonempty values.")
-        if values.astype(str).str.strip().eq("").any():
-            raise ValueError(f"Odds column {column!r} must contain nonempty values.")
+        if values.isna().any() or values.astype(str).str.strip().eq("").any():
+            raise ValueError(f"Quote column {column!r} must contain nonempty values.")
 
 
-def _normalize_odds_week(rows: DataFrame) -> None:
-    """Validate and normalize NFL week values in place."""
-    if rows["week"].isna().any():
-        raise ValueError("Odds week must not be null.")
+def _normalize_nullable_text(rows: DataFrame) -> None:
+    """Normalize optional text to string-or-null and reject empty strings."""
+    for column in _NULLABLE_TEXT_COLUMNS:
+        values = rows[column]
+        present = values.notna()
+        if values.loc[present].astype(str).str.strip().eq("").any():
+            raise ValueError(f"Quote column {column!r} must be null or nonempty.")
+        rows[column] = values.where(~present, values.astype("string").str.strip())
 
-    rows["week"] = rows["week"].astype(int)
 
-    if (rows["week"] < 1).any():
-        raise ValueError("Odds week must be at least 1.")
+def _normalize_week(rows: DataFrame) -> None:
+    """Normalize positive integer NFL week values in place."""
+    numeric = pd.to_numeric(rows["week"], errors="coerce")
+    if numeric.isna().any() or (numeric % 1 != 0).any() or (numeric < 1).any():
+        raise ValueError("Quote week must contain positive integers.")
+    rows["week"] = numeric.astype(int)
 
 
-def _normalize_odds_fetched_at(rows: DataFrame) -> None:
-    """Validate and normalize source ingestion timestamps in place."""
-    for value in rows["fetched_at"]:
+def _normalize_utc_timestamp(
+    rows: DataFrame,
+    column: str,
+    *,
+    required: bool,
+) -> None:
+    """Normalize one required or nullable timezone-aware UTC timestamp."""
+    normalized: list[str] = []
+    for value in rows[column]:
+        if pd.isna(value):
+            if required:
+                raise ValueError(f"Quote {column} values must be valid datetimes.")
+            normalized.append("NaT")
+            continue
         timestamp = pd.Timestamp(value)
-
-        if pd.isna(timestamp):
-            raise ValueError("Odds fetched_at values must be valid datetimes.")
         if timestamp.tzinfo is None:
-            raise ValueError("Odds fetched_at values must be timezone-aware UTC.")
+            raise ValueError(f"Quote {column} values must be timezone-aware UTC.")
         if timestamp.utcoffset() != datetime.timedelta(0):
-            raise ValueError("Odds fetched_at values must use UTC.")
+            raise ValueError(f"Quote {column} values must use UTC.")
+        normalized.append(timestamp.isoformat())
+    rows[column] = pd.to_datetime(normalized, utc=True)
 
-    fetched_at = pd.to_datetime(
-        rows["fetched_at"],
-        utc=True,
-        errors="coerce",
-    )
-    # pyrefly: ignore [missing-attribute]
-    if fetched_at.isna().any():
-        raise ValueError("Odds fetched_at values must be valid datetimes.")
 
-    rows["fetched_at"] = fetched_at
+def _normalize_is_live(rows: DataFrame) -> None:
+    """Require explicit boolean live-state values."""
+    if rows["is_live"].isna().any():
+        raise ValueError("Quote is_live values must not be null.")
+    invalid = [value for value in rows["is_live"] if not isinstance(value, bool)]
+    if invalid:
+        raise ValueError("Quote is_live values must be boolean.")
+    rows["is_live"] = rows["is_live"].astype(bool)
 
 
 def _validate_market_side_pairs(rows: DataFrame) -> None:
-    """Require canonical sides for each market family."""
+    """Require canonical sides for each supported market family."""
     invalid_pairs = sorted(
         {
-            (
-                str(row["market"]),
-                str(row["side"]),
-            )
+            (str(row["market"]), str(row["side"]))
             for _, row in rows.iterrows()
-            if str(row["side"])
-            not in _VALID_MARKET_SIDES.get(
-                str(row["market"]),
-                frozenset(),
-            )
+            if str(row["side"]) not in _VALID_MARKET_SIDES.get(str(row["market"]), frozenset())
         }
     )
-
     if invalid_pairs:
         rendered = ", ".join(f"{market}/{side}" for market, side in invalid_pairs)
-        raise ValueError("Odds rows contain invalid market/side pairs: " + rendered)
+        raise ValueError("Quote rows contain invalid market/side pairs: " + rendered)
 
 
-def validate_odds_rows(rows: DataFrame) -> DataFrame:
-    """Validate and normalize source-labeled long-format market rows.
+def _normalize_numeric(rows: DataFrame, column: str, *, reject_zero: bool) -> None:
+    """Normalize nullable finite numeric quote values."""
+    raw = rows[column]
+    converted = pd.to_numeric(raw, errors="coerce")
+    invalid_parse = raw.notna() & converted.isna()
+    if invalid_parse.any():
+        raise ValueError(f"Quote {column} values must be numeric or null.")
+    finite = converted.dropna().map(
+        lambda value: bool(pd.notna(value) and abs(value) != float("inf"))
+    )
+    if not finite.all():
+        raise ValueError(f"Quote {column} values must be finite when provided.")
+    if reject_zero and converted.dropna().eq(0).any():
+        raise ValueError("Quote odds values must not be zero.")
+    rows[column] = converted.astype(float)
 
-    Canonical rows may retain nullable odds and line values. Validation
-    does not require complete market pairs and does not fabricate missing
-    prices.
-    """
-    normalized = _normalize_odds_schema(rows)
 
+def validate_quote_rows(rows: DataFrame) -> DataFrame:
+    """Validate and normalize provider-aware long-format quote rows."""
+    normalized = _require_exact_schema(rows)
     if normalized.empty:
         return normalized
 
-    _validate_odds_text_columns(normalized)
-    _normalize_odds_week(normalized)
-    _normalize_odds_fetched_at(normalized)
+    _validate_required_text(normalized)
+    _normalize_nullable_text(normalized)
+    _normalize_week(normalized)
+    _normalize_utc_timestamp(normalized, "fetched_at", required=True)
+    _normalize_utc_timestamp(normalized, "sportsbook_updated_at", required=False)
+    _normalize_utc_timestamp(normalized, "commence_time", required=False)
+    _normalize_is_live(normalized)
     _validate_market_side_pairs(normalized)
-
-    normalized["odds"] = pd.to_numeric(
-        normalized["odds"],
-        errors="coerce",
-    )
-    normalized["line"] = pd.to_numeric(
-        normalized["line"],
-        errors="coerce",
-    )
-
+    _normalize_numeric(normalized, "odds", reject_zero=True)
+    _normalize_numeric(normalized, "line", reject_zero=False)
     return normalized
 
 
 def _odds_dir(repo: Path | None = None) -> Path:
-    """Return the odds data directory, creating it if needed.
-
-    Args:
-        repo: Repository root path. Defaults to ``get_settings().repo_root``.
-
-    Returns:
-        Absolute path to ``data/odds/``.
-    """
-    root: Path = repo or get_settings().repo_root
-    path: Path = root / "data" / "odds"
+    """Return and create the canonical odds directory."""
+    root = repo or get_settings().repo_root
+    path = root / "data" / "odds"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def wide_to_long(
-    df_wide: pd.DataFrame,
-    *,
-    sportsbook: str,
-    season: str,
-    week: int,
-    fetched_at: datetime.datetime | None = None,
-) -> pd.DataFrame:
-    """Convert a wide per-team odds DataFrame to the long ledger format.
+def _atomic_write_parquet(rows: DataFrame, path: Path) -> None:
+    """Write Parquet beside the destination and atomically replace it."""
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        rows.to_parquet(temporary, index=False)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
-    The wide format from ``pull_dk_sportsbook_odds_refactored()`` has one
-    row per team per game with columns like ``moneyline``, ``spread_value``,
-    ``spread_odds``, ``total_OU_value``, etc.  This function melts it into
-    one row per market per side per game and resolves canonical
-    ``game_id`` values via ``_game_id.resolve_dk_game_ids``.
 
-    Args:
-        df_wide: DataFrame from ``pull_dk_sportsbook_odds_refactored()``.
-            Expected columns: ``team``, ``opponent``, ``location``,
-            ``start_time``, ``event_id``, ``moneyline``, ``spread_value``,
-            ``spread_odds``, ``total_OU_value``, ``over_total_odds``,
-            ``under_total_odds``.
-        sportsbook: Sportsbook identifier (e.g. ``"draftkings"``).
-        season: NFL season label (e.g. ``"2026-2027"``).
-        week: NFL week number.
-        fetched_at: UTC timestamp of the pull. Defaults to ``datetime.now(UTC)``.
-
-    Returns:
-        Long-format DataFrame with columns matching ``_LEDGER_COLUMNS``.
-        Rows whose teams can't be resolved to canonical game_ids are
-        excluded.
-    """
-    from gridiron_edge.ingest.odds._game_id import resolve_dk_game_ids
-
-    # Keep UTC tz on the timestamp; archive consumers expect tz-aware
-    # datetimes per archive/H1.
-    ts = fetched_at or datetime.datetime.now(tz=datetime.UTC)
-
-    # Resolve canonical game_ids from team names. The resolver handles
-    # both the intermediate (home_team/away_team) and wide (team/opponent/
-    # location) DataFrame formats and adds a ``game_id`` column.
-    season_year: int = int(season[:4])
-    df_with_gid = resolve_dk_game_ids(df_wide, season_year=season_year, week=week)
-
-    rows: list[dict] = []
-    away_rows = df_with_gid[df_with_gid["location"] == 0].set_index("event_id")
-    home_rows = df_with_gid[df_with_gid["location"] == 1].set_index("event_id")
-
-    for event_id, home_row in home_rows.iterrows():
-        if event_id not in away_rows.index:
-            continue
-        away_row = away_rows.loc[[event_id]].iloc[0]  # type: ignore[index]
-
-        # Skip games whose teams didn't resolve to canonical short codes.
-        canonical_game_id = home_row.get("game_id")
-        if canonical_game_id is None or pd.isna(canonical_game_id):
-            logger.warning(
-                "wide_to_long: skipping event_id=%s - game_id resolution failed "
-                "for home='%s' away='%s'",
-                event_id,
-                home_row.get("team"),
-                away_row.get("team"),
-            )
-            continue
-
-        home_team = str(home_row["team"])
-        away_team = str(away_row["team"])
-        start_time = home_row.get("start_time")
-        game_date: str = (
-            pd.Timestamp(start_time).strftime("%Y-%m-%d") if pd.notna(start_time) else ""
-        )
-
-        base: dict[str, Any] = {
-            "fetched_at": ts,
-            "sportsbook": sportsbook,
-            "season": season,
-            "week": week,
-            "game_id": canonical_game_id,
-            "game_date": game_date,
-            "away_team": away_team,
-            "home_team": home_team,
-        }
-
-        # Moneyline
-        if pd.notna(away_row.get("moneyline")):
-            rows.append(
-                {
-                    **base,
-                    "market": "moneyline",
-                    "side": "away",
-                    "odds": float(away_row["moneyline"]),
-                    "line": float("nan"),
-                }
-            )
-        if pd.notna(home_row.get("moneyline")):
-            rows.append(
-                {
-                    **base,
-                    "market": "moneyline",
-                    "side": "home",
-                    "odds": float(home_row["moneyline"]),
-                    "line": float("nan"),
-                }
-            )
-
-        # Spread
-        if pd.notna(away_row.get("spread_value")) and pd.notna(away_row.get("spread_odds")):
-            rows.append(
-                {
-                    **base,
-                    "market": "spread",
-                    "side": "away",
-                    "odds": float(away_row["spread_odds"]),
-                    "line": float(away_row["spread_value"]),
-                }
-            )
-        if pd.notna(home_row.get("spread_value")) and pd.notna(home_row.get("spread_odds")):
-            rows.append(
-                {
-                    **base,
-                    "market": "spread",
-                    "side": "home",
-                    "odds": float(home_row["spread_odds"]),
-                    "line": float(home_row["spread_value"]),
-                }
-            )
-
-        # Total (only need one row per over/under, use home row)
-        if pd.notna(home_row.get("total_OU_value")):
-            if pd.notna(home_row.get("over_total_odds")):
-                rows.append(
-                    {
-                        **base,
-                        "market": "total",
-                        "side": "over",
-                        "odds": float(home_row["over_total_odds"]),
-                        "line": float(home_row["total_OU_value"]),
-                    }
-                )
-            if pd.notna(home_row.get("under_total_odds")):
-                rows.append(
-                    {
-                        **base,
-                        "market": "total",
-                        "side": "under",
-                        "odds": float(home_row["under_total_odds"]),
-                        "line": float(home_row["total_OU_value"]),
-                    }
-                )
-
-    if not rows:
-        return pd.DataFrame(columns=_LEDGER_COLUMNS)
-
-    return pd.DataFrame(rows, columns=_LEDGER_COLUMNS)
+def _deduplicate_observations(rows: DataFrame) -> DataFrame:
+    """Return deterministic unique local quote observations."""
+    return rows.drop_duplicates(
+        subset=list(OBSERVATION_IDENTITY_COLUMNS),
+        keep="last",
+    ).reset_index(drop=True)
 
 
 def append_to_odds_ledger(
-    df_long: pd.DataFrame,
+    quotes: DataFrame,
     *,
     repo: Path | None = None,
 ) -> Path:
-    """Append new odds rows to the historical ledger Parquet file.
-
-    Reads the existing ledger (if any), removes any rows with the same
-    ``(sportsbook, season, week, fetched_at)`` combination to avoid
-    duplicates from re-runs, then appends the new rows and writes back.
-
-    Args:
-        df_long: Long-format odds DataFrame from ``wide_to_long()``.
-        repo: Repository root path.
-
-    Returns:
-        Absolute path to the ledger file.
-    """
-    path: Path = _odds_dir(repo) / "odds_log.parquet"
-    normalized = validate_odds_rows(df_long)
-
-    if not path.exists():
-        df_out = normalized
-    elif normalized.empty:
-        # Nothing to add; just return the existing file path unchanged.
+    """Append normalized local observations to the atomic quote ledger."""
+    path = _odds_dir(repo) / "odds_log.parquet"
+    normalized = validate_quote_rows(quotes)
+    if path.exists() and normalized.empty:
         return path
+
+    if path.exists():
+        existing = validate_quote_rows(pd.read_parquet(path))
+        combined = pd.concat([existing, normalized], ignore_index=True)
     else:
-        existing: DataFrame = pd.read_parquet(path)
+        combined = normalized
 
-        # Drop any rows from the same pull (idempotent re-runs).
-        # The bug fixed here: df_long.loc[col_list, :] tried to select
-        # rows whose *index* matched those strings (not column projection).
-        # df_long[col_list] is the correct column-projection form.
-        key_cols: list[str] = ["sportsbook", "season", "week", "fetched_at"]
-        key_vals: DataFrame = normalized.loc[:, key_cols].drop_duplicates()
-
-        # Build a boolean mask: True for rows we want to KEEP from existing
-        # (i.e. rows whose key tuple does NOT appear in df_long).
-        existing_keys = existing[key_cols].apply(tuple, axis=1)
-        new_keys = key_vals.apply(tuple, axis=1)
-        existing = existing.loc[~existing_keys.isin(new_keys), :]
-
-        existing = validate_odds_rows(existing)
-        df_out = pd.concat([existing, normalized], ignore_index=True)
-
-    df_out.to_parquet(path, index=False)
-    logger.info("Odds ledger: %d total rows → %s", len(df_out), path)
+    output = _deduplicate_observations(validate_quote_rows(combined))
+    _atomic_write_parquet(output, path)
+    logger.info("Odds observation ledger: %d rows -> %s", len(output), path)
     return path
 
 
 def write_current_odds_snapshot(
-    df_long: pd.DataFrame,
+    quotes: DataFrame,
     *,
     repo: Path | None = None,
 ) -> Path:
-    """Write the current odds pull as a snapshot for downstream use.
-
-    Overwrites ``data/odds/odds_current.parquet`` with the supplied snapshot.
-    Used by the predictions viz to get the current week's odds without
-    reading the full historical ledger.
-
-    Args:
-        df_long: Long-format odds DataFrame from ``wide_to_long()``.
-        repo: Repository root path.
-
-    Returns:
-        Absolute path to the snapshot file.
-    """
-    path: Path = _odds_dir(repo) / "odds_current.parquet"
-    normalized = validate_odds_rows(df_long)
-    normalized.to_parquet(path, index=False)
-    logger.info("Odds snapshot written: %d rows → %s", len(normalized), path)
+    """Atomically replace the current validated quote snapshot."""
+    path = _odds_dir(repo) / "odds_current.parquet"
+    normalized = validate_quote_rows(quotes)
+    _atomic_write_parquet(normalized, path)
+    logger.info("Current odds snapshot: %d rows -> %s", len(normalized), path)
     return path
 
 
@@ -433,61 +269,39 @@ def load_current_odds(
     *,
     market: str | None = None,
     repo: Path | None = None,
-) -> pd.DataFrame | None:
-    """Load the current odds snapshot, optionally filtered by market.
-
-    Args:
-        market: If provided, filter to rows where ``market == market``
-            (e.g. ``"moneyline"``).
-        repo: Repository root path.
-
-    Returns:
-        Long-format DataFrame, or ``None`` if no snapshot exists.
-    """
-    path: Path = _odds_dir(repo) / "odds_current.parquet"
+) -> DataFrame | None:
+    """Load the current quote snapshot, optionally filtered by market."""
+    path = _odds_dir(repo) / "odds_current.parquet"
     if not path.exists():
         return None
-    df: DataFrame = validate_odds_rows(pd.read_parquet(path))
+    rows = validate_quote_rows(pd.read_parquet(path))
     if market is not None:
-        df = df.loc[df["market"] == market, :].copy()
-    return df
+        rows = rows.loc[rows["market"] == market, :].copy()
+    return rows
 
 
 def load_odds_ledger(
     *,
+    provider: str | None = None,
     sportsbook: str | None = None,
     season: str | None = None,
     week: int | None = None,
     market: str | None = None,
     repo: Path | None = None,
-) -> pd.DataFrame:
-    """Load the historical odds ledger with optional filters.
-
-    Uses Parquet predicate pushdown for efficient filtered reads when
-    pyarrow is available.
-
-    Args:
-        sportsbook: Filter to a specific sportsbook (e.g. ``"draftkings"``).
-        season: Filter to a specific season (e.g. ``"2026-2027"``).
-        week: Filter to a specific week.
-        market: Filter to a specific market (e.g. ``"moneyline"``).
-        repo: Repository root path.
-
-    Returns:
-        Long-format DataFrame. Empty DataFrame if no ledger exists yet.
-    """
+) -> DataFrame:
+    """Load observed quote history with optional provider-aware filters."""
     path = _odds_dir(repo) / "odds_log.parquet"
     if not path.exists():
-        return pd.DataFrame(columns=_LEDGER_COLUMNS)
+        return empty_quote_frame()
 
-    filters: list[tuple] = []
-    if sportsbook is not None:
-        filters.append(("sportsbook", "==", sportsbook))
-    if season is not None:
-        filters.append(("season", "==", season))
-    if week is not None:
-        filters.append(("week", "==", week))
-    if market is not None:
-        filters.append(("market", "==", market))
-
-    return validate_odds_rows(pd.read_parquet(path, filters=filters or None))
+    filters: list[tuple[str, str, object]] = []
+    for column, value in (
+        ("provider", provider),
+        ("sportsbook", sportsbook),
+        ("season", season),
+        ("week", week),
+        ("market", market),
+    ):
+        if value is not None:
+            filters.append((column, "==", value))
+    return validate_quote_rows(pd.read_parquet(path, filters=filters or None))

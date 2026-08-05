@@ -67,14 +67,19 @@ def _product() -> DataFrame:
 
 def _markets() -> DataFrame:
     base: dict[str, object] = {
+        "fetched_at": datetime(2026, 10, 20, 12, tzinfo=UTC),
+        "provider": "nflverse",
+        "provider_event_id": None,
+        "sportsbook": None,
+        "sportsbook_updated_at": pd.NaT,
+        "commence_time": pd.NaT,
+        "is_live": False,
         "season": SEASON,
         "week": WEEK,
         "game_id": GAME_ID,
         "game_date": "2026-10-22",
         "away_team": "Kansas City Chiefs",
         "home_team": "Los Angeles Chargers",
-        "sportsbook": "nflverse_schedule",
-        "fetched_at": datetime(2026, 10, 20, 12, tzinfo=UTC),
     }
     return DataFrame(
         [

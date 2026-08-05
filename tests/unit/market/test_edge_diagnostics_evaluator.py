@@ -47,12 +47,13 @@ def _predictions(**overrides: object) -> DataFrame:
 def _markets(
     *,
     fetched_at: datetime | None = None,
-    source: str = "nflverse_schedule",
+    source: str = "nflverse",
 ) -> DataFrame:
     timestamp = fetched_at or datetime(2026, 9, 5, 12, tzinfo=UTC)
     base: dict[str, object] = {
         "fetched_at": timestamp,
-        "sportsbook": source,
+        "provider": source,
+        "sportsbook": None,
         "season": SEASON,
         "week": WEEK,
         "game_id": GAME_ID,
@@ -266,7 +267,7 @@ def test_provenance_retains_win_total_product_and_market_values() -> None:
     assert result.provenance.win_event_ids == ("win-a", "win-b")
     assert result.provenance.total_event_ids == ("total-a", "total-b")
     assert result.provenance.product_ids == ("product-a", "product-b")
-    assert result.provenance.market_sources == ("source-a", "source-b")
+    assert result.provenance.market_providers == ("source-a", "source-b")
     assert result.provenance.market_fetched_at == (
         datetime(2026, 9, 5, 12, tzinfo=UTC),
         datetime(2026, 9, 5, 13, tzinfo=UTC),

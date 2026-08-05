@@ -319,9 +319,8 @@ def run_data_pipeline(
 ) -> None:
     r"""Run the canonical data pipeline with per-stage control.
 
-    With no stage flags, all registered stages run. Current-market odds are
-    not part of this command; the legacy DraftKings adapter is explicit under
-    ``gridiron ingest dk-odds``.
+    With no stage flags, all registered stages run. Current-market quotes are
+    not part of this command and are refreshed explicitly under ``gridiron ingest``.
 
     \b
     Scenario 1 - weekly refresh (most common, no flags needed):

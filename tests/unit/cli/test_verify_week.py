@@ -93,6 +93,7 @@ def test_selected_product_builds_readiness_without_writes(
     mock_markets.return_value = pd.DataFrame(
         {
             "fetched_at": [fetched_at, fetched_at],
+            "provider": ["the_odds_api", "the_odds_api"],
             "sportsbook": ["draftkings", "draftkings"],
             "season": ["2026-2027", "2026-2027"],
             "week": [1, 1],
@@ -231,7 +232,8 @@ def _cli_readiness(
             13,
             tzinfo=UTC,
         ),
-        market_source="draftkings",
+        market_providers=("the_odds_api",),
+        market_sportsbooks=("draftkings",),
         blockers=blockers,
     )
 
@@ -371,7 +373,8 @@ class TestVerifyWeekCommand:
             "Positive edges",
             "Prediction generated at",
             "Market fetched at",
-            "Market source",
+            "Market provider(s)",
+            "Sportsbook(s)",
         ]
 
         for label in expected_labels:
@@ -470,7 +473,8 @@ def test_rendering_marks_unavailable_provenance(
         positive_edge_count=0,
         prediction_generated_at=None,
         market_fetched_at=None,
-        market_source=None,
+        market_providers=(),
+        market_sportsbooks=(),
         blockers=(WeeklyReadinessBlocker.MISSING_SCHEDULE,),
     )
 
@@ -478,7 +482,7 @@ def test_rendering_marks_unavailable_provenance(
 
     output = capsys.readouterr().out
 
-    assert output.count("unavailable") == 3
+    assert output.count("unavailable") == 4
     assert "missing_schedule" in output
 
 

@@ -81,7 +81,8 @@ def _serialize_diagnostics(result: EdgeResult) -> EdgeDiagnosticsResponse:
             total_model_types=provenance.total_model_types,
             product_ids=provenance.product_ids,
             product_run_ids=provenance.product_run_ids,
-            market_sources=provenance.market_sources,
+            market_providers=provenance.market_providers,
+            market_sportsbooks=provenance.market_sportsbooks,
             market_fetched_at=provenance.market_fetched_at,
         ),
     )

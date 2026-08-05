@@ -47,7 +47,8 @@ class EdgeProvenance:
     total_model_types: tuple[str, ...] = ()
     product_ids: tuple[str, ...] = ()
     product_run_ids: tuple[str, ...] = ()
-    market_sources: tuple[str, ...] = ()
+    market_providers: tuple[str, ...] = ()
+    market_sportsbooks: tuple[str, ...] = ()
     market_fetched_at: tuple[datetime, ...] = ()
 
     def __post_init__(self) -> None:
@@ -63,7 +64,8 @@ class EdgeProvenance:
             "total_model_types",
             "product_ids",
             "product_run_ids",
-            "market_sources",
+            "market_providers",
+            "market_sportsbooks",
         )
 
         for field_name in text_fields:
@@ -97,7 +99,8 @@ class EdgeProvenance:
             "total_model_types": list(self.total_model_types),
             "product_ids": list(self.product_ids),
             "product_run_ids": list(self.product_run_ids),
-            "market_sources": list(self.market_sources),
+            "market_providers": list(self.market_providers),
+            "market_sportsbooks": list(self.market_sportsbooks),
             "market_fetched_at": [timestamp.isoformat() for timestamp in self.market_fetched_at],
         }
 
@@ -463,7 +466,11 @@ def _extract_provenance(
             predictions,
             ("product_run_id",),
         ),
-        market_sources=_distinct_text_values(
+        market_providers=_distinct_text_values(
+            markets,
+            ("provider",),
+        ),
+        market_sportsbooks=_distinct_text_values(
             markets,
             ("sportsbook",),
         ),

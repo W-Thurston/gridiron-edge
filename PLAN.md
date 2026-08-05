@@ -267,63 +267,73 @@ without reopening provider selection or operational ownership.
 
 ---
 
-### Market Unit 2: Migrate the Source-Neutral Quote Contract [Active]
+### Market Unit 2: Migrate the Source-Neutral Quote Contract [Complete]
+
+#### Completed
+
+Replaced the development-era odds schema with the canonical 17-column
+provider-aware quote contract. Separated upstream provider identity from the
+sportsbook offering each price and added provider event, sportsbook update,
+commence-time, and live-state provenance.
+
+Rewrote generic quote storage around exact schema validation, canonical UTC
+timestamps, row-level observation identity, atomic Parquet replacement, and
+multi-book-safe persistence. Exact repeated observations are idempotent while
+later observations, changed prices, changed lines, and distinct sportsbooks
+remain independently representable.
+
+Migrated the nflverse schedule adapter to truthful consensus provenance using
+`provider=nflverse`, null sportsbook and provider-event identity, and explicit
+pregame state. Preserved six market-side rows per game and the canonical spread
+orientation.
+
+Removed the retired DraftKings adapter, game resolver, ingest command, exports,
+provider-specific generic-store conversion, fixtures, and tests.
+
+Replaced ambiguous market-source provenance with explicit market providers and
+sportsbooks across readiness, edge diagnostics, verify-week output, API schemas,
+serializers, OpenAPI, generated TypeScript contracts, and related tests.
+
+Regenerated the local current snapshot and observation ledger under the new
+schema. The resulting artifacts contain 96 rows across 16 games with six rows
+per game, truthful nflverse provenance, no fabricated sportsbooks, valid UTC
+timestamp columns, zero spread-orientation violations, zero duplicate
+observations, and idempotent exact reappend behavior.
 
 #### Goal
 
-Replace the development-era odds row schema with the locked provider-aware,
-multi-book quote contract while preserving truthful nflverse consensus rows and
-preparing current observations for The Odds API adapter.
-
-#### Locked Direction
-
-- Add distinct `provider` and `provider_event_id` fields.
-- Retain `sportsbook` as the actual offered-price book; allow it to be null for
-  truthful consensus sources such as nflverse schedule markets.
-- Add `commence_time`, `sportsbook_updated_at`, and `is_live` provenance.
-- Preserve canonical `season`, `week`, `game_id`, `game_date`, teams, market,
-  side, American odds, and line orientation.
-- Current operational ingestion accepts pregame featured markets only. Live
-  quotes are representable but excluded from weekly edge consumption until a
-  live-market program exists.
-- Define deterministic quote identity from provider, provider event, book,
-  market, side, line, and source update time. `fetched_at` identifies the local
-  observation.
-- Preserve all books in storage. Do not choose a best book during ingestion.
-- Continue appending current observations to the observed quote ledger and
-  atomically replacing `odds_current.parquet` only after successful validation.
-- A failed request, invalid payload, or zero usable matched games must not
-  overwrite the current snapshot. Partial matched coverage may be written with
-  explicit diagnostics; weekly readiness owns completeness classification.
-- Replace the current game-only market pivot in a later operational unit. This
-  unit changes storage and validation only.
-- Development compatibility is not required. Existing local odds artifacts may
-  be regenerated under the new schema.
-
-#### Design Scope
-
-- canonical column order, nullability, timestamp normalization, and validation;
-- provider-aware observed-ledger idempotency;
-- atomic current-snapshot replacement;
-- nflverse schedule adapter migration;
-- legacy DraftKings adapter migration or isolation behind the new schema;
-- fixture and store-test migration;
-- documented artifact reset for incompatible local Parquet files.
+Establish one provider-aware, multi-book-safe current quote contract before
+implementing The Odds API client and operational ingestion workflow.
 
 #### Tests
 
-Add unit coverage for exact schema enforcement, source-versus-book provenance,
-nullable consensus sportsbook, UTC timestamps, live-state validation,
-deterministic identity, observed-ledger idempotency, atomic snapshot behavior,
-and migrated adapter output. Run focused odds-store and nflverse-adapter tests,
-then the Python quality boundary.
+Ruff, Pyrefly, and the unit test boundary passed. Focused odds-store, nflverse
+adapter, readiness, edge diagnostics, weekly edge service, CLI, API schema,
+serializer, route, and odds-join tests passed.
+
+OpenAPI and frontend TypeScript contracts were regenerated through their owning
+commands. Frontend lint, production build, and all 344 frontend tests passed.
+
+Real-artifact validation confirmed 96 rows across 16 games, six canonical
+market-side rows per game, `provider=nflverse`, null sportsbook and
+provider-native timestamps, pregame-only state, UTC timestamp dtypes, zero
+spread-orientation violations, zero duplicate observations, and idempotent
+ledger reappend behavior.
+
+The full integration/e2e run exposed 13 failures outside the market-contract
+path in select-model smoke output, team field-status metadata, compare-team
+fixtures, and a stale weekly-product roundtrip fixture.
 
 #### Acceptance
 
-All current odds producers and storage functions use the provider-aware quote
-contract. Existing incompatible artifacts have an explicit reset path. The
-current snapshot can safely preserve multiple books without selecting one, and
-the next unit can implement The Odds API client and parser directly against the
-locked schema.
+The nflverse adapter and generic market storage use the canonical
+provider-aware quote contract. Provider and sportsbook provenance remain
+distinct through domain, CLI, API, and generated frontend contracts. The
+retired DraftKings path is absent.
+
+A real current snapshot and observation ledger satisfy the locked schema,
+identity, atomicity, orientation, and idempotency requirements. Market Unit 3
+can implement The Odds API client and parser directly against this contract
+without compatibility code or schema migration.
 
 ---

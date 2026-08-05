@@ -1337,12 +1337,20 @@
             "title": "Market Fetched At",
             "type": "array"
           },
-          "market_sources": {
+          "market_providers": {
             "default": [],
             "items": {
               "type": "string"
             },
-            "title": "Market Sources",
+            "title": "Market Providers",
+            "type": "array"
+          },
+          "market_sportsbooks": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Market Sportsbooks",
             "type": "array"
           },
           "product_ids": {

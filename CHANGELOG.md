@@ -33,6 +33,27 @@
 
 What has been built and when. Newest first.
 
+### Market data
+
+- Replaced the development odds schema with a provider-aware 17-column quote
+  contract separating upstream provider identity from offered-price sportsbook
+  identity.
+- Added provider event ID, sportsbook update timestamp, commence time, and live
+  state provenance with strict UTC and market-side validation.
+- Reworked current snapshot and observation-ledger persistence around atomic
+  Parquet replacement and row-level idempotency while preserving multiple
+  sportsbooks and distinct observations.
+- Migrated nflverse schedule markets to truthful consensus provenance with
+  `provider=nflverse`, null sportsbook, and explicit pregame state.
+- Removed the retired DraftKings adapter, event resolver, ingest command,
+  exports, fixtures, tests, and generic wide-to-long conversion.
+- Replaced `market_source` and `market_sources` with explicit
+  `market_providers` and `market_sportsbooks` across readiness, diagnostics,
+  CLI, API, OpenAPI, and generated TypeScript contracts.
+- Regenerated current market artifacts with 96 rows across 16 games and
+  validated six rows per game, UTC timestamp columns, spread orientation,
+  observation uniqueness, and exact-reappend idempotency.
+
 ---
 ## 2026-07-29 — BetSlip decision-support rebuild
 

@@ -31,7 +31,8 @@ class EdgeProvenanceResponse(BaseModel):
     total_model_types: tuple[str, ...] = ()
     product_ids: tuple[str, ...] = ()
     product_run_ids: tuple[str, ...] = ()
-    market_sources: tuple[str, ...] = ()
+    market_providers: tuple[str, ...] = ()
+    market_sportsbooks: tuple[str, ...] = ()
     market_fetched_at: tuple[datetime, ...] = ()
 
 

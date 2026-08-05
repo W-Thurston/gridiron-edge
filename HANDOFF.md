@@ -93,7 +93,7 @@ build-elo
 build-features
 ```
 
-`--skip` and `--only` are mutually exclusive. Current-market odds are not part of this command. The legacy DraftKings adapter is explicit under `gridiron ingest dk-odds`.
+`--skip` and `--only` are mutually exclusive. Current-market quotes are not part of this command and are refreshed explicitly under `gridiron ingest`.
 
 Examples:
 
@@ -252,13 +252,14 @@ The current snapshot is:
 data/odds/odds_current.parquet
 ```
 
-Storage is source-neutral through `write_current_odds_snapshot()` and `load_current_odds()`. The implemented schedule-market adapter uses source identity:
+Storage uses the canonical provider-aware quote contract through `write_current_odds_snapshot()` and `load_current_odds()`. The implemented nflverse consensus adapter records:
 
 ```text
-nflverse_schedule
+provider=nflverse
+sportsbook=null
 ```
 
-DraftKings remains an explicit legacy best-effort adapter. It is not part of `run-data-pipeline`, is not fetched by `weekly-predict`, does not bypass anti-bot responses, and must not be presented as a dependable current provider.
+The retired DraftKings adapter, resolver, and CLI command are absent. `weekly-predict` consumes an existing current snapshot and does not perform a network-dependent market fetch.
 
 Edge diagnostics are authoritative result state. They distinguish:
 
@@ -464,8 +465,8 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 
 ## Known Limitations
 
-- The dependable long-term external market provider is unresolved. The current store is source-neutral; the DraftKings adapter is unreliable.
-- Multi-book line shopping, arbitrage, middles, and book selectors require a supported multi-book provider.
+- The Odds API v4 is selected for supported current-market ingestion; its client and operational integration remain future market-program work.
+- Multi-book line shopping, arbitrage, middles, and book selectors remain future product work after supported ingestion and same-book evaluation are complete.
 - Injury and news data are not integrated.
 - Scenario analysis, feature attribution, and historical comparable retrieval remain future capabilities.
 - Live game state, live odds, in-game win probability, and WebSocket updates are not implemented.

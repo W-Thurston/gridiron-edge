@@ -11,22 +11,10 @@ from typing import Final
 import pandas as pd
 from pandas import DataFrame, Series
 
-NFLVERSE_SCHEDULE_SOURCE: Final[str] = "nflverse_schedule"
+from gridiron_edge.ingest.odds.store import QUOTE_COLUMNS
 
-MARKET_COLUMNS: Final[tuple[str, ...]] = (
-    "fetched_at",
-    "sportsbook",
-    "season",
-    "week",
-    "game_id",
-    "game_date",
-    "away_team",
-    "home_team",
-    "market",
-    "side",
-    "odds",
-    "line",
-)
+NFLVERSE_PROVIDER: Final[str] = "nflverse"
+MARKET_COLUMNS: Final[tuple[str, ...]] = QUOTE_COLUMNS
 
 _REQUIRED_SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
     "season",
@@ -174,7 +162,12 @@ def adapt_nflverse_schedule_markets(
     for _, schedule_row in scoped.iterrows():
         base: dict[str, object] = {
             "fetched_at": fetched_at,
-            "sportsbook": NFLVERSE_SCHEDULE_SOURCE,
+            "provider": NFLVERSE_PROVIDER,
+            "provider_event_id": None,
+            "sportsbook": None,
+            "sportsbook_updated_at": None,
+            "commence_time": None,
+            "is_live": False,
             "season": season,
             "week": week,
             "game_id": str(schedule_row["game_id"]),

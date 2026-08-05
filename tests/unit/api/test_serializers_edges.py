@@ -61,7 +61,8 @@ def _result(rows: pd.DataFrame | None = None) -> EdgeResult:
         total_model_types=("xgboost",),
         product_ids=("weekly-product-1",),
         product_run_ids=("weekly-run-1",),
-        market_sources=("nflverse_schedule",),
+        market_providers=("nflverse",),
+        market_sportsbooks=(),
         market_fetched_at=(datetime(2026, 9, 5, 12, tzinfo=UTC),),
     )
     frame = pd.DataFrame([_valid_row()]) if rows is None else rows
@@ -114,7 +115,7 @@ class TestSerializeDiagnostics:
         assert diagnostics.provenance.win_event_ids == ("win-event-1",)
         assert diagnostics.provenance.total_model_types == ("xgboost",)
         assert diagnostics.provenance.product_ids == ("weekly-product-1",)
-        assert diagnostics.provenance.market_sources == ("nflverse_schedule",)
+        assert diagnostics.provenance.market_providers == ("nflverse",)
         assert diagnostics.provenance.market_fetched_at == (datetime(2026, 9, 5, 12, tzinfo=UTC),)
 
     def test_preserves_every_blocker_without_collapse(self) -> None:
@@ -154,7 +155,7 @@ class TestSerializeEdgesList:
         assert response.week == 1
         assert response.items[0].away_team == "Kansas City Chiefs"
         assert response.diagnostics.filtered_edge_count == 1
-        assert response.diagnostics.provenance.market_sources == ("nflverse_schedule",)
+        assert response.diagnostics.provenance.market_providers == ("nflverse",)
 
     def test_scope_comes_from_service_diagnostics(self) -> None:
         response = serialize_edges_list(

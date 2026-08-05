@@ -16,7 +16,7 @@ from gridiron_edge.datasets.writers import (
 )
 from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
 from gridiron_edge.ingest.odds.nflverse_schedule import (
-    NFLVERSE_SCHEDULE_SOURCE,
+    NFLVERSE_PROVIDER,
     adapt_nflverse_schedule_markets,
 )
 from gridiron_edge.ingest.odds.store import (
@@ -83,8 +83,12 @@ def test_nflverse_markets_roundtrip_and_join_by_schedule_game_id(
 
     assert loaded is not None
     assert snapshot_path.name == "odds_current.parquet"
-    assert set(loaded["sportsbook"]) == {NFLVERSE_SCHEDULE_SOURCE}
-    assert "draftkings" not in set(loaded["sportsbook"])
+    assert set(loaded["provider"]) == {NFLVERSE_PROVIDER}
+    assert loaded["provider_event_id"].isna().all()
+    assert loaded["sportsbook"].isna().all()
+    assert loaded["sportsbook_updated_at"].isna().all()
+    assert loaded["commence_time"].isna().all()
+    assert not loaded["is_live"].any()
     assert loaded["fetched_at"].nunique() == 1
     assert loaded["fetched_at"].iloc[0] == pd.Timestamp("2026-07-30T18:00:00Z")
 
@@ -168,7 +172,10 @@ def _weekly_product_for_edges() -> DataFrame:
             "win_model_name": ["win_prob"],
             "win_model_type": ["elo"],
             "win_event_id": ["win-event-1"],
-            "win_run_id": ["win-run-1"],
+            "win_run_id": ["weekly-edge-run"],
+            "win_role": ["live"],
+            "win_generated_at": ["2026-09-09T12:00:00+00:00"],
+            "win_selection_status": ["selected"],
             "spread_status": ["available"],
             "model_spread": [-7.0],
             "spread_uncertainty": [13.5],
@@ -183,7 +190,10 @@ def _weekly_product_for_edges() -> DataFrame:
             "total_model_name": ["total"],
             "total_model_type": ["xgboost"],
             "total_event_id": ["total-event-1"],
-            "total_run_id": ["total-run-1"],
+            "total_run_id": ["weekly-edge-run"],
+            "total_role": ["live"],
+            "total_generated_at": ["2026-09-09T12:00:00+00:00"],
+            "total_selection_status": ["selected"],
             "total_uncertainty_trained_at": ["2026-07-01T14:20:00"],
             "projected_score_status": ["available"],
             "projected_home_score": [29.5],
@@ -254,14 +264,15 @@ def test_weekly_edge_service_roundtrip_uses_persisted_product_and_markets(
 
     provenance = result.diagnostics.provenance
     assert provenance.win_event_ids == ("win-event-1",)
-    assert provenance.win_run_ids == ("win-run-1",)
+    assert provenance.win_run_ids == ("weekly-edge-run",)
     assert provenance.win_model_types == ("elo",)
     assert provenance.total_event_ids == ("total-event-1",)
-    assert provenance.total_run_ids == ("total-run-1",)
+    assert provenance.total_run_ids == ("weekly-edge-run",)
     assert provenance.total_model_types == ("xgboost",)
     assert provenance.product_ids == ("weekly-edge-product",)
     assert provenance.product_run_ids == ("weekly-edge-run",)
-    assert provenance.market_sources == (NFLVERSE_SCHEDULE_SOURCE,)
+    assert provenance.market_providers == ("nflverse",)
+    assert provenance.market_sportsbooks == ()
 
 
 def test_weekly_edge_service_explicit_bankroll_populates_stakes(

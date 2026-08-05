@@ -29,6 +29,9 @@ _EMPTY_PREDICTION_COLUMNS: tuple[str, ...] = (
     "game_id",
 )
 _EMPTY_MARKET_COLUMNS: tuple[str, ...] = (
+    "fetched_at",
+    "provider",
+    "sportsbook",
     "season",
     "week",
     "game_id",
