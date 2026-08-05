@@ -156,6 +156,15 @@ class TestExportSchema:
         assert result_2.exit_code == 0
         assert output_1.read_text() == output_2.read_text()
 
+    def test_checked_in_schema_matches_application(self) -> None:
+        """The checked-in OpenAPI artifact matches the live application contract."""
+        from gridiron_edge.api.app import create_app
+
+        project_root = Path(__file__).resolve().parents[3]
+        checked_in = json.loads((project_root / "api-schema.json").read_text(encoding="utf-8"))
+
+        assert checked_in == create_app().openapi()
+
     def test_short_flag(self, tmp_path: Path) -> None:
         """The -o short flag also works."""
         from gridiron_edge.cli.api import export_schema

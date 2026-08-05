@@ -1,10 +1,8 @@
 import { useEdges, useGamesList } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { useNav } from "../../context/NavContext";
-import { ConfidenceTierPill } from "../games/ConfidenceTierPill";
 import { TeamHero } from "../primitives/TeamHero";
 import { WhyLink } from "../primitives/WhyLink";
-import { WinProbBand } from "../games/WinProbBand";
 import { useTeamByAbbr } from "../../api/team_metadata_hook";
 import type { components } from "../../api/schema";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
@@ -63,7 +61,7 @@ export function FeaturedMatchupsGrid() {
     .slice(0, 20) // limit initial pool
     .map((edge) => {
       const game = games.find((g) => g.game_id === edge.game_id);
-      if (!game || !game.prediction) return null;
+      if (!game) return null;
       return { edge, game };
     })
     .filter((x): x is { edge: typeof edges[0]; game: typeof games[0] } => x !== null)
@@ -136,21 +134,7 @@ export function FeaturedMatchupsGrid() {
 }
 
 type FeaturedCardProps = {
-  game: {
-    game_id: string;
-    game_date?: string | null;
-    week?: number | null;
-    away_team: string;
-    home_team: string;
-    prediction?: {
-      home_win_prob?: number | null;
-      away_win_prob?: number | null;
-      home_win_lo?: number | null;
-      home_win_hi?: number | null;
-      model_spread?: number | null;
-      confidence_tier?: string | null;
-    } | null;
-  };
+  game: components["schemas"]["GameSummary"];
   edge: EdgeApiRow;
   referenceBankroll: number | null;
   referenceKellyMultiplier: number | null;
@@ -266,31 +250,15 @@ function FeaturedCard({
         />
       </div>
 
-      {/* Win prob band */}
-      <div>
-        <div
-          className="mono dim"
-          style={{ fontSize: 10, marginBottom: 4 }}
-        >
-          Home win prob{" "}
-          {game.prediction?.home_win_prob != null
-            ? `${Math.round(game.prediction.home_win_prob * 100)}%`
-            : "—"}
-          {game.prediction?.home_win_lo != null &&
-            game.prediction?.home_win_hi != null && (
-              <>
-                {" "}
-                [
-                {Math.round(game.prediction.home_win_lo * 100)}–
-                {Math.round(game.prediction.home_win_hi * 100)}]
-              </>
-            )}
-        </div>
-        <WinProbBand
-          homeWinProb={game.prediction?.home_win_prob}
-          homeWinLo={game.prediction?.home_win_lo}
-          homeWinHi={game.prediction?.home_win_hi}
-        />
+      {/* Persisted Win component */}
+      <div
+        className="mono dim"
+        style={{ fontSize: 10 }}
+      >
+        Home win prob{" "}
+        {game.win.home_win_prob != null
+          ? `${Math.round(game.win.home_win_prob * 100)}%`
+          : "—"}
       </div>
 
       {/* Confidence + edge callout footer */}
@@ -316,7 +284,6 @@ function FeaturedCard({
           >
             +{(edge.ev * 100).toFixed(1)}% EV
           </span>
-          <ConfidenceTierPill tier={game.prediction?.confidence_tier ?? null} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <WhyLink

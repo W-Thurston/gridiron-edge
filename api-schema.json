@@ -1122,6 +1122,104 @@
         "title": "DrivePoint",
         "type": "object"
       },
+      "EdgeDiagnosticBlocker": {
+        "description": "Machine-readable reasons an edge result is unavailable or incomplete.",
+        "enum": [
+          "no_predictions",
+          "no_market_data",
+          "market_wrong_scope",
+          "market_stale",
+          "zero_matched_games",
+          "incomplete_markets"
+        ],
+        "title": "EdgeDiagnosticBlocker",
+        "type": "string"
+      },
+      "EdgeDiagnosticsResponse": {
+        "additionalProperties": false,
+        "description": "Complete service-provided diagnostics for one weekly edge result.",
+        "properties": {
+          "blockers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EdgeDiagnosticBlocker"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "calculated_edge_count": {
+            "title": "Calculated Edge Count",
+            "type": "integer"
+          },
+          "complete_moneyline_count": {
+            "title": "Complete Moneyline Count",
+            "type": "integer"
+          },
+          "complete_spread_count": {
+            "title": "Complete Spread Count",
+            "type": "integer"
+          },
+          "complete_total_count": {
+            "title": "Complete Total Count",
+            "type": "integer"
+          },
+          "eligible_market_count": {
+            "title": "Eligible Market Count",
+            "type": "integer"
+          },
+          "filtered_edge_count": {
+            "title": "Filtered Edge Count",
+            "type": "integer"
+          },
+          "market_game_count": {
+            "title": "Market Game Count",
+            "type": "integer"
+          },
+          "matched_game_count": {
+            "title": "Matched Game Count",
+            "type": "integer"
+          },
+          "positive_edge_count": {
+            "title": "Positive Edge Count",
+            "type": "integer"
+          },
+          "prediction_game_count": {
+            "title": "Prediction Game Count",
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/EdgeProvenanceResponse"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EdgeResultState"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season",
+          "week",
+          "prediction_game_count",
+          "market_game_count",
+          "matched_game_count",
+          "complete_moneyline_count",
+          "complete_spread_count",
+          "complete_total_count",
+          "eligible_market_count",
+          "calculated_edge_count",
+          "positive_edge_count",
+          "filtered_edge_count",
+          "state"
+        ],
+        "title": "EdgeDiagnosticsResponse",
+        "type": "object"
+      },
       "EdgeList": {
         "additionalProperties": false,
         "description": "Response for GET /edges.",
@@ -1148,6 +1246,10 @@
             ],
             "description": "Bankroll basis used to calculate kelly_stake. None means dollar sizing was not requested.",
             "title": "Bankroll"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/EdgeDiagnosticsResponse",
+            "description": "Complete diagnostics returned by the unified edge service."
           },
           "items": {
             "description": "List payload. May be empty when blocked (see `_meta`).",
@@ -1216,12 +1318,131 @@
             "title": "Week"
           }
         },
+        "required": [
+          "diagnostics"
+        ],
         "title": "EdgeList",
         "type": "object"
       },
+      "EdgeProvenanceResponse": {
+        "additionalProperties": false,
+        "description": "Prediction, product, and market provenance supplied by the service.",
+        "properties": {
+          "market_fetched_at": {
+            "default": [],
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Market Fetched At",
+            "type": "array"
+          },
+          "market_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Market Sources",
+            "type": "array"
+          },
+          "product_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Product Ids",
+            "type": "array"
+          },
+          "product_run_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Product Run Ids",
+            "type": "array"
+          },
+          "total_event_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Total Event Ids",
+            "type": "array"
+          },
+          "total_model_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Total Model Names",
+            "type": "array"
+          },
+          "total_model_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Total Model Types",
+            "type": "array"
+          },
+          "total_run_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Total Run Ids",
+            "type": "array"
+          },
+          "win_event_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Win Event Ids",
+            "type": "array"
+          },
+          "win_model_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Win Model Names",
+            "type": "array"
+          },
+          "win_model_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Win Model Types",
+            "type": "array"
+          },
+          "win_run_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Win Run Ids",
+            "type": "array"
+          }
+        },
+        "title": "EdgeProvenanceResponse",
+        "type": "object"
+      },
+      "EdgeResultState": {
+        "description": "Terminal analytical state of one edge evaluation.",
+        "enum": [
+          "blocked",
+          "no_calculable_edges",
+          "no_positive_edges",
+          "positive_edges"
+        ],
+        "title": "EdgeResultState",
+        "type": "string"
+      },
       "EdgeRow": {
         "additionalProperties": false,
-        "description": "A single edge in the ranked edge report.\n\nOne row per (game, market_type, side) triple. Moneyline rows have\n``point_edge`` and ``cover_prob`` as null; spread/total rows populate\nthem. Fields mirror ``_REPORT_COLUMNS`` in\n``market.recommendations``, with team names as short codes after\nloader-side normalization.",
+        "description": "A single edge in the ranked edge report.\n\nOne row per (game, market_type, side) triple. Moneyline rows have\n``point_edge`` and ``cover_prob`` as null; spread/total rows populate\nthem. Fields mirror ``_REPORT_COLUMNS`` in\n``market.recommendations`` and preserve service-provided team names.",
         "properties": {
           "american_odds": {
             "description": "American price used to calculate EV and Kelly for this edge.",
@@ -1257,7 +1478,13 @@
             "title": "Cover Prob"
           },
           "edge_strength": {
-            "description": "'strong', 'moderate', or 'weak'.",
+            "description": "'strong', 'moderate', 'lean', or 'no_edge'.",
+            "enum": [
+              "strong",
+              "moderate",
+              "lean",
+              "no_edge"
+            ],
             "title": "Edge Strength",
             "type": "string"
           },
@@ -1650,7 +1877,6 @@
                 "type": "null"
               }
             ],
-            "description": "Injury reports for both teams. Blocked on injury data source (ROADMAP \u00a75.3).",
             "title": "Injuries"
           },
           "kick": {
@@ -1662,18 +1888,11 @@
                 "type": "null"
               }
             ],
-            "description": "Local kickoff time, e.g. '1:00 PM ET'.",
+            "description": "Persisted local kickoff time.",
             "title": "Kick"
           },
-          "prediction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PredictionBlock"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "projected_score": {
+            "$ref": "#/components/schemas/ProjectedScoreBlock"
           },
           "season": {
             "anyOf": [
@@ -1685,6 +1904,9 @@
               }
             ],
             "title": "Season"
+          },
+          "spread": {
+            "$ref": "#/components/schemas/SpreadPredictionBlock"
           },
           "swing_factors": {
             "anyOf": [
@@ -1699,7 +1921,6 @@
                 "type": "null"
               }
             ],
-            "description": "Per-game swing factors. Blocked on feature-attribution workstream.",
             "title": "Swing Factors"
           },
           "team_comparison": {
@@ -1712,7 +1933,6 @@
                 "type": "null"
               }
             ],
-            "description": "Opponent-adjusted percentile stats table. Pending: no backend for percentile computation (ROADMAP \u00a79 Tier 3).",
             "title": "Team Comparison"
           },
           "top_prop_edges": {
@@ -1728,8 +1948,10 @@
                 "type": "null"
               }
             ],
-            "description": "Top prop edges for this game. Pending: defer until /edges endpoint lands (Step 6).",
             "title": "Top Prop Edges"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalPredictionBlock"
           },
           "venue": {
             "anyOf": [
@@ -1762,12 +1984,19 @@
               }
             ],
             "title": "Week"
+          },
+          "win": {
+            "$ref": "#/components/schemas/WinPredictionBlock"
           }
         },
         "required": [
           "game_id",
           "away_team",
-          "home_team"
+          "home_team",
+          "win",
+          "spread",
+          "total",
+          "projected_score"
         ],
         "title": "GameDetail",
         "type": "object"
@@ -1958,7 +2187,7 @@
       },
       "GameSummary": {
         "additionalProperties": false,
-        "description": "A single row in the /games list response.\n\nSlimmer than GameDetail \u2014 omits weather, team comparison, swing\nfactors, injuries, and prop edges. Sufficient for the games-list\nscreen's per-game card.",
+        "description": "One scheduled row in the /games list response.",
         "properties": {
           "away_team": {
             "title": "Away Team",
@@ -1983,15 +2212,8 @@
             "title": "Home Team",
             "type": "string"
           },
-          "prediction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PredictionBlock"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "projected_score": {
+            "$ref": "#/components/schemas/ProjectedScoreBlock"
           },
           "season": {
             "anyOf": [
@@ -2004,6 +2226,12 @@
             ],
             "title": "Season"
           },
+          "spread": {
+            "$ref": "#/components/schemas/SpreadPredictionBlock"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalPredictionBlock"
+          },
           "week": {
             "anyOf": [
               {
@@ -2014,12 +2242,19 @@
               }
             ],
             "title": "Week"
+          },
+          "win": {
+            "$ref": "#/components/schemas/WinPredictionBlock"
           }
         },
         "required": [
           "game_id",
           "away_team",
-          "home_team"
+          "home_team",
+          "win",
+          "spread",
+          "total",
+          "projected_score"
         ],
         "title": "GameSummary",
         "type": "object"
@@ -3111,7 +3346,7 @@
       },
       "PlayerVsDefenseRow": {
         "additionalProperties": false,
-        "description": "A single row in the player-vs-defense comparison table.\n\n``projection_value`` is populated from the champion model's archive\nrow. ``defense_value`` is null in T2 \u2014 blocked pending\nopponent-allowed-by-position aggregation (ROADMAP \u00a79 Tier 3).",
+        "description": "A single row in the player-vs-defense comparison table.\n\n``projection_value`` is populated from the champion model's archive\nrow. ``defense_value`` is null while blocked pending\nopponent-allowed-by-position aggregation.",
         "properties": {
           "defense_value": {
             "anyOf": [
@@ -3530,11 +3765,11 @@
         "title": "PortfolioSummary",
         "type": "object"
       },
-      "PredictionBlock": {
+      "ProjectedScoreBlock": {
         "additionalProperties": false,
-        "description": "Champion-model prediction for a game.\n\nAll fields populate from the win_prob champion's archived row. When\nthe champion manifest is missing, the entire block is None and the\nserializer marks CHAMPION_NOT_WRITTEN in field_status.",
+        "description": "Persisted projected-score availability and score values.",
         "properties": {
-          "away_win_prob": {
+          "away": {
             "anyOf": [
               {
                 "type": "number"
@@ -3543,21 +3778,9 @@
                 "type": "null"
               }
             ],
-            "title": "Away Win Prob"
+            "title": "Away"
           },
-          "confidence_tier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "'Low', 'Moderate', or 'High'.",
-            "title": "Confidence Tier"
-          },
-          "home_win_hi": {
+          "home": {
             "anyOf": [
               {
                 "type": "number"
@@ -3566,79 +3789,17 @@
                 "type": "null"
               }
             ],
-            "description": "Upper bound of 90% uncertainty band on home_win_prob.",
-            "title": "Home Win Hi"
+            "title": "Home"
           },
-          "home_win_lo": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Lower bound of 90% uncertainty band on home_win_prob.",
-            "title": "Home Win Lo"
-          },
-          "home_win_prob": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Win Prob"
-          },
-          "model_spread": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Predicted point spread (home - away).",
-            "title": "Model Spread"
-          },
-          "model_total": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Total"
-          },
-          "projected_away_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Projected Away Score"
-          },
-          "projected_home_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Projected Home Score"
+          "status": {
+            "title": "Status",
+            "type": "string"
           }
         },
-        "title": "PredictionBlock",
+        "required": [
+          "status"
+        ],
+        "title": "ProjectedScoreBlock",
         "type": "object"
       },
       "ProjectionBlock": {
@@ -4071,7 +4232,7 @@
                 "type": "null"
               }
             ],
-            "description": "Past matchups vs this opponent's defense. Pending: opponent-adjusted matchup aggregation (ROADMAP \u00a79 Tier 3).",
+            "description": "Past matchups vs this opponent's defense. Pending: opponent-adjusted matchup aggregation.",
             "title": "Historical Vs Opponent"
           },
           "injury_status": {
@@ -4190,7 +4351,7 @@
                 "type": "null"
               }
             ],
-            "description": "Home/away, dome/outdoor, favored/underdog splits. Pending: prop cohort splits (ROADMAP \u00a79 Tier 3).",
+            "description": "Home/away, dome/outdoor, favored/underdog splits. Pending: prop cohort splits.",
             "title": "Situational Splits"
           },
           "stat_type": {
@@ -4765,6 +4926,99 @@
           "dimension_value"
         ],
         "title": "SplitRow",
+        "type": "object"
+      },
+      "SpreadPredictionBlock": {
+        "additionalProperties": false,
+        "description": "Persisted spread component derived from its selected Win source.",
+        "properties": {
+          "calibration_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Key"
+          },
+          "calibration_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Updated At"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "model_spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "NFL home-line convention: negative means the Home team is favored; positive means the Away team is favored. The value equals projected Away score minus projected Home score.",
+            "title": "Model Spread"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SpreadPredictionBlock",
         "type": "object"
       },
       "StatRow": {
@@ -5652,6 +5906,131 @@
         "title": "TeamRecord",
         "type": "object"
       },
+      "TotalPredictionBlock": {
+        "additionalProperties": false,
+        "description": "Persisted Total component and its independent forecast provenance.",
+        "properties": {
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "model_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Total"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "selection_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Status"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty"
+          },
+          "uncertainty_trained_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Trained At"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TotalPredictionBlock",
+        "type": "object"
+      },
       "TransactionRow": {
         "additionalProperties": false,
         "description": "A single row in /portfolio/transactions.",
@@ -5768,7 +6147,7 @@
       },
       "WeatherBlock": {
         "additionalProperties": false,
-        "description": "Weather snapshot for a game.\n\nFields populate from the schedule/weather join. When the join produces\nno data (e.g., domed venue, missing feed), all fields are None and\nthe serializer marks the block as UNAVAILABLE_NO_WEATHER.",
+        "description": "Weather snapshot for a game.",
         "properties": {
           "conditions": {
             "anyOf": [
@@ -5817,6 +6196,120 @@
         },
         "title": "WeatherBlock",
         "type": "object"
+      },
+      "WinPredictionBlock": {
+        "additionalProperties": false,
+        "description": "Persisted Win component and its independent forecast provenance.",
+        "properties": {
+          "away_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Win Prob"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "home_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win Prob"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Type"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "selection_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Status"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "WinPredictionBlock",
+        "type": "object"
       }
     }
   },
@@ -5829,7 +6322,7 @@
   "paths": {
     "/compare/player/{prop_id}": {
       "get": {
-        "description": "Return projection-vs-defense comparison for one prop.\n\nProjection-side fields (mean, std, lo_90, hi_90) populate from the\nchampion model's archive row. Defense-side fields (avg allowed,\nrank vs position, L5 avg, red zone rate) are entirely blocked\npending opponent-allowed-by-position aggregation (ROADMAP \u00a79 Tier 3).\n\n- Malformed or unknown prop_id: 404.\n- Champion for this stat_type not resolved: 200 with projection\n  block null and field_status marking blocked.\n- Prop not in archive: 404.",
+        "description": "Return projection-vs-defense comparison for one prop.\n\nProjection-side fields (mean, std, lo_90, hi_90) populate from the\nchampion model's archive row. Defense-side fields (avg allowed,\nrank vs position, L5 avg, red zone rate) are entirely blocked\npending opponent-allowed-by-position aggregation.\n\n- Malformed or unknown prop_id: 404.\n- Champion for this stat_type not resolved: 200 with projection\n  block null and field_status marking blocked.\n- Prop not in archive: 404.",
         "operationId": "compare_player_compare_player__prop_id__get",
         "parameters": [
           {
@@ -6000,7 +6493,7 @@
     },
     "/edges": {
       "get": {
-        "description": "Return ranked edges for (season, week) using the champion model.\n\n- Missing champion manifest: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_CHAMPION_MANIFEST.\n- Missing odds snapshot: 200 with empty list,\n  ``_meta.field_status[\"items\"]`` marked NO_ODDS_AVAILABLE.\n- No predictions or no positive-EV edges: 200 with empty list, no\n  field_status (legitimate empty state).",
+        "description": "Return ranked edges from the selected persisted weekly product.",
         "operationId": "list_edges_edges_get",
         "parameters": [
           {
@@ -6047,6 +6540,7 @@
             "schema": {
               "default": 0.0,
               "description": "Minimum EV threshold. Rows with ev <= min_ev excluded.",
+              "minimum": 0.0,
               "title": "Min Ev",
               "type": "number"
             }
@@ -6115,7 +6609,7 @@
     },
     "/games": {
       "get": {
-        "description": "Return champion-model predictions for all games in (season, week).\n\nWhen the champion manifest is missing, returns an empty items list\nwith _meta.field_status[\"items\"] marked NO_CHAMPION_MANIFEST.",
+        "description": "Return every row in the explicitly selected weekly product.",
         "operationId": "list_games_games_get",
         "parameters": [
           {
@@ -6185,7 +6679,7 @@
     },
     "/games/{game_id}": {
       "get": {
-        "description": "Return champion-model prediction and metadata for one game.\n\nReturns 404 if the game_id is not in the prediction archive.\nReturns 200 with the champion-dependent fields null when the\nchampion manifest is missing (structured field_status per D14).",
+        "description": "Return one selected scheduled game regardless of prediction status.",
         "operationId": "get_game_games__game_id__get",
         "parameters": [
           {

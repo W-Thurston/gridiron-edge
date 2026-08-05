@@ -3,10 +3,10 @@ import { useState } from "react";
 import { useEdges, useGame, usePropsList } from "../api/hooks";
 import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { ErrorCard } from "../components/error/ErrorCard";
+import type { components } from "../api/schema";
 import type { FieldStatus } from "../components/field-status/types";
 import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
-import { WinProbBand } from "../components/games/WinProbBand";
 import { Pill } from "../components/primitives/Pill";
 import { TeamHero } from "../components/primitives/TeamHero";
 import { TeamMark } from "../components/primitives/TeamMark";
@@ -118,7 +118,6 @@ export function GameDetail() {
           gameId={data.game_id}
           awayTeam={data.away_team}
           homeTeam={data.home_team}
-          confidenceTier={data.prediction?.confidence_tier ?? null}
         />
       </div>
 
@@ -136,10 +135,14 @@ export function GameDetail() {
             gameId={data.game_id}
             awayTeam={data.away_team}
             homeTeam={data.home_team}
-            prediction={data.prediction}
+            win={data.win}
+            spread={data.spread}
+            total={data.total}
           />
           <WinProbabilityCard
-            prediction={data.prediction}
+            win={data.win}
+            spread={data.spread}
+            projectedScore={data.projected_score}
             awayTeam={data.away_team}
             homeTeam={data.home_team}
           />
@@ -358,46 +361,32 @@ function stripCityPrefix(
  * data source.
  */
 function WinProbabilityCard({
-  prediction,
+  win,
+  spread,
+  projectedScore,
   awayTeam,
   homeTeam,
 }: {
-  prediction:
-    | {
-        home_win_prob?: number | null;
-        away_win_prob?: number | null;
-        home_win_lo?: number | null;
-        home_win_hi?: number | null;
-        model_spread?: number | null;
-        projected_home_score?: number | null;
-        projected_away_score?: number | null;
-      }
-    | null
-    | undefined;
+  win: components["schemas"]["WinPredictionBlock"];
+  spread: components["schemas"]["SpreadPredictionBlock"];
+  projectedScore: components["schemas"]["ProjectedScoreBlock"];
   awayTeam: string;
   homeTeam: string;
 }) {
+  const winAvailable =
+    win.home_win_prob != null &&
+    win.away_win_prob != null;
+
   return (
     <div className="hm-card" style={{ padding: 20 }}>
       <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 16,
-        }}
+        className="upper dim"
+        style={{ fontSize: 10, marginBottom: 16 }}
       >
-        <div className="upper dim" style={{ fontSize: 10 }}>
-          Win Probability
-        </div>
-        {prediction && (
-          <div className="mono dim2" style={{ fontSize: 10 }}>
-            with uncertainty band
-          </div>
-        )}
+        Win Probability
       </div>
 
-      {prediction ? (
+      {winAvailable ? (
         <div
           style={{
             display: "grid",
@@ -406,31 +395,11 @@ function WinProbabilityCard({
             alignItems: "center",
           }}
         >
-          {/* Left column: Prob bands with team labels */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <TeamProbRow
-              team={homeTeam}
-              prob={prediction.home_win_prob}
-              lo={prediction.home_win_lo}
-              hi={prediction.home_win_hi}
-            />
-            <TeamProbRow
-              team={awayTeam}
-              prob={prediction.away_win_prob}
-              lo={
-                prediction.home_win_hi != null
-                  ? 1 - prediction.home_win_hi
-                  : undefined
-              }
-              hi={
-                prediction.home_win_lo != null
-                  ? 1 - prediction.home_win_lo
-                  : undefined
-              }
-            />
+            <ProbabilityRow team={homeTeam} probability={win.home_win_prob} />
+            <ProbabilityRow team={awayTeam} probability={win.away_win_prob} />
           </div>
 
-          {/* Right column: Projected score + margin */}
           <div style={{ borderLeft: "1px solid var(--line-soft)", paddingLeft: 24 }}>
             <div
               className="upper dim2"
@@ -450,95 +419,58 @@ function WinProbabilityCard({
                 letterSpacing: "-0.01em",
               }}
             >
-              {prediction.projected_away_score != null &&
-              prediction.projected_home_score != null ? (
+              {projectedScore.away != null && projectedScore.home != null ? (
                 <>
                   <span style={{ color: "var(--ink-2)" }}>
-                    {awayTeam} {prediction.projected_away_score.toFixed(1)}
+                    {awayTeam} {projectedScore.away.toFixed(1)}
                   </span>
                   <span className="dim2" style={{ margin: "0 10px" }}>
                     —
                   </span>
                   <span style={{ color: "var(--pos)" }}>
-                    {homeTeam} {prediction.projected_home_score.toFixed(1)}
+                    {homeTeam} {projectedScore.home.toFixed(1)}
                   </span>
                 </>
               ) : (
                 "—"
               )}
             </div>
-            {prediction.model_spread != null && (
-              <div
-                className="mono dim"
-                style={{ fontSize: 10.5, marginTop: 4 }}
-              >
-                Margin: {formatMargin(prediction.model_spread, awayTeam, homeTeam)}
+            {spread.model_spread != null && (
+              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+                Margin: {formatMargin(spread.model_spread, awayTeam, homeTeam)}
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="dim mono">No prediction available.</div>
+        <div className="dim mono">No Win prediction available.</div>
       )}
     </div>
   );
 }
 
-/**
- * Single team row in the win probability card. Shows team abbrev + big %
- * + band range label + WinProbBand visualization.
- */
-function TeamProbRow({
+function ProbabilityRow({
   team,
-  prob,
-  lo,
-  hi,
+  probability,
 }: {
   team: string;
-  prob: number | null | undefined;
-  lo: number | null | undefined;
-  hi: number | null | undefined;
+  probability: number | null | undefined;
 }) {
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 6,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <TeamMark abbr={team} size={20} />
-          <span style={{ fontWeight: 500 }}>{team}</span>
-        </div>
-        <span
-          className="mono tnum"
-          style={{
-            fontWeight: 600,
-            fontSize: 14,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {prob != null ? `${Math.round(prob * 100)}%` : "—"}
-          {lo != null && hi != null && (
-            <span
-              className="dim2"
-              style={{ fontWeight: 400, fontSize: 11 }}
-            >
-              · band {Math.round(lo * 100)}–{Math.round(hi * 100)}%
-            </span>
-          )}
-        </span>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <TeamMark abbr={team} size={20} />
+        <span style={{ fontWeight: 500 }}>{team}</span>
       </div>
-      <WinProbBand
-        homeWinProb={prob}
-        homeWinLo={lo}
-        homeWinHi={hi}
-      />
+      <span className="mono tnum" style={{ fontWeight: 600, fontSize: 14 }}>
+        {probability != null ? `${Math.round(probability * 100)}%` : "—"}
+      </span>
     </div>
   );
 }
@@ -577,12 +509,10 @@ function formatMargin(
  */
 function ModelLeanCallout({
   gameId,
-  confidenceTier,
 }: {
   gameId: string;
   awayTeam: string;
   homeTeam: string;
-  confidenceTier: string | null;
 }) {
   const {
     data,
@@ -721,12 +651,6 @@ function ModelLeanCallout({
         <span className="mono">
           +{(topEdge.ev * 100).toFixed(1)}% EV
         </span>
-        {confidenceTier && (
-          <>
-            <span>·</span>
-            <ConfidenceTierPill tier={confidenceTier} />
-          </>
-        )}
         <WhyLink
           dot
           tone="pos"
@@ -768,17 +692,16 @@ function LinesAndFairValueCard({
   gameId,
   awayTeam,
   homeTeam,
-  prediction,
+  win,
+  spread,
+  total,
 }: {
   gameId: string;
   awayTeam: string;
   homeTeam: string;
-  prediction: {
-    home_win_prob?: number | null;
-    away_win_prob?: number | null;
-    model_spread?: number | null;
-    model_total?: number | null;
-  } | null | undefined;
+  win: components["schemas"]["WinPredictionBlock"];
+  spread: components["schemas"]["SpreadPredictionBlock"];
+  total: components["schemas"]["TotalPredictionBlock"];
 }) {
   const { data: edgesData } = useEdges();
 
@@ -794,14 +717,14 @@ function LinesAndFairValueCard({
     .filter((e) => e.market_type === "moneyline")
     .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
 
-  // Model fair values
-  const modelSpread = prediction?.model_spread;
-  const modelTotal = prediction?.model_total;
-  const modelHomeML = prediction?.home_win_prob != null
-    ? probToAmerican(prediction.home_win_prob)
+  // Model fair values from independent persisted components
+  const modelSpread = spread.model_spread;
+  const modelTotal = total.model_total;
+  const modelHomeML = win.home_win_prob != null
+    ? probToAmerican(win.home_win_prob)
     : null;
-  const modelAwayML = prediction?.away_win_prob != null
-    ? probToAmerican(prediction.away_win_prob)
+  const modelAwayML = win.away_win_prob != null
+    ? probToAmerican(win.away_win_prob)
     : null;
 
   return (

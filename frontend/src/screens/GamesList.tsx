@@ -1,9 +1,7 @@
 import { useAppState } from "../context/AppStateContext";
 import { useGamesList } from "../api/hooks";
 import { useNav } from "../context/NavContext";
-import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { TeamMark } from "../components/primitives/TeamMark";
-import { WinProbBand } from "../components/games/WinProbBand";
 import { ErrorCard } from "../components/error/ErrorCard";
 
 export function GamesList() {
@@ -71,10 +69,8 @@ export function GamesList() {
                 <th style={{ padding: "8px 12px 8px 0" }}>Date ↑</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Matchup</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Home WP</th>
-                <th style={{ padding: "8px 12px 8px 0" }}>Band</th>
                 <th style={{ padding: "8px 12px 8px 0" }}>Spread</th>
-                <th style={{ padding: "8px 12px 8px 0" }}>Total</th>
-                <th style={{ padding: "8px 0" }}>Confidence</th>
+                <th style={{ padding: "8px 0" }}>Total</th>
               </tr>
             </thead>
             <tbody>
@@ -114,31 +110,19 @@ export function GamesList() {
                     </span>
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
-                    {game.prediction?.home_win_prob != null
-                      ? `${Math.round(game.prediction.home_win_prob * 100)}%`
+                    {game.win.home_win_prob != null
+                      ? `${Math.round(game.win.home_win_prob * 100)}%`
                       : "—"}
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
-                    <WinProbBand
-                      homeWinProb={game.prediction?.home_win_prob}
-                      homeWinLo={game.prediction?.home_win_lo}
-                      homeWinHi={game.prediction?.home_win_hi}
-                    />
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {game.prediction?.model_spread != null
-                      ? formatSpread(game.prediction.model_spread)
-                      : "—"}
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {game.prediction?.model_total != null
-                      ? game.prediction.model_total.toFixed(1)
+                    {game.spread.model_spread != null
+                      ? formatSpread(game.spread.model_spread)
                       : "—"}
                   </td>
                   <td style={{ padding: "10px 0" }}>
-                    <ConfidenceTierPill
-                      tier={game.prediction?.confidence_tier}
-                    />
+                    {game.total.model_total != null
+                      ? game.total.model_total.toFixed(1)
+                      : "—"}
                   </td>
                 </tr>
               ))}

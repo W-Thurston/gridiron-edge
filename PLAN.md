@@ -2600,25 +2600,19 @@ Covered defensive loader copying and exact row preservation; actual edge-strengt
 
 ---
 
-### Unit 26: Regenerate API Clients
+### Unit 26: Regenerate API Clients [Complete]
+
+#### Completed
+Regenerated the checked-in OpenAPI schema from the live FastAPI application and regenerated the TypeScript client from that canonical schema. The generated contracts now include required edge diagnostics, complete Win, Total, weekly-product, and market provenance, explicit blocker and result-state unions, and the actual edge-strength literals. Migrated frontend game consumers from the retired aggregate prediction object to the independent Win, Spread, Total, and projected-score blocks introduced by the schedule-first Games API. Removed unavailable game-level uncertainty-band and confidence-tier presentation rather than reconstructing missing values. Added a structural consistency test that fails when api-schema.json drifts from the application OpenAPI contract.
 
 #### Goal
+Update generated OpenAPI and TypeScript contracts after API stabilization, preserve generator ownership of generated files, migrate affected consumers to the finalized contracts, and prevent checked-in schema drift.
 
-Update generated contracts after API schemas stabilize.
-
-#### Production files
-
-- `api-schema.json`
-- `frontend/src/api/schema.ts`
-
-#### Test files
-
-- generated-schema consistency checks
-- frontend type-check/build coverage
+#### Tests
+Verified required edge schemas, diagnostics, provenance, blockers, result states, and edge-strength literals in the generated OpenAPI and TypeScript artifacts. Regenerated both artifacts twice and confirmed byte-for-byte deterministic output. Proved the checked-in OpenAPI document equals create_app().openapi(). Frontend TypeScript build and production bundle pass, all 270 frontend tests pass, and focused ESLint passes for every changed frontend consumer. Backend Ruff, Pyrefly, focused tests, and the full unit quality boundary pass. Global frontend lint remains independently blocked by four unchanged React Refresh violations in context modules outside the Unit 26 diff.
 
 #### Acceptance
-
-Generated clients match the finalized API contract with no manual drift.
+api-schema.json and frontend/src/api/schema.ts are deterministically generated from the finalized API contract with no manual drift. Frontend consumers compile against the regenerated client and use the independent persisted game-component contracts without compatibility reconstruction.
 
 ---
 
