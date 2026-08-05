@@ -70,17 +70,20 @@ Current state:
 
 Program sequence:
 
-1. **Provider and contract selection.** Compare supported providers and lock the
-   normalized quote, freshness, identity, configuration, and failure contracts.
-2. **Current provider adapter.** Ingest current and upcoming NFL moneyline,
-   spread, and total quotes into the source-neutral current snapshot.
-3. **Operational integration.** Add explicit refresh, freshness, coverage,
-   prediction-market join, edge, CLI, and API behavior while preserving
-   forecast independence.
-4. **Real-data frontend integration and audit.** Exercise Dashboard, Games,
+1. **Provider and contract selection.** The Odds API v4 selected; normalized
+   quote, freshness, identity, configuration, and failure boundaries locked.
+2. **Source-neutral quote migration.** Separate provider from sportsbook,
+   preserve provider event and update provenance, and make storage multi-book
+   safe before live ingestion.
+3. **Current provider adapter.** Ingest current and upcoming NFL moneyline,
+   spread, and total quotes from The Odds API into the normalized store.
+4. **Operational integration.** Add explicit refresh, freshness, coverage,
+   same-book price evaluation, prediction-market joins, CLI, and API behavior
+   while preserving forecast independence.
+5. **Real-data frontend integration and audit.** Exercise Dashboard, Games,
    Game Detail, BetSlip, readiness, edge states, sportsbook provenance, and
    responsive presentation against real market responses.
-5. **Multi-book shopping.** Add best-price comparison, book selection,
+6. **Multi-book shopping.** Add best-price comparison, book selection,
    arbitrage, middle detection, and the Line Shopping product surface.
 
 Current and historical market data are separate workstreams within this

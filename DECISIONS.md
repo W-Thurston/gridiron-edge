@@ -8,6 +8,100 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D25. The Odds API v4 is the supported current-market provider
+
+**Status:** Accepted
+
+**Date:** 2026-08-05
+
+### Decision
+
+Use The Odds API v4 as the supported provider for current and upcoming NFL
+moneyline, spread, and total quotes. Keep provider access explicit under the
+`gridiron ingest` command group. `weekly-predict` remains a consumer of an
+existing source-neutral snapshot and does not perform a paid or
+network-dependent odds fetch.
+
+The normalized quote row separates aggregator provenance from offered-price
+provenance:
+
+- `fetched_at`: local UTC observation time;
+- `provider`: upstream data provider;
+- `provider_event_id`: provider event identity;
+- `sportsbook`: actual book offering the quote, nullable for truthful consensus
+  sources;
+- `sportsbook_updated_at`: provider-reported UTC update time for the book or
+  market, when supplied;
+- `commence_time`: event start time in UTC;
+- `is_live`: whether the quote is in-play;
+- canonical season, week, game, date, team, market, side, American odds, and
+  line fields.
+
+Current observations and future historical backfill use the same normalized
+quote contract but different storage and operational semantics. A successful
+current pull appends observed quotes to the local observation ledger and
+atomically replaces the current snapshot. Historical provider backfill,
+partitioning, retention, opening and closing definitions, and leakage-safe
+evaluation are separate later work.
+
+All returned sportsbooks are preserved. Ingestion does not pick a preferred or
+best book. Downstream edge construction must evaluate complete same-book market
+pairs and retain sportsbook provenance before ranking actionable offers.
+
+### Provider rationale
+
+The official NFL documentation shows a single NFL odds endpoint returning live
+and upcoming games with commence time, team identity, bookmaker key and title,
+bookmaker update time, moneyline, spread, total, point, and American price
+fields. The provider states that historical NFL featured-market odds are
+available from mid-2020.
+
+Public self-service plans support development without a sales-led contract.
+Exact request-credit consumption remains observable through provider response
+headers and will be validated with the integration key before any automated
+refresh cadence is introduced.
+
+Official references:
+
+- [The Odds API NFL coverage](https://the-odds-api.com/sports-odds-data/nfl-odds.html)
+- [The Odds API v4 documentation](https://the-odds-api.com/liveapi/guides/v4/)
+- [The Odds API plans](https://the-odds-api.com/)
+
+### Failure and freshness boundaries
+
+- Missing credentials fail before network access.
+- Request, authentication, quota, malformed-payload, and zero-usable-match
+  failures exit nonzero and do not replace a valid current snapshot.
+- Partial usable coverage may be persisted with explicit fetch diagnostics;
+  weekly readiness remains authoritative for coverage and eligibility.
+- Storage records timestamps but does not invent a universal freshness limit.
+  Consumers apply an explicit maximum age appropriate to their operation.
+- Forecast publication remains valid when market ingestion fails or the current
+  snapshot is stale.
+
+### Consequences
+
+- `sportsbook` can no longer stand in for both provider and book.
+- The development odds schema and local Parquet artifacts may be replaced.
+- nflverse schedule rows identify `provider=nflverse` and no fabricated
+  sportsbook.
+- Multi-book current snapshots require a sportsbook-aware recommendation pivot;
+  game-only row overwrites are not valid.
+- The legacy DraftKings adapter remains best-effort and cannot be the supported
+  recovery path.
+- Historical backfill may use The Odds API or another compatible provider later
+  without changing the normalized row contract.
+
+### References
+
+- `src/gridiron_edge/ingest/odds/store.py`
+- `src/gridiron_edge/ingest/odds/nflverse_schedule.py`
+- `src/gridiron_edge/ingest/odds/draftkings.py`
+- `src/gridiron_edge/market/recommendations.py`
+- `src/gridiron_edge/market/weekly_edge_service.py`
+- `PLAN.md`
+- `ROADMAP.md`
+
 ## D24. Weekly operation uses immutable forecast events and explicitly selected weekly products
 
 **Status:** Accepted

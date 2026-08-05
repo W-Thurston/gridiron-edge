@@ -195,81 +195,135 @@ storage and operational semantics.
 
 Only one bounded market unit is active at a time.
 
-### Market Unit 1: Select a Supported Provider and Lock the Market Contract [Active]
+### Market Unit 1: Select a Supported Provider and Lock the Market Contract [Complete]
+
+#### Completed
+
+Selected The Odds API v4 as the supported provider for current and upcoming NFL
+moneyline, spread, and total markets. The selection is based on its documented
+NFL event feed, multiple-bookmaker payload, native American odds, event and
+bookmaker timestamps, self-service access, and historical featured-market
+availability from mid-2020.
+
+Audited the existing source-neutral market store, nflverse schedule adapter,
+legacy DraftKings adapter, weekly edge service, readiness diagnostics, CLV
+ledger, settings, and ingest CLI. The audit found that the existing schema is a
+single-source development contract: `sportsbook` currently conflates provider
+and book identity, provider event and bookmaker update timestamps are absent,
+and multi-book rows would be collapsed nondeterministically by the current
+per-game pivot.
+
+Locked a shared normalized quote contract for current observations and future
+historical backfill. Current provider pulls will preserve all returned books and
+append observed snapshots while atomically replacing the current snapshot.
+Historical provider backfill, partitioning, closing-line policy, and
+leakage-safe evaluation remain a separate later workstream.
+
+Revised the Betting Market Data sequence so the normalized storage contract is
+migrated before the provider adapter is implemented.
 
 #### Goal
 
-Select a documented, supported provider for current and upcoming NFL moneyline,
-spread, and total markets, and lock the normalized quote, freshness,
-configuration, failure, and identity contracts before implementation.
+Choose a supported current-market provider and define the quote identity,
+provenance, storage, freshness, failure, command, and downstream selection
+contracts precisely enough to implement without guessing or coupling forecast
+publication to network access.
 
-#### Locked Direction
+#### Files Added/Removed/Changed
 
-- Current and upcoming markets are the first operational workstream because
-  they unlock weekly edges and real-data frontend validation.
-- Historical market archive and market-aware evaluation remain a separate
-  later workstream because timestamped quote history, opening and closing line
-  definitions, backfill pagination, archive volume, and leakage-safe selection
-  require independent design and acceptance.
-- Provider evaluation must consider both current and historical capabilities,
-  but lack of affordable historical access does not automatically block the
-  current-market workstream.
-- Current snapshots and future historical archives will normalize to the same
-  quote contract while using different replacement, append, retention, and
-  consumption semantics.
-- `weekly-predict` remains a consumer of an existing source-neutral market
-  snapshot. It will not hide a paid or network-dependent provider fetch inside
-  forecast publication.
-- Forecast publication remains independent from market availability. Provider
-  or market failure may block edge calculation but must not invalidate a
-  prediction-ready selected weekly product.
-- The legacy DraftKings adapter remains best-effort and is not a candidate for
-  the supported operational dependency.
+Added:
+- None.
 
-#### Design Scope
+Changed:
+- `PLAN.md` - Closed provider selection and opened the normalized quote-contract migration.
+- `ROADMAP.md` - Refined the active program sequence around contract migration, provider ingestion, operational integration, frontend validation, and multi-book shopping.
+- `DECISIONS.md` - Added D25 for The Odds API selection and the shared current/historical quote boundary.
 
-Provider evaluation:
-- documented and supported API;
-- NFL moneyline, spread, and total availability;
-- sportsbook-level prices and multiple-book coverage;
-- event, team, market, outcome, and timestamp identity;
-- preseason and regular-season coverage;
-- freshness, update cadence, rate limits, pricing, and usage terms;
-- historical access, player props, and live markets as comparative attributes.
-
-Normalized quote contract:
-- provider and sportsbook identity;
-- provider event identity and canonical `game_id`;
-- season, week, and commence time;
-- market and outcome identity;
-- line or point value where applicable;
-- American odds without lossy conversion;
-- fetch timestamp and source provenance;
-- explicit pregame versus live state;
-- deterministic quote identity and validation rules.
-
-Operational boundaries:
-- secrets and configuration ownership;
-- explicit provider client and adapter responsibilities;
-- current snapshot freshness and staleness policy;
-- provider failure, partial coverage, malformed response, and rate-limit states;
-- game identity resolution and unmatched-event diagnostics;
-- compatibility with `data/odds/odds_current.parquet`, `verify-week`, unified
-  edge calculation, API serialization, and frontend consumers.
+Removed:
+- None.
 
 #### Tests
 
-This design unit will be accepted through documented provider evidence and a
-contract review. No production provider code is added until the provider,
-normalized schema, freshness policy, failure behavior, command boundary, and
-current-versus-historical separation are locked.
+Reviewed official provider documentation for NFL coverage, featured markets,
+American odds, multiple bookmakers, event and bookmaker timestamps, public
+plans, and historical NFL featured-market availability. Compared the documented
+capabilities with Odds-API.io, SportsDataIO, and the publicly available
+Sportradar NFL material.
+
+Audited the current odds schema, snapshot and ledger behavior, adapters, edge
+pivot, freshness diagnostics, CLV consumers, settings, and CLI ownership.
+Confirmed that the existing edge pivot groups by game rather than sportsbook
+and therefore cannot safely consume a multi-book snapshot until the downstream
+selection contract is migrated.
 
 #### Acceptance
 
-A provider decision is recorded with verifiable coverage, pricing, rate-limit,
-usage, and historical-access evidence. The normalized quote contract and
-operational boundaries are specific enough to implement without guessing.
-The next bounded unit can build the current-provider adapter without reopening
-current-versus-historical scope or weekly-prediction ownership.
+The Odds API v4 is the supported current and upcoming NFL market provider. The
+normalized quote contract, source-versus-book provenance, observed-history
+boundary, current-snapshot behavior, failure semantics, explicit ingest command,
+and multi-book downstream requirements are locked in D25. Historical provider
+backfill remains separate. Market Unit 2 can migrate storage and validation
+without reopening provider selection or operational ownership.
+
+---
+
+### Market Unit 2: Migrate the Source-Neutral Quote Contract [Active]
+
+#### Goal
+
+Replace the development-era odds row schema with the locked provider-aware,
+multi-book quote contract while preserving truthful nflverse consensus rows and
+preparing current observations for The Odds API adapter.
+
+#### Locked Direction
+
+- Add distinct `provider` and `provider_event_id` fields.
+- Retain `sportsbook` as the actual offered-price book; allow it to be null for
+  truthful consensus sources such as nflverse schedule markets.
+- Add `commence_time`, `sportsbook_updated_at`, and `is_live` provenance.
+- Preserve canonical `season`, `week`, `game_id`, `game_date`, teams, market,
+  side, American odds, and line orientation.
+- Current operational ingestion accepts pregame featured markets only. Live
+  quotes are representable but excluded from weekly edge consumption until a
+  live-market program exists.
+- Define deterministic quote identity from provider, provider event, book,
+  market, side, line, and source update time. `fetched_at` identifies the local
+  observation.
+- Preserve all books in storage. Do not choose a best book during ingestion.
+- Continue appending current observations to the observed quote ledger and
+  atomically replacing `odds_current.parquet` only after successful validation.
+- A failed request, invalid payload, or zero usable matched games must not
+  overwrite the current snapshot. Partial matched coverage may be written with
+  explicit diagnostics; weekly readiness owns completeness classification.
+- Replace the current game-only market pivot in a later operational unit. This
+  unit changes storage and validation only.
+- Development compatibility is not required. Existing local odds artifacts may
+  be regenerated under the new schema.
+
+#### Design Scope
+
+- canonical column order, nullability, timestamp normalization, and validation;
+- provider-aware observed-ledger idempotency;
+- atomic current-snapshot replacement;
+- nflverse schedule adapter migration;
+- legacy DraftKings adapter migration or isolation behind the new schema;
+- fixture and store-test migration;
+- documented artifact reset for incompatible local Parquet files.
+
+#### Tests
+
+Add unit coverage for exact schema enforcement, source-versus-book provenance,
+nullable consensus sportsbook, UTC timestamps, live-state validation,
+deterministic identity, observed-ledger idempotency, atomic snapshot behavior,
+and migrated adapter output. Run focused odds-store and nflverse-adapter tests,
+then the Python quality boundary.
+
+#### Acceptance
+
+All current odds producers and storage functions use the provider-aware quote
+contract. Existing incompatible artifacts have an explicit reset path. The
+current snapshot can safely preserve multiple books without selecting one, and
+the next unit can implement The Odds API client and parser directly against the
+locked schema.
 
 ---
