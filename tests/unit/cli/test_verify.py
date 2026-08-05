@@ -5,13 +5,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
 from gridiron_edge.cli._composites import StageResult
 from gridiron_edge.cli.verify import (
     _build_stages,
+    _stage_smoke_pipeline,
     _summarize_pytest_output,
 )
 
@@ -136,6 +137,109 @@ class TestSubprocessStages:
         result = _stage_unit_tests(ctx)
         assert result.success
         assert "542 passed" in result.detail
+
+
+class TestVerifyContract:
+    @patch("gridiron_edge.cli.main._run_pipeline_stages")
+    def test_smoke_runs_only_completed_game_ingest_and_cleaning(
+        self,
+        mock_run: MagicMock,
+    ) -> None:
+        result = _stage_smoke_pipeline({"repo_root": Path("/tmp")})
+
+        assert result.success
+        assert result.detail == "fetch-games + clean-games OK"
+        assert mock_run.call_args.kwargs["active"] == {
+            "fetch-games",
+            "clean-games",
+        }
+        assert "clean-upcoming" not in mock_run.call_args.kwargs["active"]
+        assert all("odds" not in stage for stage in mock_run.call_args.kwargs["active"])
+
+    def test_help_documents_weekly_and_frontend_boundaries(self) -> None:
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.verify import verify_cmd
+
+        app = typer.Typer()
+        app.command()(verify_cmd)
+        result = CliRunner().invoke(app, ["--help"])
+
+        assert result.exit_code == 0, result.output
+        assert "gridiron verify-week" in result.output
+        assert "Frontend build, Vitest, and ESLint" in result.output
+        assert "are not run by this command" in result.output
+        assert "fetch-games + clean-games" in result.output
+
+    @patch.multiple(
+        "gridiron_edge.cli.verify",
+        _stage_quality_gates=DEFAULT,
+        _stage_unit_tests=DEFAULT,
+        _stage_integration_tests=DEFAULT,
+        _stage_e2e_tests=DEFAULT,
+        _stage_smoke_pipeline=DEFAULT,
+        _stage_baseline_comparison=DEFAULT,
+    )
+    def test_smoke_failure_is_nonfatal_by_default(
+        self,
+        **mocks: MagicMock,
+    ) -> None:
+        mock_quality = mocks["_stage_quality_gates"]
+        mock_unit = mocks["_stage_unit_tests"]
+        mock_integ = mocks["_stage_integration_tests"]
+        mock_e2e = mocks["_stage_e2e_tests"]
+        mock_smoke = mocks["_stage_smoke_pipeline"]
+        mock_baseline = mocks["_stage_baseline_comparison"]
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.verify import verify_cmd
+
+        for stage in [mock_quality, mock_unit, mock_integ, mock_e2e, mock_baseline]:
+            stage.return_value = StageResult(success=True, detail="ok")
+        mock_smoke.return_value = StageResult(success=False, detail="source unavailable")
+
+        app = typer.Typer()
+        app.command()(verify_cmd)
+        result = CliRunner().invoke(app, [])
+
+        assert result.exit_code == 0, result.output
+        assert "soft-failed" in result.output
+
+    @patch.multiple(
+        "gridiron_edge.cli.verify",
+        _stage_quality_gates=DEFAULT,
+        _stage_unit_tests=DEFAULT,
+        _stage_integration_tests=DEFAULT,
+        _stage_e2e_tests=DEFAULT,
+        _stage_smoke_pipeline=DEFAULT,
+        _stage_baseline_comparison=DEFAULT,
+    )
+    def test_strict_makes_smoke_failure_fatal(
+        self,
+        **mocks: MagicMock,
+    ) -> None:
+        mock_quality = mocks["_stage_quality_gates"]
+        mock_unit = mocks["_stage_unit_tests"]
+        mock_integ = mocks["_stage_integration_tests"]
+        mock_e2e = mocks["_stage_e2e_tests"]
+        mock_smoke = mocks["_stage_smoke_pipeline"]
+        mock_baseline = mocks["_stage_baseline_comparison"]
+        import typer
+        from typer.testing import CliRunner
+
+        from gridiron_edge.cli.verify import verify_cmd
+
+        for stage in [mock_quality, mock_unit, mock_integ, mock_e2e, mock_baseline]:
+            stage.return_value = StageResult(success=True, detail="ok")
+        mock_smoke.return_value = StageResult(success=False, detail="source unavailable")
+
+        app = typer.Typer()
+        app.command()(verify_cmd)
+        result = CliRunner().invoke(app, ["--strict"])
+
+        assert result.exit_code == 1, result.output
 
 
 class TestBaselineComparisonStage:
@@ -315,21 +419,25 @@ class TestBaselineComparisonStage:
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
 
-    @patch("gridiron_edge.cli.verify._stage_quality_gates")
-    @patch("gridiron_edge.cli.verify._stage_unit_tests")
-    @patch("gridiron_edge.cli.verify._stage_integration_tests")
-    @patch("gridiron_edge.cli.verify._stage_e2e_tests")
-    @patch("gridiron_edge.cli.verify._stage_smoke_pipeline")
-    @patch("gridiron_edge.cli.verify._stage_baseline_comparison")
+    @patch.multiple(
+        "gridiron_edge.cli.verify",
+        _stage_quality_gates=DEFAULT,
+        _stage_unit_tests=DEFAULT,
+        _stage_integration_tests=DEFAULT,
+        _stage_e2e_tests=DEFAULT,
+        _stage_smoke_pipeline=DEFAULT,
+        _stage_baseline_comparison=DEFAULT,
+    )
     def test_runs_all_default_stages(
         self,
-        mock_baseline: MagicMock,
-        mock_smoke: MagicMock,
-        mock_e2e: MagicMock,
-        mock_integ: MagicMock,
-        mock_unit: MagicMock,
-        mock_quality: MagicMock,
+        **mocks: MagicMock,
     ) -> None:
+        mock_quality = mocks["_stage_quality_gates"]
+        mock_unit = mocks["_stage_unit_tests"]
+        mock_integ = mocks["_stage_integration_tests"]
+        mock_e2e = mocks["_stage_e2e_tests"]
+        mock_smoke = mocks["_stage_smoke_pipeline"]
+        mock_baseline = mocks["_stage_baseline_comparison"]
         import typer
         from typer.testing import CliRunner
 

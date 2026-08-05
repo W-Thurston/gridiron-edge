@@ -35,6 +35,7 @@ from gridiron_edge.cli.verify_week import verify_week_cmd
 from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
 from gridiron_edge.core.logging import setup_logging
 from gridiron_edge.core.settings import ensure_data_dirs
+from gridiron_edge.datasets.registry import DatasetKey, dataset_path
 
 _verbose_state: dict[str, bool] = {"verbose": False}
 
@@ -109,20 +110,14 @@ ALL_STAGES: list[str] = [
 # STAGE DEPENDENCY CHECKING
 # ===========================================================================
 
-# Map of (stage → file path tuple relative to repo root). The first path
-# is the stage's input; the second is the stage's output. A warning is
-# logged when the input is newer than the output, indicating the stage
-# is operating on a result that's already stale relative to its source.
-# Only the most common dependencies are tracked here - fetch-* stages
-# have no checkable upstream within the pipeline itself.
-_STAGE_DEPENDENCIES: dict[str, tuple[str, str]] = {
-    "clean-games": (
-        "data/raw/games.parquet",
-        "data/cleaned/games.csv",
-    ),
+# Map each cleaning stage to its registered input and output datasets.
+# A warning is logged when the existing output is older than its source.
+# Fetch stages have no checkable upstream within this pipeline.
+_STAGE_DEPENDENCIES: dict[str, tuple[DatasetKey, DatasetKey]] = {
+    "clean-games": ("games_raw_nflverse", "games"),
     "clean-upcoming": (
-        "data/raw/schedule_upcoming.parquet",
-        "data/cleaned/schedule_upcoming.csv",
+        "schedule_upcoming_raw_nflverse",
+        "schedule_upcoming_rich",
     ),
 }
 
@@ -152,9 +147,9 @@ def _check_stage_staleness(
     for stage in active:
         if stage not in _STAGE_DEPENDENCIES:
             continue
-        rel_input, rel_output = _STAGE_DEPENDENCIES[stage]
-        input_path: Path = repo_root / rel_input
-        output_path: Path = repo_root / rel_output
+        input_key, output_key = _STAGE_DEPENDENCIES[stage]
+        input_path: Path = dataset_path(repo_root, input_key)
+        output_path: Path = dataset_path(repo_root, output_key)
 
         if not input_path.exists():
             # No upstream input → no check possible. The stage may
@@ -169,12 +164,11 @@ def _check_stage_staleness(
         output_mtime: float = output_path.stat().st_mtime
         if input_mtime > output_mtime:
             logger.warning(
-                "Stage %r will run on upstream data older than its current "
-                "output (%s newer than %s). Consider running upstream "
-                "fetch stages first to refresh.",
+                "Stage %r has stale output: %s is older than newer upstream "
+                "input %s. The active stage will rebuild the output.",
                 stage,
-                rel_input,
-                rel_output,
+                output_path,
+                input_path,
             )
 
 
@@ -324,7 +318,11 @@ def run_data_pipeline(
     skip: list[str] = typer.Option([], "--skip", help=_SKIP_HELP),  # noqa: B008
     only: list[str] = typer.Option([], "--only", help=_ONLY_HELP),  # noqa: B008
 ) -> None:
-    r"""Run a full end-to-end data pipeline with per-stage control.
+    r"""Run the canonical data pipeline with per-stage control.
+
+    With no stage flags, all registered stages run. Current-market odds are
+    not part of this command; the legacy DraftKings adapter is explicit under
+    ``gridiron ingest dk-odds``.
 
     \b
     Scenario 1 - weekly refresh (most common, no flags needed):

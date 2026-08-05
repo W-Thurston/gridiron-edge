@@ -2348,39 +2348,31 @@ The frontend reflects actual weekly product readiness rather than silent nulls. 
 
 ---
 
-### Unit 28: Update Data Pipeline and Verification CLI Contracts
+### Unit 28: Update Data Pipeline and Verification CLI Contracts [Complete]
+
+#### Completed
+Aligned the canonical `run-data-pipeline` command’s help, default stage behavior, and staleness warnings. Confirmed that no stage flags run all eight registered data stages and that current-market odds are not part of the command. Kept the unreliable legacy DraftKings adapter as an explicit `gridiron ingest dk-odds` operation rather than a default pipeline dependency.
+
+Replaced duplicated pipeline staleness paths with canonical dataset-registry keys and `dataset_path()` resolution for completed-game and upcoming-schedule cleaning. Corrected staleness warnings to identify the existing output as older than its newer upstream input and to state that the active stage will rebuild the output.
+
+Defined `gridiron verify` as Python repository and backend verification. Its default stages run Ruff, Pyrefly, backend unit, integration, and end-to-end tests, an external nflverse `fetch-games + clean-games` smoke check, and model baseline comparison. The smoke check no longer claims to run upcoming-schedule cleaning or other excluded pipeline stages.
+
+Documented `gridiron verify-week` as the separate selected weekly-product readiness command. Explicitly documented that frontend build, Vitest, and frontend ESLint remain separate checks and are not run by `gridiron verify`. Preserved nonfatal smoke and missing-baseline behavior by default, with `--strict` converting those soft failures into hard failures.
 
 #### Goal
-
-Correct remaining CLI semantics and documentation.
-
-#### Production files
-
-- `src/gridiron_edge/cli/main.py`
-- `src/gridiron_edge/cli/verify.py`
-- related help text and operational documentation
-
-#### Test files
-
-- update:
-  `tests/unit/cli/test_main.py`
-- update:
-  `tests/unit/cli/test_verify.py`
+Make data-pipeline defaults, dataset freshness checks, verification scope, command help, stage behavior, and exit semantics describe and enforce the same operational contracts.
 
 #### Tests
+Added tests proving that no-flags pipeline execution selects all eight canonical stages and has no DraftKings or odds dependency. Verified that public help uses the implemented `run-data-pipeline` command name and documents the explicit odds boundary.
 
-- default pipeline does not require DraftKings;
-- no-flags behavior matches documentation;
-- staleness paths come from the registry;
-- staleness warning wording is correct;
-- smoke verification behavior matches its documentation;
-- code verification remains separate from weekly readiness;
-- frontend gates are either intentionally included or explicitly documented as
-  outside this command.
+Added registry-driven staleness tests for completed-game and upcoming-schedule datasets. Verified that stale-output warnings identify the registered output and input paths, use correct temporal wording, remain nonfatal, and are omitted for current outputs and first-run missing files.
+
+Added verification tests proving that the smoke stage runs exactly `fetch-games + clean-games`, excludes upcoming-schedule cleaning and odds, and reports the implemented behavior. Verified that help distinguishes Python and backend verification from `verify-week` operational readiness and explicitly excludes frontend build, Vitest, and ESLint. Verified that smoke failures remain nonfatal by default and become fatal under `--strict`. Ruff, Pyrefly, focused CLI tests, composite-workflow tests, and the full unit quality boundary pass.
 
 #### Acceptance
+`run-data-pipeline` help and no-flags behavior agree, all stage paths come from the canonical dataset registry, and staleness warnings truthfully identify stale outputs. The default pipeline does not require DraftKings or current-market odds.
 
-CLI help, stage behavior, and exit semantics agree.
+`gridiron verify` accurately represents Python repository health, backend tests, external data smoke verification, and baseline comparison. `gridiron verify-week` remains the independent weekly operational-readiness command. Frontend gates are explicitly separate. Soft-failure and strict-mode exit semantics match the documented behavior.
 
 ---
 

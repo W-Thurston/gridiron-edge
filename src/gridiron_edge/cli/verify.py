@@ -2,14 +2,17 @@
 
 """Composite command: verify.
 
-Verification workflow: quality gates, tests, smoke-test pipeline.
-Used before commits, before architectural changes, or to answer the
-"is anything broken?" question.
+Python repository verification workflow: quality gates, backend tests,
+an external nflverse smoke check, and model baseline comparison.
 
-The default mode runs lint + types + unit + integration + e2e + smoke.
-``--fast`` skips e2e and smoke-pipeline for quick checks. ``--strict``
-converts soft-failures (typically smoke-pipeline external-service
-flakiness) into hard failures for CI use.
+This command does not evaluate selected weekly-product readiness; use
+``gridiron verify-week`` for that. Frontend build, Vitest, and ESLint checks
+are separate and are not run by this command.
+
+The default mode runs Ruff, Pyrefly, unit, integration, and e2e tests, the
+fetch-games + clean-games smoke check, and baseline comparison. ``--fast``
+skips e2e and smoke-pipeline. ``--strict`` converts smoke and missing-baseline
+soft failures into hard failures for CI use.
 
 Usage::
 
@@ -196,12 +199,13 @@ def _stage_slow_tests(ctx: dict[str, Any]) -> StageResult:
 def _stage_smoke_pipeline(ctx: dict[str, Any]) -> StageResult:
     """Light run-data-pipeline check (skip almost everything).
 
-    Runs the fast stages: fetch-games + clean-games + clean-upcoming.
-    Skips weather, odds, EPA, Elo, features. The goal is to confirm
-    the data layer is responsive, not to actually rebuild anything.
+    Runs fetch-games + clean-games against the external nflverse source.
+    It does not run upcoming schedule, weather, odds, EPA, Elo, features,
+    weekly readiness, or frontend checks. The goal is to verify the completed-
+    game ingest and cleaning boundary, not to rebuild the complete pipeline.
 
-    Soft-fail by default because nflverse can be flaky. ``--strict``
-    converts this to a hard fail.
+    Soft-fail by default because the external source can be unavailable.
+    ``--strict`` converts this to a hard failure.
     """
     from gridiron_edge.cli.main import _run_pipeline_stages
 
@@ -454,13 +458,17 @@ def verify_cmd(
         help=_ONLY_HELP,
     ),
 ) -> None:
-    r"""Verify nothing is broken: quality gates + tests + smoke check.
+    r"""Verify Python repository health and backend behavior.
 
-    The default mode runs lint, type-check, unit tests, integration
-    tests, e2e tests, a light pipeline smoke test, and a baseline
-    comparison against the most recent full-retrain report. ``--fast``
+    The default mode runs Ruff, Pyrefly, backend unit, integration, and e2e
+    tests, an external nflverse fetch-games + clean-games smoke check, and a
+    baseline comparison against the most recent full-retrain report. ``--fast``
     skips e2e and smoke. ``--very-thorough`` adds slow tests. ``--strict``
-    converts soft-failures into hard ones for CI.
+    converts smoke and missing-baseline soft failures into hard failures.
+
+    This command does not run selected weekly-product readiness; use
+    ``gridiron verify-week`` for that. Frontend build, Vitest, and ESLint
+    remain separate checks and are not run by this command.
 
     \b
     Examples:
