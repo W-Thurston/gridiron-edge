@@ -6,12 +6,12 @@ export function ExplainPage() {
       title="Explain"
       description='"Why does the model give this game 71%?" View feature contribution waterfall, historical comparable games, and what-if scenarios that show how predictions change under different conditions.'
       blocker="scenario_engine"
-      roadmap="W4.5"
+      roadmap="scenario engine"
       requirements={[
         "Feature attribution / per-factor prediction decomposition",
         "Comparable game retrieval (nearest-neighbor over historical games)",
         "Scenario engine for what-if propagation (What if Mahomes is out?)",
-        "Injury data source decision (blocks W4.5)",
+        "Injury data source decision",
       ]}
     />
   );

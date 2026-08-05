@@ -23,7 +23,7 @@ class TestGameInjuriesConstruction:
         status = injuries.response_meta.field_status["reports"]
         assert isinstance(status, BlockedStatus)
         assert status.blocker == "injury_data_source"
-        assert status.roadmap == "§5.3"
+        assert status.roadmap == "injury data source"
 
     def test_meta_serializes_with_wire_alias(self) -> None:
         meta = ResponseMeta().with_blocked("reports", *Blocker.INJURY_DATA)

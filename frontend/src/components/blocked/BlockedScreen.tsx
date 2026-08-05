@@ -7,7 +7,7 @@ type BlockedScreenProps = {
   description: string;
   /** Blocker slug (matches Blocker registry from api/meta.py). */
   blocker: string;
-  /** Roadmap reference (e.g. "W7", "§5.3", "deferred"). */
+  /** Stable semantic roadmap reference for the blocked capability. */
   roadmap: string;
   /** Bulleted list of what needs to ship before this screen populates. */
   requirements: string[];

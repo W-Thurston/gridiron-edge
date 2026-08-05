@@ -1,5 +1,36 @@
 # Gridiron Edge - Changelog
 
+## 2026-08-05 - Weekly prediction architecture and operational closeout
+
+### Added
+
+- Immutable game forecast events with explicit `live` and `backfilled` roles, event identity, invocation run identity, UTC generation time, model identity, and schedule scope.
+- Immutable schedule-complete weekly products with indexed storage and explicit season-and-week current selection.
+- Model-specific weekly availability inspection and independent policy selection for Win and Total families.
+- Source-neutral current-market storage, authoritative edge diagnostics, and explicit prediction-versus-market readiness.
+- Schedule-first API game responses with independent Win, Spread, Total, and projected-score component status and provenance.
+- Shared frontend presentation for weekly component readiness and edge result states.
+- Registry-driven pipeline staleness checks and aligned verification command contracts.
+
+### Changed
+
+- Migrated game prediction to one canonical Away/Home-oriented row per game using `HOME_WIN`, independent `ACTUAL_TOTAL`, and Home-minus-Away differentials.
+- Replaced mutable or recency-selected weekly runtime behavior with immutable events and explicitly selected weekly products.
+- Updated `weekly-predict` to execute policy-selected live Win and Total models, publish forecast output, and soft-fail only edge generation when markets are unavailable.
+- Updated `post-week` to evaluate the exact selected live forecast events after completed outcomes are available.
+- Kept the API as a serialization boundary and removed current Games-path dependence on champion resolution or Elo fallback.
+- Regenerated OpenAPI and frontend TypeScript contracts and replaced runtime workstream references with stable semantic blocker references.
+- Rewrote `HANDOFF.md` as the current operational guide and pruned `ROADMAP.md` to genuine future work and limitations.
+
+### Operational validation
+
+- Completed historical backfills and deployable training for Win Logistic, Win Random Forest, Win XGBoost, Total Random Forest, and Total XGBoost under the canonical feature contract.
+- Refreshed calibrations, promoted champions from the complete comparison set, and regenerated the baseline report.
+- Completed a real 2026 Week 1 rehearsal with 16 scheduled games, complete Win, Spread, Total, projected-score, and provenance coverage, immutable forecast and product artifacts, and successful PNG and HTML publication.
+- Confirmed missing market data remains an explicit independent blocker and soft-fails only edge generation.
+- Confirmed frontend lint, production build, and all 344 frontend tests pass.
+
+
 What has been built and when. Newest first.
 
 ---

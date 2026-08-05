@@ -1,7 +1,7 @@
 # src/gridiron_edge/api/app.py
 """FastAPI app factory for the Gridiron Edge API.
 
-The app is read-only at W8. Routes attach in later steps. The factory
+The app is a read-only serialization surface. The factory
 shape lets tests build isolated app instances with stubbed dependencies.
 """
 
@@ -65,7 +65,7 @@ def create_app() -> FastAPI:
 
     Returns a fresh `FastAPI` instance with OpenAPI metadata and CORS
     middleware configured. Routes are not attached here; callers (or
-    later steps in W8) wire routers via `app.include_router(...)`.
+    application startup wires routers via `app.include_router(...)`.
 
     Returns:
         Configured FastAPI app, ready to mount routers on.
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
         openapi_tags=_OPENAPI_TAGS,
     )
 
-    # Permissive CORS for local development. Tightening is a W9 concern
+    # Permissive CORS for local development. Restrict before non-local exposure
     # once a deployment surface exists.
     app.add_middleware(
         CORSMiddleware,

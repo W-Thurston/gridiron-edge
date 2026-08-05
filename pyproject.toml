@@ -145,8 +145,9 @@ force-sort-within-sections = true
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    "D",    # No docstring requirements in tests
-    "ANN",  # No annotation requirements in tests
+    "D",       # No docstring requirements in tests
+    "ANN",     # No annotation requirements in tests
+    "PLR0917", # Test builders and patch-injected signatures are intentionally explicit
 ]
 "notebooks/**" = [
     "D",
@@ -158,6 +159,7 @@ force-sort-within-sections = true
     "PLR0912", # Too many branches - inherent to tiebreaker logic
     "PLR0915", # Too many statements - inherent to tiebreaker logic
     "PLR0911", # Too many return statements - inherent to tiebreaker logic
+    "PLR0917", # Numba kernels and simulation matrices use explicit positional arrays
     "D417",    # Missing argument descriptions - numba kernel params are self-describing
 ]
 
@@ -189,6 +191,15 @@ force-sort-within-sections = true
 "src/gridiron_edge/cli.py" = [
     "PLR0912", # run-data-pipeline has many conditional pipeline stages by design
     "PLR0915", # same rationale
+]
+"src/gridiron_edge/api/serializers/teams.py" = [
+    "PLR0917", # Explicit serializer inputs preserve the persisted API boundary
+]
+"src/gridiron_edge/cli/betting.py" = [
+    "PLR0917", # Typer parameters define the public bet-log command contract
+]
+"src/gridiron_edge/evaluation/prop_metrics.py" = [
+    "PLR0917", # Metric functions accept explicit aligned evaluation series
 ]
 
 [tool.ruff.format]

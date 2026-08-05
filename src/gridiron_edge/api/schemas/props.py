@@ -143,7 +143,7 @@ class PropDetail(BaseResponse):
     )
     injury_status: dict | None = Field(
         default=None,
-        description=("Player injury status. Blocked on injury data source (ROADMAP §5.3)."),
+        description=("Player injury status. Blocked on an injury data source."),
     )
     recent_form: list[dict] | None = Field(
         default=None,
@@ -151,5 +151,5 @@ class PropDetail(BaseResponse):
     )
     multi_book_shopping: dict | None = Field(
         default=None,
-        description=("Per-book line and odds comparison. Blocked on multi-book odds ingest (W7)."),
+        description=("Per-book line and odds comparison. Blocked on multi-book market ingestion."),
     )

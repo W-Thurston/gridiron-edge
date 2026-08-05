@@ -1,195 +1,34 @@
 # Gridiron Edge — Development Plan
 
-> **Purpose:** a directed view of what we are currently building. PLAN.md is a
-> working document, not a reference. It contains exactly one active workstream
-> at a time, broken into tiers, each with its own design block that grows
-> during the tier and collapses to a summary on completion.
+> **Purpose:** the completed implementation record for the canonical weekly
+> prediction product. Units 1 through 29 are retained as concise closeout
+> summaries. New work belongs here only after it is selected from `ROADMAP.md`
+> for bounded execution.
 
 ## Where to find other information
 
 | Document | Role |
 |----------|------|
-| **PLAN.md** (this file) | The active workstream and its in-flight design |
-| **ROADMAP.md** | Long-term strategic direction, workstream inventory, prioritization, known issues & backlog |
-| **CHANGELOG.md** | What was built and when (closed workstreams + tier summaries) |
-| **HANDOFF.md** | How the system works today (architecture, workflows, operations) |
-| **DECISIONS.md** | Architectural decisions made during workstreams |
+| **PLAN.md** (this file) | Completed implementation units and the next selected bounded work |
+| **ROADMAP.md** | Strategic priorities, genuine future capabilities, and known limitations |
+| **CHANGELOG.md** | What was built and when |
+| **HANDOFF.md** | How the system works today: architecture, workflows, operations, and recovery |
+| **DECISIONS.md** | Append-only architectural decisions and supersession history |
 
-## Status key
+## Planned Implementation Status
 
-| Tag | Meaning |
-|-----|---------|
-| Active | Currently being worked |
-| Designing | In design phase, not yet implementing |
-| Complete | Success criteria met (summary retained inline) |
-| Paused | Blocked on a dependency being addressed by another workstream |
-| Re-scoped | Success criteria invalidated; replaced or dropped |
+Units 1 through 29 are complete.
 
-Workstream identifiers (W1, W2, …) match ROADMAP.md. They exist only inside the planning docs (PLAN, ROADMAP, DECISIONS, CHANGELOG) — never in source code, comments, or commit subjects.
+The canonical weekly prediction, immutable forecast-event, explicitly selected
+weekly-product, API serialization, frontend readiness, and operational
+verification architecture is implemented and validated through a real 2026
+Week 1 rehearsal.
 
-## Ways of Working
-
-How we operate in every session. A new thread should read this first.
-
-1. **Confirm before building — never assume code exists or looks a certain way.** Before writing or modifying anything, verify the current state. Prefer over-confirming: it's cheaper to paste five files than to rebuild something that already existed and discover the drift later. Use grep to locate; ask the user to run commands or paste files. Assumptions are the #1 source of rework and format drift.
-
-2. **Grep first, then read.** Locate with `grep -rn`, then request the specific file(s) or function(s). Ask the user to run the grep/curl and paste results rather than guessing at signatures, schemas, or data.
-
-3. **Design before implementing, at two levels.**
-   - **ROADMAP-level (high-level):** lock the workstream shape — what, why, tiers, success criteria — before touching code.
-   - **Subsection-level (deep):** before each tier/substep, a focused design block with locked decisions, then implement.
-
-4. **PLAN.md tracks the active work.** After ROADMAP design, expand the workstream into PLAN.md as a checklist. Check items off as completed.
-
-5. **Commit small units as you go.** Each substep is its own commit with a clear message. Quality gates (`ruff` + `pyrefly` + unit tests, or `pnpm build && pnpm test:run` for frontend) pass before each commit.
-
-6. **Section close-out ritual.** When a section/tier completes: clean its detail out of PLAN.md (collapse to a one-line summary or remove), check the item off in ROADMAP.md, and either continue to the next subsection or repeat the full design→plan→build→close loop for the next big chunk.
-
-7. **Verify against real data.** After backend/data changes, confirm via curl or a Python one-liner against the actual artifact — don't trust the code path alone.
-
-8. **Note on dates:** the assistant's system clock may report an earlier date than reality. Trust commit timestamps and the user; when in doubt, ask.
+No additional implementation unit is currently active. Future work is
+prioritized in `ROADMAP.md` and should be added to `PLAN.md` only when selected
+for bounded execution.
 
 ---
-
-## Active Workstream: Schedule-Complete Game Prediction Product
-
-### Objective
-
-Build a static, schedule-complete weekly game prediction product for Moneyline,
-Spread, and Total markets, with explicit model provenance, source-labeled market
-data, immutable live forecasts, structured readiness diagnostics, and consistent
-CLI, API, and frontend behavior.
-
-The API remains a serialization boundary. Model inference, market ingestion,
-prediction composition, edge calculation, and forecast selection occur before
-API serialization.
-
-### Motivation
-
-The current runtime path is composed from incompatible contracts:
-
-- `weekly-predict` generates and archives Elo win probabilities only.
-- `weekly-predict --model-type` selects archive rows for edge generation but
-  does not select the model used to generate weekly predictions.
-- `/games` resolves the current win-probability champion and falls back to Elo.
-- `/edges` and `gridiron edges report` resolve the champion without the same
-  fallback.
-- Total predictions are archived independently and are not composed with
-  win-probability predictions.
-- Edge generation reuses the win-model type when resolving total uncertainty.
-- The prediction archive keeps only the latest row for each
-  `(game_id, model_name, model_type)` and can replace live forecasts with later
-  backfills.
-- `post-week` performs a season-level walk-forward backfill rather than settling
-  the immutable forecast issued before kickoff.
-- DraftKings ingestion is no longer a reliable current source. The previously
-  functional endpoint now appears to be blocked by Cloudflare human
-  verification, and its undocumented URL format required periodic annual
-  updates. The adapter should be preserved, but the production workflow must
-  not depend on forcing it to work.
-- nflverse upcoming schedule data already contains useful market context, but
-  the current cleaning path discards it.
-- Existing verification checks code health but not weekly prediction readiness,
-  schedule coverage, market freshness, or prediction-to-market join coverage.
-
-### Design Principles
-
-1. Scheduled games are the denominator. Missing predictions or markets must not
-   remove games from the weekly product.
-2. Live forecasts and historical backtests are separate artifact roles.
-3. Live forecast events are immutable.
-4. Multiple forecast runs for the same game and model may coexist.
-5. A selected current forecast is explicit, not implied by latest write order.
-6. Win-probability and total models retain independent identities.
-7. Week-specific model availability policy is explicit and serialized.
-8. Market data records source and ingestion time.
-9. Missing predictions, missing markets, join failures, incomplete markets, and
-   no positive edges are distinct states.
-10. Rendering is a pure consumer and must not generate or archive predictions.
-11. CLI commands retain distinct operational intents but share domain services.
-12. Tests accompany every implementation unit.
-13. Working-unit labels belong in planning documentation only, not in source
-    comments, docstrings, test names, or runtime identifiers.
-14. Gridiron Edge has never been live and has no production compatibility
-    obligations. New contracts may replace existing schemas, artifacts, commands,
-    tests, and development-era behavior outright. Do not add migrations,
-    compatibility readers, aliases, deprecation periods, or dual-write paths
-    unless they serve a current development need.
-
----
-
-## Intended CLI Responsibilities
-
-### `gridiron run-data-pipeline`
-
-Refresh foundational datasets, Elo state, and historical modeling inputs.
-
-- DraftKings is removed from the default no-flags path.
-- External market ingestion is explicit and source-neutral.
-- Staleness checks use dataset-registry paths.
-- Weather defaults and documented examples must agree.
-
-### `gridiron weekly-predict`
-
-Primary pregame workflow.
-
-- Refresh required inputs.
-- Resolve an availability-aware prediction policy.
-- Produce a schedule-complete weekly product.
-- Optionally attach source-labeled market data.
-- Calculate edge results and diagnostics.
-- Publish outputs.
-- Verify weekly readiness.
-
-The normal command should not generate one model and request another model's
-archive rows for edge calculation.
-
-### `gridiron output predictions`
-
-Pure rendering/export command.
-
-- Load an existing weekly product.
-- Render requested formats.
-- Do not run inference.
-- Do not modify prediction storage.
-
-### `gridiron post-week`
-
-Completed-week closeout workflow.
-
-- Refresh completed results.
-- Join outcomes to immutable live forecasts.
-- Evaluate the forecasts actually issued before kickoff.
-- Refresh next-week state.
-- Report incomplete closeout coverage.
-
-Historical backfill does not belong in this command.
-
-### `gridiron evaluate backfill`
-
-Historical reconstruction and model-comparison workflow.
-
-- Retain season-level walk-forward behavior for trained models.
-- Retain chronological reconstruction for Elo.
-- Store backfilled forecasts separately from live forecast events.
-- Never replace live forecasts.
-
-### `gridiron edges report`
-
-Inspection/export command over the same weekly product and edge service used by
-the API and `weekly-predict`.
-
-### `gridiron verify`
-
-Code-health verification.
-
-### `gridiron verify-week`
-
-Read-only operational readiness verification for one season and week.
-
----
-
-## Implementation Units
 
 ### Unit 1: Define Forecast and Weekly Product Identity [Complete]
 
@@ -1596,7 +1435,7 @@ analytical result state, or threshold explanation.
 
 ---
 
-### Unit 18: Unify Weekly Edge Calculation
+### Unit 18: Unify Weekly Edge Calculation [Complete]
 
 #### Completed
 
@@ -1749,7 +1588,7 @@ All 16 scheduled games remain present and complete across Win, Spread, Total, pr
 
 ---
 
-### Unit 20: Make `output predictions` a Pure Renderer
+### Unit 20: Make `output predictions` a Pure Renderer [Complete]
 
 #### Completed
 
@@ -1851,7 +1690,7 @@ selected weekly product.
 
 ---
 
-### Unit 21: Rewire `edges report`
+### Unit 21: Rewire `edges report` [Complete]
 
 #### Completed
 
@@ -1964,7 +1803,7 @@ historical forecast and odds-ledger artifacts.
 
 ---
 
-### Unit 22: Rebuild `post-week` Around Live Forecast Closeout
+### Unit 22: Rebuild `post-week` Around Live Forecast Closeout [Complete]
 
 #### Completed
 
@@ -2114,7 +1953,7 @@ weekly products, and explicit current-product selection.
 
 ---
 
-### Unit 23: Harden Historical Forecast Backfill
+### Unit 23: Harden Historical Forecast Backfill [Complete]
 
 #### Completed
 
@@ -2227,7 +2066,7 @@ Expected request-validation failures render
 
 ---
 
-### Unit 24: Make API Games Schedule-First
+### Unit 24: Make API Games Schedule-First [Complete]
 
 #### Completed
 
@@ -2376,131 +2215,36 @@ Added verification tests proving that the smoke stage runs exactly `fetch-games 
 
 ---
 
-### Unit 29: Documentation and Operational Closeout
+### Unit 29: Documentation and Operational Closeout [Complete]
+
+#### Completed
+Replaced the accumulated HANDOFF.md implementation history with a concise current-state operational guide covering the canonical data pipeline, dataset registry, game-model artifacts, champion manifest, weekly availability and policy, immutable forecast events, explicitly selected weekly products, pregame and postgame workflows, markets and edge diagnostics, historical reconstruction, full retraining, API serialization, frontend contract generation, verification boundaries, recovery procedures, quality gates, and known limitations.
+
+Rewrote ROADMAP.md to contain only the current platform state, strategic priorities, genuine future capabilities, and verified limitations. Removed completed season-readiness work, superseded Elo-fallback behavior, resolved defects, shipped API and frontend gaps, stale stadium and calibration tasks, and temporary workstream numbering. Retained supported-market-provider selection, multi-book shopping, model ensembles, injury and news data, scenario analysis, feature attribution, live-game support, verified API batch-artifact work, frontend enhancements, model research, and tooling improvements as future candidates.
+
+Added D24 to DECISIONS.md, locking immutable forecast events, explicit live and backfilled roles, independent Win and Total policy selection, schedule-complete weekly products, explicit current-product selection, persisted-state API serialization, independent prediction and market readiness, authoritative edge diagnostics, and coherent operational recovery. Marked D22 as superseded for current weekly operation while preserving its historical context.
+
+Prepended a consolidated 2026-08-05 CHANGELOG.md entry covering the canonical Away/Home game contract, complete game-model artifact cycle, policy-driven weekly execution, immutable events and products, source-neutral markets, API and frontend contract migration, CLI contract alignment, successful 2026 Week 1 rehearsal, and final documentation closeout.
+
+Removed implementation-era work-unit nomenclature from runtime source, API blocker metadata, frontend blocked screens, comments, tests, and generated contracts. Replaced temporary roadmap IDs with stable semantic capability references. Regenerated api-schema.json and frontend/src/api/schema.ts.
+
+Corrected weekly-predict help and stage documentation to describe policy-selected live Win and Total prediction rather than Elo-only execution. Added a narrowly scoped ESLint configuration for context modules that intentionally colocate each Provider and matching hook while retaining Fast Refresh validation everywhere else.
 
 #### Goal
+Provide one authoritative and maintainable description of the implemented Gridiron Edge lifecycle, artifacts, commands, architectural boundaries, operational recovery procedures, known limitations, and genuine future work without stale runtime work-unit naming or superseded behavior.
 
-Document the final weekly lifecycle and remove obsolete guidance.
+#### Tests
+Verified that runtime Python and frontend source contain no implementation-era workstream, unit, or phase labels, excluding legitimate domain values such as winning-streak labels. Regenerated OpenAPI and TypeScript contracts and confirmed retired roadmap identifiers are absent.
 
-#### Documentation files
+Validated backend blocker metadata and response serialization with 43 focused API tests. Validated the corrected weekly-predict help, policy-selected execution wording, immutable event and product behavior, and selected-product readiness. A real 2026 Week 1 weekly-predict run completed data refresh, live prediction, product composition and selection, readiness verification, PNG and HTML publication, and the expected missing-market edge soft failure.
 
-- `HANDOFF.md`
-- `ROADMAP.md`
-- `CHANGELOG.md`
-- relevant architecture or decision documentation
-- `PLAN.md`
+Verified that post-week evaluates the exact selected live events and correctly exits nonzero before completed outcomes exist. verify-week reported all 16 scheduled games complete across Win, Spread, Total, projected scores, and provenance while reporting missing_market_data independently.
 
-#### Required updates
-
-- live versus backfilled forecast roles;
-- weekly product schema and storage path;
-- model availability policy;
-- supported market source;
-- legacy DraftKings status;
-- `weekly-predict` workflow;
-- `post-week` workflow;
-- `verify` versus `verify-week`;
-- API serialization boundary;
-- operational recovery guidance.
+Frontend ESLint passes, the production build passes, and all 344 frontend tests pass across 34 test files. Backend Ruff, Pyrefly, focused tests, and the full unit quality boundary pass.
 
 #### Acceptance
+HANDOFF.md describes the current operating system without retired archive, fallback, odds, prediction, or recovery guidance. ROADMAP.md contains only current strategic direction, genuine future work, and verified limitations. DECISIONS.md records the final persisted-event and selected-product architecture and marks the superseded Elo-fallback decision historically. CHANGELOG.md records the completed implementation and operational validation.
 
-Documentation traces the implemented behavior, commands, artifacts, and known
-limitations without stale work-unit nomenclature in runtime source.
-
----
-
-## Quality Gates
-
-Run focused gates after each unit.
-
-### Python units
-
-```bash
-uv run ruff check <changed paths>
-uvx pyrefly check
-uv run pytest <focused test files> -q
-```
-
-Run the full relevant Python suite at contract boundaries:
-
-after forecast storage and selection;
-after weekly product persistence;
-after edge service integration;
-after CLI rewiring;
-after API rewiring.
-Frontend units
-pnpm test
-pnpm build
-
-
-Use focused frontend tests during each UI unit and the full frontend suite after generated schema and screen wiring changes.
-
-Final workstream gates
-uv run ruff check .
-uvx pyrefly check
-uv run pytest -q
-pnpm test
-pnpm build
-
-
-Also run a read-only verify-week check against a known fixture-backed season and week.
-
-Out of Scope
-Bypassing Cloudflare human verification.
-Connecting to a sportsbook account or placing bets.
-Treating DraftKings as the required current market source.
-Rebuilding simulation and playoff internals unless a shared-contract change requires it.
-Optimizing model champions for short-sample betting ROI.
-Frontend visual redesign unrelated to truthful weekly product status.
-Arbitrary multiweek future prediction before required state exists.
-- Preserving compatibility with development-era prediction archives, generated
-  artifacts, CLI behavior, or schemas that have never been used in production.
-
-
-Definition of Done
-
-The workstream is complete when:
-
-Every scheduled game appears in the weekly product.
-Live forecasts are immutable and coexist with historical backfills.
-Current forecast selection is explicit.
-Win and total model identities remain independent.
-Week 1 and in-season prediction policies are explicit.
-Current market data has source and ingestion provenance.
-Edge results distinguish blockers from valid zero-edge outcomes.
-weekly-predict, edges report, and /edges use one edge service.
-post-week evaluates immutable live forecasts.
-evaluate backfill remains the historical reconstruction workflow.
-API routes serialize persisted products without runtime inference.
-Frontend surfaces visibly distinguish pending, blocked, unavailable, and no-play states.
-verify-week reports schedule, prediction, market, and edge coverage.
-Python and frontend quality gates pass.
-Operational documentation matches the implemented lifecycle.
+Commands, artifacts, model roles, weekly-product selection, market behavior, API serialization, frontend generation, verification boundaries, and recovery procedures agree with the implemented system. Runtime source and generated contracts contain no stale work-unit nomenclature. The planned Units 1 through 29 are complete.
 
 ---
-
-## Paused Workstreams
-
-#### W9.11 Tier 0: Final frontend audit — ⏸️ PAUSED
-
-Paused in favor of W14 Game Prediction Season Readiness. Resume after the
-moneyline, spread, total, odds-ingestion, edge, API, and focused game-day
-frontend path is operationally verified.
-
-The deferred BetSlip real-data review moves naturally into W14 Tier 7 because
-that rehearsal should produce the real edge recommendations required to test
-the staged-wager presentation.
-
----
-
-## Changelog
-
-| Date | Change |
-|------|--------|
-| 2026-07-30 | **W14 opened.** Paused W9.11 Tier 0 and made Game Prediction Season Readiness the active workstream. Locked the vertical-slice goal across upcoming-game features, moneyline/spread/total predictions, archives, odds ingestion, joins, edges, API contracts, Dashboard, Games, GameDetail, BetSlip, and a real weekly rehearsal. Tier 0 is a read-only current-state audit before implementation. |
-| 2026-07-28 | Closed the PlayoffProjections navigation and Weekly Outcomes follow-up after real-data verification. |
-| 2026-07-12 | **Doc-sync pass + PLAN reset.** Normalized planning docs after the frontend arc; PLAN reset to between-workstreams with a next-candidates list (audit sweep recommended). |
-| 2026-07-11 | **W9.10 complete.** Both Compare modes shipped on backend B1–B4. Fixed game_id scramble, clean-games clobber, Elo empty-games crash; added champion→elo fallback + upcoming-Week-1 season resolver. |
-| 2026-07-11 | **W9.10 status resync.** Team vs Team complete (6 alignment adjustments + 11-metric cohort_splits). Player vs Defense redesigned to independent pickers + bar chart + baseline verdict. |
-| 2026-07-11 | **W9.10 design locked.** Two modes; highlight discipline baked in from W9.8. |

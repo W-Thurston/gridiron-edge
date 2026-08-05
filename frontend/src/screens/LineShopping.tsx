@@ -6,7 +6,7 @@ export function LineShopping() {
       title="Line Shopping"
       description="Compare odds across multiple sportsbooks to find the best price on every market. Cross-book edge detection, arbitrage opportunities, and middle-market discovery."
       blocker="multi_book_ingest"
-      roadmap="W7"
+      roadmap="multi-book markets"
       requirements={[
         "Multi-book sportsbook ingest pipeline; current game markets use the nflverse schedule source",
         "Odds source decision — likely The Odds API for ~15 books coverage",

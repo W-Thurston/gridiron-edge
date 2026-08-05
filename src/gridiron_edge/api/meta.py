@@ -26,7 +26,7 @@ class BlockedStatus(BaseModel):
         status: Discriminator. Always the literal "blocked".
         blocker: Stable slug identifying the upstream gap. Must match a
             value registered in the `Blocker` class.
-        roadmap: ROADMAP.md reference (e.g., "§5.3", "W7", "deferred").
+        roadmap: Stable semantic roadmap reference (e.g., "injury data source").
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -94,17 +94,17 @@ class Blocker:
     The `all_slugs()` classmethod returns the set of registered slugs for
     consistency tests.
 
-    Each entry maps to a row in ROADMAP.md §9.5 (Backend gaps surfaced by
-    the prototype). Adding a new blocker means adding an entry there too.
+    Each entry maps to a stable future-work topic in ROADMAP.md. Adding a new
+    blocker means adding or updating that topic there too.
     """
 
-    INJURY_DATA: tuple[str, str] = ("injury_data_source", "§5.3")
-    MULTI_BOOK: tuple[str, str] = ("multi_book_ingest", "W7")
-    LIVE_STATE: tuple[str, str] = ("live_state_ingest", "W10")
-    SCENARIO_ENGINE: tuple[str, str] = ("scenario_engine", "W4.5")
+    INJURY_DATA: tuple[str, str] = ("injury_data_source", "injury data source")
+    MULTI_BOOK: tuple[str, str] = ("multi_book_ingest", "multi-book markets")
+    LIVE_STATE: tuple[str, str] = ("live_state_ingest", "live-game data")
+    SCENARIO_ENGINE: tuple[str, str] = ("scenario_engine", "scenario engine")
     FEATURE_ATTRIBUTION: tuple[str, str] = ("feature_attribution", "deferred")
     COMPARABLES: tuple[str, str] = ("comparables_retrieval", "deferred")
-    HISTORICAL_LINES: tuple[str, str] = ("historical_line_movement", "W7")
+    HISTORICAL_LINES: tuple[str, str] = ("historical_line_movement", "multi-book markets")
     GAMEDAY_METADATA: tuple[str, str] = ("gameday_metadata", "deferred")
     NEWS_INGEST: tuple[str, str] = ("news_ingest", "deferred")
     WAR: tuple[str, str] = ("war_computation", "deferred")

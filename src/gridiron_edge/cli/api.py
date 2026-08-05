@@ -2,7 +2,7 @@
 
 - ``serve`` launches the API via uvicorn.
 - ``export-schema`` serializes the FastAPI OpenAPI spec to a JSON file
-  that W9 (Frontend) consumes to generate a typed API client.
+  that the frontend consumes to generate its typed API client.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def export_schema(
 ) -> None:
     """Serialize the FastAPI OpenAPI spec to a JSON file.
 
-    Used by W9 (Frontend) to generate a typed API client from the
+    Used by the frontend to generate a typed API client from the
     checked-in schema. Rerun after any API surface change to keep the
     frontend client in sync.
     """

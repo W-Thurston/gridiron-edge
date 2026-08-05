@@ -19,15 +19,15 @@ from gridiron_edge.api.meta import BlockedStatus, Blocker, ResponseMeta
 
 class TestBlockedStatus:
     def test_serializes_with_full_shape(self) -> None:
-        bs = BlockedStatus(blocker="injury_data_source", roadmap="§5.3")
+        bs = BlockedStatus(blocker="injury_data_source", roadmap="injury data source")
         assert bs.model_dump() == {
             "status": "blocked",
             "blocker": "injury_data_source",
-            "roadmap": "§5.3",
+            "roadmap": "injury data source",
         }
 
     def test_status_is_always_blocked(self) -> None:
-        bs = BlockedStatus(blocker="multi_book_ingest", roadmap="W7")
+        bs = BlockedStatus(blocker="multi_book_ingest", roadmap="multi-book markets")
         assert bs.status == "blocked"
 
     def test_status_field_rejects_other_values(self) -> None:
@@ -88,12 +88,12 @@ class TestResponseMetaWithBlocked:
         meta = ResponseMeta().with_blocked(
             "injuries",
             "injury_data_source",
-            "§5.3",
+            "injury data source",
         )
         status = meta.field_status["injuries"]
         assert isinstance(status, BlockedStatus)
         assert status.blocker == "injury_data_source"
-        assert status.roadmap == "§5.3"
+        assert status.roadmap == "injury data source"
 
     def test_returns_new_instance(self) -> None:
         original = ResponseMeta()
@@ -106,7 +106,7 @@ class TestResponseMetaWithBlocked:
         status = meta.field_status["injuries"]
         assert isinstance(status, BlockedStatus)
         assert status.blocker == "injury_data_source"
-        assert status.roadmap == "§5.3"
+        assert status.roadmap == "injury data source"
 
 
 class TestResponseMetaMixed:
@@ -141,7 +141,7 @@ class TestResponseMetaSerialization:
                 "injuries": {
                     "status": "blocked",
                     "blocker": "injury_data_source",
-                    "roadmap": "§5.3",
+                    "roadmap": "injury data source",
                 },
             },
         }

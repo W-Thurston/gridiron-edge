@@ -126,12 +126,11 @@ def _check_stage_staleness(
     *,
     active: set[str],
 ) -> None:
-    """Warn when a downstream stage will operate on stale upstream data.
+    """Warn when an active stage's existing output is older than its input.
 
-    If a downstream stage (e.g. ``clean-games``) is active and the
-    upstream input file is newer than the existing output file, log a
-    warning. Does not refuse to run - the user may have legitimate
-    reasons for re-cleaning.
+    If a tracked stage is active and its registered upstream input is newer
+    than its registered output, log a nonfatal warning that the stage will
+    rebuild the stale output.
 
     Args:
         active: The set of stages that will run.

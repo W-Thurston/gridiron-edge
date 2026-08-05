@@ -40,11 +40,11 @@ describe("FieldValue", () => {
           status={{
             status: "blocked",
             blocker: "test_slug",
-            roadmap: "W99",
+            roadmap: "future capability",
           }}
         />
       </TestWrapper>,
     );
-    expect(screen.getByTitle(/test_slug.*W99/)).toBeInTheDocument();
+    expect(screen.getByTitle(/test_slug.*future capability/)).toBeInTheDocument();
   });
 });

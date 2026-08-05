@@ -84,7 +84,7 @@ class TestBaseResponseSerialization:
         assert dumped["_meta"]["field_status"]["value"] == {
             "status": "blocked",
             "blocker": "injury_data_source",
-            "roadmap": "§5.3",
+            "roadmap": "injury data source",
         }
 
     def test_json_round_trip(self) -> None:
@@ -163,7 +163,7 @@ class TestBaseListResponseBlocking:
         status = resp.response_meta.field_status["items"]
         assert isinstance(status, BlockedStatus)
         assert status.blocker == "multi_book_ingest"
-        assert status.roadmap == "W7"
+        assert status.roadmap == "multi-book markets"
 
     def test_serializes_blocked_list_with_wire_shape(self) -> None:
         meta = ResponseMeta().with_blocked("items", *Blocker.LIVE_STATE)
@@ -178,7 +178,7 @@ class TestBaseListResponseBlocking:
         assert dumped["_meta"]["field_status"]["items"] == {
             "status": "blocked",
             "blocker": "live_state_ingest",
-            "roadmap": "W10",
+            "roadmap": "live-game data",
         }
 
 

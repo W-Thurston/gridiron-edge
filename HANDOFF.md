@@ -1,1443 +1,474 @@
-# Gridiron Edge - Handoff
+# Gridiron Edge Handoff
 
-How everything works right now. Assumes you know what the project does - see [README.md](README.md) for the one-paragraph version, [PLAN.md](PLAN.md) for what's coming next, [DECISIONS.md](DECISIONS.md) for architectural decisions made along the way, and [ROADMAP.md](ROADMAP.md) §9 for known issues and opportunistic cleanup items.
+This document describes the current operating system. Historical implementation details belong in `CHANGELOG.md`; future work belongs in `ROADMAP.md`; locked architecture belongs in `DECISIONS.md`; active execution checklists belong in `PLAN.md`.
 
----
+## System Contract
 
-## Architecture
+Gridiron Edge is a file-backed NFL decision-support platform with a Python CLI, persisted model and evaluation artifacts, a read-only FastAPI service, and a generated-contract React frontend.
 
-| Layer | Module |
-|-------|--------|
-| Game + schedule ingest | `gridiron_edge.ingest.nflverse` (nflverse/nfl_data_py) |
-| PBP ingest | `gridiron_edge.ingest.nflverse.pbp` |
-| Weather ingest | `gridiron_edge.ingest.weather.openweather` (OpenWeatherMap) |
-| Odds ingest + ledger | `gridiron_edge.ingest.odds` (DraftKings → Parquet) |
-| Transform | `gridiron_edge.transform.clean` |
-| Shared constants | `gridiron_edge.core.constants` - single source for `HOME_GAME_LOCATION`, `AWAY_WIN_LOCATION`, `HOLDOUT_SEASONS`, `EXPANSION_TEAMS` |
-| Feature column definitions | `gridiron_edge.models.game_prediction._columns` - pure-data leaf, no pandas |
-| Feature engineering functions | `gridiron_edge.models.game_prediction._features` - `FEATURE_SETS`, `_prepare_data`, `_is_trained` |
-| EPA window hyperparameter infra | `gridiron_edge.models.game_prediction._epa_window` - `WindowData`, `_rebuild_features_with_window` |
-| Feature pipeline + dep validation | `gridiron_edge.features.pipeline` (schema v3) + `features.registry.validate_ordering()` |
-| Elo ratings | `gridiron_edge.ratings.elo` - `core.elo_win_probability(divisor=)`, `EloTableConfig(divisor=)` |
-| Simulation types + config | `gridiron_edge.sim._types` - `SimulationConfig(divisor=)`, `SimPaths`, `TeamIndex`, `SimulationResults` |
-| Simulation engine (numba) | `gridiron_edge.sim._engine` - Elo kernels, record accumulation, Monte Carlo |
-| Simulation orchestration | `gridiron_edge.sim.season` - data loading, output builders, `run_full_simulation` |
-| Visualisation | `gridiron_edge.viz` |
-| Evaluation | `gridiron_edge.evaluation` - `archive`, `metrics`, `select`, `backfill`, `tune`, `champion` |
-| Models | `gridiron_edge.models` - Predictor + Trainable protocols, ArtifactStore |
-| CLI | `gridiron_edge.cli` - `main.py` stage-list pipeline, sub-apps per domain |
-| Market math | `gridiron_edge.market` - `odds_math`, `kelly`, `edge`, `recommendations`, `clv` |
-| Post-processing enrichment | `gridiron_edge.models.game_prediction.post_process` - spread, bands, tier, scores |
-| Prediction pipeline | `gridiron_edge.models.game_prediction.pipeline` - composable predict → enrich orchestrator |
-| Total points model | `gridiron_edge.models.game_prediction.total` - RF regressor, shares feature set with win models |
-| Edge calculation | `gridiron_edge.market.edge` - pure scalar EV, cover-prob, edge detection (ML/spread/total). Frozen dataclasses. |
-| Edge recommendations | `gridiron_edge.market.recommendations` - joins predictions ↔ odds, builds 18-column edge report, ranks by EV |
-| Closing Line Value | `gridiron_edge.market.clv` - probability-based and point-based CLV, opening/closing odds extraction, CLV report |
-| Edge CLI | `gridiron_edge.cli.edges` - gridiron edges report (weekly), gridiron edges clv (historical CLV) |
-| Bet ledger | `gridiron_edge.betting.ledger` - append-only Parquet bet log with PnL and CLV on settlement |
-| Bankroll management | `gridiron_edge.betting.bankroll` - transaction log (deposit/withdraw/bet/settle), current_balance, balance_history |
-| Performance analytics | `gridiron_edge.betting.performance` - pure DataFrame analytics: record, ROI, CLV, EV, streaks, summary |
-| Betting CLI | `gridiron_edge.cli.betting` - 8 commands: log, settle, list, summary, balance, export, deposit, with |
-| Player stats ingest | `gridiron_edge.ingest.nflverse` (nflreadpy player game logs, 1999–2025) |
-| Player stats cleaning | `gridiron_edge.transform.clean.player_stats` |
-| Player feature engineering | `gridiron_edge.features.player` - rolling, matchup, usage, game_context, builder, _columns |
-| Prop model training | `gridiron_edge.models.prop_prediction` - base (PropTrainer), qb_pass_yards, qb_rush_yards, rb_rush_yards, wr_rec_yards, te_rec_yards |
-| Prop post-processing | `gridiron_edge.models.prop_prediction.post_process` - predicted_std, intervals, P(over), lean, confidence tiers |
-| Prop evaluation metrics | `gridiron_edge.evaluation.prop_metrics` - accuracy, bias, coverage, calibration, hit rate, by-tier |
-| Prop prediction archive | `gridiron_edge.evaluation.prop_archive` - append-only Parquet, 4-key dedup |
-| Prop CLI | `gridiron_edge.cli.props` - evaluate, projections, backfill |
-| API loaders | `gridiron_edge.api.loaders` — pandas DataFrames in, dicts out; threads `settings.repo_root` per D19 |
-| API schemas | `gridiron_edge.api.schemas` — Pydantic v2, `frozen=True`, `extra="forbid"`, `_meta` envelope via `_base.BaseResponse` |
-| API serializers | `gridiron_edge.api.serializers` — hand-written per D17, owns `_meta.field_status` per D18 |
-| API routes | `gridiron_edge.api.routes` — FastAPI, exception translation for `ChampionNotFoundError` / `OddsUnavailableError` |
-| API player/defense routes (W9.10) | `gridiron_edge.api.routes.players`, `...routes.defense` — `/players` roster, `/players/{id}/history`, `/defense/{team}/allowed` |
-| API exceptions | `gridiron_edge.api.exceptions` — data-state signals from loaders to routes |
-| Frontend | `frontend/` — Vite + React + TypeScript, consumes API via generated `openapi-fetch` client and React Query hooks |
-| Frontend design system | `frontend/src/index.css` — OKLCH dark theme ported from prototype; `frontend/src/design-decisions.md` documents the aesthetic blend |
-| Frontend state | React Contexts for AppState, validated BetSlip v2 draft legs/mode, and Nav; persisted tracked/what-if BetSlip sizing is owned by `useBetSlipSizing` |
-| Frontend testing | Vitest + React Testing Library; smoke tests at `frontend/src/**/*.test.tsx` |
-| Percentile ranking pass | `gridiron_edge.evaluation.percentiles` — per-team percentile ranks over 4 stats |
-| Situational splits (props) | `gridiron_edge.evaluation.situational_splits` — per-player, 8 cohorts, from player game logs |
-| Opponent-allowed aggregates | `gridiron_edge.evaluation.opponent_allowed` — per-(opponent, position, stat) stat allowed, 4 cohorts (season/l4/home/away), defense-perspective home/away |
-| Team cohort splits | `gridiron_edge.evaluation.team_cohort_splits` — 4 cohorts × 11 metrics (off + reciprocal def pairs) from EPA data |
+The game-prediction domain uses one canonical Away/Home-oriented row per game. Win models predict `HOME_WIN`; Away Win Probability is the complement. Total models independently predict `ACTUAL_TOTAL`. Differential features use Home minus Away. Runtime game prediction does not depend on doubled team-perspective rows, `TEAM_A`, `TEAM_B`, `HOME_FIELD`, `RESULT` as a target, implicit forecast recency, hidden Elo fallback, or request-time model execution.
 
----
+The operational source of truth for a week is an explicitly selected immutable weekly product. Prediction readiness and market readiness are independent. A prediction-ready product remains valid when market data is missing, and forecast publication does not require sportsbook prices.
 
-## Repository layout
+## Repository Layout
 
-| Path | Role |
-|------|------|
-| `src/gridiron_edge/core/` | Settings, logging, console, shared constants |
-| `src/gridiron_edge/ingest/` | All data ingestion (nflverse, weather, odds) |
-| `src/gridiron_edge/transform/` | Raw → canonical schema mappers |
-| `src/gridiron_edge/features/` | Feature registry, pipeline, dependency validation |
-| `src/gridiron_edge/features/player/` | Player feature modules: rolling, matchup, usage, game_context, builder, _columns |
-| `src/gridiron_edge/market/` | Odds math, Kelly staking, edge detection, edge reports, CLV analysis |
-| `src/gridiron_edge/betting/` | Bet ledger, bankroll transaction log, performance analytics |
-| `src/gridiron_edge/ratings/elo/` | Elo table, fit, predict, evaluate |
-| `src/gridiron_edge/models/` | Predictor protocol, artifact store, model registry, game prediction variants |
-| `src/gridiron_edge/models/prop_prediction/` | PropTrainer base + 5 position-stat trainers + post_process |
-| `src/gridiron_edge/evaluation/` | Metrics, backfill, archive, tuning, model selection |
-| `src/gridiron_edge/sim/` | Monte Carlo season + playoff simulation |
-| `src/gridiron_edge/viz/` | Predictions image/HTML, playoff table, rankings CSV |
-| `src/gridiron_edge/cli/` | Typer app + sub-commands |
-| `data/` | Generated at runtime - not committed |
-| `data/models/{version}/` | Trained model artifacts (joblib + metadata JSON) |
-| `frontend/` | React + TypeScript frontend consuming the API |
-| `frontend/src/api/` | Typed API client (`openapi-fetch` + generated schema) and React Query hooks |
-| `frontend/src/components/` | Reusable components (chrome, field-status, error, per-domain) |
-| `frontend/src/screens/` | Route-level screen components (one per prototype URL) |
-| `api-schema.json` | Checked-in OpenAPI schema; regenerate via `gridiron api export-schema` |
-| `frontend/src/components/primitives/` | Cross-cutting shared components (Pill, WhyLink, TeamMark, TeamHero, Spark, RatingChart, DistributionChart, BarChart, HeatCell, SortableHeader, WinProbabilityCell) — used across many screens |
-| `frontend/src/components/dashboard/` | Dashboard-specific section components (FeaturedMatchupsGrid, ModelEdgesTable, PropEdgesRail, ModelPerformanceRail) |
-| `frontend/src/components/betslip/` | Available Edges, staged-wager decision cards, sizing controls, and single/parlay summaries |
-| `frontend/src/utils/betLegs.ts` | BetLeg v2 types, canonical IDs, constructors, runtime parsers, and per-leg calculations |
-| `frontend/src/utils/betSlipSizing.ts` | Pure tracked/what-if sizing preference and bankroll-source resolution |
-| `frontend/src/utils/betSlipSummary.ts` | Pure complete/incomplete single and quoted-parlay aggregation |
-| `frontend/src/hooks/useBetSlipSizing.ts` | Persisted sizing preference combined with tracked `/portfolio/summary` bankroll |
-| `frontend/src/components/compare/` | Compare-specific components (TeamPicker) | | `frontend/src/components/dev/` | Dev panel (floating highlight-mode toggle, W9.8) |
-| `frontend/src/components/field-status/` | PendingField, BlockedField, FieldValue, PendingChip, ComingSoonCard, usePendingHighlight |
-
-**Data layout:**
-
-```
-data/
-  raw/                                    nflverse Parquet files (games, upcoming schedule, PBP)
-    /player_stats/                        per-season player game logs (Parquet)
-  cleaned/                                Canonical CSVs (games, schedule, Elo state, stadiums)
-    /player_game_logs.parquet             cleaned player stats
-  modeling/                               Feature matrix (base + full, Parquet)
-  output/
-    predictions/{year}/                   week_NN_predictions.png + .html + .csv
-    predictions/predictions_log.parquet   prediction archive (all models)
-    champions/champions.json              current champion per model_name (W13)
-    rankings/                             elo_rankings_{year}_wkNN.csv
-    rankings/percentiles/                 per-team percentile ranks (from sim)
-    rankings/team_cohort_splits.parquet   4-cohort × 11-metric team splits
-    sim/                                  playoff probability tables
-    temp/projections_summary.csv
-    temp/projections_metadata.json
-    temp/season_grid.csv
-    props/
-      prop_predictions_log.parquet            prop prediction archive (all models)
-      opponent_allowed.parquet                per-defense-position allowed, 4 cohorts
-      situational_splits/{stat_type}.parquet  per-player prop splits
-  odds/
-    dk_odds_log.parquet          Full historical ledger (all pulls)
-    dk_odds_current.parquet      Latest pull snapshot (for viz)
+```text
+src/gridiron_edge/
+  api/                         read-only FastAPI schemas, loaders, serializers, routes
+  betting/                     ledger, bankroll, settlement, performance
+  cli/                         single-purpose and composite commands
+  core/                        settings, logging, console helpers
+  datasets/                    typed registry, loaders, writers
+  evaluation/                  forecast events, backfills, metrics, selection, closeout
+  features/                    canonical game and player feature pipelines
+  ingest/                      nflverse, weather, player, and market adapters
+  market/                      odds math, edge diagnostics, recommendations, CLV
+  models/                      game, Elo, and prop model families
+  ratings/                     Elo state and evaluation
+  sim/                         season and playoff simulation
+  transform/                   canonical cleaning and joins
+  viz/                         persisted-output rendering
+frontend/                      Vite, React, TypeScript, React Query, generated API client
+tests/                         unit, integration, and end-to-end suites
+data/                          registered input, artifact, and output storage
 ```
 
----
+## Setup and Configuration
 
-## Setup
+Use the repository-managed Python environment:
 
 ```bash
 uv sync
-uv run gridiron --help
 ```
 
-Python `>=3.12,<4`. All dependencies managed via `uv` / `pyproject.toml`.
-
----
-
-## Configuration
-
-| Setting | How |
-|---------|-----|
-| OpenWeather API key | `--owm-api-key` flag or env var `OWM_API_KEY` |
-| Elo divisor | `--divisor` on `gridiron sim run` (default 480; use tuned value after `evaluate tune elo`) |
-| Data paths | `core/settings.py` + `datasets/registry.py` |
-| Shared constants | `core/constants.py` |
-
----
-
-## Key design decisions
-
-### Playoff projections compose static simulation and team-state contracts
-
-`/projections` owns postseason simulation outputs: average wins, five
-postseason-stage probabilities, Elo delta, run metadata, and future
-clinched/eliminated state.
-
-The Playoff Chances view composes `/projections` with the cached `/teams`
-collection for current Elo, current record, conference, division, colors, and
-as-of week. Current team state is not duplicated into the simulation artifact.
-
-- `GET /projections/grid` — league-wide Week 1–18 team win-probability matrix
-  with played/projected/bye/unavailable state, schedule context, and completed
-  boundary.
-
-- `data/output/temp/season_grid.csv`;
-- the cleaned upcoming schedule;
-- completed regular-season games;
-- the unified long-name / abbreviation mapping.
-
-The serializer constructs one Week 1–18 row per team and classifies each week
-as `played`, `projected`, `bye`, or `unavailable`.
-
-A zero weekly probability does not identify a bye. Bye classification requires
-an available schedule and confirmed absence of a scheduled game for that team
-and week. If the schedule source is unavailable, weekly states are unavailable
-rather than silently rendered as byes.
-
-`completed_through_week` is the last completed regular-season week, capped to
-Weeks 1–18. It is distinct from `/teams.as_of_week`: during the 2026–2027
-preseason, the team collection reports Week 1 context while the weekly grid
-correctly reports `completed_through_week = 0`.
-
-For played games, the weekly probability is the current simulation artifact's
-fixed result, not an archived pregame forecast. `actual_result` preserves W/L/T
-semantics. Projected games expose the simulated chance to win.
-
-The frontend provides two local views:
-
-- Playoff Chances — sortable postseason probability table.
-- Weekly Outcomes — Week 1–18 diverging probability matrix.
-
-Both views share the same conference/division filters and team identity.
-Weekly Outcomes keeps the Team column sticky. Matchup tooltips are portaled to
-the viewport, clamped at screen edges, and available through hover and keyboard
-focus.
-
-The public Elo movement field remains `elo_delta`, defined as current Elo
-minus the prior same-season week's Elo. At Week 1, the absent prior snapshot is
-expected and is explained once rather than repeated as a row-level warning.
-
-These endpoints preserve the API as a static serialization boundary: request
-handling reads existing artifacts and does not run simulation or model
-computation.
-
-The Team and Week 1–18 headers are sortable. Week headers cycle through
-descending win probability, ascending win probability, and default team-name
-ordering. Confirmed byes and unavailable values remain last in either numeric
-direction; equal probabilities fall back to team-name ascending. Weekly sort
-state is independent from the Playoff Chances table and persists while
-switching local views.
-
-### EPA aggregation is the single PBP funnel
-
-All PBP-derived game-level features flow through **one transform**:
-
-- `transform/clean/epa.py` → `_agg_side()`
-- Output: `epa_by_game.parquet`
-
-The feature layer (`features/team/epa.py`) reads this dataset and applies rolling windows.
-
-**Adding a new PBP feature requires only:**
-1. Add computation to `_agg_side()`
-2. Add column name to `EPA_COLS`
-
-Everything else auto-propagates through:
-`_columns.py → feature sets → model inputs`
-
-This pattern was validated by the EPA feature expansion (22 metrics, 107 total features).
-
-### `GAME_LOCATION` schema
-
-Three values only - `"H"` (home win), `"@"` (away win), `"N"` (neutral site). The old PFR-era `"NULL_VALUE"` sentinel was retired. Missing data fields (GAMETIME, STADIUM, ROOF, SURFACE) use `""`.
-
-### Elo divisor is parameterised end-to-end
-
-`core.py` → `EloTableConfig` → `SimulationConfig` → `--divisor` CLI flag. The tuner (`evaluate tune`) finds the optimal divisor; set it consistently across table building and simulation. Default is 480 (classic NFL Elo). Tuner has two modes:
-- **flat-K** (default): one K-factor for all weeks. Empirical optimum around 350.
-- **zone-K** (`--zone-k`): K varies by week zone (early/mid/week18/postseason). Useful for handling structurally noisy weeks (e.g., week 18 starter rest).
-
-See `evaluation/tune.py` for the underlying parameter search.
-
-### Feature dependency validation
-
-`FeatureSpec.depends_on` declares ordering constraints. `validate_ordering()` is called at pipeline import time - a mis-ordering raises `ValueError` immediately rather than silently producing wrong columns at training time.
-
-### Prediction archive `is_backfilled`
-
-`predictions_log.parquet` has a boolean `is_backfilled` column. Historical backfill predictions set it to `True`; live pre-game predictions set it to `False`. Filter on this rather than `predicted_at` for live-vs-backfill analysis.
-
-### PBP ingest column expansion
-
-`sack` was added to `_KEEP_COLUMNS` during the EPA feature expansion.
-
-When `_KEEP_COLUMNS` changes:
-- Existing PBP parquet files must be deleted
-- Re-ingest required via: `gridiron ingest pbp --all-years`
-
-This ensures new columns are physically present in stored parquet files.
-
-### Weather ingest is idempotent
-
-`fetch_weather` reads existing `weather_enriched.csv`, computes the set difference of `GAME_ID`s, and only calls the OWM API for games not already enriched. Safe to re-run.
-
-### Market package is a pure-math leaf
-
-The market package is layered: `odds_math.py` and `kelly.py` are pure-math
-leaves (no pandas, no I/O). `edge.py` adds scipy.stats.norm for probit
-cover probabilities but remains scalar-only. `recommendations.py` and
-`clv.py` use pandas for data joins but take DataFrames as arguments - no
-file I/O. `cli/edges.py` is the thin CLI wiring that loads data and calls
-the library. CLV reuses `pivot_odds_to_wide` from recommendations via
-`_pivot_and_suffix()` to stay DRY.
-
-### sim/season.py decomposition
-
-`sim/` is split into three files with a clean dependency hierarchy:
-- `_types.py` - pure data, no I/O (constants, dataclasses)
-- `_engine.py` - numba kernels (imports from `_types` only)
-- `season.py` - orchestration (imports from both)
-
-Numba cannot call regular Python functions at JIT time, so the Elo formula is duplicated in `_engine.py`. A comment cross-references `ratings/elo/core.py` - if the formula changes, update both.
-
-### Post-processing enrichment is a separate step, not inside models
-
-All derived outputs (spread, bands, tier, projected scores) are computed in
-`post_process.py` after the model produces `home_win_prob`.  This keeps models
-clean and composable - any model that outputs a win probability gets the full
-enrichment for free via `enrich_predictions()`.
-
-### Prediction pipeline is composable
-
-`pipeline.py` orchestrates: load features → win model → total model →
-build game rows → enrich.  Adding a new model type means adding one inference
-call, not rewriting the pipeline.  `_predict_historical_tree()` and
-`_predict_historical_logistic()` delegate to `predict_games()`.
-
-### Total model is a supporting model, not a standalone predictor
-
-The total model (`total.py`) trains a `RandomForestRegressor` on the same
-107-feature set but targets `actual_total` instead of `RESULT`.  It is NOT
-registered in `PredictorRegistry` - it feeds into `enrich_predictions()` via
-the pipeline rather than operating as an independent predictor.
-
-### VEGAS_LINE sign convention
-
-nflverse `VEGAS_LINE` uses **positive = home favored** (PFR convention).
-Our `model_spread` uses **negative = home favored** (probit convention).
-They are exact negations.  Always negate `VEGAS_LINE` before comparing
-to `model_spread`.
-
-### Archive schema is soft-versioned
-
-The prediction archive (`predictions_log.parquet`) uses NaN fill for columns
-missing from older archives.  No schema version column - `load_prediction_log()`
-adds missing columns on load.  String columns (e.g. `confidence_tier`) get
-empty string instead of NaN.
-
-### Bankroll is decoupled from the bet ledger
-
-`ledger.py` and `bankroll.py` are independent modules with no imports
-between them. The CLI (`cli/betting.py`) orchestrates both: `bet log`
-calls `log_bet()` then `record_bet_placed()`, and `bet settle` calls
-`settle_bet()` then `record_bet_settled()`. This keeps each module
-testable in isolation and avoids circular dependencies.
-
-### Gross return model for bankroll
-
-On settlement, the bankroll receives the *gross return* (stake + pnl):
-won = stake × decimal_odds, lost = 0, push = stake. This means
-`bet_placed` always deducts the full stake, and `bet_settled` credits
-back whatever is returned. The running balance is the cumulative sum
-of all signed transactions.
-
-#### Player feature pipeline is a single-load chain
-
-build_prop_features(position_filter=["QB"]) loads player_game_logs.parquet
-once, then chains all 4 feature builders in sequence:
-rolling → matchup → usage → game_context → filter by position.
-NaN handling is deferred to the trainer (not the builder) because the
-trainer has position context to determine which features have reasonable
-coverage. Features with >50% NaN for the filtered position are dropped.
-
-### player_game_logs game_id join (reset_index landmine)
-
-`transform/clean/player_stats.py::_join_game_id` attaches `game_id` via a
-dual schedule merge (player team as home / as away, coalesced). It MUST
-`reset_index(drop=True)` before the merges: upstream `dropna` leaves a
-non-contiguous index, and assigning a fresh-indexed merge result back
-onto that df aligns by *index label*, scrambling `game_id` to same-week
-neighbors (the week matches but the teams are wrong — a nasty, silent
-corruption). `is_home` is derived from which join side matched, not
-parsed from `game_id`.
-
-Fixed 2026-07-12. If you touch this join, keep the reset_index and the
-1:1 matchup key `(season, week, team, opponent_team)`. Regression test in
-`tests/unit/.../test_player_stats*`.
-
-#### Prop models use HOLDOUT_SEASONS, consistent with game models
-
-PropTrainer.train() parses HOLDOUT_SEASONS ("2023-2024" → int 2023) for
-the integer season column in player data. Same holdout split as game models.
-
-#### Prop post-processing is a separate pure function
-
-enrich_prop_predictions() is a standalone function, not inside train().
-Works for both holdout evaluation and live predictions. Matches the game
-model pattern (enrich_predictions is separate from predict).
-
-#### predicted_std combines two uncertainty sources
-
-predicted_std = sqrt(model_rmse² + player_L3_std²). Model RMSE is the same
-for all players; player rolling std captures per-player volatility. When
-player std is NaN (early season), defaults to model RMSE alone (conservative).
-
-#### Game context features do not use shift(1)
-
-Spread, total, dome, rest are known pre-game - they are legitimate
-predictors at prediction time, unlike rolling stats which would cause
-lookahead if not shifted.
-
-#### PROP_FEATURE_COLS is built programmatically
-
-features/player/_columns.py builds the feature list from component modules
-(rolling, matchup, usage, game_context). Adding a feature to any module
-automatically includes it in the prop model feature set.
-
-#### Prop archive dedup key
-
-`(game_id, player_id, stat_type, model_name, model_type)` - last write wins.
-Same append-only pattern as the game prediction archive. The composite
-identity allows distinct algorithm variants (elasticnet / random_forest /
-xgboost) of the same stat family to coexist in the archive without
-collision.
-
-#### Champion/challenger model promotion
-
-Models are identified by composite `(model_name, model_type)` pairs (e.g.,
-`win_prob_random_forest`, `total_xgboost`). Each pair has at most one
-trained artifact at `data/models/{model_name}/{model_type}/`.
-
-`gridiron models train <model-name> <model-type>` auto-compares the newly
-trained challenger against the existing champion using three gates:
-
-1. **Brier** must improve by ≥ 0.002 (primary metric, classification only)
-2. **ECE** must not degrade by > 0.01 (calibration guardrail)
-3. **AUC** must not degrade by > 0.01 (discrimination guardrail)
-
-If all gates pass, the challenger is promoted. If any gate fails, the
-old champion is restored. Use `--force` to override, `--no-promote` for
-dry-run comparison. Logic lives in `evaluation/champion.py`.
-
-Promotion semantics currently support classification models only.
-Regression model promotion is a future workstream (see ROADMAP.md §9).
-
-##### Runtime champion resolution (W13)
-
-The current champion for each ``model_name`` is persisted at
-``data/output/champions/champions.json`` after each ``full-retrain``.
-Consumers read via ``evaluation.champion_resolver.resolve_current_champion``
-rather than hard-coding a ``(model_name, model_type)`` pair.
-
-The manifest is written by:
-- The ``promote-champions`` stage of ``gridiron full-retrain``.
-- Optional ``--write-manifest`` flags on ``gridiron evaluate select-model``
-  and ``gridiron props champion``.
-
-CLI commands that operate on the ``win_prob`` model expose
-``--model-type auto`` as their default. The ``resolve_win_prob_model_type``
-helper in ``cli/_composites.py`` resolves ``"auto"`` against the manifest;
-explicit values pass through. Commands using this pattern:
-
-- ``gridiron weekly-predict``
-- ``gridiron edges report``
-- ``gridiron edges clv``
-
-Missing manifest raises ``ChampionNotFoundError`` (or ``typer.BadParameter``
-at the CLI boundary) with a message directing the user to
-``gridiron full-retrain`` or ``gridiron evaluate select-model --write-manifest``.
-
-Some CLI callsites intentionally hard-code ``model_type="elo"`` and are
-not migrated to the resolver:
-- ``weekly-predict``'s ``predict-week`` stage and ``output predictions``
-  archive Elo predictions with their true provenance label.
-- ``evaluate tune`` searches Elo hyperparameters and backfills the
-  tuned Elo model.
-- ``evaluate backfill`` defaults to ``elo`` as a historical convenience
-  (Elo is the cheapest and always-available model).
-- ``ratings elo evaluate`` is Elo-specific by name.
-
-These callsites carry inline comments explaining the intent.
-
-###### Champion→elo fallback for upcoming weeks (W9.10)
-
-The games API resolves the `win_prob` champion first, then falls back to
-`elo` when the champion has no archived rows for the requested
-`(season, week)`. This is not a workaround — it reflects a structural
-reality:
-
-- Trained models (logistic/rf/xgb) predict from the modeling file, which
-  is built from **completed** games only. They cannot predict upcoming
-  (unplayed) weeks — no feature rows exist.
-- Elo predicts from the Elo state table, which **carries forward** (a
-  team's rating exists before it plays). Elo is the *only* model that can
-  predict an upcoming week.
-- `weekly-predict`'s `predict-week` stage therefore archives upcoming
-  weeks under `model_type="elo"` by design (via `build_predictions_df`).
-
-So for an upcoming week the champion (e.g. logistic) has zero rows and
-the fallback serves elo. Completed weeks still serve the champion
-(backfilled). Fallback lives in `api/loaders.py::load_games_for_week`
-and `load_game`. Trained-model predictions for upcoming weeks would
-require an upcoming-week feature matrix — a future workstream (ROADMAP §9).
-
-#### Temporal CV for model training
-
-All model families use TimeSeriesSplit(n_splits=5) for cross-validation
-during hyperparameter search. Early folds with fewer than
-MIN_CV_TRAIN_ROWS (4000) rows are skipped to avoid undersized training
-sets biasing HP selection. The training data is sorted chronologically
-in `_prepare_data` before splitting.
-
-This replaced StratifiedKFold(shuffle=True) which had temporal leakage.
-See `DECISIONS.md` D2 for the post-audit re-baseline that confirmed the
-structural fix is right even though the empirical metric impact was below
-predicted thresholds.
-
-#### Testing patterns for API integration (W8)
-
-Two rules matter when writing tests that exercise FastAPI routes:
-
-- **`app.dependency_overrides` keys on the exact function inside `Depends(...)`.**
-  For `SettingsDep = Annotated[Settings, Depends(settings_dependency)]`, the
-  override key is `settings_dependency`, not the underlying `get_settings`.
-  Grep for `Depends(` in `api/deps.py` and use those function names as keys.
-- **Domain-level module bindings still need monkeypatching.** `dependency_overrides`
-  only reaches FastAPI-injected dependencies. Domain code that reads
-  `get_settings()` at module load time (e.g., `champion_resolver.get_settings`)
-  needs `monkeypatch.setattr("gridiron_edge.evaluation.champion_resolver.get_settings", ...)`
-  to redirect.
-- **`_resolve_scope` and similar defaults-from-artifacts helpers should be lazy.** Read the underlying artifact (games CSV, manifest, etc.) only when a default is actually needed. Eager reads couple every request to the artifact's existence, which surfaces as `FileNotFoundError` in tests that pass all query params explicitly. Fixed in `props.py::_resolve_scope`; similar fix pending for `games.py`, `edges.py`, `teams.py`.
-
-Per D19, every loader wrapper in `api/loaders.py` threads `settings.repo_root`
-explicitly to the underlying domain function. Missing threading falls back
-to the process-wide `get_settings()` and reads from the real repo — silently,
-in tests. When adding a new loader, grep the callee's signature for a `repo`
-param and pass `repo=settings.repo_root` if it accepts one. A W8 Tier 2
-Step 5 audit confirmed all existing loaders comply.
-
-#### Frontend architecture (W9)
-
-- **Framework:** Vite + React + TypeScript. Not Next.js — no SSR needed
-  for local dev.
-- **Data fetching:** React Query wrapping `openapi-fetch`. Types
-  generated from checked-in `api-schema.json` — regenerate via
-  `pnpm gen:api` (frontend) after any API surface change.
-- **State model:** Nav and AppState retain the general frontend shell state.
-  BetSlip uses a validated v2 context for canonical draft legs and single/parlay
-  mode. `useBetSlipSizing` separately combines the tracked portfolio bankroll
-  with a persisted tracked/what-if preference. Persistence uses versioned
-  localStorage keys; malformed and legacy BetSlip state is not trusted.
-- **Field-status rendering:** All D14 metadata surfaces via shared
-  primitives — `<PendingField />`, `<BlockedField />`, `<FieldValue />`.
-  Never inline; consistent visual language across screens.
-- **Error handling:** Shared `<ErrorCard />` with error classification.
-  Global `<OfflineBanner />` polls `/weeks/current` every 30s.
-- **Routing:** Hash-based (`#/route`) with query params for detail
-  routes. No React Router — small custom implementation in
-  `context/NavContext.tsx`.
-- **Styling:** CSS variables + inline styles per component. No CSS-in-JS
-  library. Design tokens in `frontend/src/index.css`.
-- **Testing:** Vitest for smoke tests, not exhaustive coverage.
-  Run via `pnpm test` (watch) or `pnpm test:run` (CI).
-- **Schema-derived types:** Component types are derived from the
-  generated schema via `components["schemas"]["TypeName"]` rather than
-  hand-declared. Ensures the frontend stays in lockstep with the API
-  contract; regenerating the schema catches breaking changes at build
-  time.
-- **Shared primitives pattern:** Cross-domain components live in
-  `components/primitives/`. Look here first before creating scoped
-  components; do not reinvent. Inventory:
-  - `Pill` — filter/tab toggle
-  - `WhyLink` — explainability affordance (labeled + dot modes)
-  - `TeamMark` — team-colored abbrev chip (color via team-metadata cache)
-  - `TeamHero` — team identity block (mark + city + serif name + record)
-  - `Spark` — generic sparkline
-  - `RatingChart` — line chart w/ Y-grid + inline W/L markers
-  - `DistributionChart` — Gaussian density (mean + std) w/ 90% band
-  - `BarChart` — per-game bars + solid reference line (team-allowed avg)
-  - `PendingChip` — inline "X pending" marker (highlight-aware)
-  - `ComingSoonCard` — whole-card blocked/pending placeholder
-  - `HeatCell` — table-cell probability renderer with fixed absolute 0–1 heat intensity, accessible numerical labeling, and field-status-aware null states.
-  - `SortableHeader` — accessible sortable `<th>` primitive with caller-managed active key/direction and `aria-sort`.
-  - `WinProbabilityCell` — full-table-cell weekly win probability renderer with a fixed diverging scale centered at 50%, explicit bye/unavailable states, and viewport-portaled hover/focus matchup details.
-- **Composed screens pattern:** GameDetail (W9.6) demonstrated the
-  pattern for composing multiple endpoints into a single screen. Each
-  card in a screen might consume 1-3 different API endpoints. Use
-  React Query hooks for each; filter client-side when backend filters
-  aren't available.
-- **Split-view route pattern:** TeamsScreen (W9.7) demonstrated the
-  pattern for consolidating list + detail routes into a single
-  screen with optional URL param. `/teams?team=X` pattern preserves
-  browsing context; back-navigation not required when browsing
-  through teams.
-- **Composed prop screen pattern:** PlayerProp (W9.9) demonstrates
-  the pattern for composing prop + game + team metadata into a
-  single screen. Multiple endpoints join client-side. Same shape
-  can be applied to future prop-related work.
-- **Independent-selection compare pattern:** Compare Player-vs-Defense
-  (W9.10) selects player/stat/team independently (not a bundled
-  prop_id), composing B1 (player history) + B3 (defense-by-team) client-
-  side. When a screen needs arbitrary cross-entity comparison, prefer
-  dedicated list/detail endpoints over a bundled composite id.
-- **Field-status discipline (never silently skip).** Every field the UI
-  wants but the backend can't yet fill must render *visibly* as pending
-  or blocked — never omitted, never a bare em-dash without a marker.
-  Route through `PendingField` / `BlockedField` / `FieldValue` /
-  `PendingChip` / `ComingSoonCard`. All read the dev-panel highlight
-  context so gaps light up on demand. This is what makes the frontend a
-  real verification surface: if a gap isn't marked, highlight mode can't
-  catch it.
-- **Dev panel + highlight mode (W9.8).** Floating bottom-right "DEV"
-  button (`components/dev/`) opens a panel with a "Highlight Pending &
-  Blocked" toggle. On → every pending/blocked element outlines in orange
-  (`--highlight`) for a visual gap-audit pass. State in `DevPanelContext`
-  (localStorage). The panel deliberately does NOT close on click-outside
-  (you flip highlight on, then walk the app). Keep new pending/blocked UI
-  wired through the field-status primitives so it participates.
-- **Layout width lesson.** The prototype assumes ~1400px full-screen;
-  our app is a centered ~920px container. Full-width two-column layouts
-  (main + rail, 80/20 splits) do NOT fit — reverted twice (W9.7, W9.9).
-  Default to a full-width hero + single-column stack below, page centered
-  at max-width. Reach for two columns only within genuinely generous
-  width.
-
-**Local dev loop:**
+Frontend dependencies:
 
 ```bash
-# Terminal 1: API
+cd frontend
+pnpm install
+cd ..
+```
+
+Local application loop:
+
+```bash
+# Terminal 1
 uv run gridiron api serve
 
-# Terminal 2: Frontend
+# Terminal 2
 cd frontend
 pnpm dev
 ```
-App runs at http://localhost:5173 and reads from http://localhost:8000.
 
-#### BetSlip is a draft decision-support boundary
-
-BetSlip is a temporary wager-shortlisting and what-if analysis workspace. It is
-not the betting ledger and does not place sportsbook wagers.
-
-##### State boundaries
-
-BetLeg v2 is a discriminated union:
-
-- `kind: "game"` for moneyline, spread, and total selections;
-- `kind: "prop"` for player-prop interests or priced prop wagers.
-
-Every leg contains:
-
-- canonical producer-independent wager identity;
-- producer source metadata;
-- immutable recommendation provenance;
-- editable draft values.
-
-Immutable recommendation provenance includes:
-
-- reference American price;
-- model key and probability or applicable model context;
-- reference market/model values;
-- reference EV and edge strength;
-- reference full-Kelly fraction;
-- reference Kelly stake;
-- reference bankroll and Kelly multiplier.
-
-Editable draft values include:
-
-- current American odds;
-- proposed stake;
-- optional manually entered sportsbook;
-- optional note.
-
-Current-price edits never modify the stored recommendation snapshot.
-
-##### Persistence
-
-BetSlip persistence keys:
-
-```text
-hm-betslip-v2
-hm-betslip-mode-v2
-hm-betslip-sizing-v1
-```
-
-Stored legs are parsed individually through the strict v2 runtime parser. Malformed legs are discarded. Invalid runtime updates preserve the previous valid leg. Legacy prototype state is intentionally ignored because it may contain fabricated prices, invalid prop variants, incorrect identifiers, or producer-specific IDs.
-
-Canonical identity
-
-Canonical IDs describe the wager rather than the screen that produced it.
-
-Game identity includes:
-
-game ID
-market
-side
-applicable line
-
-
-Prop identity includes:
-
-prop ID
-side
-applicable line
-
-
-Producer source is metadata and does not participate in identity. The same wager therefore deduplicates across Dashboard, GameDetail, PlayerProp, and the Available Edges table.
-
-Price and calculation behavior
-
-referenceAmericanOdds is immutable recommendation history.
-
-currentAmericanOdds is the editable what-if or currently observed price. Current price drives:
-
-implied probability;
-current modeled EV;
-comparison with model break-even price;
-current full-Kelly fraction;
-suggested Kelly dollars;
-payout and profit.
-
-Missing current price blocks price-dependent outputs. Missing model probability still allows price and payout calculations but blocks EV, break-even, and Kelly. Missing bankroll blocks suggested dollars but not the dimensionless full-Kelly fraction.
-
-Props remain explicitly unpriced until a current price is supplied. No producer substitutes a default sportsbook price.
-
-Bankroll and Kelly provenance
-
-Tracked sizing uses:
-
-GET /portfolio/summary
-
-
-A ledger with no transactions has a valid tracked bankroll of $0.00. A failed or unavailable portfolio response has no resolved bankroll and remains distinct from zero.
-
-BetSlip also supports an explicitly selected what-if bankroll. It never silently falls back:
-
-tracked mode does not use the what-if amount when tracked data is unavailable;
-what-if mode does not use the tracked amount when its manual value is absent;
-neither mode uses the legacy AppState calculator bankroll.
-
-Kelly multiplier is explicit, persisted, constrained to [0, 1], and defaults to 0.25.
-
-The BetSlip screen resolves sizing once and passes the same bankroll and multiplier to:
-
-the /edges query;
-staged-wager current analysis.
-
-Newly staged game legs preserve the bankroll and multiplier echoed by the backend response as their immutable recommendation basis.
-
-/edges dollar-sizing behavior
-
-The /edges bankroll query parameter is optional.
-
-When bankroll is omitted:
-
-edge rows remain available;
-EV remains available;
-full-Kelly fraction remains available;
-response bankroll is null;
-kelly_stake is null.
-
-A supplied zero bankroll is valid and produces zero-dollar sizing. Bankroll is constrained to nonnegative values and Kelly multiplier to [0, 1] at the HTTP boundary and again at the report boundary.
-
-Singles and parlays
-
-Singles aggregate only when every staged leg has:
-
-current odds;
-proposed stake.
-
-If any leg is incomplete, total proposed stake, payout, and profit are all unavailable. An incomplete leg is never silently omitted.
-
-Parlays use a separate parlay stake and require current odds for every leg. Parlay output includes only:
-
-quoted combined odds;
-quoted payout;
-quoted profit.
-
-Combined model probability, EV, and Kelly remain unavailable because leg correlation is not modeled.
-
-Presentation and accessibility
-
-The /betslip route is a responsive two-panel workspace:
-
-Available Edges | Bet Slip
-
-
-At narrow widths, the panels stack and internal metric grids collapse to one column. Available Edges remains horizontally scrollable.
-
-Editable controls and analytical sections use wager-specific accessible names. Single/Parlay and Tracked/What-if controls expose pressed state. Aggregate summary changes are announced politely. The interface contains no Place Bet action and states that Gridiron Edge does not place sportsbook wagers.
-
-Operational verification note
-
-The staged-wager real-data visual pass remains deferred because /edges currently returns no available recommendations. Automated coverage exercises priced game legs, unpriced props, manual current odds, threshold behavior, Kelly sizing, singles, parlays, incomplete states, responsive classes, and accessibility semantics. Complete the real-data pass when the normal prediction, odds, and edge pipeline produces at least one recommendation.
-
----
-
-### Workflows (End-to-End Data Flows)
-
-These trace how data moves through the system for each major operation.
-Use them to understand what happens when a command runs, where to add
-new functionality, and where to look when something breaks.
-
-#### Composite Commands
-
-Four top-level composite commands wrap related single-purpose commands
-into complete workflows. They share infrastructure in
-`cli/_composites.py` for stage abstraction, dependency validation,
-soft-fail semantics, and consolidated summary rendering.
-
-| Command | Stages | Use case |
-|---|---|---|
-| `weekly-predict` | ensure-data-fresh → fetch-odds → predict-week → render-outputs → generate-edges | Thursday/Sunday game-day prep |
-| `post-week` | refresh-data → backfill-predictions → evaluate-summary | After-Sunday archive + drift detection |
-| `full-retrain` | refresh-all-data → backfill-game-models → backfill-prop-models → refresh-calibrations → baseline-report | Season-start refresh (weekend job) |
-| `verify` | quality-gates → unit-tests → integration-tests → e2e-tests → smoke-pipeline → baseline-comparison | Pre-commit verification |
-
-Each composite accepts `--skip` and `--only` for stage filtering
-(mutually exclusive). External-service stages (`fetch-odds`,
-`generate-edges`, `smoke-pipeline`) are soft-fail by default - the
-rest of the workflow continues even when they fail. `verify --strict`
-converts soft-failures into hard ones for CI use.
-
-Stage functions are defined inside each composite file (e.g.,
-`cli/weekly_predict.py`). Stages share state across the composite via
-a context dict - `predict-week` writes the predictions DataFrame to
-context, and `render-outputs` consumes it without rebuilding.
-
-#### Data Pipeline (`gridiron run-data-pipeline`)
-
-Runs 9 stages in order. Each stage can be skipped (`--skip`) or
-isolated (`--only`).
-
-```
-fetch-games          nflverse API -> data/raw/ (Parquet)
-    |
-clean-games          raw -> data/cleaned/NFL_wk_by_wk_cleaned.csv
-    |                (canonical schema: WINNER/LOSER/GAME_LOCATION/VEGAS_LINE)
-fetch-upcoming       nflverse API -> raw upcoming schedule
-    |
-clean-upcoming       raw -> data/cleaned/NFL_upcoming_schedule_cleaned.csv
-    |
-fetch-weather        OpenWeatherMap API -> data/cleaned/weather_enriched.csv
-    |                (idempotent -- only fetches missing GAME_IDs)
-fetch-odds           DraftKings API -> data/odds/dk_odds_log.parquet
-    |
-build-epa            PBP data -> transform/clean/epa.py._agg_side()
-    |                -> data/cleaned/epa_by_game.parquet
-    |                (ALL PBP-derived features funnel through _agg_side)
-build-elo            games + config -> ratings/elo/table.py
-    |                -> data/cleaned/NFL_Team_Elo.csv
-    |
-build-features       games + all cleaned data
-                     -> features/pipeline.py.build_model_inputs()
-                     -> data/modeling/modeling_file.parquet
-```
-
-**Feature pipeline detail** (`build-features` stage):
-
-```
-base_modeling_file.parquet (games + teams + metadata)
-    |
-    v
-run_features() applies 11 registered features IN ORDER:
-    home_field -> team_elo -> travel -> epa -> rest -> weather
-    -> divisional -> venue_hfa -> record -> schedule_strength -> primetime
-    |
-    |  Order enforced by FeatureSpec.depends_on + validate_ordering()
-    |  at import time. Mis-ordering raises ValueError immediately.
-    |
-    v
-modeling_file.parquet (94 columns, ~14K rows)
-    Two rows per game (one per team, TEAM_A / TEAM_B perspective)
-    HOME_FIELD column indicates which perspective (0 = away, 1 = home)
-    RESULT column: 1 = TEAM_A won, 0 = TEAM_A lost, 0.5 = tie
-    YEAR, WEEK_NUM, GAME_ID for identification
-```
-
-**Adding a new PBP-derived feature:**
-1. Add computation to `transform/clean/epa.py._agg_side()`
-2. Add column name to `EPA_COLS` in `features/team/epa.py`
-3. Everything else auto-propagates: `_columns.py` -> feature sets -> model inputs
-
-
-#### Model Training (`gridiron models train <version>`)
-
-```
-PredictorRegistry.get(version)     look up registered model class
-    |
-    v
-model.train(games, repo=repo)      dispatches to model-specific trainer
-    |
-    |  Tree models: _train_random_forest() / _train_xgboost()
-    |  Logistic:    _train_logistic()
-    |  Elo:         no training artifact -- simulation-based
-    |
-    |-- load_modeling_file()        loads data/modeling/modeling_file.parquet
-    |
-    |-- _prepare_data(df, feature_fn)
-    |       Filters ties (RESULT == 0.5)
-    |       Applies feature_fn -> feature matrix (e.g., 107 columns)
-    |       Drops rows with any NaN features
-    |       Splits on HOLDOUT_SEASONS (YEAR column)
-    |       Returns: (x_train, y_train, x_hold, y_hold,
-    |                 train_seasons, holdout_seasons)
-    |
-    |-- Randomized HP search with tqdm progress bar
-    |       Tree: TimeSeriesSplit CV on training set (folds < 4000 rows skipped)
-    |       Evaluates Brier score (win models) or MAE (total model)
-    |
-    |-- Retrain best params on full training set
-    |
-    +-- ArtifactStore.save(version, model, metadata)
-            -> data/models/{version}/model.joblib
-            -> data/models/{version}/metadata.json
-            Champion/challenger: train auto-compares to existing champion.
-            Promotes if Brier improves ≥ 0.002, ECE doesn't degrade > 0.01,
-            AUC doesn't degrade > 0.01.  --force overrides gates.
-```
-> Note: diagrams below predate W13 and use `model_version` as shorthand.
-> The live identity is the composite `(model_name, model_type)` — e.g.
-> `win_prob` + `random_forest`. See "Archive migration" and the W13
-> champion subsection for the current contract.
-
-**Total model training** follows the same pattern but:
-- Target is `actual_total` (PTS_WINNER + PTS_LOSER) instead of `RESULT`
-- Uses `RandomForestRegressor` instead of classifier
-- Uses `TimeSeriesSplit` instead of `StratifiedKFold` for CV
-- Evaluates MAE instead of Brier score
-- Called directly: `from total import train_total_model; train_total_model()`
-
-
-#### Historical Prediction (`predict_games` in `pipeline.py`)
-
-This is the core prediction flow used by backfill and evaluation.
-
-```
-predict_games(model_version, feature_fn, repo)
-    |
-    |-- Step 1: Load features
-    |       load_modeling_file(repo, required_schema_version=4)
-    |       feature_fn(df) -> feature matrix
-    |       Filter NaN rows -> df_valid, x_feat
-    |
-    |-- Step 2: Win probability inference
-    |       ArtifactStore.load(model_version) -> sklearn pipeline
-    |       pipeline.predict_proba(x_feat)[:, 1] -> probabilities
-    |
-    |-- Step 3: Total points inference (optional)
-    |       predict_total(df_valid) -> predicted combined scores
-    |       Falls back gracefully if total model not trained
-    |
-    |-- Step 4: Build game-level rows
-    |       build_game_predictions(df_valid, probs, totals=totals)
-    |       Filters to away-team rows (HOME_FIELD == 0)
-    |       Deduplicates on GAME_ID -> one row per game
-    |       Maps columns: TEAM_A -> away_team, TEAM_B -> home_team
-    |       Attaches: predicted_at, is_backfilled, model_version,
-    |                 season, week, away/home_win_prob, model_total
-    |
-    +-- Step 5: Enrich
-            enrich_predictions(result, model_version, recalibrate)
-            |
-            |-- Isotonic recalibration (if calibrator exists)
-            |       Adjusts home_win_prob and away_win_prob in place
-            |
-            |-- Spread derivation
-            |       model_spread = -sigma * Phi_inv(home_win_prob)
-            |       sigma looked up per model version from _MODEL_SIGMAS
-            |
-            |-- Uncertainty bands
-            |       spread +/- z * margin_std -> probit -> (win_prob_lo, win_prob_hi)
-            |       margin_std looked up per model from _MODEL_MARGIN_STDS
-            |       z = 1.645 (90% credible interval)
-            |
-            |-- Confidence tier
-            |       fav_prob = max(home_win_prob, 1 - home_win_prob)
-            |       >= 0.70 -> "High"     (clear favorite)
-            |       >= 0.60 -> "Moderate"  (leaning)
-            |       else    -> "Low"       (toss-up)
-            |
-            +-- Projected scores (if model_total present)
-                    home = (total - spread) / 2
-                    away = (total + spread) / 2
-
-        Returns: DataFrame with 21 columns (13 base + 8 enrichment)
-```
-
-**Who calls `predict_games`:**
-- `_predict_historical_tree()` delegates to `predict_games()`
-- `_predict_historical_logistic()` delegates to `predict_games()`
-- Elo models use their own simulation path but call `enrich_predictions()` on the output
-- `_predict_upcoming_tree/logistic()` use a different data path (schedule + feature registry) but also call `enrich_predictions()` before returning
-
-
-#### Backfill & Evaluation
-
-```
-gridiron evaluate backfill --model-name win_prob --model-type random_forest
-    |
-    v
-backfill_model(model_version)
-    |
-    |-- PredictorRegistry.get(model_version) → resolve via (model_name, model_type)
-    |
-    |-- predictor.predict_historical(games)
-    |       -> enriched predictions DataFrame (21 columns)
-    |       (calls predict_games internally for tree/logistic)
-    |
-    +-- write_archive_rows(predictions)
-            -> data/output/predictions/predictions_log.parquet
-            Deduplicates on (game_id, model_name, model_type)
-            Most recent prediction wins
-
-gridiron evaluate select-model
-    |
-    |-- collect_model_metrics() -> loads archive, joins to actuals
-    |
-    +-- rank_models() -> ranked table by Brier score
-```
-
-
-#### Archive Schema
-
-The prediction archive (`predictions_log.parquet`) has 22 columns:
-
-| Group | Columns |
-|-------|---------|
-| **Identity** | `predicted_at`, `is_backfilled`, `model_name`, `model_type`, `season`, `week`, `game_id`, `game_date`, `away_team`, `home_team` |
-| **Ratings** | `away_elo`, `home_elo` |
-| **Predictions** | `away_win_prob`, `home_win_prob` |
-| **Enrichment** | `model_spread`, `model_total`, `projected_home_score`, `projected_away_score`, `margin_std`, `win_prob_lo`, `win_prob_hi`, `confidence_tier` |
-
-Backward compatible: old archives missing enrichment columns get NaN
-(or empty string for `confidence_tier`) on load.
-
-**Sign conventions:**
-- `model_spread`: **negative = home favored** (probit convention)
-- `VEGAS_LINE` (nflverse): **positive = home favored** (PFR convention)
-- Always negate `VEGAS_LINE` before comparing to `model_spread`
-
-#### API architecture (W8)
-
-Four-layer stack: loaders → schemas → serializers → routes.
-`api/exceptions.py` signals data-state gaps (`OddsUnavailableError`)
-from loaders to routes for translation to `field_status`.
-
-- **Placeholder convention (D14):** unpopulated fields return null;
-  status lives in `_meta.field_status` keyed on the field path.
-- **Blocker registry (D16):** Every Tier 3 blocker uses a slug from
-  `api.meta.Blocker` or `api.meta.Unavailable`.
-- **Loader-level `repo_root` threading (D19):** every loader wrapper
-  passes `settings.repo_root` explicitly. No implicit `get_settings()`
-  reads inside domain calls from the API path.
-- **Champion resolution in loaders, not routes (W13 + W8):** loaders
-  call `resolve_current_champion(...)` for game/prop endpoints. Routes
-  stay ignorant of the champion resolver.
-- **Testing patterns:** FastAPI `dependency_overrides` for
-  `settings_dependency`; `MiniRepoBuilder.with_*` fixture methods
-  for repo layout.
-
----
-
-## Primary workflows
-
-### Full bootstrap (first run or season reset)
+The frontend uses the checked-in `api-schema.json` and generated `frontend/src/api/schema.ts`. After an API contract change:
 
 ```bash
-uv run gridiron run-data-pipeline \
-  --all-years \
-  --upcoming-season 2026 \
-  --fit-elo-all-years \
-  --season-year 2025-2026
+uv run gridiron api export-schema
+cd frontend
+pnpm gen:api
+pnpm build
+cd ..
 ```
 
-\~135s. Fetches all history (1999–present), 2026 upcoming schedule, rebuilds Elo, fetches weather (idempotent), builds feature matrix.
+Do not hand-edit `frontend/src/api/schema.ts`.
 
-For a full retrain with walk-forward backfill of all model pairs plus recalibration (the proper season-start workflow), use the composite:
+## Canonical Data Pipeline
 
-```bash
-uv run gridiron full-retrain
-```
-
-Runtime is hours. Designed as a weekend batch job.
-
-### Weekly refresh (during season)
-
-The fastest way is the composite command:
-
-```bash
-uv run gridiron weekly-predict --week 1 --season 2026-2027
-```
-
-Composes data refresh, odds fetch, prediction, output rendering, and
-edge report into one workflow.
-
-The underlying single-purpose command also works:
+The implemented command is:
 
 ```bash
 uv run gridiron run-data-pipeline
 ```
 
-Runs all stages. Re-fetches current season games + upcoming schedule,
-incremental Elo fit, rebuilds features.
+With no stage flags, all registered stages run:
 
-### Offseason / pre-season Week 1 predictions
-
-To populate the frontend with upcoming Week 1 before the season starts,
-skip the odds-dependent stages (no odds exist for a future week):
-
-```bash
-uv run gridiron weekly-predict --week 1 --season 2026-2027 \
-  --skip fetch-odds --skip generate-edges
+```text
+fetch-games
+clean-games
+fetch-upcoming
+clean-upcoming
+fetch-weather
+build-epa
+build-elo
+build-features
 ```
 
-### Post-week archive (Monday)
+`--skip` and `--only` are mutually exclusive. Current-market odds are not part of this command. The legacy DraftKings adapter is explicit under `gridiron ingest dk-odds`.
+
+Examples:
 
 ```bash
-uv run gridiron post-week --week 1 --season 2025-2026
-```
-
-Composes data refresh, prediction archive for the completed week, and
-a drift-detection summary that compares the week's Brier against the
-season mean.
-
-### Pre-commit verification
-
-```bash
-uv run gridiron verify
-```
-
-Runs ruff, pyrefly, unit tests, integration tests, e2e tests, a light
-data-pipeline smoke check, and a baseline comparison anchor. Use
-`--fast` for a quick check (skips e2e and smoke-pipeline). Use
-`--strict` for CI mode (converts soft-failures into hard ones).
-
-
-### Stage control
-
-`--only` and `--skip` are mutually exclusive. Valid stage names:
-
-`fetch-games` · `clean-games` · `fetch-upcoming` · `clean-upcoming` · `fetch-weather` · `fetch-odds` · `build-epa` · `build-elo` · `build-features`
-
-```bash
-# Features only
 uv run gridiron run-data-pipeline --only build-features
-
-# Skip odds and weather
-uv run gridiron run-data-pipeline --skip fetch-odds --skip fetch-weather
+uv run gridiron run-data-pipeline --skip fetch-weather
+uv run gridiron run-data-pipeline --all-years --upcoming-season 2026 --fit-elo-all-years
 ```
 
-### Step-by-step
+Pipeline staleness checks resolve canonical input and output paths through the dataset registry. When a registered input is newer than an existing output, the command emits a nonfatal warning that the active stage will rebuild the stale output.
 
-```bash
-uv run gridiron ingest nflverse-games [--all-years]
-uv run gridiron ingest nflverse-upcoming --season 2026
-uv run gridiron transform clean-games
-uv run gridiron transform clean-upcoming
-uv run gridiron ratings elo fit [--all-years]
-uv run gridiron features model-inputs [--all-years]
+During the offseason, a completed-game fetch may contain no games for the upcoming season. `clean-games` refuses to overwrite populated historical data with an empty result. This protected state is expected.
+
+## Dataset and Artifact Registry
+
+Canonical dataset paths are owned by `src/gridiron_edge/datasets/registry.py`. Domain code should use `dataset_path()` rather than duplicate path strings.
+
+Important artifacts:
+
+```text
+data/output/champions/champions.json
+data/output/predictions/forecast_events.parquet
+data/output/weekly_products/index.json
+data/output/weekly_products/current.json
+data/output/weekly_products/products/{product_id}.parquet
+data/odds/odds_current.parquet
 ```
 
-### Outputs
+The repository remains intentionally file-backed. Revisit database storage only when multi-user concurrency, transactional integrity, or query complexity requires it.
 
-```bash
-uv run gridiron output predictions --year 2026-2027 --week 1
-uv run gridiron output ranks --year 2026-2027 --week 1
-uv run gridiron sim run [--n-sims 10000] [--divisor 350]
+## Game Models and Champion Manifest
+
+Active game model identities are unversioned composite pairs:
+
+```text
+win_prob / elo
+win_prob / logistic
+win_prob / random_forest
+win_prob / xgboost
+total / random_forest
+total / xgboost
 ```
 
-### Model training and evaluation
+Deployable artifacts live under:
 
-```bash
-uv run gridiron models train win_prob random_forest
-uv run gridiron models train win_prob xgboost --force
-uv run gridiron models train win_prob logistic --no-promote
-uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest
-uv run gridiron evaluate backfill --model-name win_prob --model-type xgboost
-uv run gridiron evaluate select-model
-uv run gridiron evaluate report
+```text
+data/models/{model_name}/{model_type}/
 ```
 
-Models are now identified by composite (model_name, model_type) pairs.
-The --model-key flag on read-only commands (calibration, diagnostics, summary)
-accepts the composite key as a single string (e.g., win_prob_random_forest).
-The training and backfill commands accept the pair as separate arguments.
+The runtime champion manifest is:
 
-### Archive migration
-
-The archive schema has evolved over time:
-- v1 → v2: added enrichment columns (spread, total, bands, tier). Backward compatible: missing columns get NaN on load.
-- v2 → v3: migrated `model_version` to `(model_name, model_type)` composite identity. Old archives with just `model_version` are silently dropped by load-time column projection.
-
-No manual migration scripts are needed; the load functions handle these
-schema transitions automatically.
-
-```bash
-#### Prop model evaluation (reads from archive - no retrain)
-uv run gridiron props evaluate --model qb_pass_yards --model-type elasticnet
-
-#### Prop projections (requires saved artifact)
-uv run gridiron props projections --model qb_pass_yards --model-type elasticnet --top 20
-
-#### Prop walk-forward backfill (honest historical predictions)
-uv run gridiron props backfill --model qb_pass_yards --model-type elasticnet --start-season 2023 --end-season 2025
-
-#### Prop champion (uses archive, no retrain)
-uv run gridiron props champion --model qb_pass_yards
+```text
+data/output/champions/champions.json
 ```
 
-The prop CLI is fully archive-driven post-Unit-7c. evaluate and
-champion read from the prop prediction archive instead of retraining
-inside every command. backfill does honest walk-forward (per-season
-training through the cutoff). projections requires a trained artifact
-written via PropTrainer.train_and_save. `gridiron props train-and-save`
-is now exposed as a CLI command (added during W5.5).
+It is written by promotion workflows such as `full-retrain` and consumed as a static runtime artifact. The API does not compare model metrics or select champions at request time.
 
----
+## Model Availability and Weekly Policy
 
-## File contract
+Weekly availability is model-specific and truthful.
 
-| File | Contents |
-|------|----------|
-| `data/cleaned/NFL_wk_by_wk_cleaned.csv` | Canonical historical games - `GAME_LOCATION` = `"H"/"@"/"N"` |
-| `data/cleaned/NFL_upcoming_schedule_cleaned.csv` | Canonical upcoming schedule |
-| `data/cleaned/NFL_Team_Elo.csv` | Elo ratings state table |
-| `data/modeling/base_modeling_file.parquet` | Base modeling rows (pre-features) |
-| `data/modeling/modeling_file.parquet` | Full feature matrix |
-| `data/cleaned/NFL_stadium_reference.csv` | Stadium geo reference - add new venues here for weather coverage |
-| `data/output/predictions/predictions_log.parquet` | Prediction archive - `is_backfilled` flags historical vs live |
-| `data/odds/dk_odds_log.parquet` | Full DK odds history (long format) |
-| `data/odds/dk_odds_current.parquet` | Latest DK odds snapshot for viz |
-| `data/raw/player_stats/player_stats_{season}.parquet` | Per-season player game logs from nflreadpy |
-| `data/cleaned/player_game_logs.parquet` | Cleaned player stats (138K rows, deduped) |
-| `data/output/props/prop_predictions_log.parquet` | Prop prediction archive - dedup on (game_id, player_id, stat_type, model_name, model_type) |
-| `data/output/champions/champions.json` | Current champion per model_name (W13) |
-| `data/output/props/opponent_allowed.parquet` | Per-(opponent, position, stat) allowed, 4 cohorts |
-| `data/output/rankings/team_cohort_splits.parquet` | 4-cohort × 11-metric team splits |
+Elo requires complete exact-week Away and Home rating coverage. Trained models require readable artifact metadata, a persisted model file, exact model and task identity, agreement between artifact and current feature contracts, successful canonical feature construction, and complete required feature coverage for every scheduled game.
 
----
+The weekly execution service:
 
-## Where to read code
+1. scopes the rich upcoming schedule;
+2. inspects available Win and Total candidates;
+3. loads champion provenance;
+4. resolves independent Win and Total policy decisions;
+5. executes the exact selected registry identities;
+6. requires exactly one valid prediction per scheduled game for each selected family before persistence.
 
-| What | Where |
-|------|-------|
-| CLI entry + `run-data-pipeline` | `cli/main.py` |
-| Composite CLI commands | `cli/weekly_predict.py`, `cli/post_week.py`, `cli/full_retrain.py`, `cli/verify.py` |
-| Composite shared infrastructure | `cli/_composites.py` |
-| Shared constants | `core/constants.py` |
-| Feature pipeline + ordering | `features/pipeline.py` |
-| Feature dependency validation | `features/registry.py` - `validate_ordering()` |
-| Feature column definitions | `models/game_prediction/_columns.py` |
-| Feature engineering functions | `models/game_prediction/_features.py` |
-| Market math | `market/odds_math.py`, `market/kelly.py`, `market/edge.py`, `market/recommendations.py`, `market/clv.py` |
-| Bet tracking | `betting/ledger.py`, `betting/bankroll.py`, `betting/performance.py`, `cli/betting.py` |
-| EPA window hyperparameter infra | `models/game_prediction/_epa_window.py` |
-| Elo core formula (parameterised) | `ratings/elo/core.py` |
-| Simulation types + config | `sim/_types.py` |
-| Simulation engine (numba) | `sim/_engine.py` |
-| Simulation orchestration | `sim/season.py` |
-| Model selection + reporting | `evaluation/select.py` |
-| Weather ingest (idempotent) | `ingest/weather/openweather.py` |
-| DK odds ingest | `ingest/odds/draftkings.py` |
-| DK game_id resolution | `ingest/odds/_game_id.py` |
-| Champion/challenger promotion | `evaluation/champion.py` |
-| Post-processing (spread, bands, tier) | `models/game_prediction/post_process.py` |
-| Prediction pipeline orchestrator | `models/game_prediction/pipeline.py` |
-| Total points model | `models/game_prediction/total.py` |
-| Prediction archive schema | `evaluation/archive.py` - `_ARCHIVE_COLUMNS` |
-| Player feature pipeline | `features/player/builder.py`, `features/player/_columns.py` |
-| Player rolling features | `features/player/rolling.py` |
-| Player matchup features | `features/player/matchup.py` |
-| Player usage features | `features/player/usage.py` |
-| Player game context features | `features/player/game_context.py` |
-| Prop model base class | `models/prop_prediction/base.py` |
-| Prop post-processing | `models/prop_prediction/post_process.py` |
-| Prop evaluation metrics | `evaluation/prop_metrics.py` |
-| Prop prediction archive | `evaluation/prop_archive.py` |
-| Prop CLI | `cli/props.py` |
-| API loader pattern | `api/loaders.py` |
-| API schema base | `api/schemas/_base.py` — `BaseResponse`, `BaseListResponse` |
-| Response meta + placeholder slugs | `api/meta.py` — `ResponseMeta`, `Blocker`, `Unavailable` |
-| Prop ID decode | `api/_prop_id.py` |
-| API players routes (roster + history) | `api/routes/players.py` |
-| API defense-allowed route | `api/routes/defense.py` |
-| Player history / defense loaders | `api/loaders.py` (load_player_history, load_players_list, load_defense_allowed) |
-| Frontend chrome (TopNav, SubNav, Breadcrumb) | `frontend/src/components/chrome/` |
-| Frontend field-status primitives | `frontend/src/components/field-status/` |
-| Frontend API client | `frontend/src/api/client.ts`, `frontend/src/api/hooks.ts` |
-| Frontend design decisions | `frontend/src/design-decisions.md` |
-| Percentile ranking | `evaluation/percentiles.py` |
-| Prop situational splits | `evaluation/situational_splits.py` |
-| Opponent-allowed defense | `evaluation/opponent_allowed.py` |
-| Team cohort splits | `evaluation/team_cohort_splits.py` |
-| Teams CLI subcommand | `cli/teams.py` |
+Unavailable families do not execute and do not emit forecast events. There is no hidden Elo fallback.
 
-All paths relative to `src/gridiron_edge/`.
+## Forecast Event Contract
 
----
+Forecast events are stored at:
 
-## Code quality gates
+```text
+data/output/predictions/forecast_events.parquet
+```
 
+Each row is an immutable event identified by `event_id`. Multiple coherent events may coexist for the same game and model. Rewriting an identical event ID is idempotent; conflicting reuse is rejected.
+
+Roles are explicit:
+
+```text
+live
+backfilled
+```
+
+`live` events are generated by weekly operational prediction before kickoff. `backfilled` events are historical reconstructions for evaluation and champion comparison. Backfilled forecasts are not substitutes for forecasts issued live.
+
+Selected Win and Total events from one weekly invocation share a run ID and UTC generation timestamp while preserving independent model identities.
+
+## Immutable Weekly Products
+
+Weekly products are stored under:
+
+```text
+data/output/weekly_products/
+```
+
+Layout:
+
+```text
+products/{product_id}.parquet   immutable validated products
+index.json                      indexed product metadata
+current.json                    explicit season-and-week selections
+```
+
+A product contains schedule-complete rows with independent Win, Spread, Total, and projected-score components plus their statuses and provenance.
+
+Writing a product does not select it. `select_current_weekly_product()` explicitly selects an indexed product for one season and week. `load_current_weekly_product()` loads only that selection. Missing selection is an explicit error; consumers must not infer current state from file order or timestamps.
+
+Spread derives from the exact selected Win event and its persisted calibration. Total values and uncertainty use the independently selected Total event and exact artifact metadata. Projected scores exist only when required Spread and Total point estimates are usable.
+
+## Pregame Workflow
+
+Run:
 
 ```bash
-# Normal dev loop (runs on every commit via pre-commit hook)
-uv run ruff check . --fix && uvx pyrefly check && uv run pytest -m "unit and not slow"
+uv run gridiron weekly-predict --season 2026-2027 --week 1
+```
 
-# Same gates via composite (also runs integration, e2e, smoke check):
+Stages:
+
+```text
+ensure-data-fresh
+predict-week
+compose-weekly-product
+verify-weekly-readiness
+render-outputs
+generate-edges
+```
+
+The command:
+
+1. refreshes canonical data except out-of-band weather refresh;
+2. resolves and executes policy-selected live Win and Total models;
+3. persists immutable forecast events;
+4. composes and explicitly selects a schedule-complete weekly product;
+5. verifies selected-product prediction readiness;
+6. publishes PNG and HTML forecast outputs;
+7. evaluates edges against the existing source-neutral market snapshot.
+
+Edge generation soft-fails when market data is unavailable. This does not invalidate prediction readiness or forecast publication.
+
+`weekly-predict` supports `--skip` and `--only`. It does not support `--assume-done`.
+
+## Market Data and Edge Diagnostics
+
+The current snapshot is:
+
+```text
+data/odds/odds_current.parquet
+```
+
+Storage is source-neutral through `write_current_odds_snapshot()` and `load_current_odds()`. The implemented schedule-market adapter uses source identity:
+
+```text
+nflverse_schedule
+```
+
+DraftKings remains an explicit legacy best-effort adapter. It is not part of `run-data-pipeline`, is not fetched by `weekly-predict`, does not bypass anti-bot responses, and must not be presented as a dependable current provider.
+
+Edge diagnostics are authoritative result state. They distinguish:
+
+```text
+blocked
+no calculable edges
+no positive edges
+positive edges filtered by min_ev
+returned positive edges
+```
+
+Missing market data is not “No play.” `No play` is reserved for a completed evaluation with no positive edge. Blocked or analytically empty results remove stale scope-specific edge CSV output.
+
+## Postgame Workflow
+
+Run only after completed outcomes are available:
+
+```bash
+uv run gridiron post-week --season 2026-2027 --week 1
+```
+
+Stages:
+
+```text
+refresh-results
+refresh-next-week-state
+close-live-forecasts
+```
+
+The command refreshes outcomes, refreshes next-week schedule and feature state, and evaluates the exact `live` Win and Total events referenced by the selected weekly product. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
+
+`post-week` does not run historical forecast backfill.
+
+## Historical Backfills and Evaluation
+
+Historical backfills write `backfilled` forecast events using honest time-ordered training cutoffs. They support model evaluation, champion comparison, and baseline reporting.
+
+Do not combine live and backfilled roles when measuring operational forecast performance. Postgame closeout evaluates the selected product’s exact live event identities.
+
+Prop evaluation and champion selection are likewise archive-driven. Prop projections require persisted deployable artifacts.
+
+## Full Retrain Workflow
+
+Run:
+
+```bash
+uv run gridiron full-retrain
+```
+
+Stages:
+
+```text
+refresh-all-data
+backfill-game-models
+backfill-prop-models
+train-game-models
+train-prop-models
+refresh-calibrations
+promote-champions
+baseline-report
+```
+
+This is the heavy historical workflow and can run for hours. It supports model filters, `--skip`, `--only`, `--skip-prop-backfill`, and `--assume-done`.
+
+Use `--assume-done` only when named prior stages completed and their required artifacts remain on disk. This option is not available on `weekly-predict` or `post-week`.
+
+## API Serialization Boundary
+
+The API is read-only and serializes persisted state. It does not:
+
+- run model inference;
+- resolve a weekly forecast by recency;
+- compare champion metrics;
+- fall back to Elo for Games endpoints;
+- generate products or edges at request time.
+
+Games are schedule-first. Scheduled games remain visible when prediction components are unavailable. Win, Spread, Total, and projected score are independent response blocks with independent readiness and provenance.
+
+Unpopulated fields use `_meta.field_status`. Stable blocker slugs identify missing upstream capabilities, while semantic roadmap references avoid binding runtime responses to temporary workstream numbering.
+
+OpenAPI is checked in as `api-schema.json`; frontend types are generated from it.
+
+## Frontend Contract Workflow
+
+The frontend uses Vite, React, TypeScript, React Query, and `openapi-fetch`. API-facing component types should derive from generated schemas:
+
+```typescript
+components["schemas"]["TypeName"]
+```
+
+After an API surface change:
+
+```bash
+uv run gridiron api export-schema
+cd frontend
+pnpm gen:api
+pnpm lint
+pnpm build
+pnpm test:run
+cd ..
+```
+
+Do not silently omit unavailable data. Use shared field-status, weekly-component, and edge-result presentation components. Team identities may arrive as canonical abbreviations or service-preserved long names and must resolve through shared team metadata.
+
+Context modules intentionally colocate each Provider and matching hook. ESLint’s Fast Refresh export rule is narrowly disabled only for `src/context/*Context.tsx`; all other rules and files retain the standard configuration.
+
+## BetSlip and Betting Ledger Boundaries
+
+BetSlip is a local draft decision workspace. It does not place sportsbook wagers and is not the betting ledger.
+
+A staged leg preserves immutable recommendation provenance separately from editable current odds, proposed stake, sportsbook, and notes. Current-price changes never rewrite the original recommendation snapshot. Missing price blocks price-dependent outputs rather than inventing odds.
+
+The betting ledger records confirmed bets. Bankroll is managed separately and coordinated by the CLI. BetSlip identity is producer-independent so the same wager deduplicates across frontend surfaces.
+
+## Verification Commands
+
+Python and backend verification:
+
+```bash
 uv run gridiron verify
-
-# Quick check (skips e2e and smoke):
-uv run gridiron verify --fast
-
-# CI mode (converts soft-failures to hard failures):
-uv run gridiron verify --strict
 ```
 
-Pre-commit hooks enforce ruff + pyrefly + unit tests on every commit.
-Pre-push hooks add integration + e2e tests.
-Use `uv run gridiron -v <command>` for verbose output.
+Default coverage:
 
----
+- Ruff;
+- Pyrefly;
+- backend unit, integration, and end-to-end tests;
+- external nflverse `fetch-games + clean-games` smoke check;
+- model baseline comparison.
 
-### Testing architecture
+`--fast` skips e2e and smoke. `--very-thorough` adds slow tests. `--strict` converts smoke and missing-baseline soft failures into hard failures. This command does not run frontend gates or weekly readiness.
 
-Three-tier test pyramid with auto-applied pytest markers:
-
-| Tier        | Directory            | Runs When                      | Speed         |
-| ----------- | -------------------- | ------------------------------ | ------------- |
-| Unit        | `tests/unit/`        | Every commit (pre-commit hook) | \~1s each     |
-| Integration | `tests/integration/` | Every push (pre-push hook)     | \~5-15s each  |
-| E2E         | `tests/e2e/`         | Every push (pre-push hook)     | \~30-60s each |
-
-Additional markers: `@pytest.mark.slow` (excluded by default), `@pytest.mark.network` (real API calls).
-
-**Markers are auto-applied by directory** - no `@pytest.mark.unit` decorators needed. Root `conftest.py` tags tests via `pytest_collection_modifyitems`.
-
-**Shared fixtures:**
-
-* `tests/fixtures/dataframes.py` - 9 DataFrame factories (`make_games()`, `make_modeling_rows()`, `make_stadiums()`, etc.)
-* `tests/fixtures/repos.py` - composable `MiniRepoBuilder` for integration/e2e tests
-* `tests/fixtures/dk_payload_fixture.py` - DraftKings API response fixture
-
-**Running tests:**
+Selected-product operational readiness:
 
 ```bash
-uv run pytest -m "unit and not slow"           # fast dev loop (~35s)
-uv run pytest -m "integration or e2e"          # cross-module + pipeline tests
-uv run pytest --cov --cov-report=term-missing  # with coverage report
+uv run gridiron verify-week --season 2026-2027 --week 1
 ```
 
-**Deferred test areas** (to be added with their respective workstreams):
+It reports schedule, component, provenance, market, join, eligible-market, edge, and blocker state without modifying data or running inference.
 
-* Numba sim kernels (`test_engine.py`, `test_playoffs.py`) - defer to sim workstream
-* DK API mocking (`test_draftkings.py` full) - defer to odds workstream
-
----
-
-### Coverage baseline
-
-500+ tests across the three-tier pyramid; `fail_under = 40` floor in pyproject. Coverage skews high on core business logic (features, datasets, evaluation/metrics, ratings/elo/core: 80–100%), moderate on integration-heavy modules (pipeline, archive, backfill), and low on deferred surfaces (sim kernels, viz, CLI, model training). Ratchet `fail_under` up as workstreams add tests.
-
-Run `uv run pytest --cov --cov-report=term-missing` for the current numbers — treat any hardcoded percentage here as illustrative, not authoritative.
-
----
-
-## Known sharp edges
-
-> Many of these items are tracked in ROADMAP.md §9 for opportunistic cleanup. The items below are the ones a new user is most likely to hit on day one.
-
-### Missing stadium coordinates (2026-2027)
-
-12 new/renamed stadia for the 2026-2027 season are not yet in `NFL_stadium_reference.csv`. Weather ingest skips affected games. Add rows with columns `STADIUM`, `HOME_TEAM`, `YEAR`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`:
-
-Bernabeu · Caesars Superdome · Estadio Banorte · EverBank Stadium · FC Bayern Munich Stadium · Highmark Stadium · Huntington Bank Field · Maracana Stadium · Melbourne Cricket Ground · Northwest Stadium · Stade de France · Tottenham Hotspur Stadium
-
-### Off-season `current_nfl_season()`
-
-Returns `year - 1` when `month < 6`. In May 2026 it returns 2025, treating you as if in the 2025-2026 season. Pass `--season 2026` or `--upcoming-season 2026` explicitly when fetching 2026-2027 data.
-
-### Offseason / pre-Week-1 data coverage
-
-Once the prior season completes, the default view resolves to the
-upcoming season's Week 1 (`resolve_current_season_week` prefers the
-upcoming schedule when the completed archive ends on week ≥ 22). In this
-state, coverage is intentionally partial — this is correct, not broken:
-
-- **Games:** served by **Elo only** — win probability populated;
-  `model_spread` / `model_total` / projected scores are **null** (those
-  need trained-model post-processing, which needs a feature matrix that
-  only exists for completed games).
-- **Champion→elo fallback:** the games API resolves the win_prob champion
-  first, falls back to elo when the champion has no rows for the week.
-  Upcoming weeks only ever have elo predictions. (See §7 W13 subsection.)
-- **Props + edges:** empty for upcoming weeks (prop models need features;
-  edges need odds — neither exists pre-week).
-- **Compare Player-vs-Defense:** shows the **prior completed season**
-  (labeled) — an empty upcoming season would have no bars to chart.
-- **Rating charts:** a single point until games play. **Records:** 0-0.
-
-Trained-model game/prop predictions for upcoming weeks require an
-upcoming-week feature matrix — a future workstream (ROADMAP §9).
-Elo-in-offseason is the reasonable default.
-
-### Sim requires a populated upcoming schedule
-
-`gridiron sim run` raises `FileNotFoundError` with an actionable message when the upcoming schedule CSV is empty. Run `gridiron ingest nflverse-upcoming --season 2026` then `gridiron transform clean-upcoming` first.
-
-### Elo state table must precede predictions
-
-`output predictions` merges Elo onto the upcoming schedule by week. If the Elo table doesn't have entries for the requested week yet, predictions will be empty. Run `ratings elo fit` first.
-
-### nflverse data cadence
-
-nflverse updates nightly after each game day. The cleanest weekly snapshot is Thursday (after the NFL incorporates Mon–Wed stat corrections). Historical coverage goes back to 1999.
-
----
-
-## Operational checklist (weekly, during season)
-
-### Thursday/Sunday - game day prep
-
-The composite command wraps the common case:
+Frontend gates:
 
 ```bash
-uv run gridiron weekly-predict --week N --season YYYY-YYYY+1
+cd frontend
+pnpm lint
+pnpm build
+pnpm test:run
+cd ..
 ```
 
-This runs: data refresh, odds fetch, predictions, rendering, and edge report in one command. `fetch-odds` and `generate-edges` soft-fail individually so a DK outage doesn't block the rest.
+## Operational Recovery
 
-### Monday - after games complete
+### Weekly prediction is blocked
+
+1. Run `verify-week` for the exact season and week.
+2. Inspect component and provenance blockers.
+3. Repair missing artifacts, feature coverage, calibration, or selection inputs.
+4. Rerun the coherent `weekly-predict` workflow.
+
+Do not patch a selected product by inferring current events from recency.
+
+### Market data is missing
+
+The selected prediction product remains valid. Forecast PNG and HTML publication should succeed. Edge generation soft-fails with an explicit market blocker. Do not fabricate prices. Write a supported source-neutral market snapshot before rerunning edge generation.
+
+### `post-week` is incomplete
+
+Confirm completed outcomes exist for every scheduled game. Running `post-week` before games finish correctly exits nonzero and lists missing outcomes. Do not replace live events with historical backfills.
+
+### Full retrain is interrupted
+
+Use `full-retrain --help` to confirm exact stage names. Resume with `--only` plus `--assume-done` only for stages that actually completed and have valid artifacts on disk.
+
+### Forecast rendering fails
+
+Rendering consumes the selected product and must tolerate absent optional market columns. Fix the renderer or product contract, then rerun the coherent weekly workflow. A rerun creates a new immutable forecast run and product.
+
+### Stale outputs
+
+Prediction-readiness blockers remove stale forecast PNG and HTML outputs. Blocked or empty edge results remove stale edge CSV output. The explicitly selected weekly product remains the operational authority.
+
+## Quality Gates
+
+Preferred Python boundary:
 
 ```bash
-uv run gridiron post-week --week N --season YYYY-YYYY+1
+uv run ruff check . --fix && \
+uvx pyrefly check && \
+uv run pytest -m "unit and not slow"
 ```
 
-This runs: data refresh (includes Elo update), prediction archive for the completed week, and a drift-detection summary.
-
-### After bets are confirmed by the bookmaker
+Frontend boundary:
 
 ```bash
-uv run gridiron bet log --game-id {ID} --market {TYPE} --side {SIDE} \
-    --odds {ODDS} --stake {AMT} --book {BOOK} \
-    --model-name win_prob --model-type random_forest
-
-uv run gridiron bet settle {BET_ID} {won|lost|push}
-uv run gridiron bet summary    # performance + calibration health
-uv run gridiron bet balance    # bankroll
+cd frontend
+pnpm lint
+pnpm build
+pnpm test:run
+cd ..
 ```
 
-### Optional: props
+Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integration and end-to-end tests.
 
-```bash
-uv run gridiron props evaluate --model qb_pass_yards --model-type elasticnet
-uv run gridiron props projections --model qb_pass_yards --model-type elasticnet
-```
+## Known Limitations
 
-### Manual fallback
-
-If you need to run the underlying stages individually (e.g., for
-debugging or composite-skip scenarios), the equivalent sequence is:
-
-1. `uv run gridiron run-data-pipeline` - refresh data + features
-2. `uv run gridiron ingest dk-odds` - pull current week odds
-3. `uv run gridiron output predictions --year YYYY-YYYY+1 --week N` - generate predictions
-4. `uv run gridiron edges report --week N --season YYYY-YYYY+1` - generate edge report
-5. `uv run gridiron sim run` - Monte Carlo simulation
-6. `uv run gridiron output ranks --year YYYY-YYYY+1 --week N` - write rank changes
-7. `uv run gridiron evaluate backfill --model-name win_prob --model-type random_forest` - archive predictions
+- The dependable long-term external market provider is unresolved. The current store is source-neutral; the DraftKings adapter is unreliable.
+- Multi-book line shopping, arbitrage, middles, and book selectors require a supported multi-book provider.
+- Injury and news data are not integrated.
+- Scenario analysis, feature attribution, and historical comparable retrieval remain future capabilities.
+- Live game state, live odds, in-game win probability, and WebSocket updates are not implemented.
+- Current-season PBP may be unavailable until the upstream source publishes it. Refresh can warn while continuing with the available historical feature state.
+- Some API endpoints may still require batch-artifact refactors to fully satisfy the serialization-boundary design; track verified cases in `ROADMAP.md`.
+- The project has never been live in production. Development-era schemas and artifacts do not require backward compatibility unless a current contract explicitly says otherwise.

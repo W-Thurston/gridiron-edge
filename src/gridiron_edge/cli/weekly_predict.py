@@ -137,7 +137,7 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
-    """Compose, persist, and explicitly select the live Elo weekly product."""
+    """Compose, persist, and explicitly select the live weekly product."""
     from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
     from gridiron_edge.datasets.writers import (
         select_current_weekly_product,
@@ -566,8 +566,9 @@ def weekly_predict_cmd(
 ) -> None:
     r"""Generate predictions and edge report for the upcoming week.
 
-    Composes data refresh, live Elo prediction, weekly-product selection,
-    and an edge report from the existing current market snapshot. Edge
+    Composes data refresh, policy-selected live Win and Total prediction,
+    weekly-product composition and selection, forecast publication, and an
+    edge report from the existing source-neutral market snapshot. Edge
     generation soft-fails when current market data is unavailable.
 
     \b

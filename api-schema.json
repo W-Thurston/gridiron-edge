@@ -566,7 +566,7 @@
       },
       "BlockedStatus": {
         "additionalProperties": false,
-        "description": "A field blocked on an upstream workstream or external dependency.\n\nAttributes:\n    status: Discriminator. Always the literal \"blocked\".\n    blocker: Stable slug identifying the upstream gap. Must match a\n        value registered in the `Blocker` class.\n    roadmap: ROADMAP.md reference (e.g., \"\u00a75.3\", \"W7\", \"deferred\").",
+        "description": "A field blocked on an upstream workstream or external dependency.\n\nAttributes:\n    status: Discriminator. Always the literal \"blocked\".\n    blocker: Stable slug identifying the upstream gap. Must match a\n        value registered in the `Blocker` class.\n    roadmap: Stable semantic roadmap reference (e.g., \"injury data source\").",
         "properties": {
           "blocker": {
             "description": "Stable slug identifying the upstream gap.",
@@ -4245,7 +4245,7 @@
                 "type": "null"
               }
             ],
-            "description": "Player injury status. Blocked on injury data source (ROADMAP \u00a75.3).",
+            "description": "Player injury status. Blocked on an injury data source.",
             "title": "Injury Status"
           },
           "line_context": {
@@ -4272,7 +4272,7 @@
                 "type": "null"
               }
             ],
-            "description": "Per-book line and odds comparison. Blocked on multi-book odds ingest (W7).",
+            "description": "Per-book line and odds comparison. Blocked on multi-book market ingestion.",
             "title": "Multi Book Shopping"
           },
           "player_id": {

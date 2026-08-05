@@ -8,7 +8,7 @@ type PendingFieldProps = {
 /**
  * Renders a placeholder for a field marked `field_status: "pending"`.
  * Backend work is planned but not done — the field will populate in a
- * future backend workstream (typically W8 Tier 3).
+ * future backend capability.
  */
 export function PendingField({ placeholder = "—" }: PendingFieldProps) {
   const highlight = usePendingHighlight();

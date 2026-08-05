@@ -17,7 +17,7 @@ type ComingSoonCardProps = {
  * — the card IS the gap indicator.
  *
  * Consolidated from per-screen copies (GameDetail, PlayerProp,
- * TeamsScreen) during W9.8 Substep 2b.
+ * TeamsScreen) through the shared pending-state presentation.
  */
 export function ComingSoonCard({ title, status }: ComingSoonCardProps) {
   const highlight = usePendingHighlight();

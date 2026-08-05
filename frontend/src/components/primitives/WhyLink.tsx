@@ -27,7 +27,7 @@ type WhyLinkProps = {
  *
  * The /explain route is currently a placeholder; navigation still works
  * and lands on the blocked-screen affordance. When /explain is
- * unblocked (W4.5), subject params will drive the explanation content.
+ * unblocked, subject params will drive the explanation content.
  */
 export function WhyLink({
   label = "Why?",

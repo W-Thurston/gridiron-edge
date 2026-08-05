@@ -7,6 +7,60 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+
+## D24. Weekly operation uses immutable forecast events and explicitly selected weekly products
+
+**Status:** Accepted
+
+**Date:** 2026-08-05
+
+### Decision
+
+Weekly operation persists immutable forecast events and composes immutable, schedule-complete weekly products. Current state changes only through explicit season-and-week product selection.
+
+Win and Total model families are inspected and selected independently before inference. Every selected family must produce one valid forecast for every scheduled game before events are written. Selected events from one invocation share a run ID and UTC generation timestamp while retaining exact model identity and role.
+
+Forecast roles are explicit:
+
+- `live` identifies forecasts issued by the operational weekly workflow before kickoff;
+- `backfilled` identifies historical reconstruction used for evaluation and champion comparison.
+
+The selected weekly product is the operational serialization boundary for API, forecast output, edge generation, readiness verification, and completed-week closeout. Consumers do not infer current state from newest files, event recency, champion lookup, or Elo fallback.
+
+Prediction readiness and market readiness are independent. A prediction-ready selected product may publish forecast output when markets are missing. Edge diagnostics preserve blocked, non-calculable, no-positive, filtered, and positive states without fabricating prices or presenting blocked results as `No play`.
+
+### Context
+
+The previous game path mixed mutable archive selection, model-specific fallback behavior, prediction generation, and API loading. This made live provenance, current state, independent Win and Total selection, and market failure semantics difficult to prove.
+
+The canonical one-row Away/Home game contract, model-specific availability inspection, policy-selected weekly execution, immutable event store, and weekly-product store now provide explicit identities and boundaries for each operation.
+
+### Consequences
+
+- Multiple coherent forecast runs and weekly products may coexist for one weekly scope.
+- Writing a product does not select it.
+- Missing current selection is an explicit error.
+- Postgame closeout evaluates the exact `live` events referenced by the selected product.
+- Backfilled events cannot substitute for missing live events.
+- API request paths serialize persisted state and do not run inference or select a forecast.
+- Missing market data does not invalidate prediction readiness.
+- Operational recovery reruns a coherent workflow or explicitly selects an indexed product; it does not repair state through recency inference.
+
+### Supersession
+
+This decision supersedes D22 for current weekly operation. D22 remains as historical context for the earlier Elo-only upcoming-week path and API fallback.
+
+### References
+
+- `src/gridiron_edge/evaluation/forecast_store.py`
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+- `src/gridiron_edge/models/game_prediction/weekly_product_store.py`
+- `src/gridiron_edge/cli/weekly_predict.py`
+- `src/gridiron_edge/cli/post_week.py`
+- `src/gridiron_edge/cli/verify_week.py`
+- `HANDOFF.md`
+
+---
 ## D23. BetSlip is a draft decision workspace with immutable recommendation provenance
 
 **Date:** 2026-07-29
@@ -105,6 +159,8 @@ Revisit this decision if:
 - `src/gridiron_edge/market/recommendations.py`
 
 ## D22. Elo is the canonical upcoming-week model; games API falls back champion→elo
+
+**Status:** Superseded by D24
 
 **Date:** 2026-07-12
 **Workstream:** W9.10 (Compare) — surfaced during offseason-readiness work
