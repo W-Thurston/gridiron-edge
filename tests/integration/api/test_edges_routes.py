@@ -14,12 +14,14 @@ import pytest
 
 from gridiron_edge.api.app import create_app
 from gridiron_edge.api.deps import settings_dependency
+from gridiron_edge.api.schemas.edges import EdgeDiagnosticsResponse
 from gridiron_edge.datasets.writers import (
     select_current_weekly_product,
     write_weekly_product,
 )
 from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
 from gridiron_edge.ingest.odds.store import write_current_odds_snapshot
+from gridiron_edge.market.weekly_edge_service import build_weekly_edge_result
 
 SEASON = "2026-2027"
 WEEK = 1
@@ -56,7 +58,10 @@ def _weekly_product(
             "win_model_name": ["win_prob"],
             "win_model_type": ["elo"],
             "win_event_id": ["win-event-1"],
-            "win_run_id": ["win-run-1"],
+            "win_run_id": ["api-weekly-run"],
+            "win_generated_at": ["2026-09-04T12:00:00+00:00"],
+            "win_role": ["live"],
+            "win_selection_status": ["selected"],
             "spread_status": ["available"],
             "model_spread": [model_spread],
             "spread_uncertainty": [13.5],
@@ -71,7 +76,10 @@ def _weekly_product(
             "total_model_name": ["total"],
             "total_model_type": ["xgboost"],
             "total_event_id": ["total-event-1"],
-            "total_run_id": ["total-run-1"],
+            "total_run_id": ["api-weekly-run"],
+            "total_generated_at": ["2026-09-04T12:00:00+00:00"],
+            "total_role": ["live"],
+            "total_selection_status": ["selected"],
             "total_uncertainty_trained_at": ["2026-07-01T14:20:00"],
             "projected_score_status": ["available"],
             "projected_home_score": [projected_home],
@@ -177,15 +185,8 @@ def _persist_markets(repo: Path, markets: pd.DataFrame | None = None) -> None:
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """Return a client whose settings and team map use the temporary repo."""
-    monkeypatch.setattr(
-        "gridiron_edge.api.loaders.load_team_name_map",
-        lambda _settings: {
-            "Kansas City Chiefs": "KC",
-            "Los Angeles Chargers": "LAC",
-        },
-    )
+def client(tmp_path: Path) -> TestClient:
+    """Return a client whose settings use the temporary repository."""
     app = create_app()
     app.dependency_overrides[settings_dependency] = lambda: _FakeSettings(repo_root=tmp_path)
     return TestClient(app)
@@ -201,6 +202,14 @@ class TestListEdgesRoute:
     ) -> None:
         _persist_selected_product(tmp_path)
         _persist_markets(tmp_path)
+        direct_result = build_weekly_edge_result(
+            season=SEASON,
+            week=WEEK,
+            bankroll=2500.0,
+            kelly_multiplier=0.10,
+            min_ev=0.0,
+            repo=tmp_path,
+        )
 
         response: Response = client.get(
             "/edges",
@@ -224,13 +233,35 @@ class TestListEdgesRoute:
 
         first = body["items"][0]
         assert first["game_id"] == GAME_ID
-        assert first["home_team"] == "LAC"
-        assert first["away_team"] == "KC"
+        assert first["home_team"] == "Los Angeles Chargers"
+        assert first["away_team"] == "Kansas City Chiefs"
         assert first["model_key"] == "win_prob_elo"
         assert first["market_type"] in {"moneyline", "spread", "total"}
         assert first["side"] in {"home", "away", "over", "under"}
         assert first["american_odds"] != 0
         assert first["kelly_stake"] is not None
+
+        expected_diagnostics = EdgeDiagnosticsResponse.model_validate(
+            direct_result.diagnostics.to_dict()
+        ).model_dump(mode="json")
+        assert body["diagnostics"] == expected_diagnostics
+        assert body["total"] == len(direct_result.rows)
+        assert [item["game_id"] for item in body["items"]] == direct_result.rows["game_id"].astype(
+            str
+        ).tolist()
+        provenance = body["diagnostics"]["provenance"]
+        assert provenance["win_event_ids"] == ["win-event-1"]
+        assert provenance["win_run_ids"] == ["api-weekly-run"]
+        assert provenance["win_model_names"] == ["win_prob"]
+        assert provenance["win_model_types"] == ["elo"]
+        assert provenance["total_event_ids"] == ["total-event-1"]
+        assert provenance["total_run_ids"] == ["api-weekly-run"]
+        assert provenance["total_model_names"] == ["total"]
+        assert provenance["total_model_types"] == ["xgboost"]
+        assert provenance["product_ids"] == ["api-weekly-product"]
+        assert provenance["product_run_ids"] == ["api-weekly-run"]
+        assert provenance["market_sources"] == ["nflverse_schedule"]
+        assert provenance["market_fetched_at"] == ["2026-09-05T12:00:00Z"]
 
     def test_omitted_bankroll_keeps_dollar_stake_unavailable(
         self,
@@ -292,6 +323,8 @@ class TestListEdgesRoute:
         status = body["_meta"]["field_status"]["items"]
         assert status["status"] == "blocked"
         assert status["blocker"] == "no_weekly_product"
+        assert body["diagnostics"]["state"] == "blocked"
+        assert body["diagnostics"]["blockers"] == ["no_predictions"]
 
     def test_missing_market_snapshot_returns_field_status(
         self,
@@ -312,6 +345,8 @@ class TestListEdgesRoute:
         status = body["_meta"]["field_status"]["items"]
         assert status["status"] == "blocked"
         assert status["blocker"] == "no_odds_available"
+        assert body["diagnostics"]["state"] == "blocked"
+        assert body["diagnostics"]["blockers"] == ["no_market_data"]
 
     def test_threshold_filtered_result_is_empty_without_blocker(
         self,
@@ -336,3 +371,6 @@ class TestListEdgesRoute:
         assert body["total"] == 0
         assert body["min_ev"] == 1.0
         assert body.get("_meta") is None
+        assert body["diagnostics"]["state"] == "positive_edges"
+        assert body["diagnostics"]["positive_edge_count"] > 0
+        assert body["diagnostics"]["filtered_edge_count"] == 0

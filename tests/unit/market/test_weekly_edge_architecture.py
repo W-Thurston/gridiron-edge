@@ -68,6 +68,7 @@ def test_api_edge_loader_has_no_retired_edge_dependencies() -> None:
     function_source = source[start:end]
 
     retired = (
+        "load_team_name_map",
         "resolve_current_champion",
         "load_prediction_log",
         "load_current_odds",

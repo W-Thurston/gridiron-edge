@@ -845,15 +845,8 @@ def load_edges_for_week(
         kelly_multiplier=kelly_multiplier,
         repo=settings.repo_root,
     )
-    if result.rows.empty:
-        return result
-
-    rows = result.rows.copy()
-    long_to_short = load_team_name_map(settings)
-    rows["away_team"] = rows["away_team"].map(long_to_short).fillna(rows["away_team"])
-    rows["home_team"] = rows["home_team"].map(long_to_short).fillna(rows["home_team"])
     return EdgeResult(
-        rows=rows,
+        rows=result.rows.copy(),
         diagnostics=result.diagnostics,
     )
 

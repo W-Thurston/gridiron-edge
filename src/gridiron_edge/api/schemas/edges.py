@@ -4,9 +4,59 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from gridiron_edge.api.schemas._base import BaseListResponse
+from gridiron_edge.market.edge import EdgeStrength
+from gridiron_edge.market.edge_diagnostics import (
+    EdgeDiagnosticBlocker,
+    EdgeResultState,
+)
+
+
+class EdgeProvenanceResponse(BaseModel):
+    """Prediction, product, and market provenance supplied by the service."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    win_event_ids: tuple[str, ...] = ()
+    win_run_ids: tuple[str, ...] = ()
+    win_model_names: tuple[str, ...] = ()
+    win_model_types: tuple[str, ...] = ()
+    total_event_ids: tuple[str, ...] = ()
+    total_run_ids: tuple[str, ...] = ()
+    total_model_names: tuple[str, ...] = ()
+    total_model_types: tuple[str, ...] = ()
+    product_ids: tuple[str, ...] = ()
+    product_run_ids: tuple[str, ...] = ()
+    market_sources: tuple[str, ...] = ()
+    market_fetched_at: tuple[datetime, ...] = ()
+
+
+class EdgeDiagnosticsResponse(BaseModel):
+    """Complete service-provided diagnostics for one weekly edge result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    season: str
+    week: int
+    prediction_game_count: int
+    market_game_count: int
+    matched_game_count: int
+    complete_moneyline_count: int
+    complete_spread_count: int
+    complete_total_count: int
+    eligible_market_count: int
+    calculated_edge_count: int
+    positive_edge_count: int
+    filtered_edge_count: int
+    state: EdgeResultState
+    blockers: tuple[EdgeDiagnosticBlocker, ...] = ()
+    provenance: EdgeProvenanceResponse = Field(
+        default_factory=EdgeProvenanceResponse,
+    )
 
 
 class EdgeRow(BaseModel):
@@ -15,8 +65,7 @@ class EdgeRow(BaseModel):
     One row per (game, market_type, side) triple. Moneyline rows have
     ``point_edge`` and ``cover_prob`` as null; spread/total rows populate
     them. Fields mirror ``_REPORT_COLUMNS`` in
-    ``market.recommendations``, with team names as short codes after
-    loader-side normalization.
+    ``market.recommendations`` and preserve service-provided team names.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -68,8 +117,8 @@ class EdgeRow(BaseModel):
 
     # Bet economics
     ev: float
-    edge_strength: str = Field(
-        description="'strong', 'moderate', or 'weak'.",
+    edge_strength: EdgeStrength = Field(
+        description="'strong', 'moderate', 'lean', or 'no_edge'.",
     )
     kelly_frac: float | None = None
     kelly_stake: float | None = None
@@ -95,4 +144,7 @@ class EdgeList(BaseListResponse[EdgeRow]):
     kelly_multiplier: float | None = Field(
         default=None,
         description=("Fraction of full Kelly applied when calculating kelly_stake."),
+    )
+    diagnostics: EdgeDiagnosticsResponse = Field(
+        description="Complete diagnostics returned by the unified edge service.",
     )

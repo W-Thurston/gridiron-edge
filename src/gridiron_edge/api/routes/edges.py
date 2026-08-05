@@ -95,9 +95,7 @@ def list_edges(
         )
 
     return serialize_edges_list(
-        result.rows,
-        season=resolved_season,
-        week=resolved_week,
+        result,
         min_ev=min_ev,
         bankroll=bankroll,
         kelly_multiplier=kelly_multiplier,

@@ -2584,33 +2584,19 @@ Only a missing selected scheduled row returns 404.
 
 ---
 
-### Unit 25: Make API Edges Use Unified Service Results
+### Unit 25: Make API Edges Use Unified Service Results [Complete]
+
+#### Completed
+Made /edges a faithful serialization surface over the unified weekly edge service. The API loader now preserves service-provided rows and team identities while returning a defensive copy. Added required structured diagnostics and complete Win, Total, weekly-product, and market provenance to the response. Preserved every service blocker and analytical result state, exposed market source and UTC ingestion timestamps, aligned edge strength with the implementation contract, and changed the serializer to consume the complete EdgeResult rather than a detached DataFrame. Existing _meta field status remains secondary presentation metadata.
 
 #### Goal
-
-Serialize shared edge rows and diagnostics.
-
-#### Production files
-
-- `src/gridiron_edge/api/loaders.py`
-- `src/gridiron_edge/api/schemas/edges.py`
-- `src/gridiron_edge/api/routes/edges.py`
-
-#### Test files
-
-- update edge schema, loader, and route tests
+Serialize shared edge rows and diagnostics without independently reconstructing model composition, market joins, edge calculations, edge strength, empty-state meaning, or provenance in the API.
 
 #### Tests
-
-- sportsbook or source and ingestion timestamp are included;
-- diagnostics distinguish all empty states;
-- model and market provenance are exposed;
-- edge strength enum matches implementation;
-- API output matches direct CLI service output.
+Covered defensive loader copying and exact row preservation; actual edge-strength values and rejection of the retired weak value; complete diagnostic counts, blockers, terminal states, and provenance; long team-name preservation; missing product and market blockers; analytical empty states; multiple simultaneous blockers; positive edges filtered by threshold; source and ingestion timestamp serialization; independent Win and Total provenance; weekly-product identity; architecture guards against retired dependencies and team normalization; and persisted API output parity with direct build_weekly_edge_result output after JSON normalization. Ruff, Pyrefly, focused tests, and the full unit quality boundary pass.
 
 #### Acceptance
-
-`/edges` no longer reconstructs model composition independently.
+/edges serializes the rows and diagnostics returned by build_weekly_edge_result, preserves service identity and provenance, distinguishes every service empty state, and no longer reconstructs model composition independently.
 
 ---
 

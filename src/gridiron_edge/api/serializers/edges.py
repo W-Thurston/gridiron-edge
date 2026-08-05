@@ -1,23 +1,24 @@
-# src/gridiron_edge/api/serializers/edges.py
-
-"""Serializers for /edges.
-
-Per D17, hand-written. Per D18, owns _meta.field_status construction.
-"""
+"""Mechanical serializers for unified weekly edge results."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
-from pandas import DataFrame
 
 from gridiron_edge.api.meta import ResponseMeta
-from gridiron_edge.api.schemas.edges import EdgeList, EdgeRow
+from gridiron_edge.api.schemas.edges import (
+    EdgeDiagnosticsResponse,
+    EdgeList,
+    EdgeProvenanceResponse,
+    EdgeRow,
+)
+from gridiron_edge.market.edge import EdgeStrength
+from gridiron_edge.market.recommendations import EdgeResult
 
 
 def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
-    """Return None for NaN or None; else the value."""
+    """Return None for NaN or None; otherwise preserve the value."""
     if v is None:
         return None
     if isinstance(v, float) and pd.isna(v):
@@ -26,13 +27,7 @@ def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
 
 
 def _row_to_edge(row: dict) -> EdgeRow:
-    """Convert one edge-report row (dict) to EdgeRow.
-
-    Normalizes NaN → None for optional numeric fields. Required fields
-    (``game_id``, ``away_team``, ``home_team``, ``model_key``,
-    ``market_type``, ``side``, ``ev``, ``edge_strength``) are passed
-    through as-is.
-    """
+    """Convert one service recommendation row to its API schema."""
     return EdgeRow(
         game_id=str(row["game_id"]),
         game_date=_none_if_nan(row.get("game_date")),
@@ -50,31 +45,67 @@ def _row_to_edge(row: dict) -> EdgeRow:
         point_edge=_none_if_nan(row.get("point_edge")),
         cover_prob=_none_if_nan(row.get("cover_prob")),
         ev=float(row["ev"]),
-        edge_strength=str(row["edge_strength"]),
+        edge_strength=cast(EdgeStrength, str(row["edge_strength"])),
         kelly_frac=_none_if_nan(row.get("kelly_frac")),
         kelly_stake=_none_if_nan(row.get("kelly_stake")),
     )
 
 
+def _serialize_diagnostics(result: EdgeResult) -> EdgeDiagnosticsResponse:
+    """Serialize service diagnostics without deriving or collapsing values."""
+    diagnostics = result.diagnostics
+    provenance = diagnostics.provenance
+    return EdgeDiagnosticsResponse(
+        season=diagnostics.season,
+        week=diagnostics.week,
+        prediction_game_count=diagnostics.prediction_game_count,
+        market_game_count=diagnostics.market_game_count,
+        matched_game_count=diagnostics.matched_game_count,
+        complete_moneyline_count=diagnostics.complete_moneyline_count,
+        complete_spread_count=diagnostics.complete_spread_count,
+        complete_total_count=diagnostics.complete_total_count,
+        eligible_market_count=diagnostics.eligible_market_count,
+        calculated_edge_count=diagnostics.calculated_edge_count,
+        positive_edge_count=diagnostics.positive_edge_count,
+        filtered_edge_count=diagnostics.filtered_edge_count,
+        state=diagnostics.state,
+        blockers=diagnostics.blockers,
+        provenance=EdgeProvenanceResponse(
+            win_event_ids=provenance.win_event_ids,
+            win_run_ids=provenance.win_run_ids,
+            win_model_names=provenance.win_model_names,
+            win_model_types=provenance.win_model_types,
+            total_event_ids=provenance.total_event_ids,
+            total_run_ids=provenance.total_run_ids,
+            total_model_names=provenance.total_model_names,
+            total_model_types=provenance.total_model_types,
+            product_ids=provenance.product_ids,
+            product_run_ids=provenance.product_run_ids,
+            market_sources=provenance.market_sources,
+            market_fetched_at=provenance.market_fetched_at,
+        ),
+    )
+
+
 def serialize_edges_list(
-    rows: DataFrame,
+    result: EdgeResult,
     *,
-    season: str | None,
-    week: int | None,
     min_ev: float | None,
     bankroll: float | None,
     kelly_multiplier: float | None,
     response_meta: ResponseMeta | None = None,
 ) -> EdgeList:
-    """Build the /edges list response with optional route-owned metadata."""
-    items: list[EdgeRow] = [_row_to_edge(r.to_dict()) for _, r in rows.iterrows()]
+    """Serialize one complete unified weekly edge result."""
+    items = [_row_to_edge(row.to_dict()) for _, row in result.rows.iterrows()]
+    diagnostics = _serialize_diagnostics(result)
     return EdgeList(
         items=items,
         total=len(items),
-        season=season,
-        week=week,
+        season=diagnostics.season,
+        week=diagnostics.week,
         min_ev=min_ev,
         bankroll=bankroll,
         kelly_multiplier=kelly_multiplier,
+        diagnostics=diagnostics,
         response_meta=response_meta,  # pyrefly: ignore [unexpected-keyword]
     )

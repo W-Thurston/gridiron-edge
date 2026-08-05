@@ -114,6 +114,8 @@ def test_blocker_maps_to_items_field_status(
     assert status["status"] == "blocked"
     assert status["blocker"] == slug
     assert status["roadmap"] == "data"
+    assert body["diagnostics"]["state"] == "blocked"
+    assert body["diagnostics"]["blockers"] == [blocker.value]
 
 
 @pytest.mark.parametrize(
@@ -149,6 +151,10 @@ def test_analytical_empty_state_has_no_blocked_field_status(
     assert body["items"] == []
     assert body["total"] == 0
     assert body.get("_meta") is None
+    assert body["diagnostics"]["state"] == state.value
+    assert body["diagnostics"]["calculated_edge_count"] == calculated
+    assert body["diagnostics"]["positive_edge_count"] == positive
+    assert body["diagnostics"]["blockers"] == []
 
 
 def test_first_diagnostic_blocker_controls_current_field_status(
@@ -171,6 +177,10 @@ def test_first_diagnostic_blocker_controls_current_field_status(
 
     status = body["_meta"]["field_status"]["items"]
     assert status["blocker"] == "no_weekly_product"
+    assert body["diagnostics"]["blockers"] == [
+        "no_predictions",
+        "no_market_data",
+    ]
 
 
 def test_explicit_scope_does_not_load_current_scope(

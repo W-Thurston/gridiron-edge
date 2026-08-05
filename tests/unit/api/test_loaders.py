@@ -403,7 +403,10 @@ class TestLoadEdgesForWeek:
             kelly_multiplier=0.10,
         )
 
-        assert result is expected
+        assert result is not expected
+        assert result.diagnostics is diagnostics
+        assert result.rows is not expected.rows
+        pd.testing.assert_frame_equal(result.rows, expected.rows)
         assert calls == [
             {
                 "season": "2026-2027",
@@ -415,7 +418,7 @@ class TestLoadEdgesForWeek:
             }
         ]
 
-    def test_normalizes_team_names_on_a_defensive_copy(
+    def test_preserves_service_team_names_on_a_defensive_copy(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -456,14 +459,6 @@ class TestLoadEdgesForWeek:
             "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result",
             lambda **kwargs: service_result,
         )
-        monkeypatch.setattr(
-            "gridiron_edge.api.loaders.load_team_name_map",
-            lambda _settings: {
-                "Kansas City Chiefs": "KC",
-                "Los Angeles Chargers": "LAC",
-            },
-        )
-
         result = load_edges_for_week(
             self._fake_settings(tmp_path),
             season="2026-2027",
@@ -471,8 +466,10 @@ class TestLoadEdgesForWeek:
         )
 
         assert result.diagnostics is diagnostics
-        assert result.rows.loc[0, "away_team"] == "KC"
-        assert result.rows.loc[0, "home_team"] == "LAC"
+        assert result.rows is not service_result.rows
+        assert result.rows.loc[0, "away_team"] == "Kansas City Chiefs"
+        assert result.rows.loc[0, "home_team"] == "Los Angeles Chargers"
+        pd.testing.assert_frame_equal(result.rows, service_result.rows)
         assert service_result.rows.loc[0, "away_team"] == "Kansas City Chiefs"
         assert service_result.rows.loc[0, "home_team"] == "Los Angeles Chargers"
 
