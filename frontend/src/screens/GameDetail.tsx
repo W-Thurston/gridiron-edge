@@ -5,6 +5,12 @@ import { useTeamByAbbr } from "../api/team_metadata_hook";
 import { ErrorCard } from "../components/error/ErrorCard";
 import type { components } from "../api/schema";
 import type { FieldStatus } from "../components/field-status/types";
+import { EdgeResultStatus } from "../components/field-status/EdgeResultStatus";
+import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
+import {
+  isWeeklyComponentUsable,
+  weeklyComponentStatusMessage,
+} from "../components/field-status/weeklyComponentStatus";
 import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
 import { Pill } from "../components/primitives/Pill";
@@ -373,9 +379,12 @@ function WinProbabilityCard({
   awayTeam: string;
   homeTeam: string;
 }) {
-  const winAvailable =
-    win.home_win_prob != null &&
-    win.away_win_prob != null;
+  const winUsable = isWeeklyComponentUsable("win", win.status);
+  const spreadUsable = isWeeklyComponentUsable("spread", spread.status);
+  const scoreUsable = isWeeklyComponentUsable(
+    "projected_score",
+    projectedScore.status,
+  );
 
   return (
     <div className="hm-card" style={{ padding: 20 }}>
@@ -386,31 +395,46 @@ function WinProbabilityCard({
         Win Probability
       </div>
 
-      {winAvailable ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <ProbabilityRow team={homeTeam} probability={win.home_win_prob} />
-            <ProbabilityRow team={awayTeam} probability={win.away_win_prob} />
-          </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 24,
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {winUsable ? (
+            <>
+              <ProbabilityRow team={homeTeam} probability={win.home_win_prob} />
+              <ProbabilityRow team={awayTeam} probability={win.away_win_prob} />
+            </>
+          ) : (
+            <WeeklyComponentValue
+              label="Win probability"
+              status={win.status}
+              usable={false}
+              value={win.home_win_prob}
+              format={(value) => `${Math.round(value * 100)}%`}
+              statusMessage={weeklyComponentStatusMessage("win", win.status)}
+            />
+          )}
+        </div>
 
-          <div style={{ borderLeft: "1px solid var(--line-soft)", paddingLeft: 24 }}>
-            <div
-              className="upper dim2"
-              style={{
-                fontSize: 10,
-                letterSpacing: "0.08em",
-                marginBottom: 8,
-              }}
-            >
-              Projected Score
-            </div>
+        <div style={{ borderLeft: "1px solid var(--line-soft)", paddingLeft: 24 }}>
+          <div
+            className="upper dim2"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.08em",
+              marginBottom: 8,
+            }}
+          >
+            Projected Score
+          </div>
+          {scoreUsable &&
+          projectedScore.away != null &&
+          projectedScore.home != null ? (
             <div
               className="mono tnum"
               style={{
@@ -419,32 +443,48 @@ function WinProbabilityCard({
                 letterSpacing: "-0.01em",
               }}
             >
-              {projectedScore.away != null && projectedScore.home != null ? (
-                <>
-                  <span style={{ color: "var(--ink-2)" }}>
-                    {awayTeam} {projectedScore.away.toFixed(1)}
-                  </span>
-                  <span className="dim2" style={{ margin: "0 10px" }}>
-                    —
-                  </span>
-                  <span style={{ color: "var(--pos)" }}>
-                    {homeTeam} {projectedScore.home.toFixed(1)}
-                  </span>
-                </>
-              ) : (
-                "—"
-              )}
+              <span style={{ color: "var(--ink-2)" }}>
+                {awayTeam} {projectedScore.away.toFixed(1)}
+              </span>
+              <span className="dim2" style={{ margin: "0 10px" }}>
+                —
+              </span>
+              <span style={{ color: "var(--pos)" }}>
+                {homeTeam} {projectedScore.home.toFixed(1)}
+              </span>
             </div>
-            {spread.model_spread != null && (
-              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
-                Margin: {formatMargin(spread.model_spread, awayTeam, homeTeam)}
-              </div>
+          ) : (
+            <WeeklyComponentValue
+              label="Projected score"
+              status={projectedScore.status}
+              usable={scoreUsable}
+              value={projectedScore.home}
+              format={(value) => value.toFixed(1)}
+              statusMessage={weeklyComponentStatusMessage(
+                "projected_score",
+                projectedScore.status,
+              )}
+            />
+          )}
+          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+            {spreadUsable && spread.model_spread != null ? (
+              <>Margin: {formatMargin(spread.model_spread, awayTeam, homeTeam)}</>
+            ) : (
+              <WeeklyComponentValue
+                label="Spread"
+                status={spread.status}
+                usable={spreadUsable}
+                value={spread.model_spread}
+                format={(value) => formatMargin(value, awayTeam, homeTeam)}
+                statusMessage={weeklyComponentStatusMessage(
+                  "spread",
+                  spread.status,
+                )}
+              />
             )}
           </div>
         </div>
-      ) : (
-        <div className="dim mono">No Win prediction available.</div>
-      )}
+      </div>
     </div>
   );
 }
@@ -468,9 +508,14 @@ function ProbabilityRow({
         <TeamMark abbr={team} size={20} />
         <span style={{ fontWeight: 500 }}>{team}</span>
       </div>
-      <span className="mono tnum" style={{ fontWeight: 600, fontSize: 14 }}>
-        {probability != null ? `${Math.round(probability * 100)}%` : "—"}
-      </span>
+      <WeeklyComponentValue
+        label={`${team} Win probability`}
+        status="available"
+        usable
+        value={probability}
+        format={(value) => `${Math.round(value * 100)}%`}
+        statusMessage="Win prediction available"
+      />
     </div>
   );
 }
@@ -502,10 +547,8 @@ function formatMargin(
  * 3. Take top by EV
  * 4. Render recommendation + metadata
  *
- * Empty states:
- * - No edges available (odds blocked): shows "No model edge" muted
- * - Loading: shows nothing (avoids flash)
- * - Error: shows nothing
+ * Empty states use the authoritative weekly edge diagnostics.
+ * Loading and transport errors remain non-blocking for the game header.
  */
 function ModelLeanCallout({
   gameId,
@@ -538,6 +581,7 @@ function ModelLeanCallout({
           alignItems: "flex-end",
           gap: 4,
           minWidth: 200,
+          maxWidth: 300,
         }}
       >
         <div
@@ -550,12 +594,13 @@ function ModelLeanCallout({
         >
           Model Lean
         </div>
-        <div
-          className="dim mono"
-          style={{ fontSize: 12, marginTop: 4 }}
-        >
-          No model edge
-        </div>
+        {data?.diagnostics && items.length === 0 ? (
+          <EdgeResultStatus diagnostics={data.diagnostics} compact />
+        ) : (
+          <div className="dim mono" style={{ fontSize: 12, marginTop: 4 }}>
+            No positive edge for this game.
+          </div>
+        )}
       </div>
     );
   }
@@ -682,9 +727,9 @@ function ModelLeanCallout({
 
 /**
  * Lines & Model Fair Value card. 3-row table showing:
- * - Market row: blocked on W7 (odds ingest), all cells em-dash
- * - Gridiron Edge fair: model spread/total/moneyline from prediction data
- * - Recommendation: composed from /edges filtered to game_id
+ * - Persisted market context from the highest-EV row in each market
+ * - Gridiron Edge fair values from independent weekly components
+ * - Positive recommendations returned by the weekly edge service
  *
  * Recommendation row has subtle green tint highlight.
  */
@@ -717,13 +762,16 @@ function LinesAndFairValueCard({
     .filter((e) => e.market_type === "moneyline")
     .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
 
-  // Model fair values from independent persisted components
-  const modelSpread = spread.model_spread;
-  const modelTotal = total.model_total;
-  const modelHomeML = win.home_win_prob != null
+  // Model fair values from independently available persisted components
+  const winUsable = isWeeklyComponentUsable("win", win.status);
+  const spreadUsable = isWeeklyComponentUsable("spread", spread.status);
+  const totalUsable = isWeeklyComponentUsable("total", total.status);
+  const modelSpread = spreadUsable ? spread.model_spread : null;
+  const modelTotal = totalUsable ? total.model_total : null;
+  const modelHomeML = winUsable && win.home_win_prob != null
     ? probToAmerican(win.home_win_prob)
     : null;
-  const modelAwayML = win.away_win_prob != null
+  const modelAwayML = winUsable && win.away_win_prob != null
     ? probToAmerican(win.away_win_prob)
     : null;
 
@@ -806,7 +854,7 @@ function LinesAndFairValueCard({
           </tr>
         </thead>
         <tbody>
-          {/* Market row - blocked on W7 */}
+          {/* Persisted market context */}
           <tr style={{ borderBottom: "1px solid var(--line-soft)" }}>
             <td
               style={{
@@ -817,9 +865,15 @@ function LinesAndFairValueCard({
             >
               Market
             </td>
-            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
-            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
-            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>—</td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>
+              {formatEdgeMarketContext(spreadEdge)}
+            </td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>
+              {formatEdgeMarketContext(totalEdge)}
+            </td>
+            <td style={{ padding: "12px 16px", color: "var(--ink-2)" }}>
+              {formatEdgeMarketContext(mlEdge)}
+            </td>
           </tr>
 
           {/* Model fair row */}
@@ -834,13 +888,52 @@ function LinesAndFairValueCard({
               Gridiron Edge fair
             </td>
             <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
-              {formatSpreadDisplay(modelSpread, awayTeam, homeTeam)}
+              {spreadUsable ? (
+                formatSpreadDisplay(modelSpread, awayTeam, homeTeam)
+              ) : (
+                <WeeklyComponentValue
+                  label="Spread"
+                  status={spread.status}
+                  usable={false}
+                  value={spread.model_spread}
+                  format={(value) => value.toFixed(1)}
+                  statusMessage={weeklyComponentStatusMessage(
+                    "spread",
+                    spread.status,
+                  )}
+                />
+              )}
             </td>
             <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
-              {formatTotalDisplay(modelTotal)}
+              {totalUsable ? (
+                formatTotalDisplay(modelTotal)
+              ) : (
+                <WeeklyComponentValue
+                  label="Total"
+                  status={total.status}
+                  usable={false}
+                  value={total.model_total}
+                  format={(value) => value.toFixed(1)}
+                  statusMessage={weeklyComponentStatusMessage(
+                    "total",
+                    total.status,
+                  )}
+                />
+              )}
             </td>
             <td style={{ padding: "12px 16px", fontFamily: "var(--f-mono)" }}>
-              {formatMLDisplay(modelAwayML, modelHomeML, awayTeam, homeTeam)}
+              {winUsable ? (
+                formatMLDisplay(modelAwayML, modelHomeML, awayTeam, homeTeam)
+              ) : (
+                <WeeklyComponentValue
+                  label="Moneyline fair value"
+                  status={win.status}
+                  usable={false}
+                  value={win.home_win_prob}
+                  format={(value) => `${Math.round(value * 100)}%`}
+                  statusMessage={weeklyComponentStatusMessage("win", win.status)}
+                />
+              )}
             </td>
           </tr>
 
@@ -860,13 +953,13 @@ function LinesAndFairValueCard({
               Recommendation
             </td>
             <td style={{ padding: "12px 16px" }}>
-              <RecCell edge={spreadEdge} />
+              <RecCell edge={spreadEdge} diagnostics={edgesData?.diagnostics} />
             </td>
             <td style={{ padding: "12px 16px" }}>
-              <RecCell edge={totalEdge} />
+              <RecCell edge={totalEdge} diagnostics={edgesData?.diagnostics} />
             </td>
             <td style={{ padding: "12px 16px" }}>
-              <RecCell edge={mlEdge} />
+              <RecCell edge={mlEdge} diagnostics={edgesData?.diagnostics} />
             </td>
           </tr>
         </tbody>
@@ -875,27 +968,43 @@ function LinesAndFairValueCard({
   );
 }
 
-/**
- * Recommendation cell — either the edge or "No play" if no edge exists
- * for this market.
- */
+type EdgeRow = components["schemas"]["EdgeRow"];
+type EdgeDiagnostics = components["schemas"]["EdgeDiagnosticsResponse"];
+
+function formatAmericanOdds(odds: number): string {
+  return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+function formatEdgeMarketContext(edge: EdgeRow | undefined): string {
+  if (!edge || edge.market_value == null) return "—";
+  const odds = formatAmericanOdds(edge.american_odds);
+  if (edge.market_type === "moneyline") {
+    return `${(edge.market_value * 100).toFixed(1)}% no-vig · ${odds}`;
+  }
+  if (edge.market_type === "spread") {
+    const sign = edge.market_value > 0 ? "+" : "";
+    return `Home ${sign}${edge.market_value.toFixed(1)} · ${odds}`;
+  }
+  return `Total ${edge.market_value.toFixed(1)} · ${odds}`;
+}
+
 function RecCell({
   edge,
+  diagnostics,
 }: {
-  edge:
-    | {
-        side: string;
-        ev?: number | null;
-      }
-    | undefined;
+  edge: EdgeRow | undefined;
+  diagnostics: EdgeDiagnostics | undefined;
 }) {
   if (!edge) {
+    if (diagnostics && diagnostics.state !== "positive_edges") {
+      if (diagnostics.state === "no_positive_edges") {
+        return <span className="mono dim" style={{ fontSize: 11 }}>No play</span>;
+      }
+      return <EdgeResultStatus diagnostics={diagnostics} compact />;
+    }
     return (
-      <span
-        className="mono dim"
-        style={{ fontSize: 11 }}
-      >
-        No play
+      <span className="mono dim" style={{ fontSize: 11 }}>
+        No positive edge for this market
       </span>
     );
   }
@@ -911,18 +1020,16 @@ function RecCell({
       >
         {edge.side}
       </div>
-      {edge.ev != null && (
-        <div
-          className="mono"
-          style={{
-            fontSize: 10.5,
-            color: "var(--pos)",
-            marginTop: 2,
-          }}
-        >
-          +{(edge.ev * 100).toFixed(1)}% EV
-        </div>
-      )}
+      <div
+        className="mono"
+        style={{
+          fontSize: 10.5,
+          color: "var(--pos)",
+          marginTop: 2,
+        }}
+      >
+        +{(edge.ev * 100).toFixed(1)}% EV
+      </div>
     </div>
   );
 }

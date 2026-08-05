@@ -21,6 +21,26 @@ describe("TeamMark", () => {
     expect(screen.getByText("KAN")).toBeInTheDocument();
   });
 
+  it("resolves a long team name to its canonical abbreviation", () => {
+    vi.mocked(useTeamByAbbr).mockReturnValue({
+      abbr: "KAN",
+      name: "Kansas City Chiefs",
+      primary_color: "#E31837",
+      secondary_color: "#FFB81C",
+    } as never);
+
+    render(
+      <TestWrapper>
+        <TeamMark abbr="Kansas City Chiefs" />
+      </TestWrapper>,
+    );
+
+    expect(screen.getByText("KAN")).toHaveStyle({
+      background: "#E31837",
+    });
+    expect(screen.queryByText("Kansas City Chiefs")).not.toBeInTheDocument();
+  });
+
   it("uses team primary color when available", () => {
     vi.mocked(useTeamByAbbr).mockReturnValue({
       abbr: "KAN",

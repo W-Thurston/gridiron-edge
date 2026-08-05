@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useEdges } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { useNav } from "../../context/NavContext";
+import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { Pill } from "../primitives/Pill";
 import { TeamMark } from "../primitives/TeamMark";
-import { WinProbBand } from "../games/WinProbBand";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
 
 type MarketFilter = "all" | "moneyline" | "spread" | "total";
@@ -90,8 +90,12 @@ export function ModelEdgesTable() {
         </div>
       </div>
 
-      {displayed.length === 0 && (
-        <EmptyState market={filter} />
+      {displayed.length === 0 && data && (
+        items.length === 0 ? (
+          <EdgeResultStatus diagnostics={data.diagnostics} />
+        ) : (
+          <MarketFilterEmptyState market={filter} />
+        )
       )}
 
       {displayed.length > 0 && (
@@ -110,7 +114,7 @@ export function ModelEdgesTable() {
               <th style={{ padding: "8px 12px 8px 0" }}>Side</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Market</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Fair</th>
-              <th style={{ padding: "8px 12px 8px 0" }}>Win Prob</th>
+              <th style={{ padding: "8px 12px 8px 0" }}>Cover Prob</th>
               <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>EV</th>
               <th style={{ padding: "8px 0" }}></th>
             </tr>
@@ -186,7 +190,7 @@ export function ModelEdgesTable() {
                     {formatFair(edge.model_value, edge.market_type)}
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
-                    <WinProbBandCompact coverProb={edge.cover_prob} />
+                    {formatProbability(edge.cover_prob)}
                   </td>
                   <td
                     style={{
@@ -248,40 +252,18 @@ export function ModelEdgesTable() {
   );
 }
 
-function EmptyState({ market }: { market: MarketFilter }) {
-  const label = market === "all" ? "" : ` for ${market}`;
+function MarketFilterEmptyState({ market }: { market: MarketFilter }) {
   return (
     <div style={{ padding: 24, textAlign: "center" }}>
-      <div className="dim mono" style={{ fontSize: 12, marginBottom: 8 }}>
-        No edges available{label}.
-      </div>
-      <div className="mono dim2" style={{ fontSize: 11 }}>
-        Run `gridiron edges report` to populate.
+      <div className="dim mono" style={{ fontSize: 12 }}>
+        No positive {market} edges in this view.
       </div>
     </div>
   );
 }
 
-function WinProbBandCompact({ coverProb }: { coverProb?: number | null }) {
-  if (coverProb == null) return <span className="dim">—</span>;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-      }}
-    >
-      <WinProbBand
-        homeWinProb={coverProb}
-        homeWinLo={Math.max(0, coverProb - 0.08)}
-        homeWinHi={Math.min(1, coverProb + 0.08)}
-      />
-      <span style={{ color: "var(--ink-2)" }}>
-        {Math.round(coverProb * 100)}%
-      </span>
-    </span>
-  );
+function formatProbability(value: number | null | undefined): string {
+  return value == null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
 function formatFair(
@@ -290,7 +272,7 @@ function formatFair(
 ): string {
   if (value == null) return "—";
   if (marketType === "moneyline") {
-    return value > 0 ? `+${Math.round(value)}` : `${Math.round(value)}`;
+    return formatProbability(value);
   }
   return value.toFixed(1);
 }

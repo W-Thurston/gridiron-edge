@@ -1,6 +1,7 @@
 import { useEdges, useGamesList } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { useNav } from "../../context/NavContext";
+import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { TeamHero } from "../primitives/TeamHero";
 import { WhyLink } from "../primitives/WhyLink";
 import { useTeamByAbbr } from "../../api/team_metadata_hook";
@@ -17,10 +18,10 @@ type EdgeApiRow =
  * Data flow:
  * 1. Fetch /edges (ranked by EV) and /games in parallel
  * 2. Join by game_id
- * 3. Take top 3 edges that have corresponding game prediction data
+ * 3. Take top 3 edges that have corresponding scheduled games
  * 4. Render each as a `FeaturedCard`
  *
- * Empty state: renders when no edges available (blocked on odds ingest).
+ * Empty states render the authoritative weekly edge diagnostics.
  */
 export function FeaturedMatchupsGrid() {
   const edgesResult = useEdges();
@@ -73,17 +74,13 @@ export function FeaturedMatchupsGrid() {
         <div className="upper dim" style={{ fontSize: 10, marginBottom: 16 }}>
           Featured Matchups
         </div>
-        <div style={{ padding: 24, textAlign: "center" }}>
-          <div className="dim mono" style={{ fontSize: 12, marginBottom: 8 }}>
-            No featured matchups yet.
+        {edgesResult.data?.diagnostics ? (
+          <EdgeResultStatus diagnostics={edgesResult.data.diagnostics} />
+        ) : (
+          <div className="dim mono" style={{ padding: 24, textAlign: "center" }}>
+            No featured matchups are available.
           </div>
-          <div
-            className="mono dim2"
-            style={{ fontSize: 11 }}
-          >
-            Run `gridiron ingest dk-odds` and `gridiron edges report` to populate.
-          </div>
-        </div>
+        )}
       </div>
     );
   }

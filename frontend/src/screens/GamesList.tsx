@@ -3,6 +3,11 @@ import { useGamesList } from "../api/hooks";
 import { useNav } from "../context/NavContext";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { ErrorCard } from "../components/error/ErrorCard";
+import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
+import {
+  isWeeklyComponentUsable,
+  weeklyComponentStatusMessage,
+} from "../components/field-status/weeklyComponentStatus";
 
 export function GamesList() {
   const { navigate } = useNav();
@@ -110,19 +115,46 @@ export function GamesList() {
                     </span>
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
-                    {game.win.home_win_prob != null
-                      ? `${Math.round(game.win.home_win_prob * 100)}%`
-                      : "—"}
+                    <WeeklyComponentValue
+                      label="Win probability"
+                      status={game.win.status}
+                      usable={isWeeklyComponentUsable("win", game.win.status)}
+                      value={game.win.home_win_prob}
+                      format={(value) => `${Math.round(value * 100)}%`}
+                      statusMessage={weeklyComponentStatusMessage(
+                        "win",
+                        game.win.status,
+                      )}
+                    />
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
-                    {game.spread.model_spread != null
-                      ? formatSpread(game.spread.model_spread)
-                      : "—"}
+                    <WeeklyComponentValue
+                      label="Spread"
+                      status={game.spread.status}
+                      usable={isWeeklyComponentUsable(
+                        "spread",
+                        game.spread.status,
+                      )}
+                      value={game.spread.model_spread}
+                      format={formatSpread}
+                      statusMessage={weeklyComponentStatusMessage(
+                        "spread",
+                        game.spread.status,
+                      )}
+                    />
                   </td>
                   <td style={{ padding: "10px 0" }}>
-                    {game.total.model_total != null
-                      ? game.total.model_total.toFixed(1)
-                      : "—"}
+                    <WeeklyComponentValue
+                      label="Total"
+                      status={game.total.status}
+                      usable={isWeeklyComponentUsable("total", game.total.status)}
+                      value={game.total.model_total}
+                      format={(value) => value.toFixed(1)}
+                      statusMessage={weeklyComponentStatusMessage(
+                        "total",
+                        game.total.status,
+                      )}
+                    />
                   </td>
                 </tr>
               ))}

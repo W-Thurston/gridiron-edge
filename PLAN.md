@@ -2616,39 +2616,19 @@ api-schema.json and frontend/src/api/schema.ts are deterministically generated f
 
 ---
 
-### Unit 27: Wire Frontend Weekly Status
+### Unit 27: Wire Frontend Weekly Status [Complete]
+
+#### Completed
+Added a shared generated-contract-aware edge result model and presentation component covering all weekly blockers, analytical empty states, and minimum-EV filtering. Wired authoritative edge diagnostics into Featured Matchups, Dashboard Model Edges, BetSlip Edges, Game Detail model lean, and Game Detail recommendation cells. Restricted “No play” to completed evaluations with no positive edges and preserved distinct blocked, non-calculable, filtered, game-specific, and market-specific states. Removed synthetic cover-probability uncertainty bands and corrected Moneyline fair values to render as probabilities. Added persisted market context and American odds to BetSlip and Game Detail edge surfaces. Added shared weekly-component status mappings and value presentation for Win, Spread, Total, and projected scores. Wired Games List and Game Detail to independent component readiness, retained scheduled rows when predictions are unavailable, preserved Total point estimates when uncertainty is unavailable, and surfaced inconsistent available-without-value states. Extended team metadata resolution to support canonical abbreviations and service-preserved long team names without backend identity rewriting.
 
 #### Goal
-
-Make missing or blocked weekly data visible across all game surfaces.
-
-#### Production files
-
-- Games list screen
-- Game detail screen
-- Dashboard featured matchups
-- Dashboard model edges
-- BetSlip edges table
-- shared field-status components where appropriate
-
-#### Test files
-
-- update corresponding `*.test.tsx` files
-- add focused tests for each blocker state
+Make missing, blocked, incomplete, filtered, and analytically empty weekly data visible across all game and edge surfaces without collapsing authoritative product states into silent nulls, generic empty messages, fabricated values, or misleading “No play” labels.
 
 #### Tests
-
-- no schedule rows disappear because prediction is unavailable;
-- missing prediction is not shown as “No games found”;
-- missing market data is not shown as “No play”;
-- no positive edge remains a valid “No play” state;
-- synthetic uncertainty bands are removed;
-- market values render from real market context;
-- pending and blocked states remain visibly identifiable.
+Added focused coverage for all six edge blockers, simultaneous blockers, missing blocker reasons, no calculable edges, no positive edges, minimum-EV filtering, market-tab filtering, and positive edges returned normally. Added tests for persisted market context, American odds, Moneyline fair probability, and removal of synthetic uncertainty bands. Added exhaustive weekly status-message tests for Win, Spread, Total, and projected scores, including Total point-estimate usability when uncertainty is unavailable and inconsistent available-without-value handling. Added Games List tests proving schedule rows remain visible with unavailable Win data, independent Spread and Total readiness, true schedule emptiness, canonical team-mark resolution, and continued absence of retired Band and Confidence columns. Added Game Detail tests covering independent component readiness, projected-score availability without Win, Spread calibration unavailability, Total uncertainty unavailability, authoritative edge blockers, valid no-play semantics, filtered edges, game-specific emptiness, and persisted market context. The production frontend build passes, focused ESLint passes for every changed frontend file, and all 344 frontend tests pass across 34 test files. Backend Ruff, Pyrefly, and the full unit quality boundary pass.
 
 #### Acceptance
-
-The frontend reflects actual product readiness rather than silent nulls.
+The frontend reflects actual weekly product readiness rather than silent nulls. Scheduled games remain visible when prediction components are unavailable. Win, Spread, Total, and projected-score readiness render independently. Edge surfaces preserve authoritative blockers and result states. Missing market data is not shown as “No play,” positive-edge filtering remains distinct from analytical emptiness, synthetic uncertainty bands are absent, and market values render from persisted market context with actual American odds.
 
 ---
 

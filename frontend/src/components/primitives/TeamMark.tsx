@@ -17,6 +17,7 @@ type TeamMarkProps = {
  */
 export function TeamMark({ abbr, size = 22 }: TeamMarkProps) {
   const team = useTeamByAbbr(abbr);
+  const displayAbbr = team?.abbr ?? abbr;
   const primaryColor = team?.primary_color;
 
   const bg = primaryColor ?? "var(--bg-3)";
@@ -39,7 +40,7 @@ export function TeamMark({ abbr, size = 22 }: TeamMarkProps) {
         letterSpacing: "0.02em",
       }}
     >
-      {abbr}
+      {displayAbbr}
     </span>
   );
 }

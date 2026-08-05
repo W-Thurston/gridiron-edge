@@ -1,7 +1,5 @@
 import { useEdges } from "../../api/hooks";
-import { BlockedField } from "../field-status/BlockedField";
-import { PendingField } from "../field-status/PendingField";
-import type { FieldStatus } from "../field-status/types";
+import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { TeamMark } from "../primitives/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
@@ -36,8 +34,6 @@ export function EdgesTable({
   const { legs, add } = useBetSlip();
 
   const legIds = new Set(legs.map((l) => l.id));
-
-  const listStatus = data?._meta?.field_status?.items as FieldStatus | undefined;
 
   return (
     <div className="hm-card" style={{ padding: 24 }}>
@@ -95,7 +91,7 @@ export function EdgesTable({
 
 
       {data && (data.items ?? []).length === 0 && (
-        <ListEmptyState status={listStatus} />
+        <EdgeResultStatus diagnostics={data.diagnostics} />
       )}
 
       {data && (data.items ?? []).length > 0 && (
@@ -150,6 +146,20 @@ export function EdgesTable({
                 }}
               >
                 Side
+              </th>
+
+              <th
+                scope="col"
+                style={{ padding: "8px 12px 8px 0" }}
+              >
+                Market Context
+              </th>
+
+              <th
+                scope="col"
+                style={{ padding: "8px 12px 8px 0" }}
+              >
+                Odds
               </th>
 
               <th
@@ -234,6 +244,12 @@ export function EdgesTable({
                     {edge.market_type}
                   </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>{edge.side}</td>
+                  <td style={{ padding: "10px 12px 10px 0" }}>
+                    {formatMarketContext(edge.market_type, edge.market_value)}
+                  </td>
+                  <td style={{ padding: "10px 12px 10px 0" }}>
+                    {formatAmericanOdds(edge.american_odds)}
+                  </td>
                   <td
                     style={{
                       padding: "10px 12px 10px 0",
@@ -286,57 +302,26 @@ export function EdgesTable({
   );
 }
 
-function ListEmptyState({ status }: { status: FieldStatus | undefined }) {
-  return (
-    <div
-      style={{
-        padding: 24,
-        textAlign: "center",
-      }}
-    >
-      <div
-        className="mono dim"
-        style={{ fontSize: 12, marginBottom: 8 }}
-      >
-        No edges available.
-      </div>
-      <div
-        className="mono dim2"
-        style={{
-          marginBottom: 8,
-          fontSize: 10,
-          lineHeight: 1.5,
-        }}
-      >
-        When model edges are available,
-        stage one here for current-price,
-        EV, Kelly, and payout analysis.
-      </div>
+function formatMarketContext(
+  marketType: string,
+  marketValue: number | null | undefined,
+): string {
+  if (marketValue == null) return "—";
+  if (marketType === "moneyline") {
+    return `${(marketValue * 100).toFixed(1)}% no-vig`;
+  }
+  if (marketType === "spread") {
+    const sign = marketValue > 0 ? "+" : "";
+    return `Home ${sign}${marketValue.toFixed(1)}`;
+  }
+  if (marketType === "total") {
+    return `Total ${marketValue.toFixed(1)}`;
+  }
+  return marketValue.toFixed(1);
+}
 
-      {status === "pending" && (
-        <div style={{ display: "inline-block" }}>
-          <PendingField />
-        </div>
-      )}
-      {status && status !== "pending" && (
-        <div style={{ display: "inline-block" }}>
-          <BlockedField blocker={status.blocker} roadmap={status.roadmap} />
-        </div>
-      )}
-      {status && status !== "pending" && (
-        <div
-          className="mono dim2"
-          style={{ fontSize: 11, marginTop: 8 }}
-        >
-          {status.blocker === "no_odds_available"
-            ? "Run `gridiron ingest dk-odds` to refresh."
-            : status.blocker === "no_champion_manifest"
-              ? "Run `gridiron evaluate select-model --write-manifest`."
-              : "See the operational checklist."}
-        </div>
-      )}
-    </div>
-  );
+function formatAmericanOdds(odds: number): string {
+  return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
 function EdgeStrengthPill({ strength }: { strength: string }) {

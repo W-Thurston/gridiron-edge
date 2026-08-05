@@ -22,11 +22,15 @@ export function useTeamMetadata() {
 }
 
 /**
- * Look up a single team's metadata by abbreviation from cached data.
- * Returns null if not found or cache empty.
+ * Resolve one team from cached metadata by canonical abbreviation or long name.
+ *
+ * The public function name is retained for existing callers, while schedule
+ * and edge surfaces may pass the service-preserved team name.
  */
-export function useTeamByAbbr(abbr: string | null | undefined) {
+export function useTeamByAbbr(identity: string | null | undefined) {
   const { data } = useTeamMetadata();
-  if (!abbr || !data?.items) return null;
-  return data.items.find((t) => t.abbr === abbr) ?? null;
+  if (!identity || !data?.items) return null;
+  return data.items.find(
+    (team) => team.abbr === identity || team.name === identity,
+  ) ?? null;
 }
