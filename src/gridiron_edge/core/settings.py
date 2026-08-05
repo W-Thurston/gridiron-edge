@@ -19,6 +19,7 @@ class Settings:
     Attributes:
         repo_root: Absolute path to the repository root.
         owm_api_key: OpenWeatherMap API key, or ``None`` if not configured.
+        odds_api_key: The Odds API key, or ``None`` if not configured.
         data_raw: Directory for raw scraped data files.
         data_cleaned: Directory for cleaned canonical datasets.
         data_modeling: Directory for derived modeling artifacts.
@@ -27,6 +28,7 @@ class Settings:
 
     repo_root: Path
     owm_api_key: str | None
+    odds_api_key: str | None
     data_raw: Path
     data_cleaned: Path
     data_modeling: Path
@@ -46,6 +48,7 @@ def get_settings() -> Settings:
     return Settings(
         repo_root=root,
         owm_api_key=os.environ.get("OWM_API_KEY"),
+        odds_api_key=os.environ.get("ODDS_API_KEY"),
         data_raw=root / "data" / "raw",
         data_cleaned=root / "data" / "cleaned",
         data_modeling=root / "data" / "modeling",

@@ -70,16 +70,18 @@ Current state:
 
 Program sequence:
 
-1. **Provider and contract selection.** The Odds API v4 selected; normalized
-   quote, freshness, identity, configuration, and failure boundaries locked.
-2. **Source-neutral quote migration.** Separate provider from sportsbook,
-   preserve provider event and update provenance, and make storage multi-book
-   safe before live ingestion.
-3. **Current provider adapter.** Ingest current and upcoming NFL moneyline,
-   spread, and total quotes from The Odds API into the normalized store.
-4. **Operational integration.** Add explicit refresh, freshness, coverage,
-   same-book price evaluation, prediction-market joins, CLI, and API behavior
-   while preserving forecast independence.
+1. **Provider and contract selection [Complete].** The Odds API v4 selected;
+   normalized quote, freshness, identity, configuration, and failure boundaries
+   locked.
+2. **Source-neutral quote migration [Complete].** Provider and sportsbook
+   identity are separate, provider event and update provenance are preserved,
+   and storage is multi-book safe.
+3. **Current provider adapter [Complete].** Current and upcoming NFL moneyline,
+   spread, and total quotes can be explicitly ingested from The Odds API into
+   the normalized store.
+4. **Operational integration [Active].** Add freshness and coverage policy,
+   same-book price evaluation, prediction-market joins, CLI and API behavior,
+   and refresh orchestration while preserving forecast independence.
 5. **Real-data frontend integration and audit.** Exercise Dashboard, Games,
    Game Detail, BetSlip, readiness, edge states, sportsbook provenance, and
    responsive presentation against real market responses.
@@ -250,7 +252,7 @@ Future tooling work:
 
 ### Market data
 
-The Odds API v4 is the selected supported current-market provider. Current provider ingestion, same-book evaluation, operational integration, and multi-book execution features remain active program work.
+The Odds API v4 client, parser, and explicit ingest command are implemented. Same-book recommendation evaluation, automatic refresh policy, broader operational integration, real-data frontend validation, and multi-book execution features remain active program work.
 
 ### Injury, news, and live state
 

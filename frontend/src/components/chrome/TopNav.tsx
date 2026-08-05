@@ -73,7 +73,7 @@ export function TopNav() {
           className="mono dim2"
           style={{ fontSize: 10.5, marginLeft: 4 }}
         >
-          v4.2
+          v1.0
         </span>
       </button>
 

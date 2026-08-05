@@ -53,6 +53,18 @@ What has been built and when. Newest first.
 - Regenerated current market artifacts with 96 rows across 16 games and
   validated six rows per game, UTC timestamp columns, spread orientation,
   observation uniqueness, and exact-reappend idempotency.
+- Added The Odds API v4 client and parser for current NFL moneyline, spread, and
+  total markets using US bookmakers, American odds, and ISO timestamps.
+- Added strict provider payload, quota-header, event, sportsbook, market,
+  outcome, timestamp, and canonical schedule-matching validation.
+- Added write-safe current-market ingestion that preserves existing artifacts
+  after request, response, payload, parsing, empty-result, and zero-match
+  failures.
+- Added `ODDS_API_KEY` configuration and the explicit
+  `gridiron ingest odds --season ... --week ...` command with quota reporting.
+- Validated a live response containing 816 quotes across 16 games and nine
+  sportsbooks with zero provider-event identity violations, current book-side
+  duplicates, or duplicate ledger observations.
 
 ---
 ## 2026-07-29 — BetSlip decision-support rebuild

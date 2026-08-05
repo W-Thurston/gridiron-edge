@@ -337,3 +337,69 @@ can implement The Odds API client and parser directly against this contract
 without compatibility code or schema migration.
 
 ---
+
+### Market Unit 3: Implement The Odds API Client and Parser [Complete]
+
+#### Completed
+
+Implemented The Odds API v4 client for current NFL featured markets using the
+locked US region, moneyline, spread, total, American-odds, and ISO-timestamp
+request contract.
+
+Added strict request, response, quota-header, event, bookmaker, market, outcome,
+numeric, timestamp, and schedule-matching validation. Preserved every returned
+sportsbook independently and normalized matched pregame events directly into
+the canonical provider-aware quote schema.
+
+Added write-safe current ingestion. Request, HTTP, JSON, malformed-payload,
+empty-response, and zero-match failures leave existing quote artifacts
+unchanged. Successful ingestion appends observations and atomically replaces
+the current snapshot.
+
+Added `ODDS_API_KEY` configuration, explicit flag resolution, quota reporting,
+and the isolated `gridiron ingest odds --season ... --week ...` command. Normal
+prediction, retraining, post-week, verification, and data-pipeline workflows do
+not perform provider network access.
+
+Validated a live NFL Week 1 provider response containing 816 quotes across 16
+canonical games and nine sportsbooks. The resulting snapshot contains complete
+provider event, sportsbook, update-time, and commence-time provenance with no
+duplicate current book-side rows.
+
+#### Goal
+
+Implement supported current NFL market ingestion directly against the canonical
+quote contract without coupling forecast publication to network availability.
+
+#### Tests
+
+Ruff, Pyrefly, and the unit quality boundary passed. Parser, HTTP client,
+settings, API-key resolution, write-safe ingestion, storage, nflverse
+regression, command registration, help, validation, quota reporting, failure,
+artifact-preservation, partial-coverage, and idempotency tests passed.
+
+The live provider request cost three credits and returned 816 quotes, 16
+provider events, 16 matched games, nine sportsbooks, and 144 game-book
+combinations. Of those combinations, 120 offered all three requested market
+families and 24 offered two. All emitted rows contained odds.
+
+Live artifact validation confirmed the exact 17-column schema, UTC timestamp
+dtypes, pregame-only rows, zero provider-event identity violations, zero
+duplicate current sportsbook-side rows, and zero duplicate ledger observations.
+The ledger contains 96 retained nflverse observations and 816 The Odds API
+observations.
+
+#### Acceptance
+
+The explicit ingest command requests supported NFL featured markets, retains
+all returned sportsbooks, matches usable pregame events to canonical games,
+appends quote observations, atomically replaces the current snapshot, and
+reports available provider quota metadata.
+
+Missing configuration and all pre-write request, payload, parsing, and matching
+failures preserve existing artifacts. Provider network access remains isolated
+from normal weekly and composite workflows.
+
+---
+
+### Market Unit 4: Integrate Current Markets Operationally [Active]

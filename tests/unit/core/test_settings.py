@@ -22,6 +22,7 @@ class TestSettingsDataclass:
         expected_fields: set[str] = {
             "repo_root",
             "owm_api_key",
+            "odds_api_key",
             "data_raw",
             "data_cleaned",
             "data_modeling",
@@ -62,6 +63,7 @@ class TestEnsureDataDirs:
         settings = Settings(
             repo_root=tmp_path,
             owm_api_key=None,
+            odds_api_key=None,
             data_raw=tmp_path / "data" / "raw",
             data_cleaned=tmp_path / "data" / "cleaned",
             data_modeling=tmp_path / "data" / "modeling",
@@ -85,3 +87,13 @@ class TestCurrentNflSeason:
 
         year: int = current_nfl_season()
         assert 2020 <= year <= 2040, f"Unexpected season year: {year}"
+
+
+def test_odds_api_key_reads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ODDS_API_KEY", "odds-test-key")
+    assert get_settings().odds_api_key == "odds-test-key"
+
+
+def test_odds_api_key_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ODDS_API_KEY", raising=False)
+    assert get_settings().odds_api_key is None

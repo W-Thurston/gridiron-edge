@@ -27,6 +27,7 @@ def _make_settings(root: Path) -> Settings:
     return Settings(
         repo_root=root,
         owm_api_key=None,
+        odds_api_key=None,
         data_raw=root / "data" / "raw",
         data_cleaned=root / "data" / "cleaned",
         data_modeling=root / "data" / "modeling",

@@ -8,7 +8,7 @@ from pathlib import Path
 # pyrefly: ignore [missing-import]
 import typer
 
-from gridiron_edge.cli._shared import get_owm_api_key
+from gridiron_edge.cli._shared import get_odds_api_key, get_owm_api_key
 
 ingest_app = typer.Typer(help="Ingest raw data from external sources.", no_args_is_help=True)
 
@@ -94,6 +94,79 @@ def ingest_nflverse_upcoming(
         path: Path = fetch_nflverse_upcoming(season=target)
         s.set_detail(str(path))
 
+    console.summary()
+
+
+@ingest_app.command("odds")
+def ingest_odds(
+    *,
+    season_year: str = typer.Option(
+        ...,
+        "--season",
+        help="NFL season label like '2026-2027'.",
+    ),
+    week: int = typer.Option(
+        ...,
+        min=1,
+        max=22,
+        help="NFL week number from 1 through 22.",
+    ),
+    odds_api_key: str | None = typer.Option(
+        None,
+        help="The Odds API key. If omitted, uses env var ODDS_API_KEY.",
+    ),
+    timeout: float = typer.Option(
+        15.0,
+        min=0.1,
+        help="Provider request timeout in seconds.",
+    ),
+) -> None:
+    r"""Fetch and persist current NFL featured-market quotes.
+
+    The command reads the canonical rich schedule for matching, appends the
+    observation ledger, and atomically replaces the current snapshot only after
+    a successful request and nonempty matched parse.
+
+    
+    Example:
+      gridiron ingest odds --season 2026-2027 --week 1
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
+    from gridiron_edge.ingest.odds.the_odds_api import ingest_the_odds_api_current
+
+    key = get_odds_api_key(odds_api_key)
+    settings = get_settings()
+    schedule = load_schedule_upcoming_rich(settings.repo_root)
+    label = f"Fetch current odds ({season_year} week {week})"
+    console.header("ingest odds", subtitle=label)
+
+    with step(label) as current_step:
+        result = ingest_the_odds_api_current(
+            api_key=key,
+            schedule=schedule,
+            season=season_year,
+            week=week,
+            repo=settings.repo_root,
+            timeout=timeout,
+        )
+        summary = (
+            f"{result.quote_count} quotes, {result.game_count} games, "
+            f"{result.sportsbook_count} sportsbooks"
+        )
+        current_step.set_detail(summary)
+
+    typer.echo(summary)
+    usage = result.usage
+    if usage.requests_remaining is not None:
+        typer.echo(f"Requests remaining: {usage.requests_remaining}")
+    if usage.requests_used is not None:
+        typer.echo(f"Requests used: {usage.requests_used}")
+    if usage.request_cost is not None:
+        typer.echo(f"Request cost: {usage.request_cost}")
+    typer.echo(f"Ledger: {result.ledger_path}")
+    typer.echo(f"Snapshot: {result.snapshot_path}")
     console.summary()
 
 

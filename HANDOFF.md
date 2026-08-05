@@ -252,6 +252,17 @@ The current snapshot is:
 data/odds/odds_current.parquet
 ```
 
+Current The Odds API ingestion is explicit:
+
+```bash
+uv run gridiron ingest odds \
+  --season 2026-2027 \
+  --week 1
+```
+The command resolves its credential from --odds-api-key or ODDS_API_KEY, loads the canonical rich schedule, requests US NFL moneyline, spread, and total markets in American-odds format, preserves every returned sportsbook independently, appends the observation ledger, and atomically replaces the current snapshot after successful validation.
+
+The command reports quote, game, and sportsbook counts plus provider quota metadata when returned. It is not invoked by weekly-predict, run-data-pipeline, post-week, full-retrain, or verification workflows. Request, HTTP, JSON, payload, empty-response, and zero-match failures preserve the existing quote artifacts.
+
 Storage uses the canonical provider-aware quote contract through `write_current_odds_snapshot()` and `load_current_odds()`. The implemented nflverse consensus adapter records:
 
 ```text
@@ -465,7 +476,7 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 
 ## Known Limitations
 
-- The Odds API v4 is selected for supported current-market ingestion; its client and operational integration remain future market-program work.
+- The Odds API v4 client, parser, and explicit current-market ingest command are implemented. Same-book recommendation evaluation, automatic refresh policy, broader operational integration, and multi-book shopping remain future work.
 - Multi-book line shopping, arbitrage, middles, and book selectors remain future product work after supported ingestion and same-book evaluation are complete.
 - Injury and news data are not integrated.
 - Scenario analysis, feature attribution, and historical comparable retrieval remain future capabilities.
