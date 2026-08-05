@@ -61,6 +61,35 @@ def _max_week_for_year(games: pd.DataFrame, year: str) -> int:
     return int(subset.max()) if not subset.empty else 1
 
 
+def _latest_season_ratings_by_team(
+    elo: dict[tuple[str, str, int], float],
+    *,
+    year: str,
+    teams: set[str],
+) -> dict[str, float]:
+    """Return each team's latest available Elo state in one season.
+
+    Postseason teams finish on different weeks, so a single global final
+    state week cannot represent every returning team. Missing state for a
+    returning team is rejected rather than silently replaced with initial Elo.
+    """
+    latest: dict[str, tuple[int, float]] = {}
+    for (team, state_year, week), rating in elo.items():
+        if state_year != year or team not in teams:
+            continue
+        current = latest.get(team)
+        if current is None or week > current[0]:
+            latest[team] = (week, rating)
+
+    missing = sorted(teams - set(latest))
+    if missing:
+        raise ValueError(
+            "No prior-season Elo state found for returning team(s): " + ", ".join(missing)
+        )
+
+    return {team: latest[team][1] for team in teams}
+
+
 def _add_next_season_week_one(
     elo: dict[tuple[str, str, int], float],
     *,
@@ -86,28 +115,16 @@ def _add_next_season_week_one(
     latest_year: str = sorted_years[-1]
     next_year: str = _next_season_label(latest_year)
 
-    max_week: int = _max_week_for_year(
-        games,
-        latest_year,
-    )
-    final_state_week: int = max_week + 1
-
     returning_teams: set[str] = teams_by_year.get(
         latest_year,
         set(),
     )
 
-    final_ratings: dict[str, float] = {
-        team: elo.get(
-            (
-                team,
-                latest_year,
-                final_state_week,
-            ),
-            cfg.initial_elo,
-        )
-        for team in returning_teams
-    }
+    final_ratings = _latest_season_ratings_by_team(
+        elo,
+        year=latest_year,
+        teams=returning_teams,
+    )
 
     transitioned: dict[str, float] = transition_to_next_season(
         final_ratings,

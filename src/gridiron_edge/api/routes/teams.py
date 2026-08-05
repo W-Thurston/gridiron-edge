@@ -31,14 +31,24 @@ router = APIRouter(prefix="/teams", tags=["teams"])
 def _resolve_scope(
     settings: SettingsDep,
     season: str | None,
+    *,
+    elo: DataFrame,
 ) -> tuple[str, int]:
-    """Return (season, as_of_week) for the request, defaulting to current."""
+    """Return (season, as_of_week) for the request, defaulting to current.
+
+    Explicit preseason scopes fall back to the requested season's Elo state
+    when no completed games exist. A truly unavailable season remains Week 0.
+    """
     if season is None:
         return resolve_current_season_week(settings)
 
     games: DataFrame = load_games_df(settings)
     season_games = games.loc[games["YEAR"] == season, "WEEK_NUM"]
-    as_of_week: int = int(season_games.max()) if not season_games.empty else 0
+    if not season_games.empty:
+        return (season, int(season_games.max()))
+
+    season_elo = elo.loc[elo["NFL_YEAR"] == season, "NFL_WEEK"]
+    as_of_week: int = int(season_elo.max()) if not season_elo.empty else 0
     return (season, as_of_week)
 
 
@@ -57,7 +67,11 @@ def list_teams(
     percentiles: DataFrame = load_team_percentiles_df(settings)
     trends: DataFrame = compute_elo_deltas(elo, long_to_short)
     team_metadata = team_metadata_lookup(settings)
-    resolved_season, as_of_week = _resolve_scope(settings, season)
+    resolved_season, as_of_week = _resolve_scope(
+        settings,
+        season,
+        elo=elo,
+    )
 
     return serialize_team_rankings(
         elo,
@@ -97,7 +111,11 @@ def get_team(
     cohort_splits_df: DataFrame = load_team_cohort_splits_df(settings)
     cohort_splits = format_team_cohort_splits(cohort_splits_df, abbr.upper())
     team_metadata = team_metadata_lookup(settings)
-    resolved_season, as_of_week = _resolve_scope(settings, season)
+    resolved_season, as_of_week = _resolve_scope(
+        settings,
+        season,
+        elo=elo,
+    )
 
     return serialize_team_profile(
         abbr,

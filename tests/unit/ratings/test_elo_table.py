@@ -11,6 +11,7 @@ import pytest
 from gridiron_edge.ratings.elo.table import (
     EloTableConfig,
     _add_next_season_week_one,
+    _latest_season_ratings_by_team,
     _next_season_label,
 )
 
@@ -134,6 +135,47 @@ def test_synthetic_week_one_uses_final_postgame_state() -> None:
         ]
         == 1400.0
     )
+
+
+def test_postseason_transition_uses_each_teams_latest_state() -> None:
+    cfg = EloTableConfig(offseason_regress_frac=0.0)
+    elo = {
+        ("Eliminated Team", "2025-2026", 20): 1425.0,
+        ("Eliminated Team", "2025-2026", 21): 1440.0,
+        ("Conference Finalist", "2025-2026", 22): 1535.0,
+        ("Super Bowl Team", "2025-2026", 22): 1600.0,
+        ("Super Bowl Team", "2025-2026", 23): 1620.0,
+    }
+
+    _add_next_season_week_one(
+        elo,
+        games=_latest_season_games(),
+        sorted_years=["2025-2026"],
+        teams_by_year={
+            "2025-2026": {
+                "Eliminated Team",
+                "Conference Finalist",
+                "Super Bowl Team",
+            }
+        },
+        cfg=cfg,
+    )
+
+    assert elo[("Eliminated Team", "2026-2027", 1)] == 1440.0
+    assert elo[("Conference Finalist", "2026-2027", 1)] == 1535.0
+    assert elo[("Super Bowl Team", "2026-2027", 1)] == 1620.0
+
+
+def test_missing_returning_team_state_is_rejected() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"No prior-season Elo state found for returning team\(s\): Missing Team",
+    ):
+        _latest_season_ratings_by_team(
+            {("Existing Team", "2025-2026", 22): 1510.0},
+            year="2025-2026",
+            teams={"Existing Team", "Missing Team"},
+        )
 
 
 def test_returning_teams_receive_offseason_regression() -> None:

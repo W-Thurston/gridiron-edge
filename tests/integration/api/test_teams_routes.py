@@ -83,6 +83,115 @@ def client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+class TestPreseasonEloScope:
+    def test_rankings_use_week_one_elo_without_completed_games(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        empty_games = _make_games_df().iloc[0:0].copy()
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(empty_games)
+            .with_elo_state(_make_elo_df())
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams?season=2026-2027")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["season"] == "2026-2027"
+        assert body["as_of_week"] == 1
+        assert body["total"] == 2
+        by_abbr = {item["abbr"]: item for item in body["items"]}
+        assert by_abbr["KAN"]["rating"] == 1620.0
+        assert by_abbr["KAN"]["rank"] == 1
+        assert by_abbr["KAN"]["record"] == {"wins": 0, "losses": 0, "ties": 0}
+        assert by_abbr["LAC"]["rating"] == 1520.0
+        assert "items" not in body["_meta"]["field_status"]
+
+    def test_profile_uses_week_one_elo_without_completed_games(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        empty_games = _make_games_df().iloc[0:0].copy()
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(empty_games)
+            .with_elo_state(_make_elo_df())
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams/KAN?season=2026-2027")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["as_of_week"] == 1
+        assert body["rating"] == 1620.0
+        assert body["rank"] == 1
+        assert body["record"] == {"wins": 0, "losses": 0, "ties": 0}
+        assert body["rating_history"] == [{"week": 1, "rating": 1620.0}]
+
+    def test_unknown_season_remains_blocked(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        empty_games = _make_games_df().iloc[0:0].copy()
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(empty_games)
+            .with_elo_state(_make_elo_df())
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams?season=2030-2031")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["as_of_week"] == 0
+        assert body["items"] == []
+        assert body["_meta"]["field_status"]["items"]["blocker"] == "no_evaluation_data"
+
+    def test_completed_game_week_takes_precedence_over_later_elo_state(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        elo = pd.concat(
+            [
+                _make_elo_df(),
+                pd.DataFrame(
+                    [
+                        {
+                            "NFL_TEAM": "Kansas City Chiefs",
+                            "NFL_YEAR": "2026-2027",
+                            "NFL_WEEK": 2,
+                            "ELO": 1640.0,
+                        }
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+        (
+            MiniRepoBuilder(tmp_path)
+            .with_games(_make_games_df())
+            .with_elo_state(elo)
+            .with_teams_reference()
+        )
+
+        response = client.get("/teams?season=2026-2027")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["as_of_week"] == 1
+        by_abbr = {item["abbr"]: item for item in body["items"]}
+        assert by_abbr["KAN"]["rating"] == 1620.0
+
+
 class TestTeamRankingsPercentiles:
     def test_percentiles_populate_when_artifact_exists(
         self,
@@ -100,7 +209,7 @@ class TestTeamRankingsPercentiles:
             tmp_path,
             [
                 {
-                    "team_abbr": "KC",
+                    "team_abbr": "KAN",
                     "season": "2026-2027",
                     "week": 1,
                     "rating_pct": 0.75,
@@ -125,8 +234,8 @@ class TestTeamRankingsPercentiles:
         assert response.status_code == 200
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KC"]["rating_pct"] == 0.75
-        assert by_abbr["KC"]["make_playoffs_pct"] == 0.75
+        assert by_abbr["KAN"]["rating_pct"] == 0.75
+        assert by_abbr["KAN"]["make_playoffs_pct"] == 0.75
         assert by_abbr["LAC"]["rating_pct"] == 0.25
 
     def test_no_percentile_artifact_leaves_fields_null(
@@ -147,8 +256,8 @@ class TestTeamRankingsPercentiles:
         assert response.status_code == 200
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KC"]["rating_pct"] is None
-        assert by_abbr["KC"]["avg_wins_pct"] is None
+        assert by_abbr["KAN"]["rating_pct"] is None
+        assert by_abbr["KAN"]["avg_wins_pct"] is None
 
 
 class TestTeamProfilePercentiles:
@@ -168,7 +277,7 @@ class TestTeamProfilePercentiles:
             tmp_path,
             [
                 {
-                    "team_abbr": "KC",
+                    "team_abbr": "KAN",
                     "season": "2026-2027",
                     "week": 1,
                     "rating_pct": 0.75,
@@ -179,7 +288,7 @@ class TestTeamProfilePercentiles:
             ],
         )
 
-        response = client.get("/teams/KC?season=2026-2027")
+        response = client.get("/teams/KAN?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -200,7 +309,7 @@ class TestTeamProfilePercentiles:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KC?season=2026-2027")
+        response = client.get("/teams/KAN?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -253,7 +362,7 @@ class TestTrendPopulation:
         response = client.get("/teams?season=2026-2027")
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KC"]["trend"] == 20.0
+        assert by_abbr["KAN"]["trend"] == 20.0
         assert by_abbr["LAC"]["trend"] == -10.0
 
     def test_week_1_returns_null_trend(
@@ -303,7 +412,7 @@ class TestTeamProfileCohortSplits:
         pd.DataFrame(
             [
                 {
-                    "team_abbr": "KC",
+                    "team_abbr": "KAN",
                     "cohort": "season",
                     "off_epa_per_play": 0.15,
                     "def_epa_per_play": -0.10,
@@ -313,7 +422,7 @@ class TestTeamProfileCohortSplits:
             ]
         ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
 
-        response = client.get("/teams/KC?season=2026-2027")
+        response = client.get("/teams/KAN?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -332,7 +441,7 @@ class TestTeamProfileCohortSplits:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KC?season=2026-2027")
+        response = client.get("/teams/KAN?season=2026-2027")
         body = response.json()
         assert body["cohort_splits"] is None
         status = body["_meta"]["field_status"]
