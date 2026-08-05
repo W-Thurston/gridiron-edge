@@ -1,2250 +1,275 @@
 # Gridiron Edge — Development Plan
 
-> **Purpose:** the completed implementation record for the canonical weekly
-> prediction product. Units 1 through 29 are retained as concise closeout
-> summaries. New work belongs here only after it is selected from `ROADMAP.md`
-> for bounded execution.
+> **Purpose:** the active implementation plan for the currently selected
+> program and bounded unit. Completed program details belong in `CHANGELOG.md`,
+> durable architecture in `DECISIONS.md`, current operations in `HANDOFF.md`,
+> and future priorities in `ROADMAP.md`.
 
 ## Where to find other information
 
 | Document | Role |
 |----------|------|
-| **PLAN.md** (this file) | Completed implementation units and the next selected bounded work |
+| **PLAN.md** (this file) | The active program and its one bounded implementation unit |
 | **ROADMAP.md** | Strategic priorities, genuine future capabilities, and known limitations |
 | **CHANGELOG.md** | What was built and when |
 | **HANDOFF.md** | How the system works today: architecture, workflows, operations, and recovery |
 | **DECISIONS.md** | Append-only architectural decisions and supersession history |
 
+## Ways of Working
+
+These practices apply to every program and implementation unit. A new thread
+should read this section before planning or modifying the repository.
+
+1. **Confirm before building.**
+   Never assume code, schemas, artifacts, commands, tests, or documentation
+   exist or have a particular shape. Inspect the current repository state
+   before proposing a change. Prefer a small read-only audit over implementation
+   based on stale context.
+
+2. **Locate first, then read the owning boundary.**
+   Use targeted searches to identify the relevant files, functions, tests,
+   commands, artifacts, and generated contracts. Read the exact owning
+   boundaries before designing or editing them.
+
+3. **Design at two levels before implementation.**
+   - **Program level:** lock the capability, motivation, boundaries, sequence,
+     dependencies, and success criteria in `ROADMAP.md`.
+   - **Unit level:** add one bounded implementation unit to `PLAN.md` with its
+     goal, design decisions, tests, and acceptance criteria before changing
+     code.
+
+4. **Keep one active bounded unit.**
+   `PLAN.md` may retain a concise summary of completed programs, but detailed
+    completed-unit records are removed during major program closeout. Only one
+    implementation unit should be active at a time. New work starts only
+    after it is selected from `ROADMAP.md` and scoped for execution.
+
+5. **Use descriptive implementation language.**
+   Program and unit identifiers belong in planning documents only. Source
+   names, comments, docstrings, tests, artifacts, commands, and commit subjects
+   should describe lasting domain behavior rather than when the behavior was
+   added.
+
+6. **Commit small coherent units.**
+   Each completed unit should produce one focused commit with a Conventional
+   Commit subject and a detailed bullet-list body covering implementation,
+   tests, and documentation. The corresponding `PLAN.md` update belongs in the
+   same commit as the unit's implementation.
+
+7. **Run focused gates during implementation.**
+   Run linting, type checking, and focused tests after each meaningful change.
+
+   At a Python contract boundary, run:
+
+   ```bash
+   uv run ruff check . --fix && \
+   uvx pyrefly check && \
+   uv run pytest -m "unit and not slow"
+   ```
+
+   At a frontend contract boundary, run:
+
+   ```bash
+   cd frontend
+   pnpm lint
+   pnpm build
+   pnpm test:run
+   cd ..
+   ```
+
+   Run integration, end-to-end, external-source, network, or slow gates when
+   the affected boundary requires them.
+
+8. **Verify against real artifacts and responses.**
+   After backend, data, model, API, or frontend integration changes, inspect
+   the generated artifact or live response directly. Validate the relevant row
+   counts, identities, uniqueness, coverage, provenance, representative
+   values, timestamps, joins, and blocker states. Green tests do not replace
+   real-data verification.
+
+9. **Preserve generated-file ownership.**
+   Regenerate checked-in schemas, clients, and derived contracts through their
+   owning commands. Do not hand-edit generated artifacts.
+
+10. **Close each unit completely.**
+    After implementation and validation:
+    - remove temporary migration and diagnostic scripts;
+    - update affected operational and architectural documentation;
+    - condense the completed `PLAN.md` unit to exactly these headings:
+      `Completed`, `Goal`, `Files Added/Removed/Changed`, `Tests`, and
+      `Acceptance`;
+    - list every committed file added, removed, or changed, grouped by category
+      with a concise description of its lasting responsibility or modification;
+    - explicitly state `None` when an Added, Removed, or Changed category has no
+      entries;
+    - include the completed `PLAN.md` update in the same commit as the unit's
+      implementation;
+    - record durable architectural choices in `DECISIONS.md`;
+    - record shipped behavior in `CHANGELOG.md`;
+    - update `HANDOFF.md` only when the current operational contract changes;
+    - update `ROADMAP.md` when future scope, sequencing, or priority changes;
+    - verify that the staged file list agrees with the
+      `Files Added/Removed/Changed` section;
+    - inspect the staged diff before committing.
+
+    Use this completed-unit structure:
+
+    ```markdown
+    #### Completed
+
+    Concise description of the implemented behavior and resulting contract.
+
+    #### Goal
+
+    The lasting purpose of the unit.
+
+    #### Files Added/Removed/Changed
+
+    Added:
+    - `path/to/new_file.py` - Lasting responsibility of the new file.
+    - None.
+
+    Changed:
+    - `path/to/existing_file.py` - Behavioral or contract change.
+    - `tests/path/test_file.py` - Regression or acceptance coverage.
+    - None.
+
+    Removed:
+    - `path/to/retired_file.py` - Superseded responsibility that was removed.
+    - None.
+
+    #### Tests
+
+    Focused tests, quality gates, integration checks, and real-data validation
+    performed for the unit.
+
+    #### Acceptance
+
+    Concise statement proving the unit's intended contract is implemented,
+    validated, documented, and ready for downstream use.
+    ```
+
+    Include only categories and files that reflect the committed unit scope.
+    Do not list files that were merely inspected. Temporary scripts removed
+    before the commit are not committed files and should not appear in the
+    file-change inventory.
+
+    Before committing, run:
+
+    ```bash
+    git diff --cached --name-status
+    git diff --cached --stat
+    git diff --cached --check
+    ```
+
+11. **Do not preserve development-era compatibility without a current need.**
+    Gridiron Edge has never been live in production. Existing development
+    schemas, artifacts, commands, tests, generated contracts, and historical
+    behavior may be replaced when the active design requires it, unless a
+    current contract explicitly requires compatibility.
+
+12. **Use explicit dates and repository history.**
+    Trust explicit user-provided dates, commit timestamps, and repository
+    history. When dates conflict or are ambiguous, state the exact date being
+    used rather than relying on relative wording.
+
 ## Planned Implementation Status
 
-Units 1 through 29 are complete.
+### Completed Program: Game Prediction Product
 
-The canonical weekly prediction, immutable forecast-event, explicitly selected
-weekly-product, API serialization, frontend readiness, and operational
-verification architecture is implemented and validated through a real 2026
-Week 1 rehearsal.
+Units 1 through 29 are complete. The canonical weekly prediction, immutable
+forecast-event, explicitly selected weekly-product, API serialization, frontend
+readiness, and operational verification architecture is implemented and
+validated through a real 2026 Week 1 rehearsal.
 
-No additional implementation unit is currently active. Future work is
-prioritized in `ROADMAP.md` and should be added to `PLAN.md` only when selected
-for bounded execution.
+### Active Program: Betting Market Data
 
----
+The active program will establish a supported betting-market source, preserve
+source-neutral quote contracts, activate real edge and sportsbook workflows,
+and enable a larger frontend review against real market data.
 
-### Unit 1: Define Forecast and Weekly Product Identity [Complete]
+Current and upcoming market integration comes first. Historical market archive
+and leakage-safe evaluation are a separate later workstream within the same
+program. Both will share one normalized quote contract while retaining distinct
+storage and operational semantics.
 
-#### Completed
+Only one bounded market unit is active at a time.
 
-Defined immutable forecast-event, selected-forecast, and weekly-product
-identities. Live and backfilled forecasts have distinct roles, while each
-forecast event has its own event ID, shared invocation-level run ID, game and
-model identity, and required UTC generation timestamp.
-
-Selected-forecast references preserve the identity of the exact forecast event
-chosen for downstream composition. Weekly-product identity records the product
-ID, run ID, season, week, and UTC generation timestamp independently from
-storage and selection behavior.
-
-No archive persistence, deduplication, forecast selection, or product-storage
-behavior was introduced.
+### Market Unit 1: Select a Supported Provider and Lock the Market Contract [Active]
 
 #### Goal
 
-Establish storage-independent identity contracts for immutable forecast events,
-explicit forecast selection, and static weekly products before changing
-persistence behavior.
+Select a documented, supported provider for current and upcoming NFL moneyline,
+spread, and total markets, and lock the normalized quote, freshness,
+configuration, failure, and identity contracts before implementation.
+
+#### Locked Direction
+
+- Current and upcoming markets are the first operational workstream because
+  they unlock weekly edges and real-data frontend validation.
+- Historical market archive and market-aware evaluation remain a separate
+  later workstream because timestamped quote history, opening and closing line
+  definitions, backfill pagination, archive volume, and leakage-safe selection
+  require independent design and acceptance.
+- Provider evaluation must consider both current and historical capabilities,
+  but lack of affordable historical access does not automatically block the
+  current-market workstream.
+- Current snapshots and future historical archives will normalize to the same
+  quote contract while using different replacement, append, retention, and
+  consumption semantics.
+- `weekly-predict` remains a consumer of an existing source-neutral market
+  snapshot. It will not hide a paid or network-dependent provider fetch inside
+  forecast publication.
+- Forecast publication remains independent from market availability. Provider
+  or market failure may block edge calculation but must not invalidate a
+  prediction-ready selected weekly product.
+- The legacy DraftKings adapter remains best-effort and is not a candidate for
+  the supported operational dependency.
+
+#### Design Scope
+
+Provider evaluation:
+- documented and supported API;
+- NFL moneyline, spread, and total availability;
+- sportsbook-level prices and multiple-book coverage;
+- event, team, market, outcome, and timestamp identity;
+- preseason and regular-season coverage;
+- freshness, update cadence, rate limits, pricing, and usage terms;
+- historical access, player props, and live markets as comparative attributes.
+
+Normalized quote contract:
+- provider and sportsbook identity;
+- provider event identity and canonical `game_id`;
+- season, week, and commence time;
+- market and outcome identity;
+- line or point value where applicable;
+- American odds without lossy conversion;
+- fetch timestamp and source provenance;
+- explicit pregame versus live state;
+- deterministic quote identity and validation rules.
+
+Operational boundaries:
+- secrets and configuration ownership;
+- explicit provider client and adapter responsibilities;
+- current snapshot freshness and staleness policy;
+- provider failure, partial coverage, malformed response, and rate-limit states;
+- game identity resolution and unmatched-event diagnostics;
+- compatibility with `data/odds/odds_current.parquet`, `verify-week`, unified
+  edge calculation, API serialization, and frontend consumers.
 
 #### Tests
 
-- live and backfilled forecast roles are distinct;
-- invalid role values are rejected;
-- event identity is distinct from game and model identity;
-- multiple events for the same game and model can have different event IDs;
-- one run ID can group multiple forecast events;
-- generated timestamps are required, timezone-aware, and UTC;
-- selected forecasts reference exact event identities;
-- weekly products retain product, run, season, week, and generation identity;
-- identity contracts are immutable;
-- identity contracts contain no storage or selection behavior.
+This design unit will be accepted through documented provider evidence and a
+contract review. No production provider code is added until the provider,
+normalized schema, freshness policy, failure behavior, command boundary, and
+current-versus-historical separation are locked.
 
 #### Acceptance
 
-Forecast events, selected forecasts, and weekly products have explicit,
-immutable, storage-independent identities suitable for the event-preserving
-storage and selection layers that follow.
-
----
-
-### Unit 2: Preserve Multiple Forecast Events in Storage [Complete]
-
-#### Completed
-
-Introduced a strict, event-preserving Parquet store for immutable game forecast
-events. Each forecast has its own event ID, while forecasts generated by one
-invocation share a run ID, explicit live or backfilled role, and timezone-aware
-UTC generation timestamp.
-
-Added a pure composition boundary that maps canonical game prediction rows into
-the forecast-event schema without performing inference or persistence.
-Historical classification, regression, and Elo producers now return canonical
-game identity and prediction values without embedding storage metadata.
-
-Cut both game forecast writer paths over to immutable event storage:
-
-- historical backfill invocations create distinct backfilled forecast runs;
-- weekly Elo prediction invocations create distinct live forecast runs;
-- repeated runs for the same game and model coexist;
-- prior live and backfilled forecasts are never replaced or skipped;
-- obsolete backfill overwrite semantics were removed;
-- rendering retains its original display frame without creating additional
-  forecast events;
-- `output predictions` no longer writes prediction storage.
-
-The development-era latest-write-wins archive is no longer written by game
-forecast workflows. Its remaining read-only consumers and obsolete module will
-be removed after explicit current-forecast selection is available, preventing
-those consumers from interpreting multiple immutable events as one implicitly
-selected forecast.
-
-#### Goal
-
-Replace game/model-pair deduplication with immutable forecast-event storage so
-multiple live and historical reconstruction runs can coexist without deleting
-or replacing prior forecasts.
-
-#### Tests
-
-- canonical schema validation rejects missing and unknown columns;
-- required identity fields reject null and empty values;
-- roles, week values, and UTC generation timestamps are validated;
-- every forecast row receives a distinct event ID;
-- all events from one invocation share a run ID and generation timestamp;
-- identical event retries are idempotent;
-- event ID reuse with different content is rejected;
-- multiple live events for the same game and model coexist;
-- live and backfilled events coexist;
-- repeated backfill runs retain distinct run and event identities;
-- canonical prediction composition preserves available forecast values;
-- unavailable optional outputs remain null;
-- source prediction frames are not mutated;
-- historical classification, regression, and Elo producers retain game
-  identity, team orientation, dates, and available prediction values;
-- neutral-site orientation remains deterministic;
-- weekly Elo output maps to canonical live events without mutating the display
-  frame;
-- separate weekly invocations receive separate run identities;
-- rendering produces PNG and HTML outputs without writing forecast storage.
-
-#### Acceptance
-
-Game forecast persistence is event-preserving. No forecast is deleted, replaced,
-or skipped merely because another event has the same game and model identity.
-Live and backfilled invocations retain explicit, immutable event and run
-identity, and game forecast rendering has no persistence side effects.
-
----
-
-### Unit 3: Add Explicit Current-Forecast Selection [Complete]
-
-#### Completed
-
-Added pure, storage-independent selection for immutable forecast events.
-
-Exact selection resolves `SelectedForecast` references by event ID, verifies
-their game and model identity, preserves request order, and reports missing
-references without substituting another event.
-
-Run-scoped selection resolves one explicitly requested invocation, preserves
-independent prediction families, rejects duplicate game and model identities
-within a run, and returns deterministic output without treating ordering as
-selection.
-
-Candidate resolution represents selected, missing, and ambiguous states
-explicitly. Live events exclude backfilled candidates for the same game and
-model identity, but multiple eligible live runs remain ambiguous. When no live
-event exists, a single backfilled event may be selected, while multiple
-backfilled runs remain ambiguous.
-
-No selector infers current state from generation time, event ID, input order,
-Parquet order, or model priority. No model inference or persistence occurs
-during selection.
-
-#### Goal
-
-Produce explicit selected-forecast views from immutable events without relying
-on latest-write deduplication or implicit recency.
-
-#### Tests
-
-- exact event references select only the requested immutable event;
-- reference order is preserved;
-- missing references remain visible;
-- duplicate references and identity conflicts are rejected;
-- exact run selection excludes all other runs;
-- missing runs return a canonical empty result;
-- game and model identities are unique within a selected run;
-- the same game and model may coexist across separate runs;
-- win and total forecast families remain independently selectable;
-- live candidates exclude matching backfilled candidates;
-- newer backfills do not override live forecasts;
-- multiple live runs remain ambiguous;
-- multiple backfilled runs remain ambiguous when no live event exists;
-- ambiguity is independent from timestamp and input order;
-- candidate-resolution invariants are validated;
-- selectors do not mutate source event frames;
-- no selector performs model inference or storage writes.
-
-#### Acceptance
-
-Immutable forecast events can be selected by exact event identity, exact run
-identity, or explicit candidate eligibility. Selected, missing, and ambiguous
-states are machine-readable, and no current forecast is inferred from write
-order, recency, or model priority.
-
----
-
-### Unit 4: Define Weekly Readiness Diagnostics [Complete]
-
-#### Completed
-
-Added immutable weekly readiness contracts and a pure evaluator for schedule,
-prediction, market, provenance, join, and edge coverage.
-
-Readiness records the scheduled-game count; selected win-prediction, spread,
-total, projected-score, and model-provenance coverage; market-covered games;
-prediction-to-market matches; eligible game-market pairs; and positive-edge
-count.
-
-The evaluator distinguishes missing, partial, unmatched, and incomplete states
-with machine-readable blockers. It scopes schedule, prediction, and market
-inputs to the requested season and week, rejects duplicate game identities,
-and validates required schemas before calculating readiness.
-
-Eligible markets represent complete, calculable game-market pairs rather than
-raw market-side rows. Moneyline requires both prices and a win probability;
-spread requires a model spread, home line, and both prices; total requires a
-model total, total line, and both prices.
-
-Prediction and market artifact provenance is explicit. Unique UTC generation
-and fetch timestamps are preserved, while missing or mixed provenance remains
-visible rather than being resolved through recency. Market source is retained
-only when exactly one non-empty source is present.
-
-Zero positive edges is a valid analytical result and does not block readiness.
-The evaluator performs no file I/O, forecast selection, prediction generation,
-market ingestion, edge calculation, or input mutation.
-
-#### Goal
-
-Provide quantitative, machine-readable diagnostics that distinguish a valid
-weekly analytical result from missing data, partial coverage, unmatched inputs,
-incomplete markets, and unavailable provenance.
-
-#### Tests
-
-- complete weekly inputs produce a ready result with exact coverage counts;
-- zero positive edges remains ready and is distinct from missing inputs;
-- scheduled games remain the denominator for game-level coverage;
-- sixteen scheduled games and fifteen predictions report partial coverage;
-- missing and partial win, spread, total, projected-score, and provenance
-  coverage are distinct;
-- no predictions and no market data produce different blockers;
-- zero prediction-to-market matches and incomplete markets are distinct;
-- partial market coverage retains quantitative game and match counts;
-- eligible markets count complete game-market pairs rather than raw sides;
-- positive edges use the strict `ev > 0` rule;
-- prediction and market artifact timestamps require timezone-aware UTC;
-- missing prediction and market provenance remain visible;
-- mixed market sources or fetch timestamps are reported as ambiguous;
-- no timestamp or source is selected through recency;
-- duplicate schedule and prediction game IDs are rejected;
-- missing required input columns are rejected;
-- non-empty edge inputs require an EV column;
-- invalid scope and count relationships are rejected;
-- readiness results are immutable;
-- source DataFrames are not mutated.
-
-#### Acceptance
-
-Weekly readiness exposes exact game, prediction, market, match, eligibility,
-provenance, and positive-edge counts with structured blockers. Missing data,
-partial coverage, zero joins, incomplete markets, and valid zero-edge outcomes
-cannot be confused with one another, and no readiness value is inferred from
-filesystem metadata or implicit recency.
-
----
-
-### Unit 5: Add Read-Only `verify-week` CLI [Complete]
-
-#### Completed
-
-Added a top-level `verify-week` command for read-only weekly operational
-diagnostics, separate from the existing code-health `verify` workflow.
-
-The command requires an NFL season and week, validates season continuity and
-the supported week range, and optionally accepts an exact forecast run ID.
-When a run ID is supplied, readiness uses only that invocation. Without one,
-the current win-probability champion identifies the requested model type and
-eligible forecast events are resolved without using recency, write order, or
-event identity as an implicit tie-breaker.
-
-The command reads the existing upcoming schedule, immutable forecast events,
-current market snapshot, and persisted calibration metadata. It may calculate
-an in-memory edge report from those existing inputs, but it does not fetch,
-refresh, generate, enrich, render, or persist artifacts.
-
-Output includes every schedule, prediction, model-output, provenance, market,
-join, eligible-market, and positive-edge count. Prediction and market artifact
-timestamps and market source are displayed when available. All readiness
-blockers are printed using their machine-readable values.
-
-Complete readiness exits successfully. Blocked readiness exits nonzero while
-retaining the full diagnostic report. A valid result with zero positive edges
-exits successfully.
-
-The new command is registered independently from `verify`, and both appear in
-top-level CLI help.
-
-#### Goal
-
-Expose weekly operational readiness independently from code-health verification
-without fetching, modifying, or silently completing data.
-
-#### Tests
-
-- `verify-week` is registered on the top-level CLI;
-- `verify` and `verify-week` both appear in top-level help;
-- season and week are required;
-- malformed and nonconsecutive season labels are rejected;
-- weeks outside the supported range are rejected;
-- an exact run ID is forwarded to run-scoped selection;
-- complete readiness exits successfully;
-- missing forecast selection exits nonzero;
-- ambiguous forecast selection remains explicit;
-- all diagnostic counts are rendered;
-- prediction and market provenance are rendered;
-- unavailable provenance is displayed explicitly;
-- every blocker is rendered;
-- valid zero-positive-edge readiness exits successfully;
-- existing schedule, forecast, market, and calibration artifacts are read
-  without mutation;
-- no forecast, odds, archive, prediction-generation, enrichment, PNG, or HTML
-  writer is imported by the command;
-- read-only readiness assembly performs no writes.
-
-#### Acceptance
-
-Weekly operational readiness can be checked with `gridiron verify-week`
-independently from code-health verification. The command reports complete
-quantitative diagnostics and exits according to readiness without fetching,
-generating, enriching, rendering, or modifying project data.
-
----
-
-### Unit 6: Preserve Rich Upcoming Schedule Data [Complete]
-
-#### Completed
-
-Added a registry-backed, typed Parquet artifact for rich upcoming schedule
-data while preserving the existing focused Elo schedule CSV as a compatibility
-boundary.
-
-The rich transform retains every unplayed nflverse schedule row and preserves
-canonical season, week, game ID, kickoff date and time, away and home teams,
-location and neutral-site context, stadium, roof, surface, divisional state,
-team rest, available Moneyline, Spread, and Total fields, source identity, and
-a shared timezone-aware UTC ingestion timestamp.
-
-Optional venue, context, rest, and market fields remain nullable. Missing
-Moneyline, Spread, Total, stadium, roof, surface, location, or rest values do
-not remove scheduled games.
-
-The existing Elo schedule is projected from the rich normalized rows and
-retains its original eight-column schema, registered CSV path, loader, game
-identity, and row coverage. Existing API and Elo-oriented consumers continue
-using the focused schedule.
-
-Weekly readiness verification now reads the rich schedule artifact and adapts
-its canonical lowercase game identity into the readiness evaluator’s stable
-schedule interface. It does not fall back silently to the focused Elo
-artifact when the rich artifact is missing.
-
-Both cleaned outputs are written through registered dataset writers. The rich
-artifact path is defined only in the dataset registry, and its dedicated
-loader does not fall back to the legacy schedule.
-
-#### Goal
-
-Create a model-ready, schedule-complete upcoming artifact without
-destabilizing the focused Elo schedule consumer.
-
-#### Tests
-
-- the rich artifact resolves through one registered Parquet path;
-- the rich loader does not fall back to the focused Elo CSV;
-- nullable numeric values and UTC ingestion timestamps survive Parquet
-  round-trip storage;
-- every unplayed source schedule row survives rich cleaning;
-- no scheduled game is dropped because market values are missing;
-- venue, context, rest, and market fields remain nullable;
-- canonical season, week, team names, and game IDs are preserved;
-- neutral-site and location context are retained;
-- one source and ingestion timestamp are shared across one build;
-- empty source input produces stable typed rich and focused schemas;
-- the focused Elo schedule retains its original columns and ordering;
-- rich and focused artifacts contain identical canonical game-ID sets;
-- completed source rows do not enter upcoming artifacts;
-- both outputs use registered dataset writers;
-- no duplicate rich artifact path exists outside the registry and its path
-  assertion;
-- `verify-week` reads the rich schedule and does not use a legacy fallback;
-- existing API consumers continue using the focused schedule;
-- all Unit 6-specific Ruff, Pyrefly, and pytest gates pass.
-
-#### Acceptance
-
-The repository has a typed, schedule-complete upcoming artifact suitable for
-weekly composition and readiness diagnostics. Every unplayed source game is
-preserved regardless of optional market coverage, while the focused Elo
-schedule remains compatible and is derived from the same normalized rows.
-
----
-
-### Unit 7: Fix Synthetic Upcoming Week 1 Elo Transition [Complete]
-
-#### Completed
-
-Reworked synthetic upcoming Week 1 Elo generation to use the same deterministic
-offseason transition policy as historical season boundaries.
-
-Extracted a pure next-season transition helper from the Elo simulator.
-Returning teams regress toward the mean using the configured offseason
-regression fraction, and teams whose configured expansion season matches the
-target season receive the configured expansion rating.
-
-Historical season transitions continue using the same policy through the shared
-helper. The Elo update formula, per-game prediction behavior, K-factor handling,
-and historical pregame week semantics remain unchanged.
-
-Synthetic Week 1 now derives its target season directly from the latest
-historical season label. It no longer reads the current date or wall-clock
-season.
-
-The synthetic transition starts from each team’s rating at the final historical
-season’s `max_week + 1` state. This is the postgame state produced after the
-last played game, including the final postseason update, rather than the
-pregame rating entering the final week.
-
-Only the derived next season’s Week 1 state is added. No later weeks,
-additional future seasons, or schedule-dependent states are fabricated.
-Existing historical Elo rows are not modified.
-
-#### Goal
-
-Make upcoming Week 1 Elo deterministic and consistent with historical season
-transition semantics.
-
-#### Tests
-
-- the next season label is derived from the latest historical season;
-- malformed and nonconsecutive historical season labels are rejected;
-- transition output is independent of the wall-clock year;
-- the final postseason update is included through the final postgame state;
-- the final week’s pregame rating is not reused as the next season rating;
-- returning teams receive the configured offseason regression;
-- historical and synthetic transitions use the same transition policy;
-- identical historical inputs produce identical Week 1 output;
-- only the derived next season’s Week 1 rows are created;
-- no arbitrary future weeks or seasons are fabricated;
-- expansion teams receive the configured expansion rating in their start
-  season;
-- expansion teams from other seasons are not added;
-- transition inputs are not mutated;
-- existing historical Elo rows remain unchanged;
-- Elo core update and Python/Numba parity tests remain unchanged and green.
-
-#### Acceptance
-
-Upcoming Week 1 Elo is derived deterministically from the latest historical
-season’s final postgame state, including the final postseason result. Returning
-teams receive the established offseason regression exactly once, expansion
-behavior remains explicit, and no wall-clock or arbitrary future-week behavior
-affects the result.
-
----
-
-### Unit 8: Consolidate Elo Weekly Prediction Logic [Complete]
-
-#### Completed
-
-Added one canonical, row-preserving schedule-to-Elo prediction function and
-routed all weekly Elo prediction callers through it.
-
-The shared domain function scopes the focused upcoming schedule to the
-requested season and week, joins away and home Elo state by canonical team,
-season, and week identity, and calculates numeric away and home win
-probabilities for games with complete ratings.
-
-Schedule truth remains authoritative. Every scoped scheduled game remains in
-the result even when one or both Elo ratings are unavailable. Missing away,
-home, or both ratings remain null and are represented through explicit
-machine-readable prediction statuses. Missing Elo is never replaced silently
-with an initial or fallback rating.
-
-Ready predictions expose numeric away and home probabilities whose complements
-sum to one within floating-point tolerance. Human-readable percentage columns
-are added by one shared formatting adapter without recalculating or modifying
-the numeric probabilities.
-
-Duplicate Elo identities for the same team, season, and week are rejected
-before joining. Schedule order, game identity, team identity, kickoff fields,
-and neutral-site or other schedule context pass through unchanged. Input
-schedule and Elo frames are not mutated.
-
-The file-based Elo prediction entry point now only loads registered schedule
-and Elo datasets before calling the domain function. CSV output adds formatted
-percentage fields and writes the resulting prediction frame.
-
-Visualization delegates Elo prediction assembly to the domain entry point and
-contains no independent Elo merge, missing-rating filter, or probability
-formula. Its private display-table builder remains responsible only for logos,
-short display names, time labels, ordering, and separator rows.
-
-The `ratings elo predict`, `output predictions`, and `weekly-predict` workflows
-all route through the same schedule-to-Elo implementation. Canonical live
-forecast conversion preserves scheduled rows and nullable Elo and probability
-values without expanding the immutable forecast-event schema.
-
-#### Goal
-
-Replace duplicate schedule-to-Elo joins and probability calculations with one
-domain implementation shared by ratings, visualization, output, and composite
-weekly prediction workflows.
-
-#### Tests
-
-- one domain function produces away and home Elo predictions;
-- ready probabilities are numeric;
-- away and home probabilities sum to one within tolerance;
-- every requested schedule row remains present;
-- missing away Elo receives an explicit status;
-- missing home Elo receives an explicit status;
-- missing both Elo ratings receives an explicit status;
-- missing ratings and probabilities remain null;
-- missing Elo is not replaced with a default rating;
-- neutral-site and schedule identity fields are preserved;
-- requested season and week scoping remains exact;
-- schedule input order is preserved;
-- duplicate Elo team, season, and week identities are rejected;
-- missing required schedule and Elo columns are rejected;
-- schedule and Elo input frames are not mutated;
-- registered schedule and Elo loaders feed the domain entry point;
-- percentage formatting preserves numeric probabilities;
-- percentage formatting preserves missing values;
-- percentage formatting does not mutate the domain result;
-- visualization delegates to the domain prediction entry point;
-- visualization contains no independent Elo merge or probability calculation;
-- visualization preserves missing-Elo rows and status;
-- `ratings elo predict` delegates to the shared CSV output path;
-- `output predictions` delegates to the shared visualization adapter;
-- `weekly-predict` delegates to the shared visualization adapter;
-- canonical live forecast conversion preserves rows with missing Elo values;
-- CLI-required arguments remain enforced;
-- existing output and weekly prediction behavior remains compatible.
-
-#### Acceptance
-
-There is one schedule-to-Elo prediction implementation. All weekly Elo callers
-receive the same row-preserving schema, numeric probabilities, and explicit
-missing-rating behavior. Visualization and CLI modules perform no independent
-Elo joins, probability calculations, or missing-row deletion.
-
----
-
-### Unit 9: Define Availability-Aware Prediction Policy [Complete]
-
-#### Completed
-
-Added an immutable, deterministic, and serializable game-prediction policy
-that resolves win-probability and total-model decisions independently from
-explicit weekly input availability.
-
-Availability records the requested season and week together with whether Elo
-state, full win-prediction features, and total-prediction features are
-available. The policy does not infer availability from model preference,
-champion status, the current date, API behavior, or attempted model execution.
-
-A full-feature champion is selected only when its required inputs are
-available. When full win-prediction features are unavailable but Elo state is
-available, the policy selects Elo explicitly and records that rationale.
-Missing total inputs remain an explicit unavailable total decision rather than
-borrowing the selected win model or silently omitting the decision.
-
-Win and total overrides are independently scoped. A win override does not
-change total selection, and a total override does not change win selection.
-Overrides remain availability-aware. An explicitly requested model whose
-required inputs are unavailable is rejected as ineligible rather than silently
-falling back to another model.
-
-Selected decisions include model identity, selection source, stable rationale,
-human-readable explanation, and serializable provenance. Champion provenance
-preserves promotion timestamp, source run ID, and task-flexible metrics.
-Policy-owned Elo and explicit overrides record their distinct selection
-sources.
-
-Added a read-only champion assembly boundary using the persistent champion
-manifest. Win and total champion entries are resolved independently. An
-explicit override skips champion lookup only for its own family. Missing
-manifest entries become explicit unavailable decisions, while malformed
-champion metadata remains an error rather than being disguised as ordinary
-unavailability.
-
-The pure resolver performs no filesystem access, dataset inspection, feature
-generation, model execution, clock lookup, or API inference. The read-only
-assembly performs no artifact loading, champion computation, promotion,
-manifest writing, feature generation, or prediction execution.
-
-#### Goal
-
-Resolve prediction behavior from explicit data availability without silently
-selecting a model that cannot produce the requested week.
-
-#### Tests
-
-- Week 1 selects Elo only when Elo state is available and full features are
-  unavailable;
-- a full-feature win champion is selected only when required inputs exist;
-- a total champion is selected only when total inputs exist;
-- unavailable total prediction remains explicit;
-- missing Elo and unavailable full features produce an unavailable win
-  decision;
-- a missing champion is distinct from missing required inputs;
-- win and total overrides are independently scoped;
-- a win override does not change the total decision;
-- a total override does not change the win decision;
-- an ineligible override is rejected without fallback;
-- an Elo override requires available Elo state;
-- selected models include stable rationale and explanation;
-- champion promotion timestamp, source run ID, metrics, and model identity are
-  preserved as provenance;
-- champion metrics serialize in deterministic key order;
-- win and total champions resolve independently;
-- a missing total champion does not alter the win decision;
-- a win override skips only win champion lookup;
-- a total override skips only total champion lookup;
-- two overrides require no champion lookup;
-- malformed champion metadata remains an error;
-- policy contracts are immutable;
-- identical inputs produce equal policy output;
-- policy output is JSON serializable;
-- the policy module imports no API or pandas layer;
-- the policy performs no artifact loading, feature generation, prediction
-  execution, champion promotion, or manifest writing.
-
-#### Acceptance
-
-Model selection is explicit, availability-aware, independently scoped by
-prediction family, and serializable. Champion status does not imply that a
-model can produce the requested week, unavailable outputs remain visible, and
-no API-layer inference or silent fallback participates in the decision.
-
----
-
-### Unit 10: Build Schedule-Complete Win Prediction Component [Complete]
-
-#### Completed
-
-Added a pure weekly win-product builder that attaches explicitly selected win
-forecasts to rich schedule truth while preserving exactly one row per
-scheduled game.
-
-The builder scopes the supplied schedule to the requested season and week,
-preserves source ordering and all schedule fields, and rejects duplicate
-canonical game IDs. Neutral-site identity and other schedule context pass
-through unchanged.
-
-The Unit 9 prediction policy defines whether the win family is available and
-which model identity is eligible. An unavailable win policy produces one
-explicitly unavailable row for every scheduled game. A selected policy
-requires forecast resolutions and events matching the selected win model
-identity.
-
-Forecast attachment uses explicit `ForecastCandidateResolution` values and
-exact immutable event IDs. Selected events are never inferred from generation
-time, storage order, role, write order, or model priority. Missing or absent
-resolutions remain visible as missing forecast rows. Ambiguous resolutions
-remain visible as ambiguous rows.
-
-Available product rows preserve the selected forecast's model name, model
-type, event ID, run ID, generation timestamp, operational role, and explicit
-selection status.
-
-Selected events must match schedule truth for season, week, game ID, away team,
-and home team. Team orientation is validated rather than automatically
-reversed or reinterpreted. The event model identity must also match the model
-selected by the prediction policy.
-
-Available predictions require both away and home win probabilities. Each
-probability must fall within the closed zero-to-one range, and the pair must
-sum to one within floating-point tolerance. Unavailable, missing, and
-ambiguous rows retain null probability and forecast-provenance fields.
-
-The component performs no model execution, champion resolution, feature
-generation, forecast generation, forecast-store loading, filesystem access,
-timestamp-based selection, or API-layer inference.
-
-#### Goal
-
-Attach selected win probabilities and immutable forecast provenance to every
-scheduled game without silently dropping games or choosing forecasts.
-
-#### Tests
-
-- output contains exactly one row per scheduled game;
-- output is scoped to the requested season and week;
-- schedule source ordering is preserved;
-- all supplied schedule fields pass through;
-- duplicate scheduled game IDs are rejected;
-- missing win forecasts do not remove scheduled games;
-- missing forecasts retain null probabilities and provenance;
-- ambiguous forecast selection remains explicit;
-- unavailable win policy marks every scheduled game explicitly;
-- unavailable policy cannot carry forecast resolutions;
-- available predictions preserve model name and model type;
-- live forecast event ID is preserved;
-- forecast run ID is preserved;
-- forecast generation timestamp is preserved;
-- forecast operational role is preserved;
-- selected forecast status is explicit;
-- selected event identity must match its explicit resolution;
-- selected model identity must match the prediction policy;
-- forecast season and week must match product scope;
-- forecast game ID must match schedule identity;
-- away and home team orientation must match schedule truth;
-- reversed orientation is rejected rather than silently corrected;
-- available predictions require both probabilities;
-- probabilities must remain between zero and one;
-- away and home probabilities must sum to one within tolerance;
-- neutral-site schedule identity is preserved;
-- no model execution or champion resolution occurs;
-- no forecast generation or storage read occurs;
-- no timestamp, write-order, role, or model-priority selection occurs;
-- no API-layer inference participates in composition.
-
-#### Acceptance
-
-The weekly win product provides schedule-complete Moneyline probability
-coverage status. Every scheduled game remains visible, available predictions
-carry explicit model and immutable forecast provenance, and unavailable,
-missing, or ambiguous predictions retain machine-readable status without
-silent selection or row deletion.
-
----
-
-### Unit 11: Attach Derived Spread Component [Complete]
-
-#### Completed
-
-Added a schedule-complete spread component that derives model spread and spread
-uncertainty from the selected weekly win forecast.
-
-The component extends the Unit 10 win product without filtering, reordering, or
-mutating its rows. Every scheduled game therefore retains either a valid
-derived spread or an explicit spread blocker.
-
-Spread derivation uses the existing probit conversion:
-
-`model_spread = -sigma * Phi_inv(home_win_prob)`
-
-The product follows the established NFL home-line convention. A negative model
-spread means the home team is favored, a positive model spread means the away
-team is favored, and zero represents pick'em.
-
-Each available spread uses the exact calibration identity attached to the
-selected win forecast through `win_model_name` and `win_model_type`. The spread
-component does not resolve the current champion, use the total-model identity,
-choose the newest calibration entry, apply a CLI default, or assume a specific
-algorithm.
-
-Added a strict persisted-calibration contract containing model name, model
-type, composite calibration key, sigma, residual margin standard deviation,
-and calibration update timestamp. Calibration is read from the existing
-`game_model_calibration.json` registry by exact composite model key.
-
-The strict calibration reader accepts only complete persisted records with
-positive finite sigma and margin standard deviation values and a nonempty
-update timestamp. Missing or incomplete records return no calibration. The
-weekly spread component does not substitute the existing in-memory or
-league-wide fallback values.
-
-Existing fallback behavior in `get_sigma()` and `get_margin_std()` remains
-unchanged for older consumers.
-
-Sigma is used only for probability-to-spread conversion. Residual
-`margin_std` is retained separately as `spread_uncertainty`; the two values are
-not treated as interchangeable.
-
-Available spread rows preserve a provenance chain from the derived spread to
-the selected immutable win event and exact calibration record. Provenance
-includes the source win event ID, win model name, win model type, persisted
-calibration key, and calibration update timestamp.
-
-Rows whose win component is unavailable receive `win_unavailable`. Rows with
-an available win forecast but no complete exact calibration receive
-`calibration_unavailable`. Blocked rows retain null spread, uncertainty, and
-spread-provenance values.
-
-#### Goal
-
-Derive model spread and spread uncertainty from the selected win component
-using the correct win-model calibration identity.
-
-#### Tests
-
-- negative model spread means the home team is favored;
-- positive model spread means the away team is favored;
-- the selected win model determines the calibration identity;
-- different selected model calibrations produce different derived spreads;
-- spread conversion uses persisted sigma;
-- spread uncertainty uses persisted residual margin standard deviation;
-- sigma and margin standard deviation remain distinct;
-- missing calibration does not fabricate a spread;
-- incomplete calibration does not fabricate a spread;
-- no in-memory or league-wide fallback calibration is used;
-- calibration model name must match the selected win forecast;
-- calibration model type must match the selected win forecast;
-- spread provenance identifies the source immutable win event;
-- spread provenance identifies the selected win model;
-- spread provenance identifies the persisted calibration key;
-- spread provenance preserves the calibration update timestamp;
-- unavailable win rows receive an explicit blocker;
-- missing calibration rows receive an explicit blocker;
-- blocked rows retain null spread and uncertainty;
-- schedule row count is preserved;
-- schedule row order is preserved;
-- canonical game identity is preserved;
-- neutral-site identity is preserved;
-- the input weekly win product is not mutated;
-- existing post-processing and fallback-getter tests remain green.
-
-#### Acceptance
-
-Every scheduled game has either a valid derived spread with residual spread
-uncertainty and traceable source provenance, or an explicit blocker explaining
-that the selected win forecast or its exact persisted calibration is
-unavailable.
-
----
-
-### Unit 12: Attach Independent Total Component [Complete]
-
-#### Completed
-
-Added an independent total component that attaches explicitly selected total
-forecast events to the schedule-complete weekly product.
-
-Total selection is controlled exclusively by the Unit 9 total policy decision.
-The selected win model, derived spread model, and their algorithms do not
-participate in total identity or selection. Win and total model algorithms may
-differ without conflict.
-
-Total forecasts attach only through explicit candidate resolutions and exact
-immutable forecast event IDs. The component performs no selection by event
-timestamp, storage order, forecast role, archive order, current champion, or
-matching win algorithm.
-
-Each selected total event must use the `total` model family and the model type
-selected by the total policy. Event season, week, game ID, away team, and home
-team must match the weekly product row. Reversed team orientation and
-conflicting model identity are rejected rather than silently corrected.
-
-Available total rows preserve the model-total point estimate, total model name,
-total model type, immutable event ID, forecast run ID, generation timestamp,
-operational role, and explicit selection status.
-
-Added a strict total-uncertainty contract backed by the selected total model's
-artifact metadata. Uncertainty uses the exact total model identity and reads
-the positive finite holdout RMSE from `metrics["rmse"]`. The artifact training
-timestamp is retained as uncertainty provenance.
-
-The weekly total component does not use the existing `get_total_std()` default
-fallback. If a valid total forecast exists but exact artifact uncertainty is
-unavailable, the point estimate remains present while uncertainty remains null
-and the row receives an explicit `uncertainty_unavailable` status.
-
-Missing and ambiguous total forecasts remain visible without removing scheduled
-games. An unavailable total policy produces one explicit unavailable total row
-for every scheduled game.
-
-The component preserves row count, ordering, canonical game identity, schedule
-fields, neutral-site context, win fields, and spread fields.
-
-#### Goal
-
-Compose selected total-model predictions independently without conflating total
-identity or uncertainty with the selected win model.
-
-#### Tests
-
-- total policy selection is independent from win policy selection;
-- win and total algorithms may differ;
-- total identity does not use the win model type;
-- total identity does not use the spread model type;
-- selected total events attach through exact immutable event IDs;
-- total events compose by canonical game ID regardless of event ordering;
-- available totals preserve the model-total point estimate;
-- available totals preserve model name and model type;
-- available totals preserve event ID and run ID;
-- available totals preserve generation timestamp and operational role;
-- total selection status is explicit;
-- missing total prediction does not remove the game;
-- ambiguous total selection does not remove the game;
-- unavailable total policy preserves all games;
-- selected total event season and week must match product scope;
-- selected total event game ID must match schedule identity;
-- selected total event team orientation must match schedule truth;
-- selected total event model identity must match the total policy;
-- model-total values must be present and finite;
-- total uncertainty uses the selected total model identity;
-- strict total uncertainty reads artifact `metrics["rmse"]`;
-- total uncertainty preserves artifact `trained_at`;
-- missing uncertainty does not remove the total point estimate;
-- missing uncertainty remains explicit;
-- no default total uncertainty is silently substituted;
-- uncertainty identity mismatch is rejected;
-- schedule row count and ordering are preserved;
-- schedule, win, spread, and neutral-site fields remain unchanged.
-
-#### Acceptance
-
-Total predictions are independently resolved and explicitly composed. Every
-scheduled game retains an explicit total state, available totals preserve
-immutable forecast and artifact provenance, and neither model identity nor
-uncertainty is inferred from the selected win component.
-
----
-
-### Unit 13: Add Projected Scores and Product-Level Validation [Complete]
-
-#### Completed
-
-Added the final projected-score composition and product-level validation layers
-for the schedule-complete weekly game product.
-
-Projected scores are derived only when the spread component has an available
-model spread and the total component has an available model-total point
-estimate. A total row whose uncertainty is unavailable remains eligible for
-score projection because the point estimate itself is still valid.
-
-Projected scores use the established NFL home-line spread convention and the
-existing domain equation:
-
-`projected_home_score = (model_total - model_spread) / 2`
-
-`projected_away_score = (model_total + model_spread) / 2`
-
-The resulting values must reconcile to both upstream point estimates. Projected
-home and away scores sum to the model total, and projected away score minus
-projected home score equals the model spread. Equivalently, projected home
-margin equals the negative model spread.
-
-Added granular projected-score statuses for available scores, unavailable
-spread, unavailable total, and simultaneous spread-and-total unavailability.
-Blocked rows retain null projected score fields rather than fabricating partial
-values.
-
-The score attachment function copies the incoming weekly product, preserves
-every row and existing field, and adds only projected-score status and projected
-home and away scores.
-
-Added final product validation across schedule, win, spread, total, and
-projected-score components.
-
-Schedule identity validation requires nonempty unique canonical game IDs.
-
-Available win rows require finite complementary away and home probabilities,
-selected win model identity, and immutable win event identity.
-
-Available spread rows require a finite model spread, positive residual spread
-uncertainty, source win event identity, selected win model identity, persisted
-calibration key, and calibration update timestamp. Spread event and model
-provenance must match the selected win component.
-
-Unavailable spread rows must not contain model spread or spread uncertainty.
-
-Available total rows require a finite model-total point estimate, total model
-identity, immutable total event identity, positive total uncertainty, and
-artifact training timestamp.
-
-Rows with unavailable total uncertainty retain the valid total point estimate
-and total forecast identity while requiring null uncertainty and uncertainty
-provenance.
-
-Unavailable total forecast rows must not contain model-total or uncertainty
-values.
-
-Available projected-score rows require finite home and away scores that
-reconcile to the model total and model spread within floating-point tolerance.
-Blocked projected-score rows must retain null score fields.
-
-Validation returns a defensive copy and rejects inconsistent combinations. It
-does not fill, coerce, infer, or repair invalid values.
-
-#### Goal
-
-Create projected scores only when required spread and total point estimates
-exist, and validate internal coherence across the complete weekly game product.
-
-#### Tests
-
-- projected home and away scores sum to model total;
-- projected away score minus projected home score equals model spread;
-- negative model spread produces a higher projected home score;
-- projected scores use the existing domain calculation;
-- spread-unavailable rows receive explicit status;
-- total-unavailable rows receive explicit status;
-- rows missing both inputs receive combined explicit status;
-- blocked projected-score rows retain null scores;
-- unavailable total uncertainty does not block a valid score projection;
-- available projected scores require finite spread and total values;
-- available win probabilities must be finite and complementary;
-- available win rows require model and immutable event identity;
-- available spread rows require positive uncertainty;
-- spread source event must match selected win event;
-- spread model identity must match selected win model identity;
-- unavailable spread rows cannot contain spread values;
-- available total rows require total model and immutable event identity;
-- available total uncertainty must be positive;
-- unavailable total uncertainty requires null uncertainty values while
-  preserving the total point estimate;
-- unavailable total forecast rows cannot contain total values;
-- projected scores that do not reconcile to total are rejected;
-- projected scores that do not reconcile to spread are rejected;
-- blocked rows containing projected scores are rejected;
-- duplicate or blank game IDs are rejected;
-- complete product remains one row per scheduled game;
-- game ordering is preserved;
-- schedule and neutral-site fields are preserved;
-- input product is not repaired or silently coerced.
-
-#### Acceptance
-
-The composed weekly game product has internally coherent schedule, win, spread,
-total, uncertainty, provenance, and projected-score values. Every scheduled
-game remains present, projected scores exist only when their required point
-estimates are available, and all missing or blocked values retain granular
-machine-readable status.
-
----
-
-### Unit 14: Persist the Static Weekly Game Product [Complete]
-
-#### Completed
-
-Added immutable, versioned persistence for validated weekly game products.
-
-Each product run is stored as a separate Parquet artifact addressed by an
-explicit product ID. Multiple products for the same season and week coexist
-without overwrite or implicit precedence.
-
-The store stamps every row with product schema version, product ID, product run
-ID, and timezone-aware UTC generation timestamp. An atomic JSON index records
-each product's scope, row count, exact ordered columns, generated timestamp,
-and relative artifact path.
-
-Loading by product ID validates the index schema, entry shape, artifact path,
-artifact existence, exact column order, row count, product schema version,
-product identity, run identity, generated timestamp, season, week, and complete
-weekly game-product domain contract.
-
-Identical rewrites are idempotent. Reusing a product ID with different content,
-run identity, or generation timestamp is rejected. Missing artifacts, unindexed
-artifacts, and other inconsistent storage states fail clearly.
-
-Added a versioned current-product manifest keyed by canonical season and week.
-Each selection records an explicit product ID and timezone-aware UTC selection
-timestamp. Selecting current requires an indexed, loadable product whose scope
-matches the requested season and week.
-
-Writing a newer product does not alter current. Current changes only through an
-explicit selection operation and is never inferred from timestamps, filenames,
-modification times, run IDs, index ordering, or lexical product ID ordering.
-
-Added standard dataset loader and writer wrappers for exact product loading,
-current-product loading, immutable product writing, and explicit current
-selection. These wrappers delegate to the product store and do not duplicate
-storage or validation behavior.
-
-Added integration coverage for two products in the same weekly scope. The test
-writes and selects product A, writes product B without changing current,
-explicitly changes current to B, and verifies that both products remain exactly
-loadable with distinct coherent values.
-
-The full persistence and loading workflow creates only weekly-product storage.
-It performs no policy resolution, feature generation, model execution,
-champion resolution, calibration loading, forecast selection, spread
-derivation, total composition, projected-score calculation, or API inference.
-
-#### Goal
-
-Write and load immutable, versioned weekly game products through a static
-serialization boundary that supports multiple runs and explicit current
-selection.
-
-#### Tests
-
-- product round-trips without schema loss;
-- exact ordered domain columns survive;
-- nullable blocked values survive;
-- product ID survives;
-- product run ID survives;
-- timezone-aware UTC generation timestamp survives;
-- multiple products for the same season and week coexist;
-- each coexisting product remains independently loadable;
-- identical rewrites are idempotent;
-- conflicting product content is rejected;
-- conflicting run identity is rejected;
-- conflicting generation timestamp is rejected;
-- unsupported index schema fails clearly;
-- artifact column mismatch fails clearly;
-- row-count mismatch fails clearly;
-- product identity mismatch fails clearly;
-- season and week mismatch fail clearly;
-- missing artifact fails clearly;
-- unindexed artifact fails clearly;
-- current selection is explicit;
-- writing a newer product does not change current;
-- current selection can be changed explicitly;
-- missing current selection fails clearly;
-- selection requires an indexed and loadable product;
-- selection scope must match product scope;
-- unsupported current-manifest schema fails clearly;
-- dataset loaders delegate to product storage;
-- dataset writers delegate to product storage;
-- integration round trip preserves distinct product values;
-- no unrelated compute or model artifacts are created;
-- loading performs no prediction or model computation.
-
-#### Acceptance
-
-API, CLI rendering, and edge calculation can consume one persisted weekly game
-product through the standard dataset boundary. Product runs are immutable and
-versioned, multiple runs coexist, current selection is explicit, and loading is
-strictly a validated serialization operation rather than a compute boundary.
-
----
-
-### Unit 15: Add Source-Labeled nflverse Market Adapter [Complete]
-
-#### Completed
-
-Added a pure nflverse schedule-market adapter that converts rich upcoming
-schedule fields into the generic long-format market contract.
-
-Every adapted row is labeled `nflverse_schedule`. No DraftKings label, parser,
-fetcher, game-ID resolver, or fallback behavior participates in adaptation.
-
-The rich schedule's timezone-aware UTC ingestion timestamp is preserved as the
-market `fetched_at` value. The adapter does not read the clock or substitute an
-execution timestamp.
-
-Canonical nflverse game IDs and away/home team orientation pass through
-unchanged. Requested season and week scope is enforced, and duplicate or
-incomplete schedule identity is rejected.
-
-Each scheduled game produces six deterministic rows: away and home Moneyline,
-away and home Spread, and Over and Under Total.
-
-Moneyline prices map directly to away and home sides with null line values.
-The nflverse `spread_line` uses home-team orientation, so the home side retains
-the source line and the away side receives its additive inverse. Both Total
-sides retain the source total line.
-
-Incomplete markets remain explicit. Canonical side rows are retained with null
-odds or line values rather than being omitted, defaulted, or fabricated.
-
-Replaced the development-era DraftKings-specific market ledger and current
-snapshot filenames with source-neutral `odds_log.parquet` and
-`odds_current.parquet` artifacts. No compatibility reader, migration, alias,
-fallback, or dual-write behavior was added for the retired paths.
-
-Added strict validation and normalization for the shared long-format market
-contract. Stored rows require canonical columns, nonempty source and market
-identity, valid NFL week values, timezone-aware UTC ingestion timestamps, and
-valid Moneyline, Spread, and Total side combinations.
-
-Validation runs before current-snapshot writes and historical-ledger appends,
-and again after snapshot and ledger loads. Nullable prices and lines survive
-storage without omission or fabricated values.
-
-Added integration coverage for adaptation, current-snapshot persistence, and
-joining to schedule truth by canonical game ID. Complete markets, incomplete
-markets, and unmatched scheduled games remain distinct. Source identity,
-ingestion timestamp, normalized spread orientation, and Total values survive
-the round trip.
-
-#### Goal
-
-Convert available nflverse schedule market fields into the generic market
-contract without depending on the unreliable DraftKings pull.
-
-#### Tests
-
-- source is labeled `nflverse_schedule`;
-- no DraftKings label is applied;
-- rich-schedule ingestion timestamp is preserved as market fetch timestamp;
-- timestamps require timezone-aware UTC values;
-- mixed snapshot timestamps are rejected;
-- Moneyline away and home sides normalize correctly;
-- Spread away and home sides normalize correctly;
-- nflverse home-line spread orientation is preserved;
-- Total Over and Under sides normalize correctly;
-- exactly six canonical market-side rows are emitted per scheduled game;
-- incomplete markets retain explicit nullable rows;
-- missing prices are not defaulted;
-- missing lines are not inferred;
-- canonical game IDs pass through unchanged;
-- away and home team orientation passes through unchanged;
-- duplicate scoped game IDs are rejected;
-- requested season and week scope is enforced;
-- non-nflverse source input is rejected;
-- empty requested scope returns the canonical schema;
-- generic market storage uses source-neutral paths;
-- retired DraftKings-specific storage paths are not created;
-- generic market schema and column order are validated;
-- invalid market and side combinations are rejected;
-- incomplete rows survive Parquet round trip;
-- source and ingestion provenance survive persistence;
-- complete, incomplete, and unmatched games remain distinct after joining;
-- schedule truth remains the denominator under a left join;
-- no DraftKings resolver, parser, or fetch path participates.
-
-#### Acceptance
-
-Current market comparison uses source-labeled nflverse schedule markets through
-the generic market contract and source-neutral storage. Complete, incomplete,
-and unmatched market states remain explicit, and the normal current-market path
-does not depend on the unreliable DraftKings pull.
-
----
-
-### Unit 16: Reclassify DraftKings as Legacy Best-Effort Adapter [Complete]
-
-#### Completed
-
-Reclassified DraftKings ingestion as an explicitly invoked legacy best-effort
-adapter rather than a production dependency.
-
-Added a dedicated adapter-unavailability error. HTTP failures, HTML or
-human-verification responses, malformed JSON, non-object payloads, and malformed
-event, market, or selection collections now fail with clear adapter-specific
-messages.
-
-No browser automation, cookie handling, retry mechanism, verification bypass,
-or alternate endpoint workaround was introduced.
-
-Valid payloads containing no current events remain distinct from unavailable
-responses. Empty results do not fabricate persistence paths. Usable adapter
-output continues through the generic source-neutral market store.
-
-The explicit `gridiron ingest dk-odds` command remains available. Its help
-identifies the adapter as legacy and best-effort, states that nflverse schedule
-data supplies the supported current-market workflow, and explains that
-DraftKings is not required by normal data refresh or weekly prediction.
-
-Adapter failures exit nonzero. Valid empty results report that no files were
-written. Successful runs report the generic market ledger and current-snapshot
-paths.
-
-Removed DraftKings ingestion from normal orchestration. `run-data-pipeline`
-no longer contains an odds-fetch stage or imports the DraftKings adapter.
-`weekly-predict` no longer imports DraftKings or contains a `fetch-odds` stage.
-
-Weekly edge generation consumes the existing source-neutral current market
-snapshot and depends only on prediction generation. Missing market data remains
-a source-neutral soft failure and does not trigger an external adapter.
-
-Removed stale odds-fetch references from other composite workflow descriptions
-and stage sets.
-
-Updated CLI and API recovery guidance to reference the current source-neutral
-market snapshot and rich nflverse upcoming schedule. Removed references to the
-nonexistent `gridiron ingest fetch-odds` command and the retired
-`dk_odds_current.parquet` artifact.
-
-Updated shared repository fixtures to write `odds_current.parquet` and aligned
-integration fixtures with the required timezone-aware UTC market provenance
-contract.
-
-Updated the Line Shopping blocker to distinguish current nflverse schedule
-markets from future multi-book sportsbook ingestion.
-
-Legitimate DraftKings sportsbook identities, parser coverage, explicit legacy
-command behavior, and stored book examples remain intact.
-
-#### Goal
-
-Preserve the historical DraftKings adapter without presenting it as the default
-or required recovery path.
-
-#### Tests
-
-- valid DraftKings fixture JSON still parses;
-- HTTP failures produce a clear adapter-specific error;
-- non-JSON responses fail clearly;
-- HTML and human-verification responses fail clearly;
-- malformed JSON fails clearly;
-- non-object payloads fail clearly;
-- malformed expected collections fail clearly;
-- valid empty payloads remain distinct from adapter failures;
-- empty results do not fabricate artifact paths;
-- no browser automation or verification bypass is introduced;
-- explicit command help identifies the adapter as legacy and best-effort;
-- explicit command help identifies nflverse as the supported market workflow;
-- adapter failure exits nonzero;
-- valid empty command result reports that no files were written;
-- successful command output reports generic source-neutral artifacts;
-- normal data pipeline has no external odds stage;
-- normal data pipeline does not import or invoke DraftKings;
-- weekly prediction has no external odds stage;
-- weekly edge generation consumes an existing market snapshot;
-- weekly edge generation does not invoke DraftKings;
-- missing market output is source-neutral;
-- post-week and full-retrain contain no retired odds stage references;
-- CLI recovery guidance contains no nonexistent odds-ingestion command;
-- API loader guidance contains no DraftKings-specific snapshot path;
-- API missing-market errors reference the active generic snapshot path;
-- shared fixtures write the active generic snapshot;
-- integration market timestamps are timezone-aware UTC;
-- frontend blocker copy identifies nflverse as the current game-market source;
-- frontend blocker copy does not claim DraftKings is the current-only source;
-- retired DraftKings-specific snapshot paths are not created;
-- legitimate DraftKings book identities and explicit adapter tests remain.
-
-#### Acceptance
-
-DraftKings code remains available as an explicitly invoked legacy best-effort
-adapter, but normal data refresh, weekly prediction, current market storage,
-edge generation, API recovery guidance, shared fixtures, and frontend
-operational messaging do not depend on or recommend it.
-
----
-
-### Unit 17: Build Unified Edge Diagnostics [Complete]
-
-#### Completed
-
-Added immutable contracts for edge diagnostic blockers, terminal analytical
-states, prediction and market provenance, weekly coverage diagnostics, and
-recommendation results.
-
-Defined explicit blockers for missing predictions, missing market data,
-wrong-scope market data, stale market data, zero matched games, and incomplete
-markets.
-
-Defined terminal result states that distinguish blocked inputs, no calculable
-edge rows, calculated rows with no positive expected value, and positive edge
-rows.
-
-Added validation for requested season and week, nonnegative counts,
-prediction-to-market match bounds, eligible-market arithmetic, calculated and
-positive row relationships, blocker uniqueness, and terminal-state
-consistency.
-
-Added deterministic JSON-compatible serialization for diagnostics and
-provenance.
-
-Implemented a pure evaluator that scopes prediction, market, calculated-edge,
-and filtered-edge inputs to an explicit season and week.
-
-The evaluator derives distinct prediction-game, market-game, and matched-game
-counts from canonical game IDs. Duplicate input rows do not inflate coverage.
-
-Added complete Moneyline, Spread, and Total counting using the existing
-recommendation input semantics. Eligible-market count is derived from those
-three complete market-family counts.
-
-Missing market sides, prices, required lines, or corresponding model values
-produce an explicit incomplete-market blocker.
-
-Added deterministic optional market freshness evaluation through
-caller-supplied `as_of` and `max_market_age` values. The evaluator does not read
-the system clock, inspect file timestamps, or infer a freshness threshold.
-
-Retained all recognized scoped win, total, weekly-product, market-source, and
-market-timestamp provenance as sorted unique tuples. Mixed provenance is not
-collapsed through recency or arbitrary selection.
-
-Added a frozen recommendation result contract that pairs filtered edge rows
-with diagnostics for the same weekly scope and validates that the returned row
-count matches the diagnostic filtered-edge count.
-
-Added `build_edge_result()` as a compatibility-preserving composition of the
-existing edge report builder, ranking function, and diagnostic evaluator.
-
-The existing DataFrame-returning recommendation functions and all edge math,
-classification, Kelly sizing, and ranking behavior remain unchanged.
-
-An empty result from the new recommendation operation now retains an explicit
-blocker or terminal analytical state. A custom positive EV threshold may return
-an empty table while preserving the fact that positive calculated edges existed
-below that threshold.
-
-The diagnostic and recommendation result paths do not mutate supplied frames,
-execute models, ingest markets, select artifacts, read files, inspect file
-timestamps, or access the system clock.
-
-#### Goal
-
-Create structured coverage and result-state diagnostics before changing edge
-math callers.
-
-#### Tests
-
-- no predictions produce an explicit blocker;
-- no market data produces an explicit blocker;
-- simultaneous missing inputs retain both blockers;
-- wrong-scope market data remains distinct from missing market data;
-- explicit stale-market policy produces a stale blocker;
-- staleness is not inferred without a supplied policy;
-- zero matched games produce an explicit blocker;
-- incomplete Moneyline, Spread, or Total coverage remains explicit;
-- duplicate rows do not inflate distinct-game counts;
-- complete market counts are derived from actual model and market values;
-- no calculable edge rows produce an explicit terminal state;
-- calculated rows with no positive EV produce an explicit terminal state;
-- positive edge rows produce an explicit terminal state;
-- a custom threshold may return no rows while retaining positive-edge counts;
-- calculated, positive, and filtered counts are derived from actual inputs;
-- win provenance is retained;
-- total provenance is retained;
-- weekly-product provenance is retained;
-- all market sources and timestamps are retained;
-- provenance values are deterministic, sorted, and unique;
-- market timestamps require timezone-aware UTC values;
-- diagnostic contracts are immutable and JSON serializable;
-- recommendation result rows agree with diagnostic filtered-row counts;
-- negative diagnostic minimum-EV thresholds are rejected;
-- supplied DataFrames are not mutated;
-- existing recommendation and ranking tests remain unchanged and green.
-
-#### Acceptance
-
-The new recommendation-level operation always pairs its edge table with
-structured diagnostics. An empty edge table always has an explicit blocker,
-analytical result state, or threshold explanation.
-
----
-
-### Unit 18: Unify Weekly Edge Calculation [Complete]
-
-#### Completed
-
-Established one persisted domain boundary for all current-week edge calculation.
-
-Added structured edge diagnostics covering prediction availability, market
-availability, market scope, market freshness, game-ID alignment, market
-completeness, calculable rows, positive expected-value rows, filtered rows, and
-artifact provenance.
-
-Added a shared edge result containing ranked recommendation rows and structured
-diagnostics.
-
-Added a weekly edge service that loads only the explicitly selected immutable
-weekly product and the current source-labeled market snapshot.
-
-The service uses persisted selected win probabilities, derived Spread values,
-independent Total predictions, and their persisted uncertainties. It does not
-resolve champions, load prediction archives, execute models, recompute
-predictions, or reload calibration artifacts.
-
-Unavailable Spread or Total uncertainty disables only the corresponding market
-family. Moneyline remains independently calculable.
-
-Multiple persisted uncertainty values for one available market family are
-rejected rather than selected, averaged, or replaced with defaults.
-
-Added persisted round-trip coverage through immutable weekly-product storage,
-explicit current-product selection, source-labeled market storage, canonical
-game-ID alignment, recommendation calculation, bankroll sizing, provenance, and
-minimum-EV filtering.
-
-Migrated `gridiron edges report` to the shared service. Removed report-level
-model selection, champion resolution, prediction-archive loading, direct market
-loading, uncertainty lookup, edge construction, and ranking.
-
-Changed report bankroll sizing from an implicit default to an optional input.
-Unavailable dollar stakes render explicitly rather than as fabricated zero
-values.
-
-Migrated the `/edges` API loader and route to the shared edge result. Added
-source-neutral API field-status mappings for missing weekly products, missing or
-wrong-scope markets, stale markets, zero game-ID matches, and incomplete market
-coverage.
-
-Removed the retired odds-unavailable exception and its compatibility path.
-
-Replaced API champion-and-archive integration fixtures with explicitly selected
-weekly products and source-labeled market snapshots.
-
-Added weekly-product composition to `weekly-predict`. The workflow now retains
-the exact live Elo forecast run, builds a schedule-complete weekly product,
-attaches derived Spread values, represents unavailable Total values explicitly,
-writes the immutable product, and selects it as current before edge generation.
-
-Removed the unrelated `weekly-predict --model-type` option. The current live
-prediction stage produces Elo forecast events and now identifies itself
-consistently as an Elo workflow.
-
-Migrated `weekly-predict` edge generation to the shared service. Removed direct
-prediction-archive loading, market loading, uncertainty lookup, recommendation
-construction, and ranking from the workflow.
-
-Migrated `verify-week` edge evaluation to the shared service while preserving
-its independent read-only checks for schedule availability, forecast selection,
-market coverage, and artifact provenance.
-
-Audited all edge construction, artifact writing, current-market loading,
-prediction-archive loading, uncertainty lookup, composite workflow, API, and
-command-registration callsites.
-
-Confirmed that all active current-week consumers use the shared service:
-
-- `gridiron edges report`
-- `GET /edges`
-- `gridiron weekly-predict`
-- `gridiron verify-week`
-
-Confirmed that direct recommendation construction remains only in the domain
-implementation, domain tests, and historical closing-line-value analysis.
-
-Confirmed that remaining prediction-archive consumers support historical
-calibration, game views, or historical CLV rather than current-week edge
-calculation.
-
-Confirmed that current edge CSV writing is limited to the standalone report
-export and `weekly-predict`, both using rows returned by the shared service.
-
-#### Goal
-
-Ensure every current-week edge consumer uses the same explicitly selected
-weekly product, source-labeled current market snapshot, recommendation
-calculation, filtering behavior, bankroll semantics, provenance, and structured
-diagnostics.
-
-#### Tests
-
-Covered diagnostic invariants, blocker precedence, market completeness,
-freshness, provenance, optional market-family uncertainty, bankroll sizing,
-minimum-EV filtering, immutable product selection, persisted product and market
-round trips, CLI rendering, API field-status translation, weekly workflow
-composition, verification behavior, and architecture dependency guards.
-
-Verified that current-week consumers cannot restore direct prediction-archive,
-market-loading, uncertainty-resolution, recommendation-construction, or ranking
-dependencies.
-
-All quality gates and tests pass.
-
-#### Acceptance
-
-All current-week edge surfaces consume one shared result derived from the
-explicitly selected immutable weekly product and current source-labeled market
-snapshot.
-
-Historical CLV remains the intentional exception because it operates over
-historical prediction and odds-ledger artifacts.
-
----
-
-### Unit 19: Policy-Driven Weekly Prediction Orchestration [Complete]
-
-#### Completed
-Migrated game prediction to one canonical Away/Home-oriented, one-row-per-game contract using HOME_WIN for Win models, ACTUAL_TOTAL for independent Total models, Home-minus-Away differential features, and the canonical 152-column expanded feature sequence. Removed doubled modeling rows, TEAM_A and TEAM_B runtime identity, HOME_FIELD, RESULT as a model target, compatibility aliases, permissive artifact schemas, implicit forecast recency, hidden Elo fallback, and retired game-model artifact compatibility.
-
-Implemented strict model-specific weekly availability inspection and one policy-driven execution service for independently selected Win and Total model families. Win execution supports Elo, Logistic Regression, Random Forest, and XGBoost. Total execution supports Random Forest and XGBoost. Selected families produce complete schedule-scoped immutable forecast events with one shared invocation run ID and timestamp while retaining independent model identity and provenance.
-
-Implemented immutable schedule-complete weekly products with independently persisted Win, Spread, Total, and projected-score components. Spread derives only from the exact selected Win event and persisted calibration. Total uses the independently selected Total event and exact artifact metadata. Projected scores require available Spread and Total point estimates. Multiple products may coexist, while current state changes only through explicit season-and-week selection.
-
-Made selected weekly products the operational readiness boundary. verify-week reports schedule, component, provenance, market, join, eligible-market, and edge coverage without model inference or forecast selection. Prediction readiness remains independent from market readiness. Prediction-ready products publish forecast outputs when market data is missing, incomplete, stale, or unavailable. Blocked or analytically empty edge results remove stale scope-specific edge output.
-
-Added empirical early-season defaults, exact-week Elo requirements, reviewed annual stadium-reference synchronization, canonical aliases, all required 2026 Week 1 venue metadata, roof fallback, and forecast-preferred outdoor weather climatology. All 16 scheduled Week 1 games are complete across the canonical 152-column feature contract.
-
-Completed deployable artifacts and historical walk-forward backfills for Win Logistic, Win Random Forest, Win XGBoost, Total Random Forest, and Total XGBoost. Each completed walk-forward pair produced all 24 requested historical predictions with zero skipped targets. Refreshed calibrations, promoted champions using the complete comparison set, and regenerated the baseline report.
-
-Completed the final real 2026 Week 1 weekly-predict rehearsal. Policy selected win_prob/logistic and total/random_forest. The invocation generated complete immutable Win and Total forecasts, composed and selected a 16-game weekly product, reconciled component provenance, and published PNG and HTML forecast outputs. Updated forecast rendering so optional moneyline columns may be absent or null without fabricated prices or publication failure. Missing market data soft-failed only edge generation.
-
-#### Goal
-Provide one canonical, policy-selected weekly game-prediction workflow that produces complete immutable forecasts and weekly products, preserves exact model and run provenance, publishes prediction-ready outputs independently from markets, and reports market and edge readiness truthfully.
-
-#### Tests
-Validated canonical one-row modeling and feature contracts, strict artifact and model availability, exact policy execution, immutable forecast persistence, product selection, provenance reconciliation, readiness verification, stale-output cleanup, empirical feature defaults, stadium synchronization, weather fallback, and complete 2026 Week 1 feature coverage. Completed all requested Win and Total walk-forward backfills, including Total XGBoost, with 24 predictions and zero skipped targets per completed model pair. Validated deployable artifacts, calibration refresh, champion promotion, and baseline regeneration.
-
-The final weekly-predict rehearsal completed data refresh, policy-selected prediction, product composition and selection, readiness verification, and PNG and HTML publication. verify-week reported 16 scheduled games, 16 selected Win predictions, 16 Spread values, 16 Total predictions, 16 projected-score rows, and 16 rows with complete provenance. Missing market data remained independently visible and edge generation soft-failed without invalidating the selected product. Renderer tests cover absent, null, and supplied optional moneylines without fabricating odds. Ruff, Pyrefly, focused tests, and the full unit quality boundary pass.
-
-#### Acceptance
-The canonical game-model and weekly-prediction architecture is accepted by the successful real 2026 Week 1 rehearsal. Policy resolves before inference, executes exact selected Win and Total identities, persists immutable forecast events, composes and explicitly selects a schedule-complete weekly product, preserves complete component provenance, and publishes forecast outputs from prediction-ready data without requiring market columns.
-
-All 16 scheduled games remain present and complete across Win, Spread, Total, projected score, and provenance. Prediction readiness and market readiness remain independent. Missing market data does not invalidate a prediction-ready selected product. Blocked, unavailable, incomplete-market, non-calculable-edge, zero-positive-edge, and below-threshold states remain explicit and do not leave stale outputs presented as current. No runtime prediction path depends on the retired development-era contracts.
-
----
-
-### Unit 20: Make `output predictions` a Pure Renderer [Complete]
-
-#### Completed
-
-Rebuilt `gridiron output predictions` as a pure downstream renderer over the
-explicitly selected immutable weekly product.
-
-The command loads the current product for one exact season and week through the
-standard weekly-product serialization boundary.
-
-It no longer loads schedule or Elo state, calculates Elo probabilities,
-executes a trained model, builds features, resolves champions, resolves
-prediction policy, selects forecast events, writes forecast events, writes
-weekly products, or changes current-product selection.
-
-Replaced the inaccurate `--year` option with `--season`.
-
-Added strict output-format validation for PNG and HTML.
-
-Unsupported formats fail before product loading or output creation.
-
-A missing selected weekly product exits nonzero and produces no render outputs.
-
-Added a pure weekly-product display adapter.
-
-The adapter validates its required persisted-product columns, copies its input,
-maps persisted schedule identity into the visual contract, preserves nullable
-Win probabilities, adds formatted display probabilities, and retains product
-and selected-Win provenance.
-
-Formatted probabilities are derived exclusively from persisted selected-product
-values.
-
-Removed the visualization-layer Elo prediction builder from the standalone
-render path.
-
-PNG and HTML rendering now use the Moneyline values persisted in the selected
-weekly product.
-
-Rendering no longer loads the mutable current market snapshot.
-
-Changed renderer terminology from Elo-specific and DraftKings-specific wording
-to selected-prediction and source-neutral market wording.
-
-Removed unused Elo fields from visualization separator rows.
-
-Reworked separator-row assembly to avoid pandas all-null concatenation warnings.
-
-Repeated rendering of the same immutable selected product produces byte-identical
-PNG and HTML outputs.
-
-Real 2026 Week 1 rendering loaded the explicitly selected sixteen-game product
-and produced both output formats successfully.
-
-Rendering left the current-product manifest and immutable forecast-event
-artifact byte-for-byte unchanged.
-
-#### Goal
-
-Render an existing explicitly selected weekly product without inference,
-artifact selection, mutable market loading, or storage mutation.
-
-#### Tests
-
-Covered exact selected-product loading, pure display adaptation, persisted
-probability preservation, nullable prediction preservation, schedule and
-provenance mapping, persisted Moneyline use, input immutability, missing-column
-validation, default PNG and HTML rendering, single-format rendering, unsupported
-format rejection, missing selected-product failure, and prevention of rendering
-after load failure.
-
-Verified that the command and visualization module contain no Elo prediction,
-current-market loading, forecast-event writing, weekly-product writing, or
-current-product selection dependency.
-
-Verified against the real selected 2026 Week 1 product that rendering leaves the
-current-product manifest and immutable forecast-event storage unchanged.
-
-Verified repeated rendering produces byte-identical PNG and HTML outputs.
-
-Verified real rendering completes without pandas warnings.
-
-Ruff, Pyrefly, focused CLI tests, and visualization tests pass.
-
-#### Acceptance
-
-`gridiron output predictions` loads only the explicitly selected immutable
-weekly product and renders its persisted prediction and market values.
-
-Output generation performs no inference, feature construction, champion
-resolution, prediction-policy resolution, forecast selection, forecast-event
-persistence, weekly-product persistence, current-product mutation, or mutable
-market-snapshot loading.
-
-Missing products and unsupported formats fail explicitly without creating
-outputs.
-
-PNG and HTML outputs are deterministic downstream representations of the exact
-selected weekly product.
-
----
-
-### Unit 21: Rewire `edges report` [Complete]
-
-#### Completed
-
-Confirmed that `gridiron edges report` consumes the unified weekly edge service.
-
-The command uses the explicitly selected immutable weekly product and current
-source-labeled market snapshot through one shared domain boundary.
-
-It does not resolve champions, load prediction archives, load calibrations,
-resolve uncertainty, construct recommendations, or rank edge rows directly.
-
-Historical `gridiron edges clv` remains the intentional archive-and-ledger
-exception.
-
-Added explicit exit semantics for structured edge diagnostics.
-
-Missing selected products, missing market snapshots, wrong-scope markets, stale
-markets, zero matching game IDs, and incomplete markets exit nonzero.
-
-Valid analytical results with no calculable rows, no positive expected-value
-rows, or positive rows below the requested minimum-EV threshold exit
-successfully with deterministic explanations.
-
-Added strict output-format validation.
-
-Only table and CSV output are accepted.
-
-Unsupported formats fail before shared-service execution.
-
-Added command-boundary validation for optional bankroll, Kelly multiplier, and
-minimum expected value.
-
-A supplied bankroll must be nonnegative.
-
-Kelly multiplier must remain in the closed zero-to-one range.
-
-Minimum expected value must be nonnegative.
-
-Centralized the scope-specific standalone edge CSV path.
-
-Every report invocation removes any existing CSV for the requested season and
-week before handling the current result.
-
-CSV output writes a fresh file only when the current result contains publishable
-rows and CSV format was requested.
-
-Table output, blocked results, and valid analytical empty results cannot leave a
-prior CSV presented as current.
-
-Preserved source-neutral blocker messages and valid zero-positive-edge
-semantics.
-
-Real 2026 Week 1 validation confirmed that missing market data produces a
-source-neutral message and nonzero exit status.
-
-Real validation also confirmed that a stale scope-specific edge CSV is removed
-when the current report is blocked.
-
-#### Goal
-
-Use the unified edge service and expose truthful CLI validation, exit semantics,
-and output freshness.
-
-#### Tests
-
-Covered unified service invocation, table rendering, CSV writing, selected
-season and week forwarding, optional bankroll forwarding, Kelly multiplier
-forwarding, minimum-EV forwarding, structured blocked states, valid analytical
-empty states, unsupported formats, invalid bankroll values, invalid Kelly
-multipliers, negative minimum EV, and prevention of service execution after
-invalid CLI input.
-
-Covered nonzero exits for missing prediction products, missing market data,
-zero game-ID matches, and incomplete market coverage.
-
-Covered successful exits for no calculable edges and no positive expected-value
-edges.
-
-Verified stale scope-specific CSV removal for blocked and analytically empty
-results.
-
-Verified positive CSV results replace the prior artifact with current
-service-returned rows.
-
-Verified against the real 2026 Week 1 selected product that missing market data
-exits with status one and removes an existing stale edge CSV.
-
-Verified unsupported formats, negative bankroll, out-of-range Kelly
-multipliers, and negative minimum EV fail explicitly.
-
-Ruff, Pyrefly, focused report tests, and existing historical CLV tests pass.
-
-#### Acceptance
-
-`gridiron edges report`, `weekly-predict`, and the API consume the same unified
-weekly edge result derived from the explicitly selected immutable weekly product
-and current source-labeled market snapshot.
-
-Blocked input states exit nonzero.
-
-Valid analytical empty states exit successfully.
-
-CLI inputs and output formats are validated before service execution.
-
-A stale standalone edge CSV cannot remain presented as current after a later
-report invocation.
-
-Historical CLV remains separate because it intentionally operates over
-historical forecast and odds-ledger artifacts.
-
----
-
-### Unit 22: Rebuild `post-week` Around Live Forecast Closeout [Complete]
-
-#### Completed
-
-Rebuilt `gridiron post-week` around evaluation of the exact immutable live
-forecasts selected and published before kickoff.
-
-Removed season-level historical forecast reconstruction from the completed-week
-workflow.
-
-`post-week` no longer invokes `backfill_model`, loads a model-oriented prediction
-archive, selects a model family, or evaluates forecasts reconstructed after game
-completion.
-
-Historical reconstruction remains exclusively under
-`gridiron evaluate backfill`.
-
-Removed the `--model-name` and `--model-type` options from `post-week`.
-
-The explicitly selected immutable weekly product is the completed-week closeout
-authority.
-
-Available Win and Total components identify their exact selected live forecast
-events through persisted event IDs, run IDs, model identities, roles, season,
-week, and Game IDs.
-
-Added a dedicated live forecast closeout service.
-
-The service validates the selected product, immutable forecast events, and
-canonical completed games before reconciliation.
-
-A selected event matches only when its event ID, Game ID, run ID, season, week,
-model name, model type, and live role agree with the product reference.
-
-Backfilled events cannot substitute for missing selected live events.
-
-Additional unrelated forecast events do not affect closeout.
-
-Cleaned outcomes are scoped to the exact requested season and week.
-
-Completed results derive Home Win outcome, Home-minus-Away margin, and total
-points from canonical Away and Home scores.
-
-Tied games remain visible, are excluded from binary Win metrics, and remain
-eligible for Total evaluation.
-
-Win closeout reports Brier score, binary log loss, and accuracy from the
-selected live Home Win probability.
-
-Total closeout reports mean absolute error, root mean squared error, and signed
-bias from the selected live Total prediction.
-
-Added schedule-complete row-level reconciliation.
-
-Every scheduled product row remains visible with selected component status,
-event match state, persisted prediction, completed scores, actual result, and
-task-specific evaluability.
-
-Missing Win components, missing Total components, missing referenced live Win
-events, missing referenced live Total events, and missing outcomes remain
-distinct structured states.
-
-Unavailable components are not mislabeled as missing referenced events.
-
-Replaced the old `post-week` stages with independently executable
-`refresh-results`, `refresh-next-week-state`, and `close-live-forecasts` stages.
-
-`refresh-results` runs only completed-game fetch and cleaning.
-
-`refresh-next-week-state` refreshes the upcoming schedule, EPA, Elo, and
-canonical model inputs separately from completed-week evaluation.
-
-`close-live-forecasts` performs no model inference, forecast generation,
-forecast selection, forecast persistence, product persistence, or current
-selection mutation.
-
-Updated shared composite orchestration so warnings supplied by an unsuccessful
-hard stage remain visible in the final summary.
-
-Incomplete closeout coverage exits nonzero while retaining the exact missing
-Game IDs.
-
-Real 2026 Week 1 validation matched the selected live Win and Total events,
-reported all sixteen not-yet-completed outcomes individually, and exited
-nonzero.
-
-Real closeout validation left the current-product manifest and immutable
-forecast-event artifact byte-for-byte unchanged.
-
-#### Goal
-
-Evaluate the immutable live forecasts actually selected and issued before
-kickoff for one exact completed season and week.
-
-#### Tests
-
-Covered exact product-reference matching, live-role enforcement, backfilled
-event exclusion, model and run provenance verification, selected component
-coverage, missing event coverage, missing outcome visibility, unavailable
-component classification, tie handling, Home-oriented Win metrics, Total error
-metrics, row-level schedule reconciliation, required-column validation, and
-input immutability.
-
-Covered result-only pipeline refresh, independent next-week state refresh,
-live-closeout stage behavior, incomplete closeout failure, metric rendering,
-missing-coverage warnings, independent `--only` execution, command help,
-removed model options, removed historical backfill stages, and invalid season
-handling.
-
-Covered preservation and rendering of warnings returned by unsuccessful hard
-composite stages.
-
-Added an integration test that persists a canonical completed game, immutable
-live Win and Total forecast events, a validated immutable weekly product, and an
-explicit current-product selection.
-
-Verified through repository loaders that the exact selected event references
-join to the completed outcome and produce the expected Win and Total metrics.
-
-Verified against the real selected 2026 Week 1 product that all sixteen missing
-outcomes remain visible and no forecast or product state is mutated.
-
-Ruff, Pyrefly, focused unit tests, integration tests, and real-artifact checks
-pass.
-
-#### Acceptance
-
-`gridiron post-week` evaluates the exact immutable live forecasts referenced by
-the explicitly selected weekly product for the requested completed week.
-
-It does not reconstruct historical forecasts, use backfilled events as live
-substitutes, infer current forecasts from write order, or select models during
-closeout.
-
-Schedule, selected forecast, event-match, and completed-outcome coverage
-reconcile explicitly.
-
-Missing live forecasts and missing outcomes remain visible and cause a nonzero
-closeout result.
-
-Next-week state refresh remains operationally separate from evaluation.
-
-Historical backfill remains the explicit reconstruction workflow under
-`gridiron evaluate backfill`.
-
-Closeout is read-only with respect to immutable forecast events, persisted
-weekly products, and explicit current-product selection.
-
----
-
-### Unit 23: Harden Historical Forecast Backfill [Complete]
-
-#### Completed
-
-Hardened historical game forecast reconstruction around explicit runtime modes,
-structured run accounting, per-season outcomes, immutable event write
-accounting, canonical request validation, and truthful CLI reporting.
-
-Replaced the static backfill mode type alias with a runtime `BackfillMode`
-enum supporting `walk-forward` and `current-model`.
-
-Automatic mode resolution remains model-aware.
-
-Trained Win and Total models default to walk-forward reconstruction.
-
-Elo defaults to current-model reconstruction because its historical state is
-built chronologically.
-
-Explicit invalid API and CLI mode values are rejected rather than silently
-falling through to walk-forward behavior.
-
-Added `ForecastEventWriteResult` to immutable forecast-event storage.
-
-Every forecast-event write now reports incoming, inserted, and already-existing
-event counts alongside the artifact path.
-
-New stores report every incoming event as inserted.
-
-Identical event-ID retries remain idempotent and report existing rows without
-rewriting them.
-
-Mixed batches distinguish newly inserted event IDs from identical existing
-event IDs.
-
-Event-ID reuse with different content remains prohibited.
-
-Removed a duplicate internal `new_ids` declaration from forecast-event storage.
-
-Migrated live weekly prediction persistence to consume the structured writer
-result while preserving the forecast-event artifact path in composite output.
-
-Added structured historical reconstruction results.
-
-`BackfillResult` records model identity, resolved mode, run ID, generated event
-count, inserted event count, existing event count, and per-season outcomes.
-
-Generated, inserted, and existing counts reconcile explicitly.
-
-Zero-generation results contain no run ID and do not invoke forecast-event
-persistence.
-
-Successful reconstruction results require a run ID.
-
-Added explicit per-season terminal outcomes.
-
-Predicted seasons record their generated forecast count.
-
-Skipped seasons distinguish missing prior-season training data, missing target
-rows, and target rows without complete model features.
-
-Skipped seasons retain exact human-readable reasons.
-
-`BackfillResult` exposes predicted and skipped season collections separately.
-
-Walk-forward reconstruction continues to retrain each target season using data
-only through the immediately preceding season.
-
-Intermediate walk-forward models remain non-persistent.
-
-Win classification continues to use probability prediction and canonical game
-prediction construction.
-
-Total regression continues to use numeric prediction and canonical regression
-prediction construction.
-
-Current-model reconstruction derives generated counts per represented season
-without fabricating walk-forward skip states.
-
-Every historical forecast event continues to use the `backfilled` role.
-
-Each successful invocation continues to create a distinct immutable run and new
-event identities.
-
-Repeated reconstruction runs coexist without replacing live events or prior
-backfilled runs.
-
-Migrated full-retrain game-model backfill accounting to structured inserted
-counts.
-
-Migrated standalone evaluation backfill and Elo tuning callers to structured
-backfill results.
-
-Added canonical season-label validation requiring `YYYY-YYYY+1` with consecutive
-years.
-
-Malformed season labels are rejected before repository or model access.
-
-Reversed start and end season ranges are rejected.
-
-Season bounds are rejected when the resolved mode is current-model rather than
-being silently ignored.
-
-The `evaluate backfill` command now reports resolved mode, run ID, generated
-events, inserted events, existing events, predicted seasons, and skipped seasons
-with reasons.
-
-Valid zero-generation runs remain successful and visibly report zero counts,
-no run ID, and no predicted seasons.
-
-Expected request-validation failures render
-
----
-
-### Unit 24: Make API Games Schedule-First [Complete]
-
-#### Completed
-
-Replaced the archive-first game API with a pure serialization boundary over the explicitly selected persisted weekly product.
-Changed `load_games_for_week()` to load the selected weekly product for the requested season and week and return a defensive copy.
-Changed `load_game()` to derive the season and week from the canonical game ID, load the selected product for that scope, and return the exact scheduled row.
-Removed Win champion resolution, prediction archive loading, Elo fallback behavior, historical-games enrichment, and team-name rewriting from the game API loader path.
-Removed the retired `_UPCOMING_FALLBACK_MODEL_TYPE`, `_resolve_win_prob_archive()`, and `_finalize_games_frame()` game-loading infrastructure.
-Preserved champion resolution in the separate prop API path.
-Replaced the conflated nullable `PredictionBlock` with independent required component blocks for Win, Spread, Total, and projected scores.
-Win responses now serialize persisted availability status, selection status, probabilities, model identity, event identity, run identity, generation timestamp, and forecast role.
-Spread responses now serialize persisted availability status, value, uncertainty, source Win event, source model identity, calibration key, and calibration timestamp.
-Total responses now serialize persisted availability status, selection status, value, uncertainty, independent model identity, event identity, run identity, generation timestamp, forecast role, and uncertainty-training timestamp.
-Projected-score responses now serialize persisted availability status and nullable Home and Away scores.
-Missing prediction components remain represented by their persisted status blocks rather than causing the scheduled game to disappear.
-Win and Total provenance remain independent while satisfying the weekly product invariant that available component run IDs match the enclosing product run ID.
-Spread provenance remains explicitly linked to its selected Win source event.
-Corrected `model_spread` API documentation to the runtime NFL home-line convention.
-Negative spread values mean the Home team is favored.
-Positive spread values mean the Away team is favored.
-The spread value equals projected Away score minus projected Home score.
-Updated the game serializers to preserve persisted weekly-product team identities without silently converting long names to abbreviations.
-Updated game detail serialization to use persisted game day, kickoff time, and stadium metadata.
-Removed champion-manifest fallback behavior from the game routes.
-`GET /games` now serializes every row in the explicitly selected weekly product.
-A missing selected product produces a concrete empty list for the requested scope.
-`GET /games/{game_id}` now returns a scheduled selected-product row regardless of Win, Spread, Total, or projected-score availability.
-A game detail request returns 404 only when the selected scheduled row does not exist.
-The `/games` loader, serializer, and route path performs no runtime prediction, champion resolution, model loading, archive selection, or Elo fallback.
-
-#### Goal
-
-Serialize the explicitly selected persisted weekly product for every scheduled game without runtime model behavior or prediction-dependent row filtering.
-
-#### Tests
-
-Covered selected weekly-product loading with exact repository, season, and week forwarding.
-Covered defensive-copy behavior at the API loader boundary.
-Covered schedule-complete loading with available and forecast-missing rows in the same product.
-Covered retention of games with missing Win and Total predictions.
-Covered absence of prediction archive and champion resolver calls from the game loader path.
-Covered canonical game ID scope parsing and selected-product detail lookup.
-Covered malformed, unknown, and unselected game detail behavior.
-Covered required Win, Spread, Total, and projected-score component blocks.
-Covered unavailable component blocks with null values and explicit persisted statuses.
-Covered independent Win and Total event, model, and provenance serialization.
-Covered Spread source-event and calibration provenance serialization.
-Covered persisted schedule metadata including game day, kickoff time, and stadium.
-Covered preservation of persisted long team identities.
-Covered corrected spread sign and projected-score reconciliation documentation.
-Integration tests persist and explicitly select an immutable weekly product containing both an available game and a forecast-missing game.
-Integration tests verify that `/games` returns every scheduled row.
-Integration tests verify that missing prediction components produce status blocks rather than missing games.
-Integration tests verify that scheduled game detail returns 200 when predictions are unavailable.
-Integration tests verify that only an unknown selected scheduled game returns 404.
-Integration tests require neither a champion manifest nor a prediction archive.
-Ruff, Pyrefly, API unit tests, API integration tests, and the full project quality boundary pass.
-
-#### Acceptance
-
-`/games` is a pure schedule-complete serialization surface over the explicitly selected persisted weekly product.
-Every selected scheduled game is returned regardless of prediction availability.
-Missing Win, Spread, Total, or projected-score values are represented by persisted component statuses and nullable values.
-The game API performs no runtime model resolution, prediction, archive selection, or fallback behavior.
-Win and Total provenance are serialized separately.
-Spread provenance identifies its selected Win source.
-Spread sign documentation matches runtime behavior.
-Valid selected scheduled game detail never returns 404 solely because a prediction component is missing.
-Only a missing selected scheduled row returns 404.
-
----
-
-### Unit 25: Make API Edges Use Unified Service Results [Complete]
-
-#### Completed
-Made /edges a faithful serialization surface over the unified weekly edge service. The API loader now preserves service-provided rows and team identities while returning a defensive copy. Added required structured diagnostics and complete Win, Total, weekly-product, and market provenance to the response. Preserved every service blocker and analytical result state, exposed market source and UTC ingestion timestamps, aligned edge strength with the implementation contract, and changed the serializer to consume the complete EdgeResult rather than a detached DataFrame. Existing _meta field status remains secondary presentation metadata.
-
-#### Goal
-Serialize shared edge rows and diagnostics without independently reconstructing model composition, market joins, edge calculations, edge strength, empty-state meaning, or provenance in the API.
-
-#### Tests
-Covered defensive loader copying and exact row preservation; actual edge-strength values and rejection of the retired weak value; complete diagnostic counts, blockers, terminal states, and provenance; long team-name preservation; missing product and market blockers; analytical empty states; multiple simultaneous blockers; positive edges filtered by threshold; source and ingestion timestamp serialization; independent Win and Total provenance; weekly-product identity; architecture guards against retired dependencies and team normalization; and persisted API output parity with direct build_weekly_edge_result output after JSON normalization. Ruff, Pyrefly, focused tests, and the full unit quality boundary pass.
-
-#### Acceptance
-/edges serializes the rows and diagnostics returned by build_weekly_edge_result, preserves service identity and provenance, distinguishes every service empty state, and no longer reconstructs model composition independently.
-
----
-
-### Unit 26: Regenerate API Clients [Complete]
-
-#### Completed
-Regenerated the checked-in OpenAPI schema from the live FastAPI application and regenerated the TypeScript client from that canonical schema. The generated contracts now include required edge diagnostics, complete Win, Total, weekly-product, and market provenance, explicit blocker and result-state unions, and the actual edge-strength literals. Migrated frontend game consumers from the retired aggregate prediction object to the independent Win, Spread, Total, and projected-score blocks introduced by the schedule-first Games API. Removed unavailable game-level uncertainty-band and confidence-tier presentation rather than reconstructing missing values. Added a structural consistency test that fails when api-schema.json drifts from the application OpenAPI contract.
-
-#### Goal
-Update generated OpenAPI and TypeScript contracts after API stabilization, preserve generator ownership of generated files, migrate affected consumers to the finalized contracts, and prevent checked-in schema drift.
-
-#### Tests
-Verified required edge schemas, diagnostics, provenance, blockers, result states, and edge-strength literals in the generated OpenAPI and TypeScript artifacts. Regenerated both artifacts twice and confirmed byte-for-byte deterministic output. Proved the checked-in OpenAPI document equals create_app().openapi(). Frontend TypeScript build and production bundle pass, all 270 frontend tests pass, and focused ESLint passes for every changed frontend consumer. Backend Ruff, Pyrefly, focused tests, and the full unit quality boundary pass. Global frontend lint remains independently blocked by four unchanged React Refresh violations in context modules outside the Unit 26 diff.
-
-#### Acceptance
-api-schema.json and frontend/src/api/schema.ts are deterministically generated from the finalized API contract with no manual drift. Frontend consumers compile against the regenerated client and use the independent persisted game-component contracts without compatibility reconstruction.
-
----
-
-### Unit 27: Wire Frontend Weekly Status [Complete]
-
-#### Completed
-Added a shared generated-contract-aware edge result model and presentation component covering all weekly blockers, analytical empty states, and minimum-EV filtering. Wired authoritative edge diagnostics into Featured Matchups, Dashboard Model Edges, BetSlip Edges, Game Detail model lean, and Game Detail recommendation cells. Restricted “No play” to completed evaluations with no positive edges and preserved distinct blocked, non-calculable, filtered, game-specific, and market-specific states. Removed synthetic cover-probability uncertainty bands and corrected Moneyline fair values to render as probabilities. Added persisted market context and American odds to BetSlip and Game Detail edge surfaces. Added shared weekly-component status mappings and value presentation for Win, Spread, Total, and projected scores. Wired Games List and Game Detail to independent component readiness, retained scheduled rows when predictions are unavailable, preserved Total point estimates when uncertainty is unavailable, and surfaced inconsistent available-without-value states. Extended team metadata resolution to support canonical abbreviations and service-preserved long team names without backend identity rewriting.
-
-#### Goal
-Make missing, blocked, incomplete, filtered, and analytically empty weekly data visible across all game and edge surfaces without collapsing authoritative product states into silent nulls, generic empty messages, fabricated values, or misleading “No play” labels.
-
-#### Tests
-Added focused coverage for all six edge blockers, simultaneous blockers, missing blocker reasons, no calculable edges, no positive edges, minimum-EV filtering, market-tab filtering, and positive edges returned normally. Added tests for persisted market context, American odds, Moneyline fair probability, and removal of synthetic uncertainty bands. Added exhaustive weekly status-message tests for Win, Spread, Total, and projected scores, including Total point-estimate usability when uncertainty is unavailable and inconsistent available-without-value handling. Added Games List tests proving schedule rows remain visible with unavailable Win data, independent Spread and Total readiness, true schedule emptiness, canonical team-mark resolution, and continued absence of retired Band and Confidence columns. Added Game Detail tests covering independent component readiness, projected-score availability without Win, Spread calibration unavailability, Total uncertainty unavailability, authoritative edge blockers, valid no-play semantics, filtered edges, game-specific emptiness, and persisted market context. The production frontend build passes, focused ESLint passes for every changed frontend file, and all 344 frontend tests pass across 34 test files. Backend Ruff, Pyrefly, and the full unit quality boundary pass.
-
-#### Acceptance
-The frontend reflects actual weekly product readiness rather than silent nulls. Scheduled games remain visible when prediction components are unavailable. Win, Spread, Total, and projected-score readiness render independently. Edge surfaces preserve authoritative blockers and result states. Missing market data is not shown as “No play,” positive-edge filtering remains distinct from analytical emptiness, synthetic uncertainty bands are absent, and market values render from persisted market context with actual American odds.
-
----
-
-### Unit 28: Update Data Pipeline and Verification CLI Contracts [Complete]
-
-#### Completed
-Aligned the canonical `run-data-pipeline` command’s help, default stage behavior, and staleness warnings. Confirmed that no stage flags run all eight registered data stages and that current-market odds are not part of the command. Kept the unreliable legacy DraftKings adapter as an explicit `gridiron ingest dk-odds` operation rather than a default pipeline dependency.
-
-Replaced duplicated pipeline staleness paths with canonical dataset-registry keys and `dataset_path()` resolution for completed-game and upcoming-schedule cleaning. Corrected staleness warnings to identify the existing output as older than its newer upstream input and to state that the active stage will rebuild the output.
-
-Defined `gridiron verify` as Python repository and backend verification. Its default stages run Ruff, Pyrefly, backend unit, integration, and end-to-end tests, an external nflverse `fetch-games + clean-games` smoke check, and model baseline comparison. The smoke check no longer claims to run upcoming-schedule cleaning or other excluded pipeline stages.
-
-Documented `gridiron verify-week` as the separate selected weekly-product readiness command. Explicitly documented that frontend build, Vitest, and frontend ESLint remain separate checks and are not run by `gridiron verify`. Preserved nonfatal smoke and missing-baseline behavior by default, with `--strict` converting those soft failures into hard failures.
-
-#### Goal
-Make data-pipeline defaults, dataset freshness checks, verification scope, command help, stage behavior, and exit semantics describe and enforce the same operational contracts.
-
-#### Tests
-Added tests proving that no-flags pipeline execution selects all eight canonical stages and has no DraftKings or odds dependency. Verified that public help uses the implemented `run-data-pipeline` command name and documents the explicit odds boundary.
-
-Added registry-driven staleness tests for completed-game and upcoming-schedule datasets. Verified that stale-output warnings identify the registered output and input paths, use correct temporal wording, remain nonfatal, and are omitted for current outputs and first-run missing files.
-
-Added verification tests proving that the smoke stage runs exactly `fetch-games + clean-games`, excludes upcoming-schedule cleaning and odds, and reports the implemented behavior. Verified that help distinguishes Python and backend verification from `verify-week` operational readiness and explicitly excludes frontend build, Vitest, and ESLint. Verified that smoke failures remain nonfatal by default and become fatal under `--strict`. Ruff, Pyrefly, focused CLI tests, composite-workflow tests, and the full unit quality boundary pass.
-
-#### Acceptance
-`run-data-pipeline` help and no-flags behavior agree, all stage paths come from the canonical dataset registry, and staleness warnings truthfully identify stale outputs. The default pipeline does not require DraftKings or current-market odds.
-
-`gridiron verify` accurately represents Python repository health, backend tests, external data smoke verification, and baseline comparison. `gridiron verify-week` remains the independent weekly operational-readiness command. Frontend gates are explicitly separate. Soft-failure and strict-mode exit semantics match the documented behavior.
-
----
-
-### Unit 29: Documentation and Operational Closeout [Complete]
-
-#### Completed
-Replaced the accumulated HANDOFF.md implementation history with a concise current-state operational guide covering the canonical data pipeline, dataset registry, game-model artifacts, champion manifest, weekly availability and policy, immutable forecast events, explicitly selected weekly products, pregame and postgame workflows, markets and edge diagnostics, historical reconstruction, full retraining, API serialization, frontend contract generation, verification boundaries, recovery procedures, quality gates, and known limitations.
-
-Rewrote ROADMAP.md to contain only the current platform state, strategic priorities, genuine future capabilities, and verified limitations. Removed completed season-readiness work, superseded Elo-fallback behavior, resolved defects, shipped API and frontend gaps, stale stadium and calibration tasks, and temporary workstream numbering. Retained supported-market-provider selection, multi-book shopping, model ensembles, injury and news data, scenario analysis, feature attribution, live-game support, verified API batch-artifact work, frontend enhancements, model research, and tooling improvements as future candidates.
-
-Added D24 to DECISIONS.md, locking immutable forecast events, explicit live and backfilled roles, independent Win and Total policy selection, schedule-complete weekly products, explicit current-product selection, persisted-state API serialization, independent prediction and market readiness, authoritative edge diagnostics, and coherent operational recovery. Marked D22 as superseded for current weekly operation while preserving its historical context.
-
-Prepended a consolidated 2026-08-05 CHANGELOG.md entry covering the canonical Away/Home game contract, complete game-model artifact cycle, policy-driven weekly execution, immutable events and products, source-neutral markets, API and frontend contract migration, CLI contract alignment, successful 2026 Week 1 rehearsal, and final documentation closeout.
-
-Removed implementation-era work-unit nomenclature from runtime source, API blocker metadata, frontend blocked screens, comments, tests, and generated contracts. Replaced temporary roadmap IDs with stable semantic capability references. Regenerated api-schema.json and frontend/src/api/schema.ts.
-
-Corrected weekly-predict help and stage documentation to describe policy-selected live Win and Total prediction rather than Elo-only execution. Added a narrowly scoped ESLint configuration for context modules that intentionally colocate each Provider and matching hook while retaining Fast Refresh validation everywhere else.
-
-#### Goal
-Provide one authoritative and maintainable description of the implemented Gridiron Edge lifecycle, artifacts, commands, architectural boundaries, operational recovery procedures, known limitations, and genuine future work without stale runtime work-unit naming or superseded behavior.
-
-#### Tests
-Verified that runtime Python and frontend source contain no implementation-era workstream, unit, or phase labels, excluding legitimate domain values such as winning-streak labels. Regenerated OpenAPI and TypeScript contracts and confirmed retired roadmap identifiers are absent.
-
-Validated backend blocker metadata and response serialization with 43 focused API tests. Validated the corrected weekly-predict help, policy-selected execution wording, immutable event and product behavior, and selected-product readiness. A real 2026 Week 1 weekly-predict run completed data refresh, live prediction, product composition and selection, readiness verification, PNG and HTML publication, and the expected missing-market edge soft failure.
-
-Verified that post-week evaluates the exact selected live events and correctly exits nonzero before completed outcomes exist. verify-week reported all 16 scheduled games complete across Win, Spread, Total, projected scores, and provenance while reporting missing_market_data independently.
-
-Frontend ESLint passes, the production build passes, and all 344 frontend tests pass across 34 test files. Backend Ruff, Pyrefly, focused tests, and the full unit quality boundary pass.
-
-#### Acceptance
-HANDOFF.md describes the current operating system without retired archive, fallback, odds, prediction, or recovery guidance. ROADMAP.md contains only current strategic direction, genuine future work, and verified limitations. DECISIONS.md records the final persisted-event and selected-product architecture and marks the superseded Elo-fallback decision historically. CHANGELOG.md records the completed implementation and operational validation.
-
-Commands, artifacts, model roles, weekly-product selection, market behavior, API serialization, frontend generation, verification boundaries, and recovery procedures agree with the implemented system. Runtime source and generated contracts contain no stale work-unit nomenclature. The planned Units 1 through 29 are complete.
+A provider decision is recorded with verifiable coverage, pricing, rate-limit,
+usage, and historical-access evidence. The normalized quote contract and
+operational boundaries are specific enough to implement without guessing.
+The next bounded unit can build the current-provider adapter without reopening
+current-versus-historical scope or weekly-prediction ownership.
 
 ---

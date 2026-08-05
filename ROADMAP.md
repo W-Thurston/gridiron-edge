@@ -51,26 +51,72 @@ Prioritize work by value density and architectural fit:
 
 ### Supported Market Provider and Multi-Book Shopping
 
-**Goal:** establish a dependable supported market-data provider and add cross-book execution tooling.
+**Status:** Active program
+
+**Goal:** establish a dependable supported market-data provider and add
+cross-book execution tooling without coupling forecast publication to market
+availability.
 
 Current state:
 
 - market storage is source-neutral;
-- the nflverse schedule adapter can populate current game-market context when source data is available;
-- the DraftKings adapter is legacy and unreliable because anti-bot responses can block access;
-- weekly prediction does not require markets;
+- the nflverse schedule adapter can populate current game-market context when
+  source data is available;
+- the DraftKings adapter is legacy and unreliable because anti-bot responses
+  can block access;
+- weekly prediction consumes an existing current snapshot and does not fetch
+  external prices;
 - missing markets soft-fail only edge generation.
 
-Future scope:
+Program sequence:
 
-- select and document a supported provider;
-- ingest multiple sportsbooks into the existing source-neutral contract;
-- retain book, market, line, price, source, and fetch provenance;
-- add best-price comparison, line movement, arbitrage, and middle detection;
-- expose book-level markets to Games, Game Detail, Line Shopping, and BetSlip;
-- add multi-book prop shopping only after the game-market contract is stable.
+1. **Provider and contract selection.** Compare supported providers and lock the
+   normalized quote, freshness, identity, configuration, and failure contracts.
+2. **Current provider adapter.** Ingest current and upcoming NFL moneyline,
+   spread, and total quotes into the source-neutral current snapshot.
+3. **Operational integration.** Add explicit refresh, freshness, coverage,
+   prediction-market join, edge, CLI, and API behavior while preserving
+   forecast independence.
+4. **Real-data frontend integration and audit.** Exercise Dashboard, Games,
+   Game Detail, BetSlip, readiness, edge states, sportsbook provenance, and
+   responsive presentation against real market responses.
+5. **Multi-book shopping.** Add best-price comparison, book selection,
+   arbitrage, middle detection, and the Line Shopping product surface.
 
-Do not fabricate production prices or treat the legacy DraftKings adapter as a dependable recovery path.
+Current and historical market data are separate workstreams within this
+program. The current-market workstream comes first because it unlocks immediate
+weekly operation and frontend usability. Historical archive and evaluation
+follow after the provider and normalized quote contract are stable.
+
+Current-market scope:
+
+- documented supported API and secret/configuration boundary;
+- sportsbook-level current and upcoming moneyline, spread, and total quotes;
+- provider, book, event, market, outcome, line, price, and fetch provenance;
+- canonical game identity resolution and unmatched-event diagnostics;
+- source-neutral snapshot validation and atomic replacement;
+- freshness, staleness, partial coverage, malformed response, rate-limit, and
+  provider-failure states;
+- `verify-week`, unified edge service, API, Dashboard, Games, Game Detail, and
+  BetSlip integration.
+
+Historical-market scope, planned separately:
+
+- append-only timestamped quote storage;
+- idempotent provider backfill and coverage reporting;
+- opening, intermediate, and closing quote definitions;
+- leakage-safe pre-kickoff quote selection;
+- closing-line value, model-versus-market evaluation, line movement, strategy
+  backtesting, and consensus policies;
+- partitioning and retention based on observed provider volume.
+
+The initial normalized quote contract must support both current snapshots and a
+future historical archive, but historical ingestion and evaluation are not
+acceptance requirements for the first current-provider implementation.
+
+Do not fabricate production prices, collapse provider quotes to one book before
+normalization, hide a network fetch inside `weekly-predict`, or treat the legacy
+DraftKings adapter as a dependable recovery path.
 
 ### Model Ensemble
 
