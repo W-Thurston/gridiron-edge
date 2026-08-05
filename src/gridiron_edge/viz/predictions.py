@@ -285,6 +285,14 @@ def _build_predictions_df(
     return all_rows, table_cols
 
 
+def _optional_float(row: pd.Series, column: str) -> float | None:
+    """Return one optional numeric display value without fabricating it."""
+    value = row.get(column, pd.NA)
+    if pd.isna(value):
+        return None
+    return float(value)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -305,8 +313,6 @@ def build_weekly_product_display_frame(product: DataFrame) -> DataFrame:
         "away_team",
         "home_team",
         "neutral_site",
-        "away_moneyline",
-        "home_moneyline",
         "win_status",
         "away_win_prob",
         "home_win_prob",
@@ -319,7 +325,11 @@ def build_weekly_product_display_frame(product: DataFrame) -> DataFrame:
     if missing:
         raise ValueError("Weekly product is missing renderer columns: " + ", ".join(missing))
 
-    display = product.loc[:, sorted(required)].copy()
+    optional = {"away_moneyline", "home_moneyline"}
+    selected = sorted(required | (optional & set(product.columns)))
+    display = product.loc[:, selected].copy()
+    for column in sorted(optional - set(display.columns)):
+        display[column] = pd.NA
     display = display.rename(
         columns={
             "game_id": "GAME_ID",
@@ -377,8 +387,8 @@ def render_predictions_image(
 
     moneylines: dict[str, tuple[float | None, float | None]] = {
         str(row["AWAY_TEAM"]).split(" ")[-1]: (
-            None if pd.isna(row["AWAY_MONEYLINE"]) else float(row["AWAY_MONEYLINE"]),
-            None if pd.isna(row["HOME_MONEYLINE"]) else float(row["HOME_MONEYLINE"]),
+            _optional_float(row, "AWAY_MONEYLINE"),
+            _optional_float(row, "HOME_MONEYLINE"),
         )
         for _, row in df_schedule.iterrows()
     }
@@ -700,8 +710,8 @@ def render_predictions_html(
         winner_color: str = TEAM_COLORS.get(winner, "#333")
         loser_cell_style = "color: #888;"
 
-        away_ml = None if pd.isna(row["AWAY_MONEYLINE"]) else float(row["AWAY_MONEYLINE"])
-        home_ml = None if pd.isna(row["HOME_MONEYLINE"]) else float(row["HOME_MONEYLINE"])
+        away_ml = _optional_float(row, "AWAY_MONEYLINE")
+        home_ml = _optional_float(row, "HOME_MONEYLINE")
         away_is_market_dog: bool = (
             away_ml is not None
             and home_ml is not None
