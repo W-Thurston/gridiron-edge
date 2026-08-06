@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useEdges } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
+import { useAppState } from "../../context/AppStateContext";
+import {
+  filterEdgesBySportsbook,
+  sportsbookDisplayName,
+} from "../../utils/sportsbookPreferences";
 import { useNav } from "../../context/NavContext";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { Pill } from "../primitives/Pill";
@@ -25,6 +30,7 @@ export function ModelEdgesTable() {
   const { data, isLoading, error } = useEdges();
   const { navigate } = useNav();
   const { legs, add } = useBetSlip();
+  const { state } = useAppState();
 
   const tabs: { value: MarketFilter; label: string }[] = [
     { value: "all", label: "All" },
@@ -57,7 +63,7 @@ export function ModelEdgesTable() {
     );
   }
 
-  const items = data?.items ?? [];
+  const items = filterEdgesBySportsbook(data?.items ?? [], state);
   const filtered = filter === "all"
     ? items
     : items.filter((e) => e.market_type === filter);
@@ -113,6 +119,8 @@ export function ModelEdgesTable() {
               <th style={{ padding: "8px 12px 8px 0" }}>Match</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Side</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Market</th>
+              <th style={{ padding: "8px 12px 8px 0" }}>Sportsbook</th>
+              <th style={{ padding: "8px 12px 8px 0" }}>Odds</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Fair</th>
               <th style={{ padding: "8px 12px 8px 0" }}>Cover Prob</th>
               <th style={{ padding: "8px 12px 8px 0", textAlign: "right" }}>EV</th>
@@ -145,6 +153,7 @@ export function ModelEdgesTable() {
                 market,
                 side,
                 line,
+                sportsbook: edge.sportsbook ?? null,
               });
               const isPicked = legs.some((l) => l.id === legId);
               return (
@@ -185,6 +194,16 @@ export function ModelEdgesTable() {
                   <td style={{ padding: "10px 12px 10px 0" }}>{edge.side}</td>
                   <td style={{ padding: "10px 12px 10px 0", color: "var(--ink-3)" }}>
                     {edge.market_type}
+                  </td>
+                  <td style={{ padding: "10px 12px 10px 0", color: "var(--ink-3)" }}>
+                    {edge.sportsbook
+                      ? sportsbookDisplayName(edge.sportsbook)
+                      : "Consensus"}
+                  </td>
+                  <td style={{ padding: "10px 12px 10px 0", color: "var(--ink-3)" }}>
+                    {edge.american_odds > 0
+                      ? `+${edge.american_odds}`
+                      : edge.american_odds}
                   </td>
                   <td style={{ padding: "10px 12px 10px 0", color: "var(--ink-3)" }}>
                     {formatFair(edge.model_value, edge.market_type)}

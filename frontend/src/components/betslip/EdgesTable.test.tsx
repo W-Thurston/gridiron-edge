@@ -47,8 +47,13 @@ function response(overrides: Partial<EdgeList> = {}): EdgeList {
   };
 }
 
-function moneylineEdge(): components["schemas"]["EdgeRow"] {
+function moneylineEdge(
+  overrides: Partial<components["schemas"]["EdgeRow"]> = {},
+): components["schemas"]["EdgeRow"] {
   return {
+    provider: "the_odds_api",
+    provider_event_id: "event-1",
+    sportsbook: "draftkings",
     game_id: "2026_01_KC_LAC",
     away_team: "Kansas City Chiefs",
     home_team: "Los Angeles Chargers",
@@ -62,6 +67,7 @@ function moneylineEdge(): components["schemas"]["EdgeRow"] {
     edge_strength: "strong",
     kelly_frac: 0.08,
     kelly_stake: 20,
+    ...overrides,
   };
 }
 
@@ -159,6 +165,7 @@ describe("EdgesTable", () => {
 
     for (const heading of [
       "Matchup",
+      "Sportsbook",
       "Market",
       "Side",
       "Market Context",
@@ -170,6 +177,7 @@ describe("EdgesTable", () => {
         screen.getByRole("columnheader", { name: heading }),
       ).toBeInTheDocument();
     }
+    expect(screen.getByText("DraftKings")).toBeInTheDocument();
     expect(screen.getByText("45.0% no-vig")).toBeInTheDocument();
     expect(screen.getByText("+170")).toBeInTheDocument();
   });
@@ -221,5 +229,62 @@ describe("EdgesTable", () => {
       bankroll: 0,
       kelly_multiplier: 0.25,
     });
+  });
+
+
+  it("renders every sportsbook offer in all mode", () => {
+    mockLoaded(response({
+      items: [
+        moneylineEdge(),
+        moneylineEdge({
+          provider_event_id: "event-2",
+          sportsbook: "fanduel",
+          american_odds: 180,
+          ev: 0.1,
+        }),
+      ],
+      total: 2,
+    }));
+
+    render(
+      <TestWrapper>
+        <EdgesTable bankroll={2500} kellyMultiplier={0.25} />
+      </TestWrapper>,
+    );
+
+    expect(screen.getByText("DraftKings")).toBeInTheDocument();
+    expect(screen.getByText("FanDuel")).toBeInTheDocument();
+    expect(screen.getByText("+170")).toBeInTheDocument();
+    expect(screen.getByText("+180")).toBeInTheDocument();
+  });
+
+  it("renders only selected sportsbook offers", () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      sportsbookMode: "selected",
+      selectedSportsbooks: ["fanduel"],
+    }));
+    mockLoaded(response({
+      items: [
+        moneylineEdge(),
+        moneylineEdge({
+          provider_event_id: "event-2",
+          sportsbook: "fanduel",
+          american_odds: 180,
+          ev: 0.1,
+        }),
+      ],
+      total: 2,
+    }));
+
+    render(
+      <TestWrapper>
+        <EdgesTable bankroll={2500} kellyMultiplier={0.25} />
+      </TestWrapper>,
+    );
+
+    expect(screen.queryByText("DraftKings")).not.toBeInTheDocument();
+    expect(screen.getByText("FanDuel")).toBeInTheDocument();
+    expect(screen.queryByText("+170")).not.toBeInTheDocument();
+    expect(screen.getByText("+180")).toBeInTheDocument();
   });
 });

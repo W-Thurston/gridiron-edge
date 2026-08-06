@@ -403,3 +403,15 @@ from normal weekly and composite workflows.
 ---
 
 ### Market Unit 4: Integrate Current Markets Operationally [Active]
+
+#### Completed
+Preserved sportsbook-specific market offers through edge calculation, diagnostics, API, CLI, CSV, frontend selection, and Bet Slip staging. Added persisted all-or-selected sportsbook preferences, deterministic compact-offer selection, and sportsbook-specific Bet Slip v3 identities with immutable quote provenance.
+
+#### Goal
+Provide truthful multi-sportsbook edge recommendations without collapsing quote identity, while allowing users to control which sportsbooks are eligible across the frontend.
+
+#### Tests
+Validated sportsbook-aware recommendation generation, market-family diagnostics, serialization, API routes, CLI and CSV output, OpenAPI generation, Settings persistence, full-table filtering, deterministic compact selection, and Bet Slip v3 parsing and identity. Python quality gates and integration tests passed. Frontend lint, production build, and all 362 tests passed.
+
+#### Acceptance
+Each eligible sportsbook offer remains independently traceable by provider event, sportsbook, game, market, side, price, and timestamps. Users can select all or specific sportsbooks. Full tables retain eligible offers, compact surfaces select one deterministic best eligible offer, and matching wagers from different sportsbooks can coexist on the Bet Slip.

@@ -10,7 +10,7 @@ from pandas import DataFrame
 import pytest
 from typer.testing import CliRunner
 
-from gridiron_edge.cli.edges import edges_app
+from gridiron_edge.cli.edges import _format_american_odds, edges_app
 from gridiron_edge.market.edge_diagnostics import (
     EdgeDiagnosticBlocker,
     EdgeDiagnostics,
@@ -70,11 +70,18 @@ def _row(*, stake: float | None = None) -> DataFrame:
     return DataFrame(
         [
             {
+                "provider": "the_odds_api",
+                "provider_event_id": "event-1",
+                "sportsbook": "draftkings",
+                "market_fetched_at": "2026-09-05T12:00:00+00:00",
+                "sportsbook_updated_at": "2026-09-05T11:59:00+00:00",
+                "commence_time": "2026-09-06T00:20:00+00:00",
                 "game_id": "2026_01_KC_LAC",
                 "away_team": "Kansas City Chiefs",
                 "home_team": "Los Angeles Chargers",
                 "market_type": "moneyline",
                 "side": "home",
+                "american_odds": 125,
                 "ev": 0.08,
                 "edge_strength": "strong",
                 "kelly_stake": stake,
@@ -112,6 +119,7 @@ def test_report_calls_service_once_and_omits_bankroll() -> None:
         min_ev=0.0,
     )
     assert "1 edge(s) found" in result.output
+    assert "+125" in result.output
 
 
 def test_report_forwards_explicit_bankroll_and_filter() -> None:
@@ -256,6 +264,11 @@ def test_report_help_has_no_model_type_and_bankroll_is_optional() -> None:
     assert result.exit_code == 0
     assert "--model-type" not in result.output
     assert "Optional bankroll" in result.output
+
+
+def test_american_odds_formatter_preserves_sign() -> None:
+    assert _format_american_odds(125) == "+125"
+    assert _format_american_odds(-110) == "-110"
 
 
 def test_table_renders_unavailable_stake() -> None:

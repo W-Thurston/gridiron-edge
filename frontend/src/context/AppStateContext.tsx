@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { normalizeSelectedSportsbooks, type SportsbookMode } from "../utils/sportsbookPreferences";
 
 export type OddsFormat = "american" | "decimal";
 
@@ -8,6 +9,8 @@ export type AppState = {
   bankroll: number;
   onboarded: boolean;
   alerts: number;
+  sportsbookMode: SportsbookMode;
+  selectedSportsbooks: string[];
 };
 
 type AppStateContextValue = {
@@ -26,6 +29,8 @@ const DEFAULT_STATE: AppState = {
   bankroll: 12480.55,
   onboarded: true,
   alerts: 4,
+  sportsbookMode: "all",
+  selectedSportsbooks: [],
 };
 
 function loadInitialState(): AppState {
@@ -33,8 +38,16 @@ function loadInitialState(): AppState {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<AppState>;
-      // Merge with defaults so newly added keys don't break existing users.
-      return { ...DEFAULT_STATE, ...parsed };
+      const sportsbookMode = parsed.sportsbookMode === "selected" ? "selected" : "all";
+      const selectedSportsbooks = normalizeSelectedSportsbooks(parsed.selectedSportsbooks);
+      return {
+        ...DEFAULT_STATE,
+        ...parsed,
+        sportsbookMode: sportsbookMode === "selected" && selectedSportsbooks.length > 0
+          ? "selected"
+          : "all",
+        selectedSportsbooks,
+      };
     }
   } catch {
     // Ignore parse errors.

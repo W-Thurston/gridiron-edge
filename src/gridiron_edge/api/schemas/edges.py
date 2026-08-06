@@ -46,10 +46,18 @@ class EdgeDiagnosticsResponse(BaseModel):
     prediction_game_count: int
     market_game_count: int
     matched_game_count: int
-    complete_moneyline_count: int
-    complete_spread_count: int
-    complete_total_count: int
-    eligible_market_count: int
+    complete_moneyline_count: int = Field(
+        description="Complete sportsbook-game moneyline pairs.",
+    )
+    complete_spread_count: int = Field(
+        description="Complete sportsbook-game spread pairs.",
+    )
+    complete_total_count: int = Field(
+        description="Complete sportsbook-game total pairs.",
+    )
+    eligible_market_count: int = Field(
+        description="Total complete sportsbook-game market families.",
+    )
     calculated_edge_count: int
     positive_edge_count: int
     filtered_edge_count: int
@@ -63,13 +71,21 @@ class EdgeDiagnosticsResponse(BaseModel):
 class EdgeRow(BaseModel):
     """A single edge in the ranked edge report.
 
-    One row per (game, market_type, side) triple. Moneyline rows have
-    ``point_edge`` and ``cover_prob`` as null; spread/total rows populate
-    them. Fields mirror ``_REPORT_COLUMNS`` in
-    ``market.recommendations`` and preserve service-provided team names.
+    One row per provider-event-sportsbook-game-market-side offer.
+    Moneyline rows have ``point_edge`` and ``cover_prob`` as null;
+    spread/total rows populate them. Fields mirror ``_REPORT_COLUMNS`` in
+    ``market.recommendations`` and preserve exact quote provenance.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Quote provenance
+    provider: str | None = None
+    provider_event_id: str | None = None
+    sportsbook: str | None = None
+    market_fetched_at: datetime | None = None
+    sportsbook_updated_at: datetime | None = None
+    commence_time: datetime | None = None
 
     # Game context
     game_id: str

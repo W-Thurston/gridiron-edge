@@ -31,7 +31,11 @@ _EMPTY_PREDICTION_COLUMNS: tuple[str, ...] = (
 _EMPTY_MARKET_COLUMNS: tuple[str, ...] = (
     "fetched_at",
     "provider",
+    "provider_event_id",
     "sportsbook",
+    "sportsbook_updated_at",
+    "commence_time",
+    "is_live",
     "season",
     "week",
     "game_id",

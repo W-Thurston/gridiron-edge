@@ -1,4 +1,10 @@
 import { useAppState } from "../context/AppStateContext";
+import { useEdges } from "../api/hooks";
+import {
+  availableSportsbooks,
+  normalizeSelectedSportsbooks,
+  sportsbookDisplayName,
+} from "../utils/sportsbookPreferences";
 import { useBetSlip } from "../context/BetSlipContext";
 import { useNav } from "../context/NavContext";
 
@@ -6,6 +12,30 @@ export function Settings() {
   const { state, setState } = useAppState();
   const { clear: clearBetSlip } = useBetSlip();
   const { navigate } = useNav();
+  const { data: edgesData } = useEdges();
+  const currentSportsbooks = availableSportsbooks(edgesData?.items ?? []);
+  const sportsbookOptions = normalizeSelectedSportsbooks([
+    ...currentSportsbooks,
+    ...state.selectedSportsbooks,
+  ]);
+
+  const chooseSpecificSportsbooks = () => {
+    const selected = state.selectedSportsbooks.length > 0
+      ? state.selectedSportsbooks
+      : currentSportsbooks;
+    if (selected.length === 0) return;
+    setState({ sportsbookMode: "selected", selectedSportsbooks: selected });
+  };
+
+  const toggleSportsbook = (sportsbook: string) => {
+    const selected = new Set(state.selectedSportsbooks);
+    if (selected.has(sportsbook)) selected.delete(sportsbook);
+    else selected.add(sportsbook);
+    const next = Array.from(selected).sort();
+    setState(next.length === 0
+      ? { sportsbookMode: "all", selectedSportsbooks: [] }
+      : { sportsbookMode: "selected", selectedSportsbooks: next });
+  };
 
   const handleReset = () => {
     if (
@@ -39,6 +69,48 @@ export function Settings() {
               ]}
               onChange={(v) => setState({ oddsFormat: v })}
             />
+          }
+        />
+
+        <SettingsRow
+          label="Sportsbooks"
+          description="Choose which sportsbook offers are eligible across edge tables, dashboard summaries, Game Detail, and Bet Slip staging."
+          control={
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 250 }}>
+              <ToggleGroup
+                value={state.sportsbookMode}
+                options={[
+                  { value: "all", label: "All sportsbooks" },
+                  { value: "selected", label: "Choose books" },
+                ]}
+                onChange={(value) => {
+                  if (value === "all") {
+                    setState({ sportsbookMode: "all" });
+                  } else {
+                    chooseSpecificSportsbooks();
+                  }
+                }}
+              />
+              {state.sportsbookMode === "selected" && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                  {sportsbookOptions.map((sportsbook) => (
+                    <label key={sportsbook} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={state.selectedSportsbooks.includes(sportsbook)}
+                        onChange={() => toggleSportsbook(sportsbook)}
+                      />
+                      {sportsbookDisplayName(sportsbook)}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <span className="mono dim" style={{ fontSize: 10 }}>
+                {state.sportsbookMode === "all"
+                  ? "All available sportsbooks"
+                  : `${state.selectedSportsbooks.length} sportsbook${state.selectedSportsbooks.length === 1 ? "" : "s"} selected`}
+              </span>
+            </div>
           }
         />
 

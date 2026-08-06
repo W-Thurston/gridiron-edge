@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -324,33 +325,64 @@ def _home_win_probability_present(prediction: Series) -> bool:
     )
 
 
+_BOOK_MARKET_GROUP_COLUMNS: tuple[str, ...] = (
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "game_id",
+)
+
+
+def _book_market_groups(
+    markets: DataFrame,
+    matched_game_ids: set[str],
+) -> Iterator[tuple[tuple[object, ...], DataFrame]]:
+    """Yield current quote rows independently for each matched book-game."""
+    if markets.empty:
+        return
+
+    missing = sorted(set(_BOOK_MARKET_GROUP_COLUMNS) - set(markets.columns))
+    if missing:
+        raise ValueError(
+            "Markets are missing required book identity columns: " + ", ".join(missing)
+        )
+
+    matched = markets.loc[
+        markets["game_id"].astype(str).isin(matched_game_ids),
+        :,
+    ]
+    for group_key, book_markets in matched.groupby(
+        list(_BOOK_MARKET_GROUP_COLUMNS),
+        sort=False,
+        dropna=False,
+    ):
+        yield tuple(group_key), book_markets
+
+
 def _complete_market_counts(
     predictions: DataFrame,
     markets: DataFrame,
     matched_game_ids: set[str],
 ) -> tuple[int, int, int]:
-    """Count complete calculable Moneyline, Spread, and Total pairs."""
+    """Count complete calculable market families per sportsbook and game."""
     moneyline_count = 0
     spread_count = 0
     total_count = 0
 
-    for game_id in sorted(matched_game_ids):
+    for group_key, book_markets in _book_market_groups(markets, matched_game_ids):
+        game_id = str(group_key[-1])
         prediction = _prediction_for_game(predictions, game_id)
-        game_markets = markets.loc[
-            markets["game_id"].astype(str) == game_id,
-            :,
-        ]
 
         moneyline_complete = (
             _home_win_probability_present(prediction)
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="moneyline",
                 side="home",
                 require_line=False,
             )
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="moneyline",
                 side="away",
                 require_line=False,
@@ -359,13 +391,13 @@ def _complete_market_counts(
         spread_complete = (
             _value_present(prediction, "model_spread")
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="spread",
                 side="home",
                 require_line=True,
             )
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="spread",
                 side="away",
                 require_line=False,
@@ -374,13 +406,13 @@ def _complete_market_counts(
         total_complete = (
             _value_present(prediction, "model_total")
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="total",
                 side="over",
                 require_line=True,
             )
             and _market_side_complete(
-                game_markets,
+                book_markets,
                 market="total",
                 side="under",
                 require_line=False,
@@ -392,6 +424,22 @@ def _complete_market_counts(
         total_count += int(total_complete)
 
     return moneyline_count, spread_count, total_count
+
+
+def _observed_book_market_count(
+    markets: DataFrame,
+    matched_game_ids: set[str],
+) -> int:
+    """Count market families actually offered across matched book-games."""
+    observed = 0
+    for _, book_markets in _book_market_groups(markets, matched_game_ids):
+        observed += int(
+            book_markets.loc[
+                book_markets["market"].isin(("moneyline", "spread", "total")),
+                "market",
+            ].nunique()
+        )
+    return observed
 
 
 def _distinct_text_values(
@@ -621,6 +669,10 @@ def evaluate_edge_diagnostics(
         matched_game_ids,
     )
     eligible_count = moneyline_count + spread_count + total_count
+    observed_book_market_count = _observed_book_market_count(
+        scoped_markets,
+        matched_game_ids,
+    )
     calculated_count, positive_count, filtered_count = _edge_counts(
         scoped_calculated,
         scoped_filtered,
@@ -645,7 +697,7 @@ def evaluate_edge_diagnostics(
         blockers.append(EdgeDiagnosticBlocker.MARKET_STALE)
     if prediction_game_ids and market_game_ids and not matched_game_ids:
         blockers.append(EdgeDiagnosticBlocker.ZERO_MATCHED_GAMES)
-    if matched_game_ids and eligible_count < len(matched_game_ids) * 3:
+    if matched_game_ids and eligible_count < observed_book_market_count:
         blockers.append(EdgeDiagnosticBlocker.INCOMPLETE_MARKETS)
 
     if blockers:

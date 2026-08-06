@@ -195,6 +195,121 @@ describe("FeaturedMatchupsGrid", () => {
     );
 
     expect(screen.getByText("Home win prob 58%")).toBeInTheDocument();
-    expect(screen.getByText("+8.0% EV")).toBeInTheDocument();
+    expect(
+      screen.getByText("Consensus · -110 · +8.0% EV"),
+    ).toBeInTheDocument();
   });
+
+
+  it("selects one highest-EV offer per game in all-books mode", () => {
+    mockLoaded(
+      edgeResponse({
+        total: 2,
+        items: [
+          {
+            game_id: "2026_01_KC_LAC",
+            game_date: "2026-09-05",
+            season: "2026-2027",
+            week: 1,
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-dk",
+            sportsbook: "draftkings",
+            american_odds: -150,
+            ev: 0.08,
+            edge_strength: "strong",
+          },
+          {
+            game_id: "2026_01_KC_LAC",
+            game_date: "2026-09-05",
+            season: "2026-2027",
+            week: 1,
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-fd",
+            sportsbook: "fanduel",
+            american_odds: -140,
+            ev: 0.1,
+            edge_strength: "strong",
+          },
+        ],
+      }),
+    );
+
+    render(<TestWrapper><FeaturedMatchupsGrid /></TestWrapper>);
+
+    expect(screen.getByText("Top 1 by EV")).toBeInTheDocument();
+    expect(screen.getByText("FanDuel · -140 · +10.0% EV")).toBeInTheDocument();
+    expect(screen.queryByText(/DraftKings · -150/)).not.toBeInTheDocument();
+  });
+
+  it("selects the best offer from the persisted sportsbook subset", () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      sportsbookMode: "selected",
+      selectedSportsbooks: ["draftkings"],
+    }));
+    mockLoaded(
+      edgeResponse({
+        total: 2,
+        items: [
+          {
+            game_id: "2026_01_KC_LAC",
+            game_date: "2026-09-05",
+            season: "2026-2027",
+            week: 1,
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-dk",
+            sportsbook: "draftkings",
+            american_odds: -150,
+            ev: 0.08,
+            edge_strength: "strong",
+          },
+          {
+            game_id: "2026_01_KC_LAC",
+            game_date: "2026-09-05",
+            season: "2026-2027",
+            week: 1,
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-fd",
+            sportsbook: "fanduel",
+            american_odds: -140,
+            ev: 0.1,
+            edge_strength: "strong",
+          },
+        ],
+      }),
+    );
+
+    render(<TestWrapper><FeaturedMatchupsGrid /></TestWrapper>);
+
+    expect(screen.getByText("DraftKings · -150 · +8.0% EV")).toBeInTheDocument();
+    expect(screen.queryByText(/FanDuel · -140/)).not.toBeInTheDocument();
+  });
+
 });

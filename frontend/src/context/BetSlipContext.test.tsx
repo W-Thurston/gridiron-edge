@@ -27,8 +27,8 @@ type EdgeApiRow =
 type PropApi =
   components["schemas"]["PropSummary"];
 
-const LEGS_KEY = "hm-betslip-v2";
-const MODE_KEY = "hm-betslip-mode-v2";
+const LEGS_KEY = "hm-betslip-v3";
+const MODE_KEY = "hm-betslip-mode-v3";
 const ADDED_AT =
   "2026-07-29T16:00:00.000Z";
 
@@ -339,7 +339,7 @@ describe("BetSlipContext", () => {
     ).toHaveTextContent("single");
   });
 
-  it("loads valid v2 legs", () => {
+  it("loads valid v3 legs", () => {
     localStorage.setItem(
       LEGS_KEY,
       JSON.stringify([

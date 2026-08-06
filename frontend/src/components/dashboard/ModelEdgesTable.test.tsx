@@ -154,4 +154,41 @@ describe("ModelEdgesTable", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
+
+
+  it("honors a selected sportsbook when rendering model offers", () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      sportsbookMode: "selected",
+      selectedSportsbooks: ["fanduel"],
+    }));
+    mockLoaded(response({
+      items: [
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-dk",
+          sportsbook: "draftkings",
+          american_odds: -150,
+          ev: 0.08,
+        },
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-fd",
+          sportsbook: "fanduel",
+          american_odds: -140,
+          ev: 0.1,
+        },
+      ],
+      total: 2,
+    }));
+
+    render(<TestWrapper><ModelEdgesTable /></TestWrapper>);
+
+    expect(screen.queryByText("DraftKings")).not.toBeInTheDocument();
+    expect(screen.getByText("FanDuel")).toBeInTheDocument();
+    expect(screen.queryByText("-150")).not.toBeInTheDocument();
+    expect(screen.getByText("-140")).toBeInTheDocument();
+  });
+
 });

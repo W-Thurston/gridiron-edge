@@ -27,6 +27,12 @@ from gridiron_edge.market.recommendations import EdgeResult
 def _valid_row() -> dict:
     """Return one canonical service recommendation row."""
     return {
+        "provider": "the_odds_api",
+        "provider_event_id": "event-1",
+        "sportsbook": "draftkings",
+        "market_fetched_at": datetime(2026, 9, 5, 12, tzinfo=UTC),
+        "sportsbook_updated_at": datetime(2026, 9, 5, 11, 59, tzinfo=UTC),
+        "commence_time": datetime(2026, 9, 6, 0, 20, tzinfo=UTC),
         "game_id": "2026_01_KC_LAC",
         "game_date": "2026-09-05",
         "season": "2026-2027",
@@ -105,6 +111,10 @@ class TestRowToEdge:
         assert row.point_edge is None
         assert row.cover_prob is None
         assert row.edge_strength == "moderate"
+        assert row.provider == "the_odds_api"
+        assert row.provider_event_id == "event-1"
+        assert row.sportsbook == "draftkings"
+        assert row.market_fetched_at == datetime(2026, 9, 5, 12, tzinfo=UTC)
 
 
 class TestSerializeDiagnostics:

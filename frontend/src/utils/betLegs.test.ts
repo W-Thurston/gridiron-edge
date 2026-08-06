@@ -10,8 +10,8 @@ import {
   createPropBetLeg,
   isPriceAtLeastAsGood,
   modelBreakEvenAmericanOdds,
-  parseBetLegsV2,
-  parseBetLegV2,
+  parseBetLegsV3,
+  parseBetLegV3,
   propSideFromLean,
   type BetLegSource,
   type GameBetLeg,
@@ -24,6 +24,12 @@ const ADDED_AT = "2026-07-29T15:00:00.000Z";
 
 function edge(overrides: Partial<EdgeApiRow> = {}): EdgeApiRow {
   return {
+    provider: "the_odds_api",
+    provider_event_id: "event-1",
+    sportsbook: "draftkings",
+    market_fetched_at: "2026-09-05T12:00:00Z",
+    sportsbook_updated_at: "2026-09-05T11:59:00Z",
+    commence_time: "2026-09-06T00:20:00Z",
     american_odds: -110,
     away_team: "KC",
     confidence_tier: "High",
@@ -102,9 +108,10 @@ describe("canonical wager IDs", () => {
       market: "spread" as const,
       side: "away" as const,
       line: -3.5,
+      sportsbook: "draftkings",
     };
     expect(buildGameBetLegId(input)).toBe(
-      "game:2026_01_KC_LAC:spread:away:-3.5",
+      "game:2026_01_KC_LAC:spread:away:-3.5:draftkings",
     );
     expect(buildGameBetLegId(input)).toBe(buildGameBetLegId(input));
   });
@@ -115,18 +122,21 @@ describe("canonical wager IDs", () => {
       market: "spread",
       side: "home",
       line: -3.5,
+      sportsbook: "draftkings",
     });
     const away = buildGameBetLegId({
       gameId: "game",
       market: "spread",
       side: "away",
       line: -3.5,
+      sportsbook: "draftkings",
     });
     const moved = buildGameBetLegId({
       gameId: "game",
       market: "spread",
       side: "home",
       line: -4,
+      sportsbook: "draftkings",
     });
     expect(new Set([home, away, moved]).size).toBe(3);
   });
@@ -168,6 +178,15 @@ describe("createGameBetLeg", () => {
     expect(leg.recommendation.referenceAmericanOdds).toBe(-110);
     expect(leg.recommendation.referenceModelProbability).toBe(0.58);
     expect(leg.draft.currentAmericanOdds).toBe(-110);
+    expect(leg.draft.sportsbook).toBe("draftkings");
+    expect(leg.recommendation).toMatchObject({
+      referenceProvider: "the_odds_api",
+      referenceProviderEventId: "event-1",
+      referenceSportsbook: "draftkings",
+      referenceMarketFetchedAt: "2026-09-05T12:00:00Z",
+      referenceSportsbookUpdatedAt: "2026-09-05T11:59:00Z",
+      referenceCommenceTime: "2026-09-06T00:20:00Z",
+    });
   });
 
   it("keeps a spread line separate from its selected-side price", () => {
@@ -219,6 +238,14 @@ describe("createGameBetLeg", () => {
     expect(create(edge(), "dashboard-featured").id).toBe(
       create(edge(), "game-detail-lean").id,
     );
+  });
+
+
+  it("distinguishes otherwise identical sportsbook offers", () => {
+    expect(create(edge({ sportsbook: "draftkings" })).id).not.toBe(
+      create(edge({ sportsbook: "fanduel" })).id,
+    );
+    expect(create(edge({ sportsbook: null })).id).toContain(":consensus");
   });
 
   it("rejects unsupported market and side combinations", () => {
@@ -643,31 +670,31 @@ describe("analyzeBetLeg", () => {
   });
 });
 
-describe("v2 runtime parsing", () => {
+describe("v3 runtime parsing", () => {
   it("accepts valid game and prop legs", () => {
-    expect(parseBetLegV2(gameLeg())).toEqual(gameLeg());
-    expect(parseBetLegV2(propLeg())).toEqual(propLeg());
+    expect(parseBetLegV3(gameLeg())).toEqual(gameLeg());
+    expect(parseBetLegV3(propLeg())).toEqual(propLeg());
   });
 
-  it("rejects legacy version 1 and malformed sources", () => {
-    expect(parseBetLegV2({ ...gameLeg(), version: 1 })).toBeNull();
-    expect(parseBetLegV2({ ...gameLeg(), source: "unknown" })).toBeNull();
+  it("rejects retired versions and malformed sources", () => {
+    expect(parseBetLegV3({ ...gameLeg(), version: 2 })).toBeNull();
+    expect(parseBetLegV3({ ...gameLeg(), source: "unknown" })).toBeNull();
   });
 
   it("rejects invalid market-side combinations", () => {
     expect(
-      parseBetLegV2({ ...gameLeg(), market: "total", side: "home" }),
+      parseBetLegV3({ ...gameLeg(), market: "total", side: "home" }),
     ).toBeNull();
   });
 
   it("rejects a noncanonical ID", () => {
-    expect(parseBetLegV2({ ...gameLeg(), id: "producer-specific" })).toBeNull();
+    expect(parseBetLegV3({ ...gameLeg(), id: "producer-specific" })).toBeNull();
   });
 
   it("rejects zero, NaN, and infinite prices", () => {
     for (const currentAmericanOdds of [0, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(
-        parseBetLegV2({
+        parseBetLegV3({
           ...gameLeg(),
           draft: { ...gameLeg().draft, currentAmericanOdds },
         }),
@@ -676,18 +703,18 @@ describe("v2 runtime parsing", () => {
   });
 
   it("rejects malformed nested blocks", () => {
-    expect(parseBetLegV2({ ...gameLeg(), recommendation: null })).toBeNull();
-    expect(parseBetLegV2({ ...gameLeg(), draft: {} })).toBeNull();
+    expect(parseBetLegV3({ ...gameLeg(), recommendation: null })).toBeNull();
+    expect(parseBetLegV3({ ...gameLeg(), draft: {} })).toBeNull();
   });
 
   it("salvages valid legs from a mixed array", () => {
     expect(
-      parseBetLegsV2([gameLeg(), { ...propLeg(), version: 1 }, propLeg()]),
+      parseBetLegsV3([gameLeg(), { ...propLeg(), version: 1 }, propLeg()]),
     ).toEqual([gameLeg(), propLeg()]);
   });
 
   it("returns an empty list for non-array input", () => {
-    expect(parseBetLegsV2(gameLeg())).toEqual([]);
+    expect(parseBetLegsV3(gameLeg())).toEqual([]);
   });
 });
 

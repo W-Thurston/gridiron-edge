@@ -53,7 +53,11 @@ def _markets(
     base: dict[str, object] = {
         "fetched_at": timestamp,
         "provider": source,
+        "provider_event_id": None,
         "sportsbook": None,
+        "sportsbook_updated_at": pd.NaT,
+        "commence_time": pd.NaT,
+        "is_live": False,
         "season": SEASON,
         "week": WEEK,
         "game_id": GAME_ID,
@@ -295,3 +299,88 @@ def test_inputs_are_not_mutated() -> None:
     pd.testing.assert_frame_equal(markets, expected_markets)
     pd.testing.assert_frame_equal(calculated, expected_calculated)
     pd.testing.assert_frame_equal(filtered, expected_filtered)
+
+
+def _book_markets(
+    sportsbook: str,
+    *,
+    include_moneyline_home: bool = True,
+    include_spread: bool = True,
+    include_total: bool = True,
+) -> DataFrame:
+    """Return one canonical sportsbook fixture with optional market families."""
+    markets = _markets().copy()
+    markets["provider"] = "the_odds_api"
+    markets["provider_event_id"] = "event-1"
+    markets["sportsbook"] = sportsbook
+    markets["sportsbook_updated_at"] = datetime(2026, 9, 5, 11, 59, tzinfo=UTC)
+    markets["commence_time"] = datetime(2026, 9, 6, 0, 20, tzinfo=UTC)
+    if not include_moneyline_home:
+        markets = markets.loc[
+            ~((markets["market"] == "moneyline") & (markets["side"] == "home")),
+            :,
+        ]
+    if not include_spread:
+        markets = markets.loc[markets["market"] != "spread", :]
+    if not include_total:
+        markets = markets.loc[markets["market"] != "total", :]
+    return markets
+
+
+def test_complete_counts_are_per_sportsbook_market_family() -> None:
+    markets = pd.concat(
+        [_book_markets("draftkings"), _book_markets("fanduel")],
+        ignore_index=True,
+    )
+    result = _evaluate(markets=markets)
+    assert result.complete_moneyline_count == 2
+    assert result.complete_spread_count == 2
+    assert result.complete_total_count == 2
+    assert result.eligible_market_count == 6
+    assert EdgeDiagnosticBlocker.INCOMPLETE_MARKETS not in result.blockers
+
+
+def test_absent_book_market_family_is_not_incomplete() -> None:
+    markets = pd.concat(
+        [
+            _book_markets("draftkings"),
+            _book_markets("fanduel", include_spread=False),
+        ],
+        ignore_index=True,
+    )
+    result = _evaluate(markets=markets)
+    assert result.complete_moneyline_count == 2
+    assert result.complete_spread_count == 1
+    assert result.complete_total_count == 2
+    assert result.eligible_market_count == 5
+    assert EdgeDiagnosticBlocker.INCOMPLETE_MARKETS not in result.blockers
+
+
+def test_one_sided_book_market_is_incomplete_without_cross_book_mixing() -> None:
+    markets = pd.concat(
+        [
+            _book_markets("draftkings"),
+            _book_markets("fanduel", include_moneyline_home=False),
+        ],
+        ignore_index=True,
+    )
+    result = _evaluate(markets=markets)
+    assert result.complete_moneyline_count == 1
+    assert result.complete_spread_count == 2
+    assert result.complete_total_count == 2
+    assert result.eligible_market_count == 5
+    assert EdgeDiagnosticBlocker.INCOMPLETE_MARKETS in result.blockers
+
+
+def test_missing_model_component_marks_offered_book_markets_incomplete() -> None:
+    predictions = _predictions(model_total=None)
+    markets = pd.concat(
+        [_book_markets("draftkings"), _book_markets("fanduel")],
+        ignore_index=True,
+    )
+    result = _evaluate(predictions=predictions, markets=markets)
+    assert result.complete_moneyline_count == 2
+    assert result.complete_spread_count == 2
+    assert result.complete_total_count == 0
+    assert result.eligible_market_count == 4
+    assert EdgeDiagnosticBlocker.INCOMPLETE_MARKETS in result.blockers

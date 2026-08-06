@@ -11,7 +11,7 @@ type PropSummaryApi = components["schemas"]["PropSummary"];
 type PropDetailApi = components["schemas"]["PropDetail"];
 type PropApi = PropSummaryApi | PropDetailApi;
 
-export const BET_LEG_VERSION = 2 as const;
+export const BET_LEG_VERSION = 3 as const;
 
 export type BetLegSource =
   | "betslip-edges"
@@ -38,6 +38,12 @@ export type RecommendationSnapshot = {
   referenceKellyStake: number | null;
   referenceBankroll: number | null;
   referenceKellyMultiplier: number | null;
+  referenceProvider: string | null;
+  referenceProviderEventId: string | null;
+  referenceSportsbook: string | null;
+  referenceMarketFetchedAt: string | null;
+  referenceSportsbookUpdatedAt: string | null;
+  referenceCommenceTime: string | null;
 };
 
 export type BetDraftInputs = {
@@ -122,13 +128,22 @@ export function buildGameBetLegId({
   market,
   side,
   line,
+  sportsbook,
 }: {
   gameId: string;
   market: GameMarket;
   side: GameSide;
   line: number | null;
+  sportsbook: string | null;
 }): string {
-  return ["game", gameId, market, side, lineToken(line)].join(":");
+  return [
+    "game",
+    gameId,
+    market,
+    side,
+    lineToken(line),
+    sportsbookToken(sportsbook),
+  ].join(":");
 }
 
 export function buildPropBetLegId({
@@ -181,6 +196,7 @@ export function createGameBetLeg({
       market,
       side,
       line,
+      sportsbook: edge.sportsbook ?? null,
     }),
     source,
     addedAt,
@@ -204,11 +220,17 @@ export function createGameBetLeg({
       referenceKellyMultiplier: nonnegativeOrNull(
         referenceKellyMultiplier,
       ),
+      referenceProvider: nullableString(edge.provider),
+      referenceProviderEventId: nullableString(edge.provider_event_id),
+      referenceSportsbook: nullableString(edge.sportsbook),
+      referenceMarketFetchedAt: nullableString(edge.market_fetched_at),
+      referenceSportsbookUpdatedAt: nullableString(edge.sportsbook_updated_at),
+      referenceCommenceTime: nullableString(edge.commence_time),
     },
     draft: {
       currentAmericanOdds: referenceAmericanOdds,
       proposedStake: null,
-      sportsbook: null,
+      sportsbook: edge.sportsbook ?? null,
       note: null,
     },
   };
@@ -258,6 +280,12 @@ export function createPropBetLeg({
       referenceKellyStake: null,
       referenceBankroll: null,
       referenceKellyMultiplier: null,
+      referenceProvider: null,
+      referenceProviderEventId: null,
+      referenceSportsbook: null,
+      referenceMarketFetchedAt: null,
+      referenceSportsbookUpdatedAt: null,
+      referenceCommenceTime: null,
     },
     draft: {
       currentAmericanOdds: null,
@@ -431,7 +459,7 @@ export function propSideFromLean(
   return null;
 }
 
-export function parseBetLegV2(value: unknown): BetLeg | null {
+export function parseBetLegV3(value: unknown): BetLeg | null {
   if (!isRecord(value) || value.version !== BET_LEG_VERSION) return null;
   if (!isSource(value.source)) return null;
   if (!isNonemptyString(value.id) || !isNonemptyString(value.addedAt)) {
@@ -460,6 +488,7 @@ export function parseBetLegV2(value: unknown): BetLeg | null {
       market,
       side: value.side,
       line,
+      sportsbook: recommendation.referenceSportsbook,
     });
     if (value.id !== expectedId) return null;
 
@@ -528,16 +557,24 @@ export function parseBetLegV2(value: unknown): BetLeg | null {
   return null;
 }
 
-export function parseBetLegsV2(value: unknown): BetLeg[] {
+export function parseBetLegsV3(value: unknown): BetLeg[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    const parsed = parseBetLegV2(item);
+    const parsed = parseBetLegV3(item);
     return parsed ? [parsed] : [];
   });
 }
 
 function lineToken(line: number | null | undefined): string {
   return line == null ? "none" : String(line);
+}
+
+function sportsbookToken(sportsbook: string | null | undefined): string {
+  return sportsbook?.trim().toLowerCase() || "consensus";
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 function parseGameMarket(value: string): GameMarket {
@@ -645,7 +682,13 @@ function parseRecommendation(value: unknown): RecommendationSnapshot | null {
     !isNullableNonnegative(value.referenceKellyFraction) ||
     !isNullableNonnegative(value.referenceKellyStake) ||
     !isNullableNonnegative(value.referenceBankroll) ||
-    !isNullableNonnegative(value.referenceKellyMultiplier)
+    !isNullableNonnegative(value.referenceKellyMultiplier) ||
+    !isNullableString(value.referenceProvider) ||
+    !isNullableString(value.referenceProviderEventId) ||
+    !isNullableString(value.referenceSportsbook) ||
+    !isNullableString(value.referenceMarketFetchedAt) ||
+    !isNullableString(value.referenceSportsbookUpdatedAt) ||
+    !isNullableString(value.referenceCommenceTime)
   ) {
     return null;
   }

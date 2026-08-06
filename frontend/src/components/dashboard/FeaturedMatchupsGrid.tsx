@@ -1,5 +1,11 @@
 import { useEdges, useGamesList } from "../../api/hooks";
 import { useBetSlip } from "../../context/BetSlipContext";
+import { useAppState } from "../../context/AppStateContext";
+import {
+  filterEdgesBySportsbook,
+  selectBestEdgePerGame,
+  sportsbookDisplayName,
+} from "../../utils/sportsbookPreferences";
 import { useNav } from "../../context/NavContext";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { TeamHero } from "../primitives/TeamHero";
@@ -26,6 +32,7 @@ type EdgeApiRow =
 export function FeaturedMatchupsGrid() {
   const edgesResult = useEdges();
   const gamesResult = useGamesList();
+  const { state } = useAppState();
 
   const isLoading = edgesResult.isLoading || gamesResult.isLoading;
   const error = edgesResult.error ?? gamesResult.error;
@@ -54,12 +61,13 @@ export function FeaturedMatchupsGrid() {
     );
   }
 
-  const edges = edgesResult.data?.items ?? [];
+  const edges = selectBestEdgePerGame(
+    filterEdgesBySportsbook(edgesResult.data?.items ?? [], state),
+  );
   const games = gamesResult.data?.items ?? [];
 
-  // Join edges to games by game_id
+  // Join one deterministic best eligible offer per game.
   const featured = edges
-    .slice(0, 20) // limit initial pool
     .map((edge) => {
       const game = games.find((g) => g.game_id === edge.game_id);
       if (!game) return null;
@@ -171,6 +179,7 @@ function FeaturedCard({
     market,
     side,
     line,
+    sportsbook: edge.sportsbook ?? null,
   });
   const isPicked = legs.some((l) => l.id === legId);
 
@@ -196,6 +205,15 @@ function FeaturedCard({
 
   const gameDate = game.game_date ?? "TBD";
   const week = game.week != null ? `Wk ${game.week}` : "";
+  const sportsbook = edge.sportsbook
+    ? sportsbookDisplayName(edge.sportsbook)
+    : "Consensus";
+  const odds = edge.american_odds > 0
+    ? `+${edge.american_odds}`
+    : String(edge.american_odds);
+  const offerSummary = `${sportsbook} · ${odds} · +${(
+    edge.ev * 100
+  ).toFixed(1)}% EV`;
 
   return (
     <div
@@ -279,7 +297,7 @@ function FeaturedCard({
             className="mono"
             style={{ fontSize: 11, color: "var(--pos)" }}
           >
-            +{(edge.ev * 100).toFixed(1)}% EV
+            {offerSummary}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

@@ -244,6 +244,12 @@ class TestListEdgesRoute:
         assert first["market_type"] in {"moneyline", "spread", "total"}
         assert first["side"] in {"home", "away", "over", "under"}
         assert first["american_odds"] != 0
+        assert first["provider"] == "nflverse"
+        assert first["provider_event_id"] is None
+        assert first["sportsbook"] is None
+        assert first["market_fetched_at"] == "2026-09-05T12:00:00Z"
+        assert first["sportsbook_updated_at"] is None
+        assert first["commence_time"] is None
         assert first["kelly_stake"] is not None
 
         expected_diagnostics = EdgeDiagnosticsResponse.model_validate(

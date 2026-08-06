@@ -18,6 +18,13 @@ import { TeamHero } from "../components/primitives/TeamHero";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { WhyLink } from "../components/primitives/WhyLink";
 import { useBetSlip } from "../context/BetSlipContext";
+import { useAppState } from "../context/AppStateContext";
+import {
+  filterEdgesBySportsbook,
+  selectBestEdge,
+  selectBestEdgeByMarket,
+  sportsbookDisplayName,
+} from "../utils/sportsbookPreferences";
 import { useNav } from "../context/NavContext";
 import { probToAmerican } from "../utils/odds";
 import {
@@ -563,14 +570,16 @@ function ModelLeanCallout({
     error,
   } = useEdges();
   const { legs, add } = useBetSlip();
+  const { state } = useAppState();
 
   if (isLoading || error) return null;
 
   const items = data?.items ?? [];
-  const gameEdges = items
-    .filter((e) => e.game_id === gameId)
-    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0));
-  const topEdge = gameEdges[0];
+  const gameEdges = filterEdgesBySportsbook(
+    items.filter((edge) => edge.game_id === gameId),
+    state,
+  );
+  const topEdge = selectBestEdge(gameEdges);
 
   if (!topEdge) {
     return (
@@ -629,6 +638,7 @@ function ModelLeanCallout({
     market,
     side,
     line,
+    sportsbook: topEdge.sportsbook ?? null,
   });
 
   const isPicked = legs.some(
@@ -694,7 +704,15 @@ function ModelLeanCallout({
         }}
       >
         <span className="mono">
-          +{(topEdge.ev * 100).toFixed(1)}% EV
+          {topEdge.sportsbook
+            ? sportsbookDisplayName(topEdge.sportsbook)
+            : "Consensus"}
+          {" · "}
+          {topEdge.american_odds > 0
+            ? `+${topEdge.american_odds}`
+            : topEdge.american_odds}
+          {" · +"}
+          {(topEdge.ev * 100).toFixed(1)}% EV
         </span>
         <WhyLink
           dot
@@ -749,18 +767,15 @@ function LinesAndFairValueCard({
   total: components["schemas"]["TotalPredictionBlock"];
 }) {
   const { data: edgesData } = useEdges();
+  const { state } = useAppState();
 
-  // Filter edges to this game and split by market
-  const gameEdges = (edgesData?.items ?? []).filter((e) => e.game_id === gameId);
-  const spreadEdge = gameEdges
-    .filter((e) => e.market_type === "spread")
-    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
-  const totalEdge = gameEdges
-    .filter((e) => e.market_type === "total")
-    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
-  const mlEdge = gameEdges
-    .filter((e) => e.market_type === "moneyline")
-    .sort((a, b) => (b.ev ?? 0) - (a.ev ?? 0))[0];
+  const gameEdges = filterEdgesBySportsbook(
+    (edgesData?.items ?? []).filter((edge) => edge.game_id === gameId),
+    state,
+  );
+  const spreadEdge = selectBestEdgeByMarket(gameEdges, "spread");
+  const totalEdge = selectBestEdgeByMarket(gameEdges, "total");
+  const mlEdge = selectBestEdgeByMarket(gameEdges, "moneyline");
 
   // Model fair values from independently available persisted components
   const winUsable = isWeeklyComponentUsable("win", win.status);
@@ -1028,7 +1043,13 @@ function RecCell({
           marginTop: 2,
         }}
       >
-        +{(edge.ev * 100).toFixed(1)}% EV
+        {edge.sportsbook
+          ? sportsbookDisplayName(edge.sportsbook)
+          : "Consensus"}
+        {" · "}
+        {edge.american_odds > 0 ? `+${edge.american_odds}` : edge.american_odds}
+        {" · +"}
+        {(edge.ev * 100).toFixed(1)}% EV
       </div>
     </div>
   );

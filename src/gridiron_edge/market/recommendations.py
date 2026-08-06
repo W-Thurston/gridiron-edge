@@ -53,6 +53,12 @@ logger: Logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _REPORT_COLUMNS: list[str] = [
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "market_fetched_at",
+    "sportsbook_updated_at",
+    "commence_time",
     "game_id",
     "game_date",
     "season",
@@ -194,6 +200,126 @@ def pivot_odds_to_wide(odds_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+_BOOK_WIDE_IDENTITY_COLUMNS: tuple[str, ...] = (
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "game_id",
+)
+_BOOK_WIDE_PROVENANCE_COLUMNS: tuple[str, ...] = (
+    "fetched_at",
+    "sportsbook_updated_at",
+    "commence_time",
+    "is_live",
+)
+_BOOK_WIDE_VALUE_COLUMNS: tuple[str, ...] = (
+    "ml_home",
+    "ml_away",
+    "spread_line_home",
+    "spread_odds_home",
+    "spread_odds_away",
+    "total_line",
+    "over_odds",
+    "under_odds",
+)
+_BOOK_WIDE_COLUMNS: tuple[str, ...] = (
+    *_BOOK_WIDE_IDENTITY_COLUMNS,
+    *_BOOK_WIDE_PROVENANCE_COLUMNS,
+    *_BOOK_WIDE_VALUE_COLUMNS,
+)
+_BOOK_PIVOT_REQUIRED_COLUMNS: tuple[str, ...] = (
+    *_BOOK_WIDE_IDENTITY_COLUMNS,
+    *_BOOK_WIDE_PROVENANCE_COLUMNS,
+    "market",
+    "side",
+    "odds",
+    "line",
+)
+
+
+def pivot_current_odds_to_book_wide(odds_df: DataFrame) -> DataFrame:
+    """Pivot one current snapshot to one row per provider event and sportsbook.
+
+    The function preserves null sportsbook identity for truthful consensus
+    sources such as nflverse. It rejects duplicate current rows inside one
+    provider-event-book-market-side identity instead of choosing one
+    nondeterministically. Incomplete market families remain nullable only for
+    the affected provider-event-book group.
+    """
+    if odds_df.empty:
+        return DataFrame(columns=list(_BOOK_WIDE_COLUMNS))
+
+    missing = sorted(set(_BOOK_PIVOT_REQUIRED_COLUMNS) - set(odds_df.columns))
+    if missing:
+        raise ValueError(
+            "Current odds are missing required book-pivot columns: " + ", ".join(missing)
+        )
+
+    identity = [*_BOOK_WIDE_IDENTITY_COLUMNS, "market", "side"]
+    duplicated = odds_df.duplicated(subset=identity, keep=False)
+    if duplicated.any():
+        duplicate_count = int(duplicated.sum())
+        raise ValueError(
+            "Current odds contain duplicate provider-event-book-market-side "
+            f"rows: {duplicate_count}."
+        )
+
+    rows: list[dict[str, object]] = []
+    group_columns = list(_BOOK_WIDE_IDENTITY_COLUMNS)
+    for group_key, group in odds_df.groupby(
+        group_columns,
+        sort=False,
+        dropna=False,
+    ):
+        provider, provider_event_id, sportsbook, game_id = group_key
+        row: dict[str, object] = {
+            "provider": provider,
+            "provider_event_id": provider_event_id,
+            "sportsbook": sportsbook,
+            "game_id": game_id,
+            "fetched_at": _single_group_value(group, "fetched_at"),
+            "sportsbook_updated_at": _single_group_value(
+                group,
+                "sportsbook_updated_at",
+            ),
+            "commence_time": _single_group_value(group, "commence_time"),
+            "is_live": _single_group_value(group, "is_live"),
+            **{column: float("nan") for column in _BOOK_WIDE_VALUE_COLUMNS},
+        }
+        for market_row in group.itertuples(index=False):
+            market = str(market_row.market)
+            side = str(market_row.side)
+            if market == "moneyline" and side == "home":
+                row["ml_home"] = market_row.odds
+            elif market == "moneyline" and side == "away":
+                row["ml_away"] = market_row.odds
+            elif market == "spread" and side == "home":
+                row["spread_line_home"] = market_row.line
+                row["spread_odds_home"] = market_row.odds
+            elif market == "spread" and side == "away":
+                row["spread_odds_away"] = market_row.odds
+            elif market == "total" and side == "over":
+                row["total_line"] = market_row.line
+                row["over_odds"] = market_row.odds
+            elif market == "total" and side == "under":
+                row["under_odds"] = market_row.odds
+        rows.append(row)
+
+    return DataFrame(rows, columns=list(_BOOK_WIDE_COLUMNS))
+
+
+def _single_group_value(group: DataFrame, column: str) -> object:
+    """Return one consistent nullable provenance value for a book group."""
+    values = group[column]
+    present = values.loc[values.notna()]
+    unique = present.drop_duplicates()
+    if len(unique) > 1:
+        raise ValueError(f"Current odds contain mixed {column} values within one book group.")
+    if unique.empty:
+        return None
+    return unique.iloc[0]
+
+
 # ---------------------------------------------------------------------------
 # Prediction ↔ odds join
 # ---------------------------------------------------------------------------
@@ -232,6 +358,63 @@ def join_predictions_to_odds(
         "join_predictions_to_odds: %d/%d predictions matched to odds",
         n_matched,
         n_preds,
+    )
+    return merged
+
+
+def join_predictions_to_current_odds(
+    predictions_df: DataFrame,
+    odds_df: DataFrame,
+) -> DataFrame:
+    """Join unique game predictions to sportsbook-preserving current odds.
+
+    One prediction row is replicated across every provider-event-sportsbook
+    group for its game. Duplicate prediction game IDs are rejected because
+    they would create an ambiguous many-to-many evaluation boundary.
+    """
+    if not predictions_df.empty:
+        if "game_id" not in predictions_df.columns:
+            raise ValueError("Predictions are missing required column: game_id")
+        duplicated = predictions_df["game_id"].astype(str).duplicated(keep=False)
+        if duplicated.any():
+            game_ids = sorted(
+                predictions_df.loc[duplicated, "game_id"].astype(str).unique().tolist()
+            )
+            raise ValueError(
+                "Current edge evaluation requires one prediction row per game_id: "
+                + ", ".join(game_ids)
+            )
+
+    odds_wide = (
+        pivot_current_odds_to_book_wide(odds_df)
+        if "ml_home" not in odds_df.columns
+        else odds_df.copy()
+    )
+    required_wide = set(_BOOK_WIDE_IDENTITY_COLUMNS)
+    missing = sorted(required_wide - set(odds_wide.columns))
+    if not odds_wide.empty and missing:
+        raise ValueError(
+            "Current wide odds are missing required identity columns: " + ", ".join(missing)
+        )
+
+    prediction_input = predictions_df.drop(
+        columns=[
+            column
+            for column in _BOOK_WIDE_COLUMNS
+            if column != "game_id" and column in predictions_df.columns
+        ],
+        errors="ignore",
+    ).copy()
+    merged = prediction_input.merge(
+        odds_wide,
+        on="game_id",
+        how="inner",
+        validate="one_to_many",
+    )
+    logger.info(
+        "join_predictions_to_current_odds: %d book-game rows from %d predictions",
+        len(merged),
+        len(predictions_df),
     )
     return merged
 
@@ -338,6 +521,7 @@ def build_edge_report(
     odds_df: pd.DataFrame,
     *,
     margin_std: float | None,
+    current_snapshot: bool = False,
     total_std: float | None,
     bankroll: float | None = None,
     kelly_multiplier: float = 0.25,
@@ -380,7 +564,11 @@ def build_edge_report(
     if not 0.0 <= kelly_multiplier <= 1.0:
         raise ValueError(f"kelly_multiplier must be in [0, 1], got {kelly_multiplier}")
 
-    joined: DataFrame = join_predictions_to_odds(predictions_df, odds_df)
+    joined: DataFrame = (
+        join_predictions_to_current_odds(predictions_df, odds_df)
+        if current_snapshot
+        else join_predictions_to_odds(predictions_df, odds_df)
+    )
 
     if joined.empty:
         return pd.DataFrame(columns=_REPORT_COLUMNS)
@@ -393,6 +581,15 @@ def build_edge_report(
         model_key: str = f"{model_name}_{model_type}"
 
         game_base: dict = {
+            "provider": _optional_row_value(row, "provider"),
+            "provider_event_id": _optional_row_value(row, "provider_event_id"),
+            "sportsbook": _optional_row_value(row, "sportsbook"),
+            "market_fetched_at": _optional_row_value(row, "fetched_at"),
+            "sportsbook_updated_at": _optional_row_value(
+                row,
+                "sportsbook_updated_at",
+            ),
+            "commence_time": _optional_row_value(row, "commence_time"),
             "game_id": row.get("game_id", ""),
             "game_date": row.get("game_date", ""),
             "season": row.get("season", ""),
@@ -528,6 +725,7 @@ def build_edge_result(
             scoped_predictions,
             scoped_markets,
             margin_std=margin_std,
+            current_snapshot=True,
             total_std=total_std,
             bankroll=bankroll,
             kelly_multiplier=kelly_multiplier,
@@ -553,6 +751,16 @@ def build_edge_result(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _optional_row_value(row: pd.Series, column: str) -> object:
+    """Return one optional row value as null when absent or missing."""
+    if column not in row.index:
+        return None
+    value = row[column]
+    if value is None or pd.isna(value):
+        return None
+    return value
 
 
 def _has(row: pd.Series, col: str) -> bool:

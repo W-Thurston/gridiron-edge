@@ -282,4 +282,75 @@ describe("GameDetail edge readiness", () => {
     expect(screen.getByText("Total 46.5 · +105")).toBeInTheDocument();
     expect(screen.getByText("52.0% no-vig · -120")).toBeInTheDocument();
   });
+
+
+  it("uses the persisted sportsbook subset for the game lean and market recommendation", () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      sportsbookMode: "selected",
+      selectedSportsbooks: ["draftkings"],
+    }));
+    mockLoaded(detail());
+    const base = edges();
+    vi.mocked(useEdges).mockReturnValue({
+      data: {
+        ...base,
+        diagnostics: {
+          ...base.diagnostics,
+          state: "positive_edges",
+          positive_edge_count: 2,
+          filtered_edge_count: 2,
+        },
+        items: [
+          {
+            game_id: "2026_01_KC_LAC",
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-dk",
+            sportsbook: "draftkings",
+            american_odds: -150,
+            ev: 0.08,
+            edge_strength: "strong",
+          },
+          {
+            game_id: "2026_01_KC_LAC",
+            away_team: "Kansas City Chiefs",
+            home_team: "Los Angeles Chargers",
+            model_key: "win_prob_elo",
+            market_type: "moneyline",
+            side: "home",
+            model_value: 0.58,
+            market_value: 0.52,
+            provider: "the_odds_api",
+            provider_event_id: "event-fd",
+            sportsbook: "fanduel",
+            american_odds: -140,
+            ev: 0.1,
+            edge_strength: "strong",
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(<TestWrapper><GameDetail /></TestWrapper>);
+
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent === "DraftKings · -150 · +8.0% EV"
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByText((_, element) =>
+        element?.textContent === "FanDuel · -140 · +10.0% EV"
+      ),
+    ).not.toBeInTheDocument();
+  });
+
 });

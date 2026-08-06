@@ -268,8 +268,10 @@ def _render_edge_table(ranked_df: DataFrame) -> None:
     table.add_column("Game", style="dim")
     table.add_column("Away")
     table.add_column("Home")
+    table.add_column("Sportsbook")
     table.add_column("Market")
     table.add_column("Side")
+    table.add_column("Odds", justify="right")
     table.add_column("EV", justify="right")
     table.add_column("Strength")
     table.add_column("Kelly $", justify="right")
@@ -295,13 +297,17 @@ def _render_edge_table(ranked_df: DataFrame) -> None:
 
         game_id: str = row.get("game_id", "")
         short_game: str = game_id.split("_", 1)[-1] if "_" in game_id else game_id
+        sportsbook = str(row.get("sportsbook") or "Consensus")
+        american_odds = int(row["american_odds"])
 
         table.add_row(
             short_game,
             str(row.get("away_team", "")),
             str(row.get("home_team", "")),
+            sportsbook,
             str(row.get("market_type", "")),
             str(row.get("side", "")),
+            _format_american_odds(american_odds),
             f"{ev_style}{ev_pct}[/]",
             strength,
             kelly_str,
@@ -316,6 +322,12 @@ def _render_edge_table(ranked_df: DataFrame) -> None:
             f"  [dim]... and {total - max_rows} more edge(s). "
             f"Use --format csv for full output.[/dim]"
         )
+
+
+def _format_american_odds(value: int | float) -> str:
+    """Render one American price for the edge table."""
+    odds = int(value)
+    return f"+{odds}" if odds > 0 else str(odds)
 
 
 def _render_clv_summary(stats: dict[str, float]) -> None:

@@ -29,6 +29,12 @@ def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
 def _row_to_edge(row: dict) -> EdgeRow:
     """Convert one service recommendation row to its API schema."""
     return EdgeRow(
+        provider=_none_if_nan(row.get("provider")),
+        provider_event_id=_none_if_nan(row.get("provider_event_id")),
+        sportsbook=_none_if_nan(row.get("sportsbook")),
+        market_fetched_at=_none_if_nan(row.get("market_fetched_at")),
+        sportsbook_updated_at=_none_if_nan(row.get("sportsbook_updated_at")),
+        commence_time=_none_if_nan(row.get("commence_time")),
         game_id=str(row["game_id"]),
         game_date=_none_if_nan(row.get("game_date")),
         season=_none_if_nan(row.get("season")),

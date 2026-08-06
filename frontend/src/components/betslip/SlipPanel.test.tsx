@@ -168,7 +168,7 @@ function propLeg(): BetLeg {
 
 function storeLegs(legs: BetLeg[]) {
   localStorage.setItem(
-    "hm-betslip-v2",
+    "hm-betslip-v3",
     JSON.stringify(legs),
   );
 }
@@ -177,7 +177,7 @@ function storeMode(
   mode: "single" | "parlay",
 ) {
   localStorage.setItem(
-    "hm-betslip-mode-v2",
+    "hm-betslip-mode-v3",
     mode,
   );
 }

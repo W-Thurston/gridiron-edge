@@ -1152,18 +1152,22 @@
             "type": "integer"
           },
           "complete_moneyline_count": {
+            "description": "Complete sportsbook-game moneyline pairs.",
             "title": "Complete Moneyline Count",
             "type": "integer"
           },
           "complete_spread_count": {
+            "description": "Complete sportsbook-game spread pairs.",
             "title": "Complete Spread Count",
             "type": "integer"
           },
           "complete_total_count": {
+            "description": "Complete sportsbook-game total pairs.",
             "title": "Complete Total Count",
             "type": "integer"
           },
           "eligible_market_count": {
+            "description": "Total complete sportsbook-game market families.",
             "title": "Eligible Market Count",
             "type": "integer"
           },
@@ -1450,7 +1454,7 @@
       },
       "EdgeRow": {
         "additionalProperties": false,
-        "description": "A single edge in the ranked edge report.\n\nOne row per (game, market_type, side) triple. Moneyline rows have\n``point_edge`` and ``cover_prob`` as null; spread/total rows populate\nthem. Fields mirror ``_REPORT_COLUMNS`` in\n``market.recommendations`` and preserve service-provided team names.",
+        "description": "A single edge in the ranked edge report.\n\nOne row per provider-event-sportsbook-game-market-side offer.\nMoneyline rows have ``point_edge`` and ``cover_prob`` as null;\nspread/total rows populate them. Fields mirror ``_REPORT_COLUMNS`` in\n``market.recommendations`` and preserve exact quote provenance.",
         "properties": {
           "american_odds": {
             "description": "American price used to calculate EV and Kelly for this edge.",
@@ -1460,6 +1464,18 @@
           "away_team": {
             "title": "Away Team",
             "type": "string"
+          },
+          "commence_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commence Time"
           },
           "confidence_tier": {
             "anyOf": [
@@ -1541,6 +1557,18 @@
             ],
             "title": "Kelly Stake"
           },
+          "market_fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Fetched At"
+          },
           "market_type": {
             "description": "'moneyline', 'spread', or 'total'.",
             "title": "Market Type",
@@ -1586,6 +1614,28 @@
             "description": "Points of edge (spread/total). Null for moneyline.",
             "title": "Point Edge"
           },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "provider_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Event Id"
+          },
           "season": {
             "anyOf": [
               {
@@ -1601,6 +1651,29 @@
             "description": "'home', 'away', 'over', or 'under'.",
             "title": "Side",
             "type": "string"
+          },
+          "sportsbook": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sportsbook"
+          },
+          "sportsbook_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sportsbook Updated At"
           },
           "week": {
             "anyOf": [

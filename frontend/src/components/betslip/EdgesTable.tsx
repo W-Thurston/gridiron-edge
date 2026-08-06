@@ -2,6 +2,12 @@ import { useEdges } from "../../api/hooks";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { TeamMark } from "../primitives/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
+import { useAppState } from "../../context/AppStateContext";
+import {
+  edgeOfferKey,
+  filterEdgesBySportsbook,
+  sportsbookDisplayName,
+} from "../../utils/sportsbookPreferences";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
 import { ErrorCard } from "../../components/error/ErrorCard";
 
@@ -32,6 +38,8 @@ export function EdgesTable({
   } = useEdges(edgeParams);
 
   const { legs, add } = useBetSlip();
+  const { state } = useAppState();
+  const items = filterEdgesBySportsbook(data?.items ?? [], state);
 
   const legIds = new Set(legs.map((l) => l.id));
 
@@ -90,11 +98,11 @@ export function EdgesTable({
       )}
 
 
-      {data && (data.items ?? []).length === 0 && (
+      {data && items.length === 0 && (
         <EdgeResultStatus diagnostics={data.diagnostics} />
       )}
 
-      {data && (data.items ?? []).length > 0 && (
+      {data && items.length > 0 && (
       <div
         className="betslip-edges-scroll"
         role="region"
@@ -126,6 +134,13 @@ export function EdgesTable({
                 }}
               >
                 Matchup
+              </th>
+
+              <th
+                scope="col"
+                style={{ padding: "8px 12px 8px 0" }}
+              >
+                Sportsbook
               </th>
 
               <th
@@ -193,7 +208,7 @@ export function EdgesTable({
             </tr>
           </thead>
           <tbody>
-            {(data.items ?? []).map((edge) => {
+            {items.map((edge) => {
               const legId = buildGameBetLegId({
                 gameId: edge.game_id,
                 market:
@@ -212,11 +227,12 @@ export function EdgesTable({
                   edge.market_type === "total"
                     ? edge.market_value ?? null
                     : null,
+                sportsbook: edge.sportsbook ?? null,
               });
               const alreadyAdded = legIds.has(legId);
               return (
                 <tr
-                  key={legId}
+                  key={edgeOfferKey(edge)}
                   style={{ borderTop: "1px solid var(--line-soft)" }}
                 >
                   <th
@@ -240,6 +256,11 @@ export function EdgesTable({
                       <TeamMark abbr={edge.home_team} />
                     </span>
                   </th>
+                  <td style={{ padding: "10px 12px 10px 0" }}>
+                    {edge.sportsbook
+                      ? sportsbookDisplayName(edge.sportsbook)
+                      : "Consensus"}
+                  </td>
                   <td style={{ padding: "10px 12px 10px 0" }}>
                     {edge.market_type}
                   </td>

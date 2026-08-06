@@ -73,7 +73,11 @@ def _markets(
         "away_team": "Kansas City Chiefs",
         "home_team": "Los Angeles Chargers",
         "provider": "nflverse",
+        "provider_event_id": None,
         "sportsbook": None,
+        "sportsbook_updated_at": pd.NaT,
+        "commence_time": pd.NaT,
+        "is_live": False,
         "fetched_at": timestamp,
     }
     return DataFrame(

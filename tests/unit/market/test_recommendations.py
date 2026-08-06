@@ -15,7 +15,9 @@ from gridiron_edge.market.recommendations import (
     _REPORT_COLUMNS,
     build_edge_report,
     compute_game_edges,
+    join_predictions_to_current_odds,
     join_predictions_to_odds,
+    pivot_current_odds_to_book_wide,
     pivot_odds_to_wide,
     rank_edges,
 )
@@ -251,6 +253,116 @@ class TestPivotOddsToWide:
         assert "ml_home" in wide.columns
 
 
+class TestPivotCurrentOddsToBookWide:
+    """Tests for current-snapshot sportsbook-preserving preparation."""
+
+    @staticmethod
+    def _canonical_book_rows(
+        *,
+        sportsbook: str | None = "draftkings",
+        provider_event_id: str | None = "event-1",
+        ml_home: float = -150.0,
+    ) -> DataFrame:
+        rows = _make_long_odds(ml_home=ml_home).copy()
+        rows["provider"] = "the_odds_api" if sportsbook is not None else "nflverse"
+        rows["provider_event_id"] = provider_event_id
+        rows["sportsbook"] = sportsbook
+        rows["sportsbook_updated_at"] = pd.Timestamp("2026-09-05 11:59:00", tz="UTC")
+        rows["commence_time"] = pd.Timestamp("2026-09-06 00:20:00", tz="UTC")
+        rows["is_live"] = False
+        rows["fetched_at"] = pd.Timestamp("2026-09-05 12:00:00", tz="UTC")
+        return rows
+
+    def test_preserves_two_sportsbooks_as_two_wide_rows(self) -> None:
+        draftkings = self._canonical_book_rows(sportsbook="draftkings", ml_home=-150.0)
+        fanduel = self._canonical_book_rows(sportsbook="fanduel", ml_home=-145.0)
+        wide = pivot_current_odds_to_book_wide(pd.concat([draftkings, fanduel], ignore_index=True))
+        assert len(wide) == 2
+        assert set(wide["sportsbook"]) == {"draftkings", "fanduel"}
+        prices = dict(zip(wide["sportsbook"], wide["ml_home"], strict=True))
+        assert prices == {"draftkings": -150.0, "fanduel": -145.0}
+
+    def test_preserves_provider_and_timestamp_provenance(self) -> None:
+        wide = pivot_current_odds_to_book_wide(self._canonical_book_rows())
+        row = wide.iloc[0]
+        assert row["provider"] == "the_odds_api"
+        assert row["provider_event_id"] == "event-1"
+        assert row["sportsbook"] == "draftkings"
+        assert row["fetched_at"] == pd.Timestamp("2026-09-05 12:00:00", tz="UTC")
+        assert row["sportsbook_updated_at"] == pd.Timestamp(
+            "2026-09-05 11:59:00",
+            tz="UTC",
+        )
+        assert row["commence_time"] == pd.Timestamp("2026-09-06 00:20:00", tz="UTC")
+        assert not row["is_live"]
+
+    def test_preserves_null_sportsbook_consensus_group(self) -> None:
+        wide = pivot_current_odds_to_book_wide(
+            self._canonical_book_rows(
+                sportsbook=None,
+                provider_event_id=None,
+            )
+        )
+        assert len(wide) == 1
+        assert wide.loc[0, "provider"] == "nflverse"
+        assert pd.isna(wide.loc[0, "sportsbook"])
+        assert pd.isna(wide.loc[0, "provider_event_id"])
+
+    def test_incomplete_market_remains_local_to_one_book(self) -> None:
+        draftkings = self._canonical_book_rows(sportsbook="draftkings")
+        fanduel = self._canonical_book_rows(sportsbook="fanduel")
+        fanduel = fanduel.loc[fanduel["market"] != "spread", :]
+        wide = pivot_current_odds_to_book_wide(
+            pd.concat([draftkings, fanduel], ignore_index=True)
+        ).set_index("sportsbook")
+        assert wide.loc["draftkings", "spread_odds_home"] == -110.0
+        assert pd.isna(wide.loc["fanduel", "spread_odds_home"])
+        assert wide.loc["fanduel", "ml_home"] == -150.0
+
+    def test_rejects_duplicate_current_book_side(self) -> None:
+        rows = self._canonical_book_rows()
+        duplicate = pd.concat([rows, rows.iloc[[0]]], ignore_index=True)
+        with pytest.raises(
+            ValueError,
+            match="duplicate provider-event-book-market-side",
+        ):
+            pivot_current_odds_to_book_wide(duplicate)
+
+    def test_rejects_mixed_group_provenance(self) -> None:
+        rows = self._canonical_book_rows()
+        rows.loc[0, "fetched_at"] = pd.Timestamp("2026-09-05 13:00:00", tz="UTC")
+        with pytest.raises(ValueError, match="mixed fetched_at"):
+            pivot_current_odds_to_book_wide(rows)
+
+    def test_requires_canonical_provenance_columns(self) -> None:
+        with pytest.raises(ValueError, match="provider_event_id"):
+            pivot_current_odds_to_book_wide(
+                self._canonical_book_rows().drop(columns="provider_event_id")
+            )
+
+    def test_empty_input_has_locked_book_wide_schema(self) -> None:
+        result = pivot_current_odds_to_book_wide(DataFrame())
+        assert result.empty
+        assert list(result.columns) == [
+            "provider",
+            "provider_event_id",
+            "sportsbook",
+            "game_id",
+            "fetched_at",
+            "sportsbook_updated_at",
+            "commence_time",
+            "is_live",
+            "ml_home",
+            "ml_away",
+            "spread_line_home",
+            "spread_odds_home",
+            "spread_odds_away",
+            "total_line",
+            "over_odds",
+            "under_odds",
+        ]
+
+
 # ---------------------------------------------------------------------------
 # TestJoinPredictionsToOdds
 # ---------------------------------------------------------------------------
@@ -302,6 +414,69 @@ class TestJoinPredictionsToOdds:
         joined: DataFrame = join_predictions_to_odds(preds, wide_odds)
         assert len(joined) == 1
         assert "ml_home" in joined.columns
+
+
+class TestJoinPredictionsToCurrentOdds:
+    """Tests for the sportsbook-preserving current recommendation join."""
+
+    @staticmethod
+    def _book_rows(sportsbook: str, ml_home: float) -> DataFrame:
+        return TestPivotCurrentOddsToBookWide._canonical_book_rows(
+            sportsbook=sportsbook,
+            provider_event_id="event-1",
+            ml_home=ml_home,
+        )
+
+    def test_one_prediction_replicates_across_sportsbooks(self) -> None:
+        odds = pd.concat(
+            [
+                self._book_rows("draftkings", -150.0),
+                self._book_rows("fanduel", -145.0),
+            ],
+            ignore_index=True,
+        )
+        joined = join_predictions_to_current_odds(_make_predictions(), odds)
+        assert len(joined) == 2
+        assert set(joined["sportsbook"]) == {"draftkings", "fanduel"}
+        prices = dict(zip(joined["sportsbook"], joined["ml_home"], strict=True))
+        assert prices == {"draftkings": -150.0, "fanduel": -145.0}
+        assert set(joined["home_win_prob"]) == {0.65}
+
+    def test_incomplete_book_market_does_not_remove_other_book(self) -> None:
+        draftkings = self._book_rows("draftkings", -150.0)
+        fanduel = self._book_rows("fanduel", -145.0)
+        fanduel = fanduel.loc[fanduel["market"] != "spread", :]
+        joined = join_predictions_to_current_odds(
+            _make_predictions(),
+            pd.concat([draftkings, fanduel], ignore_index=True),
+        ).set_index("sportsbook")
+        assert joined.loc["draftkings", "spread_odds_home"] == -110.0
+        assert pd.isna(joined.loc["fanduel", "spread_odds_home"])
+        assert joined.loc["fanduel", "ml_home"] == -145.0
+
+    def test_rejects_duplicate_prediction_game_ids(self) -> None:
+        predictions = pd.concat(
+            [_make_predictions(), _make_predictions()],
+            ignore_index=True,
+        )
+        with pytest.raises(ValueError, match="one prediction row per game_id"):
+            join_predictions_to_current_odds(
+                predictions,
+                self._book_rows("draftkings", -150.0),
+            )
+
+    def test_accepts_already_book_wide_input(self) -> None:
+        wide = pivot_current_odds_to_book_wide(self._book_rows("draftkings", -150.0))
+        joined = join_predictions_to_current_odds(_make_predictions(), wide)
+        assert len(joined) == 1
+        assert joined.loc[0, "sportsbook"] == "draftkings"
+
+    def test_no_matching_game_returns_empty(self) -> None:
+        joined = join_predictions_to_current_odds(
+            _make_predictions(game_id="2026_01_BUF_MIA"),
+            self._book_rows("draftkings", -150.0),
+        )
+        assert joined.empty
 
 
 # ---------------------------------------------------------------------------
@@ -579,6 +754,117 @@ class TestBuildEdgeReport:
 
         for row in report.itertuples(index=False):
             assert row.american_odds == expected_prices[(row.market_type, row.side)]
+
+
+class TestCurrentEdgeRowProvenance:
+    """Tests for quote identity retained on current edge rows."""
+
+    @staticmethod
+    def _book_rows(
+        *,
+        sportsbook: str,
+        event_id: str,
+        ml_home: float,
+        ml_away: float,
+    ) -> DataFrame:
+        rows = TestPivotCurrentOddsToBookWide._canonical_book_rows(
+            sportsbook=sportsbook,
+            provider_event_id=event_id,
+            ml_home=ml_home,
+        )
+        moneyline_away = (rows["market"] == "moneyline") & (rows["side"] == "away")
+        rows.loc[moneyline_away, "odds"] = ml_away
+        return rows
+
+    def test_current_report_carries_exact_book_provenance(self) -> None:
+        odds = pd.concat(
+            [
+                self._book_rows(
+                    sportsbook="draftkings",
+                    event_id="event-1",
+                    ml_home=-150.0,
+                    ml_away=130.0,
+                ),
+                self._book_rows(
+                    sportsbook="fanduel",
+                    event_id="event-1",
+                    ml_home=-140.0,
+                    ml_away=120.0,
+                ),
+            ],
+            ignore_index=True,
+        )
+        report = build_edge_report(
+            _make_predictions(
+                home_win_prob=0.75,
+                model_spread=-7.0,
+                model_total=52.0,
+            ),
+            odds,
+            margin_std=13.0,
+            current_snapshot=True,
+            total_std=13.0,
+        )
+        assert not report.empty
+        assert set(report["sportsbook"]) == {"draftkings", "fanduel"}
+        assert set(report["provider"]) == {"the_odds_api"}
+        assert set(report["provider_event_id"]) == {"event-1"}
+        assert report["market_fetched_at"].notna().all()
+        assert report["sportsbook_updated_at"].notna().all()
+        assert report["commence_time"].notna().all()
+
+    def test_moneyline_price_matches_the_same_output_sportsbook(self) -> None:
+        odds = pd.concat(
+            [
+                self._book_rows(
+                    sportsbook="draftkings",
+                    event_id="event-1",
+                    ml_home=-150.0,
+                    ml_away=130.0,
+                ),
+                self._book_rows(
+                    sportsbook="fanduel",
+                    event_id="event-1",
+                    ml_home=-140.0,
+                    ml_away=120.0,
+                ),
+            ],
+            ignore_index=True,
+        )
+        report = build_edge_report(
+            _make_predictions(home_win_prob=0.75),
+            odds,
+            margin_std=None,
+            current_snapshot=True,
+            total_std=None,
+        )
+        moneyline = report.loc[report["market_type"] == "moneyline", :]
+        actual = dict(
+            zip(
+                moneyline["sportsbook"],
+                moneyline["american_odds"],
+                strict=True,
+            )
+        )
+        assert actual == {"draftkings": -150, "fanduel": -140}
+
+    def test_legacy_report_uses_explicit_null_market_provenance(self) -> None:
+        report = build_edge_report(
+            _make_predictions(home_win_prob=0.75),
+            _make_long_odds(ml_home=-150.0, ml_away=130.0),
+            margin_std=None,
+            total_std=None,
+        )
+        assert not report.empty
+        for column in (
+            "provider",
+            "provider_event_id",
+            "sportsbook",
+            "market_fetched_at",
+            "sportsbook_updated_at",
+            "commence_time",
+        ):
+            assert report[column].isna().all()
 
 
 # ---------------------------------------------------------------------------
