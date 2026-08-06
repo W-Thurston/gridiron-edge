@@ -82,6 +82,7 @@ const blockers: EdgeBlocker[] = [
 
 describe("ModelEdgesTable", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(useEdges).mockReturnValue({
       data: undefined,
@@ -189,6 +190,132 @@ describe("ModelEdgesTable", () => {
     expect(screen.getByText("FanDuel")).toBeInTheDocument();
     expect(screen.queryByText("-150")).not.toBeInTheDocument();
     expect(screen.getByText("-140")).toBeInTheDocument();
+  });
+
+
+
+  it("shows one best offer per wager family and expands alternatives", async () => {
+    const user = userEvent.setup();
+    mockLoaded(response({
+      items: [
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-dk",
+          sportsbook: "draftkings",
+          american_odds: -150,
+          ev: 0.08,
+        },
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-fd",
+          sportsbook: "fanduel",
+          american_odds: -140,
+          ev: 0.1,
+        },
+      ],
+      total: 2,
+    }));
+
+    render(<TestWrapper><ModelEdgesTable /></TestWrapper>);
+
+    expect(screen.getByText("FanDuel")).toBeInTheDocument();
+    expect(screen.queryByText("DraftKings")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", {
+      name: "View 1 other offer for moneyline home in Kansas City Chiefs at Los Angeles Chargers",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+
+    expect(screen.getByText("DraftKings")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", {
+        name: "Add DraftKings moneyline home for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("applies the top-six limit to wager families instead of raw offers", () => {
+    const duplicateOffers = Array.from({ length: 6 }, (_, index) => ({
+      ...edge(),
+      provider: "the_odds_api",
+      provider_event_id: `same-family-${index}`,
+      sportsbook: `book-${index}`,
+      ev: 0.2 - index * 0.01,
+    }));
+    const distinctFamilies = Array.from({ length: 6 }, (_, index) => ({
+      ...edge(),
+      game_id: `game-${index}`,
+      provider: "the_odds_api",
+      provider_event_id: `other-${index}`,
+      sportsbook: "draftkings",
+      ev: 0.1 - index * 0.01,
+    }));
+    mockLoaded(response({
+      items: [...duplicateOffers, ...distinctFamilies],
+      total: 12,
+    }));
+
+    render(<TestWrapper><ModelEdgesTable /></TestWrapper>);
+
+    expect(
+      screen.getAllByRole("button", { name: /View details for/ }),
+    ).toHaveLength(6);
+    expect(screen.getByText("5 other offers")).toBeInTheDocument();
+  });
+
+  it("does not offer expansion after selected-book filtering", () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      sportsbookMode: "selected",
+      selectedSportsbooks: ["fanduel"],
+    }));
+    mockLoaded(response({
+      items: [
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-dk",
+          sportsbook: "draftkings",
+          ev: 0.08,
+        },
+        {
+          ...edge(),
+          provider: "the_odds_api",
+          provider_event_id: "event-fd",
+          sportsbook: "fanduel",
+          ev: 0.1,
+        },
+      ],
+      total: 2,
+    }));
+
+    render(<TestWrapper><ModelEdgesTable /></TestWrapper>);
+
+    expect(screen.getByText("FanDuel")).toBeInTheDocument();
+    expect(screen.queryByText(/other offer/)).not.toBeInTheDocument();
+  });
+
+
+
+  it("uses explicit matchup controls instead of interactive table rows", () => {
+    mockLoaded(response({ items: [edge()], total: 1 }));
+
+    render(<TestWrapper><ModelEdgesTable /></TestWrapper>);
+
+    expect(
+      screen.getByRole("button", {
+        name: "View details for Kansas City Chiefs at Los Angeles Chargers",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("row", {
+      name: /Kansas City Chiefs.*Los Angeles Chargers/,
+    })).not.toHaveAttribute("role", "button");
+    expect(screen.getByRole("row", {
+      name: /Kansas City Chiefs.*Los Angeles Chargers/,
+    })).not.toHaveAttribute("tabindex");
   });
 
 });

@@ -124,12 +124,13 @@ html, body {
    ============================================================ */
 
 .hm-frame {
-  width: 1440px;
-  min-height: 900px;
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  min-height: 100vh;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .hm-card {

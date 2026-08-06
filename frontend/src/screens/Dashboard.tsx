@@ -23,13 +23,7 @@ export function Dashboard() {
       <FeaturedMatchupsGrid />
 
       {/* Bottom row: Edges table + right rail */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "3fr 2fr",
-          gap: 16,
-        }}
-      >
+      <div className="dashboard-content-grid">
         <ModelEdgesTable />
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <ModelPerformanceRail />

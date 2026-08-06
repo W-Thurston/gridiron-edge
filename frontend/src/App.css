@@ -133,3 +133,142 @@
       minmax(0, 1fr);
   }
 }
+
+/* Responsive application and market surfaces */
+.hm-main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+}
+
+.dashboard-content-grid,
+.game-detail-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  gap: 16px;
+}
+
+.dashboard-content-grid > *,
+.game-detail-content-grid > * {
+  min-width: 0;
+}
+
+.featured-matchups-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.market-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.market-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.game-lines-table {
+  min-width: 680px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+}
+
+.settings-control {
+  min-width: 0;
+}
+
+.settings-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sportsbook-settings-control {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 360px);
+  min-width: 250px;
+}
+
+.sportsbook-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.game-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 32px;
+}
+
+@media (max-width: 960px) {
+  .dashboard-content-grid,
+  .game-detail-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .featured-matchups-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .game-detail-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .hm-main {
+    padding: 16px;
+  }
+
+  .featured-matchups-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .settings-control,
+  .sportsbook-settings-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sportsbook-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .game-detail-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+}

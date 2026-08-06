@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import { useEdges } from "../../api/hooks";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
 import { TeamMark } from "../primitives/TeamMark";
@@ -6,6 +7,7 @@ import { useAppState } from "../../context/AppStateContext";
 import {
   edgeOfferKey,
   filterEdgesBySportsbook,
+  groupEdgeOffers,
   sportsbookDisplayName,
 } from "../../utils/sportsbookPreferences";
 import { buildGameBetLegId, createGameBetLeg } from "../../utils/betLegs";
@@ -18,6 +20,9 @@ export function EdgesTable({
   bankroll: number | null;
   kellyMultiplier: number;
 }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
   const edgeParams =
     bankroll == null
       ? {
@@ -40,8 +45,18 @@ export function EdgesTable({
   const { legs, add } = useBetSlip();
   const { state } = useAppState();
   const items = filterEdgesBySportsbook(data?.items ?? [], state);
+  const groups = groupEdgeOffers(items);
 
-  const legIds = new Set(legs.map((l) => l.id));
+  const legIds = new Set(legs.map((leg) => leg.id));
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   return (
     <div className="hm-card" style={{ padding: 24 }}>
@@ -102,7 +117,7 @@ export function EdgesTable({
         <EdgeResultStatus diagnostics={data.diagnostics} />
       )}
 
-      {data && items.length > 0 && (
+      {data && groups.length > 0 && (
       <div
         className="betslip-edges-scroll"
         role="region"
@@ -208,111 +223,151 @@ export function EdgesTable({
             </tr>
           </thead>
           <tbody>
-            {items.map((edge) => {
-              const legId = buildGameBetLegId({
-                gameId: edge.game_id,
-                market:
+            {groups.map((group) => {
+              const isExpanded = expandedGroups.has(group.id);
+              const alternativesId = `available-edge-offers-${group.id.replaceAll(":", "-")}`;
+
+              const renderOfferRow = (
+                edge: typeof group.best,
+                isAlternative: boolean,
+                alternativeIndex?: number,
+              ) => {
+                const market =
                   edge.market_type as
                     | "moneyline"
                     | "spread"
-                    | "total",
-                side:
+                    | "total";
+                const side =
                   edge.side as
                     | "home"
                     | "away"
                     | "over"
-                    | "under",
-                line:
-                  edge.market_type === "spread" ||
-                  edge.market_type === "total"
+                    | "under";
+                const line =
+                  market === "spread" || market === "total"
                     ? edge.market_value ?? null
-                    : null,
-                sportsbook: edge.sportsbook ?? null,
-              });
-              const alreadyAdded = legIds.has(legId);
-              return (
-                <tr
-                  key={edgeOfferKey(edge)}
-                  style={{ borderTop: "1px solid var(--line-soft)" }}
-                >
-                  <th
-                    scope="row"
+                    : null;
+                const legId = buildGameBetLegId({
+                  gameId: edge.game_id,
+                  market,
+                  side,
+                  line,
+                  sportsbook: edge.sportsbook ?? null,
+                });
+                const alreadyAdded = legIds.has(legId);
+                const sportsbook = edge.sportsbook
+                  ? sportsbookDisplayName(edge.sportsbook)
+                  : "Consensus";
+                const actionLabel = alreadyAdded
+                  ? `${sportsbook} ${market} ${side} for ${edge.away_team} at ${edge.home_team} is already on the Bet Slip`
+                  : `Add ${sportsbook} ${market} ${side} for ${edge.away_team} at ${edge.home_team} to the Bet Slip`;
+
+                return (
+                  <tr
+                    key={edgeOfferKey(edge)}
+                    id={isAlternative && alternativeIndex === 0
+                      ? alternativesId
+                      : undefined}
                     style={{
-                      padding:
-                        "10px 12px 10px 0",
-                      textAlign: "left",
-                      fontWeight: 400,
+                      borderTop: "1px solid var(--line-soft)",
+                      background: isAlternative ? "var(--bg-2)" : undefined,
                     }}
                   >
-                    <span
+                    <th
+                      scope="row"
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
+                        padding: "10px 12px 10px 0",
+                        textAlign: "left",
+                        fontWeight: 400,
                       }}
                     >
-                      <TeamMark abbr={edge.away_team} />
-                      <span className="dim">@</span>
-                      <TeamMark abbr={edge.home_team} />
-                    </span>
-                  </th>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {edge.sportsbook
-                      ? sportsbookDisplayName(edge.sportsbook)
-                      : "Consensus"}
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {edge.market_type}
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>{edge.side}</td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {formatMarketContext(edge.market_type, edge.market_value)}
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    {formatAmericanOdds(edge.american_odds)}
-                  </td>
-                  <td
-                    style={{
-                      padding: "10px 12px 10px 0",
-                      textAlign: "right",
-                      color:
-                        edge.ev >= 0.05
-                          ? "var(--pos)"
-                          : edge.ev >= 0.02
-                            ? "var(--warn)"
-                            : "var(--ink-2)",
-                    }}
-                  >
-                    {(edge.ev * 100).toFixed(1)}%
-                  </td>
-                  <td style={{ padding: "10px 12px 10px 0" }}>
-                    <EdgeStrengthPill strength={edge.edge_strength} />
-                  </td>
-                  <td style={{ padding: "10px 0" }}>
-                    <AddButton
-                      disabled={alreadyAdded}
-                      label={
-                        alreadyAdded
-                          ? `${edge.market_type} ${edge.side} for ${edge.away_team} at ${edge.home_team} is already on the Bet Slip`
-                          : `Add ${edge.market_type} ${edge.side} for ${edge.away_team} at ${edge.home_team} to the Bet Slip`
-                      }
-                      onClick={() =>
-                        add(
-                          createGameBetLeg({
-                            edge,
-                            source: "betslip-edges",
-                            addedAt:
-                              new Date().toISOString(),
-                            referenceBankroll:
-                              data.bankroll ?? null,
-                            referenceKellyMultiplier:
-                              data.kelly_multiplier ?? null,
-                          }),
-                        )
-                      }
-                    />
-                  </td>
-                </tr>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {isAlternative && <span className="dim">↳</span>}
+                        <TeamMark abbr={edge.away_team} />
+                        <span className="dim">@</span>
+                        <TeamMark abbr={edge.home_team} />
+                      </span>
+                    </th>
+                    <td style={{ padding: "10px 12px 10px 0" }}>
+                      <div>{sportsbook}</div>
+                      {!isAlternative && group.alternatives.length > 0 && (
+                        <button
+                          type="button"
+                          aria-expanded={isExpanded}
+                          aria-controls={alternativesId}
+                          aria-label={`${isExpanded ? "Hide" : "View"} ${group.alternatives.length} other ${group.alternatives.length === 1 ? "offer" : "offers"} for ${market} ${side} in ${edge.away_team} at ${edge.home_team}`}
+                          onClick={() => toggleGroup(group.id)}
+                          style={offerToggleStyle}
+                        >
+                          {isExpanded
+                            ? "Hide offers"
+                            : `${group.alternatives.length} other ${group.alternatives.length === 1 ? "offer" : "offers"}`}
+                        </button>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 12px 10px 0" }}>
+                      {edge.market_type}
+                    </td>
+                    <td style={{ padding: "10px 12px 10px 0" }}>{edge.side}</td>
+                    <td style={{ padding: "10px 12px 10px 0" }}>
+                      {formatMarketContext(edge.market_type, edge.market_value)}
+                    </td>
+                    <td style={{ padding: "10px 12px 10px 0" }}>
+                      {formatAmericanOdds(edge.american_odds)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "10px 12px 10px 0",
+                        textAlign: "right",
+                        color:
+                          edge.ev >= 0.05
+                            ? "var(--pos)"
+                            : edge.ev >= 0.02
+                              ? "var(--warn)"
+                              : "var(--ink-2)",
+                      }}
+                    >
+                      {(edge.ev * 100).toFixed(1)}%
+                    </td>
+                    <td style={{ padding: "10px 12px 10px 0" }}>
+                      <EdgeStrengthPill strength={edge.edge_strength} />
+                    </td>
+                    <td style={{ padding: "10px 0" }}>
+                      <AddButton
+                        disabled={alreadyAdded}
+                        label={actionLabel}
+                        onClick={() =>
+                          add(
+                            createGameBetLeg({
+                              edge,
+                              source: "betslip-edges",
+                              addedAt: new Date().toISOString(),
+                              referenceBankroll: data.bankroll ?? null,
+                              referenceKellyMultiplier:
+                                data.kelly_multiplier ?? null,
+                            }),
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              };
+
+              return (
+                <Fragment key={group.id}>
+                  {renderOfferRow(group.best, false)}
+                  {isExpanded &&
+                    group.alternatives.map((edge, index) =>
+                      renderOfferRow(edge, true, index),
+                    )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -322,6 +377,17 @@ export function EdgesTable({
     </div>
   );
 }
+
+const offerToggleStyle: React.CSSProperties = {
+  marginTop: 4,
+  padding: 0,
+  border: "none",
+  background: "transparent",
+  color: "var(--accent)",
+  cursor: "pointer",
+  fontFamily: "var(--f-mono)",
+  fontSize: 9,
+};
 
 function formatMarketContext(
   marketType: string,

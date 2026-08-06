@@ -111,14 +111,10 @@ export function GameDetail() {
 
       {/* Full-width header row: game header + model lean callout */}
       <div
-        className="hm-card"
+        className="hm-card game-detail-header"
         style={{
           padding: "20px 24px 24px",
           borderBottom: "1px solid var(--line-soft)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 32,
         }}
       >
         <GameHeader
@@ -135,13 +131,7 @@ export function GameDetail() {
       </div>
 
       {/* 2-column grid: main content + right rail */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "3fr 2fr",
-          gap: 16,
-        }}
-      >
+      <div className="game-detail-content-grid">
         {/* Main column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <LinesAndFairValueCard
@@ -672,7 +662,8 @@ function ModelLeanCallout({
         flexDirection: "column",
         alignItems: "flex-end",
         gap: 4,
-        minWidth: 200,
+        minWidth: 0,
+        maxWidth: "100%",
       }}
     >
       <span
@@ -806,13 +797,23 @@ function LinesAndFairValueCard({
         </div>
       </div>
 
+      <div
+        className="market-table-scroll"
+        role="region"
+        aria-label="Lines and model fair value"
+        tabIndex={0}
+      >
       <table
+        className="market-table game-lines-table"
         style={{
           width: "100%",
           borderCollapse: "collapse",
           fontSize: 12,
         }}
       >
+        <caption className="visually-hidden">
+          Market lines, Gridiron Edge fair values, and recommendations
+        </caption>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--line-soft)" }}>
             <th
@@ -979,6 +980,7 @@ function LinesAndFairValueCard({
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

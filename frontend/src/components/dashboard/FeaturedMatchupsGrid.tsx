@@ -111,13 +111,7 @@ export function FeaturedMatchupsGrid() {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${featured.length}, 1fr)`,
-          gap: 12,
-        }}
-      >
+      <div className="featured-matchups-grid">
         {featured.map(({ edge, game }) => (
           <FeaturedCard
             key={game.game_id}

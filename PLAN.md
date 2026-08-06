@@ -418,80 +418,41 @@ Each eligible sportsbook offer remains independently traceable by provider event
 
 ---
 
-### Market Unit 5: Audit the Frontend Against Real Multi-Book Markets [Active]
+### Market Unit 5: Audit the Frontend Against Real Multi-Book Markets [Complete]
+
+#### Completed
+Audited the frontend against the real current multi-book market snapshot and corrected recommendation density, browser navigation, responsive presentation, and accessibility defects. Added a shared wager-family grouping contract, collapsed Model Edges and Available Edges to one best eligible offer per game-market-side family, preserved expandable sportsbook alternatives, repaired browser Back and Forward history, and made primary market surfaces responsive.
 
 #### Goal
-
-Validate the existing frontend market experience against the real current
-multi-book artifact and live API response, then correct any remaining
-presentation, state, traceability, responsive-layout, or accessibility defects
-without expanding into the separate Line Shopping product.
-
-#### Design Decisions
-
-- Use the current The Odds API artifact and serialized API response as the
-  authoritative audit inputs. Do not fabricate market rows for acceptance.
-- Audit All sportsbooks mode and persisted selected-sportsbook mode separately.
-- Trace representative offers from normalized quote identity through edge
-  calculation, API serialization, frontend display, and Bet Slip staging.
-- Preserve forecast independence. Market-unavailable, stale, partial-coverage,
-  no-positive-edge, and sportsbook-filtered states must remain distinct from
-  prediction availability.
-- Treat the existing sportsbook preference, deterministic compact-offer
-  selector, and Bet Slip v3 contracts as established boundaries. Change them
-  only when real-data validation demonstrates a concrete defect.
-- Keep compact recommendation surfaces distinct from the future Line Shopping
-  product. This unit may fix truthful presentation and selection defects but
-  will not add arbitrage, middle detection, or a full cross-book comparison
-  workflow.
-- Validate standard and narrow viewport presentation, keyboard operation,
-  accessible labeling, focus behavior, table overflow, and non-color-only
-  communication.
-- Inspect the current repository and rendered behavior before editing. Every
-  correction must be tied to an observed real-data or acceptance-test gap.
-
-#### Audit Scope
-
-- Settings sportsbook selection and persistence.
-- Dashboard Model Edges.
-- Dashboard Featured Matchups.
-- Games and navigation into Game Detail.
-- Game Detail Model Lean.
-- Game Detail moneyline, spread, and total market context and recommendations.
-- Available Edges and Bet Slip staging.
-- Readiness, blocker, analytical-empty, and selected-book-empty states.
-- Sportsbook, American odds, line, EV, provider-event, and timestamp
-  traceability.
-- Standard-width and narrow-width responsive presentation.
-- Keyboard and accessible-name behavior for interactive market controls.
+Validate the existing frontend market experience against real current multi-book data and correct presentation, state, traceability, responsive-layout, navigation, and accessibility defects without expanding into the separate Line Shopping product.
 
 #### Tests
-
-- Record the real current-market artifact dimensions, sportsbook coverage,
-  representative game-market-side offers, timestamps, and provider provenance.
-- Compare representative normalized rows with `/edges` API rows and their
-  rendered frontend offers.
-- Validate All sportsbooks and at least one selected-sportsbook configuration.
-- Validate that changing sportsbook preferences does not remove or rewrite
-  already staged Bet Slip wagers.
-- Add regression tests only for concrete defects or missing acceptance
-  boundaries found during the audit.
-- Run frontend lint, production build, and the complete frontend test suite
-  after corrections.
-- Run Python quality gates and the affected API, CLI, and integration tests if
-  the audit requires backend or serialization changes.
-- Perform a final manual responsive and keyboard smoke test against the real
-  multi-book response.
+Audited 816 normalized quotes across 16 games and nine sportsbooks, producing 341 positive edge offers across 45 wager families. Validated deterministic best-offer grouping, consensus fallback, selected-sportsbook filtering, differing alternative lines and prices, sportsbook-specific Bet Slip staging, browser history traversal, direct-detail refresh behavior, responsive layouts, labeled table regions, explicit interaction controls, and cleanup of nested interactive table semantics. Frontend lint, TypeScript, production build, complete frontend tests, Python quality gates, and repository tests passed. Manual responsive and browser-navigation acceptance checks passed.
 
 #### Acceptance
+Recommendation surfaces show one best eligible sportsbook offer per wager family while preserving access to every eligible selected-book alternative. Model Edges limits by wager family rather than raw offer count. Expanded offers preserve their own sportsbook, line, price, EV, strength, and Bet Slip identity. Browser Back, Forward, direct links, and refresh retain route parameters. Dashboard, Settings, Game Detail, and market tables remain usable at standard and narrow widths. Interactive controls use explicit semantic buttons without nested row-button behavior. Line Shopping remains the dedicated future all-books-upfront comparison surface.
 
-The frontend has been exercised against the real current multi-book artifact in
-All and selected-sportsbook modes. Every displayed or staged representative
-offer remains traceable to its sportsbook-specific API quote. Dashboard, Games,
-Game Detail, Available Edges, Settings, and Bet Slip present truthful market,
-blocker, and empty states at standard and narrow widths. Any defects found by
-the audit are fixed and regression-tested. No frontend consumer silently
-collapses, recombines, or mislabels sportsbook offers, and no Line Shopping
-functionality is introduced prematurely.
+#### Files Added
+- frontend/src/context/NavContext.test.tsx
+
+#### Files Removed
+- None
+
+#### Files Changed
+- frontend/src/App.css
+- frontend/src/App.tsx
+- frontend/src/components/betslip/EdgesTable.test.tsx
+- frontend/src/components/betslip/EdgesTable.tsx
+- frontend/src/components/dashboard/FeaturedMatchupsGrid.tsx
+- frontend/src/components/dashboard/ModelEdgesTable.test.tsx
+- frontend/src/components/dashboard/ModelEdgesTable.tsx
+- frontend/src/context/NavContext.tsx
+- frontend/src/index.css
+- frontend/src/screens/Dashboard.tsx
+- frontend/src/screens/GameDetail.tsx
+- frontend/src/screens/Settings.tsx
+- frontend/src/utils/sportsbookPreferences.test.ts
+- frontend/src/utils/sportsbookPreferences.ts
+- PLAN.md
 
 ---

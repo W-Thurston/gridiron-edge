@@ -76,7 +76,7 @@ export function Settings() {
           label="Sportsbooks"
           description="Choose which sportsbook offers are eligible across edge tables, dashboard summaries, Game Detail, and Bet Slip staging."
           control={
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 250 }}>
+            <div className="sportsbook-settings-control">
               <ToggleGroup
                 value={state.sportsbookMode}
                 options={[
@@ -92,7 +92,7 @@ export function Settings() {
                 }}
               />
               {state.sportsbookMode === "selected" && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                <div className="sportsbook-options-grid">
                   {sportsbookOptions.map((sportsbook) => (
                     <label key={sportsbook} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                       <input
@@ -237,14 +237,8 @@ function SettingsRow({
 }) {
   return (
     <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 24,
-        padding: "16px 0",
-        borderBottom: isLast ? "none" : "1px solid var(--line-soft)",
-      }}
+      className="settings-row"
+      style={{ borderBottom: isLast ? "none" : "1px solid var(--line-soft)" }}
     >
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 14, marginBottom: 4 }}>{label}</div>
@@ -252,7 +246,7 @@ function SettingsRow({
           {description}
         </div>
       </div>
-      <div>{control}</div>
+      <div className="settings-control">{control}</div>
     </div>
   );
 }
@@ -267,7 +261,7 @@ function ToggleGroup<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div style={{ display: "flex", gap: 4 }}>
+    <div className="settings-toggle-group">
       {options.map((opt) => (
         <button
           key={opt.value}

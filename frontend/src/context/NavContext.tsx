@@ -82,11 +82,11 @@ function getInitialRoute(): Route {
 export function NavProvider({ children }: { children: ReactNode }) {
   const [route, setRoute] = useState<Route>(getInitialRoute);
 
-  // Sync route → URL hash and sessionStorage.
+  // Keep the current route durable without replacing user navigation entries.
   useEffect(() => {
     const nextHash = serializeRoute(route);
     if (window.location.hash !== nextHash) {
-      window.history.replaceState(null, "", nextHash);
+      window.history.replaceState({ route }, "", nextHash);
     }
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(route));
@@ -95,20 +95,28 @@ export function NavProvider({ children }: { children: ReactNode }) {
     }
   }, [route]);
 
-  // Sync URL hash → route (when user uses back/forward buttons).
+  // Browser history traversal changes the URL without calling navigate().
   useEffect(() => {
-    const onHashChange = () => {
+    const syncRouteFromLocation = () => {
       const fromHash = parseHash(window.location.hash);
-      if (fromHash) {
-        setRoute(fromHash);
-      }
+      if (fromHash) setRoute(fromHash);
     };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+
+    window.addEventListener("popstate", syncRouteFromLocation);
+    window.addEventListener("hashchange", syncRouteFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncRouteFromLocation);
+      window.removeEventListener("hashchange", syncRouteFromLocation);
+    };
   }, []);
 
   const navigate = useCallback((path: string, params: RouteParams = {}) => {
-    setRoute({ path, params });
+    const nextRoute = { path, params };
+    const nextHash = serializeRoute(nextRoute);
+    if (window.location.hash !== nextHash) {
+      window.history.pushState({ route: nextRoute }, "", nextHash);
+    }
+    setRoute(nextRoute);
   }, []);
 
   return (

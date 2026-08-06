@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../../api/schema";
 import { useEdges } from "../../api/hooks";
@@ -91,6 +92,7 @@ const blockers: EdgeBlocker[] = [
 
 describe("EdgesTable", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
     mockLoaded(response());
   });
@@ -194,7 +196,7 @@ describe("EdgesTable", () => {
     expect(
       screen.getByRole("button", {
         name:
-          "Add moneyline away for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
+          "Add DraftKings moneyline away for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
       }),
     ).toBeInTheDocument();
   });
@@ -232,7 +234,8 @@ describe("EdgesTable", () => {
   });
 
 
-  it("renders every sportsbook offer in all mode", () => {
+  it("renders the best sportsbook offer and expands alternatives", async () => {
+    const user = userEvent.setup();
     mockLoaded(response({
       items: [
         moneylineEdge(),
@@ -252,10 +255,30 @@ describe("EdgesTable", () => {
       </TestWrapper>,
     );
 
-    expect(screen.getByText("DraftKings")).toBeInTheDocument();
+    expect(screen.queryByText("DraftKings")).not.toBeInTheDocument();
     expect(screen.getByText("FanDuel")).toBeInTheDocument();
-    expect(screen.getByText("+170")).toBeInTheDocument();
+    expect(screen.queryByText("+170")).not.toBeInTheDocument();
     expect(screen.getByText("+180")).toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", {
+      name: "View 1 other offer for moneyline away in Kansas City Chiefs at Los Angeles Chargers",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute(
+      "aria-controls",
+      "available-edge-offers-2026_01_KC_LAC-moneyline-away",
+    );
+
+    await user.click(toggle);
+
+    expect(screen.getByText("DraftKings")).toBeInTheDocument();
+    expect(screen.getByText("+170")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", {
+        name: "Add DraftKings moneyline away for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renders only selected sportsbook offers", () => {
@@ -287,4 +310,84 @@ describe("EdgesTable", () => {
     expect(screen.queryByText("+170")).not.toBeInTheDocument();
     expect(screen.getByText("+180")).toBeInTheDocument();
   });
+
+
+  it("preserves different alternative lines and prices", async () => {
+    const user = userEvent.setup();
+    mockLoaded(response({
+      items: [
+        moneylineEdge({
+          market_type: "spread",
+          side: "home",
+          market_value: -3.5,
+          american_odds: -110,
+          ev: 0.08,
+        }),
+        moneylineEdge({
+          provider_event_id: "event-2",
+          sportsbook: "fanduel",
+          market_type: "spread",
+          side: "home",
+          market_value: -4,
+          american_odds: 105,
+          ev: 0.1,
+        }),
+      ],
+      total: 2,
+    }));
+
+    render(
+      <TestWrapper>
+        <EdgesTable bankroll={2500} kellyMultiplier={0.25} />
+      </TestWrapper>,
+    );
+
+    expect(screen.getByText("Home -4.0")).toBeInTheDocument();
+    expect(screen.getByText("+105")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {
+      name: "View 1 other offer for spread home in Kansas City Chiefs at Los Angeles Chargers",
+    }));
+    expect(screen.getByText("Home -3.5")).toBeInTheDocument();
+    expect(screen.getByText("-110")).toBeInTheDocument();
+  });
+
+  it("stages winner and expanded alternative as separate sportsbook wagers", async () => {
+    const user = userEvent.setup();
+    mockLoaded(response({
+      items: [
+        moneylineEdge(),
+        moneylineEdge({
+          provider_event_id: "event-2",
+          sportsbook: "fanduel",
+          american_odds: 180,
+          ev: 0.1,
+        }),
+      ],
+      total: 2,
+    }));
+
+    render(
+      <TestWrapper>
+        <EdgesTable bankroll={2500} kellyMultiplier={0.25} />
+      </TestWrapper>,
+    );
+
+    await user.click(screen.getByRole("button", {
+      name: "Add FanDuel moneyline away for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
+    }));
+    await user.click(screen.getByRole("button", {
+      name: "View 1 other offer for moneyline away in Kansas City Chiefs at Los Angeles Chargers",
+    }));
+    await user.click(screen.getByRole("button", {
+      name: "Add DraftKings moneyline away for Kansas City Chiefs at Los Angeles Chargers to the Bet Slip",
+    }));
+
+    expect(screen.getByRole("button", {
+      name: "FanDuel moneyline away for Kansas City Chiefs at Los Angeles Chargers is already on the Bet Slip",
+    })).toBeDisabled();
+    expect(screen.getByRole("button", {
+      name: "DraftKings moneyline away for Kansas City Chiefs at Los Angeles Chargers is already on the Bet Slip",
+    })).toBeDisabled();
+  });
+
 });

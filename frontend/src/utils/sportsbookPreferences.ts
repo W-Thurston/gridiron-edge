@@ -9,6 +9,16 @@ export type SportsbookPreference = {
   selectedSportsbooks: string[];
 };
 
+export type EdgeOfferGroup = {
+  id: string;
+  gameId: string;
+  marketType: string;
+  side: string;
+  best: EdgeRow;
+  alternatives: EdgeRow[];
+  offers: EdgeRow[];
+};
+
 const DISPLAY_NAMES: Record<string, string> = {
   betmgm: "BetMGM",
   betonlineag: "BetOnline.ag",
@@ -103,4 +113,44 @@ export function selectBestEdgePerGame(edges: EdgeRow[]): EdgeRow[] {
     if (!bestByGame.has(edge.game_id)) bestByGame.set(edge.game_id, edge);
   }
   return rankEdgeOffers(Array.from(bestByGame.values()));
+}
+
+export function edgeOfferGroupKey(edge: EdgeRow): string {
+  return [edge.game_id, edge.market_type, edge.side].join(":");
+}
+
+export function groupEdgeOffers(edges: EdgeRow[]): EdgeOfferGroup[] {
+  const grouped = new Map<string, EdgeRow[]>();
+
+  for (const edge of edges) {
+    const id = edgeOfferGroupKey(edge);
+    const offers = grouped.get(id);
+    if (offers) offers.push(edge);
+    else grouped.set(id, [edge]);
+  }
+
+  const groups: EdgeOfferGroup[] = [];
+  for (const [id, offers] of grouped) {
+    const sportsbookOffers = offers.filter(
+      (edge) => normalizeSportsbookKey(edge.sportsbook) !== null,
+    );
+    const actionable = sportsbookOffers.length > 0 ? sportsbookOffers : offers;
+    const ranked = rankEdgeOffers(actionable);
+    const best = ranked[0];
+    if (!best) continue;
+
+    groups.push({
+      id,
+      gameId: best.game_id,
+      marketType: best.market_type,
+      side: best.side,
+      best,
+      alternatives: ranked.slice(1),
+      offers: ranked,
+    });
+  }
+
+  return groups.sort((left, right) =>
+    compareEdgeOffers(left.best, right.best),
+  );
 }

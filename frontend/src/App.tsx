@@ -20,7 +20,7 @@ function App() {
               <div className="hm-frame">
               <OfflineBanner />
               <TopNav />
-              <main style={{ padding: 24, flex: 1 }}>
+              <main className="hm-main">
                 <Router />
               </main>
             </div>
