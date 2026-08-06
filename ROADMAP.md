@@ -79,12 +79,15 @@ Program sequence:
 3. **Current provider adapter [Complete].** Current and upcoming NFL moneyline,
    spread, and total quotes can be explicitly ingested from The Odds API into
    the normalized store.
-4. **Operational integration [Active].** Add freshness and coverage policy,
-   same-book price evaluation, prediction-market joins, CLI and API behavior,
-   and refresh orchestration while preserving forecast independence.
-5. **Real-data frontend integration and audit.** Exercise Dashboard, Games,
-   Game Detail, BetSlip, readiness, edge states, sportsbook provenance, and
-   responsive presentation against real market responses.
+- **Operational integration [Complete].** Freshness and coverage policy,
+sportsbook-specific price evaluation, prediction-market joins, CLI and API
+behavior, sportsbook preferences, deterministic compact selection, and Bet Slip
+v3 quote identity are implemented while forecast publication remains
+independent of market availability.
+- **Real-data frontend integration and audit [Active].** Exercise Dashboard,
+Games, Game Detail, BetSlip, readiness, edge states, sportsbook provenance,
+responsive presentation, keyboard behavior, and accessibility against real
+multi-book market responses.
 6. **Multi-book shopping.** Add best-price comparison, book selection,
    arbitrage, middle detection, and the Line Shopping product surface.
 
@@ -252,7 +255,11 @@ Future tooling work:
 
 ### Market data
 
-The Odds API v4 client, parser, and explicit ingest command are implemented. Same-book recommendation evaluation, automatic refresh policy, broader operational integration, real-data frontend validation, and multi-book execution features remain active program work.
+The Odds API v4 client, parser, explicit ingest command, sportsbook-specific
+recommendation evaluation, operational edge integration, frontend sportsbook
+preferences, and Bet Slip quote identity are implemented. Real-data frontend
+validation, automatic refresh policy, and dedicated multi-book execution
+features remain active program work.
 
 ### Injury, news, and live state
 

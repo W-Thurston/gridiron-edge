@@ -402,7 +402,7 @@ from normal weekly and composite workflows.
 
 ---
 
-### Market Unit 4: Integrate Current Markets Operationally [Active]
+### Market Unit 4: Integrate Current Markets Operationally [Complete]
 
 #### Completed
 Preserved sportsbook-specific market offers through edge calculation, diagnostics, API, CLI, CSV, frontend selection, and Bet Slip staging. Added persisted all-or-selected sportsbook preferences, deterministic compact-offer selection, and sportsbook-specific Bet Slip v3 identities with immutable quote provenance.
@@ -415,3 +415,83 @@ Validated sportsbook-aware recommendation generation, market-family diagnostics,
 
 #### Acceptance
 Each eligible sportsbook offer remains independently traceable by provider event, sportsbook, game, market, side, price, and timestamps. Users can select all or specific sportsbooks. Full tables retain eligible offers, compact surfaces select one deterministic best eligible offer, and matching wagers from different sportsbooks can coexist on the Bet Slip.
+
+---
+
+### Market Unit 5: Audit the Frontend Against Real Multi-Book Markets [Active]
+
+#### Goal
+
+Validate the existing frontend market experience against the real current
+multi-book artifact and live API response, then correct any remaining
+presentation, state, traceability, responsive-layout, or accessibility defects
+without expanding into the separate Line Shopping product.
+
+#### Design Decisions
+
+- Use the current The Odds API artifact and serialized API response as the
+  authoritative audit inputs. Do not fabricate market rows for acceptance.
+- Audit All sportsbooks mode and persisted selected-sportsbook mode separately.
+- Trace representative offers from normalized quote identity through edge
+  calculation, API serialization, frontend display, and Bet Slip staging.
+- Preserve forecast independence. Market-unavailable, stale, partial-coverage,
+  no-positive-edge, and sportsbook-filtered states must remain distinct from
+  prediction availability.
+- Treat the existing sportsbook preference, deterministic compact-offer
+  selector, and Bet Slip v3 contracts as established boundaries. Change them
+  only when real-data validation demonstrates a concrete defect.
+- Keep compact recommendation surfaces distinct from the future Line Shopping
+  product. This unit may fix truthful presentation and selection defects but
+  will not add arbitrage, middle detection, or a full cross-book comparison
+  workflow.
+- Validate standard and narrow viewport presentation, keyboard operation,
+  accessible labeling, focus behavior, table overflow, and non-color-only
+  communication.
+- Inspect the current repository and rendered behavior before editing. Every
+  correction must be tied to an observed real-data or acceptance-test gap.
+
+#### Audit Scope
+
+- Settings sportsbook selection and persistence.
+- Dashboard Model Edges.
+- Dashboard Featured Matchups.
+- Games and navigation into Game Detail.
+- Game Detail Model Lean.
+- Game Detail moneyline, spread, and total market context and recommendations.
+- Available Edges and Bet Slip staging.
+- Readiness, blocker, analytical-empty, and selected-book-empty states.
+- Sportsbook, American odds, line, EV, provider-event, and timestamp
+  traceability.
+- Standard-width and narrow-width responsive presentation.
+- Keyboard and accessible-name behavior for interactive market controls.
+
+#### Tests
+
+- Record the real current-market artifact dimensions, sportsbook coverage,
+  representative game-market-side offers, timestamps, and provider provenance.
+- Compare representative normalized rows with `/edges` API rows and their
+  rendered frontend offers.
+- Validate All sportsbooks and at least one selected-sportsbook configuration.
+- Validate that changing sportsbook preferences does not remove or rewrite
+  already staged Bet Slip wagers.
+- Add regression tests only for concrete defects or missing acceptance
+  boundaries found during the audit.
+- Run frontend lint, production build, and the complete frontend test suite
+  after corrections.
+- Run Python quality gates and the affected API, CLI, and integration tests if
+  the audit requires backend or serialization changes.
+- Perform a final manual responsive and keyboard smoke test against the real
+  multi-book response.
+
+#### Acceptance
+
+The frontend has been exercised against the real current multi-book artifact in
+All and selected-sportsbook modes. Every displayed or staged representative
+offer remains traceable to its sportsbook-specific API quote. Dashboard, Games,
+Game Detail, Available Edges, Settings, and Bet Slip present truthful market,
+blocker, and empty states at standard and narrow widths. Any defects found by
+the audit are fixed and regression-tested. No frontend consumer silently
+collapses, recombines, or mislabels sportsbook offers, and no Line Shopping
+functionality is introduced prematurely.
+
+---

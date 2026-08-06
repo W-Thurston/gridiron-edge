@@ -1,9 +1,0 @@
-data/
-TODO.txt
-*.pyc 
-
-notebooks/exploratory/*.ipynb
-notebooks/modeling/*.ipynb
-credentials/
-
-.ipynb_checkpoints/
