@@ -323,8 +323,11 @@ class TestSerializeTeamProfile:
         assert result.name == "Baltimore Ravens"
         assert result.rating == 1642.3
         assert result.rank == 1
+        assert result.record is not None
         assert result.record.wins == 2
+        assert result.rating_history is not None
         assert len(result.rating_history) == 3
+        assert result.recent_results is not None
         assert len(result.recent_results) == 2  # Only 2 games in fixture
 
     def test_meta_has_all_expected_entries(self) -> None:
@@ -339,8 +342,10 @@ class TestSerializeTeamProfile:
             pd.DataFrame(),  # trends
             {},  # team_metadata
         )
+        assert result.response_meta is not None
         fs = result.response_meta.field_status
         for expected in (
+            "trend",
             "off_rating",
             "def_rating",
             "schedule_difficulty",
@@ -581,4 +586,5 @@ class TestTeamProfileCohortSplits:
             cohort_splits=None,
         )
         assert result.cohort_splits is None
+        assert result.response_meta is not None
         assert "cohort_splits" in result.response_meta.field_status

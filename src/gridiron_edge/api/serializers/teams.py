@@ -92,13 +92,13 @@ def _compute_record(
     home_mask: Series[bool] = games["HOME_TEAM"] == team_long_name
     participant_mask: Series[bool] = away_mask | home_mask
 
-    away_scores = pd.to_numeric(
-        games["AWAY_SCORE"],
-        errors="coerce",
+    away_scores = Series(
+        pd.to_numeric(games["AWAY_SCORE"], errors="coerce"),
+        index=games.index,
     )
-    home_scores = pd.to_numeric(
-        games["HOME_SCORE"],
-        errors="coerce",
+    home_scores = Series(
+        pd.to_numeric(games["HOME_SCORE"], errors="coerce"),
+        index=games.index,
     )
     completed_mask = away_scores.notna() & home_scores.notna()
 
@@ -344,7 +344,12 @@ def serialize_team_profile(
     # ------------------------------------------------------------------
     # Field-status metadata
     # ------------------------------------------------------------------
+    trend = _trend_for_team(trends, abbr.upper())
     meta = ResponseMeta()
+    if trend is None:
+        meta = meta.with_blocked("trend", *Unavailable.NO_PRIOR_SNAPSHOT)
+    if recent is None:
+        meta = meta.with_blocked("recent_results", *Unavailable.NO_EVALUATION_DATA)
     meta = meta.with_blocked("off_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_blocked("def_rating", *Unavailable.OFF_DEF_DECOMPOSITION)
     meta = meta.with_pending("schedule_difficulty")
@@ -368,7 +373,7 @@ def serialize_team_profile(
         rating=rating,
         rank=rank,
         record=record,
-        trend=_trend_for_team(trends, abbr.upper()),
+        trend=trend,
         rating_pct=pcts["rating_pct"],
         avg_wins_pct=pcts["avg_wins_pct"],
         make_playoffs_pct=pcts["make_playoffs_pct"],

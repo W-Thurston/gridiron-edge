@@ -2228,3 +2228,26 @@ Individual file-level fixes from all 8 review batches:
 ## Phases 1-12 - Core refactor + tooling
 
 Original migration from `data_pipelines/` + `model_pipelines/` + `utils/` into `src/gridiron_edge/`. uv migration, Ruff + Pyrefly quality gates, Google-style docstrings, full type annotation pass. See git history for full detail.
+
+---
+
+## Multi-book Line Shopping and model guidance
+
+- Added exact multi-book Moneyline, Spread, and Total comparison with independent
+  best-line and exact-line best-price classification.
+- Added exhaustive selected-product probability and expected-value evaluation
+  for every current quote, including unavailable, break-even, and negative-EV
+  states.
+- Added continuous Spread and Total playable thresholds at a documented -110
+  reference price and fair Moneyline probabilities and prices.
+- Added model-approved and preferred-offer classifications with maximum-EV tie
+  preservation and selected-product provenance.
+- Added the `/lines` API contract, generated OpenAPI ownership, and typed frontend
+  integration.
+- Added persisted toggleable highlighting, chronological matchup ordering,
+  Eastern kickoff formatting, responsive comparison presentation, and preserved
+  raw-market usability when highlighting is disabled.
+- Added accessible hover, focus, and tap explanations for wager outcomes, pushes,
+  American prices, model EV, and market classifications.
+- Preserved exact quote identity, partial sportsbook coverage, and unavailable
+  sportsbook or model states without fabricating coverage.

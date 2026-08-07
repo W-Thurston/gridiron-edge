@@ -11,6 +11,7 @@ export type AppState = {
   alerts: number;
   sportsbookMode: SportsbookMode;
   selectedSportsbooks: string[];
+  lineShoppingHighlights: boolean;
 };
 
 type AppStateContextValue = {
@@ -31,6 +32,7 @@ const DEFAULT_STATE: AppState = {
   alerts: 4,
   sportsbookMode: "all",
   selectedSportsbooks: [],
+  lineShoppingHighlights: true,
 };
 
 function loadInitialState(): AppState {

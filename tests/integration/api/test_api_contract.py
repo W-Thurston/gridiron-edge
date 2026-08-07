@@ -22,14 +22,13 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 import pytest
-from requests import Response
 
 from gridiron_edge.api.app import create_app
 from gridiron_edge.api.schemas._base import BaseListResponse
 from gridiron_edge.api.schemas.comparables import GameComparables
 from gridiron_edge.api.schemas.explain import GameExplain
 from gridiron_edge.api.schemas.injuries import GameInjuries
-from gridiron_edge.api.schemas.lines import LineDetail, LineRow
+from gridiron_edge.api.schemas.lines import LineShoppingList
 from gridiron_edge.api.schemas.live import LiveGame, LiveGameSummary
 from gridiron_edge.api.schemas.model_performance import ModelPerformance
 from gridiron_edge.api.schemas.news import NewsItem
@@ -61,12 +60,11 @@ def client() -> TestClient:
 # model is the parameterized BaseListResponse[T] variant.
 ENDPOINTS: list[tuple[str, type]] = [
     # List endpoints
-    ("/lines", BaseListResponse[LineRow]),
+    ("/lines?season=2026-2027&week=1&market=spread", LineShoppingList),
     ("/live", BaseListResponse[LiveGameSummary]),
     ("/news", BaseListResponse[NewsItem]),
     ("/news/alerts", BaseListResponse[NewsItem]),
     # Detail endpoints (single object)
-    ("/lines/sf-bal", LineDetail),
     ("/live/sf-bal", LiveGame),
     ("/games/sf-bal/injuries", GameInjuries),
     ("/games/sf-bal/explain", GameExplain),
@@ -108,7 +106,7 @@ class TestRoundTripParity:
         path: str,
         model_cls: type,
     ) -> None:
-        response: Response = client.get(path)
+        response = client.get(path)
         assert response.status_code == 200, response.text
 
         body = response.json()
@@ -121,7 +119,7 @@ class TestRoundTripParity:
         # by_alias=True so we get `_meta` (not `response_meta`); exclude_none
         # is intentionally not set so we preserve the null fields that
         # `_meta.field_status` references.
-        round_tripped = revalidated.model_dump(by_alias=True)
+        round_tripped = revalidated.model_dump(by_alias=True, mode="json")
 
         assert round_tripped == body, (
             f"Round-trip mismatch on {path}:\n"

@@ -1,48 +1,91 @@
-# src/gridiron_edge/api/routes/lines.py
-"""Routes for line-shopping endpoints.
-
-Responses are currently null shapes with structured `_meta.field_status`
-entries pointing at the multi-book odds ingest gap. See ROADMAP §9.5.
-"""
+"""Routes for current multi-book line shopping."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
 
-from gridiron_edge.api.meta import Blocker, ResponseMeta
-from gridiron_edge.api.schemas._base import BaseListResponse
-from gridiron_edge.api.schemas.lines import LineDetail, LineRow
+from fastapi import APIRouter, Query
+
+from gridiron_edge.api.deps import SettingsDep
+from gridiron_edge.api.loaders import (
+    load_games_for_week,
+    resolve_current_season_week,
+)
+from gridiron_edge.api.meta import ResponseMeta, Unavailable
+from gridiron_edge.api.schemas.lines import LineShoppingList, MarketName
+from gridiron_edge.api.serializers.lines import serialize_line_shopping_list
+from gridiron_edge.ingest.odds.store import empty_quote_frame, load_current_odds
+from gridiron_edge.market.line_shopping import (
+    classify_line_shopping_offers,
+    evaluate_line_shopping_guidance,
+)
 
 router = APIRouter(prefix="/lines", tags=["lines"])
 
 
-_LIST_META = ResponseMeta().with_blocked("items", *Blocker.MULTI_BOOK)
-
-
 @router.get(
     "",
-    response_model=BaseListResponse[LineRow],
-    summary="List of matchups with cross-book line grids.",
+    response_model=LineShoppingList,
+    summary="Compare current sportsbook offers across the selected slate.",
 )
-def list_lines() -> BaseListResponse[LineRow]:
-    """Return an empty list until multi-book odds ingest lands."""
-    return BaseListResponse[LineRow](
-        items=[],
-        total=0,
-        # pyrefly: ignore [unexpected-keyword]
-        response_meta=_LIST_META,
+def list_lines(
+    settings: SettingsDep,
+    season: Annotated[str | None, Query()] = None,
+    week: Annotated[int | None, Query(ge=1)] = None,
+    market: Annotated[MarketName | None, Query()] = None,
+) -> LineShoppingList:
+    """Return exact current quotes with best-line and exact-line price flags."""
+    if season is None or week is None:
+        current_season, current_week = resolve_current_season_week(settings)
+    else:
+        current_season, current_week = "", 0
+    resolved_season = season or current_season
+    resolved_week = week or current_week
+
+    snapshot = load_current_odds(repo=settings.repo_root)
+    if snapshot is None:
+        meta = ResponseMeta().with_blocked(
+            "items",
+            *Unavailable.NO_ODDS_AVAILABLE,
+        )
+        return serialize_line_shopping_list(
+            empty_quote_frame(),
+            season=resolved_season,
+            week=resolved_week,
+            market=market,
+            response_meta=meta,
+        )
+
+    scoped = snapshot.loc[
+        (snapshot["season"] == resolved_season) & (snapshot["week"] == resolved_week),
+        :,
+    ].copy()
+    sportsbooks = tuple(sorted(scoped["sportsbook"].astype(str).unique()))
+    if market is not None:
+        scoped = scoped.loc[scoped["market"] == market, :].copy()
+
+    try:
+        product = load_games_for_week(
+            settings,
+            season=resolved_season,
+            week=resolved_week,
+        )
+    except FileNotFoundError:
+        product = None
+
+    if product is None or scoped.empty:
+        classified = classify_line_shopping_offers(scoped)
+        guidance = None
+    else:
+        evaluated = evaluate_line_shopping_guidance(product, scoped)
+        classified = evaluated.offers
+        guidance = evaluated.guidance
+
+    return serialize_line_shopping_list(
+        classified,
+        season=resolved_season,
+        week=resolved_week,
+        market=market,
+        sportsbooks=sportsbooks,
+        guidance=guidance,
     )
-
-
-@router.get(
-    "/{game_id}",
-    response_model=LineDetail,
-    summary="Line detail for a single matchup.",
-)
-def get_line(game_id: str) -> LineDetail:
-    """Return a null-shape detail until multi-book odds ingest lands."""
-    meta = ResponseMeta()
-    for field in ("market", "books", "movement", "steam_moves", "arbitrage"):
-        meta = meta.with_blocked(field, *Blocker.MULTI_BOOK)
-    # pyrefly: ignore [unexpected-keyword]
-    return LineDetail(game_id=game_id, response_meta=meta)

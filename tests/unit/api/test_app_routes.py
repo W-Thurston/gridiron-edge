@@ -22,14 +22,12 @@ def client() -> TestClient:
 # Endpoints where the path identifier is the only required input.
 # Each entry is (method, path, expected_blocker_slug).
 LIST_ENDPOINTS: list[tuple[str, str, str]] = [
-    ("GET", "/lines", "multi_book_ingest"),
     ("GET", "/live", "live_state_ingest"),
     ("GET", "/news", "news_ingest"),
     ("GET", "/news/alerts", "news_ingest"),
 ]
 
 DETAIL_ENDPOINTS: list[tuple[str, str, str]] = [
-    ("GET", "/lines/sf-bal", "multi_book_ingest"),
     ("GET", "/live/sf-bal", "live_state_ingest"),
     ("GET", "/games/sf-bal/injuries", "injury_data_source"),
     ("GET", "/games/sf-bal/explain", "scenario_engine"),
@@ -120,7 +118,7 @@ class TestEveryBlockerSlugIsRegistered:
 
     def test_at_least_one_slug_appears(self, client: TestClient) -> None:
         """Sanity check — if this fails, the loop above is silently empty."""
-        body = client.request("GET", "/lines").json()
+        body = client.request("GET", "/live").json()
         assert body["_meta"]["field_status"]
 
 
@@ -133,7 +131,6 @@ class TestOpenApiPathInventory:
 
         expected_paths = {
             "/lines",
-            "/lines/{game_id}",
             "/live",
             "/live/{game_id}",
             "/news",

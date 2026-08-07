@@ -456,3 +456,90 @@ Recommendation surfaces show one best eligible sportsbook offer per wager family
 - PLAN.md
 
 ---
+
+### Market Unit 6: Build the Multi-Book Line Shopping Foundation [Completed]
+
+#### Completed
+
+Delivered the current slate-wide multi-book Line Shopping product with exhaustive
+exact-offer model evaluation, selected-product guidance, deterministic market
+comparison, chronological matchup ordering, persisted visual highlighting, and
+accessible beginner-friendly explanations.
+
+#### Goal
+
+Provide a truthful comparison of every current sportsbook Moneyline, Spread, and
+Total offer while preserving quote identity and keeping model probability,
+expected value, playable thresholds, approval, and preferred-offer selection in
+the backend.
+
+#### Files Added/Removed/Changed
+
+Added:
+- PROTOTYPE_AUDIT.md
+- close_market_unit6_docs.py
+- frontend/src/components/primitives/ExplainTooltip.test.tsx
+- frontend/src/components/primitives/ExplainTooltip.tsx
+- src/gridiron_edge/api/serializers/lines.py
+- src/gridiron_edge/market/line_shopping.py
+- tests/integration/api/test_lines_routes.py
+- tests/unit/api/test_serializers_lines.py
+- tests/unit/market/test_line_shopping.py
+- tests/unit/market/test_line_shopping_guidance.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- ROADMAP.md
+- api-schema.json
+- frontend/src/App.css
+- frontend/src/api/hooks.ts
+- frontend/src/context/AppStateContext.tsx
+- frontend/src/screens/LineShopping.test.tsx
+- frontend/src/screens/LineShopping.tsx
+- src/gridiron_edge/api/app.py
+- src/gridiron_edge/api/routes/lines.py
+- src/gridiron_edge/api/schemas/_base.py
+- src/gridiron_edge/api/schemas/lines.py
+- src/gridiron_edge/api/serializers/teams.py
+- tests/integration/api/test_api_contract.py
+- tests/unit/api/test_app_routes.py
+- tests/unit/api/test_schemas_lines.py
+- tests/unit/api/test_serializers_teams.py
+
+#### Tests
+
+- Passed the full Python quality gates: Ruff, Pyrefly, and the unit test suite
+  excluding slow tests.
+- Passed the full frontend quality gates: ESLint, TypeScript production build,
+  and all frontend tests.
+- Verified the generated OpenAPI Line Shopping model-guidance contract and the
+  regenerated typed frontend client.
+- Validated the selected 16-game weekly product against the real 816-offer
+  current snapshot: 96 outcome-guidance rows, 341 model-approved offers, and 61
+  preferred approved offers.
+- Validated the live Spread response: 16 games, 254 exact offers, 32 guidance
+  rows, 99 approved offers, 20 preferred offers, one selected product identity,
+  and a -110 reference price.
+- Manually validated nine scope-wide sportsbook columns, BetMGM unavailable
+  Spread cells, persisted highlight toggling, centered offer presentation,
+  chronological kickoff display, and hover, focus, and tap explanations.
+
+#### Acceptance
+
+The Line Shopping product retains every exact sportsbook quote and its
+provenance, classifies line and price quality independently, evaluates every
+available offer against the explicitly selected weekly product, and preserves
+negative-EV, break-even, unavailable-model, and partial-coverage states. Spread
+and Total outcomes show continuous playable guidance at a documented -110
+reference price, while Moneyline outcomes show model win probability and fair
+American odds. Preferred approved offers preserve maximum-EV ties. The frontend
+performs no probability or EV calculation, remains fully usable with highlights
+disabled, orders matchups chronologically, displays Eastern kickoff times, and
+provides accessible beginner-friendly explanations for wager outcomes, pushes,
+American prices, model EV, and market classifications. Arbitrage, middle
+detection, movement, and historical market evaluation remain deferred.
+
+---

@@ -342,6 +342,39 @@ export function useEdges(
 }
 
 /**
+ * Fetches current sportsbook offers for Line Shopping.
+ */
+export type LinesQueryParams = {
+  season?: string;
+  week?: number;
+  market?: "moneyline" | "spread" | "total";
+};
+
+export function useLines(
+  params: LinesQueryParams = {},
+) {
+  return useQuery({
+    queryKey: ["lines", params],
+    queryFn: async () => {
+      const { data, error } =
+        await apiClient.GET("/lines", {
+          params: {
+            query: params,
+          },
+        });
+
+      if (error) {
+        throw new Error(
+          JSON.stringify(error),
+        );
+      }
+
+      return data;
+    },
+  });
+}
+
+/**
  * Fetches the skill-player roster for a season (Compare player picker).
  * Season optional — API defaults to latest.
  */

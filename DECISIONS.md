@@ -1215,3 +1215,36 @@ CLV tracking).
   before publication.
 
 ---
+
+---
+
+## D22 - Exact-offer Line Shopping is an exhaustive analytical boundary
+
+**Date:** 2026-08-07
+
+**Context:** The current-market product needs to compare every sportsbook quote
+without inheriting the recommendation pipeline's one-positive-side selection or
+moving model calculations into the frontend.
+
+**Decision:** Line Shopping preserves and evaluates every exact Moneyline,
+Spread, and Total quote. An offer is model approved only when its expected value
+is strictly greater than zero at its actual line and American price. The backend
+owns model probability, expected value, approval, preferred-offer selection,
+playable guidance, fair Moneyline prices, and product provenance.
+
+Spread and Total outcome guidance uses -110 as an explicit explanatory reference
+price. The resulting playable boundary remains continuous and is not rounded to
+a sportsbook increment. Exact offers are always evaluated at their actual price,
+so a favorable line at -110 can still be rejected at a worse price and an
+unfavorable reference line can be approved at a better price. Spread guidance is
+side-oriented for presentation. Maximum-EV approved ties are preserved.
+
+The frontend owns preference persistence, visual presentation, Eastern kickoff
+formatting, and deterministic explanations of wager mechanics, pushes, and
+American-price stake examples. It does not calculate probability, expected
+value, approval, or playable thresholds.
+
+**Implications:** Negative-EV, break-even, unavailable-model, and partially
+covered sportsbook offers remain visible. Disabling visual guidance leaves the
+raw comparison intact. Current-market comparison remains separate from
+arbitrage, middles, line movement, and historical market evaluation.

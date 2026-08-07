@@ -1,77 +1,87 @@
-# src/gridiron_edge/api/schemas/lines.py
-"""Schemas for line-shopping endpoints (/lines and /lines/{game_id}).
-
-These endpoints are currently blocked on multi-book odds ingest;
-responses return null shapes with structured `_meta.field_status`
-entries pointing at the blocker. See ROADMAP §9.5.
-"""
+"""Schemas for current multi-book line shopping."""
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from gridiron_edge.api.schemas._base import BaseResponse
+from gridiron_edge.api.schemas._base import BaseListResponse
+
+MarketName = Literal["moneyline", "spread", "total"]
+MarketSide = Literal["away", "home", "over", "under"]
+GuidanceStatus = Literal[
+    "available",
+    "model_unavailable",
+    "uncertainty_unavailable",
+]
 
 
-class BookLine(BaseModel):
-    """Per-book line for a single market.
-
-    Mirrors the prototype's per-cell book line shape (book id, line,
-    price, optional best-price highlight).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    book: str | None = Field(default=None, description="Book identifier (e.g. 'dk', 'fd', 'pin').")
-    line: float | None = Field(
-        default=None, description="Line value (spread, total, or moneyline)."
-    )
-    price: int | None = Field(default=None, description="American odds.")
-    is_best: bool | None = Field(
-        default=None, description="True if this is the best price on the market."
-    )
-
-
-class LineRow(BaseModel):
-    """A single row in the /lines grid — one matchup across multiple books."""
+class LineOutcomeGuidance(BaseModel):
+    """Selected-product guidance for one game, market, and side."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    game_id: str | None = Field(default=None)
-    market: str | None = Field(default=None, description="'spread', 'total', 'ml', etc.")
-    fair_line: float | None = Field(default=None, description="Gridiron Edge fair value.")
-    books: list[BookLine] | None = Field(default=None)
+    side: MarketSide
+    model_status: GuidanceStatus
+    model_value: float | None = None
+    playable_line: float | None = None
+    reference_odds: int | None = None
+    fair_american_odds: int | None = None
+    product_id: str | None = None
+    product_run_id: str | None = None
 
 
-class SteamMove(BaseModel):
-    """A detected sharp-money line move."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    timestamp: str | None = Field(default=None)
-    book: str | None = Field(default=None)
-    description: str | None = Field(default=None)
-    rationale: str | None = Field(default=None)
-
-
-class ArbitrageOpportunity(BaseModel):
-    """A cross-book lock-in opportunity."""
+class LineOffer(BaseModel):
+    """One exact sportsbook quote with deterministic comparison flags."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    book_a: str | None = Field(default=None)
-    side_a: str | None = Field(default=None)
-    book_b: str | None = Field(default=None)
-    side_b: str | None = Field(default=None)
-    edge_pct: float | None = Field(default=None, description="Locked-in edge in percent.")
+    provider: str
+    provider_event_id: str | None = None
+    sportsbook: str
+    sportsbook_updated_at: datetime | None = None
+    market_fetched_at: datetime
+    commence_time: datetime | None = None
+    is_live: bool
+    market: MarketName
+    side: MarketSide
+    line: float | None = None
+    american_odds: int
+    is_best_line: bool
+    is_best_price: bool
+    model_status: GuidanceStatus = "model_unavailable"
+    model_value: float | None = None
+    model_probability: float | None = None
+    expected_value: float | None = None
+    is_model_approved: bool | None = None
+    is_best_model_approved_offer: bool = False
+    product_id: str | None = None
+    product_run_id: str | None = None
 
 
-class LineDetail(BaseResponse):
-    """Response for GET /lines/{game_id}."""
+class LineShoppingGame(BaseModel):
+    """One scheduled game and every current quote in the requested scope."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     game_id: str
-    market: str | None = Field(default=None)
-    books: list[BookLine] | None = Field(default=None)
-    movement: list[dict] | None = Field(default=None, description="Time-series of consensus line.")
-    steam_moves: list[SteamMove] | None = Field(default=None)
-    arbitrage: list[ArbitrageOpportunity] | None = Field(default=None)
+    season: str
+    week: int
+    game_date: str
+    away_team: str
+    home_team: str
+    commence_time: datetime | None = None
+    offers: list[LineOffer] = Field(default_factory=list)
+    guidance: list[LineOutcomeGuidance] = Field(default_factory=list)
+
+
+class LineShoppingList(BaseListResponse[LineShoppingGame]):
+    """Current slate-wide sportsbook comparison response."""
+
+    season: str
+    week: int
+    market: MarketName | None = None
+    sportsbooks: tuple[str, ...] = ()
+    market_fetched_at: tuple[datetime, ...] = ()

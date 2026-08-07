@@ -68,7 +68,7 @@ class BaseListResponse[T: BaseModel](BaseResponse):
 
     Example:
         >>> BaseListResponse[GameSummary](items=[...], total=13)
-        >>> BaseListResponse[LineRow](  # blocked
+        >>> BaseListResponse[_SampleItem](  # blocked
         ...     items=[],
         ...     total=0,
         ...     response_meta=ResponseMeta().with_blocked(

@@ -79,17 +79,21 @@ Program sequence:
 3. **Current provider adapter [Complete].** Current and upcoming NFL moneyline,
    spread, and total quotes can be explicitly ingested from The Odds API into
    the normalized store.
-- **Operational integration [Complete].** Freshness and coverage policy,
-sportsbook-specific price evaluation, prediction-market joins, CLI and API
-behavior, sportsbook preferences, deterministic compact selection, and Bet Slip
-v3 quote identity are implemented while forecast publication remains
-independent of market availability.
-- **Real-data frontend integration and audit [Active].** Exercise Dashboard,
-Games, Game Detail, BetSlip, readiness, edge states, sportsbook provenance,
-responsive presentation, keyboard behavior, and accessibility against real
-multi-book market responses.
-6. **Multi-book shopping.** Add best-price comparison, book selection,
-   arbitrage, middle detection, and the Line Shopping product surface.
+4. **Operational integration [Complete].** Sportsbook-specific prices remain
+  independently traceable through edge calculation, diagnostics, API, CLI,
+  CSV, frontend selection, and Bet Slip staging while forecast publication
+  remains independent from provider access.
+5. **Real-data frontend integration and audit [Complete].** Dashboard, Game
+  Detail, Available Edges, Model Edges, Settings, browser navigation,
+  responsive presentation, sportsbook provenance, and Bet Slip staging were
+  validated against the real current multi-book snapshot.
+6. **Multi-book shopping [Complete].** The current Line Shopping product
+  preserves every exact sportsbook quote, classifies line and price quality
+  independently, evaluates each offer against the selected weekly product,
+  exposes playable guidance and fair Moneyline prices, and provides persisted
+  accessible visual guidance and detailed offer explanations. Arbitrage, middle
+  detection, movement, and historical market evaluation remain planned as
+  separate follow-on work.
 
 Current and historical market data are separate workstreams within this
 program. The current-market workstream comes first because it unlocks immediate

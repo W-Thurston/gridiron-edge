@@ -29,7 +29,7 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     # them correctly even while routes return placeholder shapes.
     {
         "name": "lines",
-        "description": "Multi-book line shopping. Blocked on multi-book odds ingest.",
+        "description": "Current multi-book line and price comparison.",
     },
     {"name": "live", "description": "Live game state. Blocked on live state ingest."},
     {"name": "news", "description": "Injury and market news. Blocked on news ingest."},

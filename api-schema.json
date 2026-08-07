@@ -1,70 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ArbitrageOpportunity": {
-        "additionalProperties": false,
-        "description": "A cross-book lock-in opportunity.",
-        "properties": {
-          "book_a": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Book A"
-          },
-          "book_b": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Book B"
-          },
-          "edge_pct": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Locked-in edge in percent.",
-            "title": "Edge Pct"
-          },
-          "side_a": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Side A"
-          },
-          "side_b": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Side B"
-          }
-        },
-        "title": "ArbitrageOpportunity",
-        "type": "object"
-      },
       "BankrollCurve": {
         "additionalProperties": false,
         "description": "Bankroll over time.",
@@ -152,44 +88,6 @@
           }
         },
         "title": "BaseListResponse[BetRow]",
-        "type": "object"
-      },
-      "BaseListResponse_LineRow_": {
-        "additionalProperties": false,
-        "properties": {
-          "_meta": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ResponseMeta"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional metadata describing unpopulated fields (per D14)."
-          },
-          "items": {
-            "description": "List payload. May be empty when blocked (see `_meta`).",
-            "items": {
-              "$ref": "#/components/schemas/LineRow"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
-            "title": "Total"
-          }
-        },
-        "title": "BaseListResponse[LineRow]",
         "type": "object"
       },
       "BaseListResponse_LiveGameSummary_": {
@@ -590,62 +488,6 @@
           "roadmap"
         ],
         "title": "BlockedStatus",
-        "type": "object"
-      },
-      "BookLine": {
-        "additionalProperties": false,
-        "description": "Per-book line for a single market.\n\nMirrors the prototype's per-cell book line shape (book id, line,\nprice, optional best-price highlight).",
-        "properties": {
-          "book": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Book identifier (e.g. 'dk', 'fd', 'pin').",
-            "title": "Book"
-          },
-          "is_best": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "True if this is the best price on the market.",
-            "title": "Is Best"
-          },
-          "line": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Line value (spread, total, or moneyline).",
-            "title": "Line"
-          },
-          "price": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "American odds.",
-            "title": "Price"
-          }
-        },
-        "title": "BookLine",
         "type": "object"
       },
       "ComparableGame": {
@@ -2561,9 +2403,366 @@
         "title": "LineBlock",
         "type": "object"
       },
-      "LineDetail": {
+      "LineOffer": {
         "additionalProperties": false,
-        "description": "Response for GET /lines/{game_id}.",
+        "description": "One exact sportsbook quote with deterministic comparison flags.",
+        "properties": {
+          "american_odds": {
+            "title": "American Odds",
+            "type": "integer"
+          },
+          "commence_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commence Time"
+          },
+          "expected_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Value"
+          },
+          "is_best_line": {
+            "title": "Is Best Line",
+            "type": "boolean"
+          },
+          "is_best_model_approved_offer": {
+            "default": false,
+            "title": "Is Best Model Approved Offer",
+            "type": "boolean"
+          },
+          "is_best_price": {
+            "title": "Is Best Price",
+            "type": "boolean"
+          },
+          "is_live": {
+            "title": "Is Live",
+            "type": "boolean"
+          },
+          "is_model_approved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Model Approved"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "market": {
+            "enum": [
+              "moneyline",
+              "spread",
+              "total"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "market_fetched_at": {
+            "format": "date-time",
+            "title": "Market Fetched At",
+            "type": "string"
+          },
+          "model_probability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Probability"
+          },
+          "model_status": {
+            "default": "model_unavailable",
+            "enum": [
+              "available",
+              "model_unavailable",
+              "uncertainty_unavailable"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          },
+          "model_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Value"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Run Id"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Event Id"
+          },
+          "side": {
+            "enum": [
+              "away",
+              "home",
+              "over",
+              "under"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "sportsbook": {
+            "title": "Sportsbook",
+            "type": "string"
+          },
+          "sportsbook_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sportsbook Updated At"
+          }
+        },
+        "required": [
+          "provider",
+          "sportsbook",
+          "market_fetched_at",
+          "is_live",
+          "market",
+          "side",
+          "american_odds",
+          "is_best_line",
+          "is_best_price"
+        ],
+        "title": "LineOffer",
+        "type": "object"
+      },
+      "LineOutcomeGuidance": {
+        "additionalProperties": false,
+        "description": "Selected-product guidance for one game, market, and side.",
+        "properties": {
+          "fair_american_odds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fair American Odds"
+          },
+          "model_status": {
+            "enum": [
+              "available",
+              "model_unavailable",
+              "uncertainty_unavailable"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          },
+          "model_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Value"
+          },
+          "playable_line": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playable Line"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Run Id"
+          },
+          "reference_odds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Odds"
+          },
+          "side": {
+            "enum": [
+              "away",
+              "home",
+              "over",
+              "under"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "model_status"
+        ],
+        "title": "LineOutcomeGuidance",
+        "type": "object"
+      },
+      "LineShoppingGame": {
+        "additionalProperties": false,
+        "description": "One scheduled game and every current quote in the requested scope.",
+        "properties": {
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "commence_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commence Time"
+          },
+          "game_date": {
+            "title": "Game Date",
+            "type": "string"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "guidance": {
+            "items": {
+              "$ref": "#/components/schemas/LineOutcomeGuidance"
+            },
+            "title": "Guidance",
+            "type": "array"
+          },
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/LineOffer"
+            },
+            "title": "Offers",
+            "type": "array"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "game_id",
+          "season",
+          "week",
+          "game_date",
+          "away_team",
+          "home_team"
+        ],
+        "title": "LineShoppingGame",
+        "type": "object"
+      },
+      "LineShoppingList": {
+        "additionalProperties": false,
+        "description": "Current slate-wide sportsbook comparison response.",
         "properties": {
           "_meta": {
             "anyOf": [
@@ -2576,41 +2775,22 @@
             ],
             "description": "Optional metadata describing unpopulated fields (per D14)."
           },
-          "arbitrage": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ArbitrageOpportunity"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arbitrage"
-          },
-          "books": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BookLine"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Books"
-          },
-          "game_id": {
-            "title": "Game Id",
-            "type": "string"
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/LineShoppingGame"
+            },
+            "title": "Items",
+            "type": "array"
           },
           "market": {
             "anyOf": [
               {
+                "enum": [
+                  "moneyline",
+                  "spread",
+                  "total"
+                ],
                 "type": "string"
               },
               {
@@ -2619,98 +2799,49 @@
             ],
             "title": "Market"
           },
-          "movement": {
-            "anyOf": [
-              {
-                "items": {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Time-series of consensus line.",
-            "title": "Movement"
+          "market_fetched_at": {
+            "default": [],
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Market Fetched At",
+            "type": "array"
           },
-          "steam_moves": {
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "sportsbooks": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sportsbooks",
+            "type": "array"
+          },
+          "total": {
             "anyOf": [
               {
-                "items": {
-                  "$ref": "#/components/schemas/SteamMove"
-                },
-                "type": "array"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Steam Moves"
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
           }
         },
         "required": [
-          "game_id"
+          "season",
+          "week"
         ],
-        "title": "LineDetail",
-        "type": "object"
-      },
-      "LineRow": {
-        "additionalProperties": false,
-        "description": "A single row in the /lines grid \u2014 one matchup across multiple books.",
-        "properties": {
-          "books": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BookLine"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Books"
-          },
-          "fair_line": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Gridiron Edge fair value.",
-            "title": "Fair Line"
-          },
-          "game_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Game Id"
-          },
-          "market": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "'spread', 'total', 'ml', etc.",
-            "title": "Market"
-          }
-        },
-        "title": "LineRow",
+        "title": "LineShoppingList",
         "type": "object"
       },
       "LiveGame": {
@@ -5194,58 +5325,6 @@
         "title": "StatRow",
         "type": "object"
       },
-      "SteamMove": {
-        "additionalProperties": false,
-        "description": "A detected sharp-money line move.",
-        "properties": {
-          "book": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Book"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "rationale": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rationale"
-          },
-          "timestamp": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timestamp"
-          }
-        },
-        "title": "SteamMove",
-        "type": "object"
-      },
       "SwingFactor": {
         "additionalProperties": false,
         "description": "A single swing-factor entry \u2014 tag, description, leaning team.",
@@ -6975,38 +7054,61 @@
     },
     "/lines": {
       "get": {
-        "description": "Return an empty list until multi-book odds ingest lands.",
+        "description": "Return exact current quotes with best-line and exact-line price flags.",
         "operationId": "list_lines_lines_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BaseListResponse_LineRow_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List of matchups with cross-book line grids.",
-        "tags": [
-          "lines"
-        ]
-      }
-    },
-    "/lines/{game_id}": {
-      "get": {
-        "description": "Return a null-shape detail until multi-book odds ingest lands.",
-        "operationId": "get_line_lines__game_id__get",
         "parameters": [
           {
-            "in": "path",
-            "name": "game_id",
-            "required": true,
+            "in": "query",
+            "name": "season",
+            "required": false,
             "schema": {
-              "title": "Game Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "moneyline",
+                    "spread",
+                    "total"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
             }
           }
         ],
@@ -7015,7 +7117,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LineDetail"
+                  "$ref": "#/components/schemas/LineShoppingList"
                 }
               }
             },
@@ -7032,7 +7134,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Line detail for a single matchup.",
+        "summary": "Compare current sportsbook offers across the selected slate.",
         "tags": [
           "lines"
         ]
@@ -8074,7 +8176,7 @@
       "name": "portfolio"
     },
     {
-      "description": "Multi-book line shopping. Blocked on multi-book odds ingest.",
+      "description": "Current multi-book line and price comparison.",
       "name": "lines"
     },
     {
