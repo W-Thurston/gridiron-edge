@@ -543,3 +543,58 @@ American prices, model EV, and market classifications. Arbitrage, middle
 detection, movement, and historical market evaluation remain deferred.
 
 ---
+
+### Market Unit 7: Separate Prediction, Value, and Recommendation Semantics [Completed]
+
+#### Completed
+
+Delivered distinct Line Shopping semantics for model likelihood, exact-offer
+value, and future recommendation qualification, with independently persisted
+visual controls and value-specific presentation.
+
+#### Goal
+
+Prevent positive-EV offer highlighting from implying that the outcome is the
+predicted winner or that Gridiron Edge recommends placing the wager.
+
+#### Files Added/Removed/Changed
+
+Added:
+- PROTOTYPE_AUDIT.md
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- ROADMAP.md
+- frontend/src/App.css
+- frontend/src/context/AppStateContext.tsx
+- frontend/src/screens/LineShopping.test.tsx
+- frontend/src/screens/LineShopping.tsx
+
+#### Tests
+
+- Passed frontend ESLint, the TypeScript production build, and the full frontend
+  test suite.
+- Passed focused ExplainTooltip and Line Shopping tests.
+- Verified persisted nested display defaults, independent layer controls, and
+  master-switch restoration without retaining the retired
+  `lineShoppingHighlights` state.
+- Verified a Moneyline model underdog can be a +EV candidate while the opposing
+  side remains the model favorite.
+- Manually reviewed Spread, Total, and Moneyline presentation and confirmed that
+  recommendation styling should remain unavailable until its policy exists.
+
+#### Acceptance
+
+Line Shopping separately presents model favorite or underdog, +EV candidate,
+preferred +EV offer, best line, and best exact-line price. Users can independently
+control the visual layers, while the master Value highlights switch temporarily
+suppresses offer decoration without resetting those choices. Value styling uses
+a distinct teal treatment and the interface explicitly states that +EV is
+neither the predicted winner nor a recommended wager. Existing exact-offer
+evaluation, chronological ordering, sportsbook filtering, responsiveness, and
+accessible explanations remain intact. Recommended-bet functionality remains
+unavailable pending an empirically validated edge, reliability, freshness,
+sizing, and portfolio-exposure policy.

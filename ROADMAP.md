@@ -94,6 +94,12 @@ Program sequence:
   accessible visual guidance and detailed offer explanations. Arbitrage, middle
   detection, movement, and historical market evaluation remain planned as
   separate follow-on work.
+7. **Market decision semantics [Complete].** Line Shopping now separates model
+  likelihood from exact-offer value, labels positive expected value as a
+  candidate rather than a recommendation, and provides independently persisted
+  controls for each visual comparison layer. Recommended-bet qualification
+  remains planned until an empirically validated edge, reliability, freshness,
+  sizing, and exposure policy is implemented.
 
 Current and historical market data are separate workstreams within this
 program. The current-market workstream comes first because it unlocks immediate

@@ -120,7 +120,7 @@ describe("LineShopping", () => {
     expect(screen.getByText("Playable New England Patriots +2.3 or more at -110")).toBeInTheDocument();
         expect(screen.getByText("WED · SEP 9 · 8:15 PM ET")).toBeInTheDocument();
     expect(screen.getByText("Orange price")).toHaveClass("line-shopping-best-price");
-    expect(screen.getByRole("button", { name: /highlight model guidance/i })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /value highlights/i })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -186,37 +186,44 @@ describe("LineShopping", () => {
 });
 
 
-  it("persists and disables the visual guidance overlay", async () => {
+  it("persists the master value switch without resetting layer choices", async () => {
     const user = userEvent.setup();
     const { container } = render(<TestWrapper><LineShopping /></TestWrapper>);
-    const toggle = screen.getByRole("button", { name: /highlight model guidance/i });
-
-    expect(container.querySelectorAll(".line-shopping-offer--approved").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".line-shopping-offer--preferred").length).toBe(1);
-    expect(container.querySelectorAll(".line-shopping-offer--best-line").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".line-shopping-best-price").length).toBeGreaterThan(0);
+    const displayButton = screen.getByRole("button", { name: "Display" });
+    await user.click(displayButton);
+    await user.click(screen.getByRole("checkbox", { name: "Best available line" }));
+    const toggle = screen.getByRole("button", { name: /value highlights/i });
 
     await user.click(toggle);
+    expect(container.querySelector(".line-shopping-offer--positive-ev")).toBeNull();
+    await user.click(toggle);
 
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(container.querySelector(".line-shopping-offer--approved")).toBeNull();
-    expect(container.querySelector(".line-shopping-offer--preferred")).toBeNull();
+    expect(container.querySelector(".line-shopping-offer--positive-ev")).not.toBeNull();
     expect(container.querySelector(".line-shopping-offer--best-line")).toBeNull();
-    expect(container.querySelector(".line-shopping-best-price")).toBeNull();
-    expect(JSON.parse(localStorage.getItem("hm-app") ?? "{}").lineShoppingHighlights).toBe(false);
+    const stored = JSON.parse(localStorage.getItem("hm-app") ?? "{}");
+    expect(stored.lineShoppingDisplay.valueHighlights).toBe(true);
+    expect(stored.lineShoppingDisplay.bestLine).toBe(false);
+    expect(stored.lineShoppingHighlights).toBeUndefined();
   });
 
-  it("loads a persisted disabled overlay and keeps guidance text", () => {
-    localStorage.setItem("hm-app", JSON.stringify({ lineShoppingHighlights: false }));
+  it("loads independent persisted display layers", async () => {
+    localStorage.setItem("hm-app", JSON.stringify({
+      lineShoppingDisplay: {
+        valueHighlights: true,
+        positiveEv: false,
+        preferredPositiveEv: true,
+        bestLine: false,
+        bestPrice: false,
+        modelFavorite: true,
+      },
+    }));
     const { container } = render(<TestWrapper><LineShopping /></TestWrapper>);
 
-    expect(screen.getByRole("button", { name: /highlight model guidance/i })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    expect(container.querySelector(".line-shopping-offer--approved")).toBeNull();
+    expect(container.querySelector(".line-shopping-offer--positive-ev")).toBeNull();
+    expect(container.querySelector(".line-shopping-offer--preferred-ev")).not.toBeNull();
+    expect(container.querySelector(".line-shopping-offer--best-line")).toBeNull();
+    expect(container.querySelector(".line-shopping-best-price")).toBeNull();
     expect(screen.getByText("Playable New England Patriots +2.3 or more at -110")).toBeInTheDocument();
-    expect(screen.queryByText("Model approved")).not.toBeInTheDocument();
   });
 
   it("keeps market classifications in the offer explanation", async () => {
@@ -236,7 +243,7 @@ describe("LineShopping", () => {
       within(tooltip).getByText(/This is the best price available at this exact line\./),
     ).toBeInTheDocument();
     expect(
-      within(tooltip).getByText(/This is a preferred model-approved offer\./),
+      within(tooltip).getByText(/This is the preferred \+EV offer for this outcome\./),
     ).toBeInTheDocument();
   });
 
@@ -270,4 +277,64 @@ it("explains side-oriented model guidance on keyboard focus", async () => {
   expect(within(tooltip).getByText(/-3\.5 is larger and more favorable than -4\.5/)).toBeInTheDocument();
   expect(trigger).toHaveAttribute("aria-expanded", "true");
   await user.tab();
+});
+
+
+it("separates Moneyline likelihood from +EV candidate value", async () => {
+  localStorage.clear();
+  const user = userEvent.setup();
+  loaded({
+    ...response,
+    market: "moneyline",
+    items: [{
+      ...response.items![0],
+      guidance: [
+        {
+          side: "away",
+          model_status: "available",
+          model_value: 0.474,
+          fair_american_odds: 111,
+          product_id: "weekly-product",
+          product_run_id: "weekly-run",
+        },
+        {
+          side: "home",
+          model_status: "available",
+          model_value: 0.526,
+          fair_american_odds: -111,
+          product_id: "weekly-product",
+          product_run_id: "weekly-run",
+        },
+      ],
+      offers: [
+        {
+          ...offer("draftkings", "away", 0, 120, false, true),
+          market: "moneyline",
+          line: null,
+          model_probability: 0.474,
+          expected_value: 0.043,
+          is_model_approved: true,
+          is_best_model_approved_offer: true,
+        },
+        {
+          ...offer("draftkings", "home", 0, -130, false, true),
+          market: "moneyline",
+          line: null,
+          model_probability: 0.526,
+          expected_value: -0.069,
+          is_model_approved: false,
+          is_best_model_approved_offer: false,
+        },
+      ],
+    }],
+  });
+
+  const { container } = render(<TestWrapper><LineShopping /></TestWrapper>);
+  await user.click(screen.getByRole("button", { name: "Moneyline" }));
+
+  expect(screen.getByText("Model underdog")).toBeInTheDocument();
+  expect(screen.getByText("Model favorite")).toBeInTheDocument();
+  expect(screen.getByText("Model win chance 47.4%")).toBeInTheDocument();
+  expect(container.querySelectorAll(".line-shopping-offer--positive-ev")).toHaveLength(1);
+  expect(screen.getByText(/not the predicted winner or a recommended wager/i)).toBeInTheDocument();
 });

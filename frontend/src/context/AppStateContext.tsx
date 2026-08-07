@@ -4,6 +4,24 @@ import { normalizeSelectedSportsbooks, type SportsbookMode } from "../utils/spor
 
 export type OddsFormat = "american" | "decimal";
 
+export type LineShoppingDisplay = {
+  valueHighlights: boolean;
+  positiveEv: boolean;
+  preferredPositiveEv: boolean;
+  bestLine: boolean;
+  bestPrice: boolean;
+  modelFavorite: boolean;
+};
+
+const DEFAULT_LINE_SHOPPING_DISPLAY: LineShoppingDisplay = {
+  valueHighlights: true,
+  positiveEv: true,
+  preferredPositiveEv: true,
+  bestLine: true,
+  bestPrice: true,
+  modelFavorite: true,
+};
+
 export type AppState = {
   oddsFormat: OddsFormat;
   bankroll: number;
@@ -11,7 +29,7 @@ export type AppState = {
   alerts: number;
   sportsbookMode: SportsbookMode;
   selectedSportsbooks: string[];
-  lineShoppingHighlights: boolean;
+  lineShoppingDisplay: LineShoppingDisplay;
 };
 
 type AppStateContextValue = {
@@ -32,7 +50,7 @@ const DEFAULT_STATE: AppState = {
   alerts: 4,
   sportsbookMode: "all",
   selectedSportsbooks: [],
-  lineShoppingHighlights: true,
+  lineShoppingDisplay: DEFAULT_LINE_SHOPPING_DISPLAY,
 };
 
 function loadInitialState(): AppState {
@@ -42,6 +60,10 @@ function loadInitialState(): AppState {
       const parsed = JSON.parse(stored) as Partial<AppState>;
       const sportsbookMode = parsed.sportsbookMode === "selected" ? "selected" : "all";
       const selectedSportsbooks = normalizeSelectedSportsbooks(parsed.selectedSportsbooks);
+      const lineShoppingDisplay = {
+        ...DEFAULT_LINE_SHOPPING_DISPLAY,
+        ...(parsed.lineShoppingDisplay ?? {}),
+      };
       return {
         ...DEFAULT_STATE,
         ...parsed,
@@ -49,6 +71,7 @@ function loadInitialState(): AppState {
           ? "selected"
           : "all",
         selectedSportsbooks,
+        lineShoppingDisplay,
       };
     }
   } catch {

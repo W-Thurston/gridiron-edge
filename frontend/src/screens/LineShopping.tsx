@@ -6,6 +6,7 @@ import { ExplainTooltip, type ExplainTooltipSection } from "../components/primit
 import { Pill } from "../components/primitives/Pill";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { useAppState } from "../context/AppStateContext";
+import type { LineShoppingDisplay } from "../context/AppStateContext";
 import {
   normalizeSportsbookKey,
   sportsbookDisplayName,
@@ -31,7 +32,12 @@ const SIDE_ORDER: Record<Market, Side[]> = {
 
 export function LineShopping() {
   const [market, setMarket] = useState<Market>("spread");
+  const [displayOpen, setDisplayOpen] = useState(false);
   const { state, setState } = useAppState();
+  const display = state.lineShoppingDisplay;
+  const updateDisplay = (partial: Partial<LineShoppingDisplay>) => {
+    setState({ lineShoppingDisplay: { ...display, ...partial } });
+  };
   const { data, isLoading, error, refetch } = useLines({ market });
 
   const selected = useMemo(
@@ -79,34 +85,63 @@ export function LineShopping() {
               </Pill>
             ))}
           </div>
-          <button
-            type="button"
-            className="line-shopping-highlight-toggle"
-            aria-pressed={state.lineShoppingHighlights}
-            onClick={() => setState({
-              lineShoppingHighlights: !state.lineShoppingHighlights,
-            })}
-          >
-            Highlight model guidance
-            <span aria-hidden="true">
-              {state.lineShoppingHighlights ? "On" : "Off"}
-            </span>
-          </button>
+          <div className="line-shopping-display-controls">
+            <button
+              type="button"
+              className="line-shopping-highlight-toggle"
+              aria-pressed={display.valueHighlights}
+              onClick={() => updateDisplay({
+                valueHighlights: !display.valueHighlights,
+              })}
+            >
+              Value highlights
+              <span aria-hidden="true">
+                {display.valueHighlights ? "On" : "Off"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="line-shopping-display-button"
+              aria-haspopup="dialog"
+              aria-expanded={displayOpen}
+              onClick={() => setDisplayOpen((open) => !open)}
+            >
+              Display
+              <span aria-hidden="true">▾</span>
+            </button>
+            {displayOpen && (
+              <DisplayPanel
+                display={display}
+                onChange={updateDisplay}
+              />
+            )}
+          </div>
         </div>
       </header>
 
       <div className="line-shopping-legend mono dim" aria-label="Comparison legend">
         <div className="line-shopping-legend-keys">
-        {state.lineShoppingHighlights && (
+        {display.valueHighlights && (
           <>
-            <span><i className="line-shopping-key line-shopping-key--approved" />Model approved</span>
-            <span><i className="line-shopping-key line-shopping-key--line" />Best available line</span>
-            <span><i className="line-shopping-key line-shopping-key--preferred" />Preferred model-approved offer</span>
-            <span>
-              <strong className="line-shopping-best-price">Orange price</strong> is best at this exact line
-            </span>
+            {display.positiveEv && (
+              <span><i className="line-shopping-key line-shopping-key--positive-ev" />+EV candidate</span>
+            )}
+            {display.preferredPositiveEv && (
+              <span><i className="line-shopping-key line-shopping-key--preferred-ev" />Preferred +EV offer</span>
+            )}
+            {display.bestLine && (
+              <span><i className="line-shopping-key line-shopping-key--line" />Best available line</span>
+            )}
+            {display.bestPrice && (
+              <span>
+                <strong className="line-shopping-best-price">Orange price</strong> is best at this exact line
+              </span>
+            )}
           </>
         )}
+        <span className="line-shopping-value-caveat">
+          +EV identifies estimated price value, not the predicted winner or a recommended wager.
+        </span>
         </div>
         <span className="line-shopping-snapshot">
           {updatedAt ? `Snapshot ${formatTimestamp(updatedAt)}` : "Snapshot time unavailable"}
@@ -182,7 +217,7 @@ export function LineShopping() {
                   game={game}
                   market={market}
                   sportsbooks={sportsbooks}
-                  highlights={state.lineShoppingHighlights}
+                  display={display}
                 />
               ))}
             </tbody>
@@ -197,12 +232,12 @@ function GameRows({
   game,
   market,
   sportsbooks,
-  highlights,
+  display,
 }: {
   game: LineShoppingGame;
   market: Market;
   sportsbooks: string[];
-  highlights: boolean;
+  display: LineShoppingDisplay;
 }) {
   return SIDE_ORDER[market].map((side, index) => (
     <tr key={`${game.game_id}:${side}`}>
@@ -222,6 +257,7 @@ function GameRows({
           guidance={(game.guidance ?? []).find((item) => item.side === side)}
           market={market}
           side={side}
+          showFavorite={display.modelFavorite}
         />
       </th>
       {sportsbooks.map((sportsbook) => {
@@ -234,7 +270,7 @@ function GameRows({
               <OfferCell
                 game={game}
                 offer={offer}
-                highlights={highlights}
+                display={display}
               />
             ) : (
               <span className="dim2">Unavailable</span>
@@ -251,11 +287,13 @@ function OutcomeGuidance({
   guidance,
   market,
   side,
+  showFavorite,
 }: {
   game: LineShoppingGame;
   guidance: LineOutcomeGuidance | undefined;
   market: Market;
   side: Side;
+  showFavorite: boolean;
 }) {
   if (!guidance || guidance.model_status === "model_unavailable") {
     return <span className="line-shopping-guidance dim2">Model guidance unavailable</span>;
@@ -268,8 +306,12 @@ function OutcomeGuidance({
   const sections = outcomeExplanationSections(game, guidance, market, side);
   let visible: React.ReactNode;
   if (market === "moneyline" && guidance.fair_american_odds != null) {
+    const likelihood = modelLikelihood(guidance.model_value);
     visible = (
       <>
+        {showFavorite && (
+          <span className="line-shopping-likelihood">{likelihood}</span>
+        )}
         <span>Model win chance {formatProbability(guidance.model_value)}</span>
         <span>Fair price {formatAmericanOdds(guidance.fair_american_odds)}</span>
       </>
@@ -315,21 +357,26 @@ function OutcomeGuidance({
 function OfferCell({
   game,
   offer,
-  highlights,
+  display,
 }: {
   game: LineShoppingGame;
   offer: LineOffer;
-  highlights: boolean;
+  display: LineShoppingDisplay;
 }) {
   const classNames = ["line-shopping-offer"];
-  if (highlights && offer.is_model_approved === true) {
-    classNames.push("line-shopping-offer--approved");
+  const valueHighlights = display.valueHighlights;
+  if (valueHighlights && display.positiveEv && offer.is_model_approved === true) {
+    classNames.push("line-shopping-offer--positive-ev");
   }
-  if (highlights && offer.is_best_line) {
+  if (valueHighlights && display.bestLine && offer.is_best_line) {
     classNames.push("line-shopping-offer--best-line");
   }
-  if (highlights && offer.is_best_model_approved_offer) {
-    classNames.push("line-shopping-offer--preferred");
+  if (
+    valueHighlights
+    && display.preferredPositiveEv
+    && offer.is_best_model_approved_offer
+  ) {
+    classNames.push("line-shopping-offer--preferred-ev");
   }
   const title = offerTitle(game, offer);
   return (
@@ -341,7 +388,7 @@ function OfferCell({
     >
       <span className="line-shopping-offer-values">
         {offer.market === "moneyline" ? null : <span>{formatLine(offer)}</span>}
-        <strong className={highlights && offer.is_best_price ? "line-shopping-best-price" : undefined}>
+        <strong className={valueHighlights && display.bestPrice && offer.is_best_price ? "line-shopping-best-price" : undefined}>
           {formatAmericanOdds(offer.american_odds)}
         </strong>
       </span>
@@ -388,12 +435,12 @@ function offerExplanationSections(
   const sections: ExplainTooltipSection[] = [
     { label: "Bet outcome", text: betOutcomeExplanation(game, offer) },
     { label: "Price", text: priceExplanation(offer.american_odds) },
-    { label: "Model", text: offerModelExplanation(offer) },
+    { label: "Model value", text: offerModelExplanation(game, offer) },
   ];
   const marketFacts = [
     offer.is_best_line ? "This is the best available line." : null,
     offer.is_best_price ? "This is the best price available at this exact line." : null,
-    offer.is_best_model_approved_offer ? "This is a preferred model-approved offer." : null,
+    offer.is_best_model_approved_offer ? "This is the preferred +EV offer for this outcome." : null,
   ].filter((value): value is string => value !== null);
   if (marketFacts.length > 0) {
     sections.push({ label: "Market", text: marketFacts.join(" ") });
@@ -440,19 +487,26 @@ function priceExplanation(odds: number): string {
   return `At ${odds}, a $${stake} stake would produce $100 in profit and a $${stake + 100} total return, including the original stake.`;
 }
 
-function offerModelExplanation(offer: LineOffer): string {
+function offerModelExplanation(
+  game: LineShoppingGame,
+  offer: LineOffer,
+): string {
   if (offer.model_status === "model_unavailable") {
     return "Model guidance is unavailable for this offer.";
   }
   if (offer.model_status === "uncertainty_unavailable") {
     return "Model uncertainty is unavailable for this offer.";
   }
-  const decision = offer.is_model_approved
-    ? "The model approves this exact line and price."
-    : "The model does not approve this exact line and price.";
-  return offer.expected_value == null
-    ? decision
-    : `${decision} Expected value: ${formatPercent(offer.expected_value)}.`;
+  const candidate = offer.is_model_approved
+    ? "This exact line and price is a +EV candidate."
+    : "This exact line and price is not a +EV candidate.";
+  const likelihood = offer.market === "moneyline"
+    ? ` ${outcomeLabel(game, offer.side)} is the ${modelLikelihood(offer.model_probability).toLowerCase()} at ${formatProbability(offer.model_probability)}.`
+    : "";
+  const ev = offer.expected_value == null
+    ? ""
+    : ` Expected value: ${formatPercent(offer.expected_value)}.`;
+  return `${candidate}${likelihood}${ev} +EV describes estimated price value, not the predicted winner or a recommended wager.`;
 }
 
 function offerTitle(game: LineShoppingGame, offer: LineOffer): string {
@@ -461,6 +515,58 @@ function offerTitle(game: LineShoppingGame, offer: LineOffer): string {
     ? "moneyline"
     : formatLine(offer);
   return `${team} ${market} at ${formatAmericanOdds(offer.american_odds)}`;
+}
+
+function DisplayPanel({
+  display,
+  onChange,
+}: {
+  display: LineShoppingDisplay;
+  onChange: (partial: Partial<LineShoppingDisplay>) => void;
+}) {
+  const options: Array<{
+    key: keyof LineShoppingDisplay;
+    label: string;
+    group: string;
+  }> = [
+    { key: "positiveEv", label: "+EV candidates", group: "Offer value" },
+    { key: "preferredPositiveEv", label: "Preferred +EV offer", group: "Offer value" },
+    { key: "bestLine", label: "Best available line", group: "Market comparison" },
+    { key: "bestPrice", label: "Best exact-line price", group: "Market comparison" },
+    { key: "modelFavorite", label: "Model favorite / underdog", group: "Outcome context" },
+  ];
+  return (
+    <div className="line-shopping-display-panel" role="dialog" aria-label="Line Shopping display settings">
+      {["Offer value", "Market comparison", "Outcome context"].map((group) => (
+        <fieldset key={group}>
+          <legend>{group}</legend>
+          {options.filter((option) => option.group === group).map((option) => (
+            <label key={option.key}>
+              <input
+                type="checkbox"
+                checked={display[option.key]}
+                onChange={() => onChange({ [option.key]: !display[option.key] })}
+              />
+              {option.label}
+            </label>
+          ))}
+        </fieldset>
+      ))}
+      <fieldset disabled>
+        <legend>Recommendation</legend>
+        <label>
+          <input type="checkbox" checked={false} readOnly />
+          Recommended bets
+        </label>
+        <span>Unavailable until a qualification policy is implemented.</span>
+      </fieldset>
+    </div>
+  );
+}
+
+function modelLikelihood(probability: number | null | undefined): string {
+  if (probability == null || probability === 0.5) return "Model pick'em";
+  return probability > 0.5 ? "Model favorite" : "Model underdog";
 }
 
 function blockedItems(status: unknown): { blocker: string; roadmap: string } | null {
