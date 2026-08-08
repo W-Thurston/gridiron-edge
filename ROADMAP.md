@@ -100,6 +100,28 @@ Program sequence:
   controls for each visual comparison layer. Recommended-bet qualification
   remains planned until an empirically validated edge, reliability, freshness,
   sizing, and exposure policy is implemented.
+8. **Recommended-bet qualification [Planned].** Define and validate the policy
+  that promotes a +EV candidate into a qualified opportunity or recommended bet.
+  Derive minimum-edge and reliability requirements empirically from archived
+  predictions and market results; require fresh and complete model and quote
+  inputs; incorporate the existing bankroll and fractional-Kelly sizing basis;
+  prevent duplicate, conflicting, or over-concentrated exposure; and expose the
+  reasons a wager passed, failed, or could not be evaluated. Model-favorite
+  status remains descriptive and is not a universal recommendation requirement.
+9. **Recommendation product integration [Planned].** Add the qualified and
+  recommended states to the backend contract, Line Shopping, Available Edges,
+  Bet Slip, and recorded-bet workflow only after the qualification policy is
+  validated. Present recommendation profile, supporting evidence, unavailable
+  checks, suggested stake, and provenance without placing sportsbook wagers.
+10. **Derived market opportunities [Planned].** Build arbitrage and middle
+  detection on the validated exact-offer comparison contract, preserving book,
+  line, price, timing, and execution constraints. Keep these opportunities
+  distinct from model-value recommendations.
+11. **Market movement and historical evaluation [Planned].** Add append-only
+  quote history, opening and closing definitions, leakage-safe pre-kickoff quote
+  selection, line-movement and closing-line-value analysis, provider backfill,
+  and coverage reporting. Use the historical evidence to validate and recalibrate
+  recommendation thresholds rather than choosing intuitive cutoffs.
 
 Current and historical market data are separate workstreams within this
 program. The current-market workstream comes first because it unlocks immediate

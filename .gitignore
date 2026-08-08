@@ -90,3 +90,4 @@ directory_structure.txt
 github-actions-demo.yml
 notebooks/exploratory/*
 Dockerfile
+PROTOTYPE_AUDIT.md

@@ -476,7 +476,6 @@ the backend.
 #### Files Added/Removed/Changed
 
 Added:
-- PROTOTYPE_AUDIT.md
 - close_market_unit6_docs.py
 - frontend/src/components/primitives/ExplainTooltip.test.tsx
 - frontend/src/components/primitives/ExplainTooltip.tsx
@@ -560,7 +559,7 @@ predicted winner or that Gridiron Edge recommends placing the wager.
 #### Files Added/Removed/Changed
 
 Added:
-- PROTOTYPE_AUDIT.md
+- None
 
 Removed:
 - None
