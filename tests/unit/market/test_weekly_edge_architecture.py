@@ -82,18 +82,12 @@ def test_api_edge_loader_has_no_retired_edge_dependencies() -> None:
     assert found == []
 
 
-def test_standalone_report_uses_service_while_clv_remains_historical() -> None:
+def test_standalone_report_uses_service_without_historical_clv() -> None:
+    """The edge CLI keeps weekly reporting and retires historical CLV."""
     source = Path("src/gridiron_edge/cli/edges.py").read_text()
 
-    report_start = source.index("def report(")
-    clv_start = source.index("def clv(")
-    report_source = source[report_start:clv_start]
-    clv_source = source[clv_start:]
-
-    assert "build_weekly_edge_result" in report_source
-    assert "build_edge_report" not in report_source
-    assert "rank_edges" not in report_source
-
-    assert "load_prediction_log" in clv_source
-    assert "build_edge_report" in clv_source
-    assert "rank_edges" in clv_source
+    assert "def report(" in source
+    assert "build_weekly_edge_result" in source
+    assert "def clv(" not in source
+    assert "build_clv_report" not in source
+    assert "load_odds_ledger" not in source

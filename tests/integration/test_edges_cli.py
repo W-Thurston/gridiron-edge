@@ -3,13 +3,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pandas as pd
 from pandas import Timestamp
 from typer.testing import CliRunner
-
-from gridiron_edge.cli.edges import edges_app
 
 runner = CliRunner()
 
@@ -163,51 +159,3 @@ _MARGIN_STD_PATH = "gridiron_edge.models.game_prediction.post_process.get_margin
 # ---------------------------------------------------------------------------
 # TestClvCommand
 # ---------------------------------------------------------------------------
-
-
-class TestClvCommand:
-    """Tests for 'gridiron edges clv'."""
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_ODDS_LEDGER_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_clv_runs(self, mock_preds, mock_ledger, mock_std) -> None:
-        """Command completes successfully with valid data."""
-        mock_preds.return_value = _make_predictions()
-        mock_ledger.return_value = _make_long_odds()
-
-        result = runner.invoke(
-            edges_app,
-            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_ODDS_LEDGER_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_clv_no_predictions(self, mock_preds, mock_ledger, mock_std) -> None:
-        """Empty predictions -> graceful exit."""
-        mock_preds.return_value = pd.DataFrame()
-        mock_ledger.return_value = _make_long_odds()
-
-        result = runner.invoke(
-            edges_app,
-            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-        assert "No predictions found" in result.output
-
-    @patch(_MARGIN_STD_PATH, return_value=13.54)
-    @patch(_ODDS_LEDGER_PATH)
-    @patch(_PREDICTIONS_PATH)
-    def test_clv_no_odds(self, mock_preds, mock_ledger, mock_std) -> None:
-        """Empty odds ledger -> graceful exit."""
-        mock_preds.return_value = _make_predictions()
-        mock_ledger.return_value = pd.DataFrame()
-
-        result = runner.invoke(
-            edges_app,
-            ["clv", "--season", "2026-2027", "--model-type", "random_forest"],
-        )
-        assert result.exit_code == 0
-        assert "No odds ledger" in result.output

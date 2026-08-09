@@ -655,3 +655,70 @@ exposure policies are unavailable. No result is labeled qualified or
 recommended, and no API or frontend recommendation state has been introduced.
 
 ---
+
+### Market Unit 9: Retire Unsupported Historical Quote Interpretation [Completed]
+
+#### Completed
+
+Retired operational opening, closing, and closing-line-value behavior that was
+not supported by the provider-aware historical quote evidence contract.
+Historical quote rows remain available as observations, but no command or
+settlement path interprets the first or last stored observation as a validated
+market boundary.
+
+Preserved the pure Moneyline, Spread, and Total CLV calculations for future use
+with a separately validated, same-source, sportsbook-specific, pre-kickoff
+quote-selection policy. Preserved nullable CLV fields and unavailable API states
+without introducing a replacement historical-selection policy.
+
+#### Goal
+
+Remove unsupported historical quote interpretation while preserving pure CLV
+math and the future data contract needed by a validated closeout workflow.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/betting/ledger.py
+- src/gridiron_edge/cli/betting.py
+- src/gridiron_edge/cli/edges.py
+- src/gridiron_edge/market/__init__.py
+- src/gridiron_edge/market/clv.py
+- tests/integration/test_edges_cli.py
+- tests/unit/betting/test_ledger.py
+- tests/unit/cli/test_edges.py
+- tests/unit/market/test_clv.py
+- tests/unit/market/test_weekly_edge_architecture.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused market, betting, CLI, API serializer, and integration tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated that `gridiron edges report` remains registered and available.
+- Validated that `gridiron edges clv` is no longer registered.
+- Validated that unsupported opening and closing selectors and the historical
+  CLV report builder have no remaining source or test references.
+- Validated that bet settlement records settlement results and PnL without
+  loading historical quote observations.
+- Validated that closing line, closing odds, and CLV remain null until a future
+  validated closeout policy owns those fields.
+- Validated pure probability-based and point-based CLV calculations.
+- Validated CLV summaries consume only explicitly supplied validated values.
+
+#### Acceptance
+
+No operational path treats the first or last stored quote observation as a
+validated opening or closing line. The edge CLI no longer offers unsupported
+historical CLV analysis, and bet settlement no longer populates closing or CLV
+fields from unvalidated observation selection. Pure scalar CLV math remains
+available for a future same-source, sportsbook-specific, pre-kickoff closing
+policy, while existing API and frontend fields truthfully remain unavailable.

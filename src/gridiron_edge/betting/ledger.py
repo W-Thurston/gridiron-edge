@@ -3,7 +3,7 @@
 
 Follows the same Parquet append-only pattern as ``evaluation/archive.py``.
 The ledger stores every bet placed, its model context at bet time, and
-settlement results including PnL and closing line value.
+settlement results including PnL.
 
 Public API::
 
@@ -320,23 +320,16 @@ def log_bet(
     return bet_id
 
 
-def settle_bet(
-    bet_id: str,
-    result: BetStatus,
-    *,
-    repo: Path | None = None,
-    odds_ledger: pd.DataFrame | None = None,
-) -> pd.Series:
+def settle_bet(bet_id: str, result: BetStatus, *, repo: Path | None = None) -> pd.Series:
     """Settle an open bet with the given result.
 
-    Computes PnL from the bet's odds and stake. If an ``odds_ledger`` is
-    provided, also computes closing line value (CLV).
+    Computes PnL from the bet's odds and stake. Closing fields remain
+    null until a validated closeout policy writes them.
 
     Args:
         bet_id: UUID of the bet to settle.
         result: Settlement result - ``"won"``, ``"lost"``, or ``"push"``.
         repo: Repository root override.
-        odds_ledger: Optional long-format odds DataFrame for CLV lookup.
 
     Returns:
         The settled bet row as a ``pd.Series``.
@@ -368,12 +361,6 @@ def settle_bet(
     closing_line = None
     closing_odds = None
     clv = None
-    if odds_ledger is not None and not odds_ledger.empty:
-        clv_result: tuple[float | None, int | None, float | None] | None = _compute_clv_for_bet(
-            bet, odds_ledger
-        )
-        if clv_result is not None:
-            closing_line, closing_odds, clv = clv_result
 
     # Update ledger
     ledger.loc[idx, "status"] = result
@@ -432,103 +419,3 @@ def load_bets(
         df = df.loc[df["game_id"].str[5:7] == week_str, :]
 
     return df.reset_index(drop=True)
-
-
-# ---------------------------------------------------------------------------
-# CLV helper
-# ---------------------------------------------------------------------------
-
-
-def _compute_clv_for_bet(
-    bet: pd.Series,
-    odds_ledger: pd.DataFrame,
-) -> tuple[float | None, int | None, float | None] | None:
-    """Compute closing line value for a single settled bet.
-
-    Returns (closing_line, closing_odds, clv) or None if closing data
-    is not available.
-    """
-    try:
-        from gridiron_edge.market.clv import extract_closing_odds
-    except ImportError:
-        return None
-
-    game_id = bet["game_id"]
-    market = bet["market_type"]
-    side = bet["side"]
-
-    # Filter odds ledger to this game + market
-    mask = (odds_ledger["game_id"] == game_id) & (odds_ledger["market"] == market)
-    game_odds: Series = odds_ledger[mask]
-    if game_odds.empty:
-        return None
-
-    # Get closing odds for our side
-    # pyrefly: ignore [bad-argument-type]
-    closing: DataFrame = extract_closing_odds(game_odds)
-    side_mask = closing["side"] == side
-    if not side_mask.any():
-        return None
-
-    closing_row = closing[side_mask].iloc[0]
-    closing_odds_val = int(closing_row["odds"])
-    closing_line_val = closing_row.get("line", None)
-
-    if market == "moneyline":
-        clv_val: float | None = _ml_clv(int(bet["odds"]), closing_odds_val)
-    else:
-        clv_val = _line_clv(bet.get("line", None), closing_line_val, market, side)
-
-    return (
-        float(closing_line_val) if closing_line_val is not None else None,
-        closing_odds_val,
-        clv_val,
-    )
-
-
-def _ml_clv(bet_odds: int, closing_odds: int) -> float | None:
-    """Moneyline CLV using the canonical closing_line_value helper.
-
-    Unifies the ledger's CLV computation with the formula used in
-    ``market/clv.py``. The single-sided ledger row does not carry the
-    opposing odds, so the calculation still operates on raw implied
-    probabilities rather than no-vig probabilities. The canonical
-    helper performs the relative-change calculation in a single place.
-
-    Returns ``None`` for unusable inputs (e.g. American odds of zero,
-    which ``american_to_implied_prob`` rejects) so the ledger's
-    settlement path never raises mid-write.
-    """
-    from gridiron_edge.market.clv import closing_line_value
-    from gridiron_edge.market.odds_math import american_to_implied_prob
-
-    try:
-        bet_prob: float = american_to_implied_prob(bet_odds)
-        close_prob: float = american_to_implied_prob(closing_odds)
-    except ValueError:
-        return None
-
-    if bet_prob <= 0 or close_prob <= 0:
-        return None
-
-    try:
-        return closing_line_value(bet_prob, close_prob)
-    except ValueError:
-        return None
-
-
-def _line_clv(
-    bet_line: float | None,
-    closing_line: float | None,
-    market: str,
-    side: str,
-) -> float | None:
-    """Point-based CLV for spread or total bets."""
-    if bet_line is None or closing_line is None:
-        return None
-    bl: float = bet_line
-    cl: float = closing_line
-    if market == "spread":
-        return bl - cl if side == "home" else cl - bl
-    # total
-    return cl - bl if side == "over" else bl - cl

@@ -4,7 +4,6 @@
 Provides two sub-commands:
 
     gridiron edges report   Weekly edge report (the Sunday artifact)
-    gridiron edges clv      Historical closing line value analysis
 
 The weekly report consumes the explicitly selected persisted weekly
 product. Historical CLV analysis retains its explicit win-model selection.
@@ -21,9 +20,7 @@ from pandas import DataFrame
 # pyrefly: ignore [missing-import]
 import typer
 
-from gridiron_edge.cli._composites import resolve_win_prob_model_type
 from gridiron_edge.core.settings import Settings
-from gridiron_edge.models.game_prediction.post_process import get_total_std
 
 if TYPE_CHECKING:
     from gridiron_edge.market.edge_diagnostics import EdgeDiagnostics
@@ -43,6 +40,11 @@ _TOTAL_STD_FALLBACK: float = 13.0
 # ---------------------------------------------------------------------------
 # gridiron edges report
 # ---------------------------------------------------------------------------
+
+
+@edges_app.callback()
+def edges() -> None:
+    """Calculate and report current weekly betting edges."""
 
 
 @edges_app.command()
@@ -121,88 +123,6 @@ def report(
         _render_edge_table(result.rows)
 
     typer.echo(f"\n  {len(result.rows)} edge(s) found.")
-
-
-# ---------------------------------------------------------------------------
-# gridiron edges clv
-# ---------------------------------------------------------------------------
-
-
-@edges_app.command()
-def clv(
-    season: str | None = typer.Option(None, help="Filter to NFL season label, e.g. '2026-2027'."),
-    model_type: str = typer.Option(
-        "auto",
-        help=(
-            "Win-probability model algorithm to use. One of: random_forest, "
-            "xgboost, logistic, elo. Defaults to 'auto', which resolves to "
-            "the current champion from the manifest at "
-            "data/output/champions/champions.json."
-        ),
-    ),
-    min_ev: float = typer.Option(0.0, help="Minimum EV threshold for edges to include."),
-) -> None:
-    """Analyse historical closing line value."""
-    from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.archive import load_prediction_log
-    from gridiron_edge.ingest.odds.store import load_odds_ledger
-    from gridiron_edge.market.clv import build_clv_report, summarize_clv
-    from gridiron_edge.market.recommendations import build_edge_report, rank_edges
-    from gridiron_edge.models.game_prediction.post_process import get_margin_std
-
-    resolved_model_type = resolve_win_prob_model_type(model_type)
-
-    console.header(f"Closing Line Value Analysis  ·  model={resolved_model_type}")
-
-    # ── Load data ─────────────────────────────────────────────────────
-    with step("Loading predictions"):
-        predictions: DataFrame = load_prediction_log(
-            season=season,
-            model_name="win_prob",
-            model_type=resolved_model_type,
-        )
-    if predictions.empty:
-        typer.echo(f"No predictions found for win_prob/{resolved_model_type}.")
-        raise typer.Exit()
-
-    typer.echo(f"  {len(predictions)} prediction(s) loaded.")
-
-    with step("Loading odds ledger"):
-        odds_ledger: DataFrame = load_odds_ledger(season=season)
-    if odds_ledger.empty:
-        typer.echo("No odds ledger data available.")
-        raise typer.Exit()
-
-    typer.echo(f"  {len(odds_ledger)} odds row(s) loaded.")
-
-    # ── Build edge report for historical games ────────────────────────
-    margin_std: float = get_margin_std("win_prob", resolved_model_type)
-    total_std: float = get_total_std(
-        "total",
-        resolved_model_type,
-        default=_TOTAL_STD_FALLBACK,
-    )
-
-    with step("Building edge report"):
-        edge_report: DataFrame = build_edge_report(
-            predictions,
-            odds_ledger,
-            margin_std=margin_std,
-            total_std=total_std,
-        )
-        ranked: DataFrame = rank_edges(edge_report, min_ev=min_ev)
-
-    if ranked.empty:
-        typer.echo("No positive-EV edges found in historical data.")
-        raise typer.Exit()
-
-    # ── Compute CLV ───────────────────────────────────────────────────
-    with step("Computing CLV"):
-        clv_report: DataFrame = build_clv_report(ranked, odds_ledger)
-        stats: dict[str, float] = summarize_clv(clv_report)
-
-    # ── Display summary ───────────────────────────────────────────────
-    _render_clv_summary(stats)
 
 
 # ---------------------------------------------------------------------------
@@ -328,24 +248,6 @@ def _format_american_odds(value: int | float) -> str:
     """Render one American price for the edge table."""
     odds = int(value)
     return f"+{odds}" if odds > 0 else str(odds)
-
-
-def _render_clv_summary(stats: dict[str, float]) -> None:
-    """Render CLV summary statistics."""
-    import math
-
-    typer.echo("\n  CLV Summary")
-    typer.echo("  " + "-" * 35)
-
-    n: float = stats.get("n_edges", 0)
-    if n == 0 or math.isnan(stats.get("mean_clv", float("nan"))):
-        typer.echo("  No CLV data available.")
-        return
-
-    typer.echo(f"  Edges analysed:    {int(n)}")
-    typer.echo(f"  Mean CLV:          {stats['mean_clv']:+.3f}")
-    typer.echo(f"  Median CLV:        {stats['median_clv']:+.3f}")
-    typer.echo(f"  % Positive CLV:    {stats['pct_positive_clv']:.1%}")
 
 
 def _edge_csv_path(season: str, week: int) -> Path:

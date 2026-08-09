@@ -93,22 +93,11 @@ def settle_cmd(
     with_clv: bool = typer.Option(True, "--with-clv/--no-clv", help="Compute CLV from odds ledger"),
 ) -> None:
     """Settle an open bet."""
-    import pandas as pd
-
     from gridiron_edge.betting.bankroll import current_balance, record_bet_settled
     from gridiron_edge.betting.ledger import settle_bet
 
-    odds_ledger: pd.DataFrame | None = None
-    if with_clv:
-        try:
-            from gridiron_edge.ingest.odds.store import load_odds_ledger
-
-            odds_ledger = load_odds_ledger()
-        except (FileNotFoundError, OSError):
-            odds_ledger = None
-
     try:
-        row: Series = settle_bet(bet_id, result, odds_ledger=odds_ledger)
+        row: Series = settle_bet(bet_id, result)
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1) from e

@@ -4,10 +4,7 @@ Pure-math helpers for odds conversion, no-vig debiasing, and Kelly staking.
 No data dependencies - every function is a leaf.
 """
 
-from .clv import build_clv_report as build_clv_report
 from .clv import closing_line_value as closing_line_value
-from .clv import extract_closing_odds as extract_closing_odds
-from .clv import extract_opening_odds as extract_opening_odds
 from .clv import spread_clv as spread_clv
 from .clv import summarize_clv as summarize_clv
 from .clv import total_clv as total_clv
