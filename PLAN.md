@@ -597,3 +597,61 @@ evaluation, chronological ordering, sportsbook filtering, responsiveness, and
 accessible explanations remain intact. Recommended-bet functionality remains
 unavailable pending an empirically validated edge, reliability, freshness,
 sizing, and portfolio-exposure policy.
+
+---
+
+### Market Unit 8: Establish Recommendation Qualification Diagnostics [Completed]
+
+#### Completed
+
+Established a pure, immutable recommendation-qualification diagnostic contract
+for exact evaluated sportsbook offers. The contract reports what passed, failed,
+or remains unavailable without assigning a qualified or recommended-bet state.
+
+#### Goal
+
+Create an explicit analytical boundary between a positive-EV candidate and any
+future recommended-bet policy while preserving model, product, forecast, quote,
+freshness, sizing, and unavailable-policy evidence.
+
+#### Files Added/Removed/Changed
+
+Added:
+- src/gridiron_edge/market/qualification.py
+- tests/unit/market/test_qualification.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+
+#### Tests
+
+- Passed focused Ruff, Pyrefly, and qualification unit-test gates.
+- Passed the full Python quality gates and complete non-slow unit test suite.
+- Validated frozen qualification contracts, canonical check ordering, and
+  deterministic JSON-compatible serialization.
+- Validated negative, break-even, missing-EV, model-unavailable, and
+  uncertainty-unavailable offers as not candidates.
+- Validated forecast event, run, model, game, season, week, and live-role
+  provenance.
+- Validated Moneyline and Spread against selected Win provenance and Total
+  against selected Total provenance.
+- Validated missing forecast provenance as unavailable rather than fabricated.
+- Validated optional UTC quote-freshness evaluation with an inclusive cutoff.
+- Validated sizing availability remains informational.
+- Validated unavailable empirical edge, reliability, exposure, concentration,
+  and correlation policies remain present in every candidate result.
+
+#### Acceptance
+
+Every exact evaluated sportsbook offer can produce deterministic qualification
+diagnostics describing candidate eligibility, model availability,
+selected-product provenance, immutable forecast provenance, quote identity,
+timestamp evidence, optional freshness, and sizing availability. Positive-EV
+offers remain qualification-unavailable while empirical edge, reliability, and
+exposure policies are unavailable. No result is labeled qualified or
+recommended, and no API or frontend recommendation state has been introduced.
+
+---
