@@ -10,6 +10,7 @@ import pytest
 
 from gridiron_edge.ingest.odds.store import (
     OBSERVATION_IDENTITY_COLUMNS,
+    OBSERVATION_SORT_COLUMNS,
     QUOTE_COLUMNS,
     append_to_odds_ledger,
     load_current_odds,
@@ -61,7 +62,7 @@ def test_rejects_missing_and_unknown_columns() -> None:
 
 
 def test_nullable_consensus_provenance_is_valid() -> None:
-    rows = _quotes().iloc[[0]].copy()
+    rows: DataFrame = DataFrame(_quotes().iloc[[0]].copy())
     rows["provider"] = "nflverse"
     rows["provider_event_id"] = None
     rows["sportsbook"] = None
@@ -110,9 +111,83 @@ def test_later_local_observation_is_retained(tmp_path: Path) -> None:
     assert len(pd.read_parquet(path)) == 4
 
 
+def test_later_changed_price_is_retained(tmp_path: Path) -> None:
+    """A later price is a distinct historical observation."""
+    append_to_odds_ledger(DataFrame(_quotes().iloc[[0]]), repo=tmp_path)
+    changed: DataFrame = DataFrame(_quotes(fetched_at="2026-09-10T13:00:00Z").iloc[[0]].copy())
+    changed["odds"] = -140.0
+    path = append_to_odds_ledger(changed, repo=tmp_path)
+
+    loaded = pd.read_parquet(path)
+    assert loaded["odds"].tolist() == [-150.0, -140.0]
+
+
+def test_later_changed_line_is_retained(tmp_path: Path) -> None:
+    """A later point is a distinct historical observation."""
+    first: DataFrame = DataFrame(_quotes().iloc[[0]].copy())
+    first["market"] = "spread"
+    first["line"] = 3.5
+    first["odds"] = -110.0
+    later = first.copy()
+    later["fetched_at"] = pd.Timestamp("2026-09-10T13:00:00Z")
+    later["line"] = 4.0
+    append_to_odds_ledger(first, repo=tmp_path)
+    path = append_to_odds_ledger(later, repo=tmp_path)
+
+    loaded = pd.read_parquet(path)
+    assert loaded["line"].tolist() == [3.5, 4.0]
+
+
+def test_same_fetch_conflicting_observations_are_rejected(
+    tmp_path: Path,
+) -> None:
+    """One normalized market side cannot have two values in one fetch."""
+    first: DataFrame = DataFrame(_quotes().iloc[[0]].copy())
+    append_to_odds_ledger(first, repo=tmp_path)
+    path = tmp_path / "data" / "odds" / "odds_log.parquet"
+    before = path.read_bytes()
+    conflict = first.copy()
+    conflict["odds"] = -140.0
+
+    with pytest.raises(ValueError, match="conflict within one local fetch"):
+        append_to_odds_ledger(conflict, repo=tmp_path)
+
+    assert path.read_bytes() == before
+
+
+def test_invalid_append_preserves_existing_ledger(tmp_path: Path) -> None:
+    """Schema failure does not replace the prior observation artifact."""
+    path = append_to_odds_ledger(_quotes(), repo=tmp_path)
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match="missing columns"):
+        append_to_odds_ledger(
+            _quotes().drop(columns="provider"),
+            repo=tmp_path,
+        )
+
+    assert path.read_bytes() == before
+
+
+def test_ledger_order_is_canonical_and_input_independent(tmp_path: Path) -> None:
+    """Persisted observations use stable canonical ordering."""
+    later = _quotes(fetched_at="2026-09-10T13:00:00Z")
+    rows = pd.concat([later.iloc[::-1], _quotes().iloc[::-1]], ignore_index=True)
+    # pyrefly: ignore [bad-argument-type]
+    path = append_to_odds_ledger(rows, repo=tmp_path)
+    loaded = pd.read_parquet(path)
+    expected = loaded.sort_values(
+        list(OBSERVATION_SORT_COLUMNS),
+        kind="stable",
+        na_position="first",
+    ).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(loaded, expected)
+
+
 def test_snapshot_atomically_overwrites_and_roundtrips(tmp_path: Path) -> None:
     write_current_odds_snapshot(_quotes(), repo=tmp_path)
-    replacement = _quotes().iloc[[0]].copy()
+    replacement: DataFrame = DataFrame(_quotes().iloc[[0]].copy())
     path = write_current_odds_snapshot(replacement, repo=tmp_path)
     loaded = load_current_odds(repo=tmp_path)
     assert path.is_file()

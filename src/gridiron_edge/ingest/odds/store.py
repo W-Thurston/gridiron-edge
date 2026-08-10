@@ -15,7 +15,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
 from gridiron_edge.core.settings import get_settings
 
@@ -39,6 +39,31 @@ QUOTE_COLUMNS: tuple[str, ...] = (
     "side",
     "odds",
     "line",
+)
+
+
+OBSERVATION_FETCH_IDENTITY_COLUMNS: tuple[str, ...] = (
+    "fetched_at",
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "game_id",
+    "market",
+    "side",
+)
+
+OBSERVATION_SORT_COLUMNS: tuple[str, ...] = (
+    "fetched_at",
+    "provider",
+    "provider_event_id",
+    "sportsbook",
+    "game_id",
+    "market",
+    "side",
+    "line",
+    "odds",
+    "sportsbook_updated_at",
+    "is_live",
 )
 
 OBSERVATION_IDENTITY_COLUMNS: tuple[str, ...] = (
@@ -114,7 +139,10 @@ def _normalize_nullable_text(rows: DataFrame) -> None:
 
 def _normalize_week(rows: DataFrame) -> None:
     """Normalize positive integer NFL week values in place."""
-    numeric = pd.to_numeric(rows["week"], errors="coerce")
+    numeric: Series = Series(
+        pd.to_numeric(rows["week"], errors="coerce"),
+        index=rows.index,
+    )
     if numeric.isna().any() or (numeric % 1 != 0).any() or (numeric < 1).any():
         raise ValueError("Quote week must contain positive integers.")
     rows["week"] = numeric.astype(int)
@@ -170,7 +198,10 @@ def _validate_market_side_pairs(rows: DataFrame) -> None:
 def _normalize_numeric(rows: DataFrame, column: str, *, reject_zero: bool) -> None:
     """Normalize nullable finite numeric quote values."""
     raw = rows[column]
-    converted = pd.to_numeric(raw, errors="coerce")
+    converted: Series = Series(
+        pd.to_numeric(raw, errors="coerce"),
+        index=raw.index,
+    )
     invalid_parse = raw.notna() & converted.isna()
     if invalid_parse.any():
         raise ValueError(f"Quote {column} values must be numeric or null.")
@@ -221,11 +252,39 @@ def _atomic_write_parquet(rows: DataFrame, path: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _deduplicate_observations(rows: DataFrame) -> DataFrame:
-    """Return deterministic unique local quote observations."""
-    return rows.drop_duplicates(
+def _validate_observation_conflicts(rows: DataFrame) -> None:
+    """Reject conflicting market-side observations within one local fetch."""
+    duplicated = rows.duplicated(
+        subset=list(OBSERVATION_FETCH_IDENTITY_COLUMNS),
+        keep=False,
+    )
+    if not duplicated.any():
+        return
+
+    conflicts = rows.loc[
+        duplicated,
+        list(OBSERVATION_FETCH_IDENTITY_COLUMNS),
+    ].drop_duplicates()
+    rendered = [
+        "/".join("<null>" if pd.isna(value) else str(value) for value in identity)
+        for identity in conflicts.itertuples(index=False, name=None)
+    ]
+    raise ValueError(
+        "Quote observations conflict within one local fetch: " + ", ".join(sorted(rendered))
+    )
+
+
+def _canonicalize_observations(rows: DataFrame) -> DataFrame:
+    """Deduplicate, validate, and deterministically order observations."""
+    unique = rows.drop_duplicates(
         subset=list(OBSERVATION_IDENTITY_COLUMNS),
         keep="last",
+    ).reset_index(drop=True)
+    _validate_observation_conflicts(unique)
+    return unique.sort_values(
+        list(OBSERVATION_SORT_COLUMNS),
+        kind="stable",
+        na_position="first",
     ).reset_index(drop=True)
 
 
@@ -246,7 +305,7 @@ def append_to_odds_ledger(
     else:
         combined = normalized
 
-    output = _deduplicate_observations(validate_quote_rows(combined))
+    output = _canonicalize_observations(validate_quote_rows(combined))
     _atomic_write_parquet(output, path)
     logger.info("Odds observation ledger: %d rows -> %s", len(output), path)
     return path
@@ -304,4 +363,5 @@ def load_odds_ledger(
     ):
         if value is not None:
             filters.append((column, "==", value))
-    return validate_quote_rows(pd.read_parquet(path, filters=filters or None))
+    rows = validate_quote_rows(pd.read_parquet(path, filters=filters or None))
+    return _canonicalize_observations(rows)

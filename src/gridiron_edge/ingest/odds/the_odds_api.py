@@ -377,7 +377,13 @@ def ingest_the_odds_api_current(
         )
 
     ledger_path = append_to_odds_ledger(quotes, repo=repo)
-    snapshot_path = write_current_odds_snapshot(quotes, repo=repo)
+    try:
+        snapshot_path = write_current_odds_snapshot(quotes, repo=repo)
+    except Exception as exc:
+        raise OddsIngestError(
+            "Quote observations were persisted to the historical ledger, "
+            "but the current snapshot was not replaced."
+        ) from exc
     return OddsIngestResult(
         quote_count=len(quotes),
         game_count=int(quotes["game_id"].nunique()),

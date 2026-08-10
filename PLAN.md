@@ -722,3 +722,76 @@ historical CLV analysis, and bet settlement no longer populates closing or CLV
 fields from unvalidated observation selection. Pure scalar CLV math remains
 available for a future same-source, sportsbook-specific, pre-kickoff closing
 policy, while existing API and frontend fields truthfully remain unavailable.
+
+---
+
+### Market Unit 10: Stabilize Historical Quote Observation Evidence [Active]
+
+#### Goal
+
+Harden the existing provider-aware quote observation ledger as the authoritative
+historical market evidence source. Preserve deterministic, auditable quote
+observations, report temporal evidence depth explicitly, and surface partial
+ledger-versus-snapshot persistence truthfully without defining opening,
+closing, movement, CLV, backtest, or recommendation policy.
+
+#### Design Decisions
+
+- Retain `data/odds/odds_log.parquet` as the canonical append-only observation
+  artifact and `data/odds/odds_current.parquet` as the independently replaced
+  operational current snapshot.
+- Preserve exact replay idempotence using the complete observation identity.
+- Retain repeated observations at later local fetch timestamps, including
+  unchanged, changed-price, changed-line, changed-update-time, and changed-live-
+  state observations.
+- Define one normalized provider-event-sportsbook-game-market-side identity per
+  local fetch and reject conflicting substantive observations within it.
+- Deduplicate identical complete observations before conflict evaluation.
+- Canonically sort the complete ledger after every append using stable ordering
+  and explicit null placement.
+- Validate the proposed combined ledger completely before replacing the current
+  artifact, preserving the prior ledger when validation fails.
+- Document that ledger append and current-snapshot replacement are individually
+  atomic but are not one cross-file transaction.
+- If ledger append succeeds and snapshot replacement fails, retain the truthful
+  observation history, preserve the prior snapshot, and raise an explicit
+  partial-persistence error.
+- Add pure historical coverage diagnostics for source, scope, timestamp range,
+  live state, kickoff metadata, and repeated temporal evidence.
+- Count nullable source-neutral identities without fabricating provider event or
+  sportsbook values.
+- Distinguish row volume from repeated temporal evidence.
+- Do not interpret repeated observations as movement or label observations as
+  opening, closing, CLV, backtest, or recommendation evidence.
+- Do not add CLI, API, or frontend presentation in this unit.
+
+#### Tests
+
+- Validate exact replay remains idempotent.
+- Validate later unchanged, changed-price, and changed-line observations remain
+  distinct.
+- Validate identical same-fetch observations deduplicate.
+- Validate conflicting same-fetch market-side observations are rejected.
+- Validate invalid appends leave an existing ledger byte-for-byte unchanged.
+- Validate persisted ordering is canonical and independent of input order.
+- Validate filtered loading retains canonical schema and ordering.
+- Validate nullable nflverse provenance remains supported.
+- Validate pre-persistence provider failures leave both artifacts unchanged.
+- Validate snapshot failure after ledger success retains new history, preserves
+  the prior snapshot, and raises an explicit partial-persistence error.
+- Validate coverage for empty, single-fetch, repeated-fetch, multi-source,
+  multi-book, live, pregame, and missing-kickoff observations.
+- Validate repeated unchanged observations establish temporal evidence without
+  claiming movement.
+- Run focused and full Python quality gates.
+
+#### Acceptance
+
+The quote observation ledger deterministically preserves every supported exact
+local observation, deduplicates exact replay, retains later observations,
+rejects ambiguous same-fetch conflicts, and remains unchanged when validation
+fails. Provider ingestion reports partial cross-file persistence truthfully if
+history succeeds while current-snapshot replacement fails. Historical coverage
+explicitly describes source, scope, timestamp, live-state, kickoff, and
+repeated-fetch depth. No result is labeled opening, closing, movement, CLV,
+backtest evidence, or recommendation evidence.

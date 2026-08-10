@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -67,7 +69,10 @@ def _payload() -> list[dict[str, object]]:
 
 def _response(payload: list[dict[str, object]] | None = None) -> OddsApiResponse:
     return OddsApiResponse(
-        payload=_payload() if payload is None else payload,
+        payload=cast(
+            list[Mapping[str, object]],
+            _payload() if payload is None else payload,
+        ),
         usage=OddsApiUsage(requests_remaining=99, requests_used=1, request_cost=1),
     )
 
@@ -232,3 +237,30 @@ def test_forwards_session_and_timeout(mock_fetch: MagicMock, tmp_path: Path) -> 
     session = MagicMock()
     _ingest(tmp_path, session=session, timeout=7.5)
     mock_fetch.assert_called_once_with(api_key="key", session=session, timeout=7.5)
+
+
+@patch("gridiron_edge.ingest.odds.the_odds_api.write_current_odds_snapshot")
+@patch("gridiron_edge.ingest.odds.the_odds_api.fetch_the_odds_api_payload")
+def test_snapshot_failure_retains_history_and_prior_snapshot(
+    mock_fetch: MagicMock,
+    mock_snapshot: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """History remains truthful when current snapshot replacement fails."""
+    odds_dir = tmp_path / "data" / "odds"
+    odds_dir.mkdir(parents=True)
+    snapshot = odds_dir / "odds_current.parquet"
+    snapshot.write_bytes(b"prior-snapshot")
+    mock_fetch.return_value = _response()
+    mock_snapshot.side_effect = OSError("snapshot failed")
+
+    with pytest.raises(
+        OddsIngestError,
+        match=r"historical ledger.*current snapshot",
+    ) as exc_info:
+        _ingest(tmp_path)
+
+    assert isinstance(exc_info.value.__cause__, OSError)
+    ledger = pd.read_parquet(odds_dir / "odds_log.parquet")
+    assert len(ledger) == 2
+    assert snapshot.read_bytes() == b"prior-snapshot"
