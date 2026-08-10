@@ -100,24 +100,67 @@ Program sequence:
   controls for each visual comparison layer. Recommended-bet qualification
   remains planned until an empirically validated edge, reliability, freshness,
   sizing, and exposure policy is implemented.
-8. **Recommended-bet qualification [Planned].** Define and validate the policy
-  that promotes a +EV candidate into a qualified opportunity or recommended bet.
-  Derive minimum-edge and reliability requirements empirically from archived
-  predictions and market results; require fresh and complete model and quote
-  inputs; incorporate the existing bankroll and fractional-Kelly sizing basis;
-  prevent duplicate, conflicting, or over-concentrated exposure; and expose the
-  reasons a wager passed, failed, or could not be evaluated. Model-favorite
-  status remains descriptive and is not a universal recommendation requirement.
-9. **Recommendation product integration [Planned].** Add the qualified and
+8. **Recommendation evidence foundation [Complete].** Established the evidence
+  and diagnostic contracts required before a positive-EV candidate can become a
+  qualified or recommended bet. The system now provides:
+  - immutable qualification diagnostics that distinguish not-candidate,
+    not-qualified, and qualification-unavailable states without prematurely
+    assigning a recommendation;
+  - deterministic provider-aware historical quote observations with exact
+    replay idempotence, same-fetch conflict rejection, and explicit temporal
+    coverage;
+  - leakage-safe `earliest_observed` and `latest_eligible_pregame` boundaries
+    that preserve provider, provider-event, sportsbook, game, market, and side
+    identity;
+  - explicit missing, conflicting, live, and post-kickoff boundary states;
+  - recorded wager terms stored independently from immutable reference-offer
+    provider, sportsbook, event, timestamps, kickoff, odds, and line evidence;
+  - removal of unsupported development behavior that treated first or last
+    stored quotes as opening, closing, or closing-line-value evidence.
+
+  These contracts establish the provenance chain from an exact evaluated offer
+  through historical market evidence to a recorded wager. They do not yet
+  promote candidates into recommended bets, calculate validated CLV, or define
+  empirical edge and exposure thresholds.
+- **Recommended-bet qualification [Planned].** Complete the remaining evidence
+and policy work that promotes a positive-EV candidate into a qualified
+opportunity or recommended bet.
+
+  Remaining sequence:
+  1. Match reference-backed bets to the exact provider, provider event,
+     sportsbook, game, market, side, fetch timestamp, line, and price recorded
+     in historical quote evidence. Preserve explicit manual, missing,
+     conflicting, and matched states.
+  2. Acquire repeated exact-identity observations through scheduled collection
+     or supported historical provider backfill. Current history contains
+     observations but does not yet provide repeated temporal evidence for an
+     exact market identity.
+  3. Implement validated same-source, same-sportsbook bet closeout using the
+     latest eligible pregame boundary. Populate closing fields and calculate
+     price or point CLV only when the required evidence exists.
+  4. Evaluate model reliability, realized outcomes, CLV, and performance across
+     empirical EV cohorts. Derive thresholds from observed results rather than
+     intuitive cutoffs.
+  5. Define quote-freshness, fractional-Kelly sizing, duplicate exposure,
+     conflicting exposure, per-game concentration, portfolio concentration,
+     and correlation policies.
+  6. Promote an offer only when every mandatory check passes. Preserve explicit
+     failed and unavailable reasons when recommendation qualification cannot be
+     completed.
+
+  Model-favorite status remains descriptive and is not a universal
+  recommendation requirement. A positive-EV candidate remains necessary but
+  insufficient for recommendation.
+10. **Recommendation product integration [Planned].** Add the qualified and
   recommended states to the backend contract, Line Shopping, Available Edges,
   Bet Slip, and recorded-bet workflow only after the qualification policy is
   validated. Present recommendation profile, supporting evidence, unavailable
   checks, suggested stake, and provenance without placing sportsbook wagers.
-10. **Derived market opportunities [Planned].** Build arbitrage and middle
+11. **Derived market opportunities [Planned].** Build arbitrage and middle
   detection on the validated exact-offer comparison contract, preserving book,
   line, price, timing, and execution constraints. Keep these opportunities
   distinct from model-value recommendations.
-11. **Market movement and historical evaluation [Planned].** Add append-only
+12. **Market movement and historical evaluation [Planned].** Add append-only
   quote history, opening and closing definitions, leakage-safe pre-kickoff quote
   selection, line-movement and closing-line-value analysis, provider backfill,
   and coverage reporting. Use the historical evidence to validate and recalibrate
