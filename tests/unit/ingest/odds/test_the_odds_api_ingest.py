@@ -99,7 +99,15 @@ def test_success_writes_ledger_then_snapshot(mock_fetch: MagicMock, tmp_path: Pa
     assert result.game_count == 1
     assert result.sportsbook_count == 1
     assert result.usage.requests_remaining == 99
-    assert result.ledger_path == tmp_path / "data" / "odds" / "odds_log.parquet"
+    assert result.ledger_path == (
+        tmp_path
+        / "data"
+        / "odds"
+        / "history"
+        / "season=2026-2027"
+        / "week=01"
+        / "observations.parquet"
+    )
     assert result.snapshot_path == tmp_path / "data" / "odds" / "odds_current.parquet"
 
     ledger = pd.read_parquet(result.ledger_path)
@@ -116,7 +124,15 @@ def test_exact_successful_rerun_is_idempotent(mock_fetch: MagicMock, tmp_path: P
     mock_fetch.return_value = _response()
     _ingest(tmp_path)
     _ingest(tmp_path)
-    ledger = pd.read_parquet(tmp_path / "data" / "odds" / "odds_log.parquet")
+    ledger = pd.read_parquet(
+        tmp_path
+        / "data"
+        / "odds"
+        / "history"
+        / "season=2026-2027"
+        / "week=01"
+        / "observations.parquet"
+    )
     assert len(ledger) == 2
 
 
@@ -261,6 +277,8 @@ def test_snapshot_failure_retains_history_and_prior_snapshot(
         _ingest(tmp_path)
 
     assert isinstance(exc_info.value.__cause__, OSError)
-    ledger = pd.read_parquet(odds_dir / "odds_log.parquet")
+    ledger = pd.read_parquet(
+        odds_dir / "history" / "season=2026-2027" / "week=01" / "observations.parquet"
+    )
     assert len(ledger) == 2
     assert snapshot.read_bytes() == b"prior-snapshot"

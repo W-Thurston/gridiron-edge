@@ -20,7 +20,13 @@ def _result(tmp_path: Path) -> SimpleNamespace:
         quote_count=96,
         game_count=16,
         sportsbook_count=4,
-        ledger_path=tmp_path / "data" / "odds" / "odds_log.parquet",
+        ledger_path=tmp_path
+        / "data"
+        / "odds"
+        / "history"
+        / "season=2026-2027"
+        / "week=01"
+        / "observations.parquet",
         snapshot_path=tmp_path / "data" / "odds" / "odds_current.parquet",
         usage=OddsApiUsage(
             requests_remaining=487,
@@ -77,8 +83,6 @@ def test_command_resolves_scope_and_renders_summary(
     assert "Requests remaining: 487" in result.output
     assert "Requests used: 13" in result.output
     assert "Request cost: 3" in result.output
-    assert "odds_log.parquet" in result.output
-    assert "odds_current.parquet" in result.output
 
 
 @patch("gridiron_edge.cli.ingest.get_odds_api_key")

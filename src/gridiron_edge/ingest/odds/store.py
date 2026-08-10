@@ -242,6 +242,63 @@ def _odds_dir(repo: Path | None = None) -> Path:
     return path
 
 
+def _history_root(repo: Path | None = None) -> Path:
+    """Return and create the canonical partitioned quote-history root."""
+    path = _odds_dir(repo) / "history"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def odds_history_partition_path(
+    *,
+    season: str,
+    week: int,
+    repo: Path | None = None,
+) -> Path:
+    """Return the deterministic path for one season-and-week partition."""
+    normalized_season = season.strip()
+    if not normalized_season or not all(
+        character.isalnum() or character in {"-", "_"} for character in normalized_season
+    ):
+        raise ValueError("Quote season must be a safe nonempty path component.")
+    if week < 1:
+        raise ValueError("Quote week must be at least 1.")
+    return (
+        _history_root(repo)
+        / f"season={normalized_season}"
+        / f"week={week:02d}"
+        / "observations.parquet"
+    )
+
+
+def _single_partition_scope(rows: DataFrame) -> tuple[str, int]:
+    """Return the one season-and-week scope owned by an append."""
+    if rows.empty:
+        raise ValueError("Historical quote append requires at least one row.")
+    scopes = rows.loc[:, ["season", "week"]].drop_duplicates()
+    if len(scopes) != 1:
+        raise ValueError("Historical quote append must contain exactly one season-and-week scope.")
+    scope = scopes.iloc[0]
+    return str(scope["season"]), int(scope["week"])
+
+
+def _matching_history_paths(
+    *,
+    season: str | None,
+    week: int | None,
+    repo: Path | None,
+) -> list[Path]:
+    """Return deterministic matching history partitions."""
+    root = _history_root(repo)
+    if season is not None and week is not None:
+        path = odds_history_partition_path(season=season, week=week, repo=repo)
+        return [path] if path.is_file() else []
+
+    season_pattern = f"season={season}" if season is not None else "season=*"
+    week_pattern = f"week={week:02d}" if week is not None else "week=*"
+    return sorted(root.glob(f"{season_pattern}/{week_pattern}/observations.parquet"))
+
+
 def _atomic_write_parquet(rows: DataFrame, path: Path) -> None:
     """Write Parquet beside the destination and atomically replace it."""
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
@@ -293,21 +350,24 @@ def append_to_odds_ledger(
     *,
     repo: Path | None = None,
 ) -> Path:
-    """Append normalized local observations to the atomic quote ledger."""
-    path = _odds_dir(repo) / "odds_log.parquet"
+    """Append normalized observations to one atomic weekly partition."""
     normalized = validate_quote_rows(quotes)
-    if path.exists() and normalized.empty:
-        return path
+    season, week = _single_partition_scope(normalized)
+    path = odds_history_partition_path(season=season, week=week, repo=repo)
 
     if path.exists():
         existing = validate_quote_rows(pd.read_parquet(path))
+        existing_scope = _single_partition_scope(existing)
+        if existing_scope != (season, week):
+            raise ValueError("Existing quote partition contains an invalid scope.")
         combined = pd.concat([existing, normalized], ignore_index=True)
     else:
         combined = normalized
 
     output = _canonicalize_observations(validate_quote_rows(combined))
+    path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_parquet(output, path)
-    logger.info("Odds observation ledger: %d rows -> %s", len(output), path)
+    logger.info("Odds observation partition: %d rows -> %s", len(output), path)
     return path
 
 
@@ -348,12 +408,13 @@ def load_odds_ledger(
     market: str | None = None,
     repo: Path | None = None,
 ) -> DataFrame:
-    """Load observed quote history with optional provider-aware filters."""
-    path = _odds_dir(repo) / "odds_log.parquet"
-    if not path.exists():
+    """Load partitioned quote history with optional provider-aware filters."""
+    paths = _matching_history_paths(season=season, week=week, repo=repo)
+    if not paths:
         return empty_quote_frame()
 
-    filters: list[tuple[str, str, object]] = []
+    frames = [validate_quote_rows(pd.read_parquet(path)) for path in paths]
+    rows = validate_quote_rows(pd.concat(frames, ignore_index=True))
     for column, value in (
         ("provider", provider),
         ("sportsbook", sportsbook),
@@ -362,6 +423,16 @@ def load_odds_ledger(
         ("market", market),
     ):
         if value is not None:
-            filters.append((column, "==", value))
-    rows = validate_quote_rows(pd.read_parquet(path, filters=filters or None))
-    return _canonicalize_observations(rows)
+            rows = rows.loc[rows[column] == value, :].copy()
+    if rows.empty:
+        return empty_quote_frame()
+    combined_history = rows
+    return combined_history.sort_values(
+        [
+            "season",
+            "week",
+            *OBSERVATION_SORT_COLUMNS,
+        ],
+        kind="stable",
+        na_position="first",
+    ).reset_index(drop=True)

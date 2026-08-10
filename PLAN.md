@@ -1049,3 +1049,90 @@ Changed:
   input order.
 - Validated duplicate and empty bet IDs are rejected.
 - Validated missing required bet or
+
+---
+
+### Market Unit 14: Scale Historical Quote Observation Storage [Completed]
+
+#### Completed
+
+Replaced the single ever-growing historical quote artifact with deterministic
+season-and-week observation partitions.
+
+Each append now updates only one bounded weekly partition while preserving exact
+replay idempotence, later unchanged and changed observations, same-fetch
+conflict detection, canonical ordering, complete validation, and atomic
+replacement.
+
+The public quote-storage boundary remains unchanged. Consumers continue using
+`append_to_odds_ledger` and `load_odds_ledger` without depending on the physical
+partition layout. Broad loading combines matching partitions without performing
+cross-partition deduplication and orders results by season, week, and canonical
+observation identity.
+
+The operational current snapshot remains independently stored and replaced at
+`data/odds/odds_current.parquet`.
+
+#### Goal
+
+Bound the physical cost of recurring quote acquisition by replacing the single
+historical quote file with deterministic season-and-week partitions while
+preserving all established observation evidence semantics.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/ingest/odds/store.py
+- tests/unit/cli/test_ingest_odds_cli.py
+- tests/unit/ingest/odds/test_the_odds_api_ingest.py
+- tests/unit/ingest/test_odds_store.py
+- tests/unit/ingest/test_odds_store_source_neutral.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused quote-store, source-neutral storage, provider-client,
+  provider-parser, provider-ingest, ingest-CLI, history-coverage,
+  history-boundary, and bet-reference-matching tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated deterministic season-and-week partition paths.
+- Validated one-scope append creates one weekly history partition.
+- Validated mixed-season and mixed-week append input is rejected.
+- Validated exact replay remains idempotent within one partition.
+- Validated later unchanged, changed-price, and changed-line observations remain
+  distinct.
+- Validated same-fetch conflicts remain rejected.
+- Validated invalid appends preserve the existing partition.
+- Validated appending one week does not rewrite another week.
+- Validated exact season-and-week loading reads one matching partition.
+- Validated broader loading combines matching partitions without
+  cross-partition deduplication.
+- Validated broad results are ordered by season, week, and canonical observation
+  order.
+- Validated provider, sportsbook, market, season, and week filters remain
+  supported.
+- Validated missing history returns the canonical empty quote frame.
+- Validated snapshot failure retains the newly persisted weekly history
+  partition and preserves the prior current snapshot.
+- Validated the current snapshot remains physically and behaviorally separate.
+- Validated historical coverage, leakage-safe boundaries, and bet-reference
+  matching continue consuming the public loader without physical-layout
+  coupling.
+
+#### Acceptance
+
+Historical quote observations are stored in deterministic season-and-week
+partitions, so one recurring collection rewrites only its bounded weekly scope.
+Exact replay, later observations, provider identity, same-fetch conflict
+detection, atomic replacement, canonical ordering, filtered loading, and broad
+history loading remain truthful. The current snapshot remains separate, and no
+scheduler, acquisition cadence, provider backfill, opening, closing, movement,
+CLV, qualification, or recommendation behavior is introduced.

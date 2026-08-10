@@ -15,6 +15,7 @@ from gridiron_edge.ingest.odds.store import (
     append_to_odds_ledger,
     load_current_odds,
     load_odds_ledger,
+    odds_history_partition_path,
     validate_quote_rows,
     write_current_odds_snapshot,
 )
@@ -144,7 +145,11 @@ def test_same_fetch_conflicting_observations_are_rejected(
     """One normalized market side cannot have two values in one fetch."""
     first: DataFrame = DataFrame(_quotes().iloc[[0]].copy())
     append_to_odds_ledger(first, repo=tmp_path)
-    path = tmp_path / "data" / "odds" / "odds_log.parquet"
+    path = odds_history_partition_path(
+        season="2026-2027",
+        week=1,
+        repo=tmp_path,
+    )
     before = path.read_bytes()
     conflict = first.copy()
     conflict["odds"] = -140.0
@@ -218,3 +223,97 @@ def test_loaders_return_canonical_absence_and_support_filters(tmp_path: Path) ->
     )
     assert len(loaded) == 1
     assert loaded.loc[0, "sportsbook"] == "fanduel"
+
+
+def test_partition_path_is_deterministic(tmp_path: Path) -> None:
+    """One canonical scope owns one deterministic physical artifact."""
+    path = odds_history_partition_path(
+        season="2026-2027",
+        week=1,
+        repo=tmp_path,
+    )
+    assert path == (
+        tmp_path
+        / "data"
+        / "odds"
+        / "history"
+        / "season=2026-2027"
+        / "week=01"
+        / "observations.parquet"
+    )
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        pd.concat(
+            [
+                _quotes(),
+                _quotes().assign(season="2027-2028"),
+            ],
+            ignore_index=True,
+        ),
+        pd.concat(
+            [
+                _quotes(),
+                _quotes().assign(week=2),
+            ],
+            ignore_index=True,
+        ),
+    ],
+)
+def test_mixed_scope_append_is_rejected(
+    rows: DataFrame,
+    tmp_path: Path,
+) -> None:
+    """One append cannot silently split ownership across partitions."""
+    with pytest.raises(ValueError, match="one season-and-week scope"):
+        append_to_odds_ledger(rows, repo=tmp_path)
+    assert not list((tmp_path / "data" / "odds").rglob("observations.parquet"))
+
+
+def test_appending_one_week_does_not_rewrite_another(tmp_path: Path) -> None:
+    """A bounded weekly append leaves every other partition untouched."""
+    week_one = append_to_odds_ledger(_quotes(), repo=tmp_path)
+    before = week_one.read_bytes()
+    week_two_rows = _quotes().assign(
+        week=2,
+        game_id="2026_02_BUF_MIA",
+        game_date="2026-09-17",
+        away_team="Buffalo Bills",
+        home_team="Miami Dolphins",
+    )
+    week_two = append_to_odds_ledger(week_two_rows, repo=tmp_path)
+    assert week_two != week_one
+    assert week_one.read_bytes() == before
+
+
+def test_broad_load_combines_partitions_in_canonical_order(tmp_path: Path) -> None:
+    """Physical partitioning remains hidden behind the public loader."""
+    append_to_odds_ledger(_quotes().assign(week=2), repo=tmp_path)
+    append_to_odds_ledger(_quotes(), repo=tmp_path)
+    loaded = load_odds_ledger(repo=tmp_path)
+    assert len(loaded) == 4
+    assert loaded["week"].tolist() == [1, 1, 2, 2]
+
+
+def test_scoped_load_reads_only_matching_partition(tmp_path: Path) -> None:
+    """Explicit season and week filters select one physical partition."""
+    append_to_odds_ledger(_quotes(), repo=tmp_path)
+    append_to_odds_ledger(_quotes().assign(week=2), repo=tmp_path)
+    loaded = load_odds_ledger(
+        season="2026-2027",
+        week=2,
+        repo=tmp_path,
+    )
+    assert len(loaded) == 2
+    assert loaded["week"].unique().tolist() == [2]
+
+
+def test_current_snapshot_is_separate_from_history(tmp_path: Path) -> None:
+    """Historical partitioning does not change current-snapshot ownership."""
+    history_path = append_to_odds_ledger(_quotes(), repo=tmp_path)
+    snapshot_path = write_current_odds_snapshot(_quotes(), repo=tmp_path)
+    assert history_path.name == "observations.parquet"
+    assert snapshot_path.name == "odds_current.parquet"
+    assert snapshot_path.parent == tmp_path / "data" / "odds"
