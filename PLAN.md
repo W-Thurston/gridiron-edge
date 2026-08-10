@@ -978,3 +978,74 @@ while manual bets truthfully store null reference provenance. Invalid or
 incomplete provenance is rejected, settlement preserves reference evidence
 unchanged, and no API, frontend, historical matching, closeout, movement, CLV,
 backtest, or recommendation behavior is introduced.
+
+---
+
+### Market Unit 13: Match Bets to Historical Reference Evidence [Completed]
+
+#### Completed
+
+Implemented a pure, immutable diagnostic contract that matches each recorded
+bet's persisted reference-offer provenance to one exact canonical quote
+observation.
+
+Reference-backed bets are resolved using provider, provider event, sportsbook,
+canonical game, market, side, and local market fetch timestamp. Nullable
+provider-event and sportsbook identities use exact null-aware matching rather
+than wildcard behavior.
+
+After one exact observation is found, the matcher verifies sportsbook update
+time, kickoff, American odds, and line. Missing observations, ambiguous
+candidates, conflicting terms, manual bets, and successful matches remain
+distinct explicit states. Actual wager terms do not participate in reference
+matching and may differ from the immutable reference offer.
+
+#### Goal
+
+Verify that each recorded reference-backed wager identifies one exact canonical
+historical quote observation without selecting closeout evidence or calculating
+movement, CLV, backtest performance, qualification, or recommendation state.
+
+#### Files Added/Removed/Changed
+
+Added:
+- src/gridiron_edge/market/bet_reference_matching.py
+- tests/unit/market/test_bet_reference_matching.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/market/__init__.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused bet-reference matching, historical-boundary,
+  history-coverage, and bet-ledger tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated empty bet input returns no match diagnostics.
+- Validated manual bets return manual-bet status without attempting historical
+  lookup.
+- Validated exact reference-backed bets return matched status with an immutable
+  selected quote observation.
+- Validated provider, provider event, sportsbook, game, market, side, and local
+  fetch timestamp all participate in exact identity.
+- Validated nullable provider-event and sportsbook identities match only null
+  values and are not treated as wildcards.
+- Validated missing exact observations return observation-not-found status.
+- Validated multiple exact candidates return ambiguous-observation status
+  without arbitrary selection.
+- Validated sportsbook update time, kickoff, American odds, and line conflicts
+  are reported individually and together in deterministic field order.
+- Validated null reference terms match only null quote terms.
+- Validated actual wager sportsbook, odds, line, stake, and placement time do not
+  participate in reference matching.
+- Validated equivalent timezone-aware UTC timestamp representations match the
+  same instant.
+- Validated multiple results use deterministic bet-ID ordering independent of
+  input order.
+- Validated duplicate and empty bet IDs are rejected.
+- Validated missing required bet or

@@ -4,6 +4,9 @@ Pure-math helpers for odds conversion, no-vig debiasing, and Kelly staking.
 No data dependencies - every function is a leaf.
 """
 
+from .bet_reference_matching import BetReferenceMatch as BetReferenceMatch
+from .bet_reference_matching import BetReferenceMatchStatus as BetReferenceMatchStatus
+from .bet_reference_matching import match_bet_references as match_bet_references
 from .clv import closing_line_value as closing_line_value
 from .clv import spread_clv as spread_clv
 from .clv import summarize_clv as summarize_clv
