@@ -90,7 +90,6 @@ def log_cmd(
 def settle_cmd(
     bet_id: str = typer.Argument(..., help="UUID of the bet to settle"),
     result: str = typer.Argument(..., help="Result: won, lost, or push"),
-    with_clv: bool = typer.Option(True, "--with-clv/--no-clv", help="Compute CLV from odds ledger"),
 ) -> None:
     """Settle an open bet."""
     from gridiron_edge.betting.bankroll import current_balance, record_bet_settled

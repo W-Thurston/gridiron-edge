@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 from uuid import UUID
 
 import pandas as pd
@@ -138,7 +140,7 @@ class TestLedgerSchema:
     """Current bet-ledger schema invariants."""
 
     def test_model_identity_columns_are_canonical(self) -> None:
-        assert _BET_COLUMNS[9:11] == ["model_name", "model_type"]
+        assert _BET_COLUMNS[17:19] == ["model_name", "model_type"]
 
 
 class TestLogBetModelIdentity:
@@ -568,3 +570,236 @@ class TestLoadBets:
         _log_one(tmp_path, market_type="moneyline", side="home", book="draftkings")
         df = load_bets(market_type="spread", book="draftkings", repo=tmp_path)
         assert len(df) == 1
+
+
+class TestBetReferenceProvenance:
+    """Exact reference-offer evidence is optional, strict, and immutable."""
+
+    _REFERENCE_COLUMNS: ClassVar[list[str]] = [
+        "reference_provider",
+        "reference_provider_event_id",
+        "reference_sportsbook",
+        "reference_market_fetched_at",
+        "reference_sportsbook_updated_at",
+        "reference_commence_time",
+        "reference_american_odds",
+        "reference_line",
+    ]
+
+    def test_reference_columns_are_canonical(self) -> None:
+        """Reference evidence follows actual wager terms in schema order."""
+        assert _BET_COLUMNS[9:17] == self._REFERENCE_COLUMNS
+        assert _BET_COLUMNS[17:19] == ["model_name", "model_type"]
+
+    def test_manual_bet_has_null_reference_provenance(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Manual wagers do not fabricate source evidence from the book."""
+        bet_id = _log_one(tmp_path)
+        row = load_bets(repo=tmp_path).set_index("bet_id").loc[bet_id]
+        assert row[self._REFERENCE_COLUMNS].isna().all()
+        assert row["book"] == "draftkings"
+
+    def test_exact_reference_offer_survives_persistence(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """All exact source and market fields round-trip unchanged."""
+        fetched_at = datetime(2026, 9, 1, 12, tzinfo=UTC)
+        updated_at = datetime(2026, 9, 1, 11, 59, tzinfo=UTC)
+        commence_time = datetime(2026, 9, 10, 0, 20, tzinfo=UTC)
+        bet_id = log_bet(
+            game_id=_GAME_ID,
+            market_type="spread",
+            side="away",
+            odds=-105,
+            stake=100.0,
+            book="fanduel",
+            line=4.0,
+            reference_provider="the_odds_api",
+            reference_provider_event_id="event-1",
+            reference_sportsbook="draftkings",
+            reference_market_fetched_at=fetched_at,
+            reference_sportsbook_updated_at=updated_at,
+            reference_commence_time=commence_time,
+            reference_american_odds=-110,
+            reference_line=3.5,
+            repo=tmp_path,
+        )
+
+        row = load_bets(repo=tmp_path).set_index("bet_id").loc[bet_id]
+        assert row["book"] == "fanduel"
+        assert row["odds"] == -105
+        assert row["line"] == 4.0
+        assert row["reference_provider"] == "the_odds_api"
+        assert row["reference_provider_event_id"] == "event-1"
+        assert row["reference_sportsbook"] == "draftkings"
+        assert row["reference_market_fetched_at"] == fetched_at
+        assert row["reference_sportsbook_updated_at"] == updated_at
+        assert row["reference_commence_time"] == commence_time
+        assert row["reference_american_odds"] == -110
+        assert row["reference_line"] == 3.5
+
+    @pytest.mark.parametrize(
+        "orphan",
+        [
+            {"reference_provider_event_id": "event-1"},
+            {"reference_sportsbook": "draftkings"},
+            {"reference_american_odds": -110},
+            {"reference_line": 3.5},
+        ],
+    )
+    def test_orphaned_reference_fields_are_rejected(
+        self,
+        tmp_path: Path,
+        orphan: dict[str, object],
+    ) -> None:
+        """Reference evidence requires an explicit provider identity."""
+        with pytest.raises(ValueError, match="reference_provider"):
+            # pyrefly: ignore [bad-argument-type]
+            log_bet(**_DEFAULTS, **orphan, repo=tmp_path)
+        assert not (tmp_path / "data/betting/bet_ledger.parquet").exists()
+
+    def test_reference_fetch_time_is_required(self, tmp_path: Path) -> None:
+        """Provider-backed evidence requires its local observation time."""
+        with pytest.raises(ValueError, match="reference_market_fetched_at"):
+            _log_one(
+                tmp_path,
+                reference_provider="the_odds_api",
+            )
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("reference_provider_event_id", " "),
+            ("reference_sportsbook", " "),
+        ],
+    )
+    def test_empty_optional_reference_text_is_rejected(
+        self,
+        tmp_path: Path,
+        field: str,
+        value: str,
+    ) -> None:
+        """Optional source text is either absent or nonempty."""
+        values: dict[str, object] = {
+            "reference_provider": "the_odds_api",
+            "reference_market_fetched_at": datetime(
+                2026,
+                9,
+                1,
+                12,
+                tzinfo=UTC,
+            ),
+            field: value,
+        }
+        with pytest.raises(ValueError, match=field):
+            # pyrefly: ignore [bad-argument-type]
+            log_bet(**_DEFAULTS, **values, repo=tmp_path)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "reference_market_fetched_at",
+            "reference_sportsbook_updated_at",
+            "reference_commence_time",
+        ],
+    )
+    def test_reference_timestamps_require_utc(
+        self,
+        tmp_path: Path,
+        field: str,
+    ) -> None:
+        """Naive reference timestamps are rejected at the write boundary."""
+        values: dict[str, object] = {
+            "reference_provider": "the_odds_api",
+            "reference_market_fetched_at": datetime(
+                2026,
+                9,
+                1,
+                12,
+                tzinfo=UTC,
+            ),
+            field: datetime(2026, 9, 1, 12),
+        }
+        with pytest.raises(ValueError, match="timezone-aware UTC"):
+            # pyrefly: ignore [bad-argument-type]
+            log_bet(**_DEFAULTS, **values, repo=tmp_path)
+
+    @pytest.mark.parametrize("odds", [0, float("inf"), float("-inf")])
+    def test_invalid_reference_odds_are_rejected(
+        self,
+        tmp_path: Path,
+        odds: float,
+    ) -> None:
+        """Reference American odds must be finite and nonzero."""
+        with pytest.raises(ValueError, match="finite and nonzero"):
+            # pyrefly: ignore [bad-argument-type]
+            log_bet(
+                # pyrefly: ignore [bad-argument-type]
+                **_DEFAULTS,
+                reference_provider="the_odds_api",
+                reference_market_fetched_at=datetime(
+                    2026,
+                    9,
+                    1,
+                    12,
+                    tzinfo=UTC,
+                ),
+                # pyrefly: ignore [bad-argument-type]
+                reference_american_odds=odds,
+                repo=tmp_path,
+            )
+
+    def test_nonfinite_reference_line_is_rejected(self, tmp_path: Path) -> None:
+        """Reference point values must be finite."""
+        with pytest.raises(ValueError, match="reference_line"):
+            _log_one(
+                tmp_path,
+                reference_provider="the_odds_api",
+                reference_market_fetched_at=datetime(
+                    2026,
+                    9,
+                    1,
+                    12,
+                    tzinfo=UTC,
+                ),
+                reference_line=float("nan"),
+            )
+
+    def test_settlement_preserves_reference_evidence(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Settlement changes outcomes, not immutable reference evidence."""
+        fetched_at = datetime(2026, 9, 1, 12, tzinfo=UTC)
+        bet_id = log_bet(
+            # pyrefly: ignore [bad-argument-type]
+            **_DEFAULTS,
+            reference_provider="the_odds_api",
+            reference_provider_event_id="event-1",
+            reference_sportsbook="draftkings",
+            reference_market_fetched_at=fetched_at,
+            reference_american_odds=-150,
+            repo=tmp_path,
+        )
+        before = (
+            load_bets(repo=tmp_path)
+            .set_index("bet_id")
+            .loc[
+                bet_id,
+                self._REFERENCE_COLUMNS,
+            ]
+            .copy()
+        )
+        settle_bet(bet_id, "won", repo=tmp_path)
+        after = (
+            load_bets(repo=tmp_path)
+            .set_index("bet_id")
+            .loc[
+                bet_id,
+                self._REFERENCE_COLUMNS,
+            ]
+        )
+        pd.testing.assert_series_equal(before, after)

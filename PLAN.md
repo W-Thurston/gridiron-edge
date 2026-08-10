@@ -892,3 +892,89 @@ conflicting kickoff evidence explicitly. One-fetch histories remain visibly
 shallow, consensus and sportsbook histories remain separate, and no result is
 labeled opening, closing, movement, CLV, backtest evidence, or recommendation
 evidence.
+
+---
+
+### Market Unit 12: Persist Exact Bet Reference Provenance [Completed]
+
+#### Completed
+
+Replaced the development-era bet-ledger contract with an exact reference-offer
+provenance boundary that stores recorded wager terms independently from the
+market observation that informed the wager.
+
+Added nullable reference provider, provider event, sportsbook, market fetch
+time, sportsbook update time, kickoff, American odds, and line fields. Manual
+bets remain valid with explicitly absent reference provenance, while
+reference-backed bets require a nonempty provider and timezone-aware UTC market
+fetch timestamp.
+
+Removed the stale CLV-enrichment descriptions and unused settlement CLV option.
+Settlement continues to record results and PnL while preserving reference
+provenance unchanged and leaving closing line, closing odds, and CLV unavailable
+for a future validated closeout workflow.
+
+#### Goal
+
+Replace the development-era bet-ledger schema with a strict reference-offer
+provenance contract that keeps actual wager terms separate from immutable market
+evidence without introducing frontend submission, historical matching,
+closeout, movement, CLV, backtest, or recommendation behavior.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/betting/ledger.py
+- src/gridiron_edge/cli/betting.py
+- tests/unit/betting/test_ledger.py
+- tests/unit/cli/test_betting.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused bet-ledger, betting-CLI, betting-performance, and portfolio
+  serializer tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated the canonical ledger schema includes all reference-offer fields in
+  deterministic order.
+- Validated manual bets persist with every reference field null.
+- Validated exact reference provider, provider event, sportsbook, market fetch
+  time, sportsbook update time, kickoff, American odds, and line survive
+  persistence.
+- Validated reference-backed bets require a nonempty provider and timezone-aware
+  UTC market fetch timestamp.
+- Validated orphaned reference fields without a provider are rejected.
+- Validated empty optional reference text values are rejected.
+- Validated naive and non-UTC reference timestamps are rejected.
+- Validated invalid, zero, and nonfinite reference American odds are rejected.
+- Validated nonfinite reference lines are rejected.
+- Validated actual wager sportsbook, odds, and line may differ from the reference
+  offer without modifying either set of fields.
+- Validated loading and filtering preserve reference provenance.
+- Validated settlement preserves reference provenance unchanged.
+- Validated malformed and stale persisted schemas are rejected before
+  overwrite.
+- Validated CLI-entered manual wagers continue to use null reference
+  provenance.
+- Validated the unused settlement CLV option is no longer registered.
+- Validated stale CLV-enrichment descriptions are removed.
+- Validated the new contract with a temporary persisted reference-backed wager
+  whose actual FanDuel terms differed from its DraftKings reference offer.
+
+#### Acceptance
+
+The bet ledger stores actual wager terms independently from exact
+reference-offer evidence. Reference-backed bets preserve provider,
+provider-event, sportsbook, observation timestamps, kickoff, odds, and line,
+while manual bets truthfully store null reference provenance. Invalid or
+incomplete provenance is rejected, settlement preserves reference evidence
+unchanged, and no API, frontend, historical matching, closeout, movement, CLV,
+backtest, or recommendation behavior is introduced.

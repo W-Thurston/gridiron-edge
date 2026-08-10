@@ -85,3 +85,15 @@ class TestCalibrationDisplay:
         _render_summary(stats)
         captured = capsys.readouterr()
         assert "EV gap:  -0.0150" in captured.out
+
+
+def test_settle_help_has_no_clv_option() -> None:
+    """Settlement no longer advertises unsupported CLV enrichment."""
+    from typer.testing import CliRunner
+
+    from gridiron_edge.cli.betting import betting_app
+
+    result = CliRunner().invoke(betting_app, ["settle", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--with-clv" not in result.output
+    assert "--no-clv" not in result.output

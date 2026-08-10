@@ -1,5 +1,5 @@
 # src/gridiron_edge/betting/ledger.py
-"""Append-only bet ledger with settlement and CLV enrichment.
+"""Append-only bet ledger with immutable reference-offer evidence.
 
 Follows the same Parquet append-only pattern as ``evaluation/archive.py``.
 The ledger stores every bet placed, its model context at bet time, and
@@ -8,7 +8,7 @@ settlement results including PnL.
 Public API::
 
     log_bet(...)         Record a new bet, returns bet_id (UUID)
-    settle_bet(...)      Settle a bet with result, compute PnL + CLV
+    settle_bet(...)      Settle a bet with result and compute PnL
     load_bets(...)       Load bets with optional filters
     compute_pnl(...)     Pure function: stake + odds + result -> PnL
 
@@ -17,9 +17,10 @@ Storage lives at ``data/betting/bet_ledger.parquet``.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from logging import Logger
+from math import isfinite
 from pathlib import Path
 from typing import Final, Literal
 import uuid
@@ -52,6 +53,14 @@ _BET_COLUMNS: Final[list[str]] = [
     "odds",
     "stake",
     "book",
+    "reference_provider",
+    "reference_provider_event_id",
+    "reference_sportsbook",
+    "reference_market_fetched_at",
+    "reference_sportsbook_updated_at",
+    "reference_commence_time",
+    "reference_american_odds",
+    "reference_line",
     "model_name",
     "model_type",
     "model_prob",
@@ -147,6 +156,91 @@ def _validate_model_identity(
         raise ValueError("model_type must be a nonempty string when model identity is provided.")
 
 
+def _require_utc_timestamp(
+    value: datetime,
+    *,
+    label: str,
+) -> None:
+    """Require one reference timestamp to be timezone-aware UTC."""
+    if value.tzinfo is None or value.utcoffset() != timedelta(0):
+        raise ValueError(f"{label} must be timezone-aware UTC.")
+
+
+def _validate_optional_reference_text(
+    value: str | None,
+    *,
+    label: str,
+) -> None:
+    """Require optional reference text to be null or nonempty."""
+    if value is not None and not value.strip():
+        raise ValueError(f"{label} must be null or a nonempty string.")
+
+
+def _validate_reference_provenance(
+    *,
+    reference_provider: str | None,
+    reference_provider_event_id: str | None,
+    reference_sportsbook: str | None,
+    reference_market_fetched_at: datetime | None,
+    reference_sportsbook_updated_at: datetime | None,
+    reference_commence_time: datetime | None,
+    reference_american_odds: int | None,
+    reference_line: float | None,
+) -> None:
+    """Validate one optional exact reference-offer evidence contract."""
+    values = (
+        reference_provider,
+        reference_provider_event_id,
+        reference_sportsbook,
+        reference_market_fetched_at,
+        reference_sportsbook_updated_at,
+        reference_commence_time,
+        reference_american_odds,
+        reference_line,
+    )
+    if all(value is None for value in values):
+        return
+
+    if reference_provider is None or not reference_provider.strip():
+        raise ValueError(
+            "reference_provider must be a nonempty string when any reference "
+            "offer field is provided."
+        )
+    if reference_market_fetched_at is None:
+        raise ValueError(
+            "reference_market_fetched_at is required when reference offer provenance is provided."
+        )
+
+    _validate_optional_reference_text(
+        reference_provider_event_id,
+        label="reference_provider_event_id",
+    )
+    _validate_optional_reference_text(
+        reference_sportsbook,
+        label="reference_sportsbook",
+    )
+    _require_utc_timestamp(
+        reference_market_fetched_at,
+        label="reference_market_fetched_at",
+    )
+    if reference_sportsbook_updated_at is not None:
+        _require_utc_timestamp(
+            reference_sportsbook_updated_at,
+            label="reference_sportsbook_updated_at",
+        )
+    if reference_commence_time is not None:
+        _require_utc_timestamp(
+            reference_commence_time,
+            label="reference_commence_time",
+        )
+    if reference_american_odds is not None and (
+        reference_american_odds == 0 or not isfinite(reference_american_odds)
+    ):
+        raise ValueError("reference_american_odds must be finite and nonzero when provided.")
+    if reference_line is not None and not isfinite(reference_line):
+        raise ValueError("reference_line must be finite when provided.")
+
+
 def _read_ledger(repo: Path | None = None) -> pd.DataFrame:
     """Read the bet ledger from disk.
 
@@ -239,6 +333,14 @@ def log_bet(
     model_ev: float | None = None,
     edge_strength: str | None = None,
     confidence_tier: str | None = None,
+    reference_provider: str | None = None,
+    reference_provider_event_id: str | None = None,
+    reference_sportsbook: str | None = None,
+    reference_market_fetched_at: datetime | None = None,
+    reference_sportsbook_updated_at: datetime | None = None,
+    reference_commence_time: datetime | None = None,
+    reference_american_odds: int | None = None,
+    reference_line: float | None = None,
     placed_at: datetime | None = None,
     repo: Path | None = None,
 ) -> str:
@@ -263,6 +365,14 @@ def log_bet(
         model_ev: Expected value at bet time.
         edge_strength: Edge classification at bet time.
         confidence_tier: Confidence tier at bet time.
+        reference_provider: Provider that supplied the reference offer.
+        reference_provider_event_id: Optional provider event identity.
+        reference_sportsbook: Optional sportsbook for the reference offer.
+        reference_market_fetched_at: UTC local observation timestamp.
+        reference_sportsbook_updated_at: Optional UTC source update time.
+        reference_commence_time: Optional UTC kickoff evidence.
+        reference_american_odds: Optional reference-offer American odds.
+        reference_line: Optional reference-offer point value.
         placed_at: Timestamp of bet placement. Defaults to ``utcnow()``.
         repo: Repository root override.
 
@@ -274,6 +384,16 @@ def log_bet(
             model_name or model_type.
     """
     _validate_model_identity(model_name, model_type)
+    _validate_reference_provenance(
+        reference_provider=reference_provider,
+        reference_provider_event_id=reference_provider_event_id,
+        reference_sportsbook=reference_sportsbook,
+        reference_market_fetched_at=reference_market_fetched_at,
+        reference_sportsbook_updated_at=reference_sportsbook_updated_at,
+        reference_commence_time=reference_commence_time,
+        reference_american_odds=reference_american_odds,
+        reference_line=reference_line,
+    )
 
     bet_id = str(uuid.uuid4())
     if placed_at is None:
@@ -289,6 +409,14 @@ def log_bet(
         "odds": odds,
         "stake": stake,
         "book": book,
+        "reference_provider": reference_provider,
+        "reference_provider_event_id": reference_provider_event_id,
+        "reference_sportsbook": reference_sportsbook,
+        "reference_market_fetched_at": reference_market_fetched_at,
+        "reference_sportsbook_updated_at": reference_sportsbook_updated_at,
+        "reference_commence_time": reference_commence_time,
+        "reference_american_odds": reference_american_odds,
+        "reference_line": reference_line,
         "model_name": model_name,
         "model_type": model_type,
         "model_prob": model_prob,
@@ -357,7 +485,6 @@ def settle_bet(bet_id: str, result: BetStatus, *, repo: Path | None = None) -> p
     # Compute PnL
     pnl: float = compute_pnl(bet["stake"], int(bet["odds"]), result)
 
-    # Compute CLV if odds ledger is available
     closing_line = None
     closing_odds = None
     clv = None
