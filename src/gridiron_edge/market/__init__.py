@@ -15,6 +15,10 @@ from .edge import spread_cover_prob as spread_cover_prob
 from .edge import spread_edge as spread_edge
 from .edge import total_cover_prob as total_cover_prob
 from .edge import total_edge as total_edge
+from .history_boundaries import QuoteBoundaryStatus as QuoteBoundaryStatus
+from .history_boundaries import QuoteHistoryBoundary as QuoteHistoryBoundary
+from .history_boundaries import SelectedQuoteObservation as SelectedQuoteObservation
+from .history_boundaries import select_quote_history_boundaries as select_quote_history_boundaries
 from .kelly import kelly_fraction as kelly_fraction
 from .kelly import kelly_stake as kelly_stake
 from .odds_math import NoVigMethod as NoVigMethod

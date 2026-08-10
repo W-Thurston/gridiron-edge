@@ -725,69 +725,81 @@ policy, while existing API and frontend fields truthfully remain unavailable.
 
 ---
 
-### Market Unit 10: Stabilize Historical Quote Observation Evidence [Active]
+### Market Unit 10: Stabilize Historical Quote Observation Evidence [Completed]
+
+#### Completed
+
+Hardened the existing provider-aware historical quote ledger with deterministic
+observation ordering, exact-replay idempotence, same-fetch conflict detection,
+and explicit retention of later unchanged, changed-price, and changed-line
+observations.
+
+Added pure historical coverage diagnostics that describe provider, sportsbook,
+game, market-identity, fetch, timestamp, live-state, kickoff-metadata, and
+repeated-observation depth without interpreting observations as opening,
+closing, movement, CLV, backtest, or recommendation evidence.
+
+Defined truthful provider-ingestion behavior when historical observation
+persistence succeeds but current-snapshot replacement fails. The historical
+observation remains recorded, the prior current snapshot remains protected by
+its independent atomic-write boundary, and ingestion raises an explicit partial-
+persistence error.
 
 #### Goal
 
 Harden the existing provider-aware quote observation ledger as the authoritative
-historical market evidence source. Preserve deterministic, auditable quote
-observations, report temporal evidence depth explicitly, and surface partial
-ledger-versus-snapshot persistence truthfully without defining opening,
-closing, movement, CLV, backtest, or recommendation policy.
+historical market evidence source while preserving a strict separation between
+stored observations and any future historical market interpretation.
 
-#### Design Decisions
+#### Files Added/Removed/Changed
 
-- Retain `data/odds/odds_log.parquet` as the canonical append-only observation
-  artifact and `data/odds/odds_current.parquet` as the independently replaced
-  operational current snapshot.
-- Preserve exact replay idempotence using the complete observation identity.
-- Retain repeated observations at later local fetch timestamps, including
-  unchanged, changed-price, changed-line, changed-update-time, and changed-live-
-  state observations.
-- Define one normalized provider-event-sportsbook-game-market-side identity per
-  local fetch and reject conflicting substantive observations within it.
-- Deduplicate identical complete observations before conflict evaluation.
-- Canonically sort the complete ledger after every append using stable ordering
-  and explicit null placement.
-- Validate the proposed combined ledger completely before replacing the current
-  artifact, preserving the prior ledger when validation fails.
-- Document that ledger append and current-snapshot replacement are individually
-  atomic but are not one cross-file transaction.
-- If ledger append succeeds and snapshot replacement fails, retain the truthful
-  observation history, preserve the prior snapshot, and raise an explicit
-  partial-persistence error.
-- Add pure historical coverage diagnostics for source, scope, timestamp range,
-  live state, kickoff metadata, and repeated temporal evidence.
-- Count nullable source-neutral identities without fabricating provider event or
-  sportsbook values.
-- Distinguish row volume from repeated temporal evidence.
-- Do not interpret repeated observations as movement or label observations as
-  opening, closing, CLV, backtest, or recommendation evidence.
-- Do not add CLI, API, or frontend presentation in this unit.
+Added:
+- src/gridiron_edge/market/history_coverage.py
+- tests/unit/market/test_history_coverage.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/ingest/odds/store.py
+- src/gridiron_edge/ingest/odds/the_odds_api.py
+- tests/unit/ingest/odds/test_the_odds_api_ingest.py
+- tests/unit/ingest/test_odds_store.py
 
 #### Tests
 
-- Validate exact replay remains idempotent.
-- Validate later unchanged, changed-price, and changed-line observations remain
-  distinct.
-- Validate identical same-fetch observations deduplicate.
-- Validate conflicting same-fetch market-side observations are rejected.
-- Validate invalid appends leave an existing ledger byte-for-byte unchanged.
-- Validate persisted ordering is canonical and independent of input order.
-- Validate filtered loading retains canonical schema and ordering.
-- Validate nullable nflverse provenance remains supported.
-- Validate pre-persistence provider failures leave both artifacts unchanged.
-- Validate snapshot failure after ledger success retains new history, preserves
-  the prior snapshot, and raises an explicit partial-persistence error.
-- Validate coverage for empty, single-fetch, repeated-fetch, multi-source,
-  multi-book, live, pregame, and missing-kickoff observations.
-- Validate repeated unchanged observations establish temporal evidence without
-  claiming movement.
-- Run focused and full Python quality gates.
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused quote-store, source-neutral storage, provider-parser,
+  provider-ingest, historical-coverage, and ingest-CLI tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated exact complete-observation replay remains idempotent.
+- Validated unchanged observations at later fetch timestamps remain distinct.
+- Validated changed-price and changed-line observations at later fetch
+  timestamps remain distinct.
+- Validated identical same-fetch observations deduplicate.
+- Validated conflicting same-fetch market-side observations are rejected.
+- Validated invalid new observations leave an existing historical ledger
+  unchanged.
+- Validated persisted and filtered observation ordering is canonical.
+- Validated nullable source-neutral provider-event, sportsbook, update-time, and
+  kickoff provenance remains supported.
+- Validated empty, unmatched, malformed, and failed provider pulls leave both
+  quote artifacts unchanged.
+- Validated snapshot replacement failure after successful observation append
+  retains the new historical observation, preserves the prior snapshot, and
+  raises an explicit partial-persistence error.
+- Validated historical coverage for empty, single-fetch, repeated-fetch,
+  multi-provider, multi-book, live, pregame, and missing-kickoff observations.
+- Validated repeated unchanged observations count as temporal evidence without
+  claiming line or price movement.
+- Validated the real historical quote artifact reports its actual temporal
+  evidence depth without interpreting observations as market movement.
 
 #### Acceptance
 
-The quote observation ledger deterministically preserves every supported exact
+The historical quote ledger deterministically preserves every supported exact
 local observation, deduplicates exact replay, retains later observations,
 rejects ambiguous same-fetch conflicts, and remains unchanged when validation
 fails. Provider ingestion reports partial cross-file persistence truthfully if
@@ -795,3 +807,88 @@ history succeeds while current-snapshot replacement fails. Historical coverage
 explicitly describes source, scope, timestamp, live-state, kickoff, and
 repeated-fetch depth. No result is labeled opening, closing, movement, CLV,
 backtest evidence, or recommendation evidence.
+
+---
+
+### Market Unit 11: Define Leakage-Safe Historical Quote Boundaries [Completed]
+
+#### Completed
+
+Implemented pure, provider-aware historical quote-boundary selection for every
+exact source, provider-event, sportsbook, game, market, and side identity.
+
+Each result preserves the earliest observed quote and selects the latest
+eligible pregame quote only from non-live observations fetched strictly before
+a consistent known kickoff. Missing kickoff evidence, conflicting kickoff
+timestamps, and histories without an eligible pregame observation remain
+explicit rather than being silently resolved.
+
+Preserved observation count, distinct fetch count, and repeated temporal
+evidence separately from boundary availability. One-fetch histories can expose
+both observed boundaries while remaining visibly shallow and without implying
+line movement, price movement, opening, closing, CLV, backtest, or
+recommendation evidence.
+
+#### Goal
+
+Define deterministic, leakage-safe observed quote boundaries without merging
+providers or sportsbooks and without introducing historical market
+interpretation beyond the evidence stored in the canonical quote ledger.
+
+#### Files Added/Removed/Changed
+
+Added:
+- src/gridiron_edge/market/history_boundaries.py
+- tests/unit/market/test_history_boundaries.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/market/__init__.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused historical-boundary, history-coverage, and quote-store tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated empty history returns no boundary results.
+- Validated one deterministic result is returned for every exact historical
+  identity.
+- Validated provider, provider event, sportsbook, game, market, and side remain
+  part of every boundary identity.
+- Validated source-neutral consensus and exact sportsbook histories are never
+  merged.
+- Validated earliest-observed selection is deterministic and independent of
+  input row order.
+- Validated latest-eligible-pregame selection includes only non-live rows
+  fetched strictly before kickoff.
+- Validated live observations are excluded regardless of timestamp.
+- Validated observations fetched exactly at kickoff or after kickoff are
+  excluded.
+- Validated missing kickoff evidence reports kickoff unavailable without using
+  date-only game data as a fallback.
+- Validated conflicting non-null kickoff timestamps report kickoff conflict.
+- Validated histories with no eligible pregame observation preserve their
+  earliest-observed evidence.
+- Validated one-fetch histories expose both observed boundaries while retaining
+  a distinct-fetch count of one and no repeated temporal evidence.
+- Validated repeated unchanged observations preserve repeated-fetch depth
+  without claiming market movement.
+- Validated selected observations preserve line, odds, local fetch time,
+  sportsbook update time, kickoff, and live state.
+- Validated boundary and selected-observation contracts are immutable.
+- Validated the real historical quote artifact using the new boundary selector.
+
+#### Acceptance
+
+Every canonical historical quote identity produces a deterministic,
+provider-aware boundary result. The result preserves the earliest observed
+quote, selects the latest eligible pregame quote only from non-live observations
+fetched strictly before a consistent known kickoff, and reports missing or
+conflicting kickoff evidence explicitly. One-fetch histories remain visibly
+shallow, consensus and sportsbook histories remain separate, and no result is
+labeled opening, closing, movement, CLV, backtest evidence, or recommendation
+evidence.
