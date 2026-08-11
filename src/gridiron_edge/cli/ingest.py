@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gridiron_edge.market.collection_plan import WeeklyQuoteCollectionPlan
+
 from pathlib import Path
 
 # pyrefly: ignore [missing-import]
@@ -294,6 +299,75 @@ def plan_odds(
     typer.echo(f"Plan: {path}")
 
 
+def _execute_loaded_odds_plan(
+    plan: WeeklyQuoteCollectionPlan,
+    *,
+    evaluated_at: str,
+    grace_minutes: int,
+    minimum_credit_reserve: int,
+    odds_api_key: str | None,
+    timeout: float,
+) -> None:
+    """Execute one resolved plan through the shared CLI boundary."""
+    from datetime import datetime, timedelta
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
+    from gridiron_edge.market.collection_execution import execute_due_collection
+
+    settings = get_settings()
+    outcome = execute_due_collection(
+        plan,
+        schedule=load_schedule_upcoming_rich(settings.repo_root),
+        api_key=get_odds_api_key(odds_api_key),
+        evaluated_at=datetime.fromisoformat(evaluated_at.replace("Z", "+00:00")),
+        repo=settings.repo_root,
+        grace_period=timedelta(minutes=grace_minutes),
+        minimum_credit_reserve=minimum_credit_reserve,
+        timeout=timeout,
+    )
+    typer.echo(f"Execution status: {outcome.status.value}")
+
+
+@ingest_app.command("select-odds-plan")
+def select_odds_plan(
+    *,
+    season_year: str = typer.Option(..., "--season", help="NFL season label like '2026-2027'."),
+    week: int = typer.Option(..., min=1, max=22, help="NFL week number from 1 through 22."),
+    selected_at: str = typer.Option(..., help="Explicit UTC ISO selection timestamp."),
+) -> None:
+    """Explicitly select one existing validated odds-collection plan."""
+    from datetime import datetime
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.market.collection_plan_store import (
+        collection_plan_path,
+        current_collection_plan_path,
+        select_current_collection_plan,
+    )
+
+    settings = get_settings()
+    selection = select_current_collection_plan(
+        season=season_year,
+        week=week,
+        selected_at=datetime.fromisoformat(selected_at.replace("Z", "+00:00")),
+        repo=settings.repo_root,
+    )
+    typer.echo(f"Selected season: {selection.season}")
+    typer.echo(f"Selected week: {selection.week}")
+    typer.echo(f"Selected at: {selection.selected_at.isoformat()}")
+
+    plan_path: Path = collection_plan_path(
+        season=selection.season,
+        week=selection.week,
+        repo=settings.repo_root,
+    )
+    selection_path: Path = current_collection_plan_path(repo=settings.repo_root)
+
+    typer.echo(f"Plan: {plan_path}")
+    typer.echo(f"Current selection: {selection_path}")
+
+
 @ingest_app.command("execute-odds-plan")
 def execute_odds_plan(
     *,
@@ -302,31 +376,53 @@ def execute_odds_plan(
     evaluated_at: str = typer.Option(..., help="Explicit UTC ISO evaluation timestamp."),
     grace_minutes: int = typer.Option(15, min=0, help="Inclusive due-time grace period."),
     minimum_credit_reserve: int = typer.Option(
-        30, min=0, help="Credits protected from automated collection."
+        30,
+        min=0,
+        help="Credits protected from automated collection.",
     ),
     odds_api_key: str | None = typer.Option(None, help="The Odds API key or ODDS_API_KEY."),
     timeout: float = typer.Option(15.0, min=0.1, help="Provider request timeout in seconds."),
 ) -> None:
     """Evaluate and execute at most one due poll from a validated plan."""
-    from datetime import datetime, timedelta
-
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
-    from gridiron_edge.market.collection_execution import execute_due_collection
     from gridiron_edge.market.collection_plan_store import read_collection_plan
 
-    key = get_odds_api_key(odds_api_key)
     settings = get_settings()
     plan = read_collection_plan(season=season_year, week=week, repo=settings.repo_root)
-    schedule = load_schedule_upcoming_rich(settings.repo_root)
-    outcome = execute_due_collection(
+    _execute_loaded_odds_plan(
         plan,
-        schedule=schedule,
-        api_key=key,
-        evaluated_at=datetime.fromisoformat(evaluated_at.replace("Z", "+00:00")),
-        repo=settings.repo_root,
-        grace_period=timedelta(minutes=grace_minutes),
+        evaluated_at=evaluated_at,
+        grace_minutes=grace_minutes,
         minimum_credit_reserve=minimum_credit_reserve,
+        odds_api_key=odds_api_key,
         timeout=timeout,
     )
-    typer.echo(f"Execution status: {outcome.status.value}")
+
+
+@ingest_app.command("execute-selected-odds-plan")
+def execute_selected_odds_plan(
+    *,
+    evaluated_at: str = typer.Option(..., help="Explicit UTC ISO evaluation timestamp."),
+    grace_minutes: int = typer.Option(15, min=0, help="Inclusive due-time grace period."),
+    minimum_credit_reserve: int = typer.Option(
+        30,
+        min=0,
+        help="Credits protected from automated collection.",
+    ),
+    odds_api_key: str | None = typer.Option(None, help="The Odds API key or ODDS_API_KEY."),
+    timeout: float = typer.Option(15.0, min=0.1, help="Provider request timeout in seconds."),
+) -> None:
+    """Execute at most one due poll from the explicitly selected plan."""
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.market.collection_plan_store import load_current_collection_plan
+
+    settings = get_settings()
+    plan = load_current_collection_plan(repo=settings.repo_root)
+    _execute_loaded_odds_plan(
+        plan,
+        evaluated_at=evaluated_at,
+        grace_minutes=grace_minutes,
+        minimum_credit_reserve=minimum_credit_reserve,
+        odds_api_key=odds_api_key,
+        timeout=timeout,
+    )

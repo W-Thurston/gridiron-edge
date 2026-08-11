@@ -43,3 +43,32 @@ def test_execute_odds_plan_is_explicit_single_shot(
     assert result.exit_code == 0, result.output
     assert "not_due" in result.output
     mock_execute.assert_called_once()
+
+
+@patch("gridiron_edge.market.collection_execution.execute_due_collection")
+@patch("gridiron_edge.market.collection_plan_store.load_current_collection_plan")
+@patch("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich")
+@patch("gridiron_edge.core.settings.get_settings")
+@patch("gridiron_edge.cli.ingest.get_odds_api_key")
+def test_execute_selected_odds_plan_resolves_selection_and_executes_once(
+    mock_key: MagicMock,
+    mock_settings: MagicMock,
+    mock_schedule: MagicMock,
+    mock_load_current: MagicMock,
+    mock_execute: MagicMock,
+) -> None:
+    mock_key.return_value = "key"
+    mock_settings.return_value = SimpleNamespace(repo_root="/tmp/repo")
+    mock_execute.return_value = CollectionDueResult(CollectionDueStatus.NOT_DUE, None)
+    result = runner.invoke(
+        ingest_app,
+        [
+            "execute-selected-odds-plan",
+            "--evaluated-at",
+            "2026-09-08T11:00:00Z",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "not_due" in result.output
+    mock_load_current.assert_called_once_with(repo="/tmp/repo")
+    mock_execute.assert_called_once()

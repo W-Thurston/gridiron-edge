@@ -54,3 +54,33 @@ def test_plan_odds_writes_reviewable_plan_without_provider_access(
     assert "Planned polls:" in result.output
     assert "Projected credits:" in result.output
     mock_write.assert_called_once()
+
+
+@patch("gridiron_edge.market.collection_plan_store.select_current_collection_plan")
+@patch("gridiron_edge.core.settings.get_settings")
+def test_select_odds_plan_selects_existing_plan_without_provider_access(
+    mock_settings, mock_select, tmp_path: Path
+) -> None:
+    from datetime import UTC, datetime
+
+    mock_settings.return_value = SimpleNamespace(repo_root=tmp_path)
+    mock_select.return_value = SimpleNamespace(
+        season="2026-2027",
+        week=1,
+        selected_at=datetime(2026, 8, 11, 18, tzinfo=UTC),
+    )
+    result = runner.invoke(
+        ingest_app,
+        [
+            "select-odds-plan",
+            "--season",
+            "2026-2027",
+            "--week",
+            "1",
+            "--selected-at",
+            "2026-08-11T18:00:00Z",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Selected season: 2026-2027" in result.output
+    mock_select.assert_called_once()

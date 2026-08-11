@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from typing import cast
@@ -19,6 +19,76 @@ from gridiron_edge.market.collection_plan import (
     WeeklyQuoteCollectionPlan,
     validate_weekly_quote_collection_plan,
 )
+
+CURRENT_COLLECTION_PLAN_SCHEMA_VERSION = 1
+_CURRENT_COLLECTION_PLAN_FILENAME = "current.json"
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentCollectionPlanSelection:
+    """Explicit selection of one operational weekly collection plan."""
+
+    schema_version: int
+    season: str
+    week: int
+    selected_at: datetime
+
+
+def current_collection_plan_path(*, repo: Path) -> Path:
+    """Return the explicit current collection-plan selection path."""
+    return repo / "data" / "odds" / "collection_plans" / _CURRENT_COLLECTION_PLAN_FILENAME
+
+
+def select_current_collection_plan(
+    *, season: str, week: int, selected_at: datetime, repo: Path
+) -> CurrentCollectionPlanSelection:
+    """Explicitly select one existing validated weekly collection plan."""
+    selected_at = _require_utc(selected_at, label="selected_at")
+    plan = read_collection_plan(season=season, week=week, repo=repo)
+    if plan.season != season or plan.week != week:
+        raise ValueError("Selected collection plan scope does not match its artifact.")
+    selection = CurrentCollectionPlanSelection(
+        CURRENT_COLLECTION_PLAN_SCHEMA_VERSION, season, week, selected_at
+    )
+    _validate_current_selection(selection)
+    path = current_collection_plan_path(repo=repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(_selection_payload(selection), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return selection
+
+
+def read_current_collection_plan_selection(*, repo: Path) -> CurrentCollectionPlanSelection:
+    """Read and validate the explicit current collection-plan selection."""
+    payload = json.loads(current_collection_plan_path(repo=repo).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Current collection-plan selection must contain a JSON object.")
+    if set(payload) != {"schema_version", "season", "week", "selected_at"}:
+        raise ValueError("Current collection-plan selection keys do not match the schema.")
+    selection = CurrentCollectionPlanSelection(
+        int(cast(int, payload["schema_version"])),
+        str(payload["season"]),
+        int(cast(int, payload["week"])),
+        _datetime(payload["selected_at"]),
+    )
+    _validate_current_selection(selection)
+    return selection
+
+
+def load_current_collection_plan(*, repo: Path) -> WeeklyQuoteCollectionPlan:
+    """Load the explicitly selected and revalidated weekly collection plan."""
+    selection = read_current_collection_plan_selection(repo=repo)
+    plan = read_collection_plan(season=selection.season, week=selection.week, repo=repo)
+    if plan.season != selection.season or plan.week != selection.week:
+        raise ValueError("Selected collection plan scope does not match the selection.")
+    return plan
 
 
 def collection_plan_path(*, season: str, week: int, repo: Path) -> Path:
@@ -152,6 +222,28 @@ def _from_payload(payload: dict[str, object]) -> WeeklyQuoteCollectionPlan:
         remaining_poll_capacity=int(cast(int, payload["remaining_poll_capacity"])),
         omitted_candidate_count=int(cast(int, payload["omitted_candidate_count"])),
     )
+
+
+def _validate_current_selection(selection: CurrentCollectionPlanSelection) -> None:
+    if selection.schema_version != CURRENT_COLLECTION_PLAN_SCHEMA_VERSION:
+        raise ValueError("Unsupported current collection-plan selection schema_version.")
+    collection_plan_path(season=selection.season, week=selection.week, repo=Path("."))
+    _require_utc(selection.selected_at, label="selected_at")
+
+
+def _selection_payload(selection: CurrentCollectionPlanSelection) -> dict[str, object]:
+    return {
+        "schema_version": selection.schema_version,
+        "season": selection.season,
+        "week": selection.week,
+        "selected_at": selection.selected_at.isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _require_utc(value: datetime, *, label: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() != timedelta(0):
+        raise ValueError(f"{label} must be timezone-aware UTC.")
+    return value
 
 
 def _datetime(value: object) -> datetime:

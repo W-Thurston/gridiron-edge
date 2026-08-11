@@ -1324,3 +1324,104 @@ persisting API keys or unsafe provider content.
 No automatic retry, catch-up polling, plan mutation, scheduler installation,
 Raspberry Pi dependency, movement, CLV, qualification, or recommendation
 behavior was introduced. Market Unit 16 is complete.
+
+---
+
+### Market Unit 17: Select the Active Quote Collection Plan [Complete]
+
+#### Completed
+
+Implemented an explicit, versioned current-selection boundary for one existing
+validated weekly quote-collection plan. The global operational selection stores
+only schema version, season, week, and an explicit UTC selection timestamp at
+`data/odds/collection_plans/current.json`.
+
+Selection validates the exact persisted plan before atomically replacing the
+current-selection artifact. Selected-plan loading revalidates both the
+selection and the referenced plan while deriving the plan path through the
+existing deterministic season-and-week store. It does not duplicate the plan
+path, search directories, inspect file recency, derive scope from the current
+date, or generate or mutate a plan.
+
+Added an explicit `select-odds-plan` command for selecting an existing reviewed
+plan and an `execute-selected-odds-plan` command for resolving that selection.
+The existing `execute-odds-plan` command remains available for exact-scope
+manual and diagnostic execution.
+
+Exact-plan and selected-plan execution now share one CLI orchestration boundary
+and delegate all due-time, grace-period, quota, claim, receipt, provider, and
+persistence behavior to the established single-shot executor. Selection and
+selected-plan resolution do not access the provider.
+
+#### Goal
+
+Add an explicit, versioned current-selection boundary for one already persisted
+and validated weekly quote-collection plan. Allow unattended operational tooling
+to resolve the authorized season and week without deriving them from wall-clock
+time, regenerating a plan, or modifying collection-policy and execution
+semantics.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `PLAN.md` - Closed Market Unit 17 with its implemented selection contract, file inventory, tests, and acceptance result.
+- `src/gridiron_edge/cli/ingest.py` - Added explicit plan-selection and selected-plan execution commands and shared exact-plan and selected-plan CLI execution orchestration.
+- `src/gridiron_edge/market/__init__.py` - Exported the current collection-plan selection, resolution, and path interfaces.
+- `src/gridiron_edge/market/collection_plan_store.py` - Added the versioned global current-selection contract, deterministic selection path, atomic selection writer, strict reader, and selected-plan loader.
+- `tests/unit/cli/test_collection_execution_cli.py` - Added coverage for resolving and executing the explicitly selected plan through the existing executor.
+- `tests/unit/cli/test_collection_plan_cli.py` - Added coverage for explicit plan selection without provider access.
+- `tests/unit/market/test_collection_plan_store.py` - Added selection-path, independence, persistence, loading, missing-state, schema, validation, and failed-replacement coverage.
+
+Removed:
+- None.
+
+#### Tests
+
+Added unit coverage for deterministic current-selection storage, independence
+between plan persistence and selection, explicit selection of an existing
+validated plan, selected-plan loading, exact selection schema, UTC selection
+timestamps, missing referenced plans, missing current selection, unsupported
+selection schema versions, malformed selection artifacts, and preservation of
+the prior selection when a replacement attempt fails.
+
+Added CLI coverage confirming that `select-odds-plan` selects an existing plan
+without resolving provider credentials and that
+`execute-selected-odds-plan` resolves the selected plan and invokes the
+established single-shot executor exactly once. Existing exact-plan execution
+remains covered and available.
+
+Verified the public CLI surface:
+
+- `gridiron ingest plan-odds`
+- `gridiron ingest select-odds-plan`
+- `gridiron ingest execute-odds-plan`
+- `gridiron ingest execute-selected-odds-plan`
+
+Validated the complete Python project with:
+
+- `uv run ruff check . --fix`
+- `uvx pyrefly check`
+- `uv run pytest -m "unit and not slow"`
+
+All quality gates passed and all selected tests are green.
+
+#### Acceptance
+
+One explicit operation selects one existing validated weekly quote-collection
+plan through a versioned atomic global current-selection artifact. The artifact
+contains only selection identity and selection time; the exact plan path remains
+owned by the deterministic collection-plan store.
+
+Selected-plan execution resolves and revalidates the selected plan before
+delegating to the established single-shot executor. It does not infer season or
+week, search for the newest plan, regenerate or mutate a plan, duplicate
+execution logic, or access the provider during selection or resolution.
+
+Missing, malformed, unsupported, missing-target, and scope-mismatched selection
+states remain explicit. Exact-plan manual execution remains available. No
+scheduler installation, automatic retry, catch-up polling, provider backfill,
+movement, CLV, qualification, or recommendation behavior was introduced.
+Market Unit 17 is complete.
