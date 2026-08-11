@@ -1227,3 +1227,100 @@ be manually reviewed or edited under the same validation contract. No provider
 request, quote persistence, scheduler deployment, Raspberry Pi dependency,
 opening, closing, movement, CLV, qualification, or recommendation behavior is
 introduced.
+
+---
+
+### Market Unit 16: Execute One Due Quote Collection [Complete]
+
+#### Completed
+
+Implemented a scheduler-neutral, single-shot execution boundary for one due
+collection from a validated weekly quote-collection plan. Each invocation
+evaluates at most one earliest unresolved poll at an explicit UTC timestamp and
+preserves not-due, missed, previously claimed, completed, quota-blocked,
+request-failed, ingest-failed, partially persisted, and successful outcomes as
+explicit states.
+
+Added deterministic, filename-safe receipt paths; atomic immutable execution
+claims; semantically validated immutable terminal results; and loading of prior
+results for due-state and last-known quota evaluation. Existing claims without
+terminal results block automatic retry and require manual inspection.
+
+Integrated execution with the established current-market ingest boundary so a
+due poll makes no more than one provider request. Successful results preserve
+quote, game, sportsbook, artifact-path, and provider-usage metadata. Added a
+specific partial-persistence exception for successful historical append followed
+by current-snapshot failure, allowing execution to record that outcome without
+classifying failures from message text.
+
+Added an explicit CLI command for executing one due collection with caller-
+supplied season, week, evaluation time, grace period, quota reserve, timeout,
+repository path, and API key inputs. The executor does not infer an active week,
+mutate plans, install a scheduler, retry provider requests, or introduce
+movement, CLV, qualification, or recommendation behavior.
+
+#### Goal
+
+Execute at most one due collection from one validated weekly quote-collection
+plan, using atomic execution claims, explicit due-time evaluation, last-known
+quota safeguards, immutable terminal results, and the existing provider-ingest
+boundary. Preserve missed, claimed, blocked, failed, partially persisted, and
+completed states without installing a scheduler or retrying provider requests
+implicitly.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/market/collection_execution.py` - Added single-shot due-poll evaluation, quota prechecks, atomic claiming, provider execution, explicit terminal-state construction, and immutable result persistence.
+- `src/gridiron_edge/market/collection_receipt_store.py` - Added versioned execution claim and terminal-result contracts, semantic validation, deterministic receipt paths, atomic writes, immutable result loading, and last-known quota lookup.
+- `tests/unit/cli/test_collection_execution_cli.py` - Added CLI coverage for explicit collection execution inputs, output, and failure behavior.
+- `tests/unit/market/test_collection_execution.py` - Added execution coverage for due-time boundaries, ordering, missed polls, prior claims and results, quota safeguards, provider outcomes, metadata preservation, and input immutability.
+- `tests/unit/market/test_collection_receipt_store.py` - Added receipt-contract, path, atomicity, immutability, validation, loading, and quota-history coverage.
+
+Changed:
+- `PLAN.md` - Closed Market Unit 16 with its implemented scope, file inventory, tests, and acceptance result.
+- `src/gridiron_edge/cli/ingest.py` - Added the explicit command boundary for executing one due quote collection.
+- `src/gridiron_edge/ingest/odds/the_odds_api.py` - Added an explicit partial-persistence error when historical quote persistence succeeds but current-snapshot persistence fails.
+- `src/gridiron_edge/market/__init__.py` - Exported the collection-execution and receipt-store interfaces.
+- `tests/unit/ingest/odds/test_the_odds_api_ingest.py` - Added coverage for the explicit partial-persistence failure contract.
+
+Removed:
+- None.
+
+#### Tests
+
+Added unit coverage for unavailable plans, not-due evaluations, exact scheduled
+times, grace-period behavior, the inclusive grace boundary, missed polls,
+earliest-unresolved ordering, prevention of catch-up requests, completed polls,
+existing claims without results, deterministic receipt paths, atomic claims,
+immutable terminal results, semantic receipt validation, successful execution,
+successful metadata preservation, unknown quota metadata, last-known quota
+selection, quota reserve blocking, request failures, ingest failures, partial
+persistence, secret-safe failure results, input immutability, and the explicit
+CLI boundary.
+
+Validated the complete Python project with:
+
+- `uv run ruff check . --fix`
+- `uvx pyrefly check`
+- `uv run pytest -m "unit and not slow"`
+
+All quality gates passed and all selected tests are green.
+
+#### Acceptance
+
+One invocation reads one validated weekly plan, evaluates at most one earliest
+unresolved poll at an explicit UTC timestamp, atomically claims due work before
+provider access, and invokes the established current-market ingest boundary no
+more than once.
+
+Missed polls are recorded without catch-up requests. Existing claims prevent
+automatic retry. Completed polls are not executed again. Quota reserve blocking,
+unknown quota state, request failure, ingest failure, partial persistence, and
+successful completion remain distinct and durable. Successful results retain
+collection counts, artifact paths, and provider quota metadata without
+persisting API keys or unsafe provider content.
+
+No automatic retry, catch-up polling, plan mutation, scheduler installation,
+Raspberry Pi dependency, movement, CLV, qualification, or recommendation
+behavior was introduced. Market Unit 16 is complete.

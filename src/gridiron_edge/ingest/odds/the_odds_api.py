@@ -325,6 +325,10 @@ class OddsIngestError(RuntimeError):
     """Raised when a provider pull cannot safely update quote artifacts."""
 
 
+class OddsIngestPartialPersistenceError(OddsIngestError):
+    """Raised when history persists but current snapshot replacement fails."""
+
+
 @dataclass(frozen=True, slots=True)
 class OddsIngestResult:
     """Summary of one successful current-market ingestion."""
@@ -380,7 +384,7 @@ def ingest_the_odds_api_current(
     try:
         snapshot_path = write_current_odds_snapshot(quotes, repo=repo)
     except Exception as exc:
-        raise OddsIngestError(
+        raise OddsIngestPartialPersistenceError(
             "Quote observations were persisted to the historical ledger, "
             "but the current snapshot was not replaced."
         ) from exc

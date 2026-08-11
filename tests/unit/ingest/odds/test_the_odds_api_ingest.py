@@ -16,6 +16,7 @@ from gridiron_edge.ingest.odds.the_odds_api import (
     OddsApiResponse,
     OddsApiUsage,
     OddsIngestError,
+    OddsIngestPartialPersistenceError,
     ingest_the_odds_api_current,
 )
 
@@ -276,6 +277,10 @@ def test_snapshot_failure_retains_history_and_prior_snapshot(
     ) as exc_info:
         _ingest(tmp_path)
 
+    assert isinstance(
+        exc_info.value,
+        OddsIngestPartialPersistenceError,
+    )
     assert isinstance(exc_info.value.__cause__, OSError)
     ledger = pd.read_parquet(
         odds_dir / "history" / "season=2026-2027" / "week=01" / "observations.parquet"
