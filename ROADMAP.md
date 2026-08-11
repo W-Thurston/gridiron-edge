@@ -171,6 +171,23 @@ program. The current-market workstream comes first because it unlocks immediate
 weekly operation and frontend usability. Historical archive and evaluation
 follow after the provider and normalized quote contract are stable.
 
+- **Recurring quote acquisition policy [Planned].** Treat the weekly quote
+  allowance as a bounded budget rather than applying one fixed calendar
+  schedule to every NFL week. Generate and validate an explicit collection
+  plan from the canonical kickoff timestamps for the selected season and week.
+
+  Use a default ramp guideline of approximately twelve-hour baseline
+  observations, three-hour observations inside twenty-four hours of the next
+  kickoff, and hourly observations inside six hours, subject to the configured
+  weekly poll and provider-credit limits. Reallocate capacity for weeks with
+  international, Saturday, holiday, postseason, missing, or otherwise unusual
+  kickoff windows.
+
+  Keep planning independent from execution hardware. A later deployment unit
+  may execute validated plans through a systemd timer on an always-on Linux
+  host, including a Raspberry Pi, without changing the collection-policy or
+  quote-evidence contracts.
+
 Current-market scope:
 
 - documented supported API and secret/configuration boundary;

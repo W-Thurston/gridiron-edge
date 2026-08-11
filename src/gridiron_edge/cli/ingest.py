@@ -247,3 +247,48 @@ def ingest_pbp(
         s.set_detail(f"{len(paths)} file(s) written")
 
     console.summary()
+
+
+@ingest_app.command("plan-odds")
+def plan_odds(
+    *,
+    season_year: str = typer.Option(..., "--season", help="NFL season label like '2026-2027'."),
+    week: int = typer.Option(..., min=1, max=22, help="NFL week number from 1 through 22."),
+    plan_start: str = typer.Option(
+        ..., help="Explicit UTC ISO timestamp at which planning begins."
+    ),
+    created_at: str = typer.Option(..., help="Explicit UTC ISO timestamp recorded on the plan."),
+    poll_limit: int = typer.Option(34, min=1, help="Maximum planned provider polls for the week."),
+    credit_cost_per_poll: int = typer.Option(3, min=1, help="Provider credits consumed per poll."),
+) -> None:
+    """Generate and persist a reviewable weekly odds-collection plan."""
+    from datetime import datetime
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
+    from gridiron_edge.market.collection_plan import (
+        QuoteCollectionPolicy,
+        build_weekly_quote_collection_plan,
+    )
+    from gridiron_edge.market.collection_plan_store import write_collection_plan
+
+    settings = get_settings()
+    schedule = load_schedule_upcoming_rich(settings.repo_root)
+    policy = QuoteCollectionPolicy(
+        weekly_poll_limit=poll_limit,
+        credit_cost_per_poll=credit_cost_per_poll,
+    )
+    plan = build_weekly_quote_collection_plan(
+        schedule,
+        season=season_year,
+        week=week,
+        plan_start=datetime.fromisoformat(plan_start.replace("Z", "+00:00")),
+        created_at=datetime.fromisoformat(created_at.replace("Z", "+00:00")),
+        policy=policy,
+    )
+    path = write_collection_plan(plan, repo=settings.repo_root)
+    typer.echo(f"Plan status: {plan.status.value}")
+    typer.echo(f"Planned polls: {plan.planned_poll_count}/{plan.policy.weekly_poll_limit}")
+    typer.echo(f"Projected credits: {plan.planned_credit_cost}")
+    typer.echo(f"Omitted candidates: {plan.omitted_candidate_count}")
+    typer.echo(f"Plan: {path}")

@@ -1136,3 +1136,94 @@ detection, atomic replacement, canonical ordering, filtered loading, and broad
 history loading remain truthful. The current snapshot remains separate, and no
 scheduler, acquisition cadence, provider backfill, opening, closing, movement,
 CLV, qualification, or recommendation behavior is introduced.
+
+---
+
+### Market Unit 15: Plan Weekly Quote Collection [Completed]
+
+#### Completed
+
+Implemented a scheduler-neutral weekly quote-collection planner that derives
+explicit collection times from the canonical kickoff schedule for one selected
+season and week.
+
+The planner interprets nflverse game times in the `America/New_York` time zone,
+converts exact schedule-derived kickoff instants to UTC, groups games by kickoff
+window, and applies a configurable ramp guideline within a hard weekly poll
+budget.
+
+Added immutable policy, kickoff-group, planned-collection, and weekly-plan
+contracts. Added versioned JSON persistence with semantic validation so
+generated and deliberately edited plans use the same owning contract.
+
+Added the explicit `gridiron ingest plan-odds` command. Plan generation requires
+reproducible UTC `plan_start` and `created_at` inputs and performs no provider
+request, quote persistence, current-snapshot replacement, or scheduler action.
+
+#### Goal
+
+Generate and validate deterministic, reviewable weekly collection plans from
+actual NFL kickoff windows and a configurable provider budget without coupling
+collection policy to deployment hardware or unattended execution.
+
+#### Files Added/Removed/Changed
+
+Added:
+- src/gridiron_edge/market/collection_plan.py
+- src/gridiron_edge/market/collection_plan_store.py
+- tests/unit/cli/test_collection_plan_cli.py
+- tests/unit/market/test_collection_plan.py
+- tests/unit/market/test_collection_plan_store.py
+
+Removed:
+- None
+
+Changed:
+- PLAN.md
+- src/gridiron_edge/cli/ingest.py
+- src/gridiron_edge/market/__init__.py
+
+#### Tests
+
+- Passed focused Ruff formatting and lint checks.
+- Passed focused Pyrefly checks.
+- Passed focused collection-planning, plan-store, planning-CLI, odds-ingest,
+  history-coverage, historical-boundary, and bet-reference-matching tests.
+- Passed the full Ruff, Pyrefly, and non-slow unit-test quality gates.
+- Validated explicit season, week, plan-start, and creation timestamps.
+- Validated schedule kickoffs are interpreted in `America/New_York` and
+  converted to UTC using a named time zone.
+- Validated exact kickoff times form deterministic kickoff groups.
+- Validated irregular weekday and multi-window schedules require no fixed
+  Thursday, Sunday, or Monday assumptions.
+- Validated baseline, approach, and near-kickoff candidates are generated from
+  actual kickoff timestamps.
+- Validated every planned collection precedes at least one remaining kickoff.
+- Validated no collection is planned after all scoped games have started.
+- Validated timestamps are unique and deterministically ordered.
+- Validated plans never exceed their configured weekly poll limit.
+- Validated projected credits equal planned polls multiplied by configured
+  per-poll cost.
+- Validated deterministic budget allocation and explicit omitted-candidate
+  accounting.
+- Validated unavailable schedule states remain explicit.
+- Validated generated plans round-trip through versioned JSON unchanged.
+- Validated manually edited plans use the same schema and semantic checks.
+- Validated invalid, duplicate, post-kickoff, out-of-order, unknown-kickoff, and
+  over-budget plans are rejected.
+- Validated plan generation and validation do not mutate schedule inputs.
+- Validated no provider client, quote store, current snapshot, or scheduler is
+  invoked.
+- Validated representative real 2026 schedule weeks through generated plan
+  artifacts.
+
+#### Acceptance
+
+One explicit season-and-week schedule produces a deterministic, reviewable,
+versioned collection plan based on actual UTC kickoff windows and a configurable
+weekly provider budget. The plan explains every proposed collection, never
+exceeds its poll or credit allowance, supports irregular NFL schedules, and can
+be manually reviewed or edited under the same validation contract. No provider
+request, quote persistence, scheduler deployment, Raspberry Pi dependency,
+opening, closing, movement, CLV, qualification, or recommendation behavior is
+introduced.
