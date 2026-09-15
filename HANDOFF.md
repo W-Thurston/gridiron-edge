@@ -4,7 +4,7 @@ This document describes the current operating system. Historical implementation 
 
 ## System Contract
 
-Gridiron Edge is a file-backed NFL decision-support platform with a Python CLI, persisted model and evaluation artifacts, a read-only FastAPI service, and a generated-contract React frontend.
+Gridiron Edge is a file-backed NFL decision-support platform with a Python CLI, persisted model and evaluation artifacts, a predominantly read-only FastAPI service with one narrow local wager-recording boundary, and a generated-contract React frontend.
 
 The game-prediction domain uses one canonical Away/Home-oriented row per game. Win models predict `HOME_WIN`; Away Win Probability is the complement. Total models independently predict `ACTUAL_TOTAL`. Differential features use Home minus Away. Runtime game prediction does not depend on doubled team-perspective rows, `TEAM_A`, `TEAM_B`, `HOME_FIELD`, `RESULT` as a target, implicit forecast recency, hidden Elo fallback, or request-time model execution.
 

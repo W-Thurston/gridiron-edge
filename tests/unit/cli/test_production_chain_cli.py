@@ -196,6 +196,43 @@ def _capture_written_bankroll_evaluation(monkeypatch, tmp_path: Path) -> dict:
     return written
 
 
+def _record_bankroll_deposit_at(
+    repo: Path,
+    *,
+    amount: float,
+    timestamp: datetime,
+) -> None:
+    """Record a real bankroll deposit at an explicit test timestamp."""
+    import uuid
+
+    import gridiron_edge.betting.bankroll as bankroll_module
+
+    transactions = bankroll_module._read_txn_log(repo)
+
+    deposit_row = pd.DataFrame(
+        [
+            {
+                "txn_id": str(uuid.uuid4()),
+                "timestamp": timestamp,
+                "txn_type": "deposit",
+                "amount": amount,
+                "reference_id": None,
+                "note": None,
+            }
+        ]
+    )
+
+    if transactions.empty:
+        updated = deposit_row.copy()
+    else:
+        updated = pd.concat(
+            [transactions, deposit_row],
+            ignore_index=True,
+        )
+
+    bankroll_module._write_txn_log(updated, repo)
+
+
 class TestEvaluateRecommendationsBankrollWiring:
     """CLI-level acceptance tests: bankroll evidence reaches the governed
     recommendation writer and produces the promised observable domain
@@ -241,7 +278,7 @@ class TestEvaluateRecommendationsBankrollWiring:
         """A real, pre-decision deposit produces the exact expected
         BankrollBasis, derived by the real bankroll_snapshot_as_of
         function running against a real, isolated transaction log."""
-        from gridiron_edge.betting.bankroll import bankroll_snapshot_as_of, deposit
+        from gridiron_edge.betting.bankroll import bankroll_snapshot_as_of
 
         monkeypatch.setattr(
             "gridiron_edge.core.settings.get_settings",
@@ -250,7 +287,11 @@ class TestEvaluateRecommendationsBankrollWiring:
         _patch_bankroll_wiring_issuance_and_policy(monkeypatch)
         written = _capture_written_bankroll_evaluation(monkeypatch, tmp_path)
 
-        deposit(1000.0, repo=tmp_path)
+        _record_bankroll_deposit_at(
+            tmp_path,
+            amount=1000.0,
+            timestamp=_BANKROLL_WIRING_FETCHED,
+        )
         expected_snapshot = bankroll_snapshot_as_of(_BANKROLL_WIRING_DECISION, repo=tmp_path)
         assert expected_snapshot is not None  # sanity check on the test's own arrangement
 
@@ -271,8 +312,6 @@ class TestEvaluateRecommendationsBankrollWiring:
         """With a real, sufficient, pre-decision deposit and an ACTIVE
         policy whose other checks pass, the decision genuinely reaches
         RECOMMENDATION_ELIGIBLE -- not merely 'bankroll was non-null'."""
-        from gridiron_edge.betting.bankroll import deposit
-
         monkeypatch.setattr(
             "gridiron_edge.core.settings.get_settings",
             lambda: _bankroll_wiring_settings(tmp_path),
@@ -280,7 +319,11 @@ class TestEvaluateRecommendationsBankrollWiring:
         _patch_bankroll_wiring_issuance_and_policy(monkeypatch)
         written = _capture_written_bankroll_evaluation(monkeypatch, tmp_path)
 
-        deposit(1000.0, repo=tmp_path)
+        _record_bankroll_deposit_at(
+            tmp_path,
+            amount=1000.0,
+            timestamp=_BANKROLL_WIRING_FETCHED,
+        )
         result = _invoke_bankroll_wiring_evaluate_recommendations()
 
         assert result.exit_code == 0
@@ -301,7 +344,6 @@ class TestEvaluateRecommendationsBankrollWiring:
         import pandas as pd
 
         import gridiron_edge.betting.bankroll as bankroll_module
-        from gridiron_edge.betting.bankroll import deposit
 
         monkeypatch.setattr(
             "gridiron_edge.core.settings.get_settings",
@@ -309,7 +351,11 @@ class TestEvaluateRecommendationsBankrollWiring:
         )
         _patch_bankroll_wiring_issuance_and_policy(monkeypatch)
 
-        deposit(1000.0, repo=tmp_path)
+        _record_bankroll_deposit_at(
+            tmp_path,
+            amount=1000.0,
+            timestamp=_BANKROLL_WIRING_FETCHED,
+        )
         written_before = _capture_written_bankroll_evaluation(monkeypatch, tmp_path)
         result_before = _invoke_bankroll_wiring_evaluate_recommendations()
         assert result_before.exit_code == 0
@@ -336,14 +382,14 @@ class TestEvaluateRecommendationsBankrollWiring:
         assert result_after.exit_code == 0
         evaluation_after: RecommendedBetEvaluation = written_after["evaluation"]
 
-        assert (
-            evaluation_before.results[0].bankroll_basis
-            == evaluation_after.results[0].bankroll_basis
-        )
-        assert (
-            evaluation_before.results[0].decision_state
-            == evaluation_after.results[0].decision_state
-        )
+        before_result = evaluation_before.results[0]
+        after_result = evaluation_after.results[0]
+
+        assert before_result.bankroll_basis is not None
+        assert before_result.bankroll_basis.amount == 1000.0
+        assert after_result.bankroll_basis == before_result.bankroll_basis
+        assert after_result.decision_state == before_result.decision_state
+        assert after_result.result_state == before_result.result_state
 
     def test_evaluate_recommendations_uses_named_policy_schema_constant(
         self, monkeypatch, tmp_path: Path
