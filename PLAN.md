@@ -1635,7 +1635,7 @@ Removed:
 - Runtime-checkable model protocols and `GamesModel.spec` now agree on their
   structural contract.
 - `uv run ruff check . --fix` passed.
-- `uvx pyrefly check src tests deploy/bin --search-path src --search-path .`
+- `uvx pyrefly check`
   passed with zero errors.
 - `uv run pytest -m "unit and not slow"` passed.
 - No temporary repository-update scripts remain at the repository root.
