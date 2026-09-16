@@ -53,6 +53,23 @@ def _make_df() -> pd.DataFrame:
     )
 
 
+def _completed_game(
+    *,
+    away_team: str = "Buffalo Bills",
+    home_team: str = "Seattle Seahawks",
+    away_score: int | None = 20,
+    home_score: int | None = 27,
+) -> dict[str, object]:
+    return {
+        "GAME_ID": "2026_01_BUF_SEA",
+        "WEEK_NUM": 1,
+        "AWAY_TEAM": away_team,
+        "HOME_TEAM": home_team,
+        "AWAY_SCORE": away_score,
+        "HOME_SCORE": home_score,
+    }
+
+
 class TestSerializeProjections:
     def test_empty_df_marks_items_unavailable(self) -> None:
         result = serialize_projections(
@@ -285,6 +302,7 @@ class TestSerializeProjectionGrid:
                     [
                         {
                             "GAME_ID": "2026_01_BUF_SEA",
+                            "WEEK_NUM": 1,
                             "AWAY_TEAM": "Buffalo Bills",
                             "HOME_TEAM": "Seattle Seahawks",
                             "AWAY_SCORE": 20,
@@ -341,13 +359,10 @@ class TestSerializeProjectionGrid:
     def test_serializes_played_tie_for_both_teams(self) -> None:
         games = pd.DataFrame(
             [
-                {
-                    "GAME_ID": "2026_01_BUF_SEA",
-                    "AWAY_TEAM": "Buffalo Bills",
-                    "HOME_TEAM": "Seattle Seahawks",
-                    "AWAY_SCORE": 21,
-                    "HOME_SCORE": 21,
-                }
+                _completed_game(
+                    away_score=21,
+                    home_score=21,
+                )
             ]
         )
 
@@ -360,13 +375,10 @@ class TestSerializeProjectionGrid:
     ) -> None:
         games = pd.DataFrame(
             [
-                {
-                    "GAME_ID": "2026_01_BUF_SEA",
-                    "AWAY_TEAM": "Buffalo Bills",
-                    "HOME_TEAM": "Seattle Seahawks",
-                    "AWAY_SCORE": None,
-                    "HOME_SCORE": None,
-                }
+                _completed_game(
+                    away_score=None,
+                    home_score=None,
+                )
             ]
         )
 
@@ -384,13 +396,10 @@ class TestSerializeProjectionGrid:
     ) -> None:
         games = pd.DataFrame(
             [
-                {
-                    "GAME_ID": "2026_01_BUF_SEA",
-                    "AWAY_TEAM": "Unknown Away",
-                    "HOME_TEAM": "Unknown Home",
-                    "AWAY_SCORE": 20,
-                    "HOME_SCORE": 27,
-                }
+                _completed_game(
+                    away_team="Unknown Away",
+                    home_team="Unknown Home",
+                )
             ]
         )
 
@@ -409,7 +418,9 @@ class TestSerializeProjectionGrid:
         assert sea.weeks[3].opponent == "BUF"
         assert sea.weeks[3].win_probability is None
 
-    def test_missing_schedule_does_not_create_byes(self) -> None:
+    def test_missing_schedule_preserves_completed_games_without_creating_byes(
+        self,
+    ) -> None:
         result = serialize_projection_grid(
             self._data(
                 schedule=pd.DataFrame(),
@@ -417,7 +428,21 @@ class TestSerializeProjectionGrid:
             )
         )
 
-        assert all(week.state == "unavailable" for row in result.items for week in row.weeks)
+        by_team = {row.abbr: row for row in result.items}
+
+        sea_week_one = by_team["SEA"].weeks[0]
+        buf_week_one = by_team["BUF"].weeks[0]
+
+        assert sea_week_one.state == "played"
+        assert sea_week_one.actual_result == "W"
+        assert sea_week_one.opponent == "BUF"
+
+        assert buf_week_one.state == "played"
+        assert buf_week_one.actual_result == "L"
+        assert buf_week_one.opponent == "SEA"
+
+        assert all(week.state == "unavailable" for row in result.items for week in row.weeks[1:])
+        assert all(week.state != "bye" for row in result.items for week in row.weeks)
 
         assert result.response_meta is not None
         status = result.response_meta.field_status["items.weeks"]
@@ -452,3 +477,36 @@ class TestSerializeProjectionGrid:
 
         assert result.items[0].abbr == "XXX"
         assert result.items[0].name == "XXX"
+
+    def test_completed_game_does_not_require_upcoming_schedule_row(
+        self,
+    ) -> None:
+        data = self._data()
+
+        data = ProjectionGridData(
+            probabilities=data.probabilities,
+            schedule=data.schedule.loc[
+                data.schedule["week"] > 1,
+                :,
+            ].copy(),
+            games=data.games,
+            long_to_short=data.long_to_short,
+            season=data.season,
+            completed_through_week=1,
+            schedule_available=True,
+        )
+
+        result = serialize_projection_grid(data)
+
+        by_team = {row.abbr: row for row in result.items}
+
+        sea_week_one = by_team["SEA"].weeks[0]
+        buf_week_one = by_team["BUF"].weeks[0]
+
+        assert sea_week_one.state == "played"
+        assert sea_week_one.actual_result == "W"
+        assert sea_week_one.opponent == "BUF"
+
+        assert buf_week_one.state == "played"
+        assert buf_week_one.actual_result == "L"
+        assert buf_week_one.opponent == "SEA"

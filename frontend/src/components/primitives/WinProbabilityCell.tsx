@@ -48,14 +48,12 @@ const VIEWPORT_MARGIN = 8;
 const APPROXIMATE_TOOLTIP_HEIGHT = 82;
 
 /**
- * Full table cell for a team's weekly chance to win.
+ * Full table cell for a team's weekly outcome or projected chance to win.
  *
- * Scheduled-game cells use a fixed diverging scale centered at 50%.
- * Lower probabilities blend toward the negative token, higher
- * probabilities blend toward the positive token, and 50% is neutral.
- *
- * Matchup details are available through pointer hover and keyboard focus.
- * The tooltip is portaled to the viewport so scroll containers cannot clip it.
+ * Played games render W/L/T using a softened version of the same diverging
+ * color scale used for projections. Projected games use a fixed scale centered at
+ * 50%. Matchup details remain available through pointer hover and keyboard
+ * focus. The tooltip is portaled so scroll containers cannot clip it.
  */
 export function WinProbabilityCell({
   teamName,
@@ -140,7 +138,14 @@ export function WinProbabilityCell({
     };
   }, [detailsOpen]);
 
-  if (state === "unavailable" || (state !== "bye" && winProbability == null)) {
+  const isPlayed = state === "played";
+  const isBye = state === "bye";
+
+  if (
+    state === "unavailable" ||
+    (state === "projected" && winProbability == null) ||
+    (isPlayed && actualResult == null)
+  ) {
     return (
       <td
         style={{
@@ -169,17 +174,36 @@ export function WinProbabilityCell({
     );
   }
 
-  const isBye = state === "bye";
   const bounded = Math.min(1, Math.max(0, winProbability ?? 0));
   const distance = Math.abs(bounded - 0.5) / 0.5;
   const intensity = 6 + distance * 34;
-  const colorToken = bounded < 0.5 ? "var(--neg)" : "var(--pos)";
-  const background = isBye
-    ? "var(--bg-2)"
-    : bounded === 0.5
-      ? "var(--bg-2)"
-      : `color-mix(in oklab, ${colorToken} ${intensity}%, transparent)`;
-  const display = isBye ? "BYE" : formatProbability(winProbability ?? 0);
+
+  let background = "var(--bg-2)";
+  let display = "BYE";
+  let cellColor = "var(--ink-4)";
+
+  if (isPlayed && actualResult != null) {
+    display = actualResult;
+    cellColor = "var(--ink)";
+
+    if (actualResult === "W") {
+      background =
+        "color-mix(in oklab, var(--pos) 26%, transparent)";
+    } else if (actualResult === "L") {
+      background =
+        "color-mix(in oklab, var(--neg) 26%, transparent)";
+    }
+  } else if (!isBye) {
+    const colorToken =
+      bounded < 0.5 ? "var(--neg)" : "var(--pos)";
+
+    background =
+      bounded === 0.5
+        ? "var(--bg-2)"
+        : `color-mix(in oklab, ${colorToken} ${intensity}%, transparent)`;
+    display = formatProbability(winProbability ?? 0);
+    cellColor = "var(--ink)";
+  }
 
   return (
     <td
@@ -192,7 +216,7 @@ export function WinProbabilityCell({
         borderLeftStyle: "solid",
         borderLeftColor,
         background,
-        color: isBye ? "var(--ink-4)" : "var(--ink)",
+        color: cellColor,
       }}
     >
       <CellButton

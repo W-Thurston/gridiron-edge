@@ -1476,12 +1476,19 @@ function getWeeklySortValue(
       candidate.week === weekNumber,
   );
 
+  if (!week) {
+    return null;
+  }
+
+  if (week.state === "played") {
+    if (week.actual_result === "W") return 1;
+    if (week.actual_result === "T") return 0.5;
+    if (week.actual_result === "L") return 0;
+    return null;
+  }
+
   if (
-    !week ||
-    (
-      week.state !== "played" &&
-      week.state !== "projected"
-    ) ||
+    week.state !== "projected" ||
     week.win_probability == null
   ) {
     return null;

@@ -194,20 +194,78 @@ describe("WinProbabilityCell", () => {
     rectSpy.mockRestore();
   });
 
-  it("renders played result context", () => {
+  it("renders a played win using the positive scale endpoint", () => {
     renderCell({
       state: "played",
       winProbability: 1,
       actualResult: "W",
     });
 
-    expect(screen.getByText("100%")).toBeInTheDocument();
-
+    expect(screen.getByText("W")).toBeInTheDocument();
+    expect(screen.queryByText("100%")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell")).toHaveStyle({
+      background:
+        "color-mix(in oklab, var(--pos) 26%, transparent)",
+    });
     expect(
       screen.getByRole("button", {
         name: /Played, Win/,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("renders a played loss using the negative scale endpoint", () => {
+    renderCell({
+      state: "played",
+      winProbability: 0,
+      actualResult: "L",
+    });
+
+    expect(screen.getByText("L")).toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell")).toHaveStyle({
+      background:
+        "color-mix(in oklab, var(--neg) 26%, transparent)",
+    });
+    expect(
+      screen.getByRole("button", {
+        name: /Played, Loss/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a played tie using the neutral treatment", () => {
+    renderCell({
+      state: "played",
+      winProbability: 0.5,
+      actualResult: "T",
+    });
+
+    expect(screen.getByText("T")).toBeInTheDocument();
+    expect(screen.queryByText("50%")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell")).toHaveStyle({
+      background: "var(--bg-2)",
+    });
+    expect(
+      screen.getByRole("button", {
+        name: /Played, Tie/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a played result without requiring win probability", () => {
+    renderCell({
+      state: "played",
+      winProbability: null,
+      actualResult: "W",
+    });
+
+    expect(screen.getByText("W")).toBeInTheDocument();
+    expect(screen.queryByText("N/A")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell")).toHaveStyle({
+      background:
+        "color-mix(in oklab, var(--pos) 26%, transparent)",
+    });
   });
 
   it("renders a confirmed bye distinctly from zero percent", () => {
@@ -221,16 +279,12 @@ describe("WinProbabilityCell", () => {
     });
 
     expect(screen.getByText("BYE")).toBeInTheDocument();
-
     expect(
       screen.getByRole("button", {
         name: "Seattle Seahawks, Week 1: Bye",
       }),
     ).toBeInTheDocument();
-
-    expect(
-      screen.queryByText("0%"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
   it("renders unavailable without metadata as N/A", () => {
@@ -240,7 +294,6 @@ describe("WinProbabilityCell", () => {
     });
 
     expect(screen.getByText("N/A")).toBeInTheDocument();
-
     expect(
       screen.getByLabelText(
         "Seattle Seahawks, Week 1: not available",
@@ -271,9 +324,7 @@ describe("WinProbabilityCell", () => {
       winProbability: 0,
     });
 
-    expect(
-      screen.getByRole("cell"),
-    ).toHaveStyle({
+    expect(screen.getByRole("cell")).toHaveStyle({
       background:
         "color-mix(in oklab, var(--neg) 40%, transparent)",
     });
@@ -295,9 +346,7 @@ describe("WinProbabilityCell", () => {
       </table>,
     );
 
-    expect(
-      screen.getByRole("cell"),
-    ).toHaveStyle({
+    expect(screen.getByRole("cell")).toHaveStyle({
       background: "var(--bg-2)",
     });
 
@@ -318,9 +367,7 @@ describe("WinProbabilityCell", () => {
       </table>,
     );
 
-    expect(
-      screen.getByRole("cell"),
-    ).toHaveStyle({
+    expect(screen.getByRole("cell")).toHaveStyle({
       background:
         "color-mix(in oklab, var(--pos) 40%, transparent)",
     });
@@ -328,14 +375,12 @@ describe("WinProbabilityCell", () => {
 
   it("marks the played/projected boundary", () => {
     renderCell({
-        boundary: true,
+      boundary: true,
     });
 
-    expect(
-        screen.getByRole("cell"),
-    ).toHaveStyle({
-        borderLeftWidth: "2px",
-        borderLeftStyle: "solid",
+    expect(screen.getByRole("cell")).toHaveStyle({
+      borderLeftWidth: "2px",
+      borderLeftStyle: "solid",
     });
-    });
+  });
 });

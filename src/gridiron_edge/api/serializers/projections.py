@@ -149,7 +149,7 @@ def serialize_projection_grid(
         data.schedule,
         data.long_to_short,
     )
-    games_by_id = _index_completed_games(
+    completed_games_by_team_week = _index_completed_games(
         data.games,
         data.long_to_short,
     )
@@ -164,7 +164,7 @@ def serialize_projection_grid(
                 abbr=abbr,
                 week=week,
                 schedule_by_team_week=schedule_by_team_week,
-                games_by_id=games_by_id,
+                completed_games_by_team_week=completed_games_by_team_week,
                 schedule_available=data.schedule_available,
             )
             for week in range(1, 19)
@@ -246,10 +246,11 @@ def _index_grid_schedule(
 def _index_completed_games(
     games: DataFrame,
     long_to_short: dict[str, str],
-) -> dict[str, dict[str, Any]]:
-    """Index completed canonical games by game ID."""
+) -> dict[tuple[str, int], dict[str, Any]]:
+    """Index each completed canonical game from both team perspectives."""
     required = {
         "GAME_ID",
+        "WEEK_NUM",
         "AWAY_TEAM",
         "HOME_TEAM",
         "AWAY_SCORE",
@@ -258,17 +259,44 @@ def _index_completed_games(
     if games.empty or not required.issubset(games.columns):
         return {}
 
-    indexed: dict[str, dict[str, Any]] = {}
+    indexed: dict[
+        tuple[str, int],
+        dict[str, Any],
+    ] = {}
 
     for row in games.itertuples(index=False):
-        away_score = _none_if_nan(getattr(row, "AWAY_SCORE", None))
-        home_score = _none_if_nan(getattr(row, "HOME_SCORE", None))
+        away_score = _none_if_nan(
+            getattr(
+                row,
+                "AWAY_SCORE",
+                None,
+            )
+        )
+        home_score = _none_if_nan(
+            getattr(
+                row,
+                "HOME_SCORE",
+                None,
+            )
+        )
 
         if away_score is None or home_score is None:
             continue
 
-        away_long = data_value(getattr(row, "AWAY_TEAM", None))
-        home_long = data_value(getattr(row, "HOME_TEAM", None))
+        away_long = data_value(
+            getattr(
+                row,
+                "AWAY_TEAM",
+                None,
+            )
+        )
+        home_long = data_value(
+            getattr(
+                row,
+                "HOME_TEAM",
+                None,
+            )
+        )
 
         if away_long is None or home_long is None:
             continue
@@ -279,11 +307,47 @@ def _index_completed_games(
         if away_abbr is None or home_abbr is None:
             continue
 
-        indexed[str(row.GAME_ID)] = {
+        week_value = pd.to_numeric(
+            row.WEEK_NUM,
+            errors="raise",
+        )
+        # pyrefly: ignore [bad-argument-type]
+        week = int(week_value)
+        game_id = str(row.GAME_ID)
+        game_date = data_value(
+            getattr(
+                row,
+                "GAME_DATE",
+                None,
+            )
+        )
+        game_time = data_value(
+            getattr(
+                row,
+                "GAMETIME",
+                None,
+            )
+        )
+
+        common = {
+            "game_id": game_id,
+            "game_date": game_date,
+            "game_time": game_time,
             "away_abbr": away_abbr,
             "home_abbr": home_abbr,
             "away_score": float(away_score),
             "home_score": float(home_score),
+        }
+
+        indexed[(away_abbr, week)] = {
+            **common,
+            "opponent": home_abbr,
+            "is_home": False,
+        }
+        indexed[(home_abbr, week)] = {
+            **common,
+            "opponent": away_abbr,
+            "is_home": True,
         }
 
     return indexed
@@ -298,12 +362,46 @@ def _serialize_grid_week(
         tuple[str, int],
         dict[str, Any],
     ],
-    games_by_id: dict[str, dict[str, Any]],
+    completed_games_by_team_week: dict[
+        tuple[str, int],
+        dict[str, Any],
+    ],
     schedule_available: bool,
 ) -> ProjectionGridWeek:
-    """Serialize one team/week using schedule and completed-game context."""
-    schedule_game = schedule_by_team_week.get((abbr, week))
-    probability = _grid_probability(probability_row, week)
+    """Serialize one team-week from completed and upcoming evidence."""
+    probability = _grid_probability(
+        probability_row,
+        week,
+    )
+    completed_game = completed_games_by_team_week.get(
+        (
+            abbr,
+            week,
+        )
+    )
+
+    if completed_game is not None:
+        return ProjectionGridWeek(
+            week=week,
+            state="played",
+            opponent=completed_game["opponent"],
+            is_home=completed_game["is_home"],
+            game_id=completed_game["game_id"],
+            game_date=completed_game["game_date"],
+            game_time=completed_game["game_time"],
+            win_probability=probability,
+            actual_result=_actual_result(
+                abbr=abbr,
+                completed_game=completed_game,
+            ),
+        )
+
+    schedule_game = schedule_by_team_week.get(
+        (
+            abbr,
+            week,
+        )
+    )
 
     if schedule_game is None:
         state = "bye" if schedule_available else "unavailable"
@@ -313,23 +411,6 @@ def _serialize_grid_week(
         )
 
     game_id = schedule_game["game_id"]
-    completed_game = games_by_id.get(game_id) if game_id is not None else None
-
-    if completed_game is not None:
-        return ProjectionGridWeek(
-            week=week,
-            state="played",
-            opponent=schedule_game["opponent"],
-            is_home=schedule_game["is_home"],
-            game_id=game_id,
-            game_date=schedule_game["game_date"],
-            game_time=schedule_game["game_time"],
-            win_probability=probability,
-            actual_result=_actual_result(
-                abbr=abbr,
-                completed_game=completed_game,
-            ),
-        )
 
     if probability is None:
         return ProjectionGridWeek(

@@ -537,7 +537,22 @@ def load_projection_grid_data(
     elif not games.empty:
         games = pd.DataFrame()
 
-    completed_through_week = 0 if games.empty else int(games["WEEK_NUM"].max())
+    completed_games = (
+        games.dropna(
+            subset=[
+                "AWAY_SCORE",
+                "HOME_SCORE",
+            ]
+        )
+        if not games.empty
+        and {
+            "AWAY_SCORE",
+            "HOME_SCORE",
+        }.issubset(games.columns)
+        else DataFrame()
+    )
+
+    completed_through_week = 0 if completed_games.empty else int(completed_games["WEEK_NUM"].max())
 
     return ProjectionGridData(
         probabilities=probabilities,
