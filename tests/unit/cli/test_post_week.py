@@ -64,7 +64,9 @@ def test_refresh_season_projections_runs_standard_simulation(
 
 
 @patch("gridiron_edge.cli.post_week._run_pipeline")
-def test_refresh_results_runs_only_result_stages(run_pipeline: MagicMock) -> None:
+def test_refresh_results_runs_only_result_stages(
+    run_pipeline: MagicMock,
+) -> None:
     result = _stage_refresh_results({"season_int": 2025, "season": "2025-2026"})
 
     assert result.success

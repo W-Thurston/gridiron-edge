@@ -18,8 +18,12 @@ from gridiron_edge.cli._composites import (
 from gridiron_edge.core.console import console
 
 
-def _run_pipeline(ctx: dict[str, Any], *, active: set[str]) -> None:
-    """Run one explicit subset of the data pipeline."""
+def _run_pipeline(
+    ctx: dict[str, Any],
+    *,
+    active: set[str],
+) -> None:
+    """Run one explicit subset of the weekly data pipeline."""
     from gridiron_edge.cli.main import _run_pipeline_stages
 
     season_int = int(ctx["season_int"])
@@ -28,7 +32,7 @@ def _run_pipeline(ctx: dict[str, Any], *, active: set[str]) -> None:
         all_years=False,
         resolved_season=season_int,
         upcoming_target=season_int,
-        season=season_int,
+        season=None,
         season_year=str(ctx["season"]),
         owm_api_key=None,
         fit_elo_all_years=False,
