@@ -133,13 +133,13 @@ def _schedule_for_readiness(
 
     return DataFrame(
         {
-            "YEAR": rich_schedule["season"].astype("string"),
+            "season": rich_schedule["season"].astype("string"),
             # pyrefly: ignore [missing-attribute]
-            "WEEK_NUM": pd.to_numeric(
+            "week": pd.to_numeric(
                 rich_schedule["week"],
                 errors="raise",
             ).astype(int),
-            "GAME_ID": rich_schedule["game_id"].astype("string"),
+            "game_id": rich_schedule["game_id"].astype("string"),
         }
     )
 
@@ -366,13 +366,10 @@ def load_weekly_readiness(
         predictions=predictions,
         markets=markets,
         edges=edge_result.rows,
-    )
-    readiness = replace(
-        readiness,
         market_game_count=edge_result.diagnostics.market_game_count,
-        prediction_market_match_count=edge_result.diagnostics.matched_game_count,
-        eligible_market_count=edge_result.diagnostics.eligible_market_count,
-        positive_edge_count=edge_result.diagnostics.positive_edge_count,
+        prediction_market_match_count=(edge_result.diagnostics.matched_game_count),
+        eligible_market_count=(edge_result.diagnostics.eligible_market_count),
+        positive_edge_count=(edge_result.diagnostics.positive_edge_count),
     )
     return _with_selection_blockers(
         readiness,
@@ -381,50 +378,6 @@ def load_weekly_readiness(
             *_edge_readiness_blockers(edge_result),
         ),
     )
-
-
-def _render_weekly_readiness(
-    readiness: WeeklyReadiness,
-) -> None:
-    """Render every weekly readiness count and blocker."""
-    typer.echo("Coverage")
-    typer.echo(f"  Scheduled games                 {readiness.scheduled_game_count}")
-    typer.echo(f"  Selected win predictions        {readiness.selected_win_prediction_count}")
-    typer.echo(f"  Spread values                   {readiness.spread_value_count}")
-    typer.echo(f"  Total predictions               {readiness.total_prediction_count}")
-    typer.echo(f"  Projected scores                {readiness.projected_score_count}")
-    typer.echo(f"  Complete provenance             {readiness.complete_provenance_count}")
-
-    typer.echo("")
-    typer.echo("Markets")
-    typer.echo(f"  Games with market data          {readiness.market_game_count}")
-    typer.echo(f"  Prediction-market matches       {readiness.prediction_market_match_count}")
-    typer.echo(f"  Eligible markets                {readiness.eligible_market_count}")
-    typer.echo(f"  Positive edges                  {readiness.positive_edge_count}")
-
-    typer.echo("")
-    typer.echo("Artifacts")
-    typer.echo(
-        f"  Prediction generated at         {_format_timestamp(readiness.prediction_generated_at)}"
-    )
-    typer.echo(
-        f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
-    )
-    providers = ", ".join(readiness.market_providers) or "unavailable"
-    sportsbooks = ", ".join(readiness.market_sportsbooks) or "unavailable"
-    typer.echo(f"  Market provider(s)              {providers}")
-    typer.echo(f"  Sportsbook(s)                   {sportsbooks}")
-
-    typer.echo("")
-
-    if readiness.ready:
-        typer.echo("Ready")
-        typer.echo("  No blockers")
-        return
-
-    typer.echo("Blocked")
-    for blocker in readiness.blockers:
-        typer.echo(f"  {blocker.value}")
 
 
 def verify_week_cmd(

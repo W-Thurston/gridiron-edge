@@ -544,12 +544,12 @@ def test_rich_schedule_projects_to_readiness_identity() -> None:
     projected = _schedule_for_readiness(rich)
 
     assert projected.to_dict(orient="list") == {
-        "YEAR": [
+        "season": [
             "2026-2027",
             "2026-2027",
         ],
-        "WEEK_NUM": [1, 2],
-        "GAME_ID": [
+        "week": [1, 2],
+        "game_id": [
             "2026_01_KC_LAC",
             "2026_02_BAL_BUF",
         ],
@@ -601,3 +601,18 @@ def test_verify_week_has_no_direct_edge_calculation_dependencies() -> None:
 
     assert found == []
     assert "build_weekly_edge_result" in source
+
+
+def test_rich_schedule_projection_requires_identity_columns() -> None:
+    rich = pd.DataFrame(
+        {
+            "season": ["2026-2027"],
+            "week": [2],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Rich upcoming schedule is missing required columns: game_id",
+    ):
+        _schedule_for_readiness(rich)

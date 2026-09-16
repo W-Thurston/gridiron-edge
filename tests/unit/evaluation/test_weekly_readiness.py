@@ -63,9 +63,9 @@ def _schedule(
     """Create canonical upcoming schedule rows."""
     return pd.DataFrame(
         {
-            "YEAR": ["2026-2027"] * count,
-            "WEEK_NUM": [1] * count,
-            "GAME_ID": [f"2026_01_GAME_{index}" for index in range(count)],
+            "season": ["2026-2027"] * count,
+            "week": [1] * count,
+            "game_id": [f"2026_01_GAME_{index}" for index in range(count)],
         }
     )
 
@@ -548,12 +548,12 @@ class TestEvaluateWeeklyReadiness:
     ) -> None:
         schedule = pd.DataFrame(
             {
-                "YEAR": [
+                "season": [
                     "2026-2027",
                     "2026-2027",
                 ],
-                "WEEK_NUM": [1, 1],
-                "GAME_ID": [
+                "week": [1, 1],
+                "game_id": [
                     "2026_01_PREDICTION_GAME",
                     "2026_01_MARKET_GAME",
                 ],
@@ -927,8 +927,8 @@ class TestEvaluateWeeklyReadiness:
         [
             (
                 "schedule",
-                "GAME_ID",
-                "Schedule is missing required columns: GAME_ID",
+                "game_id",
+                "Schedule is missing required columns: game_id",
             ),
             (
                 "predictions",

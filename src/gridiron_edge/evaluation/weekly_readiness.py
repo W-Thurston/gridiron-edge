@@ -52,9 +52,9 @@ _GAME_COVERAGE_FIELDS: Final[tuple[str, ...]] = (
 )
 
 _SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
-    "YEAR",
-    "WEEK_NUM",
-    "GAME_ID",
+    "season",
+    "week",
+    "game_id",
 )
 
 _PREDICTION_COLUMNS: Final[tuple[str, ...]] = (
@@ -246,22 +246,22 @@ def _scope_schedule(
     _require_columns(schedule, _SCHEDULE_COLUMNS, label="Schedule")
 
     scoped = schedule.loc[
-        (schedule["YEAR"].astype(str) == season) & (schedule["WEEK_NUM"] == week),
+        (schedule["season"].astype(str) == season) & (schedule["week"] == week),
         :,
     ].copy()
 
-    if scoped["GAME_ID"].isna().any():
+    if scoped["game_id"].isna().any():
         raise ValueError("Schedule game IDs must not contain nulls.")
 
-    empty_game_ids = scoped["GAME_ID"].astype(str).str.strip().eq("")
+    empty_game_ids = scoped["game_id"].astype(str).str.strip().eq("")
     if empty_game_ids.any():
         raise ValueError("Schedule game IDs must not contain empty values.")
 
-    if scoped["GAME_ID"].duplicated().any():
+    if scoped["game_id"].duplicated().any():
         duplicate_ids = sorted(
             scoped.loc[
-                scoped["GAME_ID"].duplicated(keep=False),
-                "GAME_ID",
+                scoped["game_id"].duplicated(keep=False),
+                "game_id",
             ]
             .astype(str)
             .unique()
@@ -338,7 +338,7 @@ def _count_non_null_games(
         return 0
 
     complete = predictions.loc[:, list(columns)].notna().all(axis=1)
-    return int(predictions.loc[complete, "game_id"].nunique())
+    return predictions.loc[complete, "game_id"].nunique()
 
 
 def _count_complete_provenance(predictions: DataFrame) -> int:
@@ -361,7 +361,7 @@ def _count_complete_provenance(predictions: DataFrame) -> int:
     for column in ("event_id", "run_id", "model_name", "model_type"):
         complete &= predictions[column].astype(str).str.strip().ne("")
 
-    return int(predictions.loc[complete, "game_id"].nunique())
+    return predictions.loc[complete, "game_id"].nunique()
 
 
 def _market_side_present(
@@ -669,6 +669,10 @@ def evaluate_weekly_readiness(
     predictions: DataFrame,
     markets: DataFrame,
     edges: DataFrame,
+    market_game_count: int | None = None,
+    prediction_market_match_count: int | None = None,
+    eligible_market_count: int | None = None,
+    positive_edge_count: int | None = None,
 ) -> WeeklyReadiness:
     """Derive weekly readiness from supplied domain inputs.
 
@@ -676,7 +680,7 @@ def evaluate_weekly_readiness(
     market ingestion, or edge calculation.
     """
     scoped_schedule = _scope_schedule(schedule, season=season, week=week)
-    scheduled_game_ids = set(scoped_schedule["GAME_ID"].astype(str))
+    scheduled_game_ids = set(scoped_schedule["game_id"].astype(str))
     scheduled_count = len(scheduled_game_ids)
 
     scoped_predictions = _scope_predictions(
@@ -715,29 +719,41 @@ def evaluate_weekly_readiness(
     )
     complete_provenance_count = _count_complete_provenance(scoped_predictions)
 
-    prediction_market_match_count = len(prediction_game_ids.intersection(market_game_ids))
-    eligible_market_count = _count_eligible_markets(
+    derived_prediction_market_match_count = len(prediction_game_ids.intersection(market_game_ids))
+    derived_eligible_market_count = _count_eligible_markets(
         scoped_predictions,
         scoped_markets,
     )
 
-    positive_edge_count = 0
+    derived_positive_edge_count = 0
     if not edges.empty:
         _require_columns(
             edges,
             ("ev",),
             label="Edges",
         )
-        positive_edge_count = int(
-            # pyrefly: ignore [missing-attribute]
-            (
-                pd.to_numeric(
-                    edges["ev"],
-                    errors="coerce",
-                )
-                > 0.0
-            ).sum()
-        )
+        derived_positive_edge_count = (
+            pd.to_numeric(
+                edges["ev"],
+                errors="coerce",
+            )
+            > 0.0
+        ).sum()
+
+    resolved_market_game_count = (
+        len(market_game_ids) if market_game_count is None else market_game_count
+    )
+    resolved_prediction_market_match_count = (
+        derived_prediction_market_match_count
+        if prediction_market_match_count is None
+        else prediction_market_match_count
+    )
+    resolved_eligible_market_count = (
+        derived_eligible_market_count if eligible_market_count is None else eligible_market_count
+    )
+    resolved_positive_edge_count = (
+        derived_positive_edge_count if positive_edge_count is None else positive_edge_count
+    )
 
     prediction_generated_at = _unique_utc_timestamp(
         scoped_predictions,
@@ -749,8 +765,6 @@ def evaluate_weekly_readiness(
     )
     market_providers = _market_providers(scoped_markets)
     market_sportsbooks = _market_sportsbooks(scoped_markets)
-
-    market_game_count = len(market_game_ids)
 
     blockers = _prediction_coverage_blockers(
         scheduled_count=scheduled_count,
@@ -764,9 +778,9 @@ def evaluate_weekly_readiness(
         _market_coverage_blockers(
             scheduled_count=scheduled_count,
             selected_win_count=selected_win_count,
-            market_game_count=market_game_count,
-            prediction_market_match_count=(prediction_market_match_count),
-            eligible_market_count=eligible_market_count,
+            market_game_count=resolved_market_game_count,
+            prediction_market_match_count=(resolved_prediction_market_match_count),
+            eligible_market_count=resolved_eligible_market_count,
         )
     )
     blockers.extend(
@@ -788,10 +802,10 @@ def evaluate_weekly_readiness(
         total_prediction_count=total_count,
         projected_score_count=projected_score_count,
         complete_provenance_count=complete_provenance_count,
-        market_game_count=market_game_count,
-        prediction_market_match_count=(prediction_market_match_count),
-        eligible_market_count=eligible_market_count,
-        positive_edge_count=positive_edge_count,
+        market_game_count=resolved_market_game_count,
+        prediction_market_match_count=(resolved_prediction_market_match_count),
+        eligible_market_count=resolved_eligible_market_count,
+        positive_edge_count=resolved_positive_edge_count,
         prediction_generated_at=prediction_generated_at,
         market_fetched_at=market_fetched_at,
         market_providers=market_providers,
