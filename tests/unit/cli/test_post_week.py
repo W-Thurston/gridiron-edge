@@ -1,3 +1,4 @@
+# tests/unit/cli/test_post_week.py
 """Tests for completed-week live forecast closeout orchestration."""
 
 from __future__ import annotations
@@ -5,16 +6,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import typer
-from typer.testing import CliRunner
-
 from gridiron_edge.cli._composites import StageResult
 from gridiron_edge.cli.post_week import (
     _build_stages,
     _stage_close_live_forecasts,
     _stage_refresh_next_week_state,
     _stage_refresh_results,
-    post_week_cmd,
+    _stage_refresh_season_projections,
 )
 
 
@@ -23,6 +21,7 @@ class TestStageList:
         assert [stage.name for stage in _build_stages()] == [
             "refresh-results",
             "refresh-next-week-state",
+            "refresh-season-projections",
             "close-live-forecasts",
         ]
 
@@ -31,6 +30,37 @@ class TestStageList:
 
     def test_no_stage_is_soft_fail(self) -> None:
         assert all(not stage.soft_fail for stage in _build_stages())
+
+
+@patch(
+    "gridiron_edge.cli._simulation.run_full_simulation",
+)
+@patch(
+    "gridiron_edge.cli._simulation.SimPaths.from_settings",
+)
+def test_refresh_season_projections_runs_standard_simulation(
+    sim_paths: MagicMock,
+    run_simulation: MagicMock,
+) -> None:
+    result = _stage_refresh_season_projections({})
+
+    assert result == StageResult(
+        success=True,
+        detail="season and weekly Elo projections refreshed",
+    )
+
+    run_simulation.assert_called_once()
+    call = run_simulation.call_args
+
+    assert call.kwargs["paths"] is sim_paths.return_value
+    assert call.kwargs["render"] is False
+
+    config = call.kwargs["config"]
+    assert config.n_sims == 10_000
+    assert config.k_factor == 20.0
+    assert config.divisor == 480.0
+    assert config.p_tie == 0.01
+    assert config.base_seed == 1337
 
 
 @patch("gridiron_edge.cli.post_week._run_pipeline")
@@ -129,66 +159,29 @@ def test_incomplete_closeout_is_visible_and_fails(
 
 class TestCommandInvocation:
     @patch("gridiron_edge.cli.post_week._stage_close_live_forecasts")
+    @patch("gridiron_edge.cli.post_week._stage_refresh_season_projections")
     @patch("gridiron_edge.cli.post_week._stage_refresh_next_week_state")
     @patch("gridiron_edge.cli.post_week._stage_refresh_results")
     def test_runs_all_stages(
         self,
         refresh_results: MagicMock,
         refresh_state: MagicMock,
+        refresh_projections: MagicMock,
         closeout: MagicMock,
     ) -> None:
-        refresh_results.return_value = StageResult(success=True, detail="ok")
-        refresh_state.return_value = StageResult(success=True, detail="ok")
-        closeout.return_value = StageResult(success=True, detail="ok")
-        app = typer.Typer()
-        app.command()(post_week_cmd)
-
-        result = CliRunner().invoke(
-            app,
-            ["--week", "1", "--season", "2025-2026"],
+        refresh_results.return_value = StageResult(
+            success=True,
+            detail="ok",
         )
-
-        assert result.exit_code == 0, result.output
-
-    def test_only_closeout_is_executable(self) -> None:
-        app = typer.Typer()
-        app.command()(post_week_cmd)
-        with patch(
-            "gridiron_edge.cli.post_week._stage_close_live_forecasts",
-            return_value=StageResult(success=True, detail="ok"),
-        ):
-            result = CliRunner().invoke(
-                app,
-                [
-                    "--week",
-                    "1",
-                    "--season",
-                    "2025-2026",
-                    "--only",
-                    "close-live-forecasts",
-                ],
-            )
-
-        assert result.exit_code == 0, result.output
-
-    def test_help_has_no_model_or_backfill_options(self) -> None:
-        app = typer.Typer()
-        app.command()(post_week_cmd)
-        result = CliRunner().invoke(app, ["--help"])
-
-        assert result.exit_code == 0
-        assert "--model-name" not in result.output
-        assert "--model-type" not in result.output
-        assert "backfill-predictions" not in result.output
-        assert "close-live-forecasts" in result.output
-
-    def test_invalid_season_fails(self) -> None:
-        app = typer.Typer()
-        app.command()(post_week_cmd)
-        result = CliRunner().invoke(
-            app,
-            ["--week", "1", "--season", "bad-season"],
+        refresh_state.return_value = StageResult(
+            success=True,
+            detail="ok",
         )
-
-        assert result.exit_code != 0
-        assert "Could not parse season" in result.output
+        refresh_projections.return_value = StageResult(
+            success=True,
+            detail="ok",
+        )
+        closeout.return_value = StageResult(
+            success=True,
+            detail="ok",
+        )

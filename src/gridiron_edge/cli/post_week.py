@@ -1,5 +1,5 @@
 # src/gridiron_edge/cli/post_week.py
-"""Composite command for completed-week live forecast closeout."""
+"""Composite command for completed-week closeout and next-week refresh."""
 
 from __future__ import annotations
 
@@ -123,6 +123,24 @@ def _stage_close_live_forecasts(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+def _stage_refresh_season_projections(
+    ctx: dict[str, Any],
+) -> StageResult:
+    """Refresh season, playoff, percentile, and weekly Elo artifacts."""
+    from gridiron_edge.cli._simulation import (
+        run_standard_simulation,
+    )
+
+    run_standard_simulation(
+        render=False,
+    )
+
+    return StageResult(
+        success=True,
+        detail="season and weekly Elo projections refreshed",
+    )
+
+
 def _build_stages() -> list[CompositeStage]:
     """Define independent completed-week operational stages."""
     return [
@@ -135,6 +153,11 @@ def _build_stages() -> list[CompositeStage]:
             name="refresh-next-week-state",
             description="Refresh next-week state",
             func=_stage_refresh_next_week_state,
+        ),
+        CompositeStage(
+            name="refresh-season-projections",
+            description="Refresh season and weekly Elo projections",
+            func=_stage_refresh_season_projections,
         ),
         CompositeStage(
             name="close-live-forecasts",
@@ -157,14 +180,18 @@ def post_week_cmd(
     skip: list[str] = typer.Option([], "--skip", help=_SKIP_HELP),  # noqa: B008
     only: list[str] = typer.Option([], "--only", help=_ONLY_HELP),  # noqa: B008
 ) -> None:
-    r"""Refresh results and evaluate the exact live forecasts issued before kickoff.
+    r"""Close the completed week and prepare application data for the next week.
 
-    
+    The default workflow refreshes completed results, rebuilds next-week model
+    state, regenerates season and weekly Elo projections, and evaluates the exact
+    live forecasts issued before kickoff.
+
     Examples:
-      gridiron post-week --week 1 --season 2025-2026
-      gridiron post-week --only refresh-results --week 1 --season 2025-2026
-      gridiron post-week --only refresh-next-week-state --week 1 --season 2025-2026
-      gridiron post-week --only close-live-forecasts --week 1 --season 2025-2026
+    gridiron post-week --week 1 --season 2026-2027
+    gridiron post-week --only refresh-results --week 1 --season 2026-2027
+    gridiron post-week --only refresh-next-week-state --week 1 --season 2026-2027
+    gridiron post-week --only refresh-season-projections --week 1 --season 2026-2027
+    gridiron post-week --only close-live-forecasts --week 1 --season 2026-2027
     """
     stages = _build_stages()
     active = resolve_active_stages(all_stages=_ALL_STAGES, skip=skip, only=only)
@@ -180,7 +207,10 @@ def post_week_cmd(
         "season": season,
         "season_int": season_int,
     }
-    console.header("post-week", subtitle=f"week {week} · {season} · selected live forecasts")
+    console.header(
+        "post-week",
+        subtitle=f"week {week} · {season} · closeout and next-week refresh",
+    )
     summary = run_composite(
         name="post-week",
         stages=stages,

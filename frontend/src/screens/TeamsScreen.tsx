@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { useTeamProfile, useTeamRankings } from "../api/hooks";
+import { useTeamProfile, useTeamRankings, useProjections } from "../api/hooks";
 import { TeamViewSwitcher } from "../components/teams/TeamViewSwitcher";
 import { TeamMark } from "../components/primitives/TeamMark";
 import { BlockedField } from "../components/field-status/BlockedField";
@@ -10,7 +10,6 @@ import { useNav } from "../context/NavContext";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { Pill } from "../components/primitives/Pill";
 import { RatingChart } from "../components/primitives/RatingChart";
-import { useProjections } from "../api/hooks";
 import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 import { usePendingHighlight } from "../components/field-status/usePendingHighlight";
 

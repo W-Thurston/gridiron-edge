@@ -20,6 +20,7 @@ from gridiron_edge.sim._types import (
 )
 from gridiron_edge.sim.season import (
     build_schedule_arrays,
+    build_team_index_from_results,
     extract_fixed_playoff_winners,
 )
 
@@ -108,6 +109,66 @@ def _regular_results() -> pd.DataFrame:
             ],
         }
     )
+
+
+def test_team_index_uses_canonical_schedule_team_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    historical = pd.DataFrame(
+        {
+            "YEAR": [
+                "2026-2027",
+                "2026-2027",
+            ],
+            "GAME_ID": [
+                "2026_01_JAX_DEN",
+                "2026_01_KC_LAC",
+            ],
+        }
+    )
+    schedule = pd.DataFrame(
+        {
+            "season": [
+                "2026-2027",
+                "2026-2027",
+            ],
+            "away_team": [
+                "Jacksonville Jaguars",
+                "Kansas City Chiefs",
+            ],
+            "home_team": [
+                "Denver Broncos",
+                "Los Angeles Chargers",
+            ],
+        }
+    )
+    long_to_short = {
+        "Jacksonville Jaguars": "JAC",
+        "Kansas City Chiefs": "KAN",
+        "Denver Broncos": "DEN",
+        "Los Angeles Chargers": "LAC",
+    }
+
+    monkeypatch.setattr(
+        "gridiron_edge.sim.season.N_TEAMS",
+        4,
+    )
+
+    result = build_team_index_from_results(
+        historical,
+        long_to_short,
+        "2026-2027",
+        df_schedule=schedule,
+    )
+
+    assert result.short_names == [
+        "DEN",
+        "JAC",
+        "KAN",
+        "LAC",
+    ]
+    assert "JAX" not in result.short_to_id
+    assert "KC" not in result.short_to_id
 
 
 class TestBuildScheduleArrays:

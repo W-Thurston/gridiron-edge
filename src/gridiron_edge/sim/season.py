@@ -113,57 +113,62 @@ def build_team_index_from_results(
     season_year: str,
     df_schedule: pd.DataFrame | None = None,
 ) -> TeamIndex:
-    """Build TeamIndex from actual game results for the season.
+    """Build the canonical active-team index for one simulation season.
 
-    When no completed games exist for ``season_year`` (e.g. at the start of
-    a season), falls back to ``df_schedule`` to derive the team list.
+    The simulation team index uses the short-code vocabulary owned by the
+    long-to-short team metadata mapping. Codes embedded in historical game
+    IDs remain game identities and do not define simulation team identity.
 
-    Args:
-        df_wk_by_wk: Historical games DataFrame.
-        long_to_short: Long name → short code mapping.
-        season_year: Season label (e.g. ``"2026-2027"``).
-        df_schedule: Rich upcoming schedule DataFrame. Used as fallback when no
-            completed games exist for ``season_year``.
-
-    Returns:
-        A ``TeamIndex`` covering all 32 NFL teams.
+    When a rich schedule is available, its participating long team names are
+    the authoritative source for the active 32-team set. Historical game IDs
+    remain a fallback for callers without schedule data.
     """
     if not {"YEAR", "GAME_ID"}.issubset(df_wk_by_wk.columns):
         raise ValueError("wk_by_wk must include YEAR and GAME_ID columns")
 
-    season_ids = df_wk_by_wk.loc[df_wk_by_wk["YEAR"] == season_year, "GAME_ID"].astype(str)
-
     shorts: set[str] = set()
-    for gid in season_ids.tolist():
-        a_s, h_s = _parse_game_id(gid)
-        shorts.add(a_s)
-        shorts.add(h_s)
 
-    if len(shorts) < N_TEAMS and df_schedule is not None:
-        required_schedule: set[str] = {
+    if df_schedule is not None:
+        required_schedule = {
+            "season",
             "away_team",
             "home_team",
         }
         if not required_schedule.issubset(df_schedule.columns):
-            missing: list[str] = sorted(required_schedule - set(df_schedule.columns))
+            missing = sorted(required_schedule - set(df_schedule.columns))
             raise ValueError(
                 "Rich upcoming schedule is missing team identity columns: " + ", ".join(missing)
             )
 
-        for column in (
-            "away_team",
-            "home_team",
-        ):
-            for long_name in df_schedule[column].dropna().unique():
-                short = long_to_short.get(str(long_name))
-                if short:
-                    shorts.add(short)
+        season_schedule = df_schedule.loc[
+            df_schedule["season"].astype(str).eq(season_year),
+            :,
+        ]
+
+        for column in ("away_team", "home_team"):
+            for long_name in season_schedule[column].dropna().astype(str).unique():
+                short = long_to_short.get(long_name)
+                if short is None:
+                    raise ValueError(
+                        f"Missing long-to-short mapping for schedule team: {long_name}"
+                    )
+                shorts.add(short)
+    else:
+        season_ids = df_wk_by_wk.loc[
+            df_wk_by_wk["YEAR"] == season_year,
+            "GAME_ID",
+        ].astype(str)
+
+        for game_id in season_ids:
+            away_short, home_short = _parse_game_id(game_id)
+            shorts.add(away_short)
+            shorts.add(home_short)
 
     short_names = sorted(shorts)
     if len(short_names) != N_TEAMS:
         raise ValueError(f"Expected {N_TEAMS} teams, got {len(short_names)}: {short_names}")
 
-    short_to_id = {s: i for i, s in enumerate(short_names)}
+    short_to_id = {short: index for index, short in enumerate(short_names)}
     return TeamIndex(
         short_names=short_names,
         short_to_id=short_to_id,
