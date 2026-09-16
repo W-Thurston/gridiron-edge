@@ -9439,7 +9439,7 @@
         "operationId": "get_projections_projections_get",
         "parameters": [
           {
-            "description": "Season to project, e.g. '2025-2026'. Currently ignored \u2014 returns the latest available projections regardless. Reserved for future multi-season history.",
+            "description": "Season to project, e.g. '2025-2026'. Currently returns the latest projection artifact for the resolved season.",
             "in": "query",
             "name": "season",
             "required": false,
@@ -9452,7 +9452,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Season to project, e.g. '2025-2026'. Currently ignored \u2014 returns the latest available projections regardless. Reserved for future multi-season history.",
+              "description": "Season to project, e.g. '2025-2026'. Currently returns the latest projection artifact for the resolved season.",
               "title": "Season"
             }
           }
@@ -9753,16 +9753,9 @@
             "name": "season",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
               "description": "Season to rank against, e.g. '2025-2026'. Defaults to current.",
-              "title": "Season"
+              "title": "Season",
+              "type": "string"
             }
           }
         ],
@@ -9814,16 +9807,9 @@
             "name": "season",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
               "description": "Season to profile against, e.g. '2025-2026'. Defaults to current.",
-              "title": "Season"
+              "title": "Season",
+              "type": "string"
             }
           },
           {

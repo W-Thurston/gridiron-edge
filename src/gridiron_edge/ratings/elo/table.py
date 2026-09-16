@@ -55,10 +55,16 @@ def _next_season_label(year: str) -> str:
     return f"{end}-{end + 1}"
 
 
-def _max_week_for_year(games: pd.DataFrame, year: str) -> int:
-    """Return the maximum week number for a given season."""
-    subset = games.loc[games["YEAR"] == year, "WEEK_NUM"]
-    return int(subset.max()) if not subset.empty else 1
+def _max_week_for_year(
+    games: pd.DataFrame,
+    year: str,
+) -> int:
+    """Return the maximum completed week for one season, or zero."""
+    subset = games.loc[
+        games["YEAR"] == year,
+        "WEEK_NUM",
+    ]
+    return int(subset.max()) if not subset.empty else 0
 
 
 def _latest_season_ratings_by_team(
@@ -113,6 +119,9 @@ def _add_next_season_week_one(
         return
 
     latest_year: str = sorted_years[-1]
+    if _max_week_for_year(games, latest_year) < 22:
+        return
+
     next_year: str = _next_season_label(latest_year)
 
     returning_teams: set[str] = teams_by_year.get(

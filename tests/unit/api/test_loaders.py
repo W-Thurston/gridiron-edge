@@ -870,7 +870,11 @@ class TestComputeEloDeltas:
     def test_empty_elo_state_returns_empty(self) -> None:
         from gridiron_edge.api.loaders import compute_elo_deltas
 
-        result: DataFrame = compute_elo_deltas(pd.DataFrame(), self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            pd.DataFrame(),
+            self._long_to_short(),
+            season="2026-2027",
+        )
         assert result.empty
 
     def test_computes_delta_for_latest_week_with_short_codes(self) -> None:
@@ -905,7 +909,11 @@ class TestComputeEloDeltas:
             ]
         )
 
-        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            elo,
+            self._long_to_short(),
+            season="2026-2027",
+        )
 
         assert len(result) == 2
         by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
@@ -932,7 +940,11 @@ class TestComputeEloDeltas:
             ]
         )
 
-        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            elo,
+            self._long_to_short(),
+            season="2026-2027",
+        )
 
         assert len(result) == 2
         assert result["elo_delta"].isnull().all()
@@ -967,7 +979,11 @@ class TestComputeEloDeltas:
             ]
         )
 
-        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            elo,
+            self._long_to_short(),
+            season="2026-2027",
+        )
 
         assert len(result) == 1
         assert result.iloc[0]["team_abbr"] == "KAN"
@@ -1001,7 +1017,11 @@ class TestComputeEloDeltas:
             ]
         )
 
-        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            elo,
+            self._long_to_short(),
+            season="2026-2027",
+        )
 
         by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
         assert by_team["KAN"] == 15.0
@@ -1018,7 +1038,11 @@ class TestComputeEloDeltas:
             ]
         )
 
-        result: DataFrame = compute_elo_deltas(elo, self._long_to_short())
+        result: DataFrame = compute_elo_deltas(
+            elo,
+            self._long_to_short(),
+            season="2026-2027",
+        )
 
         assert len(result) == 1
         assert result.iloc[0]["team_abbr"] == "Mystery Team"

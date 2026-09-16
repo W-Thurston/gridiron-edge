@@ -82,7 +82,7 @@ def _resolve_rating_timeline_scope(
 @router.get("", response_model=TeamRankingsList)
 def list_teams(
     settings: SettingsDep,
-    season: str | None = Query(
+    season: str = Query(
         default=None,
         description="Season to rank against, e.g. '2025-2026'. Defaults to current.",
     ),
@@ -92,12 +92,17 @@ def list_teams(
     games: DataFrame = load_games_df(settings)
     long_to_short: dict[str, str] = load_team_name_map(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
-    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
     team_metadata = team_metadata_lookup(settings)
+
     resolved_season, as_of_week = _resolve_scope(
         settings,
         season,
         elo=elo,
+    )
+    trends: DataFrame = compute_elo_deltas(
+        elo,
+        long_to_short,
+        season=resolved_season,
     )
 
     return serialize_team_rankings(
@@ -116,7 +121,7 @@ def list_teams(
 def get_team(
     settings: SettingsDep,
     abbr: str,
-    season: str | None = Query(
+    season: str = Query(
         default=None,
         description="Season to profile against, e.g. '2025-2026'. Defaults to current.",
     ),
@@ -138,14 +143,22 @@ def get_team(
     elo: DataFrame = load_elo_state_df(settings)
     games: DataFrame = load_games_df(settings)
     percentiles: DataFrame = load_team_percentiles_df(settings)
-    trends: DataFrame = compute_elo_deltas(elo, long_to_short)
     cohort_splits_df: DataFrame = load_team_cohort_splits_df(settings)
-    cohort_splits = format_team_cohort_splits(cohort_splits_df, abbr.upper())
+    cohort_splits = format_team_cohort_splits(
+        cohort_splits_df,
+        abbr.upper(),
+    )
     team_metadata = team_metadata_lookup(settings)
+
     resolved_season, as_of_week = _resolve_scope(
         settings,
         season,
         elo=elo,
+    )
+    trends: DataFrame = compute_elo_deltas(
+        elo,
+        long_to_short,
+        season=resolved_season,
     )
     completed_through_week, current_rating_week = _resolve_rating_timeline_scope(
         elo=elo,

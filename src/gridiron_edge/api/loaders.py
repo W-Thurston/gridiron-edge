@@ -298,69 +298,95 @@ class ProjectionGridData:
 def compute_elo_deltas(
     elo_state: DataFrame,
     long_to_short: dict[str, str],
+    *,
+    season: str,
 ) -> DataFrame:
-    """Compute per-team Elo delta from prior NFL week within same season.
+    """Compute entering-week Elo change within one explicit season.
 
-    For the latest (season, week) in the Elo state table, computes:
-        elo_delta = current_week_elo - prior_week_elo
-
-    Prior week is `NFL_WEEK - 1` within the same `NFL_YEAR`. Teams with
-    no prior-week Elo (Week 1 of a season, or fresh checkouts) get null.
-
-    The Elo state table stores long team names (e.g. "Arizona Cardinals").
-    This function converts to short codes (e.g. "ARI") using the provided
-    map for join compatibility with the projections summary CSV.
-
-    Args:
-        elo_state: DataFrame with columns NFL_TEAM (long), NFL_YEAR, NFL_WEEK, ELO.
-        long_to_short: Mapping from long team names to short codes.
-
-    Returns:
-        DataFrame with columns team_abbr, elo_delta. One row per team.
-        Empty if elo_state is empty.
+    The delta compares the latest complete Elo week in the requested season
+    with the immediately preceding Elo week in that same season. Week 1 has
+    no prior in-season state and therefore produces null deltas.
     """
     if elo_state.empty:
-        return pd.DataFrame(columns=["team_abbr", "elo_delta"])
+        return pd.DataFrame(
+            columns=[
+                "team_abbr",
+                "elo_delta",
+            ]
+        )
 
-    # Resolve latest (season, week) — max NFL_WEEK for latest NFL_YEAR.
-    latest_year = str(elo_state["NFL_YEAR"].max())
-    year_rows = elo_state.loc[elo_state["NFL_YEAR"] == latest_year, :]
+    year_rows = elo_state.loc[
+        elo_state["NFL_YEAR"].astype(str).eq(season),
+        :,
+    ].copy()
+    if year_rows.empty:
+        return pd.DataFrame(
+            columns=[
+                "team_abbr",
+                "elo_delta",
+            ]
+        )
+
     latest_week = int(year_rows["NFL_WEEK"].max())
 
-    # Week 1 → no prior week within same season → return null deltas.
-    if latest_week == 1:
-        current = year_rows.loc[
-            year_rows["NFL_WEEK"] == latest_week,
-            ["NFL_TEAM"],
-        ].copy()
-        current["team_abbr"] = current["NFL_TEAM"].map(long_to_short).fillna(current["NFL_TEAM"])
-        current["elo_delta"] = None
-        return current.loc[:, ["team_abbr", "elo_delta"]].copy()
-
-    # Current-week Elo.
     current = year_rows.loc[
         year_rows["NFL_WEEK"] == latest_week,
-        ["NFL_TEAM", "ELO"],
-    ].rename(columns={"ELO": "current_elo"})
+        [
+            "NFL_TEAM",
+            "ELO",
+        ],
+    ].copy()
 
-    # Prior-week Elo.
+    current["team_abbr"] = current["NFL_TEAM"].map(long_to_short).fillna(current["NFL_TEAM"])
+
+    if latest_week == 1:
+        current["elo_delta"] = None
+        return current.loc[
+            :,
+            [
+                "team_abbr",
+                "elo_delta",
+            ],
+        ].copy()
+
     prior = year_rows.loc[
         year_rows["NFL_WEEK"] == latest_week - 1,
-        ["NFL_TEAM", "ELO"],
-    ].rename(columns={"ELO": "prior_elo"})
+        [
+            "NFL_TEAM",
+            "ELO",
+        ],
+    ].rename(
+        columns={
+            "ELO": "prior_elo",
+        }
+    )
 
-    # Join on long team name.
-    merged = current.merge(prior, on="NFL_TEAM", how="left")
+    current = current.rename(
+        columns={
+            "ELO": "current_elo",
+        }
+    )
+    merged = current.merge(
+        prior,
+        on="NFL_TEAM",
+        how="left",
+        validate="one_to_one",
+    )
     merged["elo_delta"] = merged["current_elo"] - merged["prior_elo"]
 
-    # Convert to short codes.
-    merged["team_abbr"] = merged["NFL_TEAM"].map(long_to_short).fillna(merged["NFL_TEAM"])
-
-    return merged.loc[:, ["team_abbr", "elo_delta"]].copy()
+    return merged.loc[
+        :,
+        [
+            "team_abbr",
+            "elo_delta",
+        ],
+    ].copy()
 
 
 def load_projections_summary_df(
     settings: Settings,
+    *,
+    season: str,
 ) -> tuple[pd.DataFrame, str | None, int | None]:
     """Load the projections summary CSV, joined with Elo deltas.
 
@@ -402,7 +428,11 @@ def load_projections_summary_df(
     # Compute per-team Elo deltas and join.
     elo_state: DataFrame = load_elo_state_df(settings)
     long_to_short: dict[str, str] = load_team_name_map(settings)
-    deltas: DataFrame = compute_elo_deltas(elo_state, long_to_short)
+    deltas: DataFrame = compute_elo_deltas(
+        elo_state,
+        long_to_short,
+        season=season,
+    )
 
     if deltas.empty:
         df["elo_delta"] = None

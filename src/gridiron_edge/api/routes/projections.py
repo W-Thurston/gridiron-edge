@@ -40,20 +40,22 @@ def get_projections(
     season: str | None = Query(
         default=None,
         description=(
-            "Season to project, e.g. '2025-2026'. Currently ignored — "
-            "returns the latest available projections regardless. Reserved "
-            "for future multi-season history."
+            "Season to project, e.g. '2025-2026'. Currently returns "
+            "the latest projection artifact for the resolved season."
         ),
     ),
 ) -> ProjectionsList:
     """Return Monte Carlo season and playoff projections for all teams."""
-    df, computed_at, n_simulations = load_projections_summary_df(settings)
-    long_to_short = load_team_name_map(settings)
-
     if season is None:
         resolved_season, _ = resolve_current_season_week(settings)
     else:
         resolved_season = season
+
+    df, computed_at, n_simulations = load_projections_summary_df(
+        settings,
+        season=resolved_season,
+    )
+    long_to_short = load_team_name_map(settings)
 
     return serialize_projections(
         df,

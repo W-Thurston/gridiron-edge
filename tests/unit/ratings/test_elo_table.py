@@ -12,6 +12,7 @@ from gridiron_edge.ratings.elo.table import (
     EloTableConfig,
     _add_next_season_week_one,
     _latest_season_ratings_by_team,
+    _max_week_for_year,
     _next_season_label,
 )
 
@@ -351,3 +352,84 @@ def test_empty_history_creates_no_synthetic_state() -> None:
     )
 
     assert elo == {}
+
+
+def test_incomplete_latest_season_creates_no_synthetic_state() -> None:
+    elo = {
+        (
+            "Kansas City Chiefs",
+            "2026-2027",
+            1,
+        ): 1500.0,
+        (
+            "Kansas City Chiefs",
+            "2026-2027",
+            2,
+        ): 1520.0,
+    }
+    original = elo.copy()
+
+    _add_next_season_week_one(
+        elo,
+        games=DataFrame(
+            {
+                "YEAR": [
+                    "2026-2027",
+                ],
+                "WEEK_NUM": [
+                    1,
+                ],
+            }
+        ),
+        sorted_years=[
+            "2026-2027",
+        ],
+        teams_by_year={
+            "2026-2027": {
+                "Kansas City Chiefs",
+            },
+        },
+        cfg=EloTableConfig(),
+    )
+
+    assert elo == original
+    assert not any(year == "2027-2028" for _, year, _ in elo)
+
+
+def test_max_week_for_year_is_season_scoped() -> None:
+    games = DataFrame(
+        {
+            "YEAR": [
+                "2025-2026",
+                "2025-2026",
+                "2026-2027",
+            ],
+            "WEEK_NUM": [
+                21,
+                22,
+                1,
+            ],
+        }
+    )
+
+    assert (
+        _max_week_for_year(
+            games,
+            "2025-2026",
+        )
+        == 22
+    )
+    assert (
+        _max_week_for_year(
+            games,
+            "2026-2027",
+        )
+        == 1
+    )
+    assert (
+        _max_week_for_year(
+            games,
+            "2027-2028",
+        )
+        == 0
+    )
