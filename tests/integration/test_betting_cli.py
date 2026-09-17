@@ -160,7 +160,7 @@ class TestSettleCommand:
         log_result = runner.invoke(betting_app, _LOG_FLAGS)
         bet_id: str = _extract_bet_id(log_result.output)
 
-        result = runner.invoke(betting_app, ["settle", bet_id, "won", "--no-clv"])
+        result = runner.invoke(betting_app, ["settle", bet_id, "won"])
         assert result.exit_code == 0, result.output
         assert "Settled:" in result.output
         assert "PnL:" in result.output
@@ -170,12 +170,12 @@ class TestSettleCommand:
         log_result = runner.invoke(betting_app, _LOG_FLAGS)
         bet_id: str = _extract_bet_id(log_result.output)
 
-        result = runner.invoke(betting_app, ["settle", bet_id, "lost", "--no-clv"])
+        result = runner.invoke(betting_app, ["settle", bet_id, "lost"])
         assert result.exit_code == 0, result.output
 
     def test_settle_invalid_id(self, cli_env: Path) -> None:
         """Settling a nonexistent bet exits with error."""
-        result = runner.invoke(betting_app, ["settle", "bad-id", "won", "--no-clv"])
+        result = runner.invoke(betting_app, ["settle", "bad-id", "won"])
         assert result.exit_code == 1
 
 
@@ -210,7 +210,7 @@ class TestSummaryCommand:
         """Summary shows performance metrics after settling bets."""
         log_result = runner.invoke(betting_app, _LOG_FLAGS)
         bet_id: str = _extract_bet_id(log_result.output)
-        runner.invoke(betting_app, ["settle", bet_id, "won", "--no-clv"])
+        runner.invoke(betting_app, ["settle", bet_id, "won"])
 
         result = runner.invoke(betting_app, ["summary"])
         assert result.exit_code == 0, result.output

@@ -1,40 +1,15 @@
 # src/gridiron_edge/betting/ledger.py
 """Mutable bet ledger with immutable recorded-offer evidence.
 
-The ledger stores every bet placed, its model context at bet time, and
-settlement results including PnL. Settlement mutates status and outcome
-fields on an existing row; the complete ledger is rewritten and published
-atomically on every write via a colocated temporary file and rename, so an
-interruption during serialization or publication leaves the prior ledger
-unchanged.
-
-Concurrent ledger mutation within this process is coordinated by a
-module-level ``threading.RLock`` covering each complete read-modify-write
-operation in ``log_bet`` and ``settle_bet``. ``record_wager`` holds the same
-reentrant lock across its ledger/bankroll snapshot, write, and restoration
-sequence (see ``betting/recording.py``). This coordinates threads within one
-process only -- it provides no protection if this ledger is ever written by
-more than one process (e.g. a multi-worker API deployment, or a CLI
-invocation running alongside the API). That is an explicit, currently-true
-assumption based on the confirmed single-process deployment of this API,
-not a general guarantee; see DECISIONS.md D27 and revisit this lock if the
-deployment model changes.
-
-Public API::
-
-    log_bet(...)         Record a new bet, returns bet_id (UUID)
-    settle_bet(...)      Settle a bet with result and compute PnL
-    load_bets(...)       Load bets with optional filters
-    compute_pnl(...)     Pure function: stake + odds + result -> PnL
-
-Storage lives at ``data/betting/bet_ledger.parquet``.
+The canonical ledger stores live single-game wagers and normalized historical
+wagers. Writes publish the complete ledger atomically. Same-process mutation is
+coordinated by ``_LEDGER_LOCK``; multi-process writers remain unsupported.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import logging
-from logging import Logger
 from math import isfinite
 import os
 from pathlib import Path
@@ -47,22 +22,29 @@ from pandas import DataFrame, Series
 
 from gridiron_edge.market.odds_math import american_to_decimal
 
-logger: Logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
 
 BetStatus: type[BetStatus] = Literal["open", "won", "lost", "push"]
 MarketType: type[MarketType] = Literal["moneyline", "spread", "total"]
+FundingType: type[FundingType] = Literal["cash", "bonus", "unresolved"]
 
-# ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
+_HISTORICAL_MARKETS: Final[frozenset[str]] = frozenset(
+    {
+        "moneyline",
+        "spread",
+        "total",
+        "player_prop",
+        "parlay",
+        "same_game_parlay",
+        "special",
+    }
+)
 
 _BET_COLUMNS: Final[list[str]] = [
     "bet_id",
+    "source_bet_id",
     "game_id",
+    "description",
     "placed_at",
     "market_type",
     "side",
@@ -70,6 +52,9 @@ _BET_COLUMNS: Final[list[str]] = [
     "odds",
     "stake",
     "book",
+    "funding_type",
+    "paid_amount",
+    "potential_payout",
     "reference_provider",
     "reference_provider_event_id",
     "reference_sportsbook",
@@ -96,89 +81,110 @@ _BET_COLUMNS: Final[list[str]] = [
     "clv",
 ]
 
-# ---------------------------------------------------------------------------
-# Writer coordination
-# ---------------------------------------------------------------------------
+_LEGACY_BET_COLUMNS: Final[list[str]] = [
+    column
+    for column in _BET_COLUMNS
+    if column
+    not in {
+        "source_bet_id",
+        "description",
+        "funding_type",
+        "paid_amount",
+        "potential_payout",
+    }
+]
+_NEW_COLUMN_DEFAULTS: Final[dict[str, float | str | None]] = {
+    "source_bet_id": None,
+    "description": None,
+    "funding_type": "cash",
+    "paid_amount": None,
+    "potential_payout": None,
+}
 
 _LEDGER_LOCK: Final[threading.RLock] = threading.RLock()
 
-# ---------------------------------------------------------------------------
-# I/O helpers
-# ---------------------------------------------------------------------------
-
 
 def _bet_ledger_path(repo: Path | None = None) -> Path:
-    """Return the path to the bet ledger Parquet file.
-
-    Creates the parent directory if it does not exist.
-
-    Args:
-        repo: Repository root override. Defaults to ``get_settings().repo_root``.
-
-    Returns:
-        Absolute path to ``data/betting/bet_ledger.parquet``.
-    """
+    """Return the canonical bet-ledger path."""
     if repo is None:
         from gridiron_edge.core.settings import get_settings
 
         repo = get_settings().repo_root
-    path: Path = repo / "data" / "betting" / "bet_ledger.parquet"
+    path = repo / "data" / "betting" / "bet_ledger.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def _empty_ledger() -> pd.DataFrame:
-    """Return an empty DataFrame with the correct ledger schema."""
+def _empty_ledger() -> DataFrame:
+    """Return an empty canonical ledger."""
     return pd.DataFrame(columns=_BET_COLUMNS)
 
 
-def _require_ledger_schema(
-    df: DataFrame,
-    *,
-    label: str,
-) -> None:
-    """Require the exact current persisted bet-ledger schema."""
-    actual: list[str] = df.columns.tolist()
-    expected: list[str] = _BET_COLUMNS
-
-    missing: list[str] = [column for column in expected if column not in actual]
-    extra: list[str] = [column for column in actual if column not in expected]
-
+def _schema_problem(actual: list[str], expected: list[str]) -> str | None:
+    missing = [column for column in expected if column not in actual]
+    extra = [column for column in actual if column not in expected]
     problems: list[str] = []
-
     if missing:
         problems.append("missing columns: " + ", ".join(missing))
-
     if extra:
         problems.append("extra columns: " + ", ".join(extra))
-
     if not missing and not extra and actual != expected:
         problems.append("columns are not in canonical order")
+    return "; ".join(problems) if problems else None
 
-    if problems:
+
+def _require_ledger_schema(df: DataFrame, *, label: str) -> None:
+    """Require the exact canonical persisted schema."""
+    problem = _schema_problem(df.columns.tolist(), _BET_COLUMNS)
+    if problem:
+        raise ValueError(f"{label} does not match the current bet-ledger schema: {problem}")
+
+
+def _normalize_legacy_ledger(df: DataFrame) -> DataFrame:
+    """Upgrade only the immediately preceding ledger schema in memory."""
+    actual = df.columns.tolist()
+    if actual == _BET_COLUMNS:
+        return df.loc[:, _BET_COLUMNS]
+    if actual != _LEGACY_BET_COLUMNS:
+        problem = _schema_problem(actual, _BET_COLUMNS)
         raise ValueError(
-            f"{label} does not match the current bet-ledger schema: " + "; ".join(problems)
+            "Existing bet ledger does not match the current or supported "
+            f"legacy schema: {problem or 'unsupported schema'}"
         )
+    normalized = df.copy()
+    for column, default in _NEW_COLUMN_DEFAULTS.items():
+        normalized[column] = default
+    return normalized.loc[:, _BET_COLUMNS]
 
 
-def _validate_model_identity(
-    model_name: str | None,
-    model_type: str | None,
-) -> None:
-    """Require model_name and model_type to form one optional identity.
+def _read_ledger(repo: Path | None = None) -> DataFrame:
+    """Read and normalize the canonical or immediately preceding ledger."""
+    path = _bet_ledger_path(repo)
+    if not path.exists():
+        return _empty_ledger()
+    return _normalize_legacy_ledger(pd.read_parquet(path))
 
-    A manual or otherwise unattributed bet omits both values. A
-    model-attributed bet supplies both nonempty values.
-    """
+
+def _write_ledger(df: DataFrame, repo: Path | None = None) -> Path:
+    """Atomically publish a complete canonical ledger."""
+    _require_ledger_schema(df, label="Bet ledger write")
+    path = _bet_ledger_path(repo)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        df.to_parquet(temporary, index=False)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
+def _validate_model_identity(model_name: str | None, model_type: str | None) -> None:
     if model_name is None and model_type is None:
         return
-
     if model_name is None or model_type is None:
         raise ValueError("model_name and model_type must be provided together.")
-
     if not model_name.strip():
         raise ValueError("model_name must be a nonempty string when model identity is provided.")
-
     if not model_type.strip():
         raise ValueError("model_type must be a nonempty string when model identity is provided.")
 
@@ -190,7 +196,6 @@ def _validate_recommendation_provenance(
     candidate_reference_id: str | None,
     recommendation_policy_id: str | None,
 ) -> None:
-    """Require recommendation identities to be complete or absent."""
     identities = {
         "recommended_bet_result_id": recommended_bet_result_id,
         "recommendation_evaluation_id": recommendation_evaluation_id,
@@ -209,24 +214,9 @@ def _validate_recommendation_provenance(
             raise ValueError(f"{label} must be a nonempty string.")
 
 
-def _require_utc_timestamp(
-    value: datetime,
-    *,
-    label: str,
-) -> None:
-    """Require one reference timestamp to be timezone-aware UTC."""
+def _require_utc_timestamp(value: datetime, *, label: str) -> None:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError(f"{label} must be timezone-aware UTC.")
-
-
-def _validate_optional_reference_text(
-    value: str | None,
-    *,
-    label: str,
-) -> None:
-    """Require optional reference text to be null or nonempty."""
-    if value is not None and not value.strip():
-        raise ValueError(f"{label} must be null or a nonempty string.")
 
 
 def _validate_reference_provenance(
@@ -240,7 +230,6 @@ def _validate_reference_provenance(
     reference_american_odds: int | None,
     reference_line: float | None,
 ) -> None:
-    """Validate one optional exact reference-offer evidence contract."""
     values = (
         reference_provider,
         reference_provider_event_id,
@@ -253,134 +242,41 @@ def _validate_reference_provenance(
     )
     if all(value is None for value in values):
         return
-
     if reference_provider is None or not reference_provider.strip():
-        raise ValueError(
-            "reference_provider must be a nonempty string when any reference "
-            "offer field is provided."
-        )
+        raise ValueError("reference_provider must be nonempty when reference evidence is provided.")
     if reference_market_fetched_at is None:
-        raise ValueError(
-            "reference_market_fetched_at is required when reference offer provenance is provided."
-        )
-
-    _validate_optional_reference_text(
-        reference_provider_event_id,
-        label="reference_provider_event_id",
-    )
-    _validate_optional_reference_text(
-        reference_sportsbook,
-        label="reference_sportsbook",
-    )
+        raise ValueError("reference_market_fetched_at is required with reference evidence.")
+    for label, value in (
+        ("reference_provider_event_id", reference_provider_event_id),
+        ("reference_sportsbook", reference_sportsbook),
+    ):
+        if value is not None and not value.strip():
+            raise ValueError(f"{label} must be null or nonempty.")
     _require_utc_timestamp(
         reference_market_fetched_at,
         label="reference_market_fetched_at",
     )
-    if reference_sportsbook_updated_at is not None:
-        _require_utc_timestamp(
-            reference_sportsbook_updated_at,
-            label="reference_sportsbook_updated_at",
-        )
-    if reference_commence_time is not None:
-        _require_utc_timestamp(
-            reference_commence_time,
-            label="reference_commence_time",
-        )
+    for label, value in (
+        ("reference_sportsbook_updated_at", reference_sportsbook_updated_at),
+        ("reference_commence_time", reference_commence_time),
+    ):
+        if value is not None:
+            _require_utc_timestamp(value, label=label)
     if reference_american_odds is not None and (
         reference_american_odds == 0 or not isfinite(reference_american_odds)
     ):
         raise ValueError("reference_american_odds must be finite and nonzero when provided.")
     if reference_line is not None and not isfinite(reference_line):
-        raise ValueError("reference_line must be finite when provided.")
+        raise ValueError("reference_line must be finite.")
 
 
-def _read_ledger(repo: Path | None = None) -> pd.DataFrame:
-    """Read the bet ledger from disk.
-
-    Returns an empty DataFrame with the correct schema if the file does not
-    exist.
-
-    Args:
-        repo: Repository root override.
-
-    Returns:
-        DataFrame with all recorded bets.
-    """
-    path: Path = _bet_ledger_path(repo)
-    if not path.exists():
-        return _empty_ledger()
-    df: DataFrame = pd.read_parquet(path)
-    _require_ledger_schema(
-        df,
-        label="Existing bet ledger",
-    )
-    return df
-
-
-def _write_ledger(df: pd.DataFrame, repo: Path | None = None) -> Path:
-    """Write the bet ledger to disk.
-
-    Serializes the complete ledger to a colocated temporary file, then
-    publishes it via an atomic rename. An interruption during serialization
-    or before the rename leaves the previously published ledger unchanged;
-    a reader never observes a partially written file. This provides
-    atomically visible publication only -- it does not coordinate two
-    overlapping writers (see the module docstring).
-
-    Args:
-        df: Full ledger DataFrame.
-        repo: Repository root override.
-
-    Returns:
-        Path to the written file.
-    """
-    _require_ledger_schema(
-        df,
-        label="Bet ledger write",
-    )
-
-    path: Path = _bet_ledger_path(repo)
-    temporary: Path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        df.to_parquet(temporary, index=False)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Pure PnL calculation
-# ---------------------------------------------------------------------------
-
-
-def compute_pnl(
-    stake: float,
-    american_odds: int,
-    result: BetStatus,
-) -> float:
-    """Compute profit/loss for a settled bet.
-
-    Args:
-        stake: Amount wagered.
-        american_odds: American odds at time of bet (e.g. -110, +150).
-        result: Settlement result.
-
-    Returns:
-        Profit (positive) or loss (negative). Zero for push or open bets.
-    """
+def compute_pnl(stake: float, american_odds: int, result: BetStatus) -> float:
+    """Return net profit or loss for a settlement result."""
     if result == "won":
-        decimal_odds: float = american_to_decimal(american_odds)
-        return stake * (decimal_odds - 1.0)
+        return stake * (american_to_decimal(american_odds) - 1.0)
     if result == "lost":
         return -stake
-    # push or open
     return 0.0
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def log_bet(
@@ -412,54 +308,13 @@ def log_bet(
     recommendation_policy_id: str | None = None,
     placed_at: datetime | None = None,
     repo: Path | None = None,
+    source_bet_id: str | None = None,
+    description: str | None = None,
+    funding_type: FundingType = "cash",
+    paid_amount: float | None = None,
+    potential_payout: float | None = None,
 ) -> str:
-    """Record a new bet in the ledger.
-
-    Creates the ledger file if it does not exist. Appends a single row
-    with status ``"open"`` and generates a UUID for the ``bet_id``.
-
-    Args:
-        game_id: Canonical game identifier (e.g. ``"2026_01_KC_LAC"``).
-        market_type: One of ``"moneyline"``, ``"spread"``, ``"total"``.
-        side: Bet side (e.g. ``"home"``, ``"away"``, ``"over"``, ``"under"``).
-        odds: American odds at time of bet.
-        stake: Dollar amount wagered.
-        book: Sportsbook name (e.g. ``"draftkings"``).
-        line: Point spread or total line. ``None`` for moneyline bets.
-        model_name: Model purpose used to identify the edge
-            (e.g. ``"win_prob"``, ``"qb_pass_yards"``).
-        model_type: Algorithm used to compute the edge
-            (e.g. ``"random_forest"``, ``"elasticnet"``).
-        model_prob: Model probability at bet time.
-        model_ev: Expected value at bet time.
-        edge_strength: Edge classification at bet time.
-        confidence_tier: Confidence tier at bet time.
-        reference_provider: Provider that supplied the reference offer.
-        reference_provider_event_id: Optional provider event identity.
-        reference_sportsbook: Optional sportsbook for the reference offer.
-        reference_market_fetched_at: UTC local observation timestamp.
-        reference_sportsbook_updated_at: Optional UTC source update time.
-        reference_commence_time: Optional UTC kickoff evidence.
-        reference_american_odds: Optional reference-offer American odds.
-        reference_line: Optional reference-offer point value.
-        recommended_bet_result_id: Optional persisted recommendation result
-            identity.
-        recommendation_evaluation_id: Optional persisted recommendation
-            evaluation identity.
-        candidate_reference_id: Optional persisted recommendation candidate
-            identity.
-        recommendation_policy_id: Optional persisted recommendation policy
-            identity.
-        placed_at: Timestamp of bet placement. Defaults to ``utcnow()``.
-        repo: Repository root override.
-
-    Returns:
-        The generated ``bet_id`` (UUID string).
-
-    Raises:
-        ValueError: If model identity is incomplete or contains an empty
-            model_name or model_type.
-    """
+    """Record one live wager and return its internal UUID."""
     _validate_model_identity(model_name, model_type)
     _validate_recommendation_provenance(
         recommended_bet_result_id=recommended_bet_result_id,
@@ -477,14 +332,19 @@ def log_bet(
         reference_american_odds=reference_american_odds,
         reference_line=reference_line,
     )
-
-    bet_id = str(uuid.uuid4())
+    if funding_type not in {"cash", "bonus", "unresolved"}:
+        raise ValueError("funding_type must be cash, bonus, or unresolved.")
     if placed_at is None:
         placed_at = datetime.now(UTC)
+    else:
+        _require_utc_timestamp(placed_at, label="placed_at")
 
-    row: dict[str, datetime | float | int | str | None] = {
+    bet_id = str(uuid.uuid4())
+    row: dict[str, object] = {
         "bet_id": bet_id,
+        "source_bet_id": source_bet_id,
         "game_id": game_id,
+        "description": description,
         "placed_at": placed_at,
         "market_type": market_type,
         "side": side,
@@ -492,6 +352,9 @@ def log_bet(
         "odds": odds,
         "stake": stake,
         "book": book,
+        "funding_type": funding_type,
+        "paid_amount": paid_amount,
+        "potential_payout": potential_payout,
         "reference_provider": reference_provider,
         "reference_provider_event_id": reference_provider_event_id,
         "reference_sportsbook": reference_sportsbook,
@@ -517,77 +380,62 @@ def log_bet(
         "closing_odds": None,
         "clv": None,
     }
-
     new_row = pd.DataFrame([row], columns=_BET_COLUMNS)
-
     with _LEDGER_LOCK:
-        existing: DataFrame = _read_ledger(repo)
-
-        if existing.empty:
-            combined: DataFrame = new_row
-        else:
-            combined = pd.concat(
-                [existing.dropna(axis=1, how="all"), new_row.dropna(axis=1, how="all")],
+        existing = _read_ledger(repo)
+        combined = (
+            new_row
+            if existing.empty
+            else pd.concat(
+                [
+                    existing.dropna(axis=1, how="all"),
+                    new_row.dropna(axis=1, how="all"),
+                ],
                 ignore_index=True,
             ).reindex(columns=_BET_COLUMNS)
-
+        )
         _write_ledger(combined, repo)
-
-    logger.info("Bet logged: %s  %s %s %s @ %s", bet_id, market_type, side, game_id, odds)
+    logger.info("Bet logged: %s %s %s %s @ %s", bet_id, market_type, side, game_id, odds)
     return bet_id
 
 
-def settle_bet(bet_id: str, result: BetStatus, *, repo: Path | None = None) -> pd.Series:
-    """Settle an open bet with the given result.
-
-    Computes PnL from the bet's odds and stake. Closing fields remain
-    null until a validated closeout policy writes them.
-
-    Args:
-        bet_id: UUID of the bet to settle.
-        result: Settlement result - ``"won"``, ``"lost"``, or ``"push"``.
-        repo: Repository root override.
-
-    Returns:
-        The settled bet row as a ``pd.Series``.
-
-    Raises:
-        ValueError: If ``bet_id`` is not found or the bet is already settled.
-    """
-    if result not in ("won", "lost", "push"):
-        msg: str = f"Invalid result: {result!r}. Must be 'won', 'lost', or 'push'."
-        raise ValueError(msg)
+def settle_bet(
+    bet_id: str,
+    result: BetStatus,
+    *,
+    settled_at: datetime | None = None,
+    paid_amount: float | None = None,
+    repo: Path | None = None,
+) -> Series:
+    """Settle an open wager, optionally preserving exact paid evidence."""
+    if result not in {"won", "lost", "push"}:
+        raise ValueError(f"Invalid result: {result!r}. Must be 'won', 'lost', or 'push'.")
+    settlement_time = settled_at or datetime.now(UTC)
+    _require_utc_timestamp(settlement_time, label="settled_at")
 
     with _LEDGER_LOCK:
-        ledger: DataFrame = _read_ledger(repo)
-        mask: Series[bool] = ledger["bet_id"] == bet_id
+        ledger = _read_ledger(repo)
+        mask = ledger["bet_id"] == bet_id
         if not mask.any():
-            msg = f"Bet not found: {bet_id}"
-            raise ValueError(msg)
-
+            raise ValueError(f"Bet not found: {bet_id}")
         idx: int | str = mask.idxmax()
-        bet: DataFrame | Series = ledger.loc[idx]
-
+        bet = ledger.loc[idx]
         if bet["status"] != "open":
-            msg = f"Bet {bet_id} is already settled (status={bet['status']!r})."
-            raise ValueError(msg)
-
-        pnl: float = compute_pnl(bet["stake"], int(bet["odds"]), result)
-
-        closing_line = None
-        closing_odds = None
-        clv = None
-
-        ledger.loc[idx, "status"] = result
+            raise ValueError(f"Bet {bet_id} is already settled (status={bet['status']!r}).")
+        stake = float(bet["stake"])
+        if paid_amount is not None:
+            if not isfinite(paid_amount) or paid_amount < 0:
+                raise ValueError("paid_amount must be finite and nonnegative.")
+            pnl = paid_amount - stake
+        else:
+            pnl = compute_pnl(stake, int(bet["odds"]), result)
         ledger["settled_at"] = pd.to_datetime(ledger["settled_at"], utc=True)
-        ledger.loc[idx, "settled_at"] = datetime.now(UTC)
+        ledger.loc[idx, "status"] = result
+        ledger.loc[idx, "settled_at"] = settlement_time
+        ledger.loc[idx, "paid_amount"] = paid_amount
         ledger.loc[idx, "pnl"] = pnl
-        ledger.loc[idx, "closing_line"] = closing_line
-        ledger.loc[idx, "closing_odds"] = closing_odds
-        ledger.loc[idx, "clv"] = clv
-
+        ledger.loc[idx, ["closing_line", "closing_odds", "clv"]] = None
         _write_ledger(ledger, repo)
-
     logger.info("Bet settled: %s -> %s (PnL=%.2f)", bet_id, result, pnl)
     return pd.Series(ledger.loc[idx])
 
@@ -600,37 +448,21 @@ def load_bets(
     market_type: str | None = None,
     book: str | None = None,
     repo: Path | None = None,
-) -> pd.DataFrame:
-    """Load bets from the ledger with optional filters.
-
-    Args:
-        status: Filter to bets with this status.
-        season: Filter to bets whose ``game_id`` starts with this season year.
-        week: Filter to bets whose ``game_id`` contains this week number.
-        market_type: Filter to this market type.
-        book: Filter to this sportsbook.
-        repo: Repository root override.
-
-    Returns:
-        Filtered DataFrame of bets. Empty with correct schema if no matches
-        or ledger does not exist.
-    """
-    df: DataFrame = _read_ledger(repo)
+) -> DataFrame:
+    """Load bets with optional filters."""
+    df = _read_ledger(repo)
     if df.empty:
         return df
-
     if status is not None:
         df = df.loc[df["status"] == status, :]
     if market_type is not None:
         df = df.loc[df["market_type"] == market_type, :]
     if book is not None:
         df = df.loc[df["book"] == book, :]
+    game_ids = df["game_id"].astype("string")
     if season is not None:
-        # game_id format: YYYY_WW_AWAY_HOME - season year is first 4 chars
-        df = df.loc[df["game_id"].str.startswith(season[:4]), :]
+        df = df.loc[game_ids.str.startswith(season[:4], na=False), :]
+        game_ids = df["game_id"].astype("string")
     if week is not None:
-        # game_id format: YYYY_WW_AWAY_HOME - week is chars 5:7
-        week_str: str = f"{week:02d}"
-        df = df.loc[df["game_id"].str[5:7] == week_str, :]
-
+        df = df.loc[game_ids.str[5:7].eq(f"{week:02d}").fillna(False), :]
     return df.reset_index(drop=True)

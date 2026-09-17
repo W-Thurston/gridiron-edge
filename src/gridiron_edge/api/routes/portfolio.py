@@ -1,8 +1,9 @@
 # src/gridiron_edge/api/routes/portfolio.py
-
-"""Portfolio endpoints: summary, bets, curve, transactions, splits."""
+"""Portfolio endpoints: summary, bets, curve, transactions, and splits."""
 
 from __future__ import annotations
+
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 import pandas as pd
@@ -37,14 +38,22 @@ from gridiron_edge.api.serializers.portfolio import (
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
-# Type aliases mirror the serializer module for consistency.
 _BetsList = BaseListResponse[BetRow]
 _TransactionsList = BaseListResponse[TransactionRow]
+SplitDimension = Literal[
+    "market_type",
+    "funding_type",
+    "side",
+    "book",
+    "model_name",
+    "model_type",
+    "confidence_tier",
+]
 
 
 @router.get("/summary", response_model=PortfolioSummary)
 def get_portfolio_summary(settings: SettingsDep) -> PortfolioSummary:
-    """Return bankroll balance and performance rollup."""
+    """Return available bankroll balance and performance rollup."""
     from gridiron_edge.betting.performance import summary as perf_summary
 
     bets = load_bets_df(settings)
@@ -56,12 +65,12 @@ def get_portfolio_summary(settings: SettingsDep) -> PortfolioSummary:
 @router.get("/bets", response_model=_BetsList)
 def get_portfolio_bets(
     settings: SettingsDep,
-    status: str | None = Query(
-        default=None,
-        description="Filter by bet status: open, won, lost, push.",
-    ),
+    status: Annotated[
+        str | None,
+        Query(description="Filter by bet status: open, won, lost, push."),
+    ] = None,
 ) -> _BetsList:
-    """Return the list of bets, optionally filtered by status."""
+    """Return bets, optionally filtered by status."""
     bets = load_bets_df(settings, status=status)
     return serialize_bets(bets)
 
@@ -71,7 +80,7 @@ def record_portfolio_bet(
     settings: SettingsDep,
     request: RecordBetRequest,
 ) -> RecordBetResponse:
-    """Record a wager locally; this does not place a sportsbook wager."""
+    """Record a wager locally without placing a sportsbook wager."""
     from gridiron_edge.betting.recording import RecordWagerCommand, record_wager
 
     recommendation = None
@@ -113,10 +122,12 @@ def record_portfolio_bet(
 @router.get("/curve", response_model=BankrollCurve)
 def get_portfolio_curve(
     settings: SettingsDep,
-    period: str | None = Query(
-        default=None,
-        description="Optional time-window label, e.g. '30d'. Currently informational only.",
-    ),
+    period: Annotated[
+        str | None,
+        Query(
+            description=("Optional time-window label, e.g. '30d'. Currently informational only.")
+        ),
+    ] = None,
 ) -> BankrollCurve:
     """Return the bankroll running-balance curve."""
     history = load_bankroll_history_df(settings)
@@ -135,12 +146,17 @@ def get_portfolio_transactions(
 @router.get("/splits", response_model=PortfolioSplits)
 def get_portfolio_splits(
     settings: SettingsDep,
-    dimension: str = Query(
-        default="market_type",
-        description="Column to split on. One of: market_type, side, book, model_name.",
-    ),
+    dimension: Annotated[
+        SplitDimension,
+        Query(
+            description=(
+                "Performance split dimension: market_type, funding_type, "
+                "side, book, model_name, model_type, or confidence_tier."
+            )
+        ),
+    ] = "market_type",
 ) -> PortfolioSplits:
-    """Return performance splits grouped by the chosen dimension."""
+    """Return performance splits grouped by a validated dimension."""
     from gridiron_edge.betting.performance import record, roi
 
     bets = load_bets_df(settings)

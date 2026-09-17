@@ -1,5 +1,4 @@
 # src/gridiron_edge/api/schemas/portfolio.py
-
 """Schemas for /portfolio/* endpoints."""
 
 from __future__ import annotations
@@ -12,45 +11,33 @@ from gridiron_edge.api.schemas._base import BaseListResponse, BaseResponse
 
 
 class PortfolioSummary(BaseResponse):
-    """Bankroll headline plus performance rollup."""
+    """Available bankroll headline plus performance rollup."""
 
-    bankroll: float | None = Field(default=None, description="Current bankroll balance.")
-    total_bets: int | None = Field(default=None)
-    settled_bets: int | None = Field(default=None)
-    open_bets: int | None = Field(default=None)
-
-    # Record
-    wins: int | None = Field(default=None)
-    losses: int | None = Field(default=None)
-    pushes: int | None = Field(default=None)
-    win_pct: float | None = Field(default=None)
-
-    # ROI
-    total_staked: float | None = Field(default=None)
-    total_pnl: float | None = Field(default=None)
+    bankroll: float | None = Field(default=None, description="Current available bankroll balance.")
+    total_bets: int | None = None
+    settled_bets: int | None = None
+    open_bets: int | None = None
+    wins: int | None = None
+    losses: int | None = None
+    pushes: int | None = None
+    win_pct: float | None = None
+    total_staked: float | None = None
+    total_pnl: float | None = None
     roi_pct: float | None = Field(default=None, description="ROI as a percentage.")
-
-    # CLV
     mean_clv: float | None = Field(default=None, description="Mean closing line value.")
-    pct_positive_clv: float | None = Field(default=None)
+    pct_positive_clv: float | None = None
     n_clv_bets: int | None = Field(
-        default=None,
-        description="Number of bets with CLV data available.",
+        default=None, description="Number of bets with CLV data available."
     )
-
-    # EV
-    mean_ev_at_bet: float | None = Field(default=None)
-    ev_vs_actual_gap: float | None = Field(default=None)
-    n_model_bets: int | None = Field(default=None)
-    calibration_health: str | None = Field(default=None)
-
-    # Streaks
+    mean_ev_at_bet: float | None = None
+    ev_vs_actual_gap: float | None = None
+    n_model_bets: int | None = None
+    calibration_health: str | None = None
     current_streak: str | None = Field(
-        default=None,
-        description="Composed streak label, e.g. 'W3' or 'L2'.",
+        default=None, description="Composed streak label, e.g. 'W3' or 'L2'."
     )
-    longest_win_streak: int | None = Field(default=None)
-    longest_loss_streak: int | None = Field(default=None)
+    longest_win_streak: int | None = None
+    longest_loss_streak: int | None = None
 
 
 class BetRow(BaseModel):
@@ -59,7 +46,9 @@ class BetRow(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     bet_id: str | None = None
+    source_bet_id: str | None = None
     game_id: str | None = None
+    description: str | None = None
     placed_at: str | None = None
     market_type: str | None = None
     side: str | None = None
@@ -67,6 +56,9 @@ class BetRow(BaseModel):
     odds: int | None = None
     stake: float | None = None
     book: str | None = None
+    funding_type: str | None = None
+    paid_amount: float | None = None
+    potential_payout: float | None = None
     status: str | None = None
     pnl: float | None = None
     closing_line: float | None = None
@@ -116,7 +108,6 @@ class RecordBetResponse(BaseModel):
     """One successfully recorded wager and its bankroll transaction."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-
     bet: BetRow
     bankroll_transaction_id: str
     message: str = "Wager recorded in Gridiron Edge. No sportsbook wager was placed."
@@ -126,7 +117,6 @@ class CurveBucket(BaseModel):
     """A single point in /portfolio/curve."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-
     timestamp: str
     bankroll: float
 
@@ -141,11 +131,12 @@ class TransactionRow(BaseModel):
     """A single row in /portfolio/transactions."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-
     txn_id: str | None = None
+    source_transaction_id: str | None = None
     timestamp: str | None = None
     txn_type: str | None = None
     amount: float | None = None
+    balance_after: float | None = None
     reference_id: str | None = None
     note: str | None = None
 
@@ -154,7 +145,6 @@ class SplitRow(BaseModel):
     """A single row in /portfolio/splits."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-
     dimension_value: str
     total: int | None = None
     wins: int | None = None

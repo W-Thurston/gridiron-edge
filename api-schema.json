@@ -263,6 +263,28 @@
             ],
             "title": "Clv"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "funding_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Type"
+          },
           "game_id": {
             "anyOf": [
               {
@@ -329,6 +351,17 @@
             ],
             "title": "Odds"
           },
+          "paid_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Amount"
+          },
           "placed_at": {
             "anyOf": [
               {
@@ -350,6 +383,17 @@
               }
             ],
             "title": "Pnl"
+          },
+          "potential_payout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Potential Payout"
           },
           "recommendation_evaluation_id": {
             "anyOf": [
@@ -394,6 +438,17 @@
               }
             ],
             "title": "Side"
+          },
+          "source_bet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Bet Id"
           },
           "stake": {
             "anyOf": [
@@ -4285,7 +4340,7 @@
       },
       "PortfolioSummary": {
         "additionalProperties": false,
-        "description": "Bankroll headline plus performance rollup.",
+        "description": "Available bankroll headline plus performance rollup.",
         "properties": {
           "_meta": {
             "anyOf": [
@@ -4307,7 +4362,7 @@
                 "type": "null"
               }
             ],
-            "description": "Current bankroll balance.",
+            "description": "Current available bankroll balance.",
             "title": "Bankroll"
           },
           "calibration_health": {
@@ -7903,6 +7958,17 @@
             ],
             "title": "Amount"
           },
+          "balance_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance After"
+          },
           "note": {
             "anyOf": [
               {
@@ -7924,6 +7990,17 @@
               }
             ],
             "title": "Reference Id"
+          },
+          "source_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Transaction Id"
           },
           "timestamp": {
             "anyOf": [
@@ -9201,7 +9278,7 @@
     },
     "/portfolio/bets": {
       "get": {
-        "description": "Return the list of bets, optionally filtered by status.",
+        "description": "Return bets, optionally filtered by status.",
         "operationId": "get_portfolio_bets_portfolio_bets_get",
         "parameters": [
           {
@@ -9251,7 +9328,7 @@
         ]
       },
       "post": {
-        "description": "Record a wager locally; this does not place a sportsbook wager.",
+        "description": "Record a wager locally without placing a sportsbook wager.",
         "operationId": "record_portfolio_bet_portfolio_bets_post",
         "requestBody": {
           "content": {
@@ -9345,17 +9422,26 @@
     },
     "/portfolio/splits": {
       "get": {
-        "description": "Return performance splits grouped by the chosen dimension.",
+        "description": "Return performance splits grouped by a validated dimension.",
         "operationId": "get_portfolio_splits_portfolio_splits_get",
         "parameters": [
           {
-            "description": "Column to split on. One of: market_type, side, book, model_name.",
+            "description": "Performance split dimension: market_type, funding_type, side, book, model_name, model_type, or confidence_tier.",
             "in": "query",
             "name": "dimension",
             "required": false,
             "schema": {
               "default": "market_type",
-              "description": "Column to split on. One of: market_type, side, book, model_name.",
+              "description": "Performance split dimension: market_type, funding_type, side, book, model_name, model_type, or confidence_tier.",
+              "enum": [
+                "market_type",
+                "funding_type",
+                "side",
+                "book",
+                "model_name",
+                "model_type",
+                "confidence_tier"
+              ],
               "title": "Dimension",
               "type": "string"
             }
@@ -9391,7 +9477,7 @@
     },
     "/portfolio/summary": {
       "get": {
-        "description": "Return bankroll balance and performance rollup.",
+        "description": "Return available bankroll balance and performance rollup.",
         "operationId": "get_portfolio_summary_portfolio_summary_get",
         "responses": {
           "200": {

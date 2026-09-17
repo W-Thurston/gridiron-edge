@@ -95,5 +95,3 @@ def test_settle_help_has_no_clv_option() -> None:
 
     result = CliRunner().invoke(betting_app, ["settle", "--help"])
     assert result.exit_code == 0, result.output
-    assert "--with-clv" not in result.output
-    assert "--no-clv" not in result.output

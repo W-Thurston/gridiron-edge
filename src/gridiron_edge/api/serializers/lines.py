@@ -16,7 +16,7 @@ from gridiron_edge.api.loaders import (
     LoadedRecommendedBetResult,
     RecommendedBetOfferKey,
 )
-from gridiron_edge.api.meta import ResponseMeta
+from gridiron_edge.api.meta import ResponseMeta, Unavailable
 from gridiron_edge.api.schemas.lines import (
     GuidanceStatus,
     LineOffer,
@@ -274,6 +274,22 @@ def serialize_line_shopping_list(
         if not rows.empty
         else ()
     )
+
+    meta = response_meta or ResponseMeta()
+    if rows.empty:
+        meta = meta.with_blocked(
+            "items",
+            *Unavailable.NO_ODDS_AVAILABLE,
+        )
+        meta = meta.with_blocked(
+            "sportsbooks",
+            *Unavailable.NO_ODDS_AVAILABLE,
+        )
+        meta = meta.with_blocked(
+            "market_fetched_at",
+            *Unavailable.NO_ODDS_AVAILABLE,
+        )
+
     return LineShoppingList(
         season=season,
         week=week,
@@ -283,5 +299,5 @@ def serialize_line_shopping_list(
         sportsbooks=response_sportsbooks,
         market_fetched_at=timestamps,
         # pyrefly: ignore [unexpected-keyword]
-        response_meta=response_meta,
+        response_meta=meta if meta.field_status else None,
     )

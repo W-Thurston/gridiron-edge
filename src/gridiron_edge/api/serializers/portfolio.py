@@ -1,11 +1,5 @@
 # src/gridiron_edge/api/serializers/portfolio.py
-
-"""Serializers for /portfolio/* endpoints.
-
-Per D17, one hand-written function per endpoint. Per D18, serializers own
-construction of _meta.field_status. Serializers accept already-loaded
-DataFrames and do not touch settings or the filesystem.
-"""
+"""Hand-written serializers for /portfolio/* endpoints."""
 
 from __future__ import annotations
 
@@ -26,31 +20,28 @@ from gridiron_edge.api.schemas.portfolio import (
     TransactionRow,
 )
 
-# Type aliases for the parameterized list responses. Assigning them to
-# names avoids the fragile `BaseListResponse[T](` construction pattern
-# and makes intent clearer at call sites.
 _BetsList = BaseListResponse[BetRow]
 _TransactionsList = BaseListResponse[TransactionRow]
 
 
-def _none_if_nan(v: Any) -> Any:  # noqa: ANN401
-    """Return None for pandas NaN or None; else the value itself."""
-    if v is None:
+def _none_if_nan(value: Any) -> Any:  # noqa: ANN401
+    """Return None for missing pandas values and the original value otherwise."""
+    if value is None:
         return None
-    if isinstance(v, float) and pd.isna(v):
-        return None
-    return v
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
 
 
 def serialize_portfolio_summary(
-    bets: pd.DataFrame,
-    current_bankroll: float,
-    perf: dict,
+    bets: pd.DataFrame, current_bankroll: float, perf: dict
 ) -> PortfolioSummary:
-    """Build the /portfolio/summary response from ledger + bankroll + perf."""
+    """Build the /portfolio/summary response."""
     if bets.empty:
-        meta = ResponseMeta()
-        meta = meta.with_blocked("win_pct", *Unavailable.NO_SETTLED_BETS)
+        meta = ResponseMeta().with_blocked("win_pct", *Unavailable.NO_SETTLED_BETS)
         meta = meta.with_blocked("roi_pct", *Unavailable.NO_SETTLED_BETS)
         return PortfolioSummary(
             bankroll=current_bankroll,
@@ -60,38 +51,23 @@ def serialize_portfolio_summary(
             # pyrefly: ignore [unexpected-keyword]
             response_meta=meta,
         )
-
     settled_mask = bets["status"] != "open"
-
-    # Compose streak label and track whether it's null due to no activity.
     streak_label = _compose_streak_label(
-        perf.get("current_streak"),
-        perf.get("current_streak_type"),
+        perf.get("current_streak"), perf.get("current_streak_type")
     )
-
-    # Build response_meta for fields that are null due to data limits.
     meta = ResponseMeta()
-    if perf.get("win_pct") is None or (
-        isinstance(perf.get("win_pct"), float) and pd.isna(perf["win_pct"])
-    ):
+    if _none_if_nan(perf.get("win_pct")) is None:
         meta = meta.with_blocked("win_pct", *Unavailable.NO_SETTLED_BETS)
-    if perf.get("roi_pct") is None or (
-        isinstance(perf.get("roi_pct"), float) and pd.isna(perf["roi_pct"])
-    ):
+    if _none_if_nan(perf.get("roi_pct")) is None:
         meta = meta.with_blocked("roi_pct", *Unavailable.NO_SETTLED_BETS)
-    if perf.get("mean_clv") is None or (
-        isinstance(perf.get("mean_clv"), float) and pd.isna(perf["mean_clv"])
-    ):
+    if _none_if_nan(perf.get("mean_clv")) is None:
         meta = meta.with_blocked("mean_clv", *Unavailable.NO_CLV_DATA)
         meta = meta.with_blocked("pct_positive_clv", *Unavailable.NO_CLV_DATA)
-    if perf.get("mean_ev_at_bet") is None or (
-        isinstance(perf.get("mean_ev_at_bet"), float) and pd.isna(perf["mean_ev_at_bet"])
-    ):
+    if _none_if_nan(perf.get("mean_ev_at_bet")) is None:
         meta = meta.with_blocked("mean_ev_at_bet", *Unavailable.NO_MODEL_CONTEXT)
         meta = meta.with_blocked("ev_vs_actual_gap", *Unavailable.NO_MODEL_CONTEXT)
     if streak_label is None:
         meta = meta.with_blocked("current_streak", *Unavailable.NO_STREAK_ACTIVITY)
-
     return PortfolioSummary(
         bankroll=current_bankroll,
         total_bets=len(bets),
@@ -114,42 +90,28 @@ def serialize_portfolio_summary(
         current_streak=streak_label,
         longest_win_streak=perf.get("longest_win_streak"),
         longest_loss_streak=perf.get("longest_loss_streak"),
-        # pyrefly: ignore [unexpected-keyword]
-        response_meta=meta if meta.field_status else None,
+        response_meta=meta if meta.field_status else None,  # pyrefly: ignore [unexpected-keyword]
     )
 
 
-def _compose_streak_label(
-    count: int | None,
-    streak_type: str | None,
-) -> str | None:
-    """Compose a wire-friendly streak label from count + type.
-
-    Examples:
-        (3, "win")  -> "W3"
-        (2, "loss") -> "L2"
-        (0, "none") -> None
-        (None, _)   -> None
-    """
-    if count is None or streak_type is None:
-        return None
-    if count == 0 or streak_type in (None, "none", ""):
+def _compose_streak_label(count: int | None, streak_type: str | None) -> str | None:
+    """Compose a wire-friendly streak label."""
+    if count is None or count == 0 or streak_type in (None, "none", ""):
         return None
     prefix = {"win": "W", "loss": "L", "push": "P"}.get(streak_type)
-    if prefix is None:
-        return None
-    return f"{prefix}{count}"
+    return f"{prefix}{abs(count)}" if prefix else None
 
 
 def serialize_bets(bets: pd.DataFrame) -> _BetsList:
-    """Build the /portfolio/bets list response."""
+    """Build the /portfolio/bets response."""
     if bets.empty:
         return _BetsList(items=[], total=0)
-
     rows = [
         BetRow(
-            bet_id=str(row["bet_id"]) if pd.notna(row.get("bet_id")) else None,
-            game_id=str(row["game_id"]) if pd.notna(row.get("game_id")) else None,
+            bet_id=_none_if_nan(row.get("bet_id")),
+            source_bet_id=_none_if_nan(row.get("source_bet_id")),
+            game_id=_none_if_nan(row.get("game_id")),
+            description=_none_if_nan(row.get("description")),
             placed_at=str(row["placed_at"]) if pd.notna(row.get("placed_at")) else None,
             market_type=_none_if_nan(row.get("market_type")),
             side=_none_if_nan(row.get("side")),
@@ -157,54 +119,37 @@ def serialize_bets(bets: pd.DataFrame) -> _BetsList:
             odds=int(row["odds"]) if pd.notna(row.get("odds")) else None,
             stake=float(row["stake"]) if pd.notna(row.get("stake")) else None,
             book=_none_if_nan(row.get("book")),
+            funding_type=_none_if_nan(row.get("funding_type")),
+            paid_amount=_none_if_nan(row.get("paid_amount")),
+            potential_payout=_none_if_nan(row.get("potential_payout")),
             status=_none_if_nan(row.get("status")),
             pnl=_none_if_nan(row.get("pnl")),
             closing_line=_none_if_nan(row.get("closing_line")),
             clv=_none_if_nan(row.get("clv")),
             model_name=_none_if_nan(row.get("model_name")),
             model_type=_none_if_nan(row.get("model_type")),
-            recommendation_policy_id=_none_if_nan(row.get("recommendation_policy_id")),
-            candidate_reference_id=_none_if_nan(row.get("candidate_reference_id")),
-            recommendation_evaluation_id=_none_if_nan(row.get("recommendation_evaluation_id")),
             recommended_bet_result_id=_none_if_nan(row.get("recommended_bet_result_id")),
+            recommendation_evaluation_id=_none_if_nan(row.get("recommendation_evaluation_id")),
+            candidate_reference_id=_none_if_nan(row.get("candidate_reference_id")),
+            recommendation_policy_id=_none_if_nan(row.get("recommendation_policy_id")),
         )
         for _, row in bets.iterrows()
     ]
     return _BetsList(items=rows, total=len(rows))
 
 
-def serialize_bankroll_curve(
-    history: pd.DataFrame,
-    period: str | None,
-) -> BankrollCurve:
-    """Build the /portfolio/curve response from `balance_history()` output.
-
-    Maps the domain-side column `running_balance` to the schema field
-    `bankroll` — the API convention is friendlier for the frontend.
-    """
+def serialize_bankroll_curve(history: pd.DataFrame, period: str | None) -> BankrollCurve:
+    """Build the /portfolio/curve response."""
     meta = ResponseMeta()
     if period is None:
         meta = meta.with_blocked("period", *Unavailable.PERIOD_NOT_REQUESTED)
-
-    if history.empty:
-        return BankrollCurve(
-            items=[],
-            total=0,
-            period=period,
-            # pyrefly: ignore [unexpected-keyword]
-            response_meta=meta if meta.field_status else None,
-        )
-
-    buckets = [
-        CurveBucket(
-            timestamp=str(row["timestamp"]),
-            bankroll=float(row["running_balance"]),
-        )
+    items = [
+        CurveBucket(timestamp=str(row["timestamp"]), bankroll=float(row["running_balance"]))
         for _, row in history.iterrows()
     ]
     return BankrollCurve(
-        items=buckets,
-        total=len(buckets),
+        items=items,
+        total=len(items),
         period=period,
         # pyrefly: ignore [unexpected-keyword]
         response_meta=meta if meta.field_status else None,
@@ -212,16 +157,19 @@ def serialize_bankroll_curve(
 
 
 def serialize_transactions(txns: pd.DataFrame) -> _TransactionsList:
-    """Build the /portfolio/transactions list response."""
+    """Build the /portfolio/transactions response."""
     if txns.empty:
         return _TransactionsList(items=[], total=0)
-
     rows = [
         TransactionRow(
-            txn_id=str(row["txn_id"]) if pd.notna(row.get("txn_id")) else None,
+            txn_id=_none_if_nan(row.get("txn_id")),
+            source_transaction_id=_none_if_nan(row.get("source_transaction_id")),
             timestamp=str(row["timestamp"]) if pd.notna(row.get("timestamp")) else None,
             txn_type=_none_if_nan(row.get("txn_type")),
             amount=float(row["amount"]) if pd.notna(row.get("amount")) else None,
+            balance_after=float(row["balance_after"])
+            if pd.notna(row.get("balance_after"))
+            else None,
             reference_id=_none_if_nan(row.get("reference_id")),
             note=_none_if_nan(row.get("note")),
         )
@@ -231,13 +179,7 @@ def serialize_transactions(txns: pd.DataFrame) -> _TransactionsList:
 
 
 def serialize_splits(splits_df: pd.DataFrame, dimension: str) -> PortfolioSplits:
-    """Build the /portfolio/splits response from a pre-aggregated DataFrame.
-
-    Input is the output of `performance.record(bets, split_by=dimension)`
-    joined with `performance.roi(bets, split_by=dimension)`. Column
-    conventions: dimension name is the split column; `wins`, `losses`,
-    `pushes`, `total`, `win_pct` from `record`; `roi` from `roi`.
-    """
+    """Build the /portfolio/splits response."""
     if splits_df.empty:
         meta = ResponseMeta().with_blocked("items", *Unavailable.NO_SPLIT_DATA)
         return PortfolioSplits(
@@ -247,7 +189,6 @@ def serialize_splits(splits_df: pd.DataFrame, dimension: str) -> PortfolioSplits
             # pyrefly: ignore [unexpected-keyword]
             response_meta=meta,
         )
-
     rows = [
         SplitRow(
             dimension_value=str(row[dimension]),
@@ -264,15 +205,12 @@ def serialize_splits(splits_df: pd.DataFrame, dimension: str) -> PortfolioSplits
 
 
 def serialize_recorded_bet(
-    bets: pd.DataFrame,
-    *,
-    bankroll_transaction_id: str,
+    bets: pd.DataFrame, *, bankroll_transaction_id: str
 ) -> RecordBetResponse:
-    """Serialize one newly recorded wager without deriving provenance."""
+    """Serialize one newly recorded wager."""
     serialized = serialize_bets(bets)
     if serialized.total != 1 or len(serialized.items) != 1:
         raise ValueError("Recorded wager could not be loaded uniquely.")
     return RecordBetResponse(
-        bet=serialized.items[0],
-        bankroll_transaction_id=bankroll_transaction_id,
+        bet=serialized.items[0], bankroll_transaction_id=bankroll_transaction_id
     )

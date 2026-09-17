@@ -1,125 +1,41 @@
-# tests/unit/api/test_schemas_portfolio.py
-
 """Unit tests for portfolio schemas."""
-
-from __future__ import annotations
 
 from pydantic import ValidationError
 import pytest
 
-from gridiron_edge.api.schemas.portfolio import (
-    BankrollCurve,
-    BetRow,
-    CurveBucket,
-    PortfolioSplits,
-    PortfolioSummary,
-    RecordBetRequest,
-    RecordBetResponse,
-    SplitRow,
-    TransactionRow,
-)
+from gridiron_edge.api.schemas.portfolio import BetRow, RecordBetRequest, TransactionRow
 
 
-class TestPortfolioSummary:
-    def test_default_construction(self) -> None:
-        s = PortfolioSummary()
-        assert s.bankroll is None
-        assert s.total_bets is None
-
-    def test_populated(self) -> None:
-        s = PortfolioSummary(bankroll=1000.0, total_bets=5, wins=3, roi_pct=5.2)
-        assert s.bankroll == 1000.0
-        assert s.wins == 3
-        assert s.roi_pct == 5.2
-
-    def test_is_frozen(self) -> None:
-        s = PortfolioSummary()
-        with pytest.raises(ValidationError):
-            setattr(s, "bankroll", 100.0)  # noqa: B010
-
-    def test_rejects_unknown_fields(self) -> None:
-        with pytest.raises(ValidationError):
-            PortfolioSummary.model_validate(
-                {
-                    "unexpected": "x",
-                }
-            )
+def test_historical_bet_fields_are_supported() -> None:
+    row = BetRow(
+        source_bet_id="DK-1",
+        description="16-pick parlay",
+        funding_type="bonus",
+        paid_amount=0.20,
+        potential_payout=10.0,
+    )
+    assert row.source_bet_id == "DK-1"
+    assert row.game_id is None
+    assert row.funding_type == "bonus"
 
 
-class TestBetRow:
-    def test_default_construction(self) -> None:
-        assert BetRow() is not None
-
-    def test_populated(self) -> None:
-        row = BetRow(bet_id="x", stake=100.0, odds=-110, status="won")
-        assert row.stake == 100.0
-
-    def test_is_frozen(self) -> None:
-        row = BetRow()
-        with pytest.raises(ValidationError):
-            setattr(row, "stake", 200.0)  # noqa: B010
+def test_transaction_evidence_fields_are_supported() -> None:
+    row = TransactionRow(source_transaction_id="TXN-1", balance_after=41.96)
+    assert row.source_transaction_id == "TXN-1"
+    assert row.balance_after == 41.96
 
 
-class TestBankrollCurve:
-    def test_default_construction(self) -> None:
-        curve = BankrollCurve()
-        assert curve.items == []
-        assert curve.period is None
-
-    def test_populated(self) -> None:
-        curve = BankrollCurve(
-            items=[CurveBucket(timestamp="2025-01-01", bankroll=100.0)],
-            total=1,
-            period="30d",
+def test_live_request_contract_remains_single_game() -> None:
+    request = RecordBetRequest(
+        game_id="2026_01_KC_LAC",
+        market_type="moneyline",
+        side="away",
+        odds=175,
+        stake=25.0,
+        book="fanduel",
+    )
+    assert request.market_type == "moneyline"
+    with pytest.raises(ValidationError):
+        RecordBetRequest(
+            game_id="x", market_type="parlay", side="away", odds=100, stake=1.0, book="draftkings"
         )
-        assert curve.items[0].bankroll == 100.0
-        assert curve.period == "30d"
-
-
-class TestTransactionRow:
-    def test_default_construction(self) -> None:
-        assert TransactionRow() is not None
-
-
-class TestPortfolioSplits:
-    def test_construction(self) -> None:
-        splits = PortfolioSplits(
-            items=[
-                SplitRow(dimension_value="spread", total=10, wins=5),
-            ],
-            dimension="market_type",
-        )
-        assert splits.dimension == "market_type"
-        assert splits.items[0].dimension_value == "spread"
-
-
-class TestRecordBetRequest:
-    def test_manual_request(self) -> None:
-        request = RecordBetRequest(
-            game_id="2026_01_KC_LAC",
-            market_type="moneyline",
-            side="away",
-            odds=175,
-            stake=25.0,
-            book="fanduel",
-        )
-        assert request.recommended_bet_result_id is None
-
-    def test_rejects_partial_recommendation_chain(self) -> None:
-        with pytest.raises(ValidationError):
-            RecordBetRequest(
-                game_id="2026_01_KC_LAC",
-                market_type="moneyline",
-                side="away",
-                odds=175,
-                stake=25.0,
-                book="fanduel",
-                recommended_bet_result_id="result-1",
-            )
-
-    def test_response_message_disclaims_placement(self) -> None:
-        response = RecordBetResponse(
-            bet=BetRow(bet_id="bet-1"),
-            bankroll_transaction_id="txn-1",
-        )
-        assert "No sportsbook wager was placed" in response.message

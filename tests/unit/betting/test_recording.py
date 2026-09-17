@@ -20,6 +20,7 @@ from gridiron_edge.betting.recording import (
 
 
 def command() -> RecordWagerCommand:
+    """Return one valid manual wager command."""
     return RecordWagerCommand(
         game_id="2026_01_KC_LAC",
         market_type="moneyline",
@@ -37,6 +38,19 @@ def test_records_ledger_and_bankroll_together(tmp_path: Path) -> None:
     assert row["bet_id"] == recorded.bet_id
     assert txns.iloc[0]["reference_id"] == recorded.bet_id
     assert txns.iloc[0]["txn_id"] == recorded.bankroll_transaction_id
+
+
+def test_preserves_one_placement_timestamp_in_both_ledgers(
+    tmp_path: Path,
+) -> None:
+    placed_at = datetime(2026, 9, 7, 20, 48, 13, tzinfo=UTC)
+
+    record_wager(command(), repo=tmp_path, placed_at=placed_at)
+
+    bet = load_bets(repo=tmp_path).iloc[0]
+    transaction = pd.read_parquet(tmp_path / "data/betting/bankroll_txn.parquet").iloc[0]
+    assert pd.Timestamp(bet["placed_at"]).to_pydatetime() == placed_at
+    assert pd.Timestamp(transaction["timestamp"]).to_pydatetime() == placed_at
 
 
 def test_preserves_recorded_and_reference_terms(tmp_path: Path) -> None:
@@ -84,12 +98,16 @@ def test_invalid_command_creates_neither_artifact(tmp_path: Path) -> None:
 
 
 def test_bankroll_failure_removes_new_ledger(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fail(*_args: object, **_kwargs: object) -> str:
         raise RuntimeError("bankroll write failed")
 
-    monkeypatch.setattr("gridiron_edge.betting.recording.record_bet_placed", fail)
+    monkeypatch.setattr(
+        "gridiron_edge.betting.recording.record_bet_placed",
+        fail,
+    )
     with pytest.raises(RuntimeError, match="bankroll write failed"):
         record_wager(command(), repo=tmp_path)
     assert not (tmp_path / "data/betting/bet_ledger.parquet").exists()
@@ -100,18 +118,15 @@ def test_concurrent_write_survives_a_failed_recorded_wager_rollback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A record_wager rollback must not discard a concurrent completed write.
-
-    record_bet_placed is patched to signal that record_wager is holding the
-    ledger lock inside its critical section, then block until released.
-    The concurrent writer's log_bet call is proven blocked -- via a bounded
-    wait -- until record_wager's failure and restoration fully complete.
-    """
+    """A failed rollback must not discard a concurrent completed write."""
     holding_lock = threading.Event()
     release_failure = threading.Event()
     writer_completed = threading.Event()
 
-    def failing_record_bet_placed(*_args: object, **_kwargs: object) -> str:
+    def failing_record_bet_placed(
+        *_args: object,
+        **_kwargs: object,
+    ) -> str:
         holding_lock.set()
         assert release_failure.wait(timeout=5.0), "test did not release in time"
         raise RuntimeError("simulated bankroll failure")
@@ -155,12 +170,8 @@ def test_concurrent_write_survives_a_failed_recorded_wager_rollback(
     writer_thread = threading.Thread(target=concurrent_writer)
     writer_thread.start()
 
-    # The concurrent writer must be blocked acquiring _LEDGER_LOCK -- it
-    # cannot complete while record_wager still holds the lock awaiting
-    # release.
     assert not writer_completed.wait(timeout=0.2), (
-        "concurrent writer completed while record_wager still held the "
-        "lock -- the lock is not providing mutual exclusion"
+        "concurrent writer completed while record_wager still held the lock"
     )
     assert writer_thread.is_alive()
 

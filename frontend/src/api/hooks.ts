@@ -323,7 +323,16 @@ export function usePortfolioTransactions() {
  * Fetches performance splits by the given dimension.
  * Dimension defaults to "market_type" server-side.
  */
-export function usePortfolioSplits(dimension?: "market_type" | "confidence_tier" | "model_type") {
+export function usePortfolioSplits(
+  dimension:
+    | "market_type"
+    | "funding_type"
+    | "side"
+    | "book"
+    | "model_name"
+    | "model_type"
+    | "confidence_tier",
+) {
   return useQuery({
     queryKey: ["portfolio-splits", dimension],
     queryFn: async () => {

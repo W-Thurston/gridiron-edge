@@ -7,6 +7,7 @@ from dataclasses import replace
 import pandas as pd
 
 from gridiron_edge.api.loaders import LoadedRecommendedBetResult
+from gridiron_edge.api.meta import Unavailable
 from gridiron_edge.api.serializers.lines import serialize_line_shopping_list
 from gridiron_edge.market.line_shopping import (
     evaluate_line_shopping_guidance,
@@ -83,14 +84,32 @@ def test_serializes_grouped_games_and_partial_coverage() -> None:
 
 def test_serializes_empty_scope_without_fabricated_games() -> None:
     result = serialize_line_shopping_list(
-        evaluate_line_shopping_guidance(product(), quotes().head(0)).offers,
+        evaluate_line_shopping_guidance(
+            product(),
+            quotes().head(0),
+        ).offers,
         season="2026-2027",
         week=2,
         market="spread",
     )
+
     assert result.items == []
     assert result.total == 0
     assert result.sportsbooks == ()
+    assert result.market_fetched_at == ()
+    assert result.response_meta is not None
+
+    expected_blocker, expected_roadmap = Unavailable.NO_ODDS_AVAILABLE
+
+    for field_path in (
+        "items",
+        "sportsbooks",
+        "market_fetched_at",
+    ):
+        status = result.response_meta.field_status[field_path]
+        assert status != "pending"
+        assert status.blocker == expected_blocker
+        assert status.roadmap == expected_roadmap
 
 
 def test_sorts_games_by_kickoff_then_team_identity() -> None:
