@@ -40,6 +40,19 @@ evaluate_app = typer.Typer(
 )
 
 
+def _registered_game_model_keys() -> list:
+    """Return registered composite keys owned by game-model evaluation."""
+    from gridiron_edge.models.game_prediction.model import (
+        get_known_model_names,
+    )
+    from gridiron_edge.models.registry import (
+        ModelRegistry,
+    )
+
+    prefixes = tuple(f"{model_name}_" for model_name in get_known_model_names())
+    return [key for key in ModelRegistry.names() if key.startswith(prefixes)]
+
+
 def _split_composite_key(key: str) -> tuple[str | None, str | None]:
     """Split a composite model_key into (model_name, model_type) for filtering.
 
@@ -494,9 +507,8 @@ def evaluate_diagnostics(
     if compare:
         import gridiron_edge.models.elo.model
         import gridiron_edge.models.game_prediction.model  # noqa: F401
-        from gridiron_edge.models.registry import ModelRegistry
 
-        all_keys: list[str] = ModelRegistry.names()
+        all_keys: list[str] = _registered_game_model_keys()
 
         with step("Load predictions - all models") as s:
             eval_dfs: dict = {}
@@ -573,7 +585,6 @@ def evaluate_select_model(
     from gridiron_edge.core.settings import get_settings
     import gridiron_edge.models.elo.model
     import gridiron_edge.models.game_prediction.model  # noqa: F401
-    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
     console.header("evaluate select-model")
@@ -588,7 +599,10 @@ def evaluate_select_model(
 
     # Compute metrics for all models with archived predictions
     with step("Compute metrics for all models") as s:
-        rows: list[dict] = _collect_model_metrics(ModelRegistry.names(), repo=repo)
+        rows: list[dict] = _collect_model_metrics(
+            _registered_game_model_keys(),
+            repo=repo,
+        )
         s.set_detail(f"{len(rows)} models evaluated")
 
     if not rows:
@@ -845,7 +859,6 @@ def evaluate_report(
     from gridiron_edge.core.settings import get_settings
     import gridiron_edge.models.elo.model
     import gridiron_edge.models.game_prediction.model  # noqa: F401
-    from gridiron_edge.models.registry import ModelRegistry
 
     repo: Path = get_settings().repo_root
 
@@ -866,7 +879,7 @@ def evaluate_report(
 
     # ── Rank all models ─────────────────────────────────────────────────────
     with step("Compute metrics - all models") as s:
-        all_rows: list[dict] = _collect_model_metrics(ModelRegistry.names(), repo=repo)
+        all_rows: list[dict] = _collect_model_metrics(_registered_game_model_keys(), repo=repo)
         s.set_detail(f"{len(all_rows)} models with archived predictions")
 
     if not all_rows:

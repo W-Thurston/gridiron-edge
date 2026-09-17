@@ -24,7 +24,10 @@ from gridiron_edge.models.game_prediction.product_validation import (
 )
 
 
-def _weekly_product() -> DataFrame:
+def _weekly_product(
+    *,
+    run_id: str,
+) -> DataFrame:
     """Return one complete product with available and blocked game rows."""
     return DataFrame(
         {
@@ -40,6 +43,22 @@ def _weekly_product() -> DataFrame:
             "win_model_name": ["win_prob", pd.NA],
             "win_model_type": ["elo", pd.NA],
             "win_event_id": ["win-1", pd.NA],
+            "win_role": [
+                "live",
+                pd.NA,
+            ],
+            "win_run_id": [
+                run_id,
+                pd.NA,
+            ],
+            "win_selection_status": [
+                "selected",
+                "missing",
+            ],
+            "win_generated_at": [
+                "2026-10-20T12:00:00+00:00",
+                pd.NaT,
+            ],
             "spread_status": ["available", "win_unavailable"],
             "model_spread": [-3.0, pd.NA],
             "spread_uncertainty": [13.5, pd.NA],
@@ -57,6 +76,22 @@ def _weekly_product() -> DataFrame:
             "total_model_name": ["total", pd.NA],
             "total_model_type": ["xgboost", pd.NA],
             "total_event_id": ["total-1", pd.NA],
+            "total_role": [
+                "live",
+                pd.NA,
+            ],
+            "total_run_id": [
+                run_id,
+                pd.NA,
+            ],
+            "total_selection_status": [
+                "selected",
+                "missing",
+            ],
+            "total_generated_at": [
+                "2026-10-20T12:00:00+00:00",
+                pd.NaT,
+            ],
             "total_uncertainty_trained_at": [
                 "2026-07-01T14:20:00",
                 pd.NA,
@@ -103,7 +138,9 @@ def test_weekly_product_roundtrip_and_explicit_current_selection(
     tmp_path: Path,
 ) -> None:
     """Persist two weekly runs and change current only by explicit selection."""
-    product_a = _weekly_product()
+    product_a = _weekly_product(
+        run_id="run-a",
+    )
     identity_a = _identity(
         product_id="product-a",
         run_id="run-a",
@@ -146,7 +183,9 @@ def test_weekly_product_roundtrip_and_explicit_current_selection(
         )
     )
 
-    product_b = product_a.copy()
+    product_b = _weekly_product(
+        run_id="run-b",
+    )
     product_b.loc[0, "model_total"] = 45.0
     product_b.loc[0, "projected_home_score"] = 24.0
     product_b.loc[0, "projected_away_score"] = 21.0

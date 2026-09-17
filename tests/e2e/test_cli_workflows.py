@@ -73,18 +73,8 @@ class TestCliSubcommandDiscovery:
             assert cmd in result.stdout, f"Missing command: {cmd}"
 
 
-# ---------------------------------------------------------------------------
-# Workflow smoke tests - exercise the CLI surfaces end-to-end
-# ---------------------------------------------------------------------------
-
-
 class TestModelsListSmoke:
-    """``gridiron models list`` runs to completion on an empty repo.
-
-    The command walks ModelRegistry and reports trained/untrained
-    status per model. With no artifacts on disk every entry should
-    show "(not trained)" and the command should exit 0.
-    """
+    """``gridiron models list`` runs to completion on an empty repo."""
 
     def test_models_list_exits_zero(
         self,
@@ -160,6 +150,38 @@ class TestEvaluateSelectModelSmoke:
         ) in combined
         assert "Recommendation:" not in combined
 
+    def test_ignores_registered_prop_families(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from tests.fixtures.repos import MiniRepoBuilder
+
+        import gridiron_edge.models.prop_prediction.qb_pass_yards  # noqa: F401
+
+        repo = MiniRepoBuilder(tmp_path).build()
+        settings = _settings_for_repo(repo)
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            lambda: settings,
+        )
+
+        result = runner.invoke(
+            app,
+            ["evaluate", "select-model"],
+        )
+
+        combined = result.stdout + result.stderr
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert result.exception.code == 1
+        assert (
+            "No models with archived predictions found. Run evaluate backfill first."
+        ) in combined
+        assert "qb_pass_yards" not in combined
+        assert "Recommendation:" not in combined
+
 
 class TestEvaluateBackfillHelpSmoke:
     """``gridiron evaluate backfill --help`` shows the option surface."""
@@ -180,6 +202,5 @@ class TestModelsTrainHelpSmoke:
     def test_train_help_shows_positional_args(self) -> None:
         result = runner.invoke(app, ["models", "train", "--help"])
         assert result.exit_code == 0
-        # Two positional args: model_name then model_type
         assert "model_name" in result.stdout.lower()
         assert "model_type" in result.stdout.lower()

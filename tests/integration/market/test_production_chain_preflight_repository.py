@@ -12,7 +12,7 @@ from gridiron_edge.market.production_chain_preflight import (
 )
 
 
-def test_current_week_one_evidence_is_classified_truthfully() -> None:
+def test_historical_week_one_evidence_is_classified_truthfully() -> None:
     repo_root = Path(__file__).resolve().parents[3]
 
     result = assess_production_chain_preflight(
@@ -33,7 +33,11 @@ def test_current_week_one_evidence_is_classified_truthfully() -> None:
     for family in families:
         assert family.component("selected_product").state is ProofComponentState.AVAILABLE
         assert family.component("forecast_provenance").state is ProofComponentState.AVAILABLE
-        assert family.component("quote_snapshot").state is ProofComponentState.AVAILABLE
+        quote_snapshot = family.component("quote_snapshot")
+        assert quote_snapshot.state is ProofComponentState.UNAVAILABLE
+        assert quote_snapshot.observation_count == 0
+        assert quote_snapshot.distinct_timestamp_count == 0
+        assert quote_snapshot.timestamps == ()
         history = family.component("repeated_quote_history")
         assert history.state is ProofComponentState.AVAILABLE
         assert history.distinct_timestamp_count == 2
@@ -42,23 +46,27 @@ def test_current_week_one_evidence_is_classified_truthfully() -> None:
             family.component("collection_execution").state is ProofComponentState.NOT_YET_ELIGIBLE
         )
         candidate = family.component("candidate_issuance")
-        assert candidate.state is ProofComponentState.AVAILABLE
-        assert candidate.evidence_ids == (
-            "278d60da4e2dc089ff7eb973620f49050f83de336034cbff0c8c1a097401ccff",
+        assert candidate.state is ProofComponentState.CONFLICTING
+        assert candidate.reason == (
+            "Multiple immutable candidate issuances match the selected product scope."
         )
-        assert candidate.observation_count == 1680
+        assert len(candidate.evidence_ids) == 3
+        assert candidate.observation_count == 5040
+        assert len(candidate.timestamps) == 3
+
         policy = family.component("recommendation_policy")
-        assert policy.state is ProofComponentState.AVAILABLE
-        assert policy.evidence_ids == (
-            "9e2cc3363656366eae76ec0935f01ff201ce9c9784e2736936fd0af9ab0ab024",
+        assert policy.state is ProofComponentState.UNAVAILABLE
+        assert policy.reason == (
+            "No exact candidate issuance is available to anchor policy evidence."
         )
+        assert policy.evidence_ids == ()
+
         recommendation = family.component("recommendation_result")
-        assert recommendation.state is ProofComponentState.AVAILABLE
-        assert recommendation.evidence_ids == (
-            "8301fb74e1eaa10437376ff3b616aaa1efc3477944d1a8da0df94abd55de073c",
-            "9e2cc3363656366eae76ec0935f01ff201ce9c9784e2736936fd0af9ab0ab024",
+        assert recommendation.state is ProofComponentState.UNAVAILABLE
+        assert recommendation.reason == (
+            "No exact candidate issuance is available to anchor recommendation results."
         )
-        assert recommendation.observation_count == 698
+        assert recommendation.evidence_ids == ()
         assert family.component("backend_serialization").state is ProofComponentState.AVAILABLE
         assert family.component("frontend_presentation").state is ProofComponentState.AVAILABLE
         assert family.component("completed_outcome").state is ProofComponentState.NOT_YET_ELIGIBLE
@@ -69,3 +77,8 @@ def test_current_week_one_evidence_is_classified_truthfully() -> None:
         )
 
     assert not result.all_families_proven
+    recorded_wager = family.component("recorded_wager")
+    assert recorded_wager.state is ProofComponentState.UNAVAILABLE
+    assert recorded_wager.reason == (
+        "No matching recorded wager evidence was found; recording is optional."
+    )

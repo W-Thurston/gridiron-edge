@@ -1,3 +1,4 @@
+# tests/integration/api/test_lines_routes.py
 """Integration coverage for the current Line Shopping list route."""
 
 from __future__ import annotations
@@ -128,15 +129,38 @@ def test_returns_classified_current_quotes(
     assert guidance[0]["reference_odds"] == -110
 
 
-def test_scope_without_rows_is_analytical_empty(
+def test_scope_without_rows_documents_unavailable_scope(
     client: TestClient,
     tmp_path: Path,
 ) -> None:
-    write_current_odds_snapshot(quote_rows(), repo=tmp_path)
-    body = client.get("/lines?season=2026-2027&week=2").json()
+    write_current_odds_snapshot(
+        quote_rows(),
+        repo=tmp_path,
+    )
+
+    response = client.get("/lines?season=2026-2027&week=2")
+
+    assert response.status_code == 200
+    body = response.json()
     assert body["items"] == []
     assert body["total"] == 0
-    assert body.get("_meta") is None
+    assert body["sportsbooks"] == []
+    assert body["market_fetched_at"] == []
+
+    field_status = body["_meta"]["field_status"]
+    expected_fields = {
+        "items",
+        "sportsbooks",
+        "market_fetched_at",
+    }
+    assert set(field_status) == expected_fields
+
+    for field in expected_fields:
+        assert field_status[field] == {
+            "status": "blocked",
+            "blocker": "no_odds_available",
+            "roadmap": "data",
+        }
 
 
 def test_missing_selected_product_preserves_raw_quotes(
