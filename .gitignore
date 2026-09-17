@@ -3,91 +3,173 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Data (all generated at runtime; hand-curated reference files live in src/)
+# Runtime data
 # -----------------------------------------------------------------------------
 data/
 
 # -----------------------------------------------------------------------------
-# Credentials and local config
+# Credentials and local configuration
 # -----------------------------------------------------------------------------
-configs/
 credentials/
 .env
-*.env
+.env.*
+!.env.example
+!.env.template
+
+configs/local/
+configs/private/
+configs/*.local.*
+configs/*_local.*
+configs/secrets.*
 
 # -----------------------------------------------------------------------------
-# Python
+# Python bytecode and packaging
 # -----------------------------------------------------------------------------
-*.pyc
-*.pyo
 __pycache__/
+*.py[cod]
+*$py.class
 *.egg-info/
 .eggs/
-dist/
 build/
+dist/
+wheels/
+*.egg
+MANIFEST
 
 # -----------------------------------------------------------------------------
-# uv
+# Python environments
 # -----------------------------------------------------------------------------
 .venv/
-# uv.lock is committed intentionally - provides reproducible installs.
-# Do not add uv.lock here.
+venv/
+env/
+ENV/
+.python-version
+
+# uv.lock is committed intentionally for reproducible installs.
 
 # -----------------------------------------------------------------------------
-# Static analysis caches
+# Python analysis, testing, and coverage
 # -----------------------------------------------------------------------------
 .pyrefly_cache/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+*.py.cover
 
 # -----------------------------------------------------------------------------
-# Coverage
+# Frontend dependencies, builds, caches, and local state
 # -----------------------------------------------------------------------------
-.coverage
-htmlcov/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+frontend/coverage/
+
+frontend/.vite/
+frontend/.cache/
+frontend/.eslintcache
+frontend/.stylelintcache
+frontend/.nyc_output/
+frontend/*.tsbuildinfo
+frontend/**/*.tsbuildinfo
+
+frontend/.npm/
+frontend/.pnpm-store/
+
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+!frontend/.env.template
+
 
 # -----------------------------------------------------------------------------
 # Notebooks
 # -----------------------------------------------------------------------------
-notebooks/
 .ipynb_checkpoints/
+notebooks/*
+
 
 # -----------------------------------------------------------------------------
-# Scratch / local notes (intentionally excluded from version control)
+# Scratch files and local notes
 # -----------------------------------------------------------------------------
 TODO.txt
 *.bak
+*.tmp
+*.temp
+*.orig
+*.rej
+*.patch
+*~
+
 scripts/reconcile_weather_ids.py
+scripts/*.local.py
+scripts/*_local.py
+scripts/scratch/
+scripts/*
 
 # -----------------------------------------------------------------------------
-# Editor and OS
+# Logs and runtime process files
+# -----------------------------------------------------------------------------
+*.log
+*.pid
+*.pid.lock
+*.seed
+*.out
+*.err
+
+# -----------------------------------------------------------------------------
+# Editor and IDE metadata
 # -----------------------------------------------------------------------------
 .vscode/*
-.aider*
+.idea/
+.history/
+*.code-workspace
 *.swp
-.DS_Store
-Thumbs.db
+*.swo
 
 # -----------------------------------------------------------------------------
-# Code Review
+# AI assistant local state
 # -----------------------------------------------------------------------------
-code_reviews/
-
-# -----------------------------------------------------------------------------
-# Local Only
-# -----------------------------------------------------------------------------
-scripts/
+.aider*
 skills/
 
+# -----------------------------------------------------------------------------
+# Operating system metadata
+# -----------------------------------------------------------------------------
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Local review and generated inspection artifacts
+# -----------------------------------------------------------------------------
+code_reviews/
+directory_structure.txt
+CODE_REVIEW_template.md
+PROTOTYPE_AUDIT.md
 
 # -----------------------------------------------------------------------------
 # Annoying Files
 # -----------------------------------------------------------------------------
 .dockerignore
-CODE_REVIEW_template.md
-directory_structure.txt
 github-actions-demo.yml
-notebooks/exploratory/*
 Dockerfile
-PROTOTYPE_AUDIT.md
