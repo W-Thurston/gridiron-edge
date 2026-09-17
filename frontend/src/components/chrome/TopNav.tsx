@@ -4,18 +4,21 @@ import { useAppState } from "../../context/AppStateContext";
 import { useBetSlip } from "../../context/BetSlipContext";
 
 const NAV_ITEMS = [
-  { label: "Today", path: "/today" },
-  { label: "Games", path: "/games" },
-  { label: "Teams", path: "/teams" },
-  { label: "Players", path: "/players" },
-  { label: "Compare", path: "/compare" },
-  { label: "Lines", path: "/lines" },
-  { label: "Live", path: "/live" },
-  { label: "News", path: "/news" },
-  { label: "Tools", path: "/tools" },
-  { label: "My Bets", path: "/mybets" },
+  { label: "Today", path: "/today", activePaths: ["/today"] },
+  { label: "Games", path: "/games", activePaths: ["/games"] },
+  {
+    label: "Teams",
+    path: "/teams",
+    activePaths: ["/teams", "/projections"],
+  },
+  { label: "Players", path: "/players", activePaths: ["/players"] },
+  { label: "Compare", path: "/compare", activePaths: ["/compare"] },
+  { label: "Lines", path: "/lines", activePaths: ["/lines"] },
+  { label: "Live", path: "/live", activePaths: ["/live"] },
+  { label: "News", path: "/news", activePaths: ["/news"] },
+  { label: "Tools", path: "/tools", activePaths: ["/tools"] },
+  { label: "My Bets", path: "/mybets", activePaths: ["/mybets"] },
 ] as const;
-
 
 export function TopNav() {
   const { state } = useAppState();
@@ -36,7 +39,6 @@ export function TopNav() {
         gap: 24,
       }}
     >
-      {/* Left: Logo lockup */}
       <button
         type="button"
         onClick={() => navigate("/today")}
@@ -69,15 +71,11 @@ export function TopNav() {
         >
           Gridiron Edge
         </span>
-        <span
-          className="mono dim2"
-          style={{ fontSize: 10.5, marginLeft: 4 }}
-        >
+        <span className="mono dim2" style={{ fontSize: 10.5, marginLeft: 4 }}>
           v1.0
         </span>
       </button>
 
-      {/* Center: Nav items */}
       <div
         style={{
           display: "flex",
@@ -88,7 +86,9 @@ export function TopNav() {
         }}
       >
         {NAV_ITEMS.map((item) => {
-          const isActive = route.path.startsWith(item.path);
+          const isActive = item.activePaths.some((path) =>
+            route.path.startsWith(path),
+          );
           return (
             <NavItem
               key={item.path}
@@ -100,7 +100,6 @@ export function TopNav() {
         })}
       </div>
 
-      {/* Right: Search + notifications + bet slip + avatar */}
       <div
         style={{
           display: "flex",
@@ -123,10 +122,6 @@ export function TopNav() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
 function NavItem({
   label,
   active,
@@ -139,6 +134,7 @@ function NavItem({
   return (
     <button
       type="button"
+      aria-current={active ? "page" : undefined}
       onClick={onClick}
       style={{
         background: "transparent",
@@ -150,7 +146,9 @@ function NavItem({
         fontSize: 13,
         fontWeight: active ? 500 : 400,
         color: active ? "var(--ink)" : "var(--ink-3)",
-        borderBottom: active ? "2px solid var(--pos)" : "2px solid transparent",
+        borderBottom: active
+          ? "2px solid var(--pos)"
+          : "2px solid transparent",
         transition: "color 90ms ease",
       }}
     >

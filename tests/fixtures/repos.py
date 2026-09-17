@@ -338,15 +338,15 @@ class MiniRepoBuilder:
 
         Args:
             long_to_short: Mapping of long names to short codes. Defaults
-                to a small four-team fixture set (KAN/LAC/BUF/MIA using
-                PFR-era short codes). Non-default teams get placeholder
-                metadata.
+                to a small four-team fixture set using canonical current
+                short codes: KC, LAC, BUF, and MIA.. Non-default teams
+                get placeholder metadata.
 
         Returns:
             Self, for builder chaining.
         """
         default_map: dict[str, str] = {
-            "Kansas City Chiefs": "KAN",
+            "Kansas City Chiefs": "KC",
             "Los Angeles Chargers": "LAC",
             "Buffalo Bills": "BUF",
             "Miami Dolphins": "MIA",

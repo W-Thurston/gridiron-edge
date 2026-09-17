@@ -73,45 +73,31 @@ def load_current_bankroll(settings: Settings) -> float:
     return current_balance(repo=settings.repo_root)
 
 
-def resolve_current_week(
+def _resolve_upcoming_schedule_scope(
     settings: Settings,
-) -> tuple[int, int, str]:
-    """Resolve the current NFL season start year and week.
+) -> tuple[str, int] | None:
+    """Return the earliest valid season/week in the upcoming schedule.
 
-    Returns:
-        Tuple of season start year, week, and source label.
-        If the rich upcoming schedule is unavailable, empty, or
-        structurally invalid, returns the current NFL season,
-        Week 1, and ``"fallback"``.
+    Returns ``None`` when the schedule is missing, empty, structurally
+    invalid, or contains no valid season/week identities.
     """
-    from gridiron_edge.core.settings import (
-        current_nfl_season,
-    )
     from gridiron_edge.datasets.loaders import (
         load_schedule_upcoming_rich,
     )
 
-    fallback_season = current_nfl_season()
-
     try:
-        schedule = load_schedule_upcoming_rich(settings.repo_root)
-    except FileNotFoundError:
-        return (
-            fallback_season,
-            1,
-            "fallback",
+        schedule = load_schedule_upcoming_rich(
+            settings.repo_root,
         )
+    except FileNotFoundError:
+        return None
 
     required = {
         "season",
         "week",
     }
     if schedule.empty or not required.issubset(schedule.columns):
-        return (
-            fallback_season,
-            1,
-            "fallback",
-        )
+        return None
 
     valid = schedule.dropna(
         subset=[
@@ -120,11 +106,7 @@ def resolve_current_week(
         ]
     ).copy()
     if valid.empty:
-        return (
-            fallback_season,
-            1,
-            "fallback",
-        )
+        return None
 
     valid["week"] = pd.to_numeric(
         valid["week"],
@@ -136,31 +118,74 @@ def resolve_current_week(
         ]
     )
     if valid.empty:
-        return (
-            fallback_season,
-            1,
-            "fallback",
+        return None
+
+    valid["season"] = valid["season"].astype(str)
+    valid["season_start"] = pd.to_numeric(
+        valid["season"]
+        .str.split(
+            "-",
+            n=1,
         )
+        .str[0],
+        errors="coerce",
+    )
+    valid = valid.dropna(
+        subset=[
+            "season_start",
+        ]
+    )
+    if valid.empty:
+        return None
 
     first = valid.sort_values(
         [
-            "season",
+            "season_start",
             "week",
         ],
         kind="stable",
     ).iloc[0]
 
-    season_label = str(first["season"])
+    return (
+        str(first["season"]),
+        int(first["week"]),
+    )
+
+
+def resolve_current_week(
+    settings: Settings,
+) -> tuple[int, int, str]:
+    """Resolve the active NFL season start year and week.
+
+    Returns:
+        Tuple of season start year, week, and source label.
+        If the upcoming schedule is unavailable or invalid, returns
+        the current NFL season, Week 1, and ``"fallback"``.
+    """
+    from gridiron_edge.core.settings import (
+        current_nfl_season,
+    )
+
+    upcoming = _resolve_upcoming_schedule_scope(
+        settings,
+    )
+    if upcoming is None:
+        return (
+            current_nfl_season(),
+            1,
+            "fallback",
+        )
+
+    season, week = upcoming
     season_start = int(
-        season_label.split(
+        season.split(
             "-",
             maxsplit=1,
         )[0]
     )
-
     return (
         season_start,
-        int(first["week"]),
+        week,
         "schedule",
     )
 
@@ -208,73 +233,75 @@ def load_team_name_map(settings: Settings) -> dict[str, str]:
     return dict(zip(df["NFL_LONG_NAME"], df["NFL_SHORT_NAME"], strict=True))
 
 
-def resolve_current_season_week(settings: Settings) -> tuple[str, int]:
-    """Resolve the current (season, week) for default views.
+def _season_week_key(
+    scope: tuple[str, int],
+) -> tuple[int, int]:
+    """Return a sortable numeric key for one season/week scope."""
+    season, week = scope
+    season_start = int(
+        season.split(
+            "-",
+            maxsplit=1,
+        )[0]
+    )
+    return (
+        season_start,
+        week,
+    )
 
-    Normally the latest completed game. But when the completed archive
-    ends on a season-ending game (week 22 = Super Bowl) and an upcoming
-    schedule exists, prefer the upcoming schedule's earliest week — so
-    the offseason lands on next season's Week 1 rather than replaying the
-    just-finished Super Bowl.
 
-    Returns ("", 0) if games is empty.
+def resolve_current_season_week(
+    settings: Settings,
+) -> tuple[str, int]:
+    """Resolve the active season/week for default weekly views.
+
+    The latest completed game is the fallback scope. When the earliest
+    valid upcoming schedule scope is later, the upcoming scope becomes
+    the active default.
+
+    Returns:
+        The active season label and week. Returns ``("", 0)`` only when
+        neither completed games nor a valid upcoming schedule exists.
     """
     from gridiron_edge.datasets.loaders import (
         load_games,
-        load_schedule_upcoming_rich,
     )
 
-    games = load_games(settings.repo_root)
+    upcoming = _resolve_upcoming_schedule_scope(
+        settings,
+    )
+
+    try:
+        games = load_games(settings.repo_root)
+    except FileNotFoundError:
+        games = pd.DataFrame()
+
     if games.empty:
-        return ("", 0)
+        return upcoming or ("", 0)
 
-    games_sorted = games.sort_values(["YEAR", "WEEK_NUM"])
+    games_sorted = games.sort_values(
+        [
+            "YEAR",
+            "WEEK_NUM",
+        ],
+        kind="stable",
+    )
     latest = games_sorted.iloc[-1]
-    latest_season = str(latest["YEAR"])
-    latest_week = int(latest["WEEK_NUM"])
+    completed = (
+        str(latest["YEAR"]),
+        int(latest["WEEK_NUM"]),
+    )
 
-    # Season complete (SB played) → look forward to the upcoming slate.
-    if latest_week >= 22:
-        try:
-            upcoming = load_schedule_upcoming_rich(settings.repo_root)
-        except FileNotFoundError:
-            upcoming = None
+    if upcoming is None:
+        return completed
 
-        rich_required = {
-            "season",
-            "week",
-        }
-        if upcoming is not None and not upcoming.empty and rich_required.issubset(upcoming.columns):
-            valid_upcoming = upcoming.dropna(
-                subset=[
-                    "season",
-                    "week",
-                ]
-            ).copy()
-            valid_upcoming["week"] = pd.to_numeric(
-                valid_upcoming["week"],
-                errors="coerce",
-            )
-            valid_upcoming = valid_upcoming.dropna(
-                subset=[
-                    "week",
-                ]
-            )
-
-            if not valid_upcoming.empty:
-                up_first = valid_upcoming.sort_values(
-                    [
-                        "season",
-                        "week",
-                    ],
-                    kind="stable",
-                ).iloc[0]
-                return (
-                    str(up_first["season"]),
-                    int(up_first["week"]),
-                )
-
-    return (latest_season, latest_week)
+    completed_key = _season_week_key(
+        completed,
+    )
+    upcoming_key = _season_week_key(
+        upcoming,
+    )
+    return upcoming if upcoming_key > completed_key else completed
 
 
 @dataclass(frozen=True)

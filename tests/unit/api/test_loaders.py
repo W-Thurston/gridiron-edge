@@ -18,6 +18,7 @@ from gridiron_edge.api.loaders import (
     load_bets_df,
     load_current_bankroll,
     load_projection_grid_data,
+    resolve_current_season_week,
     resolve_current_week,
 )
 from gridiron_edge.core.settings import Settings
@@ -181,6 +182,277 @@ class TestResolveCurrentWeek:
             return_value=schedule,
         ):
             _season, week, source = resolve_current_week(settings)
+
+        assert week == 1
+        assert source == "fallback"
+
+
+class TestResolveCurrentSeasonWeek:
+    """Cover active-slate resolution for default weekly API views."""
+
+    @staticmethod
+    def _games(
+        season: str = "2026-2027",
+        week: int = 1,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "YEAR": [
+                    season,
+                ],
+                "WEEK_NUM": [
+                    week,
+                ],
+            }
+        )
+
+    @staticmethod
+    def _schedule(
+        season: str = "2026-2027",
+        week: object = 2,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "season": [
+                    season,
+                ],
+                "week": [
+                    week,
+                ],
+            }
+        )
+
+    def test_prefers_later_upcoming_week(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(week=1),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(week=2),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            2,
+        )
+
+    def test_uses_completed_week_without_schedule(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(week=1),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                side_effect=FileNotFoundError,
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            1,
+        )
+
+    def test_uses_completed_week_for_invalid_schedule(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(week=1),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(
+                    week="not-a-week",
+                ),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            1,
+        )
+
+    def test_does_not_regress_to_stale_schedule(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(week=2),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(week=1),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            2,
+        )
+
+    def test_accepts_same_completed_and_scheduled_week(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(week=2),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(week=2),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            2,
+        )
+
+    def test_advances_from_super_bowl_to_next_season(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=self._games(
+                    season="2025-2026",
+                    week=22,
+                ),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(
+                    season="2026-2027",
+                    week=1,
+                ),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            1,
+        )
+
+    def test_uses_schedule_when_games_are_empty(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                return_value=self._schedule(week=2),
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "2026-2027",
+            2,
+        )
+
+    def test_returns_empty_scope_without_games_or_schedule(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+
+        with (
+            patch(
+                "gridiron_edge.datasets.loaders.load_games",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+                side_effect=FileNotFoundError,
+            ),
+        ):
+            result = resolve_current_season_week(
+                settings,
+            )
+
+        assert result == (
+            "",
+            0,
+        )
+
+    def test_falls_back_when_schedule_season_is_invalid(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        settings = _make_settings(tmp_path)
+        schedule = pd.DataFrame(
+            {
+                "season": [
+                    "not-a-season",
+                ],
+                "week": [
+                    2,
+                ],
+            }
+        )
+
+        with patch(
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+            return_value=schedule,
+        ):
+            _season, week, source = resolve_current_week(
+                settings,
+            )
 
         assert week == 1
         assert source == "fallback"
@@ -862,7 +1134,7 @@ class TestComputeEloDeltas:
 
     def _long_to_short(self) -> dict[str, str]:
         return {
-            "Kansas City Chiefs": "KAN",
+            "Kansas City Chiefs": "KC",
             "Los Angeles Chargers": "LAC",
             "Seattle Seahawks": "SEA",
         }
@@ -917,7 +1189,7 @@ class TestComputeEloDeltas:
 
         assert len(result) == 2
         by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
-        assert by_team["KAN"] == 15.0
+        assert by_team["KC"] == 15.0
         assert by_team["LAC"] == -8.0
 
     def test_week_1_returns_null_deltas(self) -> None:
@@ -948,7 +1220,7 @@ class TestComputeEloDeltas:
 
         assert len(result) == 2
         assert result["elo_delta"].isnull().all()
-        assert set(result["team_abbr"]) == {"KAN", "LAC"}
+        assert set(result["team_abbr"]) == {"KC", "LAC"}
 
     def test_uses_latest_season(self) -> None:
         """Delta computed for latest NFL_YEAR only; prior seasons ignored."""
@@ -986,7 +1258,7 @@ class TestComputeEloDeltas:
         )
 
         assert len(result) == 1
-        assert result.iloc[0]["team_abbr"] == "KAN"
+        assert result.iloc[0]["team_abbr"] == "KC"
         assert result.iloc[0]["elo_delta"] == 15.0  # 1595 - 1580, not 1595 - 1600
 
     def test_team_missing_from_prior_week_gets_null(self) -> None:
@@ -1024,7 +1296,7 @@ class TestComputeEloDeltas:
         )
 
         by_team: dict[Any, Any] = dict(zip(result["team_abbr"], result["elo_delta"], strict=False))
-        assert by_team["KAN"] == 15.0
+        assert by_team["KC"] == 15.0
         assert pd.isna(by_team["LAC"])
 
     def test_unmapped_team_falls_back_to_long_name(self) -> None:

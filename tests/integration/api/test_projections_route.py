@@ -157,7 +157,7 @@ class TestProjectionsEloDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KAN",
+                    "TEAM": "KC",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -182,7 +182,7 @@ class TestProjectionsEloDelta:
         assert response.status_code == 200
         body = response.json()
         by_team = {item["abbr"]: item for item in body["items"]}
-        assert by_team["KAN"]["elo_delta"] == 15.0
+        assert by_team["KC"]["elo_delta"] == 15.0
         assert by_team["LAC"]["elo_delta"] == -8.0
         assert "items.elo_delta" not in body["_meta"]["field_status"]
 
@@ -219,7 +219,7 @@ class TestProjectionsEloDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KAN",
+                    "TEAM": "KC",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -277,7 +277,7 @@ class TestProjectionsEloDelta:
             tmp_path,
             [
                 {
-                    "TEAM": "KAN",
+                    "TEAM": "KC",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -553,7 +553,7 @@ class TestNSimulationsMetadata:
             tmp_path,
             [
                 {
-                    "TEAM": "KAN",
+                    "TEAM": "KC",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,
@@ -605,7 +605,7 @@ class TestNSimulationsMetadata:
             tmp_path,
             [
                 {
-                    "TEAM": "KAN",
+                    "TEAM": "KC",
                     "AVG_WINS": 11.5,
                     "P_MAKE_PLAYOFFS": 0.85,
                     "P_REACH_DIV": 0.65,

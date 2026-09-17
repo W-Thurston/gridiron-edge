@@ -47,7 +47,7 @@ def _write_weekly_elo_forecast(tmp_path: Path) -> None:
             "quantile_method": "linear",
             "computed_at": "2026-08-19T00:00:00+00:00",
         }
-        for team in ("KAN", "LAC")
+        for team in ("KC", "LAC")
         for week in range(1, 19)
     ]
     pd.DataFrame(rows).to_parquet(path, index=False)
@@ -133,9 +133,9 @@ class TestPreseasonEloScope:
         assert body["as_of_week"] == 1
         assert body["total"] == 2
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KAN"]["rating"] == 1620.0
-        assert by_abbr["KAN"]["rank"] == 1
-        assert by_abbr["KAN"]["record"] == {"wins": 0, "losses": 0, "ties": 0}
+        assert by_abbr["KC"]["rating"] == 1620.0
+        assert by_abbr["KC"]["rank"] == 1
+        assert by_abbr["KC"]["record"] == {"wins": 0, "losses": 0, "ties": 0}
         assert by_abbr["LAC"]["rating"] == 1520.0
         assert "items" not in body["_meta"]["field_status"]
 
@@ -152,7 +152,7 @@ class TestPreseasonEloScope:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -224,7 +224,7 @@ class TestPreseasonEloScope:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -270,7 +270,7 @@ class TestPreseasonEloScope:
         body = response.json()
         assert body["as_of_week"] == 1
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KAN"]["rating"] == 1620.0
+        assert by_abbr["KC"]["rating"] == 1620.0
 
 
 class TestTeamRankingsPercentiles:
@@ -290,7 +290,7 @@ class TestTeamRankingsPercentiles:
             tmp_path,
             [
                 {
-                    "team_abbr": "KAN",
+                    "team_abbr": "KC",
                     "season": "2026-2027",
                     "week": 1,
                     "rating_pct": 0.75,
@@ -315,8 +315,8 @@ class TestTeamRankingsPercentiles:
         assert response.status_code == 200
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KAN"]["rating_pct"] == 0.75
-        assert by_abbr["KAN"]["make_playoffs_pct"] == 0.75
+        assert by_abbr["KC"]["rating_pct"] == 0.75
+        assert by_abbr["KC"]["make_playoffs_pct"] == 0.75
         assert by_abbr["LAC"]["rating_pct"] == 0.25
 
     def test_no_percentile_artifact_leaves_fields_null(
@@ -337,8 +337,8 @@ class TestTeamRankingsPercentiles:
         assert response.status_code == 200
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KAN"]["rating_pct"] is None
-        assert by_abbr["KAN"]["avg_wins_pct"] is None
+        assert by_abbr["KC"]["rating_pct"] is None
+        assert by_abbr["KC"]["avg_wins_pct"] is None
 
 
 class TestTeamProfilePercentiles:
@@ -358,7 +358,7 @@ class TestTeamProfilePercentiles:
             tmp_path,
             [
                 {
-                    "team_abbr": "KAN",
+                    "team_abbr": "KC",
                     "season": "2026-2027",
                     "week": 1,
                     "rating_pct": 0.75,
@@ -369,7 +369,7 @@ class TestTeamProfilePercentiles:
             ],
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -390,7 +390,7 @@ class TestTeamProfilePercentiles:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -443,7 +443,7 @@ class TestTrendPopulation:
         response = client.get("/teams?season=2026-2027")
         body = response.json()
         by_abbr = {item["abbr"]: item for item in body["items"]}
-        assert by_abbr["KAN"]["trend"] == 20.0
+        assert by_abbr["KC"]["trend"] == 20.0
         assert by_abbr["LAC"]["trend"] == -10.0
 
     def test_week_1_returns_null_trend(
@@ -493,7 +493,7 @@ class TestTeamProfileCohortSplits:
         pd.DataFrame(
             [
                 {
-                    "team_abbr": "KAN",
+                    "team_abbr": "KC",
                     "cohort": "season",
                     "off_epa_per_play": 0.15,
                     "def_epa_per_play": -0.10,
@@ -503,7 +503,7 @@ class TestTeamProfileCohortSplits:
             ]
         ).to_parquet(cohort_dir / "team_cohort_splits.parquet", index=False)
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -522,7 +522,7 @@ class TestTeamProfileCohortSplits:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
         body = response.json()
         assert body["cohort_splits"] is None
         status = body["_meta"]["field_status"]
@@ -544,7 +544,7 @@ class TestTeamRatingForecastIntegration:
         )
         _write_weekly_elo_forecast(tmp_path)
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
@@ -571,7 +571,7 @@ class TestTeamRatingForecastIntegration:
             .with_teams_reference()
         )
 
-        response = client.get("/teams/KAN?season=2026-2027")
+        response = client.get("/teams/KC?season=2026-2027")
 
         assert response.status_code == 200
         body = response.json()
