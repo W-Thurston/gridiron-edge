@@ -100,7 +100,7 @@ Examples:
 ```bash
 uv run gridiron run-data-pipeline --only build-features
 uv run gridiron run-data-pipeline --skip fetch-weather
-uv run gridiron run-data-pipeline --all-years --upcoming-season 2026 --fit-elo-all-years
+uv run gridiron run-data-pipeline --all-years --upcoming-season 2026
 ```
 
 Pipeline staleness checks resolve canonical input and output paths through the dataset registry. When a registered input is newer than an existing output, the command emits a nonfatal warning that the active stage will rebuild the stale output.
@@ -116,6 +116,16 @@ existing artifact.
 boundary. `clean-games` rebuilds canonical cleaned history from the complete
 retained raw artifact and does not independently merge prior cleaned history.
 
+Every `build-elo` stage and `ratings elo fit` invocation performs one
+deterministic reconstruction from validated complete canonical game history.
+Elo history must begin with the 1999 season and contain contiguous represented
+seasons through the latest season. The latest season may be partial.
+
+Empty, malformed, duplicate, late-starting, or discontinuous history fails
+before the existing Elo artifact is replaced. There is no incremental Elo
+fitting mode and no separate all-years Elo option. `run-data-pipeline
+--all-years` controls source and modeling scope only.
+
 During the offseason, a completed-game fetch may contain no games for the upcoming season. `clean-games` refuses to overwrite populated historical data with an empty result. This protected state is expected.
 
 The explicitly selected immutable 2026 Week 2 Win products remain original
@@ -125,10 +135,10 @@ used an Elo state rebuilt from only the 16 completed Week 1 games, producing
 must not be edited, relabeled, regenerated in place, or treated as validated
 model-quality evidence.
 
-The history-preserving games refresh is corrected. Elo reconstruction,
-semantic readiness, affected-product disposition, immutable prediction-input
-evidence, and model explanation remain separate follow-on work owned by
-`ROADMAP.md`.
+The history-preserving games refresh and complete-history Elo reconstruction
+boundaries are corrected. Semantic readiness, affected-product disposition,
+immutable prediction-input evidence, corrected forecast evaluation, and model
+explanation remain separate follow-on work owned by `ROADMAP.md`.
 
 ## Dataset and Artifact Registry
 
@@ -975,7 +985,8 @@ completed Week 1 games, producing ratings of 1490 or 1510 across the complete
 Week 2 slate. Do not edit or relabel those events and products, and do not treat
 them as validated model-quality evidence.
 
-Recurring games refresh now preserves historical data. Elo reconstruction,
-semantic readiness, affected-product disposition, immutable prediction-input
-evidence, and model explanation remain separate corrective work owned by
-`ROADMAP.md`.
+Recurring games refresh now preserves historical data, and Elo reconstruction
+now requires complete contiguous history. Semantic readiness,
+affected-product disposition, immutable prediction-input evidence, corrected
+forecast evaluation, and model explanation remain separate corrective work
+owned by `ROADMAP.md`.

@@ -7,6 +7,132 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D39 - Elo state is reconstructed from validated complete history
+
+**Date:** 2026-09-18
+
+### Decision
+
+Elo fitting has one operational contract: deterministically reconstruct the
+canonical Elo state from validated complete canonical game history.
+
+The source history must begin with the 1999 NFL season and contain contiguous
+season identities through the latest represented season. The latest season may
+be partial because Elo reconstruction runs during the active season.
+
+The reconstruction boundary validates source history before simulation.
+`fit_elo()` writes the registered Elo artifact only after validation and
+simulation both complete successfully. Validation or simulation failure
+therefore preserves the existing Elo artifact unchanged.
+
+There is no incremental Elo lifecycle. The former
+`update_elo_state_incremental()` function, `fit_elo(all_years=...)` mode,
+`--fit-elo-all-years` pipeline option, and `ratings elo fit --all-years`
+distinction are removed.
+
+`run-data-pipeline --all-years` remains a source-data and modeling-scope
+control. It does not select a separate Elo fitting mode.
+
+### Context
+
+A read-only inspection completed on September 18, 2026 confirmed that the
+former incremental Elo function ignored its existing-state argument whenever
+cleaned games were nonempty. The function instead rebuilt the complete Elo
+table from whichever games frame it received.
+
+During the inspected 2026 Week 2 workflow, the games frame contained only the
+16 completed Week 1 games. Elo reconstruction therefore initialized every team
+at 1500. Week 1 winners became 1510 and losers became 1490, and that reset state
+was supplied to every Week 2 logistic Win prediction.
+
+Unit 1 corrected the upstream recurring games refresh, but relying only on
+caller correctness would leave Elo vulnerable to any future partial-history
+input. Unit 2 therefore makes complete historical coverage an independently
+enforced Elo reconstruction requirement.
+
+Protected validation reconstructed Elo from 7,292 canonical completed games
+covering every season from 1999 through 2026. The resulting artifact contained
+19,006 rows with no duplicate team-season-week identities.
+
+The protected reconstruction produced these representative states:
+
+- Buffalo Bills, 2026 Week 1: `1566.257299`
+- Buffalo Bills, 2026 Week 2: `1575.655543`
+- Detroit Lions, 2026 Week 1: `1538.997399`
+- Detroit Lions, 2026 Week 2: `1546.800161`
+
+A second reconstruction produced identical output. Replacing the temporary
+games input with only the 16 completed 2026 Week 1 games caused explicit
+rejection before the existing temporary Elo artifact was modified.
+
+### Consequences
+
+- `fit_elo()` always performs one validated complete-history reconstruction.
+- The Elo builder rejects empty source history.
+- Required canonical game, season, week, team, and score fields must be present.
+- Game identities must be nonempty and unique.
+- Away and Home team identities must be nonempty and distinct.
+- Away and Home scores must be present together, numeric, and nonnegative.
+- Week identities must be positive integers.
+- Season labels must use the canonical `YYYY-YYYY` form.
+- Historical coverage must begin in 1999 and remain contiguous through the
+  latest represented season.
+- A partial latest season is valid.
+- A current-season-only or otherwise late-starting history is invalid.
+- Missing intermediate seasons are invalid.
+- Validation uses explicit identities rather than game-count, team-count,
+  rating-variance, or distance-from-1500 heuristics.
+- No caller may override the canonical history floor.
+- Ratings after Week W remain the state entering Week W+1.
+- Prior-season strength continues through offseason regression into the next
+  season.
+- Shared CLI workflows no longer pass a separate Elo fitting mode.
+- Synthetic tests that invoke `fit_elo()` use dedicated complete-history
+  fixtures rather than bypassing production validation.
+- This decision does not add semantic prediction readiness. Publication-time
+  lineage remains separate follow-on work.
+
+### Alternatives considered and rejected
+
+1. **Implement a true mutable incremental Elo update.**
+   Rejected because deterministic full reconstruction is simpler to audit,
+   test, and reproduce, and current history is small enough to rebuild
+   directly.
+
+2. **Keep the mode flag while making both branches rebuild.**
+   Rejected because retaining two names for one behavior would preserve a false
+   operational distinction.
+
+3. **Trust recurring-refresh callers to provide complete history.**
+   Rejected because Elo reconstruction must protect its own semantic input
+   boundary independently.
+
+4. **Validate rating variance or reject values near 1500.**
+   Rejected because those are heuristic output-shape checks rather than
+   evidence of historical continuity.
+
+5. **Permit a caller-provided starting season.**
+   Rejected because it would allow production callers to redefine incomplete
+   history as complete and bypass the canonical 1999 floor.
+
+6. **Introduce a repository-wide atomic writer redesign.**
+   Rejected as outside this unit. Validation and simulation already complete
+   before the existing writer is called, so those failures preserve the
+   predecessor artifact.
+
+### References
+
+- `src/gridiron_edge/ratings/elo/table.py`
+- `src/gridiron_edge/ratings/elo/fit.py`
+- `src/gridiron_edge/cli/ratings.py`
+- `src/gridiron_edge/cli/main.py`
+- `tests/unit/ratings/test_elo_table.py`
+- `tests/integration/test_elo_fit.py`
+- `tests/e2e/test_prediction_pipeline.py`
+- `ROADMAP.md`
+- `PLAN.md`
+
+---
 
 ## D38 - Recurring season refresh preserves unrequested historical games
 

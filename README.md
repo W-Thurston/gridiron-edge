@@ -39,7 +39,6 @@ uv run gridiron sim run
 uv run gridiron run-data-pipeline \
   --all-years \
   --upcoming-season 2026 \
-  --fit-elo-all-years \
   --season-year 2025-2026 \
   --skip fetch-odds
 ```

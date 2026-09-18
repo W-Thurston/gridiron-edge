@@ -7,6 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from tests.fixtures.dataframes import make_minimal_pipeline_games
+from tests.fixtures.repos import MiniRepoBuilder
 
 from gridiron_edge.datasets.registry import (
     dataset_path,
@@ -27,26 +29,31 @@ from gridiron_edge.ratings.elo.fit import (
 
 
 def test_build_model_inputs_full_rebuild(
-    mini_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    fit_elo(
-        all_years=True,
-        repo=mini_repo,
+    repo = MiniRepoBuilder(tmp_path).with_complete_elo_games().with_stadiums().build()
+
+    fit_elo(repo=repo)
+
+    make_minimal_pipeline_games().to_csv(
+        dataset_path(repo, "games"),
+        index=False,
     )
+
     build_model_inputs(
         all_years=True,
-        repo=mini_repo,
+        repo=repo,
     )
 
     base = pd.read_parquet(
         dataset_path(
-            mini_repo,
+            repo,
             "modeling_base",
         )
     )
     full = pd.read_parquet(
         dataset_path(
-            mini_repo,
+            repo,
             "modeling_full",
         )
     )
@@ -90,7 +97,7 @@ def test_build_model_inputs_full_rebuild(
 
     manifest = read_manifest(
         dataset_path(
-            mini_repo,
+            repo,
             "modeling_full",
         ).parent
     )

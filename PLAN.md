@@ -177,58 +177,87 @@ should read this section before planning or modifying the repository.
 
 ### Completed
 
-Weekly Prediction Input Integrity Unit 1: Preserve Historical Games During Weekly Refresh
+Weekly Prediction Input Integrity Unit 2: Validate and Rebuild Complete Elo History
 
 ### Goal
 
-Ensure recurring explicit-season refresh updates the requested NFL season while
-preserving every unrequested season in the canonical raw and cleaned games
-artifacts. Prove the real shared pipeline seam selects the history-preserving
-refresh boundary before downstream consumers run.
+Replace the misleading incremental Elo lifecycle with one deterministic
+full-history reconstruction contract. Reject incomplete canonical game history
+before replacing Elo state, preserve the established pregame weekly-state
+convention, and prove prior-season team strength survives into the next season
+instead of resetting every team to the initial rating.
 
 ### Files Added/Removed/Changed
 
 Changed:
 
 - `PLAN.md`
-  - Activated and closed the bounded history-preserving refresh unit.
-  - Preserved later Elo, readiness, affected-product, provenance, evaluation,
-    and explanation work as inactive.
+  - Activated and closed the bounded Unit 2 implementation.
+  - Preserved semantic readiness, affected-product disposition,
+    prediction-input evidence, evaluation, and explanations as later work.
+- `README.md`
+  - Removed the retired `--fit-elo-all-years` option from the operating
+    example.
 - `ROADMAP.md`
-  - Added the Weekly Prediction Input Integrity and Reproducibility corrective
-    program and prioritization.
+  - Marked history-preserving refresh and complete-history Elo reconstruction
+    complete while preserving the remaining corrective sequence.
+- `src/gridiron_edge/ratings/elo/table.py`
+  - Added canonical complete-history validation.
+  - Required contiguous represented seasons beginning in 1999.
+  - Allowed the latest represented season to remain partial.
+  - Rejected malformed identities, duplicate games, invalid weeks, incomplete
+    score pairs, negative scores, and incomplete historical coverage.
+  - Invoked validation before Elo simulation.
+  - Removed `update_elo_state_incremental()`.
+- `src/gridiron_edge/ratings/elo/fit.py`
+  - Replaced dual-mode fitting with one deterministic reconstruction.
+  - Completed validation and simulation before writing Elo state.
+- `src/gridiron_edge/cli/ratings.py`
+  - Removed incremental and all-years Elo modes.
+  - Exposed one complete-history fitting operation.
 - `src/gridiron_edge/cli/main.py`
-  - Recurring non-all-years execution now calls
-    `fetch_nflverse_games_refresh()`.
-  - Explicit-season recurring execution forwards the requested season.
-  - No-season recurring execution delegates current-season resolution to the
-    refresh wrapper.
-  - All-years execution retains explicit replacement behavior.
+  - Removed the separate Elo fitting mode and pipeline option.
+  - Made every active `build-elo` stage execute complete-history
+    reconstruction.
+- `src/gridiron_edge/cli/weekly_predict.py`
+  - Removed the retired Elo-mode pipeline argument.
+- `src/gridiron_edge/cli/post_week.py`
+  - Removed the retired Elo-mode pipeline argument.
+- `src/gridiron_edge/cli/full_retrain.py`
+  - Removed the retired Elo-mode argument while retaining full-data pipeline
+    scope.
+- `src/gridiron_edge/cli/verify.py`
+  - Removed the retired Elo-mode pipeline argument.
+- `tests/fixtures/dataframes.py`
+  - Added dedicated complete-history Elo games.
+  - Extracted the existing two-game modeling input into a focused helper.
+- `tests/fixtures/repos.py`
+  - Added explicit complete-history Elo repository construction.
+  - Preserved the default minimal games fixture.
+- `tests/unit/ratings/test_elo_table.py`
+  - Added complete-history validation coverage.
+- `tests/integration/test_elo_fit.py`
+  - Added deterministic reconstruction, valid output, prior-strength
+    continuation, Week 1-to-Week 2 update, and predecessor-preservation tests.
+- `tests/integration/test_features_pipeline.py`
+  - Built Elo from valid complete history while preserving the focused
+    two-game modeling input.
+- `tests/e2e/test_prediction_pipeline.py`
+  - Built Elo from valid complete history while preserving the original
+    modeling-pipeline assertions.
 - `tests/unit/cli/test_main.py`
-  - Added direct shared-pipeline tests for full replacement, explicit-season
-    recurring refresh, and inferred-current-season recurring refresh.
+  - Removed retired shared arguments and proved the obsolete pipeline option is
+    absent.
+- `tests/unit/cli/test_ratings.py`
+  - Proved `ratings elo fit` exposes one complete-history operation.
 - `tests/unit/cli/test_weekly_predict.py`
-  - Added direct freshness-stage coverage proving the composite supplies the
-    explicit recurring-refresh contract.
-- `src/gridiron_edge/ingest/nflverse/games.py`
-  - Rejects an empty selected-season response before resolving or writing the
-    registered raw artifact.
-  - Preserves the existing artifact when the upstream fetch raises.
-- `tests/unit/ingest/nflverse/test_games.py`
-  - Proves upstream fetch failure preserves the existing raw artifact
-    byte-for-byte.
-  - Proves an empty response raises explicitly and preserves the existing raw
-    artifact byte-for-byte.
+  - Updated the shared-pipeline invocation contract.
 - `DECISIONS.md`
-  - Added D38, establishing ownership and behavior for replacement fetches,
-    recurring season refreshes, and cleaned-history rebuilding.
+  - Added D39 for validated deterministic Elo reconstruction.
 - `CHANGELOG.md`
-  - Recorded the corrected recurring refresh behavior, test evidence, protected
-    validation, and bounded scope.
+  - Recorded behavior, tests, protected validation, and bounded scope.
 - `HANDOFF.md`
-  - Documented the operating refresh contract, affected Week 2 evidence, and
-    remaining corrective boundaries.
-
+  - Documented the current Elo operating contract and remaining limitations.
 
 Added:
 
@@ -240,13 +269,42 @@ Removed:
 
 ### Tests
 
-Focused tests passed:
+Focused Elo, simulator, integration, end-to-end, pipeline, and CLI tests passed.
+
+Repository quality gates passed:
 
 ```text
-uv run pytest \
-  tests/unit/ingest/nflverse/test_games.py \
-  tests/unit/transform/test_games_nflverse.py \
-  tests/unit/cli/test_main.py \
-  tests/unit/cli/test_weekly_predict.py \
-  tests/unit/cli/test_post_week.py
+uv run ruff check . --fix && \
+uvx pyrefly check && \
+uv run pytest -m "unit and not slow"
 ```
+
+
+git diff --check passed.
+
+Repository searches confirmed that update_elo_state_incremental, fit_elo_all_years, and --fit-elo-all-years are absent from active source. Unrelated incremental EPA, PBP, and feature behavior remains unchanged.
+
+Protected validation used copies of the canonical games and Elo artifacts in a temporary repository. It proved:
+
+7,292 canonical completed games covered contiguous seasons from 1999 through 2026;
+reconstruction produced 19,006 Elo rows;
+duplicate team-season-week identities remained zero;
+Buffalo entered 2026 Week 1 at 1566.257299 and Week 2 at 1575.655543;
+Detroit entered 2026 Week 1 at 1538.997399 and Week 2 at 1546.800161;
+a second reconstruction produced identical output;
+the exact 16-game 2026 Week 1-only frame was rejected;
+the valid temporary Elo artifact remained byte-identical after rejection;
+working-repository games and Elo artifacts remained unchanged;
+no forecast, product, selection, model, market, edge, API, or frontend artifact changed.
+
+Fixture-boundary verification confirmed that both focused modeling rows retain numeric Away and Home Elo values after Elo is built from the dedicated complete-history fixture.
+
+Acceptance
+
+Elo fitting now has one honest operational contract: deterministic reconstruction from validated complete canonical history. The false incremental function, fitting mode, CLI options, console language, and shared-pipeline argument are removed.
+
+The reconstruction boundary rejects empty, malformed, duplicate, late-starting, and discontinuous history before replacing Elo state. A partial latest season remains valid. Validation and simulation failures preserve the existing Elo artifact.
+
+Tests and protected validation prove prior-season strength survives offseason regression, Week 1 results update inherited state into Week 2, and the inspected reset-to-1500 failure mode cannot recur through the Elo fitting boundary.
+
+The unit introduced no semantic weekly readiness, affected-product mutation, forecast regeneration, prediction-input persistence, model evaluation, calibration change, API or frontend behavior, or explanation functionality. The affected immutable 2026 Week 2 forecast events and weekly products remain unchanged.

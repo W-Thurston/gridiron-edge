@@ -255,7 +255,6 @@ class TestEnsureDataFreshStage:
             season=2026,
             season_year="2026-2027",
             owm_api_key=None,
-            fit_elo_all_years=False,
         )
 
 

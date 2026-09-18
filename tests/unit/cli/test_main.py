@@ -61,6 +61,22 @@ class TestPipelineContract:
         assert "not part of this command" in result.output
         assert "ingest dk-odds" not in result.output
 
+    def test_help_exposes_one_elo_rebuild_contract(self) -> None:
+        app = typer.Typer()
+        app.command("run-data-pipeline")(run_data_pipeline)
+
+        result = CliRunner().invoke(
+            app,
+            [
+                "run-data-pipeline",
+                "--help",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "fit-elo-all-years" not in result.output
+        assert "incremental" not in result.output.lower()
+
 
 class TestFetchGamesStage:
     """Tests for raw-games fetch ownership in the shared pipeline."""
@@ -89,7 +105,6 @@ class TestFetchGamesStage:
             season=2026,
             season_year="2026-2027",
             owm_api_key=None,
-            fit_elo_all_years=False,
         )
 
         fetch_games.assert_called_once_with()
@@ -119,7 +134,6 @@ class TestFetchGamesStage:
             season=2026,
             season_year="2026-2027",
             owm_api_key=None,
-            fit_elo_all_years=False,
         )
 
         refresh_games.assert_called_once_with(season=2026)
@@ -149,7 +163,6 @@ class TestFetchGamesStage:
             season=None,
             season_year=None,
             owm_api_key=None,
-            fit_elo_all_years=False,
         )
 
         refresh_games.assert_called_once_with(season=None)

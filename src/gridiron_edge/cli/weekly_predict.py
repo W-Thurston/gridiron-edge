@@ -68,7 +68,6 @@ def _stage_ensure_data_fresh(ctx: dict[str, Any]) -> StageResult:
         season=ctx.get("season_int"),
         season_year=ctx.get("season"),
         owm_api_key=None,
-        fit_elo_all_years=False,
     )
     return StageResult(success=True, detail="data refreshed")
 

@@ -35,7 +35,6 @@ def _run_pipeline(
         season=None,
         season_year=str(ctx["season"]),
         owm_api_key=None,
-        fit_elo_all_years=False,
     )
 
 

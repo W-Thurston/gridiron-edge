@@ -20,9 +20,10 @@ from pathlib import Path
 
 import pandas as pd
 from tests.fixtures.dataframes import (
+    make_complete_elo_games,
     make_elo_state,
     make_epa_by_game,
-    make_games,
+    make_minimal_pipeline_games,
     make_stadiums,
     make_weather_enriched,
 )
@@ -69,55 +70,26 @@ class MiniRepoBuilder:
 
     # -- public builder API ------------------------------------------------
 
-    def with_games(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
-        """Add a games dataset.  Uses factory defaults if *df* is None."""
-        games = (
-            df
-            if df is not None
-            else make_games(
-                [
-                    {
-                        "GAME_ID": "2025_01_A_B",
-                        "YEAR": "2025-2026",
-                        "WEEK_NUM": 1,
-                        "GAME_DATE": "2025-09-07",
-                        "GAME_DAY_OF_WEEK": "Sunday",
-                        "GAMETIME": "13:00:00",
-                        "AWAY_TEAM": "Team B",
-                        "HOME_TEAM": "Team A",
-                        "AWAY_SCORE": 20,
-                        "HOME_SCORE": 27,
-                        "IS_NEUTRAL_SITE": 0,
-                        "STADIUM": "Stadium A",
-                        "ROOF": "outdoors",
-                        "DIV_GAME": 1,
-                        "VEGAS_LINE": -3.0,
-                        "OVER_UNDER": 45.0,
-                        "FAVORITED": "Team A",
-                    },
-                    {
-                        "GAME_ID": "2025_02_B_A",
-                        "YEAR": "2025-2026",
-                        "WEEK_NUM": 2,
-                        "GAME_DATE": "2025-09-14",
-                        "GAME_DAY_OF_WEEK": "Sunday",
-                        "GAMETIME": "16:25:00",
-                        "AWAY_TEAM": "Team A",
-                        "HOME_TEAM": "Team B",
-                        "AWAY_SCORE": 17,
-                        "HOME_SCORE": 31,
-                        "IS_NEUTRAL_SITE": 0,
-                        "STADIUM": "Stadium B",
-                        "ROOF": "outdoors",
-                        "DIV_GAME": 1,
-                        "VEGAS_LINE": -7.0,
-                        "OVER_UNDER": 48.0,
-                        "FAVORITED": "Team B",
-                    },
-                ]
-            )
-        )
+    def with_games(
+        self,
+        df: pd.DataFrame | None = None,
+    ) -> MiniRepoBuilder:
+        """Add a games dataset. Uses factory defaults if df is None."""
+        games = df if df is not None else make_minimal_pipeline_games()
         return self._write("games", games)
+
+    def with_complete_elo_games(
+        self,
+        *,
+        latest_season: int = 2026,
+    ) -> MiniRepoBuilder:
+        """Add contiguous canonical games suitable for Elo reconstruction."""
+        return self._write(
+            "games",
+            make_complete_elo_games(
+                latest_season=latest_season,
+            ),
+        )
 
     def with_stadiums(self, df: pd.DataFrame | None = None) -> MiniRepoBuilder:
         """Add a stadiums dataset.  Uses factory defaults if *df* is None."""

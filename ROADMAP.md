@@ -56,11 +56,19 @@ Prioritize work by value density and architectural fit:
 
 A read-only inspection completed on September 18, 2026 confirmed that both immutable 2026 Week 2 Win forecast runs used an Elo state rebuilt from only the 16 completed Week 1 games. The weekly explicit-season path selected `fetch_nflverse_games(seasons=[season])`, which replaced retained raw history; `clean_nflverse_games()` then replaced cleaned history from that nonempty partial artifact; and `update_elo_state_incremental()` ignored existing Elo state and rebuilt every team from the 1500 initial rating. The resulting Week 2 `{1490, 1510}` Elo pattern was reproduced exactly from the Week 1-only games frame. All 16 Week 2 logistic Win predictions used the reset Elo values through `AWAY_ELO`, `HOME_ELO`, and `ELO_DIFF`.
 
-Corrective work should proceed as separate bounded units:
+Corrective work proceeds as separate bounded units:
 
-1. **Preserve games history during weekly refresh.** Route recurring season refresh through the existing history-preserving refresh boundary, add a regression test at the real `_run_pipeline_stages()` composition seam, and verify retained raw and cleaned season coverage against real artifacts. This unit must not redesign Elo.
-2. **Make Elo reconstruction honest and safe.** Prefer a deterministic, validated full-history rebuild over subtle incremental mutation unless inspection proves a true incremental design is necessary. Retire or rename the misleading incremental contract, reject partial historical input, and prove prior-season strength survives into the next season and Week 2 incorporates Week 1 without resetting teams to 1500.
-3. **Add semantic weekly readiness.** Validate explicit source lineage, historical coverage, latest completed scope, and predecessor-state continuity before forecast publication. Do not use heuristic rating-distribution or variance thresholds.
+1. **Preserve games history during weekly refresh. Completed September 18,
+   2026.** Recurring refresh now uses the history-preserving nflverse boundary,
+   rejects empty selected-season responses, and preserves unrequested seasons.
+2. **Validate and rebuild complete Elo history. Completed September 18,
+   2026.** Elo fitting now has one deterministic reconstruction contract,
+   validates contiguous history from 1999, rejects partial-history resets, and
+   preserves the predecessor artifact when validation or simulation fails.
+3. **Add semantic weekly readiness.** Validate explicit source lineage,
+   historical coverage, latest completed scope, and predecessor-state
+   continuity before forecast publication. Do not use heuristic
+   rating-distribution or variance thresholds.
 4. **Resolve affected forecast and product status.** Preserve original immutable Week 2 evidence with a known-defect disposition. Any corrected result must be explicitly classified as retrospective unless it satisfies the original pregame evidence boundary. Do not edit old events or products in place, and do not automatically reselect a retrospective product.
 5. **Persist immutable prediction-input evidence.** Link each forecast event to the exact ordered feature row, feature-schema identity, source-artifact hashes, model and scaler identities, optional calibrator identity, and generation timestamp.
 6. **Add persisted logistic explanation evidence.** After corrected and reproducible forecasts exist, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP for the logistic champion. Explanations must reconstruct the persisted model output and remain separate from API-time computation.

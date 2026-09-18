@@ -130,7 +130,6 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
         season=None,
         season_year=None,
         owm_api_key=None,
-        fit_elo_all_years=True,
     )
     return StageResult(success=True, detail="full-history pipeline complete")
 

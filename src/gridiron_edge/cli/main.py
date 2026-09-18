@@ -189,7 +189,6 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
     season: int | None,
     season_year: str | None,
     owm_api_key: str | None,
-    fit_elo_all_years: bool,
 ) -> None:
     """Execute each pipeline stage in order for the stages in ``active``.
 
@@ -272,8 +271,8 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
             # pyrefly: ignore [missing-module-attribute]
             from gridiron_edge.ratings.elo import fit_elo
 
-            fit_elo(all_years=fit_elo_all_years)
-            s.set_detail("full rebuild" if fit_elo_all_years else "incremental")
+            fit_elo()
+            s.set_detail("complete-history rebuild")
 
     with step("Build model inputs", skip=not runs("build-features")):
         if runs("build-features"):
@@ -302,11 +301,6 @@ def run_data_pipeline(
             "completed games (e.g. --all-years --upcoming-season 2026)."
         ),
     ),
-    fit_elo_all_years: bool = typer.Option(
-        False,
-        "--fit-elo-all-years/--no-fit-elo-all-years",
-        help="When build-elo runs, rebuild full Elo history rather than incrementally.",
-    ),
     season_year: str | None = typer.Option(
         None,
         help="Required when fetch-weather is active (e.g. '2025-2026').",
@@ -334,7 +328,7 @@ def run_data_pipeline(
     \b
     Scenario 3 - full history rebuild:
       gridiron run-data-pipeline --all-years --upcoming-season 2026 \
-        --only build-elo --fit-elo-all-years
+        --only build-elo
 
     \b
     Scenario 4 - skip weather:
@@ -379,7 +373,6 @@ def run_data_pipeline(
         season=season,
         season_year=season_year,
         owm_api_key=owm_api_key,
-        fit_elo_all_years=fit_elo_all_years,
     )
 
     console.summary()

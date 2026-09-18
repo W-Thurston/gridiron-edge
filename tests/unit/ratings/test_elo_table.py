@@ -14,6 +14,7 @@ from gridiron_edge.ratings.elo.table import (
     _latest_season_ratings_by_team,
     _max_week_for_year,
     _next_season_label,
+    validate_complete_elo_history,
 )
 
 
@@ -31,6 +32,28 @@ def _latest_season_games() -> DataFrame:
             ],
         }
     )
+
+
+def _complete_history(
+    seasons: list[int] | None = None,
+) -> DataFrame:
+    """Create compact contiguous completed history for validation tests."""
+    represented: list[int] = seasons or list(range(1999, 2027))
+    rows: list[dict[str, int | str]] = []
+    for season in represented:
+        rows.append(
+            {
+                "GAME_ID": f"{season}_01_A_B",
+                "YEAR": f"{season}-{season + 1}",
+                "WEEK_NUM": 1,
+                "AWAY_TEAM": "Team A",
+                "HOME_TEAM": "Team B",
+                "AWAY_SCORE": 20,
+                "HOME_SCORE": 24,
+            }
+        )
+
+    return DataFrame(rows)
 
 
 @pytest.mark.parametrize(
@@ -72,6 +95,229 @@ def test_rejects_invalid_historical_season_labels(
 ) -> None:
     with pytest.raises(ValueError):
         _next_season_label(year)
+
+
+class TestCompleteEloHistoryValidation:
+    """Tests for the canonical Elo reconstruction input contract."""
+
+    def test_accepts_contiguous_history_with_partial_latest_season(
+        self,
+    ) -> None:
+        games = _complete_history()
+
+        validate_complete_elo_history(games)
+
+    def test_rejects_empty_history(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match="Canonical Elo history must not be empty",
+        ):
+            validate_complete_elo_history(
+                _complete_history().iloc[0:0],
+            )
+
+    def test_rejects_missing_required_columns(self) -> None:
+        games = _complete_history().drop(
+            columns=["HOME_SCORE"],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="missing required columns: HOME_SCORE",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_duplicate_game_ids(self) -> None:
+        games = _complete_history()
+        games.loc[1, "GAME_ID"] = games.loc[0, "GAME_ID"]
+
+        with pytest.raises(
+            ValueError,
+            match="duplicate game IDs: 1999_01_A_B",
+        ):
+            validate_complete_elo_history(games)
+
+    @pytest.mark.parametrize(
+        ("column", "value", "message"),
+        [
+            (
+                "GAME_ID",
+                "",
+                "null or empty game identities",
+            ),
+            (
+                "YEAR",
+                "",
+                "null or empty season identities",
+            ),
+            (
+                "AWAY_TEAM",
+                "",
+                "null or empty AWAY_TEAM identities",
+            ),
+            (
+                "HOME_TEAM",
+                None,
+                "null or empty HOME_TEAM identities",
+            ),
+        ],
+    )
+    def test_rejects_invalid_identities(
+        self,
+        column: str,
+        value: object,
+        message: str,
+    ) -> None:
+        games = _complete_history()
+        games.loc[0, column] = value
+
+        with pytest.raises(
+            ValueError,
+            match=message,
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_same_team_on_both_sides(self) -> None:
+        games = _complete_history()
+        games.loc[0, "HOME_TEAM"] = games.loc[0, "AWAY_TEAM"]
+
+        with pytest.raises(
+            ValueError,
+            match="identical Away and Home teams",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "2024",
+            "2024-25",
+            "2024-2026",
+            "not-a-season",
+        ],
+    )
+    def test_rejects_invalid_season_labels(
+        self,
+        label: str,
+    ) -> None:
+        games = _complete_history()
+        games.loc[0, "YEAR"] = label
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid NFL season label",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_history_beginning_after_required_floor(
+        self,
+    ) -> None:
+        games = _complete_history(
+            seasons=list(range(2000, 2027)),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=("must begin with season 1999-2000; earliest represented season is 2000-2001"),
+        ):
+            validate_complete_elo_history(games)
+
+    def test_rejects_missing_intermediate_season(
+        self,
+    ) -> None:
+        games = _complete_history(
+            seasons=[season for season in range(1999, 2027) if season != 2012],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"missing intermediate season\(s\): 2012-2013",
+        ):
+            validate_complete_elo_history(games)
+
+    @pytest.mark.parametrize(
+        "week",
+        [
+            None,
+            0,
+            1.5,
+            "invalid",
+        ],
+    )
+    def test_rejects_invalid_week_identity(
+        self,
+        week: object,
+    ) -> None:
+        games = _complete_history()
+        games["WEEK_NUM"] = games["WEEK_NUM"].astype(object)
+        games.loc[0, "WEEK_NUM"] = week
+
+        with pytest.raises(
+            ValueError,
+            match="invalid week identities",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_one_sided_score_availability(
+        self,
+    ) -> None:
+        games = _complete_history()
+        games.loc[0, "HOME_SCORE"] = None
+
+        with pytest.raises(
+            ValueError,
+            match="scores to be present together",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_unplayed_games(self) -> None:
+        games = _complete_history()
+        games.loc[0, ["AWAY_SCORE", "HOME_SCORE"]] = None
+
+        with pytest.raises(
+            ValueError,
+            match="must contain completed games only",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_rejects_negative_scores(self) -> None:
+        games = _complete_history()
+        games.loc[0, "AWAY_SCORE"] = -1
+
+        with pytest.raises(
+            ValueError,
+            match="negative game scores",
+        ):
+            validate_complete_elo_history(
+                games,
+            )
+
+    def test_production_floor_rejects_current_season_only_history(
+        self,
+    ) -> None:
+        games = _complete_history(
+            seasons=[2026],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=("must begin with season 1999-2000; earliest represented season is 2026-2027"),
+        ):
+            validate_complete_elo_history(games)
 
 
 def test_synthetic_week_one_uses_final_postgame_state() -> None:

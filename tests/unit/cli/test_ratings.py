@@ -94,3 +94,35 @@ def test_removed_elo_evaluate_command_is_rejected() -> None:
 
     assert result.exit_code == 2
     assert "No such command" in result.output
+
+
+@patch("gridiron_edge.ratings.elo.fit_elo")
+def test_elo_fit_runs_complete_history_rebuild(
+    mock_fit: MagicMock,
+) -> None:
+    result = runner.invoke(
+        ratings_app,
+        [
+            "elo",
+            "fit",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_fit.assert_called_once_with()
+    assert "complete-history rebuild" in result.output
+
+
+def test_elo_fit_has_no_incremental_or_all_years_mode() -> None:
+    result = runner.invoke(
+        ratings_app,
+        [
+            "elo",
+            "fit",
+            "--help",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "all-years" not in result.output
+    assert "incremental" not in result.output.lower()

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
 from gridiron_edge.core.console import console
 from gridiron_edge.core.constants import (
@@ -20,6 +20,9 @@ from gridiron_edge.ratings.elo.simulator import (
     EloSimulationResult,
     transition_to_next_season,
 )
+
+# Earliest season covered by the canonical historical games contract.
+_CANONICAL_HISTORY_START_SEASON: int = 1999
 
 
 @dataclass(frozen=True)
@@ -33,26 +36,159 @@ class EloTableConfig:
     divisor: float = 480.0
 
 
-def _next_season_label(year: str) -> str:
-    """Derive the next season label from one historical season label."""
-    parts: list[str] = year.split("-")
+def _season_start(year: object) -> int:
+    """Return the starting year from one canonical NFL season label."""
+    text: str = str(year).strip()
+    parts: list[str] = text.split("-")
 
     if len(parts) != 2:
-        raise ValueError(f"Invalid NFL season label {year!r}. Expected format YYYY-YYYY.")
+        raise ValueError(f"Invalid NFL season label {text!r}. Expected format YYYY-YYYY.")
 
     try:
         start = int(parts[0])
         end = int(parts[1])
     except ValueError as exc:
-        raise ValueError(f"Invalid NFL season label {year!r}. Expected numeric years.") from exc
+        raise ValueError(f"Invalid NFL season label {text!r}. Expected numeric years.") from exc
 
     if end != start + 1:
         raise ValueError(
-            f"Invalid NFL season label {year!r}. "
+            f"Invalid NFL season label {text!r}. "
             "Ending year must be one greater than starting year."
         )
 
-    return f"{end}-{end + 1}"
+    return start
+
+
+def _next_season_label(year: str) -> str:
+    """Derive the next season label from one historical season label."""
+    start: int = _season_start(year)
+    return f"{start + 1}-{start + 2}"
+
+
+def validate_complete_elo_history(
+    games: DataFrame,
+) -> None:
+    """Validate canonical completed-game history for Elo reconstruction.
+
+    The represented NFL seasons must begin at the canonical 1999 history floor
+    and remain contiguous through the latest represented season. The latest
+    season may be partial because reconstruction occurs during the active season.
+
+    Args:
+        games: Canonical one-row-per-game completed history.
+
+    Raises:
+        ValueError: If the history is empty, malformed, duplicated,
+            incomplete, late-starting, or discontinuous.
+    """
+    required: set[str] = {
+        "GAME_ID",
+        "YEAR",
+        "WEEK_NUM",
+        "AWAY_TEAM",
+        "HOME_TEAM",
+        "AWAY_SCORE",
+        "HOME_SCORE",
+    }
+    missing: list[str] = sorted(required - set(games.columns))
+    if missing:
+        raise ValueError("Canonical Elo history is missing required columns: " + ", ".join(missing))
+
+    if games.empty:
+        raise ValueError("Canonical Elo history must not be empty.")
+
+    game_ids: Series[str] = games["GAME_ID"].astype("string")
+    invalid_game_ids: Series[bool] = game_ids.isna() | game_ids.str.strip().eq("")
+    if invalid_game_ids.any():
+        raise ValueError("Canonical Elo history contains null or empty game identities.")
+
+    duplicated_game_ids: Series[bool] = game_ids.duplicated(keep=False)
+    if duplicated_game_ids.any():
+        duplicates: list[str] = sorted(
+            game_ids.loc[duplicated_game_ids].astype(str).unique().tolist()
+        )
+        raise ValueError(
+            "Canonical Elo history contains duplicate game IDs: " + ", ".join(duplicates)
+        )
+
+    season_labels: Series[str] = games["YEAR"].astype("string")
+    invalid_seasons: Series[bool] = season_labels.isna() | season_labels.str.strip().eq("")
+    if invalid_seasons.any():
+        raise ValueError("Canonical Elo history contains null or empty season identities.")
+
+    season_starts: dict[str, int] = {}
+    for label in season_labels.astype(str).str.strip().unique().tolist():
+        season_starts[label] = _season_start(label)
+
+    represented: list[int] = sorted(set(season_starts.values()))
+    expected = list(
+        range(
+            _CANONICAL_HISTORY_START_SEASON,
+            represented[-1] + 1,
+        )
+    )
+
+    if represented[0] != _CANONICAL_HISTORY_START_SEASON:
+        raise ValueError(
+            "Canonical Elo history must begin with season "
+            f"{_CANONICAL_HISTORY_START_SEASON}-"
+            f"{_CANONICAL_HISTORY_START_SEASON + 1}; "
+            f"earliest represented season is "
+            f"{represented[0]}-{represented[0] + 1}."
+        )
+
+    if represented != expected:
+        missing_seasons: list[int] = sorted(set(expected) - set(represented))
+        formatted: str = ", ".join(f"{season}-{season + 1}" for season in missing_seasons)
+        raise ValueError("Canonical Elo history is missing intermediate season(s): " + formatted)
+
+    for column in ("AWAY_TEAM", "HOME_TEAM"):
+        teams: Series[str] = games[column].astype("string")
+        invalid_teams: Series[bool] = teams.isna() | teams.str.strip().eq("")
+        if invalid_teams.any():
+            raise ValueError(f"Canonical Elo history contains null or empty {column} identities.")
+
+    same_team: Series[bool] = (
+        games["AWAY_TEAM"].astype(str).str.strip() == games["HOME_TEAM"].astype(str).str.strip()
+    )
+    if same_team.any():
+        game_ids_with_same_team: list[str] = sorted(
+            games.loc[same_team, "GAME_ID"].astype(str).tolist()
+        )
+        raise ValueError(
+            "Canonical Elo history has identical Away and Home teams for games: "
+            + ", ".join(game_ids_with_same_team)
+        )
+
+    weeks: Series = pd.to_numeric(
+        games["WEEK_NUM"],
+        errors="coerce",
+    )
+    invalid_weeks: Series[bool] = weeks.isna() | (weeks < 1) | (weeks % 1 != 0)
+    if invalid_weeks.any():
+        raise ValueError("Canonical Elo history contains invalid week identities.")
+
+    away_scores: Series = pd.to_numeric(
+        games["AWAY_SCORE"],
+        errors="coerce",
+    )
+    home_scores: Series = pd.to_numeric(
+        games["HOME_SCORE"],
+        errors="coerce",
+    )
+
+    away_present: Series[bool] = away_scores.notna()
+    home_present: Series[bool] = home_scores.notna()
+    if not away_present.equals(home_present):
+        raise ValueError(
+            "Canonical Elo history requires Away and Home scores to be present together."
+        )
+
+    if not away_present.all():
+        raise ValueError("Canonical Elo history must contain completed games only.")
+
+    if (away_scores < 0).any() or (home_scores < 0).any():
+        raise ValueError("Canonical Elo history contains negative game scores.")
 
 
 def _max_week_for_year(
@@ -166,6 +302,7 @@ def build_elo_state_table_all_years(
 
     cfg = cfg or EloTableConfig()
 
+    validate_complete_elo_history(games)
     games_prepared, sorted_years, teams_by_year = _prepare_games(games)
 
     result: EloSimulationResult = simulate_elo_history(
@@ -211,20 +348,3 @@ def build_elo_state_table_all_years(
         print(f"  Elo table: {len(df_out):,} rows  {n_teams} teams  {n_seasons} seasons")
 
     return df_out
-
-
-def update_elo_state_incremental(
-    elo_state_existing: pd.DataFrame,
-    games: pd.DataFrame,
-    *,
-    cfg: EloTableConfig | None = None,
-) -> pd.DataFrame:
-    """Incrementally update an existing Elo state table with new game results.
-
-    No new completed games (e.g., offseason — prior season already baked in,
-    next season not yet played) → existing state is already current; return
-    it unchanged.
-    """
-    if games.empty:
-        return elo_state_existing
-    return build_elo_state_table_all_years(games, cfg=cfg)

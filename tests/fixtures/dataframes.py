@@ -54,6 +54,102 @@ _GAME_DEFAULTS: dict[str, Any] = {
 }
 
 
+def make_complete_elo_games(
+    *,
+    latest_season: int = 2026,
+) -> pd.DataFrame:
+    """Build compact contiguous history for Elo reconstruction tests.
+
+    Every completed season contains a Week 22 game so offseason transition
+    occurs into the following season. The latest season remains partial and
+    contains Week 1 only.
+    """
+    if latest_season < 1999:
+        raise ValueError("latest_season must be at least 1999.")
+
+    rows: list[dict[str, object]] = []
+    for season in range(1999, latest_season + 1):
+        year = f"{season}-{season + 1}"
+
+        if season == latest_season:
+            rows.append(
+                {
+                    **_GAME_DEFAULTS,
+                    "GAME_ID": f"{season}_01_A_B",
+                    "YEAR": year,
+                    "WEEK_NUM": 1,
+                    "GAME_DATE": f"{season}-09-01",
+                    "AWAY_TEAM": "Team A",
+                    "HOME_TEAM": "Team B",
+                    "AWAY_SCORE": 24,
+                    "HOME_SCORE": 20,
+                }
+            )
+            continue
+
+        rows.append(
+            {
+                **_GAME_DEFAULTS,
+                "GAME_ID": f"{season}_22_A_B",
+                "YEAR": year,
+                "WEEK_NUM": 22,
+                "GAME_DATE": f"{season + 1}-02-01",
+                "AWAY_TEAM": "Team A",
+                "HOME_TEAM": "Team B",
+                "AWAY_SCORE": 24,
+                "HOME_SCORE": 20,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def make_minimal_pipeline_games() -> pd.DataFrame:
+    """Build the canonical two-game feature-pipeline fixture."""
+    return make_games(
+        [
+            {
+                "GAME_ID": "2025_01_A_B",
+                "YEAR": "2025-2026",
+                "WEEK_NUM": 1,
+                "GAME_DATE": "2025-09-07",
+                "GAME_DAY_OF_WEEK": "Sunday",
+                "GAMETIME": "13:00:00",
+                "AWAY_TEAM": "Team B",
+                "HOME_TEAM": "Team A",
+                "AWAY_SCORE": 20,
+                "HOME_SCORE": 27,
+                "IS_NEUTRAL_SITE": 0,
+                "STADIUM": "Stadium A",
+                "ROOF": "outdoors",
+                "DIV_GAME": 1,
+                "VEGAS_LINE": -3.0,
+                "OVER_UNDER": 45.0,
+                "FAVORITED": "Team A",
+            },
+            {
+                "GAME_ID": "2025_02_B_A",
+                "YEAR": "2025-2026",
+                "WEEK_NUM": 2,
+                "GAME_DATE": "2025-09-14",
+                "GAME_DAY_OF_WEEK": "Sunday",
+                "GAMETIME": "16:25:00",
+                "AWAY_TEAM": "Team A",
+                "HOME_TEAM": "Team B",
+                "AWAY_SCORE": 17,
+                "HOME_SCORE": 31,
+                "IS_NEUTRAL_SITE": 0,
+                "STADIUM": "Stadium B",
+                "ROOF": "outdoors",
+                "DIV_GAME": 1,
+                "VEGAS_LINE": -7.0,
+                "OVER_UNDER": 48.0,
+                "FAVORITED": "Team B",
+            },
+        ]
+    )
+
+
 def make_games(
     overrides: list[dict[str, Any]] | None = None,
     *,

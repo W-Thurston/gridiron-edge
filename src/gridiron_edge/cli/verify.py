@@ -219,7 +219,6 @@ def _stage_smoke_pipeline(ctx: dict[str, Any]) -> StageResult:
         season=None,
         season_year=None,
         owm_api_key=None,
-        fit_elo_all_years=False,
     )
     return StageResult(success=True, detail="fetch-games + clean-games OK")
 

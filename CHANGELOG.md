@@ -1,5 +1,75 @@
 # Gridiron Edge - Changelog
 
+## 2026-09-18 - Validated complete-history Elo reconstruction (Prediction Input Integrity Unit 2)
+
+### Fixed
+
+- Replaced the false incremental Elo lifecycle with one deterministic
+  reconstruction from validated complete canonical game history.
+- Elo reconstruction now rejects history that is empty, malformed, duplicated,
+  late-starting, or missing intermediate seasons before replacing the
+  registered Elo artifact.
+- The specific 2026 Week 1-only input shape that caused the inspected Week 2
+  reset is now rejected because it begins after the canonical 1999 history
+  floor.
+- Validation or simulation failure occurs before the Elo writer is called, so
+  an existing Elo artifact remains unchanged.
+
+### Changed
+
+- Removed `update_elo_state_incremental()`.
+- Removed the `all_years` parameter from `fit_elo()`.
+- Removed `fit_elo_all_years` from shared pipeline orchestration and all
+  composite callers.
+- Removed `--fit-elo-all-years` from `run-data-pipeline`.
+- Removed incremental and all-years modes from `ratings elo fit`.
+- `ratings elo fit` and every `build-elo` pipeline stage now execute the same
+  complete-history reconstruction contract.
+- `run-data-pipeline --all-years` continues to govern source-data and modeling
+  scope, not a separate Elo mode.
+- Added dedicated complete-history Elo fixtures while preserving the original
+  two-game modeling-fixture behavior.
+
+### Validation
+
+- Complete-history input validation covers required fields, empty history,
+  duplicate and missing game identities, invalid team identities, identical
+  Away and Home teams, malformed season labels, late-starting history, missing
+  intermediate seasons, invalid weeks, incomplete score pairs, unplayed games,
+  and negative scores.
+- Integration coverage proves deterministic reconstruction, valid canonical
+  output, inherited prior-season strength, Week 1-to-Week 2 updates, and
+  byte-identical predecessor preservation after partial-history rejection.
+- CLI coverage proves that `ratings elo fit` exposes one reconstruction
+  operation and retired mode flags are absent.
+- Feature-pipeline and prediction-pipeline tests use complete history to build
+  Elo while retaining their focused two-game modeling inputs. Both modeling
+  rows have complete numeric Elo coverage.
+- Ruff, Pyrefly, and the full non-slow unit test suite pass.
+- Relevant Elo, simulator, integration, end-to-end, pipeline, and composite CLI
+  tests pass.
+- Protected validation reconstructed 19,006 Elo rows from 7,292 canonical
+  completed games spanning 1999 through 2026, with zero duplicate
+  team-season-week identities.
+- Protected validation reproduced Buffalo Week 1 and Week 2 ratings of
+  `1566.257299` and `1575.655543`.
+- Protected validation reproduced Detroit Week 1 and Week 2 ratings of
+  `1538.997399` and `1546.800161`.
+- A deterministic second reconstruction produced identical output.
+- The exact 16-row 2026 Week 1-only input was rejected.
+- The valid temporary Elo artifact remained byte-identical after rejection.
+- No working-repository data, forecast, product, selection, model, market, API,
+  or frontend artifact changed during protected validation.
+
+### Scope
+
+This unit corrects Elo reconstruction and source-history validation. It does
+not add semantic weekly readiness, change affected Week 2 products, regenerate
+forecasts, persist exact prediction inputs, change model evaluation, alter API
+or frontend contracts, or add model explanations.
+
+See `DECISIONS.md` D39.
+
 ## 2026-09-18 - History-preserving weekly games refresh (Prediction Input Integrity Unit 1)
 
 ### Fixed

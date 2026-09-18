@@ -12,23 +12,18 @@ ratings_app.add_typer(elo_app, name="elo")
 
 
 @elo_app.command("fit")
-def elo_fit(
-    *,
-    all_years: bool = typer.Option(
-        False,
-        "--all-years/--no-all-years",
-        help="Rebuild full Elo history vs incremental update.",
-    ),
-) -> None:
-    """Build/update Elo state table."""
+def elo_fit() -> None:
+    """Rebuild Elo state from complete canonical game history."""
     from gridiron_edge.core.console import console, step
     from gridiron_edge.ratings.elo import fit_elo
 
-    mode = "full rebuild" if all_years else "incremental"
-    console.header("ratings elo fit", subtitle=mode)
+    console.header(
+        "ratings elo fit",
+        subtitle="complete-history rebuild",
+    )
 
-    with step(f"Fit Elo ({mode})"):
-        fit_elo(all_years=all_years)
+    with step("Rebuild complete Elo history"):
+        fit_elo()
 
     console.summary()
 

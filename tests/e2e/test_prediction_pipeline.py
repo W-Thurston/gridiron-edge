@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 from pandas import DataFrame
+from tests.fixtures.dataframes import make_minimal_pipeline_games
 from tests.fixtures.repos import (
     MiniRepoBuilder,
 )
@@ -28,16 +29,17 @@ def _build_repo(
     weather: bool = False,
 ) -> Path:
     """Build a repository for canonical pipeline tests."""
-    builder = MiniRepoBuilder(tmp_path).with_games().with_stadiums()
+    builder = MiniRepoBuilder(tmp_path).with_complete_elo_games().with_stadiums()
 
     if weather:
         builder = builder.with_weather()
 
     repo = builder.build()
+    fit_elo(repo=repo)
 
-    fit_elo(
-        all_years=True,
-        repo=repo,
+    make_minimal_pipeline_games().to_csv(
+        dataset_path(repo, "games"),
+        index=False,
     )
     build_model_inputs(
         all_years=True,
