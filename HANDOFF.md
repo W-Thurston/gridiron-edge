@@ -105,7 +105,30 @@ uv run gridiron run-data-pipeline --all-years --upcoming-season 2026 --fit-elo-a
 
 Pipeline staleness checks resolve canonical input and output paths through the dataset registry. When a registered input is newer than an existing output, the command emits a nonfatal warning that the active stage will rebuild the stale output.
 
+Recurring non-all-years game refreshes preserve every unrequested season in the
+registered raw nflverse games artifact and replace only the requested season.
+An explicit season selects the target season to refresh; it does not select
+full-artifact replacement. Recurring refresh rejects an empty selected-season
+response before writing and propagates fetch failures without modifying the
+existing artifact.
+
+`fetch_nflverse_games()` remains the explicit replacement and all-years fetch
+boundary. `clean-games` rebuilds canonical cleaned history from the complete
+retained raw artifact and does not independently merge prior cleaned history.
+
 During the offseason, a completed-game fetch may contain no games for the upcoming season. `clean-games` refuses to overwrite populated historical data with an empty result. This protected state is expected.
+
+The explicitly selected immutable 2026 Week 2 Win products remain original
+historical evidence from before this correction. Their logistic predictions
+used an Elo state rebuilt from only the 16 completed Week 1 games, producing
+1490 or 1510 ratings across the complete Week 2 slate. Those events and products
+must not be edited, relabeled, regenerated in place, or treated as validated
+model-quality evidence.
+
+The history-preserving games refresh is corrected. Elo reconstruction,
+semantic readiness, affected-product disposition, immutable prediction-input
+evidence, and model explanation remain separate follow-on work owned by
+`ROADMAP.md`.
 
 ## Dataset and Artifact Registry
 
@@ -943,3 +966,16 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 - Current-season PBP may be unavailable until the upstream source publishes it. Refresh can warn while continuing with the available historical feature state.
 - Some API endpoints may still require batch-artifact refactors to fully satisfy the serialization-boundary design; track verified cases in `ROADMAP.md`.
 - The project has never been live in production. Development-era schemas and artifacts do not require backward compatibility unless a current contract explicitly says otherwise.
+
+### Week 2 Win evidence and Elo continuation
+
+The immutable 2026 Week 2 Win products remain original historical evidence.
+Their logistic probabilities used an Elo state rebuilt from only the 16
+completed Week 1 games, producing ratings of 1490 or 1510 across the complete
+Week 2 slate. Do not edit or relabel those events and products, and do not treat
+them as validated model-quality evidence.
+
+Recurring games refresh now preserves historical data. Elo reconstruction,
+semantic readiness, affected-product disposition, immutable prediction-input
+evidence, and model explanation remain separate corrective work owned by
+`ROADMAP.md`.

@@ -214,10 +214,9 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
 
             if all_years:
                 path: Path = fetch_nflverse_games()
-            elif season:
-                path = fetch_nflverse_games(seasons=[resolved_season])
             else:
-                path = fetch_nflverse_games_refresh()
+                target_season = resolved_season if season is not None else None
+                path = fetch_nflverse_games_refresh(season=target_season)
             s.set_detail(path.name)
 
     with step("Clean games", skip=not runs("clean-games")) as s:

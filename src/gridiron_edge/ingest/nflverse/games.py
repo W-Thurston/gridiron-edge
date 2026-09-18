@@ -127,6 +127,11 @@ def refresh_nflverse_game_seasons(
     )
 
     refreshed: DataFrame = nfl.load_schedules(season_list).to_pandas()
+    if refreshed.empty:
+        raise ValueError(
+            "Refreshed nflverse games response is empty for seasons: "
+            + ", ".join(str(season) for season in season_list)
+        )
 
     raw_path: Path = dataset_path(
         resolved_repo,

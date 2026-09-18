@@ -1,5 +1,62 @@
 # Gridiron Edge - Changelog
 
+## 2026-09-18 - History-preserving weekly games refresh (Prediction Input Integrity Unit 1)
+
+### Fixed
+
+- Corrected the shared data-pipeline fetch selection so recurring
+  non-all-years execution refreshes the requested nflverse season through
+  `fetch_nflverse_games_refresh()` rather than replacing the registered raw
+  games artifact with `fetch_nflverse_games(seasons=[...])`.
+- Explicit-season weekly refresh now preserves every unrequested historical
+  season while replacing the requested season exactly once.
+- The explicit all-years path retains its full-replacement behavior.
+
+### Added
+
+- Shared-pipeline regression coverage proves:
+  - all-years execution uses the explicit replacement boundary;
+  - explicit-season recurring execution uses the history-preserving refresh
+    boundary with the requested season;
+  - recurring execution without an explicit season delegates current-season
+    resolution to the history-preserving refresh wrapper.
+- Direct `weekly-predict` stage coverage proves that the composite supplies the
+  explicit recurring-refresh arguments exercised by the corrected shared
+  branch.
+- Unchanged `post-week` regression coverage confirms compatibility with the
+  corrected shared pipeline boundary.
+
+### Validation
+
+- Focused nflverse ingest, games cleaning, shared CLI, `weekly-predict`, and
+  `post-week` tests pass.
+- Explicit failure tests prove that an upstream fetch exception and an empty
+  selected-season response both preserve the existing raw artifact
+  byte-for-byte. Empty responses now fail before any artifact write.
+- Ruff, Pyrefly, and the full non-slow unit test suite pass.
+- Protected validation exercised the public
+  `fetch_nflverse_games_refresh(season=2026)` wrapper in a temporary
+  repository.
+- Protected validation preserved 7,276 unrequested raw rows across 27
+  unrequested seasons, replaced the complete 272-row 2026 target slice,
+  restored deliberately removed game `2026_18_TEN_HOU`, and retained zero
+  duplicate raw game IDs.
+- The protected source contained 28 total seasons from 1999 through 2026.
+- Cleaning the refreshed protected artifact produced 7,292 unique completed
+  games across every season from `1999-2000` through `2026-2027`, with zero
+  duplicate cleaned game IDs.
+- No Elo, model prediction, forecast-event, weekly-product, selection, edge, or
+  frontend workflow ran during protected validation.
+
+### Scope
+
+This correction preserves historical games during recurring refresh. It does
+not redesign Elo reconstruction, change semantic model readiness, alter or
+reselect affected 2026 Week 2 forecast evidence, persist prediction feature
+rows, change API or frontend contracts, or add model explanations.
+
+See `DECISIONS.md` D38.
+
 ## 2026-08-26 - Small API and documentation cleanup (WS2 Unit 7)
 
 ### Fixed

@@ -39,15 +39,35 @@ The successful 2026 Week 1 rehearsal produced complete Win, Spread, Total, proje
 
 Prioritize work by value density and architectural fit:
 
-1. Preserve truthful persisted-state boundaries before adding breadth.
-2. Resolve supported external data sources before building interfaces that depend on them.
-3. Improve predictive quality only through honest time-ordered evaluation.
-4. Keep the API a serialization boundary.
-5. Keep unavailable, blocked, and analytical-empty states explicit.
-6. Add product surface area only when the underlying data contract is real.
-7. Continue using files until concurrency, transactional integrity, or query complexity requires a database.
+1. Correct weekly prediction input integrity and historical continuity before further model-quality, explanation, or product-surface work.
+2. Preserve truthful persisted-state boundaries before adding breadth.
+3. Resolve supported external data sources before building interfaces that depend on them.
+4. Improve predictive quality only through honest time-ordered evaluation.
+5. Keep the API a serialization boundary.
+6. Keep unavailable, blocked, and analytical-empty states explicit.
+7. Add product surface area only when the underlying data contract is real.
+8. Continue using files until concurrency, transactional integrity, or query complexity requires a database.
 
 ## Future Work
+
+### Weekly Prediction Input Integrity and Reproducibility
+
+**Goal:** ensure every weekly forecast is generated from history-preserving, semantically validated, and reproducible model inputs before it can become the explicitly selected weekly product.
+
+A read-only inspection completed on September 18, 2026 confirmed that both immutable 2026 Week 2 Win forecast runs used an Elo state rebuilt from only the 16 completed Week 1 games. The weekly explicit-season path selected `fetch_nflverse_games(seasons=[season])`, which replaced retained raw history; `clean_nflverse_games()` then replaced cleaned history from that nonempty partial artifact; and `update_elo_state_incremental()` ignored existing Elo state and rebuilt every team from the 1500 initial rating. The resulting Week 2 `{1490, 1510}` Elo pattern was reproduced exactly from the Week 1-only games frame. All 16 Week 2 logistic Win predictions used the reset Elo values through `AWAY_ELO`, `HOME_ELO`, and `ELO_DIFF`.
+
+Corrective work should proceed as separate bounded units:
+
+1. **Preserve games history during weekly refresh.** Route recurring season refresh through the existing history-preserving refresh boundary, add a regression test at the real `_run_pipeline_stages()` composition seam, and verify retained raw and cleaned season coverage against real artifacts. This unit must not redesign Elo.
+2. **Make Elo reconstruction honest and safe.** Prefer a deterministic, validated full-history rebuild over subtle incremental mutation unless inspection proves a true incremental design is necessary. Retire or rename the misleading incremental contract, reject partial historical input, and prove prior-season strength survives into the next season and Week 2 incorporates Week 1 without resetting teams to 1500.
+3. **Add semantic weekly readiness.** Validate explicit source lineage, historical coverage, latest completed scope, and predecessor-state continuity before forecast publication. Do not use heuristic rating-distribution or variance thresholds.
+4. **Resolve affected forecast and product status.** Preserve original immutable Week 2 evidence with a known-defect disposition. Any corrected result must be explicitly classified as retrospective unless it satisfies the original pregame evidence boundary. Do not edit old events or products in place, and do not automatically reselect a retrospective product.
+5. **Persist immutable prediction-input evidence.** Link each forecast event to the exact ordered feature row, feature-schema identity, source-artifact hashes, model and scaler identities, optional calibrator identity, and generation timestamp.
+6. **Add persisted logistic explanation evidence.** After corrected and reproducible forecasts exist, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP for the logistic champion. Explanations must reconstruct the persisted model output and remain separate from API-time computation.
+
+Acceptance for this program requires history-preserving weekly refresh, deterministic Elo continuity, semantic readiness that blocks partial-history state, explicit disposition of affected Week 2 artifacts, computationally reproducible forecast inputs, corrected operational evidence, and an out-of-sample quality assessment of the corrected path before explanation surfaces are enabled.
+
+Potential collateral impact beyond the confirmed Week 2 Elo and Win products remains unconfirmed. Modeling-input construction, historical evaluation, backfill, forecast closeout, production preflight, API loaders, and player game-context consumers should be classified by whether they ran while the cleaned games artifact was truncated. That scope check must not be represented as confirmed impact without runtime or artifact evidence.
 
 #### Parked Production Proof: Market Unit 26
 
@@ -200,6 +220,10 @@ Future tooling work:
 
 ## Known Limitations
 
+### Weekly prediction input integrity
+
+The explicitly selected 2026 Week 2 Win products are immutable original evidence, but their logistic probabilities were generated with an Elo state reset from current-season Week 1 games rather than continued full-history ratings. The API and frontend correctly serialize and display those persisted values; the defect is upstream in recurring games refresh and Elo reconstruction. Exact computational reproduction is also incomplete because forecast events do not preserve the full ordered feature row or immutable source and model artifact identities. Do not treat the affected Week 2 products as validated model-quality evidence or add explanation surfaces against them.
+
 ### Market data
 
 The Odds API v4 client, parser, provider-aware quote contract, partitioned
@@ -243,13 +267,14 @@ Files remain appropriate for the current single-user workflow. Revisit this only
 
 The next major work should normally be chosen from:
 
-1. supported market provider and multi-book shopping;
-2. model ensemble research;
-3. injury/news source;
-4. scenario engine and explanations;
-5. remaining API batch-artifact migrations;
-6. frontend enhancements unlocked by real data;
-7. real-time and live-game support.
+1. weekly prediction input integrity and reproducibility, beginning with history-preserving weekly games refresh;
+2. supported market provider and multi-book shopping;
+3. model ensemble research;
+4. injury/news source;
+5. scenario engine and explanations;
+6. remaining API batch-artifact migrations;
+7. frontend enhancements unlocked by real data;
+8. real-time and live-game support.
 
 Before starting a new work item:
 

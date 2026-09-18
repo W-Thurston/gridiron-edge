@@ -7,6 +7,106 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+
+## D38 - Recurring season refresh preserves unrequested historical games
+
+**Date:** 2026-09-18
+
+### Decision
+
+Recurring, non-all-years nflverse game refreshes preserve every unrequested
+season in the registered raw games artifact and replace only the explicitly
+requested season.
+
+`fetch_nflverse_games()` remains the explicit replacement boundary for callers
+that deliberately require a complete replacement or all-years fetch.
+`refresh_nflverse_game_seasons()` owns preservation and replacement of selected
+season slices. Shared CLI orchestration must route recurring refreshes through
+that preservation-aware boundary rather than reproduce season-merging behavior.
+
+`clean_nflverse_games()` continues to rebuild the canonical cleaned games
+artifact from the complete registered raw artifact. It does not independently
+merge current output with prior cleaned history.
+
+### Context
+
+A read-only moneyline prediction inspection completed on September 18, 2026
+confirmed that the explicit-season `weekly-predict` refresh path called
+`fetch_nflverse_games(seasons=[2026])`. That replacement function overwrote the
+raw games artifact with the requested season. `clean_nflverse_games()` then
+produced a nonempty cleaned artifact containing only the 16 completed 2026
+Week 1 games.
+
+The downstream Elo path rebuilt from that partial cleaned history and produced
+a complete but historically reset Week 2 state. Every team began at the 1500
+initial rating; Week 1 winners became 1510 and losers became 1490. Both
+immutable 2026 Week 2 Win forecast runs persisted exactly that two-value Elo
+state across all 16 games.
+
+The repository already had a preservation-aware refresh implementation and
+focused tests for it. The defect existed at the shared CLI composition seam,
+where an explicit season selected the replacement function rather than the
+recurring refresh function.
+
+### Consequences
+
+- `all_years=True` continues to select an explicit full replacement.
+- A recurring refresh with an explicit season refreshes that season while
+  retaining every other raw season.
+- A recurring refresh without an explicit season delegates current-season
+  resolution to the preservation-aware refresh wrapper.
+- The shared pipeline owns refresh-mode selection.
+- The nflverse ingest boundary owns selected-season replacement and historical
+  preservation.
+- The cleaner remains a deterministic transformation of the complete raw
+  artifact rather than becoming a second historical merge owner.
+- Composition-level regression tests must prove which fetch boundary the shared
+  pipeline selects.
+- Historical continuity must be validated through explicit season and game
+  identities, not arbitrary row-count or rating-distribution thresholds.
+- This decision does not define the future Elo reconstruction contract. That
+  remains a separate corrective unit.
+- An empty selected-season response is not a valid replacement artifact. It
+  raises before any write, preserving the existing raw artifact unchanged.
+  Upstream fetch exceptions likewise propagate without modifying the artifact.
+- Shared orchestration distinguishes an explicitly supplied season with
+  `season is not None`; workflow selection is not based on season-value
+  truthiness.
+
+### Alternatives considered and rejected
+
+1. **Merge prior cleaned history inside `clean_nflverse_games()`.**
+   Rejected because it would create a second independent season-merging
+   implementation and allow the registered raw artifact to remain incomplete.
+
+2. **Make every use of `fetch_nflverse_games(seasons=[...])` preserve history.**
+   Rejected because the function has a valid explicit-replacement contract.
+   Changing that contract would blur the distinction between replacement and
+   recurring refresh behavior.
+
+3. **Detect the defect from suspicious Elo distributions.**
+   Rejected because numeric variance and rating-shape checks are heuristic.
+   The durable invariant is preservation of explicit historical season and game
+   identities.
+
+4. **Repair the Elo update in the same implementation unit.**
+   Rejected because games-history preservation and Elo reconstruction are
+   separate ownership boundaries. Combining them would obscure which correction
+   prevents the destructive refresh and make regression evidence less precise.
+
+### References
+
+- `src/gridiron_edge/cli/main.py`
+- `src/gridiron_edge/ingest/nflverse/games.py`
+- `src/gridiron_edge/transform/clean/games_nflverse.py`
+- `tests/unit/cli/test_main.py`
+- `tests/unit/cli/test_weekly_predict.py`
+- `tests/unit/ingest/nflverse/test_games.py`
+- `ROADMAP.md`
+- `PLAN.md`
+- `gridiron_edge_moneyline_inspection_v2.md`
+
+---
 ### D37. Attribution operations are formally named and separated by authentication strength; `_closeout_matches` is corrected to re-derive the canonical digest
 
 **Status:** Accepted

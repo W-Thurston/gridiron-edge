@@ -110,6 +110,74 @@ def test_selected_season_refresh_preserves_other_seasons(
     mock_load.assert_called_once_with([2025])
 
 
+def test_selected_season_refresh_preserves_artifact_when_fetch_fails(
+    tmp_path: Path,
+) -> None:
+    raw_path = _write_existing_games(
+        tmp_path,
+        game_ids=[
+            "2024_01_A_B",
+            "2025_01_C_D",
+        ],
+        seasons=[
+            2024,
+            2025,
+        ],
+    )
+    before = raw_path.read_bytes()
+
+    with (
+        patch(
+            "gridiron_edge.ingest.nflverse.games.nfl.load_schedules",
+            side_effect=RuntimeError("upstream fetch failed"),
+        ),
+        pytest.raises(
+            RuntimeError,
+            match="upstream fetch failed",
+        ),
+    ):
+        refresh_nflverse_game_seasons(
+            seasons=[2025],
+            repo=tmp_path,
+        )
+
+    assert raw_path.read_bytes() == before
+
+
+def test_selected_season_refresh_rejects_empty_response_without_erasing_artifact(
+    tmp_path: Path,
+) -> None:
+    raw_path = _write_existing_games(
+        tmp_path,
+        game_ids=[
+            "2024_01_A_B",
+            "2025_01_C_D",
+        ],
+        seasons=[
+            2024,
+            2025,
+        ],
+    )
+    before = raw_path.read_bytes()
+
+    with (
+        patch(
+            "gridiron_edge.ingest.nflverse.games.nfl.load_schedules",
+            return_value=_schedule_result(pd.DataFrame()),
+        ),
+        pytest.raises(
+            ValueError,
+            match="Refreshed nflverse games response is empty for seasons: 2025",
+        ),
+    ):
+        refresh_nflverse_game_seasons(
+            seasons=[2025],
+            repo=tmp_path,
+        )
+
+    assert raw_path.read_bytes() == before
+
+
 def test_multiple_season_refresh_replaces_only_requested_seasons(
     tmp_path: Path,
 ) -> None:

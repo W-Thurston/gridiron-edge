@@ -16,6 +16,7 @@ from gridiron_edge.cli.weekly_predict import (
     _ALL_STAGES,
     _build_stages,
     _canonicalize_live_elo_predictions,
+    _stage_ensure_data_fresh,
     _stage_predict_week,
 )
 
@@ -215,6 +216,47 @@ class TestPredictWeekStage:
         assert not result.success
         assert result.detail == "no available models"
         mock_write.assert_not_called()
+
+
+class TestEnsureDataFreshStage:
+    """Verify weekly prediction delegates to the shared refresh pipeline."""
+
+    @patch("gridiron_edge.cli.main._run_pipeline_stages")
+    def test_explicit_season_uses_history_preserving_pipeline_contract(
+        self,
+        run_pipeline_stages: MagicMock,
+    ) -> None:
+        result = _stage_ensure_data_fresh(
+            {
+                "resolved_season_int": 2026,
+                "upcoming_target": 2026,
+                "season_int": 2026,
+                "season": "2026-2027",
+            }
+        )
+
+        assert result == StageResult(
+            success=True,
+            detail="data refreshed",
+        )
+        run_pipeline_stages.assert_called_once_with(
+            active={
+                "fetch-games",
+                "clean-games",
+                "fetch-upcoming",
+                "clean-upcoming",
+                "build-epa",
+                "build-elo",
+                "build-features",
+            },
+            all_years=False,
+            resolved_season=2026,
+            upcoming_target=2026,
+            season=2026,
+            season_year="2026-2027",
+            owm_api_key=None,
+            fit_elo_all_years=False,
+        )
 
 
 class TestGenerateEdgesStage:

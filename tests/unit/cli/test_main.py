@@ -5,13 +5,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import typer
 from typer.testing import CliRunner
 
-from gridiron_edge.cli.main import ALL_STAGES, _check_stage_staleness, run_data_pipeline
+from gridiron_edge.cli.main import (
+    ALL_STAGES,
+    _check_stage_staleness,
+    _run_pipeline_stages,
+    run_data_pipeline,
+)
 from gridiron_edge.datasets.registry import dataset_path
 
 
@@ -55,6 +60,100 @@ class TestPipelineContract:
         assert "all registered stages run" in result.output
         assert "not part of this command" in result.output
         assert "ingest dk-odds" not in result.output
+
+
+class TestFetchGamesStage:
+    """Tests for raw-games fetch ownership in the shared pipeline."""
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games_refresh",
+    )
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games",
+    )
+    def test_all_years_uses_explicit_full_replacement(
+        self,
+        fetch_games: MagicMock,
+        refresh_games: MagicMock,
+        _check_staleness: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        fetch_games.return_value = tmp_path / "games_raw_nflverse.parquet"
+
+        _run_pipeline_stages(
+            active={"fetch-games"},
+            all_years=True,
+            resolved_season=2026,
+            upcoming_target=2026,
+            season=2026,
+            season_year="2026-2027",
+            owm_api_key=None,
+            fit_elo_all_years=False,
+        )
+
+        fetch_games.assert_called_once_with()
+        refresh_games.assert_not_called()
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games_refresh",
+    )
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games",
+    )
+    def test_explicit_season_uses_history_preserving_refresh(
+        self,
+        fetch_games: MagicMock,
+        refresh_games: MagicMock,
+        _check_staleness: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        refresh_games.return_value = tmp_path / "games_raw_nflverse.parquet"
+
+        _run_pipeline_stages(
+            active={"fetch-games"},
+            all_years=False,
+            resolved_season=2026,
+            upcoming_target=2026,
+            season=2026,
+            season_year="2026-2027",
+            owm_api_key=None,
+            fit_elo_all_years=False,
+        )
+
+        refresh_games.assert_called_once_with(season=2026)
+        fetch_games.assert_not_called()
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games_refresh",
+    )
+    @patch(
+        "gridiron_edge.ingest.nflverse.fetch_nflverse_games",
+    )
+    def test_default_weekly_refresh_infers_current_season(
+        self,
+        fetch_games: MagicMock,
+        refresh_games: MagicMock,
+        _check_staleness: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        refresh_games.return_value = tmp_path / "games_raw_nflverse.parquet"
+
+        _run_pipeline_stages(
+            active={"fetch-games"},
+            all_years=False,
+            resolved_season=2026,
+            upcoming_target=2026,
+            season=None,
+            season_year=None,
+            owm_api_key=None,
+            fit_elo_all_years=False,
+        )
+
+        refresh_games.assert_called_once_with(season=None)
+        fetch_games.assert_not_called()
 
 
 class TestStageStalenessCheck:
