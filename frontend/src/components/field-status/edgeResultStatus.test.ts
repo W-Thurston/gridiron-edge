@@ -30,6 +30,10 @@ function diagnostics(
 }
 
 const blockerCases: Array<[EdgeBlocker, string]> = [
+  [
+    "known_defective_forecast_evidence",
+    "Forecast evidence is known to be defective and is unavailable for operational use.",
+  ],
   ["no_predictions", "Weekly predictions are unavailable."],
   ["no_market_data", "Market data is unavailable for this week."],
   [

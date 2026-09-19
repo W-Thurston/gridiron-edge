@@ -7,6 +7,145 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+### D41 - Known-defective immutable forecast evidence is governed by an external disposition
+
+**Date:** 2026-09-19
+
+#### Decision
+
+Preserve confirmed defective forecast events, weekly products, product indexes,
+and current selections as immutable historical evidence. Record their
+operational status in a separate, immutable, identity-addressed schema-1
+forecast-evidence disposition.
+
+A disposition has a deterministic SHA-256 identity over its complete canonical
+domain payload and records:
+
+- one timezone-aware UTC recording timestamp;
+- exact season and week scope;
+- status, defect reason, publication effect, and replacement policy;
+- exact affected prediction components;
+- sorted unique affected run, event, and product identities;
+- the exact selected affected product;
+- decision references and an evidence summary.
+
+The supported schema-1 values are:
+
+```text
+status:
+known_defect
+
+reason:
+incomplete_elo_source_history
+
+publication_effect:
+not_prediction_ready
+
+replacement_policy:
+preserve_original_no_automatic_reselection
+
+affected components:
+derived_spread
+win_probability
+```
+
+Before creation or operational use, every referenced identity is authenticated against the immutable forecast and weekly-product evidence. The selected affected product must match the actual scoped selection.
+
+Dispositions are stored under:
+
+data/output/forecast_evidence_dispositions/schema=1/dispositions/
+
+
+The store uses identity-addressed JSON files with no mutable current pointer or index. Publication is create-only and atomically visible. Exact replay is idempotent. Conflicting identity reuse is rejected, including a concurrent publication race.
+
+Zero applicable dispositions leave a weekly product operationally eligible. One applicable known-defect disposition makes it operationally ineligible. Multiple applicable dispositions are an explicit ambiguity error. Malformed, unsupported, inconsistent, or unauthenticated disposition evidence remains an explicit error.
+
+Operational enforcement covers:
+
+weekly prediction readiness;
+weekly edge calculation;
+candidate issuance;
+manual prediction rendering.
+
+Low-level forecast-event and weekly-product loading remains available for historical audit. Postgame closeout continues to evaluate what was actually selected and predicted. The Games API and its frontend consumers continue to serialize the affected selected product without disposition metadata because those display paths are outside this operational enforcement boundary.
+
+Context
+
+Two immutable live logistic Win forecast runs for 2026 Week 2 were generated from an Elo state reconstructed from only the 16 completed Week 1 games. All 32 events used Away and Home Elo values limited to 1490 and 1510.
+
+The affected runs are:
+
+83c292f9-af39-4b74-823e-fb7d2977eb62
+918c1cc3-c063-4391-9e7e-9404cb5e51bb
+
+
+Two immutable weekly products reference those runs and their exact event identities. The selected affected product is:
+
+weekly_2026_2027_wk02_918c1cc3-c063-4391-9e7e-9404cb5e51bb
+
+
+The original evidence is historically accurate about what the system generated and selected. Rewriting, relabeling, deleting, or silently replacing it would destroy that fact. Leaving it operationally eligible would incorrectly treat known-defective predictions as valid current evidence.
+
+An external disposition preserves both truths:
+
+the original artifacts remain exact historical evidence;
+their known defect prevents forward operational use.
+
+The recorded disposition is:
+
+recorded_at:
+2026-09-19T18:00:00+00:00
+
+disposition_id:
+05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb
+
+artifact SHA-256:
+8529487ed56c5130eba032c2e8d1764b22e95f796b6336a32ac299266746318d
+
+
+Protected validation authenticated both runs, all 32 events, both products, and the scoped selection through public loaders. It proved immutable persistence, strict reload, exact replay, tamper rejection, concurrent publication safety, operational blocking, unrelated-product eligibility, and byte-identical source preservation.
+
+Consequences
+Forecast events and weekly products do not gain mutable status fields.
+Existing events retain their original live role.
+Product index.json and current.json remain unchanged.
+The selected affected product remains the historical selected product.
+No corrected product is created or automatically selected.
+A retrospective correction must remain explicitly retrospective unless it satisfies the original pregame evidence boundary.
+Weekly readiness reports known_defective_forecast_evidence.
+The known-defect blocker makes ready and prediction_ready false without independently determining market_ready.
+Weekly edge calculation returns a blocked result with zero rows before market loading or edge calculation.
+The edges API exposes stable unavailable metadata for the blocker.
+Candidate issuance stops before forecast-event loading, quote-history loading, as-known quote derivation, candidate evaluation, or persistence.
+Manual prediction rendering stops before display adaptation or PNG and HTML writes.
+Historical loaders and postgame closeout retain access to the original evidence.
+Games API and frontend display remain unchanged and do not expose disposition metadata.
+The operational artifact remains under the ignored data/ tree according to existing repository policy.
+Complete prediction-input persistence, corrected operational evaluation, and model explanation remain separate future units.
+Alternatives considered and rejected
+Rewrite or delete the original events and products. Rejected because the artifacts are immutable historical evidence of what was generated and selected.
+Relabel existing live events as retrospective or invalid. Rejected because the original role is historically accurate and must not be mutated.
+Replace or automatically reselect the current product. Rejected because no corrected pregame product exists and automatic reselection would rewrite operational history.
+Embed a mutable status field in forecast events or weekly products. Rejected because it would weaken immutable evidence and duplicate governance state across many artifacts.
+Treat the product as missing predictions. Rejected because the selected product exists; its evidence is known defective, not absent.
+Block all historical and API access. Rejected because historical audit and postgame evaluation must preserve what was actually generated and selected, while Games API changes were outside this unit.
+Create a general disposition framework. Rejected because only one exact confirmed incident and contract is currently required.
+References
+src/gridiron_edge/evaluation/forecast_evidence_disposition.py
+src/gridiron_edge/evaluation/forecast_evidence_disposition_store.py
+src/gridiron_edge/evaluation/weekly_readiness.py
+src/gridiron_edge/cli/verify_week.py
+src/gridiron_edge/market/edge_diagnostics.py
+src/gridiron_edge/market/weekly_edge_service.py
+src/gridiron_edge/cli/production_chain.py
+src/gridiron_edge/cli/output.py
+src/gridiron_edge/api/routes/edges.py
+HANDOFF.md
+ROADMAP.md
+PLAN.md
+
+---
+
 ## D40 - Weekly prediction requires verified Elo lineage
 
 **Date:** 2026-09-18

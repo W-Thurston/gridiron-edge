@@ -411,6 +411,12 @@ def issue_candidates_cmd(
     """Issue immutable candidates from selected forecasts and quote history."""
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.datasets.loaders import load_current_weekly_product
+    from gridiron_edge.evaluation.forecast_evidence_disposition import (
+        require_operational_weekly_product,
+    )
+    from gridiron_edge.evaluation.forecast_evidence_disposition_store import (
+        list_forecast_evidence_dispositions,
+    )
     from gridiron_edge.evaluation.forecast_store import load_forecast_events
     from gridiron_edge.ingest.odds.as_known import as_known_at
     from gridiron_edge.ingest.odds.store import load_odds_ledger
@@ -424,6 +430,23 @@ def issue_candidates_cmd(
             settings.repo_root,
             season=season,
             week=week,
+        )
+        if "product_id" not in product.columns:
+            raise ValueError("Selected weekly product is missing required column: product_id")
+
+        product_ids = tuple(sorted(product["product_id"].dropna().astype(str).str.strip().unique()))
+        if len(product_ids) != 1 or product_ids == ("",):
+            raise ValueError("Selected weekly product must contain one nonempty product_id.")
+
+        dispositions = list_forecast_evidence_dispositions(
+            season=season,
+            week=week,
+            product_id=product_ids[0],
+            repo=settings.repo_root,
+        )
+        require_operational_weekly_product(
+            product,
+            dispositions,
         )
         run_ids = product["product_run_id"].dropna().astype(str).unique().tolist()
         if len(run_ids) != 1:

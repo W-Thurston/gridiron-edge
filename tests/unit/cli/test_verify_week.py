@@ -22,6 +22,9 @@ from gridiron_edge.cli.verify_week import (
     validate_season_label,
     verify_week_cmd,
 )
+from gridiron_edge.evaluation.forecast_evidence_disposition import (
+    ForecastEvidenceNotOperationalError,
+)
 from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
     WeeklyReadinessBlocker,
@@ -75,6 +78,7 @@ def test_selected_product_builds_readiness_without_writes(
     )
     mock_product.return_value = pd.DataFrame(
         {
+            "product_id": ["product-1"],
             "season": ["2026-2027"],
             "week": [1],
             "game_id": ["game-1"],
@@ -616,3 +620,178 @@ def test_rich_schedule_projection_requires_identity_columns() -> None:
         match="Rich upcoming schedule is missing required columns: game_id",
     ):
         _schedule_for_readiness(rich)
+
+
+def test_disposition_helper_returns_known_defect_blocker(
+    tmp_path: Path,
+) -> None:
+    from gridiron_edge.cli.verify_week import (
+        _selected_product_disposition_blockers,
+    )
+
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+        }
+    )
+
+    with (
+        patch(
+            "gridiron_edge.cli.verify_week.list_forecast_evidence_dispositions",
+            return_value=(MagicMock(),),
+        ) as mock_list,
+        patch(
+            "gridiron_edge.cli.verify_week.require_operational_weekly_product",
+            side_effect=ForecastEvidenceNotOperationalError("known defect"),
+        ) as mock_require,
+    ):
+        blockers = _selected_product_disposition_blockers(
+            product,
+            season="2026-2027",
+            week=1,
+            repo=tmp_path,
+        )
+
+    assert blockers == (WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,)
+    mock_list.assert_called_once_with(
+        season="2026-2027",
+        week=1,
+        product_id="product-1",
+        repo=tmp_path,
+    )
+    mock_require.assert_called_once_with(
+        product,
+        mock_list.return_value,
+    )
+
+
+def test_disposition_helper_allows_undisposed_product(
+    tmp_path: Path,
+) -> None:
+    from gridiron_edge.cli.verify_week import (
+        _selected_product_disposition_blockers,
+    )
+
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+        }
+    )
+
+    with (
+        patch(
+            "gridiron_edge.cli.verify_week.list_forecast_evidence_dispositions",
+            return_value=(),
+        ),
+        patch(
+            "gridiron_edge.cli.verify_week.require_operational_weekly_product",
+        ) as mock_require,
+    ):
+        blockers = _selected_product_disposition_blockers(
+            product,
+            season="2026-2027",
+            week=1,
+            repo=tmp_path,
+        )
+
+    assert blockers == ()
+    mock_require.assert_called_once_with(
+        product,
+        (),
+    )
+
+
+def test_ambiguous_dispositions_remain_explicit(
+    tmp_path: Path,
+) -> None:
+    from gridiron_edge.cli.verify_week import (
+        _selected_product_disposition_blockers,
+    )
+
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+        }
+    )
+
+    with (
+        patch(
+            "gridiron_edge.cli.verify_week.list_forecast_evidence_dispositions",
+            return_value=(MagicMock(), MagicMock()),
+        ),
+        patch(
+            "gridiron_edge.cli.verify_week.require_operational_weekly_product",
+            side_effect=ValueError("Multiple forecast-evidence dispositions apply"),
+        ),
+        pytest.raises(
+            ValueError,
+            match="Multiple forecast-evidence dispositions",
+        ),
+    ):
+        _selected_product_disposition_blockers(
+            product,
+            season="2026-2027",
+            week=1,
+            repo=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "product_ids",
+    [
+        ["product-1", "product-2"],
+        [" "],
+    ],
+)
+def test_disposition_helper_requires_one_product_identity(
+    product_ids: list[str],
+    tmp_path: Path,
+) -> None:
+    from gridiron_edge.cli.verify_week import (
+        _selected_product_disposition_blockers,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="one nonempty product_id",
+    ):
+        _selected_product_disposition_blockers(
+            pd.DataFrame(
+                {
+                    "product_id": product_ids,
+                }
+            ),
+            season="2026-2027",
+            week=1,
+            repo=tmp_path,
+        )
+
+
+def test_known_defect_edge_blocker_maps_to_readiness_blocker() -> None:
+    from gridiron_edge.cli.verify_week import (
+        _edge_readiness_blockers,
+    )
+
+    result = EdgeResult(
+        rows=pd.DataFrame(),
+        diagnostics=EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=0,
+            market_game_count=0,
+            matched_game_count=0,
+            complete_moneyline_count=0,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=0,
+            calculated_edge_count=0,
+            positive_edge_count=0,
+            filtered_edge_count=0,
+            state=EdgeResultState.BLOCKED,
+            blockers=(EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,),
+        ),
+    )
+
+    assert _edge_readiness_blockers(result) == (
+        WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,
+    )

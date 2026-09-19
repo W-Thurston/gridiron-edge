@@ -1066,6 +1066,7 @@
       "EdgeDiagnosticBlocker": {
         "description": "Machine-readable reasons an edge result is unavailable or incomplete.",
         "enum": [
+          "known_defective_forecast_evidence",
           "no_predictions",
           "no_market_data",
           "market_wrong_scope",

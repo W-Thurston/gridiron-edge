@@ -13,7 +13,19 @@ from pandas import DataFrame
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.loaders import load_current_weekly_product
+from gridiron_edge.evaluation.forecast_evidence_disposition import (
+    ForecastEvidenceNotOperationalError,
+    require_operational_weekly_product,
+)
+from gridiron_edge.evaluation.forecast_evidence_disposition_store import (
+    list_forecast_evidence_dispositions,
+)
 from gridiron_edge.ingest.odds.store import load_current_odds
+from gridiron_edge.market.edge_diagnostics import (
+    EdgeDiagnosticBlocker,
+    EdgeDiagnostics,
+    EdgeResultState,
+)
 from gridiron_edge.market.edge_report import EdgeResult, build_edge_result
 from gridiron_edge.models.game_prediction.weekly_spread_product import (
     WeeklySpreadStatus,
@@ -56,6 +68,33 @@ def _empty_markets() -> DataFrame:
     return DataFrame(columns=list(_EMPTY_MARKET_COLUMNS))
 
 
+def _known_defect_result(
+    *,
+    season: str,
+    week: int,
+) -> EdgeResult:
+    """Return an explicit blocked result for known-defective evidence."""
+    return EdgeResult(
+        rows=DataFrame(),
+        diagnostics=EdgeDiagnostics(
+            season=season,
+            week=week,
+            prediction_game_count=0,
+            market_game_count=0,
+            matched_game_count=0,
+            complete_moneyline_count=0,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=0,
+            calculated_edge_count=0,
+            positive_edge_count=0,
+            filtered_edge_count=0,
+            state=EdgeResultState.BLOCKED,
+            blockers=(EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,),
+        ),
+    )
+
+
 def _load_selected_product(
     *,
     repo: Path,
@@ -73,6 +112,42 @@ def _load_selected_product(
         if "No current weekly product selected" not in str(exc):
             raise
         return _empty_predictions()
+
+
+def _selected_product_is_operational(
+    product: DataFrame,
+    *,
+    season: str,
+    week: int,
+    repo: Path,
+) -> bool:
+    """Return whether the selected product is operationally eligible."""
+    if product.empty:
+        return True
+
+    if "product_id" not in product.columns:
+        raise ValueError("Selected weekly product is missing required column: product_id")
+
+    product_ids = tuple(sorted(product["product_id"].dropna().astype(str).str.strip().unique()))
+    if len(product_ids) != 1 or product_ids == ("",):
+        raise ValueError("Selected weekly product must contain one nonempty product_id.")
+
+    dispositions = list_forecast_evidence_dispositions(
+        season=season,
+        week=week,
+        product_id=product_ids[0],
+        repo=repo,
+    )
+
+    try:
+        require_operational_weekly_product(
+            product,
+            dispositions,
+        )
+    except ForecastEvidenceNotOperationalError:
+        return False
+
+    return True
 
 
 def _finite_unique_uncertainty(
@@ -138,6 +213,16 @@ def build_weekly_edge_result(
         season=season,
         week=week,
     )
+    if not _selected_product_is_operational(
+        product,
+        season=season,
+        week=week,
+        repo=root,
+    ):
+        return _known_defect_result(
+            season=season,
+            week=week,
+        )
     markets = load_current_odds(repo=root)
     market_input = _empty_markets() if markets is None else markets
 

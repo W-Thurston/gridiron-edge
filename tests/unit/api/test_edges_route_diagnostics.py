@@ -88,6 +88,10 @@ def _empty_result(
 @pytest.mark.parametrize(
     ("blocker", "slug"),
     [
+        (
+            EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,
+            "known_defective_forecast_evidence",
+        ),
         (EdgeDiagnosticBlocker.NO_PREDICTIONS, "no_weekly_product"),
         (EdgeDiagnosticBlocker.NO_MARKET_DATA, "no_odds_available"),
         (EdgeDiagnosticBlocker.MARKET_WRONG_SCOPE, "market_scope_mismatch"),

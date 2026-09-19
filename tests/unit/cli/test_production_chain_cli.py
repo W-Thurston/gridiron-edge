@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from gridiron_edge.cli.main import app
@@ -612,7 +613,12 @@ def test_issue_candidates_uses_selected_product_events_and_history(monkeypatch) 
         evaluated,
         rows,
     )
-    product = pd.DataFrame({"product_run_id": ["run-1"]})
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+            "product_run_id": ["run-1"],
+        }
+    )
     events = pd.DataFrame({"event_id": ["forecast-1"]})
     before = datetime(2026, 8, 18, 11, 0, tzinfo=UTC)
     after = datetime(2026, 8, 18, 18, 0, tzinfo=UTC)
@@ -641,6 +647,12 @@ def test_issue_candidates_uses_selected_product_events_and_history(monkeypatch) 
     monkeypatch.setattr(
         "gridiron_edge.market.candidate_issuance.issue_pregame_candidates",
         lambda **kwargs: observed.update(issue_args=kwargs) or issuance,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.evaluation."
+        "forecast_evidence_disposition_store."
+        "list_forecast_evidence_dispositions",
+        lambda **kwargs: observed.update(disposition_scope=kwargs) or (),
     )
 
     result = runner.invoke(
@@ -673,6 +685,9 @@ def test_issue_candidates_uses_selected_product_events_and_history(monkeypatch) 
     assert "TOTAL" in result.stdout
     assert "unavailable       1" in result.stdout
     assert issuance_id in result.stdout
+    assert observed["disposition_scope"]["season"] == "2026-2027"
+    assert observed["disposition_scope"]["week"] == 1
+    assert observed["disposition_scope"]["product_id"] == "product-1"
 
 
 def test_issue_candidates_accepts_no_quotes_visible_by_evaluation_time(monkeypatch) -> None:
@@ -703,7 +718,12 @@ def test_issue_candidates_accepts_no_quotes_visible_by_evaluation_time(monkeypat
         (),  # zero rows
     )
 
-    product = pd.DataFrame({"product_run_id": ["run-1"]})
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+            "product_run_id": ["run-1"],
+        }
+    )
     events = pd.DataFrame({"event_id": ["forecast-1"]})
     quotes = _canonical_quotes([_canonical_quote_row(after, sportsbook="dk")])
     observed: dict[str, object] = {}
@@ -757,7 +777,12 @@ def test_issue_candidates_write_persists_exact_issuance(monkeypatch, tmp_path) -
     stored = tmp_path / "issuance.json"
     monkeypatch.setattr(
         "gridiron_edge.datasets.loaders.load_current_weekly_product",
-        lambda *_args, **_kwargs: pd.DataFrame({"product_run_id": ["run-1"]}),
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {
+                "product_id": ["product-1"],
+                "product_run_id": ["run-1"],
+            }
+        ),
     )
     monkeypatch.setattr(
         "gridiron_edge.evaluation.forecast_store.load_forecast_events",
@@ -823,3 +848,147 @@ def test_evaluate_recommendations_requires_exact_utc_decision_time() -> None:
         ],
     )
     assert result.exit_code == 2
+
+
+def test_issue_candidates_rejects_known_defective_product_before_downstream_loading(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from gridiron_edge.evaluation.forecast_evidence_disposition import (
+        ForecastEvidenceNotOperationalError,
+    )
+
+    evaluated = datetime(2026, 8, 18, 14, 45, tzinfo=UTC)
+    product = pd.DataFrame(
+        {
+            "product_id": ["product-1"],
+            "product_run_id": ["run-1"],
+        }
+    )
+    observed: dict[str, object] = {}
+    disposition = object()
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _bankroll_wiring_settings(tmp_path),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.datasets.loaders.load_current_weekly_product",
+        lambda repo, **kwargs: observed.update(product_scope=(repo, kwargs)) or product,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.evaluation."
+        "forecast_evidence_disposition_store."
+        "list_forecast_evidence_dispositions",
+        lambda **kwargs: observed.update(disposition_scope=kwargs) or (disposition,),
+    )
+
+    def reject_product(
+        supplied_product,
+        supplied_dispositions,
+    ) -> None:
+        observed["operational_product"] = supplied_product
+        observed["operational_dispositions"] = supplied_dispositions
+        raise ForecastEvidenceNotOperationalError("Known-defective forecast evidence: product-1")
+
+    monkeypatch.setattr(
+        "gridiron_edge.evaluation.forecast_evidence_disposition.require_operational_weekly_product",
+        reject_product,
+    )
+
+    def fail_downstream(*_args, **_kwargs):
+        raise AssertionError("Candidate issuance reached downstream evidence loading.")
+
+    monkeypatch.setattr(
+        "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+        fail_downstream,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.ingest.odds.store.load_odds_ledger",
+        fail_downstream,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.ingest.odds.as_known.as_known_at",
+        fail_downstream,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.market.candidate_issuance.issue_pregame_candidates",
+        fail_downstream,
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.market.candidate_issuance_store.write_candidate_issuance",
+        fail_downstream,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "production-chain",
+            "issue-candidates",
+            "--season",
+            "2026-2027",
+            "--week",
+            "1",
+            "--evaluated-at",
+            evaluated.isoformat(),
+            "--write",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "Known-defective forecast evidence" in result.stderr
+
+    assert observed["disposition_scope"] == {
+        "season": "2026-2027",
+        "week": 1,
+        "product_id": "product-1",
+        "repo": tmp_path,
+    }
+    assert observed["operational_product"] is product
+    assert observed["operational_dispositions"] == (disposition,)
+
+
+@pytest.mark.parametrize(
+    "product_ids",
+    [
+        ["product-1", "product-2"],
+        [" "],
+    ],
+)
+def test_issue_candidates_requires_one_product_identity(
+    product_ids: list[str],
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    evaluated = datetime(2026, 8, 18, 14, 45, tzinfo=UTC)
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _bankroll_wiring_settings(tmp_path),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.datasets.loaders.load_current_weekly_product",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {
+                "product_id": product_ids,
+                "product_run_id": ["run-1"] * len(product_ids),
+            }
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "production-chain",
+            "issue-candidates",
+            "--season",
+            "2026-2027",
+            "--week",
+            "1",
+            "--evaluated-at",
+            evaluated.isoformat(),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "one nonempty product_id" in result.stderr

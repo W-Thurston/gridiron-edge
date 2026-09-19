@@ -143,6 +143,10 @@ class Unavailable:
     NO_MODEL_CONTEXT: tuple[str, str] = ("no_model_context", "data")
     NO_ODDS_AVAILABLE: tuple[str, str] = ("no_odds_available", "data")
     NO_WEEKLY_PRODUCT: tuple[str, str] = ("no_weekly_product", "data")
+    KNOWN_DEFECTIVE_FORECAST_EVIDENCE: tuple[str, str] = (
+        "known_defective_forecast_evidence",
+        "data",
+    )
     MARKET_SCOPE_MISMATCH: tuple[str, str] = (
         "market_scope_mismatch",
         "data",

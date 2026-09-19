@@ -223,6 +223,16 @@ def test_blocker_makes_result_not_ready() -> None:
     assert result.blockers == (WeeklyReadinessBlocker.MISSING_MARKET_DATA,)
 
 
+def test_known_defective_evidence_blocks_prediction_only() -> None:
+    result = _readiness(
+        blockers=(WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,),
+    )
+
+    assert not result.ready
+    assert not result.prediction_ready
+    assert result.market_ready
+
+
 def test_partial_prediction_coverage_is_representable() -> None:
     result = _readiness(
         selected_win_prediction_count=15,

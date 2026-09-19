@@ -99,4 +99,21 @@ describe("EdgeResultStatus", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("renders the known-defective forecast blocker", () => {
+    render(
+      <EdgeResultStatus
+        diagnostics={diagnostics({
+          state: "blocked",
+          blockers: ["known_defective_forecast_evidence"],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Forecast evidence is known to be defective and is unavailable for operational use.",
+      ),
+    ).toBeInTheDocument();
+  });
 });

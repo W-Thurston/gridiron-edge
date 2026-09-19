@@ -12,6 +12,9 @@ import pandas as pd
 from pandas import DataFrame
 import pytest
 
+from gridiron_edge.evaluation.forecast_evidence_disposition import (
+    ForecastEvidenceNotOperationalError,
+)
 from gridiron_edge.market.edge_diagnostics import (
     EdgeDiagnosticBlocker,
     EdgeDiagnostics,
@@ -317,3 +320,127 @@ def test_mixed_available_uncertainties_are_rejected(
             week=WEEK,
             repo=tmp_path,
         )
+
+
+def test_known_defective_product_returns_explicit_blocker(
+    tmp_path: Path,
+) -> None:
+    product = _product()
+
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=product,
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.list_forecast_evidence_dispositions",
+            return_value=(object(),),
+        ) as mock_list,
+        patch(
+            "gridiron_edge.market.weekly_edge_service.require_operational_weekly_product",
+            side_effect=ForecastEvidenceNotOperationalError("known defect"),
+        ) as mock_require,
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_odds",
+        ) as mock_markets,
+        patch(
+            "gridiron_edge.market.weekly_edge_service.build_edge_result",
+        ) as mock_build,
+    ):
+        result = build_weekly_edge_result(
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+        )
+
+    assert result.rows.empty
+    assert result.diagnostics.state is EdgeResultState.BLOCKED
+    assert result.diagnostics.blockers == (EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,)
+    assert result.diagnostics.calculated_edge_count == 0
+
+    mock_list.assert_called_once_with(
+        season=SEASON,
+        week=WEEK,
+        product_id="product-1",
+        repo=tmp_path,
+    )
+    mock_require.assert_called_once_with(
+        product,
+        mock_list.return_value,
+    )
+    mock_markets.assert_not_called()
+    mock_build.assert_not_called()
+
+
+def test_undisposed_product_continues_to_edge_calculation(
+    tmp_path: Path,
+) -> None:
+    expected = _empty_result(EdgeDiagnosticBlocker.NO_MARKET_DATA)
+    product = _product()
+
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=product,
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.list_forecast_evidence_dispositions",
+            return_value=(),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.require_operational_weekly_product",
+        ) as mock_require,
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_odds",
+            return_value=_markets(),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.build_edge_result",
+            return_value=expected,
+        ) as mock_build,
+    ):
+        result = build_weekly_edge_result(
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+        )
+
+    assert result is expected
+    mock_require.assert_called_once_with(
+        product,
+        (),
+    )
+    mock_build.assert_called_once()
+
+
+def test_ambiguous_product_dispositions_remain_explicit(
+    tmp_path: Path,
+) -> None:
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=_product(),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.list_forecast_evidence_dispositions",
+            return_value=(object(), object()),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.require_operational_weekly_product",
+            side_effect=ValueError("Multiple forecast-evidence dispositions apply"),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_odds",
+        ) as mock_markets,
+        pytest.raises(
+            ValueError,
+            match="Multiple forecast-evidence dispositions",
+        ),
+    ):
+        build_weekly_edge_result(
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+        )
+
+    mock_markets.assert_not_called()

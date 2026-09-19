@@ -16,6 +16,7 @@ from pandas import DataFrame, Series
 class WeeklyReadinessBlocker(StrEnum):
     """Machine-readable reason a weekly product is not fully ready."""
 
+    KNOWN_DEFECTIVE_FORECAST_EVIDENCE = "known_defective_forecast_evidence"
     MISSING_SCHEDULE = "missing_schedule"
     MISSING_WIN_PREDICTIONS = "missing_win_predictions"
     PARTIAL_WIN_PREDICTION_COVERAGE = "partial_win_prediction_coverage"
@@ -83,6 +84,7 @@ _PREDICTION_PROVENANCE_COLUMNS: Final[tuple[str, ...]] = (
 
 _PREDICTION_BLOCKERS: Final[frozenset[WeeklyReadinessBlocker]] = frozenset(
     {
+        WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,
         WeeklyReadinessBlocker.MISSING_SCHEDULE,
         WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT,
         WeeklyReadinessBlocker.MISSING_WIN_PREDICTIONS,

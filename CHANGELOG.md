@@ -1,5 +1,117 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-19 - Recorded and enforced affected forecast evidence disposition (Prediction Input Integrity Unit 4)
+
+#### Added
+
+- Added a strict schema-1 forecast-evidence disposition contract with one
+  supported known-defect classification for incomplete Elo source history.
+- Added deterministic SHA-256 identity over the complete canonical disposition
+  payload.
+- Added strict validation for schema fields, enum values, UTC timestamps,
+  season and week scope, digests, sorted unique identity collections, selected
+  product membership, and embedded identity.
+- Added authentication of exact affected forecast runs, events, weekly
+  products, derived-spread provenance, Total-evidence absence, and scoped
+  current selection.
+- Added identity-addressed immutable JSON persistence under
+  `data/output/forecast_evidence_dispositions/schema=1/dispositions/`.
+- Added create-only atomic publication, idempotent exact replay, strict loading,
+  canonical-path validation, deterministic listing, and concurrent conflict
+  protection.
+- Added `known_defective_forecast_evidence` to weekly readiness, edge
+  diagnostics, API unavailable metadata, generated OpenAPI, and frontend edge
+  status presentation.
+
+#### Changed
+
+- Weekly readiness now resolves exact dispositions for the selected product and
+  adds the known-defective blocker without replacing independent schedule,
+  prediction, or market blockers.
+- Weekly edge calculation now returns an explicit blocked result with zero rows
+  before market loading or edge calculation when the selected product is known
+  defective.
+- Candidate issuance now rejects an affected selected product before loading
+  forecast events, loading quote history, deriving an as-known quote set,
+  evaluating candidates, or writing an issuance.
+- Manual prediction rendering now rejects an affected selected product before
+  display adaptation or PNG and HTML writes.
+- The edges API now mechanically maps the new edge blocker to stable unavailable
+  metadata.
+- The generated frontend edge-blocker type and exhaustive presentation mapping
+  now include known-defective forecast evidence.
+- Low-level forecast-event and weekly-product loaders remain unchanged for
+  historical audit and postgame evaluation.
+
+#### Operational evidence
+
+- Recorded one immutable disposition at
+  `2026-09-19T18:00:00+00:00`.
+- Disposition identity:
+  `05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb`.
+- Persisted artifact SHA-256:
+  `8529487ed56c5130eba032c2e8d1764b22e95f796b6336a32ac299266746318d`.
+- The disposition covers two affected live logistic Win runs, all 32 affected
+  forecast events, both affected weekly products, and the exact selected
+  affected product.
+- The affected components are Win probability and derived spread.
+- No Total event, run, model, type, or role evidence is classified as affected.
+- The disposition artifact is operationally persisted under the ignored
+  `data/` tree and is intentionally not committed under current repository
+  policy.
+
+#### Validation
+
+- Domain tests prove deterministic identity, strict validation, evidence
+  authentication, applicability, operational rejection, and ambiguity errors.
+- Store tests prove round-trip persistence, strict schema loading, canonical
+  path enforcement, exact replay, concurrent exact replay, and rejection of
+  conflicting concurrent publication without overwrite.
+- Readiness tests prove the blocker makes `ready` and `prediction_ready` false
+  while market readiness remains independently derived.
+- Edge tests prove the affected product returns a distinct known-defect blocked
+  result with zero rows and no market loading or edge calculation.
+- Candidate-issuance tests prove rejection occurs before every downstream read
+  or write.
+- Rendering tests prove rejection occurs before display adaptation and output
+  writes.
+- API and frontend tests prove stable blocker mapping and presentation.
+- Protected real-artifact validation authenticated both runs, all 32 events,
+  both products, and the scoped selection through public loaders and a
+  temporary repository.
+- Protected validation proved strict reload, exact replay, tamper rejection,
+  operational blocking, unrelated-product eligibility, and byte-identical
+  source preservation.
+- The working-repository disposition was then persisted through the same public
+  store boundary.
+- Real `verify-week` output reports
+  `known_defective_forecast_evidence` alongside independent existing blockers.
+- Real weekly edge calculation returns `blocked`, the exact known-defect
+  blocker, and zero rows.
+- Forecast events, both affected product Parquet files, `index.json`, and
+  `current.json` retained their protected SHA-256 identities.
+- Ruff, Pyrefly, the full non-slow unit suite, focused Unit 4 suites, OpenAPI
+  schema consistency, one-shot frontend tests, and the frontend production
+  build pass.
+- An independent read-only review confirmed the complete operational consumer
+  inventory and approved Unit 4 for documentation closure.
+
+#### Scope
+
+This unit records and enforces the known defect in the original immutable 2026
+Week 2 Win probability and derived-spread evidence. It does not generate a
+corrected forecast, create or select a replacement product, persist complete
+prediction-input rows, run corrected model-performance evaluation, add model
+explanations, or change the Games API contract.
+
+The Games API and frontend continue to serialize and display the affected
+selected product without disposition metadata. Postgame closeout continues to
+read that product as immutable historical evidence of what was actually
+selected and predicted. The disposition governs readiness, edge calculation,
+candidate issuance, and manual prediction rendering.
+
+See `DECISIONS.md` D41.
+
 ## 2026-09-18 - Verified Elo lineage before weekly prediction (Prediction Input Integrity Unit 3)
 
 ### Added

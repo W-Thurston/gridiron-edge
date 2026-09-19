@@ -39,6 +39,12 @@ def output_predictions(
     from gridiron_edge.core.console import console, step
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.datasets.loaders import load_current_weekly_product
+    from gridiron_edge.evaluation.forecast_evidence_disposition import (
+        require_operational_weekly_product,
+    )
+    from gridiron_edge.evaluation.forecast_evidence_disposition_store import (
+        list_forecast_evidence_dispositions,
+    )
     from gridiron_edge.viz.predictions import (
         build_weekly_product_display_frame,
         render_predictions_html,
@@ -65,8 +71,32 @@ def output_predictions(
             season=season,
             week=week,
         )
+
+        try:
+            if "product_id" not in product.columns:
+                raise ValueError("Selected weekly product is missing required column: product_id")
+
+            product_ids = tuple(
+                sorted(product["product_id"].dropna().astype(str).str.strip().unique())
+            )
+            if len(product_ids) != 1 or product_ids == ("",):
+                raise ValueError("Selected weekly product must contain one nonempty product_id.")
+
+            product_id = next(iter(product_ids))
+            dispositions = list_forecast_evidence_dispositions(
+                season=season,
+                week=week,
+                product_id=product_id,
+                repo=repo,
+            )
+            require_operational_weekly_product(
+                product,
+                dispositions,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
         df = build_weekly_product_display_frame(product)
-        product_id = str(product["product_id"].iloc[0])
         s.set_detail(f"{len(df)} games · {product_id}")
 
     if "png" in formats:

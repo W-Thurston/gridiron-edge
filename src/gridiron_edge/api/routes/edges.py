@@ -69,6 +69,9 @@ def list_edges(
     )
 
     unavailable = {
+        EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE: (
+            Unavailable.KNOWN_DEFECTIVE_FORECAST_EVIDENCE
+        ),
         EdgeDiagnosticBlocker.NO_PREDICTIONS: Unavailable.NO_WEEKLY_PRODUCT,
         EdgeDiagnosticBlocker.NO_MARKET_DATA: Unavailable.NO_ODDS_AVAILABLE,
         EdgeDiagnosticBlocker.MARKET_WRONG_SCOPE: (Unavailable.MARKET_SCOPE_MISMATCH),

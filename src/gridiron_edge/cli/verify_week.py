@@ -21,6 +21,13 @@ from gridiron_edge.datasets.loaders import (
     load_current_weekly_product,
     load_schedule_upcoming_rich,
 )
+from gridiron_edge.evaluation.forecast_evidence_disposition import (
+    ForecastEvidenceNotOperationalError,
+    require_operational_weekly_product,
+)
+from gridiron_edge.evaluation.forecast_evidence_disposition_store import (
+    list_forecast_evidence_dispositions,
+)
 from gridiron_edge.evaluation.weekly_readiness import (
     WeeklyReadiness,
     WeeklyReadinessBlocker,
@@ -217,6 +224,39 @@ def _selected_product_for_readiness(product: DataFrame) -> DataFrame:
     )
 
 
+def _selected_product_disposition_blockers(
+    product: DataFrame,
+    *,
+    season: str,
+    week: int,
+    repo: Path,
+) -> tuple[WeeklyReadinessBlocker, ...]:
+    """Return governance blockers for one exact selected product."""
+    if "product_id" not in product.columns:
+        raise ValueError("Selected weekly product is missing required column: product_id")
+
+    product_ids = tuple(sorted(product["product_id"].dropna().astype(str).str.strip().unique()))
+    if len(product_ids) != 1 or product_ids == ("",):
+        raise ValueError("Selected weekly product must contain one nonempty product_id.")
+
+    dispositions = list_forecast_evidence_dispositions(
+        season=season,
+        week=week,
+        product_id=product_ids[0],
+        repo=repo,
+    )
+
+    try:
+        require_operational_weekly_product(
+            product,
+            dispositions,
+        )
+    except ForecastEvidenceNotOperationalError:
+        return (WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,)
+
+    return ()
+
+
 def _load_edge_result(
     *,
     season: str,
@@ -268,6 +308,9 @@ def _edge_readiness_blockers(
     from gridiron_edge.market.edge_diagnostics import EdgeDiagnosticBlocker
 
     mapping = {
+        EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE: (
+            WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE
+        ),
         EdgeDiagnosticBlocker.NO_PREDICTIONS: (WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT),
         EdgeDiagnosticBlocker.NO_MARKET_DATA: (WeeklyReadinessBlocker.MISSING_MARKET_DATA),
         EdgeDiagnosticBlocker.MARKET_WRONG_SCOPE: (WeeklyReadinessBlocker.MARKET_SCOPE_MISMATCH),
@@ -353,6 +396,12 @@ def load_weekly_readiness(
         selection_blockers = (WeeklyReadinessBlocker.MISSING_WEEKLY_PRODUCT,)
     else:
         predictions = _selected_product_for_readiness(product)
+        selection_blockers = _selected_product_disposition_blockers(
+            product,
+            season=season,
+            week=week,
+            repo=resolved_repo,
+        )
 
     edge_result = _load_edge_result(
         season=season,

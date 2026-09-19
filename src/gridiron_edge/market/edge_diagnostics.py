@@ -17,6 +17,7 @@ from pandas import DataFrame, Series
 class EdgeDiagnosticBlocker(StrEnum):
     """Machine-readable reasons an edge result is unavailable or incomplete."""
 
+    KNOWN_DEFECTIVE_FORECAST_EVIDENCE = "known_defective_forecast_evidence"
     NO_PREDICTIONS = "no_predictions"
     NO_MARKET_DATA = "no_market_data"
     MARKET_WRONG_SCOPE = "market_wrong_scope"

@@ -257,3 +257,14 @@ def test_provenance_and_diagnostics_serialize_to_json() -> None:
 def test_equal_values_produce_equal_contracts() -> None:
     assert _diagnostics() == _diagnostics()
     assert EdgeProvenance() == EdgeProvenance()
+
+
+def test_known_defective_forecast_evidence_is_a_distinct_blocker() -> None:
+    assert (
+        EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE.value
+        == "known_defective_forecast_evidence"
+    )
+    assert (
+        EdgeDiagnosticBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE
+        is not EdgeDiagnosticBlocker.NO_PREDICTIONS
+    )

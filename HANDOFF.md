@@ -153,9 +153,9 @@ used an Elo state rebuilt from only the 16 completed Week 1 games, producing
 must not be edited, relabeled, regenerated in place, or treated as validated
 model-quality evidence.
 
-The history-preserving games refresh, complete-history Elo reconstruction, and
-pre-execution Elo-lineage boundaries are corrected. Affected-product
-disposition, immutable prediction-input evidence, corrected forecast
+The history-preserving games refresh, complete-history Elo reconstruction,
+pre-execution Elo-lineage boundary, and affected-evidence disposition are
+complete. Immutable prediction-input evidence, corrected operational forecast
 evaluation, and model explanation remain separate follow-on work owned by
 `ROADMAP.md`.
 
@@ -184,6 +184,7 @@ data/output/recommendation_policies/schema=1/{policy_id}.json
 data/output/recommended_bet_results/schema=1/evaluations/{evaluation_id}.json
 data/output/recommended_bet_results/schema=1/results/{result_id}.json
 data/output/production_chain_preflight/schema=1/assessments/{preflight_id}.json
+data/output/forecast_evidence_dispositions/schema=1/dispositions/{disposition_id}.json
 ```
 
 The repository remains intentionally file-backed. Revisit database storage only when multi-user concurrency, transactional integrity, or query complexity requires it.
@@ -274,6 +275,65 @@ A product contains schedule-complete rows with independent Win, Spread, Total, a
 Writing a product does not select it. `select_current_weekly_product()` explicitly selects an indexed product for one season and week. `load_current_weekly_product()` loads only that selection. Missing selection is an explicit error; consumers must not infer current state from file order or timestamps.
 
 Spread derives from the exact selected Win event and its persisted calibration. Total values and uncertainty use the independently selected Total event and exact artifact metadata. Projected scores exist only when required Spread and Total point estimates are usable.
+
+### Forecast-Evidence Dispositions
+
+Known defective immutable forecast evidence is governed by external,
+identity-addressed dispositions rather than by rewriting forecast events,
+weekly products, product indexes, or current selections.
+
+Schema-1 dispositions are stored under:
+
+```text
+data/output/forecast_evidence_dispositions/schema=1/dispositions/
+```
+
+Each JSON artifact has a deterministic SHA-256 identity over its complete canonical domain payload. The store has no mutable current pointer or index. Exact replay is idempotent. Conflicting identity reuse is rejected, including concurrent publication.
+
+The recorded 2026 Week 2 disposition is:
+```text
+disposition_id:
+05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb
+
+recorded_at:
+2026-09-19T18:00:00+00:00
+
+artifact SHA-256:
+8529487ed56c5130eba032c2e8d1764b22e95f796b6336a32ac299266746318d
+
+status:
+known_defect
+
+reason:
+incomplete_elo_source_history
+
+publication_effect:
+not_prediction_ready
+
+replacement_policy:
+preserve_original_no_automatic_reselection
+```
+
+The disposition references:
+
+two affected live logistic Win runs;
+all 32 affected forecast events;
+both affected weekly products;
+the exact selected affected product;
+Win probability and derived spread as the affected components.
+
+It does not classify Total evidence as affected.
+
+For an affected selected product:
+
+weekly readiness reports known_defective_forecast_evidence;
+prediction_ready is false;
+market readiness remains independently derived;
+weekly edge calculation returns a blocked result with zero rows;
+candidate issuance stops before forecast-event or quote-history loading;
+manual prediction rendering stops before display adaptation or output writes.
+
+Low-level forecast-event and weekly-product loading remains available for audit and historical evaluation. The disposition artifact lives under the ignored data/ tree and is operational evidence rather than a normally committed Git artifact.
 
 ## Pregame Workflow
 
@@ -963,6 +1023,33 @@ Rendering consumes the selected product and must tolerate absent optional market
 
 Prediction-readiness blockers remove stale forecast PNG and HTML outputs. Blocked or empty edge results remove stale edge CSV output. The explicitly selected weekly product remains the operational authority.
 
+#### Selected forecast evidence is known defective
+
+Run:
+
+```
+text uv run gridiron verify-week --season 2026-2027 --week 2
+```
+
+A selected product governed by a known-defect disposition reports known_defective_forecast_evidence and is not prediction-ready.
+
+Inspect exact dispositions under:
+
+```text
+data/output/forecast_evidence_dispositions/schema=1/dispositions/
+```
+
+Do not:
+
+edit or delete the original forecast events;
+modify either affected weekly product;
+change index.json or current.json to hide the incident;
+remove a valid disposition to restore operational eligibility;
+automatically select a corrected or retrospective product;
+issue candidates or render outputs by bypassing the operational guard.
+
+Any corrected forecast must be created as new immutable evidence. A retrospective result must remain explicitly retrospective unless it satisfies the original pregame evidence boundary.
+
 ## Quality Gates
 
 Preferred Python boundary:
@@ -997,16 +1084,28 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 - Some API endpoints may still require batch-artifact refactors to fully satisfy the serialization-boundary design; track verified cases in `ROADMAP.md`.
 - The project has never been live in production. Development-era schemas and artifacts do not require backward compatibility unless a current contract explicitly says otherwise.
 
-### Week 2 Win evidence and Elo continuation
+#### Week 2 known-defect disposition and intentionally unchanged consumers
 
-The immutable 2026 Week 2 Win products remain original historical evidence.
-Their logistic probabilities used an Elo state rebuilt from only the 16
-completed Week 1 games, producing ratings of 1490 or 1510 across the complete
-Week 2 slate. Do not edit or relabel those events and products, and do not treat
-them as validated model-quality evidence.
+The immutable 2026 Week 2 live logistic Win evidence is governed by disposition
+`05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb`.
 
-Recurring games refresh now preserves historical data, Elo reconstruction
-requires complete contiguous history, and weekly model execution requires
-verified Elo lineage. Affected-product disposition, immutable prediction-input
-evidence, corrected forecast evaluation, and model explanation remain separate
-corrective work owned by `ROADMAP.md`.
+The affected products remain unchanged historical evidence. Their Win
+probabilities and derived spreads must not be treated as validated model-quality
+evidence. Operational readiness, weekly edge calculation, candidate issuance,
+and manual rendering reject the selected affected product.
+
+The Games API and its frontend consumers, including Games List, Game Detail,
+and Featured Matchups, continue to display the affected selected product's Win
+probability and derived spread without disposition metadata. This behavior was
+intentionally outside Unit 4. Postgame live-forecast closeout also continues to
+read the affected product as immutable historical evidence of what was actually
+selected and predicted.
+
+The disposition therefore governs the four named forward operational paths. It
+does not universally suppress historical or API serialization access.
+
+Recurring games refresh now preserves history, Elo reconstruction requires
+complete contiguous history, weekly prediction requires verified Elo lineage,
+and affected original evidence has an explicit immutable disposition.
+Immutable prediction-input evidence, corrected operational evaluation, and
+model explanation remain future work.
