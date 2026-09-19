@@ -126,6 +126,24 @@ before the existing Elo artifact is replaced. There is no incremental Elo
 fitting mode and no separate all-years Elo option. `run-data-pipeline
 --all-years` controls source and modeling scope only.
 
+Every successful Elo reconstruction also writes
+`data/cleaned/NFL_Team_Elo.metadata.json`. The sidecar records exact persisted
+games and Elo identities, including repository-relative paths, SHA-256 byte
+digests, row counts, ordered columns, season scope, and latest week.
+
+Weekly prediction verifies this evidence before policy resolution and model
+execution. Missing or stale lineage makes every current trained game model
+unavailable because all current Win and Total feature contracts consume Elo.
+Malformed or unsupported lineage fails explicitly.
+
+Do not hand-edit or copy the Elo CSV independently from its lineage sidecar.
+After any intentional games or Elo replacement, run:
+
+```bash
+uv run gridiron ratings elo fit
+```
+A newly written Elo file with missing or stale lineage remains fail-closed and cannot publish weekly forecast events.
+
 During the offseason, a completed-game fetch may contain no games for the upcoming season. `clean-games` refuses to overwrite populated historical data with an empty result. This protected state is expected.
 
 The explicitly selected immutable 2026 Week 2 Win products remain original
@@ -135,10 +153,11 @@ used an Elo state rebuilt from only the 16 completed Week 1 games, producing
 must not be edited, relabeled, regenerated in place, or treated as validated
 model-quality evidence.
 
-The history-preserving games refresh and complete-history Elo reconstruction
-boundaries are corrected. Semantic readiness, affected-product disposition,
-immutable prediction-input evidence, corrected forecast evaluation, and model
-explanation remain separate follow-on work owned by `ROADMAP.md`.
+The history-preserving games refresh, complete-history Elo reconstruction, and
+pre-execution Elo-lineage boundaries are corrected. Affected-product
+disposition, immutable prediction-input evidence, corrected forecast
+evaluation, and model explanation remain separate follow-on work owned by
+`ROADMAP.md`.
 
 ## Dataset and Artifact Registry
 
@@ -147,6 +166,7 @@ Canonical dataset paths are owned by `src/gridiron_edge/datasets/registry.py`. D
 Important artifacts:
 
 ```text
+data/cleaned/NFL_Team_Elo.metadata.json
 data/output/champions/champions.json
 data/output/predictions/forecast_events.parquet
 data/output/weekly_products/index.json
@@ -985,8 +1005,8 @@ completed Week 1 games, producing ratings of 1490 or 1510 across the complete
 Week 2 slate. Do not edit or relabel those events and products, and do not treat
 them as validated model-quality evidence.
 
-Recurring games refresh now preserves historical data, and Elo reconstruction
-now requires complete contiguous history. Semantic readiness,
-affected-product disposition, immutable prediction-input evidence, corrected
-forecast evaluation, and model explanation remain separate corrective work
-owned by `ROADMAP.md`.
+Recurring games refresh now preserves historical data, Elo reconstruction
+requires complete contiguous history, and weekly model execution requires
+verified Elo lineage. Affected-product disposition, immutable prediction-input
+evidence, corrected forecast evaluation, and model explanation remain separate
+corrective work owned by `ROADMAP.md`.

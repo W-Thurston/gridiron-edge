@@ -17,6 +17,9 @@ from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction.model import GamesModel
 from gridiron_edge.models.game_prediction.prediction_policy import PredictionAvailability
 from gridiron_edge.models.registry import ModelRegistry
+from gridiron_edge.ratings.elo.lineage import (
+    verify_current_elo_lineage,
+)
 from gridiron_edge.ratings.elo.predict import _build_elo_schedule, _validate_elo_identity
 
 _MODEL_REQUIREMENTS: tuple[tuple[str, str, str], ...] = (
@@ -26,6 +29,21 @@ _MODEL_REQUIREMENTS: tuple[tuple[str, str, str], ...] = (
     ("total", "random_forest", "regression"),
     ("total", "xgboost", "regression"),
 )
+
+_ELO_FEATURE_COLUMNS: frozenset[str] = frozenset(
+    {
+        "AWAY_ELO",
+        "HOME_ELO",
+        "ELO_DIFF",
+    }
+)
+
+
+def _requires_verified_elo(
+    feature_names: list[str],
+) -> bool:
+    """Return whether one exact feature contract consumes Elo."""
+    return bool(_ELO_FEATURE_COLUMNS.intersection(feature_names))
 
 
 def _scope_schedule(
@@ -74,8 +92,15 @@ def _scope_schedule(
     return scoped
 
 
-def _inspect_elo(canonical_schedule: DataFrame, *, repo: Path) -> bool:
-    """Return whether every scoped game has exact-week Away and Home Elo."""
+def _inspect_elo(
+    canonical_schedule: DataFrame,
+    *,
+    repo: Path,
+    lineage_available: bool,
+) -> bool:
+    """Return whether verified Elo covers every scoped game exactly."""
+    if not lineage_available:
+        return False
     try:
         elo = loaders.load_elo_state(repo)
     except FileNotFoundError:
@@ -110,6 +135,7 @@ def _inspect_trained_model(
     model_type: str,
     expected_task: str,
     repo: Path,
+    lineage_available: bool,
 ) -> bool:
     """Inspect one exact persisted game model without loading its estimator."""
     store = ArtifactStore(repo)
@@ -131,6 +157,8 @@ def _inspect_trained_model(
     registry_key = f"{model_name}_{model_type}"
     model = cast(GamesModel, ModelRegistry.get(registry_key)())
     feature_set = model.prediction_feature_set()
+    if _requires_verified_elo(feature_set.feature_names) and not lineage_available:
+        return False
     if metadata.feature_columns != feature_set.feature_names:
         return False
 
@@ -154,6 +182,9 @@ def inspect_prediction_availability(
     """Inspect exact-model input availability for one complete weekly schedule."""
     scoped = _scope_schedule(schedule, season=season, week=week)
     canonical = _build_elo_schedule(scoped.copy())
+    lineage_available = verify_current_elo_lineage(
+        repo=repo,
+    )
     datasets = DatasetAccessor(repo=repo)
     enriched = run_features(
         df=canonical.copy(),
@@ -169,12 +200,17 @@ def inspect_prediction_availability(
             model_type=model_type,
             expected_task=task,
             repo=repo,
+            lineage_available=lineage_available,
         )
 
     return PredictionAvailability(
         season=season,
         week=week,
-        elo_available=_inspect_elo(canonical, repo=repo),
+        elo_available=_inspect_elo(
+            canonical,
+            repo=repo,
+            lineage_available=lineage_available,
+        ),
         win_logistic_features_available=availability[("win_prob", "logistic")],
         win_random_forest_features_available=availability[("win_prob", "random_forest")],
         win_xgboost_features_available=availability[("win_prob", "xgboost")],

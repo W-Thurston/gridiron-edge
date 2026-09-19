@@ -54,9 +54,40 @@ def _availability() -> PredictionAvailability:
     )
 
 
+def _unavailable_availability() -> PredictionAvailability:
+    """Create availability with no eligible prediction family."""
+    return PredictionAvailability(
+        season=SEASON,
+        week=WEEK,
+        elo_available=False,
+        win_logistic_features_available=False,
+        win_random_forest_features_available=False,
+        win_xgboost_features_available=False,
+        total_random_forest_features_available=False,
+        total_xgboost_features_available=False,
+    )
+
+
 def _policy():
     return resolve_prediction_policy(
         _availability(),
+        win_champion=ModelProvenance(
+            model_name="win_prob",
+            model_type="logistic",
+            source=PredictionModelSource.CHAMPION,
+        ),
+        total_champion=ModelProvenance(
+            model_name="total",
+            model_type="random_forest",
+            source=PredictionModelSource.CHAMPION,
+        ),
+    )
+
+
+def _unavailable_policy():
+    """Resolve a policy whose Elo-dependent families are unavailable."""
+    return resolve_prediction_policy(
+        _unavailable_availability(),
         win_champion=ModelProvenance(
             model_name="win_prob",
             model_type="logistic",
@@ -179,3 +210,56 @@ def test_rejects_partial_selected_family_before_return(tmp_path: Path) -> None:
             run_id="run-1",
             generated_at=GENERATED_AT,
         )
+
+
+def test_unavailable_lineage_blocks_models_before_execution(
+    tmp_path: Path,
+) -> None:
+    unavailable = _unavailable_availability()
+    policy = _unavailable_policy()
+
+    with (
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.inspect_prediction_availability",
+            return_value=unavailable,
+        ) as inspect_availability,
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.load_prediction_policy",
+            return_value=policy,
+        ) as load_policy,
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.ModelRegistry.get",
+        ) as registry_get,
+        pytest.raises(
+            ValueError,
+            match=("Prediction policy selected no available Win or Total model"),
+        ),
+    ):
+        execute_weekly_prediction_policy(
+            _schedule(),
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+            run_id="blocked-run",
+            generated_at=GENERATED_AT,
+        )
+
+    inspect_availability.assert_called_once()
+
+    availability_args, availability_kwargs = inspect_availability.call_args
+    pd.testing.assert_frame_equal(
+        availability_args[0],
+        _schedule(),
+    )
+    assert availability_kwargs == {
+        "season": SEASON,
+        "week": WEEK,
+        "repo": tmp_path,
+    }
+    load_policy.assert_called_once_with(
+        unavailable,
+        repo=tmp_path,
+        win_override=None,
+        total_override=None,
+    )
+    registry_get.assert_not_called()

@@ -7,6 +7,180 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+## D40 - Weekly prediction requires verified Elo lineage
+
+**Date:** 2026-09-18
+
+### Decision
+
+Every successful public Elo reconstruction persists strict schema-1 lineage
+identifying the exact canonical games source and the exact persisted Elo output.
+
+The lineage sidecar records, for both artifacts:
+
+- one safe repository-relative path;
+- the SHA-256 digest of the exact persisted file bytes;
+- the row count;
+- the ordered columns;
+- the first and latest represented seasons;
+- the latest represented week.
+
+The sidecar also records one timezone-aware generation timestamp.
+
+Weekly prediction availability verifies the current games and Elo artifacts
+against this lineage before policy resolution and model execution. Elo is
+available only when:
+
+- the lineage artifact exists and is valid;
+- the current games artifact matches its recorded identity;
+- the current Elo artifact matches its recorded identity;
+- every requested game has exact-week Away and Home Elo state.
+
+Every trained game model whose exact prediction feature contract consumes
+`AWAY_ELO`, `HOME_ELO`, or `ELO_DIFF` requires verified Elo lineage. Dependency
+is derived from each registered model's actual prediction feature contract, not
+from model names.
+
+All five current trained game models require all three Elo fields:
+
+- `win_prob_logistic`
+- `win_prob_random_forest`
+- `win_prob_xgboost`
+- `total_random_forest`
+- `total_xgboost`
+
+Missing lineage, a missing referenced artifact, or well-formed but stale lineage
+is semantic unavailability. Malformed JSON, unsupported schema versions, unsafe
+paths, malformed digests, invalid timestamps, invalid field types, and invalid
+counts remain explicit errors.
+
+### Context
+
+Unit 2 made Elo reconstruction independently validate complete canonical game
+history, but the persisted Elo CSV did not identify the exact games artifact
+from which it had been reconstructed.
+
+Weekly availability previously checked only Elo-file presence, required columns,
+unique team-season-week identity, and exact-week schedule coverage. A
+structurally complete Elo file could therefore remain eligible after the games
+artifact changed, after the Elo CSV was modified, or when no durable
+reconstruction evidence existed.
+
+The selected-product readiness stage could not own this protection because it
+runs after model execution, forecast-event persistence, and weekly-product
+composition. The existing `inspect_prediction_availability()` boundary runs
+before policy resolution and model execution and therefore owns semantic Elo
+eligibility.
+
+Protected validation reconstructed Elo from 7,292 canonical completed games and
+persisted lineage for:
+
+- games from `1999-2000` through `2026-2027`, latest completed week 1;
+- 19,006 Elo rows from `1999-2000` through `2026-2027`, latest state week 2.
+
+The exact protected digests were:
+
+- games:
+  `32c23ed2c75895f9e1466893020ed41ac4c261fe4c2cffb5cb372976c97a6efc`
+- Elo:
+  `7818da246ca5c248f4cdad2341cf0f6cbd4753f6843357093821e2ab4e5fa861`
+
+Valid lineage made Elo and all five current trained model contracts available
+for the complete 16-game 2026 Week 2 schedule. Changing one games value,
+changing one Elo value, or removing the sidecar made every current model family
+unavailable. Malformed lineage raised explicitly.
+
+Weekly execution stopped after inspecting the five registered feature contracts
+and before model prediction. No blocked forecast events were returned or
+persisted.
+
+### Consequences
+
+- `fit_elo()` writes Elo lineage after successfully writing the reconstructed
+  Elo CSV.
+- File identity is calculated from exact persisted bytes, not from a separately
+  serialized DataFrame.
+- The sidecar is stored as
+  `data/cleaned/NFL_Team_Elo.metadata.json`.
+- The sidecar location is derived from the registered Elo artifact's parent
+  directory.
+- The sidecar is intentionally not registered as an independent dataset.
+- No `ratings.elo` package-level export is required because fitting and
+  availability import the lineage boundary directly.
+- Lineage paths must be repository-contained relative paths.
+- Strict loading rejects missing and unexpected schema fields.
+- Missing lineage is an unavailable operational state, not valid evidence.
+- Stale content is unavailable even when the sidecar itself is well formed.
+- Malformed or unsupported evidence is not disguised as ordinary
+  unavailability.
+- Verified lineage does not replace exact-week Away and Home Elo coverage.
+- All current trained Win and Total models become unavailable when Elo lineage
+  is missing or stale.
+- A future model without an Elo dependency remains independently eligible when
+  its own requirements are complete.
+- Model registry access during availability retrieves declared feature
+  contracts. It does not execute prediction or load fitted estimators.
+- Policy resolution occurs only after semantic availability inspection.
+- Missing or stale lineage prevents model prediction and forecast-event
+  persistence.
+- If Elo writing succeeds but lineage construction or writing fails, the state
+  remains fail-closed. The new Elo bytes cannot match an older lineage digest.
+- No general transaction or atomic dataset framework is introduced.
+- The affected immutable 2026 Week 2 events and products remain unchanged.
+- Affected-product disposition, complete prediction-input evidence, corrected
+  evaluation, and explanation evidence remain separate corrective units.
+
+### Alternatives considered and rejected
+
+1. **Rely on structural Elo coverage alone.**
+   Rejected because structurally complete state does not prove which games
+   history produced it.
+
+2. **Verify only the games source.**
+   Rejected because the current Elo CSV could be modified or replaced after
+   reconstruction.
+
+3. **Use DataFrame reserialization for identity.**
+   Rejected because the requirement is to authenticate exact persisted
+   artifacts, including their concrete byte representation.
+
+4. **Hardcode current model names as Elo-dependent.**
+   Rejected because eligibility must follow the model's actual prediction
+   feature contract.
+
+5. **Add another weekly-readiness stage.**
+   Rejected because a post-execution stage cannot prevent invalid forecast
+   evidence from being written.
+
+6. **Treat malformed lineage as ordinary unavailability.**
+   Rejected because corrupt evidence is materially different from absent or
+   stale evidence and requires explicit correction.
+
+7. **Register the sidecar as an independent canonical dataset.**
+   Rejected because its path and lifecycle are owned directly by the registered
+   Elo artifact.
+
+8. **Introduce a multi-file transaction framework.**
+   Rejected as unnecessary for publication safety. Any incomplete Elo-lineage
+   pair is unavailable by construction.
+
+### References
+
+- `src/gridiron_edge/ratings/elo/lineage.py`
+- `src/gridiron_edge/ratings/elo/fit.py`
+- `src/gridiron_edge/models/game_prediction/availability.py`
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+- `src/gridiron_edge/cli/weekly_predict.py`
+- `tests/unit/ratings/test_elo_lineage.py`
+- `tests/integration/test_elo_fit.py`
+- `tests/unit/models/game_prediction/test_availability.py`
+- `tests/unit/models/game_prediction/test_weekly_execution.py`
+- `tests/unit/cli/test_weekly_predict.py`
+- `ROADMAP.md`
+- `PLAN.md`
+
+---
+
 ## D39 - Elo state is reconstructed from validated complete history
 
 **Date:** 2026-09-18

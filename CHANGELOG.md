@@ -1,5 +1,90 @@
 # Gridiron Edge - Changelog
 
+## 2026-09-18 - Verified Elo lineage before weekly prediction (Prediction Input Integrity Unit 3)
+
+### Added
+
+- Added strict schema-1 Elo lineage at
+  `data/cleaned/NFL_Team_Elo.metadata.json`.
+- Lineage records the exact repository-relative path, persisted-byte SHA-256
+  digest, row count, ordered columns, season scope, and latest week for the
+  canonical games source and reconstructed Elo output.
+- Added strict serialization and loading rules for schema fields, timestamps,
+  digests, counts, columns, season labels, and repository-contained paths.
+- Added current-artifact verification for valid, missing, stale, malformed, and
+  unsupported lineage states.
+
+### Changed
+
+- Every successful `fit_elo()` execution now writes lineage after persisting the
+  reconstructed Elo CSV.
+- Weekly prediction availability now authenticates current games and Elo
+  artifacts before policy resolution and model execution.
+- Elo-only prediction requires both verified lineage and exact-week Away and
+  Home Elo coverage.
+- Trained-model lineage requirements are derived from each registered model's
+  exact prediction feature contract.
+- All five current trained game models are confirmed to require `AWAY_ELO`,
+  `HOME_ELO`, and `ELO_DIFF`.
+- Missing or stale lineage makes every current trained Win and Total model
+  unavailable.
+- Malformed or unsupported lineage remains an explicit error.
+- A future model without an Elo dependency remains independently eligible when
+  its own required inputs are complete.
+
+### Validation
+
+- Unit coverage proves exact-byte digest calculation, deterministic lineage
+  serialization, strict schema loading, safe path resolution, and explicit
+  type and timestamp validation.
+- Unit coverage proves that missing lineage and missing referenced artifacts
+  are unavailable.
+- Unit coverage proves that changed games content, changed Elo content, changed
+  row counts, changed columns, and changed season scope invalidate lineage.
+- Unit coverage proves malformed JSON, unsupported schemas, malformed digests,
+  invalid timestamps, unsafe paths, invalid counts, and unexpected fields raise
+  explicitly.
+- Integration coverage proves successful public Elo reconstruction writes
+  matching lineage and repeated reconstruction preserves source and output
+  content identities.
+- Real-registry coverage proves all five current trained game-model feature
+  contracts directly require `AWAY_ELO`, `HOME_ELO`, and `ELO_DIFF`.
+- Availability coverage proves verified lineage does not override missing
+  exact-week Elo coverage and that a synthetic non-Elo model contract remains
+  independently eligible.
+- Weekly-execution coverage proves unavailable families stop before model
+  registry execution lookup.
+- Weekly CLI coverage proves unavailable and malformed lineage write no forecast
+  events and cache no forecast-run identity.
+- Ruff, Pyrefly, and the full non-slow unit test suite pass.
+- Protected validation wrote and strictly loaded schema-1 lineage in a temporary
+  repository.
+- Protected lineage identified 7,292 canonical games from `1999-2000` through
+  `2026-2027`, latest completed week 1, with SHA-256 digest
+  `32c23ed2c75895f9e1466893020ed41ac4c261fe4c2cffb5cb372976c97a6efc`.
+- Protected lineage identified 19,006 Elo rows from `1999-2000` through
+  `2026-2027`, latest state week 2, with SHA-256 digest
+  `7818da246ca5c248f4cdad2341cf0f6cbd4753f6843357093821e2ab4e5fa861`.
+- Valid lineage made Elo and all five current trained model contracts available
+  for the complete 16-game 2026 Week 2 schedule.
+- Changing one games value, changing one Elo value, or removing lineage made all
+  six availability facts false.
+- Malformed lineage raised explicitly.
+- Blocked weekly execution stopped after model-contract inspection and before
+  model prediction.
+- Working games, Elo, schedule, model, champion, forecast, and weekly-product
+  artifacts remained read-only.
+- Selection, market, edge, API, and frontend artifacts were not touched.
+
+### Scope
+
+This unit authenticates persisted Elo lineage before weekly model execution. It
+does not change affected Week 2 artifacts, generate or select retrospective
+forecasts, persist complete prediction inputs, evaluate corrected predictions,
+alter API or frontend contracts, or add model explanations.
+
+See `DECISIONS.md` D40.
+
 ## 2026-09-18 - Validated complete-history Elo reconstruction (Prediction Input Integrity Unit 2)
 
 ### Fixed

@@ -58,17 +58,19 @@ A read-only inspection completed on September 18, 2026 confirmed that both immut
 
 Corrective work proceeds as separate bounded units:
 
-1. **Preserve games history during weekly refresh. Completed September 18,
-   2026.** Recurring refresh now uses the history-preserving nflverse boundary,
+1. **Preserve games history during weekly refresh. Completed September 18, 2026.**
+  Recurring refresh now uses the history-preserving nflverse boundary,
    rejects empty selected-season responses, and preserves unrequested seasons.
-2. **Validate and rebuild complete Elo history. Completed September 18,
-   2026.** Elo fitting now has one deterministic reconstruction contract,
+2. **Validate and rebuild complete Elo history. Completed September 18, 2026.**
+  Elo fitting now has one deterministic reconstruction contract,
    validates contiguous history from 1999, rejects partial-history resets, and
    preserves the predecessor artifact when validation or simulation fails.
-3. **Add semantic weekly readiness.** Validate explicit source lineage,
-   historical coverage, latest completed scope, and predecessor-state
-   continuity before forecast publication. Do not use heuristic
-   rating-distribution or variance thresholds.
+3. **Require verified Elo lineage before weekly prediction. Completed September 18, 2026.**
+  Every successful Elo reconstruction now records exact
+   games and Elo artifact identities. Weekly availability authenticates both
+   artifacts before policy resolution, blocks every current Elo-dependent model
+   when lineage is missing or stale, and fails explicitly for malformed
+   evidence before forecast persistence.
 4. **Resolve affected forecast and product status.** Preserve original immutable Week 2 evidence with a known-defect disposition. Any corrected result must be explicitly classified as retrospective unless it satisfies the original pregame evidence boundary. Do not edit old events or products in place, and do not automatically reselect a retrospective product.
 5. **Persist immutable prediction-input evidence.** Link each forecast event to the exact ordered feature row, feature-schema identity, source-artifact hashes, model and scaler identities, optional calibrator identity, and generation timestamp.
 6. **Add persisted logistic explanation evidence.** After corrected and reproducible forecasts exist, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP for the logistic champion. Explanations must reconstruct the persisted model output and remain separate from API-time computation.

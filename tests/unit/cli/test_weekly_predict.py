@@ -662,3 +662,110 @@ def test_canonicalization_preserves_missing_elo_values() -> None:
     assert pd.isna(missing["home_elo"])
     assert pd.isna(missing["away_win_prob"])
     assert pd.isna(missing["home_win_prob"])
+
+
+def test_predict_stage_writes_no_events_when_lineage_blocks_execution(
+    tmp_path: Path,
+) -> None:
+    schedule = pd.DataFrame(
+        {
+            "season": ["2026-2027"],
+            "week": [2],
+            "game_id": ["2026_02_A_B"],
+            "game_day_of_week": ["Sunday"],
+            "game_date": ["2026-09-17"],
+            "game_time": ["20:15"],
+            "away_team": ["Away Team"],
+            "home_team": ["Home Team"],
+            "neutral_site": [False],
+        }
+    )
+    ctx = {
+        "season": "2026-2027",
+        "week": 2,
+    }
+
+    class Settings:
+        repo_root = tmp_path
+
+    with (
+        patch(
+            "gridiron_edge.cli.weekly_predict.get_settings",
+            return_value=Settings(),
+        ),
+        patch(
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+            return_value=schedule,
+        ) as load_schedule,
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution."
+            "execute_weekly_prediction_policy",
+            side_effect=ValueError("Prediction policy selected no available Win or Total model."),
+        ) as execute_policy,
+        patch(
+            "gridiron_edge.cli.weekly_predict.write_forecast_events",
+        ) as write_events,
+    ):
+        result = _stage_predict_week(ctx)
+
+    assert not result.success
+    assert result.detail == ("Prediction policy selected no available Win or Total model.")
+
+    load_schedule.assert_called_once_with(tmp_path)
+    execute_policy.assert_called_once()
+    write_events.assert_not_called()
+
+    assert "prediction_policy" not in ctx
+    assert "predictions_df" not in ctx
+    assert "forecast_run_id" not in ctx
+    assert "forecast_generated_at" not in ctx
+
+
+def test_predict_stage_writes_no_events_for_malformed_lineage(
+    tmp_path: Path,
+) -> None:
+    schedule = pd.DataFrame(
+        {
+            "season": ["2026-2027"],
+            "week": [2],
+            "game_id": ["2026_02_A_B"],
+            "game_day_of_week": ["Sunday"],
+            "game_date": ["2026-09-17"],
+            "game_time": ["20:15"],
+            "away_team": ["Away Team"],
+            "home_team": ["Home Team"],
+            "neutral_site": [False],
+        }
+    )
+    ctx = {
+        "season": "2026-2027",
+        "week": 2,
+    }
+
+    class Settings:
+        repo_root = tmp_path
+
+    with (
+        patch(
+            "gridiron_edge.cli.weekly_predict.get_settings",
+            return_value=Settings(),
+        ),
+        patch(
+            "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
+            return_value=schedule,
+        ),
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution."
+            "execute_weekly_prediction_policy",
+            side_effect=ValueError("Unsupported Elo lineage schema_version: 999."),
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict.write_forecast_events",
+        ) as write_events,
+    ):
+        result = _stage_predict_week(ctx)
+
+    assert not result.success
+    assert result.detail == ("Unsupported Elo lineage schema_version: 999.")
+    write_events.assert_not_called()
+    assert "forecast_run_id" not in ctx

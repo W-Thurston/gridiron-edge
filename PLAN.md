@@ -177,91 +177,64 @@ should read this section before planning or modifying the repository.
 
 ### Completed
 
-Weekly Prediction Input Integrity Unit 2: Validate and Rebuild Complete Elo History
+Weekly Prediction Input Integrity Unit 3: Require Verified Elo Lineage Before Weekly Prediction
 
 ### Goal
 
-Replace the misleading incremental Elo lifecycle with one deterministic
-full-history reconstruction contract. Reject incomplete canonical game history
-before replacing Elo state, preserve the established pregame weekly-state
-convention, and prove prior-season team strength survives into the next season
-instead of resetting every team to the initial rating.
+Persist exact source and output identity evidence whenever Elo is reconstructed,
+then require that evidence at the pre-execution prediction-availability
+boundary. Prevent Elo-only and trained Elo-dependent models from executing or
+publishing forecast evidence when current games or Elo artifacts cannot be
+authenticated against the recorded reconstruction.
 
 ### Files Added/Removed/Changed
 
 Changed:
 
 - `PLAN.md`
-  - Activated and closed the bounded Unit 2 implementation.
-  - Preserved semantic readiness, affected-product disposition,
-    prediction-input evidence, evaluation, and explanations as later work.
-- `README.md`
-  - Removed the retired `--fit-elo-all-years` option from the operating
-    example.
+  - Activated and closed the bounded Unit 3 implementation.
+  - Preserved affected-product disposition, immutable prediction-input
+    evidence, corrected evaluation, and model explanation as later work.
 - `ROADMAP.md`
-  - Marked history-preserving refresh and complete-history Elo reconstruction
-    complete while preserving the remaining corrective sequence.
-- `src/gridiron_edge/ratings/elo/table.py`
-  - Added canonical complete-history validation.
-  - Required contiguous represented seasons beginning in 1999.
-  - Allowed the latest represented season to remain partial.
-  - Rejected malformed identities, duplicate games, invalid weeks, incomplete
-    score pairs, negative scores, and incomplete historical coverage.
-  - Invoked validation before Elo simulation.
-  - Removed `update_elo_state_incremental()`.
+  - Marked semantic Elo-lineage readiness complete while preserving Units 4
+    through 6.
 - `src/gridiron_edge/ratings/elo/fit.py`
-  - Replaced dual-mode fitting with one deterministic reconstruction.
-  - Completed validation and simulation before writing Elo state.
-- `src/gridiron_edge/cli/ratings.py`
-  - Removed incremental and all-years Elo modes.
-  - Exposed one complete-history fitting operation.
-- `src/gridiron_edge/cli/main.py`
-  - Removed the separate Elo fitting mode and pipeline option.
-  - Made every active `build-elo` stage execute complete-history
-    reconstruction.
-- `src/gridiron_edge/cli/weekly_predict.py`
-  - Removed the retired Elo-mode pipeline argument.
-- `src/gridiron_edge/cli/post_week.py`
-  - Removed the retired Elo-mode pipeline argument.
-- `src/gridiron_edge/cli/full_retrain.py`
-  - Removed the retired Elo-mode argument while retaining full-data pipeline
-    scope.
-- `src/gridiron_edge/cli/verify.py`
-  - Removed the retired Elo-mode pipeline argument.
-- `tests/fixtures/dataframes.py`
-  - Added dedicated complete-history Elo games.
-  - Extracted the existing two-game modeling input into a focused helper.
-- `tests/fixtures/repos.py`
-  - Added explicit complete-history Elo repository construction.
-  - Preserved the default minimal games fixture.
-- `tests/unit/ratings/test_elo_table.py`
-  - Added complete-history validation coverage.
+  - Added lineage construction and persistence after successful Elo writing.
+- `src/gridiron_edge/models/game_prediction/availability.py`
+  - Required verified Elo lineage for Elo availability.
+  - Derived trained-model lineage requirements from exact prediction feature
+    contracts.
 - `tests/integration/test_elo_fit.py`
-  - Added deterministic reconstruction, valid output, prior-strength
-    continuation, Week 1-to-Week 2 update, and predecessor-preservation tests.
-- `tests/integration/test_features_pipeline.py`
-  - Built Elo from valid complete history while preserving the focused
-    two-game modeling input.
-- `tests/e2e/test_prediction_pipeline.py`
-  - Built Elo from valid complete history while preserving the original
-    modeling-pipeline assertions.
-- `tests/unit/cli/test_main.py`
-  - Removed retired shared arguments and proved the obsolete pipeline option is
-    absent.
-- `tests/unit/cli/test_ratings.py`
-  - Proved `ratings elo fit` exposes one complete-history operation.
+  - Proved public Elo reconstruction writes matching lineage.
+  - Proved repeated reconstruction preserves source and output content
+    identities.
+  - Proved rejected history preserves predecessor Elo and lineage artifacts.
+- `tests/unit/models/game_prediction/test_availability.py`
+  - Covered valid, missing, stale, malformed, and unsupported lineage behavior.
+  - Proved all five current registered model contracts require Elo.
+  - Proved future non-Elo contracts remain independently evaluable.
+- `tests/unit/models/game_prediction/test_weekly_execution.py`
+  - Proved unavailable prediction families stop before model execution.
 - `tests/unit/cli/test_weekly_predict.py`
-  - Updated the shared-pipeline invocation contract.
+  - Proved unavailable and malformed lineage write no forecast events and cache
+    no forecast-run identity.
 - `DECISIONS.md`
-  - Added D39 for validated deterministic Elo reconstruction.
+  - Added D40 for verified Elo lineage before weekly prediction.
 - `CHANGELOG.md`
-  - Recorded behavior, tests, protected validation, and bounded scope.
+  - Recorded the shipped behavior, tests, protected validation, and bounded
+    scope.
 - `HANDOFF.md`
-  - Documented the current Elo operating contract and remaining limitations.
+  - Documented the lineage sidecar, operating procedure, fail-closed behavior,
+    and remaining limitations.
 
 Added:
 
-- None.
+- `src/gridiron_edge/ratings/elo/lineage.py`
+  - Owns schema-1 lineage, exact byte identities, strict serialization and
+    loading, safe path resolution, and current-artifact verification.
+- `tests/unit/ratings/test_elo_lineage.py`
+  - Covers strict lineage construction, persistence, loading, validation, and
+    tamper detection.
 
 Removed:
 
@@ -269,7 +242,8 @@ Removed:
 
 ### Tests
 
-Focused Elo, simulator, integration, end-to-end, pipeline, and CLI tests passed.
+Focused lineage, Elo integration, prediction availability, policy, weekly
+execution, and weekly CLI tests passed.
 
 Repository quality gates passed:
 
@@ -279,32 +253,45 @@ uvx pyrefly check && \
 uv run pytest -m "unit and not slow"
 ```
 
-
 git diff --check passed.
 
-Repository searches confirmed that update_elo_state_incremental, fit_elo_all_years, and --fit-elo-all-years are absent from active source. Unrelated incremental EPA, PBP, and feature behavior remains unchanged.
+Automated evidence proves:
 
-Protected validation used copies of the canonical games and Elo artifacts in a temporary repository. It proved:
+schema-1 lineage is written after successful public Elo reconstruction;
+exact persisted games and Elo bytes are hashed directly;
+artifact paths remain repository-contained;
+row counts, ordered columns, season scope, and latest weeks are recorded;
+strict loading rejects malformed, unsupported, unsafe, or incorrectly typed evidence;
+missing lineage and missing referenced artifacts are unavailable;
+changed games or Elo content invalidates lineage;
+changed rows, columns, or season scope invalidates lineage;
+verified lineage does not override missing exact-week Elo coverage;
+all five current registered game models directly require AWAY_ELO, HOME_ELO, and ELO_DIFF;
+future models without Elo dependencies remain independently eligible;
+blocked execution performs no model prediction;
+unavailable or malformed lineage writes no forecast events.
 
-7,292 canonical completed games covered contiguous seasons from 1999 through 2026;
-reconstruction produced 19,006 Elo rows;
-duplicate team-season-week identities remained zero;
-Buffalo entered 2026 Week 1 at 1566.257299 and Week 2 at 1575.655543;
-Detroit entered 2026 Week 1 at 1538.997399 and Week 2 at 1546.800161;
-a second reconstruction produced identical output;
-the exact 16-game 2026 Week 1-only frame was rejected;
-the valid temporary Elo artifact remained byte-identical after rejection;
-working-repository games and Elo artifacts remained unchanged;
-no forecast, product, selection, model, market, edge, API, or frontend artifact changed.
+Protected validation used only temporary copies and proved:
 
-Fixture-boundary verification confirmed that both focused modeling rows retain numeric Away and Home Elo values after Elo is built from the dedicated complete-history fixture.
-
+the games reference contained 7,292 rows from 1999-2000 through 2026-2027, latest completed week 1;
+the games SHA-256 digest was 32c23ed2c75895f9e1466893020ed41ac4c261fe4c2cffb5cb372976c97a6efc;
+the Elo reference contained 19,006 rows from 1999-2000 through 2026-2027, latest state week 2;
+the Elo SHA-256 digest was 7818da246ca5c248f4cdad2341cf0f6cbd4753f6843357093821e2ab4e5fa861;
+valid lineage made all six current availability facts true for the complete 16-game Week 2 schedule;
+changed games, changed Elo, and missing lineage each made all six current availability facts false;
+malformed lineage raised explicitly;
+weekly execution stopped after feature-contract inspection and before model prediction;
+temporary artifacts were restored to valid lineage;
+working games, Elo, schedule, model, champion, forecast, and weekly-product artifacts remained read-only;
+selection, market, edge, API, and frontend artifacts were not touched.
 Acceptance
 
-Elo fitting now has one honest operational contract: deterministic reconstruction from validated complete canonical history. The false incremental function, fitting mode, CLI options, console language, and shared-pipeline argument are removed.
+Every successful public Elo reconstruction now writes strict schema-1 evidence identifying the exact canonical games source and persisted Elo output.
 
-The reconstruction boundary rejects empty, malformed, duplicate, late-starting, and discontinuous history before replacing Elo state. A partial latest season remains valid. Validation and simulation failures preserve the existing Elo artifact.
+Weekly prediction availability authenticates both current artifacts before policy resolution. Elo is available only when lineage verifies and every requested game has exact-week Away and Home state.
 
-Tests and protected validation prove prior-season strength survives offseason regression, Week 1 results update inherited state into Week 2, and the inspected reset-to-1500 failure mode cannot recur through the Elo fitting boundary.
+Missing or stale lineage blocks every current trained game model before prediction because all current feature contracts consume Elo. Malformed or unsupported lineage fails explicitly. Future non-Elo contracts remain independently evaluable.
 
-The unit introduced no semantic weekly readiness, affected-product mutation, forecast regeneration, prediction-input persistence, model evaluation, calibration change, API or frontend behavior, or explanation functionality. The affected immutable 2026 Week 2 forecast events and weekly products remain unchanged.
+Unavailable or malformed lineage produces no model prediction, forecast-event write, forecast-run identity, weekly-product composition, or selected weekly product.
+
+The affected immutable 2026 Week 2 forecast events and weekly products remain unchanged. The unit introduced no retrospective prediction generation or selection, complete prediction-input persistence, corrected evaluation, API or frontend behavior, or explanation functionality.

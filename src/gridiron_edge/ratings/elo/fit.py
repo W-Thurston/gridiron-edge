@@ -1,9 +1,14 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
 from gridiron_edge.core.paths import repo_root
 from gridiron_edge.datasets import loaders, writers
+from gridiron_edge.ratings.elo.lineage import (
+    build_elo_lineage,
+    write_elo_lineage,
+)
 from gridiron_edge.ratings.elo.table import build_elo_state_table_all_years
 
 
@@ -24,4 +29,17 @@ def fit_elo(
     resolved_repo: Path = repo or repo_root()
     games: pd.DataFrame = loaders.load_games(resolved_repo)
     elo_df: pd.DataFrame = build_elo_state_table_all_years(games)
-    writers.write_csv(resolved_repo, "elo_state", elo_df)
+    writers.write_csv(
+        resolved_repo,
+        "elo_state",
+        elo_df,
+    )
+
+    lineage = build_elo_lineage(
+        repo=resolved_repo,
+        generated_at=datetime.now(UTC),
+    )
+    write_elo_lineage(
+        lineage,
+        repo=resolved_repo,
+    )
