@@ -10,6 +10,10 @@ from typing import Final
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.evaluation.forecast_contracts import (
+    WEEKLY_PRODUCT_FORECAST_ROLES,
+    ForecastRole,
+)
 from gridiron_edge.models.game_prediction.weekly_game_product import (
     ProjectedScoreStatus,
 )
@@ -101,6 +105,33 @@ def _require_utc_timestamp(row: Series, column: str, *, context: str) -> None:
         raise ValueError(f"{context} requires timezone-aware UTC {column}.")
 
 
+def _selected_forecast_role(
+    row: Series,
+    column: str,
+    *,
+    context: str,
+) -> ForecastRole:
+    """Return one supported selected-weekly forecast role."""
+    value = str(row[column])
+
+    try:
+        role = ForecastRole(value)
+    except ValueError as exc:
+        raise ValueError(f"{context} contains an unsupported forecast role: {value!r}.") from exc
+
+    if role not in WEEKLY_PRODUCT_FORECAST_ROLES:
+        allowed = ", ".join(
+            role.value
+            for role in sorted(
+                WEEKLY_PRODUCT_FORECAST_ROLES,
+                key=lambda candidate: candidate.value,
+            )
+        )
+        raise ValueError(f"{context} forecast role must be one of: {allowed}.")
+
+    return role
+
+
 def _validate_win(row: Series) -> None:
     status = str(row["win_status"])
     _require_text(row, ("win_selection_status",), context="Win selection")
@@ -139,8 +170,11 @@ def _validate_win(row: Series) -> None:
         ),
         context="Available win",
     )
-    if str(row["win_role"]) != "live":
-        raise ValueError("Available win must use live forecast role.")
+    _selected_forecast_role(
+        row,
+        "win_role",
+        context="Available win",
+    )
     if str(row["win_selection_status"]) != "selected":
         raise ValueError("Available win must use selected forecast status.")
     _require_utc_timestamp(
@@ -221,8 +255,11 @@ def _validate_total(row: Series) -> None:
     )
     if str(row["total_model_name"]) != "total":
         raise ValueError("Available total must use model_name 'total'.")
-    if str(row["total_role"]) != "live":
-        raise ValueError("Available total must use live forecast role.")
+    _selected_forecast_role(
+        row,
+        "total_role",
+        context="Available total",
+    )
     if str(row["total_selection_status"]) != "selected":
         raise ValueError("Available total must use selected forecast status.")
     _require_utc_timestamp(
@@ -247,6 +284,39 @@ def _validate_total(row: Series) -> None:
         ("total_uncertainty", "total_uncertainty_trained_at"),
         context="Total with unavailable uncertainty",
     )
+
+
+def _validate_selected_role_coherence(product: DataFrame) -> None:
+    """Require one forecast role across all available selected components."""
+    win_roles = product.loc[
+        product["win_status"].astype(str) == WeeklyWinStatus.AVAILABLE.value,
+        "win_role",
+    ]
+
+    total_roles = product.loc[
+        product["total_status"]
+        .astype(str)
+        .isin(
+            {
+                WeeklyTotalStatus.AVAILABLE.value,
+                WeeklyTotalStatus.UNCERTAINTY_UNAVAILABLE.value,
+            }
+        ),
+        "total_role",
+    ]
+
+    roles = {
+        str(value)
+        for value in pd.concat(
+            [win_roles, total_roles],
+            ignore_index=True,
+        ).dropna()
+    }
+
+    if len(roles) > 1:
+        raise ValueError(
+            "Available selected components must use one forecast role across the weekly product."
+        )
 
 
 def _validate_projected_scores(row: Series) -> None:
@@ -287,5 +357,7 @@ def validate_weekly_game_product(product: DataFrame) -> DataFrame:
         _validate_spread(row)
         _validate_total(row)
         _validate_projected_scores(row)
+
+    _validate_selected_role_coherence(normalized)
 
     return normalized

@@ -288,3 +288,137 @@ regeneration or modification.
 
 No model artifact, forecast, prediction-input evidence, weekly product, API,
 frontend, or persisted schema contract changed.
+
+
+### Development Forecast Role Foundation [Completed September 22, 2026]
+
+#### Completed
+
+Added an explicit development forecast role for retrospectively generated
+canonical weekly fixtures without representing those fixtures as pre-kickoff
+live issuance.
+
+Development events can carry exact immutable prediction-input evidence,
+participate in one role-coherent selected weekly product, and undergo exact
+selected-event postgame closeout.
+
+Live-only recommendation qualification and production-chain proof remain
+isolated from development evidence. Spread production provenance now explicitly
+inherits the live-role requirement from its source Win forecast.
+
+#### Goal
+
+Add a truthful forecast role for retrospective canonical development fixtures
+while preserving the existing meanings and safety boundaries of live and
+backfilled forecasts.
+
+Keep the normal weekly prediction command live-only, provide a dedicated
+development execution boundary, preserve existing persisted schemas and
+evidence, and modify no operational artifacts.
+
+#### Files Added/Removed/Changed
+
+Changed:
+
+- `PLAN.md`
+  - Closed the development forecast role foundation after independent review.
+- `src/gridiron_edge/evaluation/forecast_contracts.py`
+  - Added `ForecastRole.DEVELOPMENT` and bounded selected-weekly role policies.
+- `src/gridiron_edge/evaluation/forecast_events.py`
+  - Updated role documentation for all supported forecast roles.
+- `src/gridiron_edge/evaluation/prediction_input_evidence.py`
+  - Authenticated exact live or development families while rejecting
+    backfilled and mixed-role evidence.
+- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py`
+  - Updated selected-weekly evidence documentation without changing storage.
+- `src/gridiron_edge/evaluation/live_forecast_closeout.py`
+  - Matched events against exact persisted product roles and exposed selected
+    Win and Total roles in closeout results.
+- `src/gridiron_edge/models/game_prediction/product_validation.py`
+  - Allowed live or development products while enforcing one role across every
+    available selected component.
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+  - Added distinct live and development wrappers over one role-aware execution
+    boundary.
+- `src/gridiron_edge/market/production_chain_preflight.py`
+  - Required derived Spread production provenance to inherit the source Win
+    live role.
+- focused unit and integration tests
+  - Added role, evidence, product, closeout, execution, qualification,
+    production-proof, and disposition-preservation coverage.
+
+Removed:
+
+- None.
+
+Operational artifacts changed:
+
+- None.
+
+#### Tests
+
+Validation passed:
+
+- repository-wide Ruff checks;
+- Pyrefly;
+- the full non-slow unit suite;
+- focused selected-event closeout integration tests;
+- focused production-chain repository integration tests;
+- `git diff --check`.
+
+Focused tests prove:
+
+- development is distinct from live and backfilled;
+- live and development events authenticate exact prediction-input evidence;
+- backfilled and mixed-role evidence are rejected;
+- weekly products enforce one role across all available games and families;
+- development events close against completed outcomes using exact persisted
+  product roles;
+- live and development execution wrappers produce one coherent role across Win
+  and Total;
+- the weekly CLI continues to invoke only the live wrapper;
+- development provenance fails recommendation qualification;
+- Moneyline, Spread, and Total production proof remain live-only;
+- development events cannot authenticate the original live Week 2 defect scope.
+
+Protected read-only validation proved:
+
+- 2026 Week 3 Logistic Win and Random Forest Total schema-1 evidence each
+  authenticated against 16 live events;
+- the existing Week 2 disposition authenticated successfully;
+- the disposition applies to the selected affected Week 2 product and does not
+  apply to the selected Week 3 product;
+- before-and-after SHA-256 inventories of predictions, weekly products, and
+  prediction-input evidence were byte-identical.
+
+Independent read-only review found no blocking defects and approved closure
+after reverting three unrelated type-coercion changes from the production-chain
+file.
+
+#### Acceptance
+
+`ForecastRole.DEVELOPMENT` has a durable meaning distinct from live and
+backfilled.
+
+Live and development events can carry exact immutable prediction-input
+evidence. Backfilled and mixed-role evidence cannot authenticate selected-weekly
+claims.
+
+Weekly products may use live or development events but require one coherent
+role across every available selected component and game.
+
+Selected-event closeout matches the exact role persisted by the weekly product
+and reports Win and Total roles explicitly.
+
+The existing weekly command remains live-only. Retrospective fixture generation
+has a dedicated development execution boundary with no current production
+caller.
+
+Qualification, candidate, recommendation, and production-proof boundaries
+remain live-only. Spread inherits that eligibility from its exact source Win
+forecast.
+
+The original Week 2 defect disposition and existing Week 3 schema-1 evidence
+remain valid.
+
+No persisted schema or operational artifact changed.

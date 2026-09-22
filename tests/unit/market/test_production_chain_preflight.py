@@ -1,3 +1,4 @@
+# tests/unit/market/test_production_chain_preflight.py
 """Tests for the immutable production-chain preflight contract."""
 
 from __future__ import annotations
@@ -5,8 +6,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.market.production_chain_preflight import (
     PRODUCTION_CHAIN_COMPONENT_IDS,
     PRODUCTION_CHAIN_PREFLIGHT_SCHEMA_VERSION,
@@ -55,6 +58,48 @@ def _replace_component(
             component if value.component_id == component.component_id else value
             for value in family.components
         ),
+    )
+
+
+def _selected_product_frame(
+    *,
+    role: ForecastRole,
+) -> pd.DataFrame:
+    generated_at = datetime(
+        2026,
+        8,
+        17,
+        18,
+        tzinfo=UTC,
+    )
+
+    return pd.DataFrame(
+        {
+            "product_id": ["product"],
+            "product_run_id": ["run"],
+            "product_generated_at": [generated_at],
+            "season": ["2026-2027"],
+            "week": [1],
+            "game_id": ["2026_01_NE_SEA"],
+            "win_status": ["available"],
+            "win_selection_status": ["selected"],
+            "win_role": [role.value],
+            "win_event_id": ["win-event"],
+            "win_run_id": ["run"],
+            "win_generated_at": [generated_at],
+            "spread_status": ["available"],
+            "spread_source_event_id": ["win-event"],
+            "spread_model_name": ["win_prob"],
+            "spread_model_type": ["logistic"],
+            "spread_calibration_key": ["win_prob_logistic"],
+            "spread_calibration_updated_at": [generated_at],
+            "total_status": ["available"],
+            "total_selection_status": ["selected"],
+            "total_role": [role.value],
+            "total_event_id": ["total-event"],
+            "total_run_id": ["run"],
+            "total_generated_at": [generated_at],
+        }
     )
 
 
@@ -385,3 +430,74 @@ def test_postgame_assembly_short_circuits_before_kickoff(tmp_path) -> None:
         assert family.market_closeout.state is ProofComponentState.NOT_YET_ELIGIBLE
         assert family.clv.state is ProofComponentState.NOT_YET_ELIGIBLE
         assert family.realized_performance.state is ProofComponentState.NOT_YET_ELIGIBLE
+
+
+@pytest.mark.parametrize(
+    "market",
+    [
+        ProductionMarketFamily.MONEYLINE,
+        ProductionMarketFamily.SPREAD,
+        ProductionMarketFamily.TOTAL,
+    ],
+)
+def test_development_forecast_provenance_is_not_production_ready(
+    market: ProductionMarketFamily,
+) -> None:
+    from gridiron_edge.market.production_chain_preflight import (
+        _forecast_component,
+        _SelectedProductEvidence,
+    )
+
+    selected = _SelectedProductEvidence(
+        product_id="product",
+        run_id="run",
+        generated_at=NOW,
+        selected_at=NOW,
+        frame=_selected_product_frame(
+            role=ForecastRole.DEVELOPMENT,
+        ),
+    )
+
+    component = _forecast_component(
+        market,
+        selected,
+    )
+
+    assert component.component_id == "forecast_provenance"
+    assert component.state is ProofComponentState.INCOMPLETE
+    assert component.reason == (f"Selected {market.value} forecast provenance is incomplete.")
+
+
+@pytest.mark.parametrize(
+    "market",
+    [
+        ProductionMarketFamily.MONEYLINE,
+        ProductionMarketFamily.SPREAD,
+        ProductionMarketFamily.TOTAL,
+    ],
+)
+def test_live_forecast_provenance_remains_production_ready(
+    market: ProductionMarketFamily,
+) -> None:
+    from gridiron_edge.market.production_chain_preflight import (
+        _forecast_component,
+        _SelectedProductEvidence,
+    )
+
+    selected = _SelectedProductEvidence(
+        product_id="product",
+        run_id="run",
+        generated_at=NOW,
+        selected_at=NOW,
+        frame=_selected_product_frame(
+            role=ForecastRole.LIVE,
+        ),
+    )
+
+    component = _forecast_component(
+        market,
+        selected,
+    )
+
+    assert component.component_id == "forecast_provenance"
+    assert component.state is ProofComponentState.AVAILABLE

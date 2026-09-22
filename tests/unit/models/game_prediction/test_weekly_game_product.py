@@ -10,6 +10,7 @@ import pandas as pd
 from pandas import DataFrame
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.models.game_prediction.product_validation import (
     validate_weekly_game_product,
 )
@@ -206,4 +207,114 @@ def test_validator_rejects_non_utc_total_generation_time() -> None:
     product.loc[0, "total_generated_at"] = "2026-10-20T12:00:00"
 
     with pytest.raises(ValueError, match="timezone-aware UTC"):
+        validate_weekly_game_product(product)
+
+
+def test_development_role_product_is_valid() -> None:
+    source = _product()
+    source["win_role"] = ForecastRole.DEVELOPMENT.value
+    source.loc[
+        source["total_status"].isin(
+            {
+                WeeklyTotalStatus.AVAILABLE.value,
+                WeeklyTotalStatus.UNCERTAINTY_UNAVAILABLE.value,
+            }
+        ),
+        "total_role",
+    ] = ForecastRole.DEVELOPMENT.value
+
+    product = build_weekly_game_product(source)
+
+    assert set(product["win_role"]) == {ForecastRole.DEVELOPMENT.value}
+    assert set(product["total_role"].dropna().astype(str)) == {ForecastRole.DEVELOPMENT.value}
+
+
+def test_validator_rejects_backfilled_win_role() -> None:
+    product = attach_projected_scores(_product())
+    product.loc[0, "win_role"] = ForecastRole.BACKFILLED.value
+
+    with pytest.raises(
+        ValueError,
+        match="Available win forecast role must be one of",
+    ):
+        validate_weekly_game_product(product)
+
+
+def test_validator_rejects_backfilled_total_role() -> None:
+    product = attach_projected_scores(_product())
+    product.loc[0, "total_role"] = ForecastRole.BACKFILLED.value
+
+    with pytest.raises(
+        ValueError,
+        match="Available total forecast role must be one of",
+    ):
+        validate_weekly_game_product(product)
+
+
+def test_validator_rejects_unknown_forecast_role() -> None:
+    product = attach_projected_scores(_product())
+    product.loc[0, "win_role"] = "unknown"
+
+    with pytest.raises(
+        ValueError,
+        match="unsupported forecast role",
+    ):
+        validate_weekly_game_product(product)
+
+
+def test_validator_rejects_mixed_selected_forecast_roles() -> None:
+    product = attach_projected_scores(_product())
+
+    product.loc[
+        product["game_id"].eq("game-2"),
+        "win_role",
+    ] = ForecastRole.DEVELOPMENT.value
+    product.loc[
+        product["game_id"].eq("game-2"),
+        "total_role",
+    ] = ForecastRole.DEVELOPMENT.value
+
+    with pytest.raises(
+        ValueError,
+        match="must use one forecast role across the weekly product",
+    ):
+        validate_weekly_game_product(product)
+
+
+def test_unavailable_total_does_not_require_role_coherence() -> None:
+    source = cast(DataFrame, _product().iloc[[2]].copy())
+    source["win_role"] = ForecastRole.DEVELOPMENT.value
+
+    product = build_weekly_game_product(source)
+
+    assert product.iloc[0]["win_role"] == (ForecastRole.DEVELOPMENT.value)
+    assert pd.isna(product.iloc[0]["total_role"])
+
+
+def test_validator_rejects_mixed_win_roles_without_available_total() -> None:
+    source = _product()
+
+    source["total_status"] = WeeklyTotalStatus.FORECAST_MISSING.value
+    source["model_total"] = pd.NA
+    source["total_uncertainty"] = pd.NA
+    source["total_model_name"] = pd.NA
+    source["total_model_type"] = pd.NA
+    source["total_event_id"] = pd.NA
+    source["total_run_id"] = pd.NA
+    source["total_generated_at"] = pd.NaT
+    source["total_role"] = pd.NA
+    source["total_selection_status"] = "missing"
+    source["total_uncertainty_trained_at"] = pd.NA
+
+    source.loc[
+        source["game_id"].eq("game-2"),
+        "win_role",
+    ] = ForecastRole.DEVELOPMENT.value
+
+    product = attach_projected_scores(source)
+
+    with pytest.raises(
+        ValueError,
+        match="must use one forecast role across the weekly product",
+    ):
         validate_weekly_game_product(product)

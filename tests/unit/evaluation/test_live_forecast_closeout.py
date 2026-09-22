@@ -1,4 +1,5 @@
-"""Tests for selected live forecast closeout."""
+# tests/unit/evaluation/test_live_forecast_closeout.py
+"""Tests for selected forecast closeout."""
 
 from __future__ import annotations
 
@@ -7,6 +8,9 @@ from copy import deepcopy
 import pandas as pd
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import (
+    ForecastRole,
+)
 from gridiron_edge.evaluation.live_forecast_closeout import close_live_forecasts
 
 
@@ -15,6 +19,8 @@ def _product() -> pd.DataFrame:
         {
             "product_id": ["product-1", "product-1"],
             "product_run_id": ["run-1", "run-1"],
+            "win_role": ["live", "live"],
+            "total_role": ["live", "live"],
             "season": ["2025-2026", "2025-2026"],
             "week": [1, 1],
             "game_id": ["g1", "g2"],
@@ -116,6 +122,8 @@ def _games() -> pd.DataFrame:
 def test_complete_closeout_uses_exact_selected_live_events() -> None:
     result = close_live_forecasts(product=_product(), forecast_events=_events(), games=_games())
 
+    assert result.win_role is ForecastRole.LIVE
+    assert result.total_role is ForecastRole.LIVE
     assert result.complete
     assert result.scheduled_game_count == 2
     assert result.completed_outcome_count == 2
@@ -136,11 +144,18 @@ def test_complete_closeout_uses_exact_selected_live_events() -> None:
     assert result.total.bias == pytest.approx(1.5)
 
 
-def test_backfilled_event_cannot_satisfy_selected_live_reference() -> None:
+def test_event_role_must_match_selected_product_role() -> None:
     events = _events()
-    events.loc[events["event_id"].eq("w1"), "role"] = "backfilled"
+    events.loc[
+        events["event_id"].eq("w1"),
+        "role",
+    ] = ForecastRole.DEVELOPMENT.value
 
-    result = close_live_forecasts(product=_product(), forecast_events=events, games=_games())
+    result = close_live_forecasts(
+        product=_product(),
+        forecast_events=events,
+        games=_games(),
+    )
 
     assert not result.complete
     assert result.missing_win_event_game_ids == ("g1",)
@@ -171,6 +186,7 @@ def test_unavailable_component_is_not_mislabeled_as_missing_event() -> None:
             "total_run_id",
             "total_model_name",
             "total_model_type",
+            "total_role",
         ],
     ] = pd.NA
 
@@ -238,3 +254,81 @@ def test_null_model_spread_is_not_evaluable() -> None:
             result.reconciliation["game_id"].eq("g2"), "spread_evaluable"
         ].iloc[0]
     )
+
+
+def test_complete_closeout_supports_development_role() -> None:
+    product = _product()
+    product["win_role"] = ForecastRole.DEVELOPMENT.value
+    product["total_role"] = ForecastRole.DEVELOPMENT.value
+
+    events = _events()
+    events["role"] = ForecastRole.DEVELOPMENT.value
+
+    result = close_live_forecasts(
+        product=product,
+        forecast_events=events,
+        games=_games(),
+    )
+
+    assert result.complete
+    assert result.win_role is ForecastRole.DEVELOPMENT
+    assert result.total_role is ForecastRole.DEVELOPMENT
+    assert result.matched_win_event_count == 2
+    assert result.matched_spread_event_count == 2
+    assert result.matched_total_event_count == 2
+    assert result.win.evaluated_count == 1
+    assert result.spread.evaluated_count == 2
+    assert result.total.evaluated_count == 2
+
+
+def test_backfilled_selected_product_role_is_rejected() -> None:
+    product = _product()
+    product["win_role"] = ForecastRole.BACKFILLED.value
+    product["total_role"] = ForecastRole.BACKFILLED.value
+
+    events = _events()
+    events["role"] = ForecastRole.BACKFILLED.value
+
+    with pytest.raises(
+        ValueError,
+        match="require a live or development forecast role",
+    ):
+        close_live_forecasts(
+            product=product,
+            forecast_events=events,
+            games=_games(),
+        )
+
+
+def test_mixed_product_roles_are_rejected() -> None:
+    product = _product()
+    product["win_role"] = ForecastRole.LIVE.value
+    product["total_role"] = ForecastRole.DEVELOPMENT.value
+
+    with pytest.raises(
+        ValueError,
+        match="must use one forecast role",
+    ):
+        close_live_forecasts(
+            product=product,
+            forecast_events=_events(),
+            games=_games(),
+        )
+
+
+def test_mixed_win_roles_are_rejected() -> None:
+    product = _product()
+    product.loc[
+        product["game_id"].eq("g2"),
+        "win_role",
+    ] = ForecastRole.DEVELOPMENT.value
+
+    with pytest.raises(
+        ValueError,
+        match=("Selected Win components must use one nonempty forecast role"),
+    ):
+        close_live_forecasts(
+            product=product,
+            forecast_events=_events(),
+            games=_games(),
+        )

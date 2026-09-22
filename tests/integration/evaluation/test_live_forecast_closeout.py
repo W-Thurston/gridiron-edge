@@ -1,4 +1,5 @@
-"""Integration test for persisted selected live forecast closeout."""
+# tests/integration/evaluation/test_live_forecast_closeout.py
+"""Integration tests for persisted selected forecast closeout."""
 
 from __future__ import annotations
 
@@ -37,11 +38,12 @@ def _event(
     home_win_prob: float | None,
     model_spread: float | None,
     model_total: float | None,
+    role: ForecastRole = ForecastRole.LIVE,
 ) -> DataFrame:
     values: dict[str, object] = {
         "event_id": event_id,
         "run_id": "run-1",
-        "role": ForecastRole.LIVE.value,
+        "role": role.value,
         "generated_at": datetime(2025, 9, 1, 12, tzinfo=UTC),
         "season": "2025-2026",
         "week": 1,
@@ -67,7 +69,10 @@ def _event(
     return DataFrame([{column: values[column] for column in FORECAST_EVENT_COLUMNS}])
 
 
-def _product() -> DataFrame:
+def _product(
+    *,
+    role: ForecastRole = ForecastRole.LIVE,
+) -> DataFrame:
     generated_at = datetime(2025, 9, 1, 12, tzinfo=UTC)
     base = DataFrame(
         {
@@ -86,7 +91,7 @@ def _product() -> DataFrame:
             "win_event_id": ["win-1"],
             "win_run_id": ["run-1"],
             "win_generated_at": [generated_at],
-            "win_role": ["live"],
+            "win_role": [role.value],
             "spread_status": ["available"],
             "model_spread": [-3.0],
             "spread_uncertainty": [13.0],
@@ -104,15 +109,30 @@ def _product() -> DataFrame:
             "total_event_id": ["total-1"],
             "total_run_id": ["run-1"],
             "total_generated_at": [generated_at],
-            "total_role": ["live"],
+            "total_role": [role.value],
             "total_uncertainty_trained_at": ["2025-08-31T12:00:00+00:00"],
         }
     )
     return build_weekly_game_product(base)
 
 
+@pytest.mark.parametrize(
+    ("role", "product_id"),
+    [
+        (
+            ForecastRole.LIVE,
+            "closeout-live-product",
+        ),
+        (
+            ForecastRole.DEVELOPMENT,
+            "closeout-development-product",
+        ),
+    ],
+)
 def test_persisted_selected_product_closes_against_completed_outcome(
     tmp_path: Path,
+    role: ForecastRole,
+    product_id: str,
 ) -> None:
     MiniRepoBuilder(tmp_path).with_games()
     event_frames = [
@@ -123,6 +143,7 @@ def test_persisted_selected_product_closes_against_completed_outcome(
             home_win_prob=0.70,
             model_spread=-3.0,
             model_total=None,
+            role=role,
         ),
         _event(
             event_id="total-1",
@@ -131,6 +152,7 @@ def test_persisted_selected_product_closes_against_completed_outcome(
             home_win_prob=None,
             model_spread=None,
             model_total=45.0,
+            role=role,
         ),
     ]
     events = DataFrame.from_records(
@@ -141,13 +163,17 @@ def test_persisted_selected_product_closes_against_completed_outcome(
 
     generated_at = datetime(2025, 9, 1, 12, tzinfo=UTC)
     identity = WeeklyProductIdentity(
-        product_id="closeout-product",
+        product_id=product_id,
         run_id="run-1",
         season="2025-2026",
         week=1,
         generated_at=generated_at,
     )
-    write_weekly_product(tmp_path, _product(), identity=identity)
+    write_weekly_product(
+        tmp_path,
+        _product(role=role),
+        identity=identity,
+    )
     select_current_weekly_product(
         tmp_path,
         identity.product_id,
@@ -163,7 +189,7 @@ def test_persisted_selected_product_closes_against_completed_outcome(
     )
 
     assert closeout.complete
-    assert closeout.product_id == "closeout-product"
+    assert closeout.product_id == product_id
     assert closeout.product_run_id == "run-1"
     assert closeout.scheduled_game_count == 1
     assert closeout.completed_outcome_count == 1
@@ -183,3 +209,5 @@ def test_persisted_selected_product_closes_against_completed_outcome(
     assert closeout.total.bias == pytest.approx(-2.0)
     assert closeout.reconciliation["game_id"].tolist() == ["2025_01_A_B"]
     assert closeout.reconciliation["actual_total"].tolist() == [47.0]
+    assert closeout.win_role is role
+    assert closeout.total_role is role

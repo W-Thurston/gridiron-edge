@@ -11,6 +11,8 @@ from uuid import UUID
 import pytest
 
 from gridiron_edge.evaluation.forecast_contracts import (
+    INPUT_EVIDENCE_FORECAST_ROLES,
+    WEEKLY_PRODUCT_FORECAST_ROLES,
     ForecastEventIdentity,
     ForecastRole,
     SelectedForecast,
@@ -42,7 +44,20 @@ def _identity(
 
 def test_forecast_roles_are_distinct() -> None:
     assert ForecastRole.LIVE.value == "live"
+    assert ForecastRole.DEVELOPMENT.value == "development"
     assert ForecastRole.BACKFILLED.value == "backfilled"
+
+
+def test_weekly_role_policies_are_explicit() -> None:
+    expected = frozenset(
+        {
+            ForecastRole.LIVE,
+            ForecastRole.DEVELOPMENT,
+        }
+    )
+
+    assert expected == WEEKLY_PRODUCT_FORECAST_ROLES
+    assert expected == INPUT_EVIDENCE_FORECAST_ROLES
 
 
 def test_invalid_role_value_is_rejected() -> None:

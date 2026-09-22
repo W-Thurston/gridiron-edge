@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.evaluation.prediction_input_evidence import (
     BinaryArtifactReference,
     CalibrationResolutionSource,
@@ -19,6 +20,7 @@ from gridiron_edge.evaluation.prediction_input_evidence import (
     PredictionSourceState,
     SourceArtifactReference,
     SourceRevision,
+    authenticate_prediction_input_evidence,
     create_prediction_feature_schema,
 )
 from gridiron_edge.models.game_prediction.prediction_execution import (
@@ -32,6 +34,7 @@ from gridiron_edge.models.game_prediction.prediction_policy import (
     resolve_prediction_policy,
 )
 from gridiron_edge.models.game_prediction.weekly_execution import (
+    execute_development_weekly_prediction_policy,
     execute_weekly_prediction_policy,
 )
 
@@ -379,6 +382,8 @@ def test_executes_exact_selected_families_under_one_run(tmp_path: Path) -> None:
     total_model.predict_upcoming.assert_not_called()
     win_model.predict_upcoming_with_evidence.assert_called_once()
     total_model.predict_upcoming_with_evidence.assert_called_once()
+    assert set(execution.events["role"]) == {ForecastRole.LIVE.value}
+    assert set(execution.events["run_id"]) == {"run-1"}
 
 
 def test_rejects_partial_selected_family_before_return(tmp_path: Path) -> None:
@@ -467,3 +472,85 @@ def test_unavailable_lineage_blocks_models_before_execution(
         total_override=None,
     )
     registry_get.assert_not_called()
+
+
+def test_executes_development_families_under_one_run(
+    tmp_path: Path,
+) -> None:
+    win_model = MagicMock()
+    win_model.predict_upcoming_with_evidence.return_value = _win_execution()
+    win_model.predict_upcoming = MagicMock()
+
+    total_model = MagicMock()
+    total_model.predict_upcoming_with_evidence.return_value = _total_execution()
+    total_model.predict_upcoming = MagicMock()
+
+    def registry_get(key: str):
+        return {
+            "win_prob_logistic": lambda: win_model,
+            "total_random_forest": lambda: total_model,
+        }[key]
+
+    with (
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.inspect_prediction_availability",
+            return_value=_availability(),
+        ),
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.load_prediction_policy",
+            return_value=_policy(),
+        ),
+        patch(
+            "gridiron_edge.models.game_prediction.weekly_execution.ModelRegistry.get",
+            side_effect=registry_get,
+        ),
+    ):
+        execution = execute_development_weekly_prediction_policy(
+            _schedule(),
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+            run_id="development-run",
+            generated_at=GENERATED_AT,
+            source_revision=_revision(),
+            source_artifacts=_sources(),
+        )
+
+    assert len(execution.events) == 4
+    assert set(execution.events["model_name"]) == {
+        "win_prob",
+        "total",
+    }
+    assert set(execution.events["model_type"]) == {
+        "logistic",
+        "random_forest",
+    }
+    assert set(execution.events["run_id"]) == {"development-run"}
+    assert set(execution.events["role"]) == {ForecastRole.DEVELOPMENT.value}
+    assert {
+        (
+            evidence.model_name,
+            evidence.model_type,
+        )
+        for evidence in execution.input_evidence
+    } == {
+        ("win_prob", "logistic"),
+        ("total", "random_forest"),
+    }
+
+    win_model.predict_upcoming.assert_not_called()
+    total_model.predict_upcoming.assert_not_called()
+    win_model.predict_upcoming_with_evidence.assert_called_once()
+    total_model.predict_upcoming_with_evidence.assert_called_once()
+
+    for evidence in execution.input_evidence:
+        family_events = execution.events.loc[
+            (execution.events["model_name"] == evidence.model_name)
+            & (execution.events["model_type"] == evidence.model_type),
+            :,
+        ]
+
+        authenticate_prediction_input_evidence(
+            evidence,
+            forecast_events=family_events,
+        )

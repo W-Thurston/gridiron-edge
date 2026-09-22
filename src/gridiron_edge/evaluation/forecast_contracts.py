@@ -14,7 +14,25 @@ class ForecastRole(StrEnum):
     """Operational role of a forecast event."""
 
     LIVE = "live"
+    DEVELOPMENT = "development"
     BACKFILLED = "backfilled"
+
+
+# Roles eligible for selected weekly products and exact input evidence.
+# Backfilled forecasts remain historical evaluation artifacts.
+WEEKLY_PRODUCT_FORECAST_ROLES: frozenset[ForecastRole] = frozenset(
+    {
+        ForecastRole.LIVE,
+        ForecastRole.DEVELOPMENT,
+    }
+)
+
+INPUT_EVIDENCE_FORECAST_ROLES: frozenset[ForecastRole] = frozenset(
+    {
+        ForecastRole.LIVE,
+        ForecastRole.DEVELOPMENT,
+    }
+)
 
 
 @dataclass(frozen=True)

@@ -344,7 +344,7 @@ def _assess_family(
     earliest_kickoff: datetime | None,
     postgame: _PostgameFamilyEvidence,
 ) -> MarketFamilyProductionPreflight:
-    selected_ids = tuple(sorted((str(selected["product_id"]), str(selected["run_id"]))))
+    selected_ids = tuple(sorted((selected["product_id"], selected["run_id"])))
     selected_times = tuple(sorted((selected["generated_at"], selected["selected_at"])))
 
     forecast = _forecast_component(market, selected)
@@ -758,7 +758,7 @@ def _forecast_component(
 ) -> ProductionChainComponent:
     frame = selected["frame"]
     assert isinstance(frame, DataFrame)
-    run_id = str(selected["run_id"])
+    run_id = selected["run_id"]
     if market is ProductionMarketFamily.MONEYLINE:
         valid = (
             frame["win_status"].eq("available").all()
@@ -775,6 +775,7 @@ def _forecast_component(
             frame["spread_status"].eq("available").all()
             and frame["spread_source_event_id"].notna().all()
             and frame["spread_source_event_id"].eq(frame["win_event_id"]).all()
+            and frame["win_role"].eq("live").all()
             and frame["spread_model_name"].notna().all()
             and frame["spread_model_type"].notna().all()
             and frame["spread_calibration_key"].notna().all()
@@ -871,7 +872,7 @@ def _market_quote_evidence(
             identity,
             dropna=False,
         )[timestamp_column].nunique()
-        repeated_identities = int((depths >= 2).sum())
+        repeated_identities = (depths >= 2).sum()
 
     providers = (
         tuple(sorted(snapshot_rows["provider"].dropna().astype(str).unique()))

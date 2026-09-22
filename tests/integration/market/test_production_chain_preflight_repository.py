@@ -1,3 +1,4 @@
+# tests/integration/market/test_production_chain_preflight_repository.py
 """Real-repository readiness assessment for Market Unit 26."""
 
 from __future__ import annotations

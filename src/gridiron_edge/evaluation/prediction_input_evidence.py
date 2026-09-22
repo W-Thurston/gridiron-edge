@@ -1,5 +1,5 @@
 # src/gridiron_edge/evaluation/prediction_input_evidence.py
-"""Immutable prediction-input evidence for live weekly forecasts."""
+"""Immutable prediction-input evidence for selected weekly forecasts."""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ from typing import Final
 
 from pandas import DataFrame
 
+from gridiron_edge.evaluation.forecast_contracts import (
+    INPUT_EVIDENCE_FORECAST_ROLES,
+    ForecastRole,
+)
 from gridiron_edge.evaluation.forecast_store import validate_forecast_events
 
 PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION: Final[int] = 1
@@ -424,7 +428,7 @@ def authenticate_prediction_input_evidence(
     *,
     forecast_events: DataFrame,
 ) -> None:
-    """Authenticate exact bidirectional coverage of one proposed live family."""
+    """Authenticate exact bidirectional coverage of one selected weekly family."""
     validate_prediction_input_evidence(evidence)
     events = validate_forecast_events(forecast_events)
     if events["event_id"].astype(str).duplicated().any():
@@ -434,14 +438,35 @@ def authenticate_prediction_input_evidence(
         (events["run_id"].astype(str) == evidence.run_id)
         & (events["season"].astype(str) == evidence.season)
         & (events["week"].astype(int) == evidence.week)
-        & (events["role"].astype(str) == "live")
         & (events["model_name"].astype(str) == evidence.model_name)
         & (events["model_type"].astype(str) == evidence.model_type),
         :,
     ].copy()
+
     evidence_events = _all_event_evidence(evidence)
     expected_ids = tuple(sorted(event.event_id for event in evidence_events))
     actual_ids = tuple(sorted(scoped["event_id"].astype(str).tolist()))
+
+    if not actual_ids:
+        raise ValueError(
+            "Forecast-event coverage does not match prediction-input evidence; "
+            f"missing={list(expected_ids)}, unexpected=[]."
+        )
+
+    roles = tuple(sorted(scoped["role"].dropna().astype(str).unique().tolist()))
+    if len(roles) != 1:
+        raise ValueError("Prediction-input evidence forecast events must use one role.")
+
+    try:
+        role = ForecastRole(roles[0])
+    except ValueError as exc:
+        raise ValueError(
+            "Prediction-input evidence contains an unsupported forecast role."
+        ) from exc
+
+    if role not in INPUT_EVIDENCE_FORECAST_ROLES:
+        raise ValueError("Prediction-input evidence requires a live or development forecast role.")
+
     if actual_ids != expected_ids:
         missing = sorted(set(expected_ids) - set(actual_ids))
         unexpected = sorted(set(actual_ids) - set(expected_ids))

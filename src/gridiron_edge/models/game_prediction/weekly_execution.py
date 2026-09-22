@@ -12,7 +12,10 @@ from typing import cast
 import pandas as pd
 from pandas import DataFrame, Series
 
-from gridiron_edge.evaluation.forecast_contracts import ForecastRole
+from gridiron_edge.evaluation.forecast_contracts import (
+    WEEKLY_PRODUCT_FORECAST_ROLES,
+    ForecastRole,
+)
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.prediction_input_evidence import (
     EloPredictionEventEvidence,
@@ -416,7 +419,20 @@ def _statistical_input_evidence(
     return evidence
 
 
-def execute_weekly_prediction_policy(
+def _validate_weekly_execution_role(
+    role: ForecastRole,
+) -> None:
+    """Require one role eligible for selected weekly execution."""
+    if not isinstance(role, ForecastRole):
+        raise TypeError("role must be a ForecastRole.")
+
+    if role not in WEEKLY_PRODUCT_FORECAST_ROLES:
+        raise ValueError(
+            "Weekly prediction execution requires a live or development forecast role."
+        )
+
+
+def _execute_weekly_prediction_policy(
     schedule: DataFrame,
     *,
     season: str,
@@ -424,12 +440,15 @@ def execute_weekly_prediction_policy(
     repo: Path,
     run_id: str,
     generated_at: datetime,
+    role: ForecastRole,
     win_override: str | None = None,
     total_override: str | None = None,
     source_revision: SourceRevision | None = None,
     source_artifacts: tuple[SourceArtifactReference, ...] | None = None,
 ) -> WeeklyPredictionExecution:
-    """Resolve and execute the exact selected weekly Win and Total models."""
+    """Resolve and execute an exact selected weekly prediction policy."""
+    _validate_weekly_execution_role(role)
+
     import gridiron_edge.models.elo.model
     import gridiron_edge.models.game_prediction.model  # noqa: F401
 
@@ -491,7 +510,7 @@ def execute_weekly_prediction_policy(
             model_name="win_prob",
             model_type=policy.win.model_type,
             run_id=run_id,
-            role=ForecastRole.LIVE,
+            role=role,
             generated_at=generated_at,
         )
         event_frames.append(win_events)
@@ -535,7 +554,7 @@ def execute_weekly_prediction_policy(
             model_name="total",
             model_type=policy.total.model_type,
             run_id=run_id,
-            role=ForecastRole.LIVE,
+            role=role,
             generated_at=generated_at,
         )
         event_frames.append(total_events)
@@ -558,4 +577,62 @@ def execute_weekly_prediction_policy(
         events=events,
         input_evidence=tuple(input_evidence),
         win_display=win_display,
+    )
+
+
+def execute_weekly_prediction_policy(
+    schedule: DataFrame,
+    *,
+    season: str,
+    week: int,
+    repo: Path,
+    run_id: str,
+    generated_at: datetime,
+    win_override: str | None = None,
+    total_override: str | None = None,
+    source_revision: SourceRevision | None = None,
+    source_artifacts: tuple[SourceArtifactReference, ...] | None = None,
+) -> WeeklyPredictionExecution:
+    """Execute the exact selected live weekly prediction policy."""
+    return _execute_weekly_prediction_policy(
+        schedule,
+        season=season,
+        week=week,
+        repo=repo,
+        run_id=run_id,
+        generated_at=generated_at,
+        role=ForecastRole.LIVE,
+        win_override=win_override,
+        total_override=total_override,
+        source_revision=source_revision,
+        source_artifacts=source_artifacts,
+    )
+
+
+def execute_development_weekly_prediction_policy(
+    schedule: DataFrame,
+    *,
+    season: str,
+    week: int,
+    repo: Path,
+    run_id: str,
+    generated_at: datetime,
+    win_override: str | None = None,
+    total_override: str | None = None,
+    source_revision: SourceRevision | None = None,
+    source_artifacts: tuple[SourceArtifactReference, ...] | None = None,
+) -> WeeklyPredictionExecution:
+    """Execute a retrospective canonical development prediction policy."""
+    return _execute_weekly_prediction_policy(
+        schedule,
+        season=season,
+        week=week,
+        repo=repo,
+        run_id=run_id,
+        generated_at=generated_at,
+        role=ForecastRole.DEVELOPMENT,
+        win_override=win_override,
+        total_override=total_override,
+        source_revision=source_revision,
+        source_artifacts=source_artifacts,
     )

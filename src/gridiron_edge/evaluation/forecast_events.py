@@ -79,7 +79,7 @@ def build_forecast_events(
         model_type: Model implementation, such as ``"elo"`` or
             ``"random_forest"``.
         run_id: Shared identity for this prediction invocation.
-        role: Whether the invocation is live or historically backfilled.
+        role: Operational role of the forecast invocation.
         generated_at: Shared timezone-aware UTC generation timestamp.
 
     Returns:

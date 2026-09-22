@@ -12,6 +12,7 @@ import pandas as pd
 from pandas import DataFrame
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.evaluation.forecast_evidence_disposition import (
     FORECAST_EVIDENCE_DISPOSITION_SCHEMA_VERSION,
     AffectedPredictionComponent,
@@ -463,4 +464,20 @@ def test_multiple_applicable_dispositions_are_ambiguous() -> None:
         require_operational_weekly_product(
             _product("product-a", "run-a"),
             [first, second],
+        )
+
+
+def test_development_events_do_not_authenticate_live_defect_scope() -> None:
+    events = _events()
+    events["role"] = ForecastRole.DEVELOPMENT.value
+
+    with pytest.raises(
+        ValueError,
+        match=r"every live logistic Win event|live role",
+    ):
+        authenticate_forecast_evidence_disposition(
+            _disposition(),
+            forecast_events=events,
+            weekly_products=_products(),
+            selected_product_id="product-b",
         )

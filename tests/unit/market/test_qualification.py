@@ -1,3 +1,4 @@
+# tests/unit/market/test_qualification.py
 """Unit tests for recommendation-qualification diagnostics."""
 
 from __future__ import annotations
@@ -7,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.market.qualification import (
     ExactOfferCandidate,
     ForecastProvenance,
@@ -197,15 +199,34 @@ def test_absent_forecast_is_unavailable_not_fabricated() -> None:
     )
 
 
-def test_backfilled_event_is_not_qualified() -> None:
-    """A backfilled event cannot satisfy live forecast provenance."""
+@pytest.mark.parametrize(
+    "role",
+    [
+        ForecastRole.DEVELOPMENT,
+        ForecastRole.BACKFILLED,
+    ],
+)
+def test_non_live_event_is_not_qualified(
+    role: ForecastRole,
+) -> None:
+    """Development and backfilled events cannot satisfy live provenance."""
     result = evaluate_qualification(
         candidate(),
         expected_forecast=reference(),
-        forecast=replace(forecast(), role="backfilled"),
+        forecast=replace(
+            forecast(),
+            role=role.value,
+        ),
     )
 
     assert result.state is QualificationState.NOT_QUALIFIED
+
+    check = get(
+        result,
+        QualificationCheckName.LIVE_FORECAST_ROLE,
+    )
+    assert check.status is QualificationCheckStatus.FAILED
+    assert check.reason == "forecast_role_not_live"
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.evaluation.forecast_store import FORECAST_EVENT_COLUMNS
 from gridiron_edge.evaluation.prediction_input_evidence import (
     PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION,
@@ -622,6 +623,35 @@ class TestEventAuthentication:
             forecast_events=_forecast_events(evidence),
         )
 
+    @pytest.mark.parametrize("factory", [_statistical_evidence, _elo_evidence])
+    def test_authenticates_complete_exact_development_family(
+        self,
+        factory,
+    ) -> None:
+        evidence = factory()
+        events = _forecast_events(evidence)
+        events["role"] = ForecastRole.DEVELOPMENT.value
+
+        authenticate_prediction_input_evidence(
+            evidence,
+            forecast_events=events,
+        )
+
+    def test_missing_complete_family_is_rejected_as_coverage_mismatch(
+        self,
+    ) -> None:
+        evidence = _statistical_evidence()
+        events = _forecast_events(evidence).iloc[0:0].copy()
+
+        with pytest.raises(
+            ValueError,
+            match="coverage does not match",
+        ):
+            authenticate_prediction_input_evidence(
+                evidence,
+                forecast_events=events,
+            )
+
     def test_missing_event_is_rejected(self) -> None:
         evidence = _statistical_evidence()
         events = _forecast_events(evidence).iloc[:1].copy()
@@ -648,13 +678,38 @@ class TestEventAuthentication:
         with pytest.raises(ValueError, match="output does not match"):
             authenticate_prediction_input_evidence(evidence, forecast_events=events)
 
-    def test_backfilled_role_does_not_authenticate_as_live(self) -> None:
+    def test_backfilled_role_does_not_authenticate_selected_weekly_evidence(
+        self,
+    ) -> None:
         evidence = _elo_evidence()
         events = _forecast_events(evidence)
-        events["role"] = "backfilled"
+        events["role"] = ForecastRole.BACKFILLED.value
 
-        with pytest.raises(ValueError, match="coverage does not match"):
-            authenticate_prediction_input_evidence(evidence, forecast_events=events)
+        with pytest.raises(
+            ValueError,
+            match="requires a live or development forecast role",
+        ):
+            authenticate_prediction_input_evidence(
+                evidence,
+                forecast_events=events,
+            )
+
+    def test_rejects_mixed_forecast_roles(self) -> None:
+        evidence = _statistical_evidence()
+        events = _forecast_events(evidence)
+        events.loc[
+            events["event_id"].eq("event-1"),
+            "role",
+        ] = ForecastRole.DEVELOPMENT.value
+
+        with pytest.raises(
+            ValueError,
+            match="must use one role",
+        ):
+            authenticate_prediction_input_evidence(
+                evidence,
+                forecast_events=events,
+            )
 
     def test_authentication_compares_event_identity_independent_of_game_order(
         self,

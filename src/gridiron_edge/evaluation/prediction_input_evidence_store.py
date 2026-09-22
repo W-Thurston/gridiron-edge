@@ -1,5 +1,5 @@
 # src/gridiron_edge/evaluation/prediction_input_evidence_store.py
-"""Immutable persistence for live prediction-input evidence and binary snapshots."""
+"""Immutable persistence for selected weekly prediction-input evidence and binary snapshots."""
 
 from __future__ import annotations
 
