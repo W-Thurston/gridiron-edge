@@ -52,6 +52,7 @@ Orchestrator:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import logging
@@ -74,6 +75,10 @@ from scipy.stats import norm
 
 # pyrefly: ignore [missing-import]
 from sklearn.isotonic import IsotonicRegression
+
+from gridiron_edge.evaluation.prediction_input_evidence import (
+    CalibrationResolutionSource,
+)
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -151,6 +156,18 @@ _MODEL_CALIBRATION_FILENAME: Final[str] = "game_model_calibration.json"
 
 # Default number of most-recent seasons held out for calibrator validation.
 _DEFAULT_HOLDOUT_SEASONS: Final[int] = 2
+
+
+@dataclass(frozen=True, slots=True)
+class PredictionPostProcessingResolution:
+    """Exact Win post-processing values and their runtime provenance."""
+
+    sigma: float
+    sigma_source: CalibrationResolutionSource
+    margin_std: float
+    margin_std_source: CalibrationResolutionSource
+    registry_entry_updated_at: datetime | None
+    calibrator: IsotonicRegression | None
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +454,70 @@ def get_sigma(
             return float(sigma)
 
     return _MODEL_SIGMAS.get((model_name, model_type), _NFL_DEFAULT_SIGMA)
+
+
+def resolve_prediction_post_processing(
+    *,
+    model_name: str,
+    model_type: str,
+    repo: Path,
+) -> PredictionPostProcessingResolution:
+    """Resolve exact Win post-processing values and provenance once."""
+    calibrations = load_model_calibrations(repo)
+    payload = calibrations.get(_composite_key(model_name, model_type))
+    persisted = payload if isinstance(payload, dict) else None
+
+    sigma_value = persisted.get("sigma") if persisted is not None else None
+    if isinstance(sigma_value, int | float) and not isinstance(sigma_value, bool):
+        sigma = float(sigma_value)
+        sigma_source = CalibrationResolutionSource.PERSISTED_REGISTRY
+    elif (model_name, model_type) in _MODEL_SIGMAS:
+        sigma = float(_MODEL_SIGMAS[(model_name, model_type)])
+        sigma_source = CalibrationResolutionSource.MODEL_FALLBACK
+    else:
+        sigma = _NFL_DEFAULT_SIGMA
+        sigma_source = CalibrationResolutionSource.GLOBAL_DEFAULT
+
+    margin_value = persisted.get("margin_std") if persisted is not None else None
+    if isinstance(margin_value, int | float) and not isinstance(margin_value, bool):
+        margin_std = float(margin_value)
+        margin_std_source = CalibrationResolutionSource.PERSISTED_REGISTRY
+    elif (model_name, model_type) in _MODEL_MARGIN_STDS:
+        margin_std = float(_MODEL_MARGIN_STDS[(model_name, model_type)])
+        margin_std_source = CalibrationResolutionSource.MODEL_FALLBACK
+    else:
+        margin_std = _DEFAULT_MARGIN_STD
+        margin_std_source = CalibrationResolutionSource.GLOBAL_DEFAULT
+
+    uses_registry = (
+        sigma_source is CalibrationResolutionSource.PERSISTED_REGISTRY
+        or margin_std_source is CalibrationResolutionSource.PERSISTED_REGISTRY
+    )
+    updated_at = _registry_updated_at(persisted) if uses_registry else None
+    return PredictionPostProcessingResolution(
+        sigma=sigma,
+        sigma_source=sigma_source,
+        margin_std=margin_std,
+        margin_std_source=margin_std_source,
+        registry_entry_updated_at=updated_at,
+        calibrator=load_calibrator(model_name, model_type, repo=repo),
+    )
+
+
+def _registry_updated_at(payload: dict[str, Any] | None) -> datetime:
+    """Parse required UTC-aware registry provenance for a used entry."""
+    if payload is None:
+        raise ValueError("Persisted calibration resolution requires a registry entry.")
+    value = payload.get("updated_at")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Persisted calibration registry entry requires updated_at.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Persisted calibration registry updated_at is invalid.") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Persisted calibration registry updated_at must be timezone-aware.")
+    return parsed.astimezone(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -849,6 +930,67 @@ def projected_scores(
 # ---------------------------------------------------------------------------
 # Prediction Enrichment Orchestrator
 # ---------------------------------------------------------------------------
+
+
+def enrich_predictions_with_resolution(
+    df: pd.DataFrame,
+    *,
+    resolution: PredictionPostProcessingResolution,
+) -> pd.DataFrame:
+    """Enrich Win predictions using one already-resolved input set."""
+    out: DataFrame = df.copy()
+
+    if "home_win_prob" in out.columns:
+        prob_col = "home_win_prob"
+        away_col = "away_win_prob"
+    elif "HOME_WIN_PROB" in out.columns:
+        prob_col = "HOME_WIN_PROB"
+        away_col = "AWAY_WIN_PROB"
+    else:
+        raise KeyError("DataFrame must contain 'home_win_prob' or 'HOME_WIN_PROB'")
+
+    if resolution.calibrator is not None:
+        out[prob_col] = apply_recalibration(
+            out[prob_col],
+            resolution.calibrator,
+        )
+        if away_col in out.columns:
+            out[away_col] = 1.0 - out[prob_col]
+
+    out["model_spread"] = out[prob_col].apply(
+        lambda probability: win_prob_to_spread(
+            probability,
+            sigma=resolution.sigma,
+        )
+    )
+    out["margin_std"] = resolution.margin_std
+
+    def _bands(
+        probability: float,
+    ) -> tuple[float, float]:
+        return win_prob_bands(
+            probability,
+            margin_std=resolution.margin_std,
+            sigma=resolution.sigma,
+        )
+
+    bands: Series = out[prob_col].apply(_bands)
+    out["win_prob_lo"] = bands.apply(lambda interval: interval[0])
+    out["win_prob_hi"] = bands.apply(lambda interval: interval[1])
+    out["confidence_tier"] = out[prob_col].apply(classify_confidence_tier)
+
+    if "model_total" in out.columns:
+        scores = out.apply(
+            lambda row: projected_scores(
+                row["model_spread"],
+                row["model_total"],
+            ),
+            axis=1,
+        )
+        out["projected_home_score"] = scores.apply(lambda values: values[0])
+        out["projected_away_score"] = scores.apply(lambda values: values[1])
+
+    return out
 
 
 def enrich_predictions(

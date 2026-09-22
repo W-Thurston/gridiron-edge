@@ -22,8 +22,17 @@ from typing import ClassVar, Final
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.evaluation.prediction_input_evidence import (
+    SourceArtifactReference,
+    SourceRevision,
+)
 from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction.post_process import enrich_predictions
+from gridiron_edge.models.game_prediction.prediction_execution import (
+    ELO_FORMULA_ID,
+    EloPredictionExecution,
+    build_elo_prediction_execution,
+)
 from gridiron_edge.models.registry import ModelRegistry
 
 logger: Logger = logging.getLogger(__name__)
@@ -159,6 +168,7 @@ def _merge_elo_predictions(
     *,
     model_name: str,
     model_type: str,
+    retain_year: bool = False,
 ) -> pd.DataFrame:
     """Merge Elo ratings onto an upcoming schedule and compute win probs.
 
@@ -167,6 +177,9 @@ def _merge_elo_predictions(
         elo: Elo state table DataFrame.
         model_name: Model purpose (always ``"win_prob"`` for the Elo model).
         model_type: Model algorithm (always ``"elo"`` for the Elo model).
+        retain_year: Whether to retain the canonical season column required by
+            prediction-input evidence. The ordinary display-oriented path
+            preserves its existing schema by leaving this false.
 
     Returns:
         DataFrame compatible with ``build_predictions_df()`` output schema.
@@ -216,7 +229,7 @@ def _merge_elo_predictions(
     df["model_name"] = model_name
     df["model_type"] = model_type
 
-    return df.drop(columns=["YEAR"])
+    return df if retain_year else df.drop(columns=["YEAR"])
 
 
 # ---------------------------------------------------------------------------
@@ -295,4 +308,48 @@ class WinProbEloModel:
             elo,
             model_name=self.model_name,
             model_type=self.model_type,
+        )
+
+    def predict_upcoming_with_evidence(
+        self,
+        schedule: pd.DataFrame,
+        *,
+        source_revision: SourceRevision,
+        source_artifacts: tuple[SourceArtifactReference, ...],
+        repo: Path | None = None,
+    ) -> EloPredictionExecution:
+        """Generate upcoming Elo predictions and exact computation evidence.
+
+        The current persisted Elo lineage is authenticated before prediction.
+        Prediction rows and event-level computations are then derived from the
+        same in-memory Elo merge and formula execution.
+        """
+        from gridiron_edge.core.settings import get_settings
+        from gridiron_edge.datasets import loaders
+        from gridiron_edge.ratings.elo.lineage import (
+            verify_current_elo_lineage,
+        )
+
+        resolved_repo = repo or get_settings().repo_root
+
+        if not verify_current_elo_lineage(repo=resolved_repo):
+            raise ValueError(
+                "Upcoming Elo prediction requires current authenticated schema-1 Elo lineage."
+            )
+
+        elo = loaders.load_elo_state(resolved_repo)
+        predictions = _merge_elo_predictions(
+            schedule,
+            elo,
+            model_name=self.model_name,
+            model_type=self.model_type,
+            retain_year=True,
+        )
+
+        return build_elo_prediction_execution(
+            predictions,
+            source_revision=source_revision,
+            source_artifacts=source_artifacts,
+            divisor=self.DIVISOR,
+            formula_id=ELO_FORMULA_ID,
         )

@@ -559,6 +559,7 @@ class GamesTrainer(ABC):
         feature_set = spec.feature_set[model_type]
         feature_fn: Callable = feature_set.feature_fn
         feature_names: list[str] = list(feature_set.feature_names)
+        feature_set_name: str = feature_set.name
 
         search: _SearchResult = self._run_hp_search(
             df=df,
@@ -578,6 +579,7 @@ class GamesTrainer(ABC):
                 best_params=search.params,
                 best_score=search.score,
                 feature_names=feature_names,
+                feature_set_name=feature_set_name,
                 x_train=search.x_train,
                 y_train=search.y_train,
                 x_hold=search.x_hold,
@@ -592,6 +594,7 @@ class GamesTrainer(ABC):
                 best_params=search.params,
                 best_score=search.score,
                 feature_names=feature_names,
+                feature_set_name=feature_set_name,
                 x_train=search.x_train,
                 y_train=search.y_train,
                 x_hold=search.x_hold,
@@ -894,6 +897,7 @@ class GamesTrainer(ABC):
         best_params: dict[str, Any],
         best_score: float,
         feature_names: list[str],
+        feature_set_name: str,
         x_train: pd.DataFrame,
         y_train: Series,
         x_hold: pd.DataFrame,
@@ -997,6 +1001,7 @@ class GamesTrainer(ABC):
                 "overfit_gap": round(holdout_brier - train_brier, 6),
                 "calibration_applied": calibration_applied,
                 "modeling_schema_version": modeling_schema_version,
+                "feature_set": feature_set_name,
             },
             feature_columns=feature_names,
             n_train_rows=len(x_train),
@@ -1017,6 +1022,7 @@ class GamesTrainer(ABC):
         best_params: dict[str, Any],
         best_score: float,
         feature_names: list[str],
+        feature_set_name: str,
         x_train: pd.DataFrame,
         y_train: Series,
         x_hold: pd.DataFrame,
@@ -1063,6 +1069,7 @@ class GamesTrainer(ABC):
                 "mean_target_train": float(np.mean(y_train_arr)),
                 "mean_target_holdout": float(np.mean(y_hold_arr)),
                 "modeling_schema_version": modeling_schema_version,
+                "feature_set": feature_set_name,
             },
             feature_columns=feature_names,
             n_train_rows=len(x_train),

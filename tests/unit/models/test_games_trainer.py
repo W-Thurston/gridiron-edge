@@ -399,6 +399,7 @@ class TestGameMetadataSchemaSeparation:
             best_params={},
             best_score=0.22,
             feature_names=["feature"],
+            feature_set_name="test_classification_features",
             x_train=x_train,
             y_train=y_train,
             x_hold=x_hold,
@@ -410,6 +411,8 @@ class TestGameMetadataSchemaSeparation:
 
         assert metadata.schema_version == 3
         assert metadata.parameters["modeling_schema_version"] == 5
+        assert metadata.parameters["feature_set"] == "test_classification_features"
+        assert metadata.parameters["feature_set"] == "test_classification_features"
 
     def test_regression_metadata_uses_artifact_schema_default(self) -> None:
         import numpy as np
@@ -431,6 +434,7 @@ class TestGameMetadataSchemaSeparation:
             best_params={},
             best_score=9.5,
             feature_names=["feature"],
+            feature_set_name="test_regression_features",
             x_train=x_train,
             y_train=y_train,
             x_hold=x_hold,
@@ -442,6 +446,7 @@ class TestGameMetadataSchemaSeparation:
 
         assert metadata.schema_version == 3
         assert metadata.parameters["modeling_schema_version"] == 5
+        assert metadata.parameters["feature_set"] == "test_regression_features"
 
 
 # ---------------------------------------------------------------------------

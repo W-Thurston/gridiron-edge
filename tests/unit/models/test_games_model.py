@@ -1,4 +1,4 @@
-# tests/unit/models/test_games_predictor.py
+# tests/unit/models/test_games_model.py
 
 """Tests for GamesModel + composite-key registrations + build_game_predictions.
 

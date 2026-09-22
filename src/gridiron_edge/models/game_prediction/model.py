@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from logging import Logger
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 
 import numpy as np
 import pandas as pd
@@ -31,11 +31,29 @@ import pandas as pd
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.datasets.loaders import load_modeling_file
+from gridiron_edge.evaluation.prediction_input_evidence import (
+    BinaryArtifactReference,
+    CalibrationResolutionSource,
+    PredictionArtifactKind,
+    PredictionArtifactState,
+    PredictionFeatureSchema,
+    PredictionPostProcessingEvidence,
+    PredictionSourceState,
+    SourceArtifactReference,
+    SourceRevision,
+    create_prediction_feature_schema,
+)
+from gridiron_edge.evaluation.prediction_input_sources import (
+    file_identity,
+)
 from gridiron_edge.features.pipeline import (
     CANONICAL_FEATURES,
 )
 from gridiron_edge.features.registry import run_features
-from gridiron_edge.models.artifact import ArtifactStore
+from gridiron_edge.models.artifact import (
+    ArtifactStore,
+    BaseModelMetadata,
+)
 from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION, FeatureSet
 from gridiron_edge.models.game_prediction.base import (
@@ -44,7 +62,16 @@ from gridiron_edge.models.game_prediction.base import (
     GameModelType,
     GamesTrainer,
 )
-from gridiron_edge.models.game_prediction.post_process import enrich_predictions
+from gridiron_edge.models.game_prediction.post_process import (
+    PredictionPostProcessingResolution,
+    enrich_predictions,
+    enrich_predictions_with_resolution,
+    resolve_prediction_post_processing,
+)
+from gridiron_edge.models.game_prediction.prediction_execution import (
+    StatisticalPredictionExecution,
+    build_statistical_prediction_execution,
+)
 from gridiron_edge.models.game_prediction.total import TotalTrainer
 from gridiron_edge.models.game_prediction.win_prob import WinProbTrainer
 from gridiron_edge.models.registry import ModelRegistry
@@ -54,7 +81,8 @@ if TYPE_CHECKING:
 
 
 logger: Logger = logging.getLogger(__name__)
-
+_CALIBRATOR_FILENAME: Final[str] = "calibrator.joblib"
+_CALIBRATION_REGISTRY_PATH: Final[str] = "data/output/calibration/game_model_calibration.json"
 
 # ---------------------------------------------------------------------------
 # Trainer dispatch - maps model_name → GamesTrainer subclass
@@ -220,6 +248,278 @@ def build_regression_predictions(
 
 
 # ---------------------------------------------------------------------------
+# Statistical prediction evidence helpers
+# ---------------------------------------------------------------------------
+
+
+def _present_binary_reference(
+    kind: PredictionArtifactKind,
+    *,
+    path: Path,
+    repo: Path,
+) -> BinaryArtifactReference:
+    """Capture one required present binary artifact."""
+    if not path.is_file():
+        raise FileNotFoundError(f"Required prediction binary artifact is missing: {path}")
+
+    digest, size_bytes = file_identity(path)
+    return BinaryArtifactReference(
+        kind=kind,
+        source_relative_path=path.relative_to(repo).as_posix(),
+        state=PredictionArtifactState.PRESENT,
+        content_digest=digest,
+        size_bytes=size_bytes,
+    )
+
+
+def _optional_binary_reference(
+    kind: PredictionArtifactKind,
+    *,
+    path: Path,
+    repo: Path,
+) -> BinaryArtifactReference:
+    """Capture one optional binary artifact or explicit absence."""
+    relative_path = path.relative_to(repo).as_posix()
+
+    if not path.is_file():
+        return BinaryArtifactReference(
+            kind=kind,
+            source_relative_path=relative_path,
+            state=PredictionArtifactState.ABSENT,
+            content_digest=None,
+            size_bytes=None,
+        )
+
+    digest, size_bytes = file_identity(path)
+    return BinaryArtifactReference(
+        kind=kind,
+        source_relative_path=relative_path,
+        state=PredictionArtifactState.PRESENT,
+        content_digest=digest,
+        size_bytes=size_bytes,
+    )
+
+
+def _statistical_artifact_references(
+    store: ArtifactStore,
+    *,
+    model_name: str,
+    model_type: str,
+    repo: Path,
+) -> tuple[BinaryArtifactReference, ...]:
+    """Capture the exact statistical model artifact inventory."""
+    artifact_directory = store.artifact_dir(
+        model_name,
+        model_type,
+    )
+    references = (
+        _optional_binary_reference(
+            PredictionArtifactKind.EXTERNAL_CALIBRATOR,
+            path=artifact_directory / _CALIBRATOR_FILENAME,
+            repo=repo,
+        ),
+        _present_binary_reference(
+            PredictionArtifactKind.MODEL,
+            path=store.model_path(model_name, model_type),
+            repo=repo,
+        ),
+        _present_binary_reference(
+            PredictionArtifactKind.MODEL_METADATA,
+            path=store.metadata_path(model_name, model_type),
+            repo=repo,
+        ),
+        _optional_binary_reference(
+            PredictionArtifactKind.SCALER,
+            path=store.scaler_path(model_name, model_type),
+            repo=repo,
+        ),
+    )
+
+    return tuple(
+        sorted(
+            references,
+            key=lambda reference: reference.kind.value,
+        )
+    )
+
+
+def _validate_prediction_metadata(
+    metadata: BaseModelMetadata,
+    *,
+    model_name: str,
+    model_type: str,
+    task: str,
+    feature_set: FeatureSet,
+    features: pd.DataFrame,
+) -> GameModelMetadata:
+    """Validate persisted metadata against runtime prediction inputs."""
+    if not isinstance(metadata, GameModelMetadata):
+        raise TypeError("Game prediction requires GameModelMetadata.")
+
+    if metadata.model_name != model_name:
+        raise ValueError("Prediction metadata model_name does not match the selected model.")
+
+    if metadata.model_type != model_type:
+        raise ValueError("Prediction metadata model_type does not match the selected model.")
+
+    if metadata.task != task:
+        raise ValueError("Prediction metadata task does not match the selected model.")
+
+    feature_set_name = metadata.parameters.get("feature_set")
+    if feature_set_name != feature_set.name:
+        raise ValueError(
+            "Prediction metadata feature_set does not match the current model feature contract."
+        )
+
+    modeling_schema_version = metadata.parameters.get("modeling_schema_version")
+    if (
+        isinstance(modeling_schema_version, bool)
+        or not isinstance(modeling_schema_version, int)
+        or modeling_schema_version != _SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "Prediction metadata modeling_schema_version does not "
+            "match the current modeling schema."
+        )
+
+    persisted_columns = tuple(metadata.feature_columns)
+    declared_columns = tuple(feature_set.feature_names)
+    runtime_columns = tuple(str(column) for column in features.columns)
+
+    if persisted_columns != declared_columns:
+        raise ValueError(
+            "Prediction metadata feature_columns do not match the current model feature contract."
+        )
+
+    if runtime_columns != declared_columns:
+        raise ValueError(
+            "Runtime prediction feature columns do not match the current model feature contract."
+        )
+
+    return metadata
+
+
+def _prediction_feature_schema(
+    metadata: GameModelMetadata,
+    *,
+    feature_set: FeatureSet,
+) -> PredictionFeatureSchema:
+    """Create the authenticated ordered prediction feature schema."""
+    modeling_schema_version = metadata.parameters["modeling_schema_version"]
+
+    if isinstance(modeling_schema_version, bool) or not isinstance(modeling_schema_version, int):
+        raise ValueError("Prediction metadata modeling_schema_version must be an integer.")
+
+    return create_prediction_feature_schema(
+        model_name=metadata.model_name,
+        model_type=metadata.model_type,
+        task=metadata.task,
+        modeling_schema_version=modeling_schema_version,
+        feature_set_name=feature_set.name,
+        ordered_columns=tuple(metadata.feature_columns),
+    )
+
+
+def _source_reference(
+    source_artifacts: tuple[SourceArtifactReference, ...],
+    *,
+    relative_path: str,
+) -> SourceArtifactReference:
+    """Return one exact source reference from the captured inventory."""
+    matches = tuple(
+        reference for reference in source_artifacts if reference.relative_path == relative_path
+    )
+
+    if len(matches) != 1:
+        raise ValueError(
+            f"Prediction source inventory must contain exactly one reference for {relative_path}."
+        )
+
+    return matches[0]
+
+
+def _embedded_estimator_calibration(
+    metadata: GameModelMetadata,
+) -> bool:
+    """Return whether calibration is embedded in the persisted estimator."""
+    if metadata.task != "classification":
+        return False
+
+    if metadata.model_type == "random_forest":
+        return True
+
+    if metadata.model_type == "xgboost":
+        value = metadata.parameters.get("calibration_applied")
+        if not isinstance(value, bool):
+            raise ValueError(
+                "XGBoost classification metadata requires a boolean calibration_applied value."
+            )
+        return value
+
+    return False
+
+
+def _post_processing_evidence(
+    resolution: PredictionPostProcessingResolution,
+    *,
+    metadata: GameModelMetadata,
+    source_artifacts: tuple[SourceArtifactReference, ...],
+    binary_artifacts: tuple[BinaryArtifactReference, ...],
+) -> PredictionPostProcessingEvidence:
+    """Build exact Win post-processing execution evidence."""
+    registry_reference = _source_reference(
+        source_artifacts,
+        relative_path=_CALIBRATION_REGISTRY_PATH,
+    )
+
+    external_references = tuple(
+        reference
+        for reference in binary_artifacts
+        if (reference.kind is PredictionArtifactKind.EXTERNAL_CALIBRATOR)
+    )
+    if len(external_references) != 1:
+        raise ValueError(
+            "Statistical artifact inventory must contain exactly one external calibrator reference."
+        )
+
+    external_state = external_references[0].state
+    expected_state = (
+        PredictionArtifactState.PRESENT
+        if resolution.calibrator is not None
+        else PredictionArtifactState.ABSENT
+    )
+    if external_state is not expected_state:
+        raise ValueError(
+            "Loaded external calibrator state does not match the captured artifact inventory."
+        )
+
+    if (
+        resolution.sigma_source is CalibrationResolutionSource.PERSISTED_REGISTRY
+        or resolution.margin_std_source is CalibrationResolutionSource.PERSISTED_REGISTRY
+    ):
+        if registry_reference.state is not PredictionSourceState.PRESENT:
+            raise ValueError(
+                "Persisted post-processing calibration requires "
+                "a present calibration registry source."
+            )
+    elif resolution.registry_entry_updated_at is not None:
+        raise ValueError(
+            "Unused calibration registry entry must not carry an updated_at timestamp."
+        )
+
+    return PredictionPostProcessingEvidence(
+        registry_reference=registry_reference,
+        registry_entry_updated_at=(resolution.registry_entry_updated_at),
+        sigma=resolution.sigma,
+        sigma_source=resolution.sigma_source,
+        margin_std=resolution.margin_std,
+        margin_std_source=resolution.margin_std_source,
+        external_calibrator_state=external_state,
+        embedded_estimator_calibration=(_embedded_estimator_calibration(metadata)),
+    )
+
+
+# ---------------------------------------------------------------------------
 # GamesModel base
 # ---------------------------------------------------------------------------
 
@@ -344,6 +644,32 @@ class GamesModel:
             return self._predict_upcoming_classification(schedule, repo=resolved_repo)
         return self._predict_upcoming_regression(schedule, repo=resolved_repo)
 
+    def predict_upcoming_with_evidence(
+        self,
+        schedule: pd.DataFrame,
+        *,
+        source_revision: SourceRevision,
+        source_artifacts: tuple[SourceArtifactReference, ...],
+        repo: Path | None = None,
+    ) -> StatisticalPredictionExecution:
+        """Generate upcoming predictions and exact execution evidence."""
+        resolved_repo = repo or get_settings().repo_root
+
+        if self._task() == "classification":
+            return self._predict_upcoming_classification_with_evidence(
+                schedule,
+                source_revision=source_revision,
+                source_artifacts=source_artifacts,
+                repo=resolved_repo,
+            )
+
+        return self._predict_upcoming_regression_with_evidence(
+            schedule,
+            source_revision=source_revision,
+            source_artifacts=source_artifacts,
+            repo=resolved_repo,
+        )
+
     # ------------------------------------------------------------------
     # Classification (win_prob) prediction
     # ------------------------------------------------------------------
@@ -465,6 +791,176 @@ class GamesModel:
         )
         return result.reset_index(drop=True)
 
+    def _predict_upcoming_classification_with_evidence(
+        self,
+        schedule: pd.DataFrame,
+        *,
+        source_revision: SourceRevision,
+        source_artifacts: tuple[SourceArtifactReference, ...],
+        repo: Path,
+    ) -> StatisticalPredictionExecution:
+        """Execute one Win estimator with exact input evidence."""
+        store = ArtifactStore(repo)
+
+        if not store.is_trained(
+            self.model_name,
+            self.model_type,
+        ):
+            raise ValueError(
+                "Evidence-aware Win prediction requires "
+                f"a trained ({self.model_name}, {self.model_type}) "
+                "artifact."
+            )
+
+        metadata = store.read_metadata(
+            self.model_name,
+            self.model_type,
+        )
+        binary_artifacts = _statistical_artifact_references(
+            store,
+            model_name=self.model_name,
+            model_type=self.model_type,
+            repo=repo,
+        )
+
+        datasets = DatasetAccessor(repo=repo)
+        upcoming_df: DataFrame = run_features(
+            df=schedule,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
+        )
+
+        feature_set = self.prediction_feature_set()
+        features: DataFrame = feature_set.feature_fn(upcoming_df)
+
+        validated_metadata = _validate_prediction_metadata(
+            metadata,
+            model_name=self.model_name,
+            model_type=self.model_type,
+            task="classification",
+            feature_set=feature_set,
+            features=features,
+        )
+        feature_schema = _prediction_feature_schema(
+            validated_metadata,
+            feature_set=feature_set,
+        )
+
+        valid = features.notna().all(axis=1)
+        upcoming_valid = upcoming_df.loc[valid].copy()
+        x_feat = features.loc[valid].copy()
+
+        if x_feat.empty:
+            raise ValueError(
+                "Evidence-aware Win prediction has no rows with complete model features."
+            )
+
+        pipeline = store.load(
+            self.model_name,
+            self.model_type,
+        )
+        scaler = store.load_scaler(
+            self.model_name,
+            self.model_type,
+        )
+
+        if self.model_type == "logistic":
+            if scaler is None:
+                raise ValueError("Logistic Win prediction requires a persisted scaler.")
+        elif scaler is not None:
+            raise ValueError("Non-logistic Win prediction requires an absent scaler.")
+
+        raw_matrix = x_feat.to_numpy(dtype=float)
+        transformed_matrix = (
+            np.asarray(
+                scaler.transform(x_feat),
+                dtype=float,
+            )
+            if scaler is not None
+            else raw_matrix.copy()
+        )
+
+        raw_probabilities = np.asarray(
+            pipeline.predict_proba(transformed_matrix)[:, 1],
+            dtype=float,
+        )
+
+        if len(raw_probabilities) != len(upcoming_valid):
+            raise ValueError("Win estimator output count does not match the valid upcoming rows.")
+
+        resolution = resolve_prediction_post_processing(
+            model_name=self.model_name,
+            model_type=self.model_type,
+            repo=repo,
+        )
+        post_processing = _post_processing_evidence(
+            resolution,
+            metadata=validated_metadata,
+            source_artifacts=source_artifacts,
+            binary_artifacts=binary_artifacts,
+        )
+
+        result = upcoming_valid[
+            [
+                "GAME_ID",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "WEEK_NUM",
+            ]
+        ].copy()
+        result["HOME_WIN_PROB"] = raw_probabilities
+        result["AWAY_WIN_PROB"] = 1.0 - raw_probabilities
+        result["AWAY_TEAM_ELO"] = upcoming_valid.get(
+            "AWAY_ELO",
+            float("nan"),
+        )
+        result["HOME_TEAM_ELO"] = upcoming_valid.get(
+            "HOME_ELO",
+            float("nan"),
+        )
+
+        result = enrich_predictions_with_resolution(
+            result,
+            resolution=resolution,
+        ).reset_index(drop=True)
+
+        post_probabilities = result["HOME_WIN_PROB"].to_numpy(dtype=float)
+
+        result["HOME_TEAM_WIN_PROB"] = (
+            pd.Series(
+                post_probabilities,
+                index=result.index,
+                dtype=float,
+            )
+            .mul(100)
+            .map(lambda value: f"{value:.1f} %")
+        )
+        result["AWAY_TEAM_WIN_PROB"] = (
+            pd.Series(
+                1.0 - post_probabilities,
+                index=result.index,
+                dtype=float,
+            )
+            .mul(100)
+            .map(lambda value: f"{value:.1f} %")
+        )
+
+        return build_statistical_prediction_execution(
+            result,
+            game_ids=tuple(str(value) for value in upcoming_valid["GAME_ID"].tolist()),
+            raw_feature_values=tuple(tuple(float(value) for value in row) for row in raw_matrix),
+            transformed_feature_values=tuple(
+                tuple(float(value) for value in row) for row in transformed_matrix
+            ),
+            raw_estimator_outputs=tuple(float(value) for value in raw_probabilities),
+            post_estimator_outputs=tuple(float(value) for value in post_probabilities),
+            source_revision=source_revision,
+            source_artifacts=source_artifacts,
+            binary_artifacts=binary_artifacts,
+            feature_schema=feature_schema,
+            post_processing=post_processing,
+        )
+
     # ------------------------------------------------------------------
     # Regression (total) prediction
     # ------------------------------------------------------------------
@@ -542,6 +1038,122 @@ class GamesModel:
         result["model_name"] = self.model_name
         result["model_type"] = self.model_type
         return result.reset_index(drop=True)
+
+    def _predict_upcoming_regression_with_evidence(
+        self,
+        schedule: pd.DataFrame,
+        *,
+        source_revision: SourceRevision,
+        source_artifacts: tuple[SourceArtifactReference, ...],
+        repo: Path,
+    ) -> StatisticalPredictionExecution:
+        """Execute one Total estimator with exact input evidence."""
+        store = ArtifactStore(repo)
+
+        if not store.is_trained(
+            self.model_name,
+            self.model_type,
+        ):
+            raise ValueError(
+                "Evidence-aware Total prediction requires "
+                f"a trained ({self.model_name}, {self.model_type}) "
+                "artifact."
+            )
+
+        metadata = store.read_metadata(
+            self.model_name,
+            self.model_type,
+        )
+        binary_artifacts = _statistical_artifact_references(
+            store,
+            model_name=self.model_name,
+            model_type=self.model_type,
+            repo=repo,
+        )
+
+        datasets = DatasetAccessor(repo=repo)
+        upcoming_df: DataFrame = run_features(
+            df=schedule,
+            feature_names=CANONICAL_FEATURES,
+            datasets=datasets,
+        )
+
+        feature_set = self.prediction_feature_set()
+        features: DataFrame = feature_set.feature_fn(upcoming_df)
+
+        validated_metadata = _validate_prediction_metadata(
+            metadata,
+            model_name=self.model_name,
+            model_type=self.model_type,
+            task="regression",
+            feature_set=feature_set,
+            features=features,
+        )
+        feature_schema = _prediction_feature_schema(
+            validated_metadata,
+            feature_set=feature_set,
+        )
+
+        valid = features.notna().all(axis=1)
+        upcoming_valid = upcoming_df.loc[valid].copy()
+        x_feat = features.loc[valid].copy()
+
+        if x_feat.empty:
+            raise ValueError(
+                "Evidence-aware Total prediction has no rows with complete model features."
+            )
+
+        model = store.load(
+            self.model_name,
+            self.model_type,
+        )
+        scaler = store.load_scaler(
+            self.model_name,
+            self.model_type,
+        )
+
+        if scaler is not None:
+            raise ValueError("Total prediction requires an absent scaler.")
+
+        raw_matrix = x_feat.to_numpy(dtype=float)
+        transformed_matrix = raw_matrix.copy()
+
+        predictions = np.asarray(
+            model.predict(transformed_matrix),
+            dtype=float,
+        )
+
+        if len(predictions) != len(upcoming_valid):
+            raise ValueError("Total estimator output count does not match the valid upcoming rows.")
+
+        result = upcoming_valid[
+            [
+                "GAME_ID",
+                "AWAY_TEAM",
+                "HOME_TEAM",
+                "WEEK_NUM",
+            ]
+        ].copy()
+        result["model_total"] = predictions
+        result["model_name"] = self.model_name
+        result["model_type"] = self.model_type
+        result = result.reset_index(drop=True)
+
+        return build_statistical_prediction_execution(
+            result,
+            game_ids=tuple(str(value) for value in upcoming_valid["GAME_ID"].tolist()),
+            raw_feature_values=tuple(tuple(float(value) for value in row) for row in raw_matrix),
+            transformed_feature_values=tuple(
+                tuple(float(value) for value in row) for row in transformed_matrix
+            ),
+            raw_estimator_outputs=tuple(float(value) for value in predictions),
+            post_estimator_outputs=tuple(float(value) for value in predictions),
+            source_revision=source_revision,
+            source_artifacts=source_artifacts,
+            binary_artifacts=binary_artifacts,
+            feature_schema=feature_schema,
+            post_processing=None,
+        )
 
 
 # ---------------------------------------------------------------------------

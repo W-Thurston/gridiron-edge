@@ -177,240 +177,90 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Prediction Input Integrity and Reproducibility
 
-Units 1 through 3 corrected recurring history preservation, replaced the false
-incremental Elo lifecycle with deterministic complete-history reconstruction,
-and required exact persisted Elo lineage before weekly prediction.
+Units 1 through 5 completed history-preserving weekly refresh, deterministic complete-history Elo reconstruction, exact persisted Elo-lineage enforcement, external disposition of the affected immutable 2026 Week 2 forecast evidence, and immutable prediction-input evidence for newly generated live weekly forecasts.
 
-Only Unit 4 is active. Immutable prediction-input evidence, corrected forecast
-evaluation, and explanation evidence remain inactive future units.
+Corrected operational forecast generation and evaluation, model-quality assessment, and explanation evidence remain inactive future units.
 
 Market Unit 26 remains active but calendar-gated in:
 
 - `docs/programs/market-unit-26/PLAN.md`
 - `docs/programs/market-unit-26/ROADMAP.md`
 
+### Weekly Prediction Input Integrity Unit 5: Persist Immutable Input Evidence for New Live Weekly Forecasts [Completed September 21, 2026]
+
 #### Completed
 
-Weekly Prediction Input Integrity Unit 4 recorded and enforced one exact
-known-defect disposition for the immutable 2026 Week 2 forecast evidence.
+Implemented immutable, authenticated prediction-input evidence for every newly generated live weekly forecast event. Statistical and Elo execution now return predictions and exact computational evidence together. Weekly publication persists and authenticates immutable binary snapshots and family evidence before forecast events become durable.
 
-The disposition covers both affected live logistic Win runs, all 32 affected
-forecast events, both affected weekly products, and the exact selected affected
-product. It classifies Win probability and derived spread as known defective
-because of incomplete Elo source history. Total evidence is not classified as
-affected.
-
-Operational use of an affected product is now blocked for weekly readiness,
-weekly edge calculation, candidate issuance, and manual prediction rendering.
-Historical forecast-event loading, weekly-product loading, Games API display,
-and postgame closeout access remain available.
+Existing forecast events and weekly products remain unchanged. This unit does not retrofit historical evidence, regenerate the affected 2026 Week 2 forecasts, select a replacement product, perform corrected evaluation, add explanation evidence, or change API or frontend contracts.
 
 #### Goal
 
-Preserve the original immutable 2026 Week 2 forecast events, weekly products,
-index entries, and scoped current selection while recording one authenticated
-known-defect disposition and preventing the affected products from being used
-as operationally valid prediction evidence.
+Require every newly generated live weekly forecast event to have complete, immutable, strictly validated prediction-input evidence before persistence.
+
+Evidence preserves the clean tracked Git revision, bounded source identities, required replay bytes, exact ordered statistical inputs, transformed estimator inputs, estimator and post-processing outputs, Elo formula inputs, final event outputs, and one-to-one binding to persisted forecast UUIDs.
 
 #### Files Added/Removed/Changed
 
 Added:
 
-- `src/gridiron_edge/evaluation/forecast_evidence_disposition.py`
-  - Owns the schema-1 disposition contract, deterministic identity, strict
-    validation, immutable-evidence authentication, product applicability, and
-    shared operational-use enforcement.
-- `src/gridiron_edge/evaluation/forecast_evidence_disposition_store.py`
-  - Owns schema-versioned identity-addressed JSON persistence, exclusive
-    immutable publication, exact replay, strict loading, canonical-path
-    validation, and deterministic scope and product listing.
-- `tests/unit/evaluation/test_forecast_evidence_disposition.py`
-  - Proves domain identity, validation, evidence authentication, applicability,
-    ambiguity handling, and operational rejection.
-- `tests/unit/evaluation/test_forecast_evidence_disposition_store.py`
-  - Proves immutable persistence, strict deserialization, canonical paths,
-    deterministic listing, concurrent exact replay, and conflicting concurrent
-    publication rejection.
+- `src/gridiron_edge/evaluation/prediction_input_evidence.py`
+- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py`
+- `src/gridiron_edge/evaluation/prediction_input_sources.py`
+- `src/gridiron_edge/models/game_prediction/prediction_execution.py`
+- `tests/unit/cli/test_weekly_predict_publication.py`
+- `tests/unit/evaluation/test_prediction_input_evidence.py`
+- `tests/unit/evaluation/test_prediction_input_evidence_store.py`
+- `tests/unit/evaluation/test_prediction_input_sources.py`
+- `tests/unit/models/game_prediction/test_elo_prediction_execution.py`
+- `tests/unit/models/game_prediction/test_games_model_evidence.py`
+- `tests/unit/models/game_prediction/test_post_process_resolution.py`
+- `tests/unit/models/game_prediction/test_prediction_execution.py`
+- `tests/unit/models/game_prediction/test_statistical_prediction_execution.py`
+- `tests/unit/models/game_prediction/test_weekly_execution_evidence.py`
 
 Changed:
 
 - `PLAN.md`
-  - Closed Unit 4 with the implemented contract, complete file inventory,
-    validation evidence, and acceptance result.
-- `ROADMAP.md`
-  - Marked affected-evidence disposition complete and advanced the prediction
-    integrity program to immutable prediction-input evidence.
-- `HANDOFF.md`
-  - Documented the disposition artifact, current operational enforcement,
-    recovery procedure, and intentionally unchanged historical and Games API
-    paths.
-- `DECISIONS.md`
-  - Recorded the immutable external-disposition architecture and operational
-    enforcement boundary.
-- `CHANGELOG.md`
-  - Recorded the shipped Unit 4 behavior, protected validation, real artifact,
-    source preservation, and quality gates.
-- `api-schema.json`
-  - Regenerated the checked-in OpenAPI schema with the known-defective edge
-    blocker.
-- `frontend/src/components/field-status/edgeResultStatus.ts`
-  - Added the exhaustive presentation message for known-defective forecast
-    evidence.
-- `frontend/src/components/field-status/edgeResultStatus.test.ts`
-  - Proved the new blocker maps to its stable presentation message.
-- `frontend/src/components/field-status/EdgeResultStatus.test.tsx`
-  - Proved the React status component renders the known-defect message.
-- `src/gridiron_edge/api/meta.py`
-  - Added stable unavailable metadata for known-defective forecast evidence.
-- `src/gridiron_edge/api/routes/edges.py`
-  - Mapped blocked edge diagnostics to the new unavailable metadata.
-- `src/gridiron_edge/cli/output.py`
-  - Rejects affected selected products before display adaptation or PNG and
-    HTML writes.
-- `src/gridiron_edge/cli/production_chain.py`
-  - Rejects affected selected products before forecast-event loading, quote
-    loading, as-known quote derivation, candidate evaluation, or issuance
-    persistence.
-- `src/gridiron_edge/cli/verify_week.py`
-  - Resolves exact dispositions for the selected product and adds the
-    known-defective readiness blocker without replacing independent blockers.
-- `src/gridiron_edge/evaluation/weekly_readiness.py`
-  - Added the durable known-defective forecast-evidence prediction blocker.
-- `src/gridiron_edge/market/edge_diagnostics.py`
-  - Added the known-defective forecast-evidence edge blocker.
-- `src/gridiron_edge/market/weekly_edge_service.py`
-  - Returns an explicit blocked result with zero rows before market loading or
-    edge calculation when the selected product is affected.
-- `tests/unit/api/test_edges_route_diagnostics.py`
-  - Proved stable API metadata mapping for the new blocker.
-- `tests/unit/cli/test_output.py`
-  - Proved rendering rejection order, exact disposition lookup, identity
-    validation, undisposed behavior, and explicit ambiguity failure.
-- `tests/unit/cli/test_production_chain_cli.py`
-  - Proved candidate issuance stops before all downstream evidence reads and
-    writes.
-- `tests/unit/cli/test_verify_week.py`
-  - Proved exact disposition lookup, additive blocker composition, undisposed
-    behavior, identity validation, and explicit ambiguity failure.
-- `tests/unit/evaluation/test_weekly_readiness.py`
-  - Proved known-defective evidence blocks prediction readiness without
-    independently blocking market readiness.
-- `tests/unit/market/test_edge_diagnostics.py`
-  - Proved the known-defective blocker is distinct from missing predictions.
-- `tests/unit/market/test_weekly_edge_service.py`
-  - Proved affected products return an explicit blocked result before market
-    loading and edge calculation.
+- `src/gridiron_edge/cli/weekly_predict.py`
+- `src/gridiron_edge/models/artifact.py`
+- `src/gridiron_edge/models/elo/model.py`
+- `src/gridiron_edge/models/game_prediction/base.py`
+- `src/gridiron_edge/models/game_prediction/model.py`
+- `src/gridiron_edge/models/game_prediction/post_process.py`
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+- `tests/unit/cli/test_weekly_predict.py`
+- `tests/unit/models/game_prediction/test_weekly_execution.py`
+- `tests/unit/models/test_artifact.py`
+- `tests/unit/models/test_games_model.py`
+- `tests/unit/models/test_games_trainer.py`
 
 Removed:
 
 - None.
 
-The following ignored operational artifact was created through the public
-store boundary and is intentionally not committed under the repository's
-existing `data/` policy:
-
-- `data/output/forecast_evidence_dispositions/schema=1/dispositions/05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb.json`
-
 #### Tests
 
-Focused Unit 4 tests passed for:
+Passed Ruff, Pyrefly, Python compilation, the full non-slow unit suite, focused Unit 5 suites, and `git diff --check`.
 
-- disposition contracts and evidence authentication;
-- immutable disposition storage and strict loading;
-- concurrent exact replay and conflicting publication;
-- weekly readiness and blocker composition;
-- weekly edge blocking;
-- API edge metadata;
-- candidate-issuance rejection order;
-- prediction-rendering rejection order;
-- generated frontend blocker presentation.
+Legacy-versus-evidence equivalence passed for all five statistical families: Logistic, Random Forest, and XGBoost Win; Random Forest and XGBoost Total.
 
-Repository quality gates passed:
+Protected validation used a clean temporary repository and real 2026 Week 2 inputs. The default policy validated `win_prob / logistic` with `total / random_forest`; an override validated `win_prob / elo` with `total / random_forest`.
 
-```text
-uv run ruff check . --fix
-uvx pyrefly check
-uv run pytest -m "unit and not slow"
-```
+Protected validation proved clean revision resolution, exact source capture and recapture, complete family coverage, unique UUIDs, immutable snapshot and evidence publication, strict reload, idempotency, real statistical and Elo replay, source-drift rejection, tamper rejection, unrelated-event absence, and event persistence only after evidence success. Statistical replay used `rtol=0.0` and `atol=1e-12`.
 
-Frontend contract and production gates passed:
-
-```text
-uv run gridiron api export-schema
-cd frontend
-pnpm gen:api
-pnpm exec vitest run
-pnpm build
-cd ..
-```
-
-
-The checked-in OpenAPI schema consistency test passed.
-
-Protected real-artifact validation used public loaders and persistence
-boundaries in a temporary repository and confirmed:
-
-- both affected runs contain exactly 16 unique live logistic Win events;
-- all 32 affected event identities resolve exactly once;
-- both affected weekly products contain exactly 16 rows;
-- product and Win run identities match the affected runs;
-- product Win event identities exactly match their corresponding run events;
-- every available derived spread references its row's affected Win event;
-- no Total event, run, model, type, or role identity is present;
-- the current Week 2 selection identifies the expected affected product;
-- disposition creation, authentication, persistence, strict reload, and exact
-  replay succeed;
-- tampered content fails canonical identity validation;
-- the selected affected product is operationally rejected;
-- an unrelated product remains eligible;
-- readiness reports `known_defective_forecast_evidence`;
-- edge calculation returns the explicit known-defect blocker and zero rows;
-- candidate issuance stops before downstream reads or writes;
-- prediction rendering stops before adaptation or output writes;
-- copied and working source artifacts remain byte-identical.
-
-The persisted disposition is:
-
-```text
-recorded_at:
-2026-09-19T18:00:00+00:00
-
-disposition_id:
-05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb
-
-artifact SHA-256:
-8529487ed56c5130eba032c2e8d1764b22e95f796b6336a32ac299266746318d
-```
-
-Protected source hashes remained unchanged:
-
-```text
-08038e6f8e295ab45d3b04b55bb7804b8b3a86f5a1edd34a71119635333d5a62
-data/output/predictions/forecast_events.parquet
-
-41b31a6c9e4941548c4a88c1daada151011365d70736b509a33286389861f7bd
-data/output/weekly_products/index.json
-
-820f7e5d09732d3b66024d5374b70db88aa1d3190162bac4bb56ff503f833b8b
-data/output/weekly_products/current.json
-
-e53f1f20fd8a9451d81e87ad4543f3a43f13a034a4ca0b0dad34b423460df8bc
-first affected Week 2 product
-
-1dcdc458dc70b3fce106d6f635fcce925256f1ef35269d3e36e6aac903524755
-selected affected Week 2 product
-```
-
-Claude completed an independent read-only review and approved the unit for documentation closure after confirming the complete selected-product consumer inventory and additive readiness-blocker behavior.
+Independent read-only review found no blocking correctness or safety defect. Requested statistical equivalence and XGBoost coverage were added and passed.
 
 #### Acceptance
 
-One strict immutable schema-1 disposition records the complete known 2026 Week 2 incident across both affected live logistic Win runs, all 32 affected events, both affected weekly products, and the exact selected affected product.
+Every newly generated live weekly forecast event is bound to exactly one immutable, strictly validated family evidence artifact before event persistence.
 
-The disposition classifies only Win probability and derived spread as known defective because of incomplete Elo source history. It does not classify Total evidence as affected.
+Statistical evidence preserves exact source revision and identities, model and metadata bytes, scaler or explicit absence, external calibrator or explicit absence, ordered feature schema, raw and transformed inputs, raw and post-processed outputs, post-processing resolution, and final outputs.
 
-Original forecast events, weekly-product Parquet artifacts, product index, and scoped current selection remain byte-identical and historically loadable. No corrected forecast, retrospective replacement product, automatic reselection, candidate issuance, edge artifact, or operational rendering was created.
+Elo evidence preserves exact source revision and identities, Elo state and lineage bytes, lineage identities, Away and Home ratings, formula identity, divisor, probabilities, and final outputs.
 
-The selected affected product is not prediction-ready, cannot calculate edges, cannot issue candidates, and cannot be freshly rendered as an operational prediction output. The operational artifact is persisted under the ignored data/output/ tree according to existing repository policy.
+Snapshots and evidence are immutable, create-only, strict under reload, idempotent under exact replay, and resistant to conflicting publication. Source inputs must remain byte-identical from capture through publication. Forecast events cannot persist until all evidence is durable and authenticated. Product composition remains downstream.
 
-Unit 4 is implemented, validated against real evidence, independently reviewed, documented, and ready for downstream work.
+All pre-existing forecast events and weekly products remain byte-identical and readable without Unit 5 evidence. No corrected forecast, replacement product, automatic reselection, corrected evaluation, explanation artifact, API contract, or frontend surface was introduced.
+
+Nonblocking follow-up: availability validates feature columns but does not yet validate persisted feature-set identity and modeling schema version as strictly as execution. Execution remains fail-closed.

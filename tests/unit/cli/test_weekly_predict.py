@@ -19,6 +19,60 @@ from gridiron_edge.cli.weekly_predict import (
     _stage_ensure_data_fresh,
     _stage_predict_week,
 )
+from gridiron_edge.evaluation.prediction_input_evidence import (
+    PredictionSourceState,
+    SourceArtifactReference,
+    SourceRevision,
+)
+
+_COMMIT = "a" * 40
+_SOURCE_DIGEST = "b" * 64
+
+
+def _revision() -> SourceRevision:
+    return SourceRevision(
+        commit=_COMMIT,
+        tracked_worktree_clean=True,
+    )
+
+
+def _sources() -> tuple[SourceArtifactReference, ...]:
+    return (
+        SourceArtifactReference(
+            relative_path=("data/cleaned/NFL_upcoming_schedule_rich.parquet"),
+            state=PredictionSourceState.PRESENT,
+            content_digest=_SOURCE_DIGEST,
+            size_bytes=100,
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _prediction_provenance_boundaries():
+    """Isolate CLI tests from Git and immutable publication stores."""
+    with (
+        patch(
+            "gridiron_edge.cli.weekly_predict.resolve_clean_source_revision",
+            return_value=_revision(),
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict.capture_prediction_source_artifacts",
+            return_value=_sources(),
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict.recapture_and_require_same_prediction_sources",
+            return_value=_sources(),
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict._publish_binary_snapshots",
+            return_value=(Path("/tmp/model-snapshot.bin"),),
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict._publish_and_reload_evidence",
+            return_value=(Path("/tmp/evidence.json"),),
+        ),
+    ):
+        yield
 
 
 def _live_elo_predictions() -> pd.DataFrame:
@@ -174,9 +228,14 @@ class TestPredictWeekStage:
         display = pd.DataFrame({"GAME_ID": ["g1"]})
         policy = MagicMock()
         mock_schedule.return_value = schedule
+        family_evidence = SimpleNamespace(
+            source_revision=_revision(),
+            source_artifacts=_sources(),
+        )
         mock_execute.return_value = SimpleNamespace(
             policy=policy,
             events=events,
+            input_evidence=(family_evidence,),
             win_display=display,
         )
         mock_write.return_value = SimpleNamespace(
@@ -197,7 +256,21 @@ class TestPredictWeekStage:
         assert ctx["predictions_df"] is display
         assert ctx["forecast_run_id"] == "run-1"
         assert ctx["forecast_generated_at"] == generated_at
-        mock_write.assert_called_once_with(events, repo=mock_write.call_args.kwargs["repo"])
+        mock_write.assert_called_once_with(
+            events,
+            repo=mock_write.call_args.kwargs["repo"],
+        )
+
+        execute_kwargs = mock_execute.call_args.kwargs
+        assert execute_kwargs["source_revision"] == _revision()
+        assert execute_kwargs["source_artifacts"] == _sources()
+
+        assert ctx["prediction_input_evidence"] == (family_evidence,)
+        assert result.artifacts == [
+            Path("/tmp/model-snapshot.bin"),
+            Path("/tmp/evidence.json"),
+            Path("/tmp/events.parquet"),
+        ]
 
     @patch("gridiron_edge.models.game_prediction.weekly_execution.execute_weekly_prediction_policy")
     @patch("gridiron_edge.datasets.loaders.load_schedule_upcoming_rich")

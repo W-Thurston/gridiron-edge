@@ -93,6 +93,39 @@ class TestArtifactStoreInit:
         store = ArtifactStore(tmp_path)
         assert store.is_trained("win_prob", "random_forest") is False
 
+    def test_model_path_is_canonical(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        store = ArtifactStore(tmp_path)
+
+        assert store.model_path(
+            "win_prob",
+            "random_forest",
+        ) == (tmp_path / "data" / "models" / "win_prob" / "random_forest" / "model.joblib")
+
+    def test_metadata_path_is_canonical(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        store = ArtifactStore(tmp_path)
+
+        assert store.metadata_path(
+            "win_prob",
+            "random_forest",
+        ) == (tmp_path / "data" / "models" / "win_prob" / "random_forest" / "metadata.json")
+
+    def test_scaler_path_is_canonical(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        store = ArtifactStore(tmp_path)
+
+        assert store.scaler_path(
+            "win_prob",
+            "logistic",
+        ) == (tmp_path / "data" / "models" / "win_prob" / "logistic" / "scaler.joblib")
+
 
 # ---------------------------------------------------------------------------
 # Save / load round-trip - game

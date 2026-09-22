@@ -188,9 +188,33 @@ class ArtifactStore:
         """
         return self._root / model_name / model_type
 
+    def model_path(
+        self,
+        model_name: str,
+        model_type: str,
+    ) -> Path:
+        """Return the canonical persisted model-artifact path."""
+        return self.artifact_dir(model_name, model_type) / _MODEL_FILENAME
+
+    def metadata_path(
+        self,
+        model_name: str,
+        model_type: str,
+    ) -> Path:
+        """Return the canonical model-metadata path."""
+        return self.artifact_dir(model_name, model_type) / _METADATA_FILENAME
+
+    def scaler_path(
+        self,
+        model_name: str,
+        model_type: str,
+    ) -> Path:
+        """Return the canonical optional scaler-artifact path."""
+        return self.artifact_dir(model_name, model_type) / _SCALER_FILENAME
+
     def is_trained(self, model_name: str, model_type: str) -> bool:
         """Return whether a trained artifact exists for this pair."""
-        return (self.artifact_dir(model_name, model_type) / _METADATA_FILENAME).exists()
+        return self.metadata_path(model_name, model_type).exists()
 
     def read_metadata(self, model_name: str, model_type: str) -> BaseModelMetadata:
         """Load metadata for a trained artifact.
@@ -201,7 +225,7 @@ class ArtifactStore:
         Raises:
             FileNotFoundError: If no artifact exists for this pair.
         """
-        path: Path = self.artifact_dir(model_name, model_type) / _METADATA_FILENAME
+        path = self.metadata_path(model_name, model_type)
         if not path.exists():
             raise FileNotFoundError(
                 f"No trained artifact found for ({model_name!r}, {model_type!r}). "
@@ -295,7 +319,11 @@ class ArtifactStore:
         filename: str = _MODEL_FILENAME,
     ) -> Any:  # noqa: ANN401
         """Load a serialised model object."""
-        path: Path = self.artifact_dir(model_name, model_type) / filename
+        path = (
+            self.model_path(model_name, model_type)
+            if filename == _MODEL_FILENAME
+            else self.artifact_dir(model_name, model_type) / filename
+        )
         if not path.exists():
             raise FileNotFoundError(
                 f"No model artifact found at {path}. Train ({model_name!r}, {model_type!r}) first."
@@ -319,7 +347,11 @@ class ArtifactStore:
 
         Returns ``None`` if no scaler file is present (e.g. tree models).
         """
-        path: Path = self.artifact_dir(model_name, model_type) / filename
+        path = (
+            self.scaler_path(model_name, model_type)
+            if filename == _SCALER_FILENAME
+            else self.artifact_dir(model_name, model_type) / filename
+        )
         if not path.exists():
             return None
 

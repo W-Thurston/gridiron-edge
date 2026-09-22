@@ -7,6 +7,68 @@ Each entry documents *why* a choice was made, not just *what* changed
 Format: newest entry at top. Each entry self-contained.
 
 ---
+
+### D42 - New live forecast events require immutable prediction-input evidence
+
+**Date:** 2026-09-21
+
+#### Decision
+
+Every newly generated live weekly forecast event must be covered by exactly one immutable, authenticated family evidence artifact before persistence. Evidence is family-specific by `run_id`, `model_name`, and `model_type`, and records the exact forecast UUIDs it governs.
+
+Execution requires one clean tracked Git commit. Operational inputs are authenticated independently by safe relative path, explicit presence state, SHA-256 digest, and byte size. The bounded source inventory is captured before execution and recaptured before publication; any drift stops publication.
+
+Required replay bytes are copied to `data/output/prediction_input_evidence/schema=1/artifacts/{sha256}.bin`. Family evidence is stored at `data/output/prediction_input_evidence/schema=1/evidence/{evidence_id}.json`. Both stores are create-only, strict, immutable, idempotent for exact replay, and reject conflicting identity reuse.
+
+Publication order is:
+
+```text
+clean tracked revision
+source capture
+evidence-aware selected-family execution
+forecast UUID generation
+family evidence construction and authentication
+source recapture
+binary snapshot publication and authentication
+family evidence publication and strict reload
+forecast-event persistence
+weekly-product composition and selection
+```
+
+A failure after snapshot or evidence publication may leave inert unreferenced artifacts. It must never leave a new live event without complete evidence.
+
+Statistical replay uses exact transformed inputs and compares raw outputs with `rtol=0.0` and `atol=1e-12`.
+
+Availability and execution validation remain separate. A nonblocking follow-up is to make `_inspect_trained_model` validate persisted `feature_set` and `modeling_schema_version`. Execution already rejects stale metadata before any publication.
+
+#### Context
+
+Mutable champion slots and operational sources cannot reproduce historical execution by path alone. External evidence preserves the existing forecast-event schema while providing exact replay inputs and required binary bytes for new events.
+
+Protected real-artifact validation used 2026 Week 2 in a clean temporary repository. The default Logistic Win and Random Forest Total path and an Elo Win override path passed real replay, persistence, idempotency, drift rejection, tamper rejection, and protected-artifact preservation.
+
+Five ignored statistical artifacts were regenerated through `train-game-models` after validation detected stale metadata without current feature-set identity.
+
+#### Consequences
+
+New live events require evidence before persistence. Existing live and backfilled events remain readable without schema-1 evidence. Model and weekly-execution layers do not persist; the weekly CLI owns publication order. Forecast-event and weekly-product schemas remain unchanged. Corrected evaluation and explanation evidence remain separate future work.
+
+#### References
+
+- `src/gridiron_edge/evaluation/prediction_input_evidence.py`
+- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py`
+- `src/gridiron_edge/evaluation/prediction_input_sources.py`
+- `src/gridiron_edge/models/game_prediction/prediction_execution.py`
+- `src/gridiron_edge/models/game_prediction/model.py`
+- `src/gridiron_edge/models/elo/model.py`
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+- `src/gridiron_edge/cli/weekly_predict.py`
+- `PLAN.md`
+- `HANDOFF.md`
+- `ROADMAP.md`
+
+---
+
 ### D41 - Known-defective immutable forecast evidence is governed by an external disposition
 
 **Date:** 2026-09-19

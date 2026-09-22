@@ -1,5 +1,47 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-21 - Persisted immutable prediction-input evidence for new live weekly forecasts (Prediction Input Integrity Unit 5)
+
+#### Added
+
+- Added schema-1 family evidence for statistical and Elo live execution.
+- Added deterministic evidence identity, bounded source references, feature-schema identity, exact event-level inputs and outputs, content-addressed binary snapshots, identity-addressed evidence persistence, deterministic lookup, and source-drift rejection.
+- Added evidence-aware execution results for statistical and Elo families.
+
+#### Changed
+
+- Weekly prediction now requires a clean tracked Git revision before selected-family execution.
+- Statistical execution validates model, task, feature-set, modeling schema, and ordered feature columns before estimator invocation.
+- Deployable metadata now records the authoritative feature-set name.
+- Weekly execution returns evidence without persistence; the CLI publishes snapshots and evidence, strictly reloads them, and only then persists events.
+- Existing forecast-event and weekly-product schemas remain unchanged.
+
+#### Validation
+
+- Domain, store, execution, weekly orchestration, and CLI tests cover strict validation, immutable publication, concurrency, tamper rejection, exact family coverage, and failure ordering.
+- Legacy-versus-evidence output equivalence passed for all five statistical families.
+- Protected real-artifact validation used 2026 Week 2 in a clean temporary repository. Default Logistic Win plus Random Forest Total and Elo Win override plus Random Forest Total both passed.
+- Statistical snapshot replay matched raw outputs with `rtol=0.0` and `atol=1e-12`.
+- Independent review found no blocking correctness or safety defect. Requested equivalence and XGBoost coverage were added and passed.
+- Ruff, Pyrefly, compilation, focused suites, the full non-slow unit suite, and `git diff --check` pass.
+
+#### Operational evidence
+
+- Elo reconstruction restored the ignored lineage sidecar while preserving Elo CSV digest `7818da246ca5c248f4cdad2341cf0f6cbd4753f6843357093821e2ab4e5fa861`.
+- Canonical games retained digest `32c23ed2c75895f9e1466893020ed41ac4c261fe4c2cffb5cb372976c97a6efc`.
+- Five ignored statistical artifacts were regenerated through the repository-owned training stage and now contain current feature-set names, schema version 5, and exact feature columns.
+- Protected forecast events, both affected Week 2 products, `index.json`, and `current.json` remained byte-identical.
+
+#### Follow-up
+
+Availability checks feature columns but not persisted feature-set identity or modeling schema version as strictly as execution. Execution remains fail-closed, so this is nonblocking.
+
+#### Scope
+
+Applies only to newly generated live weekly events. Existing live and backfilled events remain unchanged. No corrected Week 2 forecast, product replacement, corrected evaluation, explanation evidence, API change, or frontend change was introduced.
+
+See `DECISIONS.md` D42.
+
 ### 2026-09-19 - Recorded and enforced affected forecast evidence disposition (Prediction Input Integrity Unit 4)
 
 #### Added

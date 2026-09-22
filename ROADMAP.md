@@ -56,10 +56,7 @@ Prioritize work by value density and architectural fit:
 
 A read-only inspection completed on September 18, 2026 confirmed that both immutable 2026 Week 2 Win forecast runs used an Elo state rebuilt from only the 16 completed Week 1 games. The weekly explicit-season path selected `fetch_nflverse_games(seasons=[season])`, which replaced retained raw history; `clean_nflverse_games()` then replaced cleaned history from that nonempty partial artifact; and `update_elo_state_incremental()` ignored existing Elo state and rebuilt every team from the 1500 initial rating. The resulting Week 2 `{1490, 1510}` Elo pattern was reproduced exactly from the Week 1-only games frame. All 16 Week 2 logistic Win predictions used the reset Elo values through `AWAY_ELO`, `HOME_ELO`, and `ELO_DIFF`.
 
-Corrective work proceeds as separate bounded units. Units 1 through 4 are
-complete; immutable prediction-input evidence is next. Corrected operational
-forecast generation and evaluation must follow reproducible input evidence,
-and explanation work remains later.
+Units 1 through 5 are complete. Corrected operational forecast generation and evaluation must now follow the reproducible input-evidence boundary. Explanation work remains later.
 
 1. **Preserve games history during weekly refresh. Completed September 18, 2026.**
   Recurring refresh now uses the history-preserving nflverse boundary,
@@ -74,22 +71,23 @@ and explanation work remains later.
    artifacts before policy resolution, blocks every current Elo-dependent model
    when lineage is missing or stale, and fails explicitly for malformed
    evidence before forecast persistence.
-4. **Resolve affected forecast and product status. Completed September 19,
-   2026.** One authenticated immutable schema-1 disposition now records both
+4. **Resolve affected forecast and product status. Completed September 19, 2026.**
+  One authenticated immutable schema-1 disposition now records both
    affected Week 2 live logistic Win runs, all 32 affected events, both
    affected weekly products, and the exact selected affected product. The
    disposition classifies Win probability and derived spread as known defective
    because of incomplete Elo source history and blocks readiness, edge
    calculation, candidate issuance, and manual rendering without modifying or
    reselecting historical evidence.
-5. **Persist immutable prediction-input evidence.** Link each forecast event to the exact ordered feature row, feature-schema identity, source-artifact hashes, model and scaler identities, optional calibrator identity, and generation timestamp.
-6. **Add persisted logistic explanation evidence.** After corrected and reproducible forecasts exist, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP for the logistic champion. Explanations must reconstruct the persisted model output and remain separate from API-time computation.
+5. **Persist immutable prediction-input evidence. Completed September 21, 2026.** Every newly generated live weekly forecast now records its clean tracked source revision, exact bounded source identities, required replay bytes, statistical or Elo computation inputs and outputs, post-processing evidence, final forecast outputs, and exact forecast UUID binding. Binary snapshots and family evidence are immutable and must strictly authenticate before forecast events can persist.
+6. **Tighten statistical availability metadata preflight.** Align `_inspect_trained_model` with strict execution validation for persisted feature-set identity and modeling schema version so stale artifacts are classified unavailable before policy execution. Execution already remains fail-closed.
+7. **Add persisted logistic explanation evidence.** After corrected operational generation and evaluation pass, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP. Explanations must reconstruct persisted model output and remain separate from API-time computation.
 
 Acceptance for this program requires history-preserving weekly refresh,
 deterministic Elo continuity, verified source and output lineage, explicit
 disposition of affected Week 2 artifacts, computationally reproducible forecast
 inputs, corrected operational evidence, and an out-of-sample quality assessment
-of the corrected path before explanation surfaces are enabled. The first four
+of the corrected path before explanation surfaces are enabled. The first five
 requirements are complete.
 
 Potential collateral impact beyond the confirmed Week 2 Elo and Win products remains unconfirmed. Modeling-input construction, historical evaluation, backfill, forecast closeout, production preflight, API loaders, and player game-context consumers should be classified by whether they ran while the cleaned games artifact was truncated. That scope check must not be represented as confirmed impact without runtime or artifact evidence.
@@ -263,12 +261,12 @@ also continues to read the affected product as historical evidence of what was
 actually selected. These paths are intentionally outside the Unit 4 operational
 enforcement boundary.
 
-Exact computational reproduction remains incomplete because forecast events do
-not preserve the complete ordered feature row and immutable source, model,
-scaler, and optional calibrator identities. Immutable prediction-input evidence
-is the next bounded unit. Corrected operational forecasts and model-quality
-evaluation must follow that evidence boundary. Explanation surfaces remain
-later work.
+Exact computational reproduction is now available for newly generated live
+weekly forecasts through immutable schema-1 prediction-input evidence. Existing
+historical events, including the affected immutable 2026 Week 2 events, were not
+retrofitted and remain governed by their original evidence and disposition.
+Corrected operational forecasts and model-quality evaluation must follow that
+evidence boundary. Explanation surfaces remain later work.
 
 ### Market data
 
@@ -313,16 +311,16 @@ Files remain appropriate for the current single-user workflow. Revisit this only
 
 The next major work should normally be chosen from:
 
-1. weekly prediction input integrity and reproducibility, next adding immutable
-  prediction-input evidence after completing history preservation, complete Elo
-  reconstruction, verified lineage, and affected-evidence disposition;
-2. supported market provider and multi-book shopping;
-3. model ensemble research;
-4. injury/news source;
-5. scenario engine and explanations;
-6. remaining API batch-artifact migrations;
-7. frontend enhancements unlocked by real data;
-8. real-time and live-game support.
+1. corrected operational forecast generation and evaluation on top of the
+   completed immutable prediction-input evidence boundary;
+2. statistical availability metadata preflight alignment;
+3. supported market provider and multi-book shopping;
+4. model ensemble research;
+5. injury/news source;
+6. scenario engine and explanations;
+7. remaining API batch-artifact migrations;
+8. frontend enhancements unlocked by real data;
+9. real-time and live-game support.
 
 Before starting a new work item:
 
