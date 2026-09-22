@@ -4,15 +4,21 @@
 
 | Document | Purpose |
 |---|---|
-| `ROADMAP.md` | Genuine future capabilities, strategic priorities, and current limitations |
-| `PLAN.md` | Active implementation checklist and completed-unit record |
+| `ROADMAP.md` | Strategic priorities, ordered remaining work, genuine future capabilities, and current limitations |
+| `PLAN.md` | One active bounded implementation unit and concise completed-unit record |
 | `HANDOFF.md` | Current operating system, commands, artifacts, and recovery guidance |
 | `DECISIONS.md` | Append-only architectural decisions and supersession history |
 | `CHANGELOG.md` | Dated implementation history |
 
-The canonical weekly prediction, product, API, frontend, and verification architecture is implemented. Future work should build on the persisted-event and explicitly selected weekly-product contracts rather than restore retired archive, fallback, or request-time behavior.
+## Project Status and Compatibility Policy
 
-## Current Platform State
+Gridiron Edge has never been live in production. Development-era schemas, artifacts, commands, tests, generated contracts, and historical behavior may be replaced when a cleaner or more correct current design requires it. Backward compatibility is required only when a current contract explicitly requires it.
+
+Development artifacts are not production records by default. Preserve an artifact only when it remains useful as canonical evidence, a regression fixture, or an intentionally supported contract. Otherwise, archive, replace, or regenerate it through the current repository-owned boundaries.
+
+The canonical weekly prediction, product, API, frontend, and verification architecture is implemented. Future work should build on persisted forecast events, explicit weekly-product selection, verified input lineage, strict model availability, and immutable prediction-input evidence rather than restore retired archive, fallback, or request-time computation behavior.
+
+## Current Platform
 
 Gridiron Edge currently provides:
 
@@ -20,7 +26,12 @@ Gridiron Edge currently provides:
 - independent Win and Total model families;
 - unversioned champion artifacts and a persisted champion manifest;
 - model-specific weekly availability inspection and policy selection;
-- immutable `live` and `backfilled` forecast events;
+- history-preserving recurring game refresh;
+- deterministic complete-history Elo reconstruction;
+- verified Elo lineage before weekly prediction;
+- strict statistical metadata preflight for feature-set identity, modeling schema version, and ordered feature columns;
+- immutable live and backfilled forecast events;
+- immutable prediction-input evidence for newly generated live weekly forecasts;
 - immutable schedule-complete weekly products with explicit current selection;
 - independent Win, Spread, Total, and projected-score readiness;
 - source-neutral current-market storage and explicit edge diagnostics;
@@ -33,313 +44,426 @@ Gridiron Edge currently provides:
 - season and playoff simulation;
 - Python and frontend quality boundaries.
 
-The successful 2026 Week 1 rehearsal produced complete Win, Spread, Total, projected-score, and provenance coverage for all scheduled games while market readiness remained independently blocked. Forecast PNG and HTML publication succeeded without requiring market prices.
+The 2026 Week 1 rehearsal produced complete Win, Spread, Total, projected-score, and provenance coverage for all scheduled games while market readiness remained independently blocked. Forecast PNG and HTML publication succeeded without requiring market prices.
 
-## Strategic Priorities
+## Strategic Principles
 
-Prioritize work by value density and architectural fit:
+Prioritize work by value density, evidence quality, and architectural fit:
 
-1. Correct weekly prediction input integrity and historical continuity before further model-quality, explanation, or product-surface work.
-2. Preserve truthful persisted-state boundaries before adding breadth.
-3. Resolve supported external data sources before building interfaces that depend on them.
-4. Improve predictive quality only through honest time-ordered evaluation.
+1. Treat current repository evidence as authoritative and verify gaps before planning implementation.
+2. Prefer a clean current contract over development-era compatibility.
+3. Preserve chronology and prevent leakage in every evaluation and feature pipeline.
+4. Improve predictive quality only through honest time-ordered evidence.
 5. Keep the API a serialization boundary.
-6. Keep unavailable, blocked, and analytical-empty states explicit.
-7. Add product surface area only when the underlying data contract is real.
-8. Continue using files until concurrency, transactional integrity, or query complexity requires a database.
+6. Keep unavailable, blocked, conflicting, and analytically empty states explicit.
+7. Add product surfaces only when the underlying data and artifact contracts are real.
+8. Derive thresholds and categories empirically rather than from intuition.
+9. Continue using files until concurrency, transactional integrity, or query complexity creates a demonstrated need for a database.
+10. Keep calendar-gated operational proof separate from implementation backlog.
 
-## Future Work
+## Active Next Program
 
-### Weekly Prediction Input Integrity and Reproducibility
+### Repository State and Canonical Artifact Reconciliation
 
-**Goal:** ensure every weekly forecast is generated from history-preserving, semantically validated, and reproducible model inputs before it can become the explicitly selected weekly product.
+**Goal:** establish one verified, authoritative inventory of the current platform, canonical artifacts, stale development state, calendar-gated work, and remaining implementation backlog before beginning another large feature or evaluation program.
 
-A read-only inspection completed on September 18, 2026 confirmed that both immutable 2026 Week 2 Win forecast runs used an Elo state rebuilt from only the 16 completed Week 1 games. The weekly explicit-season path selected `fetch_nflverse_games(seasons=[season])`, which replaced retained raw history; `clean_nflverse_games()` then replaced cleaned history from that nonempty partial artifact; and `update_elo_state_incremental()` ignored existing Elo state and rebuilt every team from the 1500 initial rating. The resulting Week 2 `{1490, 1510}` Elo pattern was reproduced exactly from the Week 1-only games frame. All 16 Week 2 logistic Win predictions used the reset Elo values through `AWAY_ELO`, `HOME_ELO`, and `ELO_DIFF`.
+This program begins with read-only inspection and does not assume that development-era artifacts must survive.
 
-Units 1 through 5 are complete. Corrected operational forecast generation and evaluation must now follow the reproducible input-evidence boundary. Explanation work remains later.
+Required work:
 
-1. **Preserve games history during weekly refresh. Completed September 18, 2026.**
-  Recurring refresh now uses the history-preserving nflverse boundary,
-   rejects empty selected-season responses, and preserves unrequested seasons.
-2. **Validate and rebuild complete Elo history. Completed September 18, 2026.**
-  Elo fitting now has one deterministic reconstruction contract,
-   validates contiguous history from 1999, rejects partial-history resets, and
-   preserves the predecessor artifact when validation or simulation fails.
-3. **Require verified Elo lineage before weekly prediction. Completed September 18, 2026.**
-  Every successful Elo reconstruction now records exact
-   games and Elo artifact identities. Weekly availability authenticates both
-   artifacts before policy resolution, blocks every current Elo-dependent model
-   when lineage is missing or stale, and fails explicitly for malformed
-   evidence before forecast persistence.
-4. **Resolve affected forecast and product status. Completed September 19, 2026.**
-  One authenticated immutable schema-1 disposition now records both
-   affected Week 2 live logistic Win runs, all 32 affected events, both
-   affected weekly products, and the exact selected affected product. The
-   disposition classifies Win probability and derived spread as known defective
-   because of incomplete Elo source history and blocks readiness, edge
-   calculation, candidate issuance, and manual rendering without modifying or
-   reselecting historical evidence.
-5. **Persist immutable prediction-input evidence. Completed September 21, 2026.**
-  Every newly generated live weekly forecast now records its clean tracked source
-  revision, exact bounded source identities, required replay bytes, statistical or
-  Elo computation inputs and outputs, post-processing evidence, final forecast outputs,
-  and exact forecast UUID binding. Binary snapshots and family evidence are immutable
-  and must strictly authenticate before forecast events can persist.
-6. **Tighten statistical availability metadata preflight. Completed September 22, 2026.**
-  Availability now requires exact persisted feature-set identity,
-   current integer modeling schema version, and exact ordered feature columns
-   before declaring a statistical family available. Stale metadata affects only
-   the exact family, while malformed artifact identity remains explicit.
-   Execution retains independent strict validation.
-7. **Add persisted logistic explanation evidence.**
-  After corrected operational generation and evaluation pass,
-  prefer exact scaled-feature-by-coefficient contributions in
-  log-odds space over Tree SHAP. Explanations must reconstruct
-  persisted model output and remain separate from API-time computation.
+1. Verify current code capabilities and artifact state against repository evidence.
+2. Classify each roadmap item as complete, active next, calendar-gated, planned, research, deferred, or rejected.
+3. Remove completed work from future-work sections and eliminate duplicate or stale backlog language.
+4. Identify artifacts produced while cleaned game history was truncated or while model metadata was stale.
+5. Determine which affected artifacts were subsequently rebuilt and which remain questionable.
+6. Decide whether the defective 2026 Week 2 development state should remain as a regression fixture or be replaced with corrected canonical development artifacts.
+7. Define one canonical path for corrected forecast generation, evaluation, calibration, and champion reassessment.
+8. Leave `PLAN.md` with exactly one bounded next implementation unit after reconciliation.
 
-Acceptance for this program requires history-preserving weekly refresh,
-deterministic Elo continuity, verified source and output lineage, explicit
-disposition of affected Week 2 artifacts, computationally reproducible forecast
-inputs, corrected operational evidence, and an out-of-sample quality assessment
-of the corrected path before explanation surfaces are enabled. The first five
-requirements are complete.
+Acceptance:
 
-Potential collateral impact beyond the confirmed Week 2 Elo and Win products remains unconfirmed. Modeling-input construction, historical evaluation, backfill, forecast closeout, production preflight, API loaders, and player game-context consumers should be classified by whether they ran while the cleaned games artifact was truncated. That scope check must not be represented as confirmed impact without runtime or artifact evidence.
+- this roadmap contains one complete ordered backlog;
+- `HANDOFF.md` describes only current behavior;
+- completed capabilities are not presented as future work;
+- future capabilities are not presented as implemented;
+- every remaining item has a clear status and dependency;
+- the Week 2 development state has an explicit retain-or-replace decision;
+- stale or questionable artifacts have a delete, archive, verify, or regenerate disposition;
+- calendar-gated market proof remains separate from implementation work;
+- the next bounded implementation unit is evidence-based and recorded in `PLAN.md`.
 
-#### Parked Production Proof: Market Unit 26
+## Canonical Artifact Decision Required
 
-Market Unit 26 remains active but calendar-gated. Its implemented platform, real 2026 Week 1 rehearsal evidence, persisted identities, remaining selected-plan execution, postgame closeout, CLV, realized-performance acceptance, and associated follow-on market capabilities are maintained in:
+### 2026 Week 2 Development State
 
-- `docs/programs/market-unit-26/PLAN.md`
-- `docs/programs/market-unit-26/ROADMAP.md`
+Two Week 2 Logistic Win forecast runs were generated from an Elo state rebuilt from only the 16 completed Week 1 games. A schema-1 disposition currently records the affected events and products as known defective.
 
-The complete pre-split planning documents are preserved under `docs/archive/market-program-through-unit-26/`. Root roadmap prioritization may proceed independently while Unit 26 waits for scheduled collection and completed-game evidence.
+Because the project has never been live, preservation is not mandatory merely because these artifacts exist. The reconciliation program must choose one of the following explicitly.
 
-### Model Ensemble
+#### Retain as a regression fixture
 
-**Goal:** determine whether a time-ordered ensemble improves operational Win prediction enough to justify additional complexity.
+Retain the events, products, selection, and disposition because they provide useful end-to-end evidence for known-defect governance, readiness blocking, and downstream enforcement. If retained, documentation must describe them as an intentional development regression fixture rather than an untouchable production record.
 
-Candidate approaches:
+#### Replace with corrected canonical development state
 
-- Brier-weighted averaging;
-- constrained blending;
-- logistic stacking with time-ordered out-of-fold inputs;
-- simple rank or probability averaging as a baseline.
+Archive or remove the defective events, affected products, selection, and operational disposition, then regenerate a coherent Week 2 development fixture through the current history-preserving, lineage-verified, metadata-strict, evidence-aware weekly path. Verify API and frontend serialization against the corrected selected product.
 
-Acceptance should require an honest historical comparison against the current champion, preserved calibration quality, complete upcoming-game feature coverage, deployable artifact metadata, availability inspection, and compatibility with the existing weekly policy and immutable event contracts.
+**Recommended default:** replace the defective operational state unless the regression-fixture value is judged greater than the continuing conceptual overhead. The disposition implementation and tests may remain as a supported capability even if the specific Week 2 operational artifact is retired.
 
-An ensemble should register as another model identity. It must not compute dynamically in the API.
+## Ordered Remaining Work
 
-### Injury and News Data
+### Tier 1: Repository and Artifact Integrity
 
-**Goal:** add a reliable, timestamped source for player availability and material team news.
+#### 1. Reconcile roadmap, repository state, and canonical artifacts
 
-Required design work:
+Complete the active reconciliation program above and produce the authoritative classification of shipped, stale, gated, partial, and missing capabilities.
 
-- choose a source and usage policy;
-- preserve fetched-at and effective-at timestamps;
-- distinguish reported, confirmed, and resolved status;
-- map players and teams to canonical identities;
-- define historical availability for honest evaluation;
-- expose blocked or unavailable states when the source is incomplete.
+#### 2. Decide and implement the canonical Week 2 development state
 
-This capability unlocks injury-aware game and prop presentation and is a prerequisite for credible personnel scenarios.
+Execute the retain-or-replace decision. If replacing the state, use repository-owned loaders, stores, and generation boundaries rather than hand-editing artifacts.
 
-### Scenario Engine and Feature Attribution
+#### 3. Audit truncated-history and stale-metadata exposure
 
-**Goal:** answer bounded what-if and explanation questions without mutating production forecasts.
+Classify modeling inputs, historical evaluations, backfills, forecast closeout, production preflight, API loaders, player game-context consumers, and other derived artifacts by whether they were created while canonical game history was truncated or model metadata was stale.
 
-Potential scope:
+For each affected artifact, choose one disposition:
 
-- feature contribution or local explanation for persisted predictions;
-- comparable historical games;
-- controlled team-strength or player-availability adjustments;
-- usage redistribution for player props;
-- scenario-specific Win, Spread, Total, projected score, and edge calculations;
-- explicit separation between persisted production output and hypothetical output.
+- verified current;
+- regenerate;
+- replace;
+- archive;
+- delete;
+- retain only as an explicit regression fixture.
 
-Scenario computation should use an explicit request and response contract. It must not silently alter the selected weekly product or champion artifacts.
+Because compatibility is not required, deletion and correct regeneration are acceptable when they produce a cleaner current state.
 
-### Real-Time and Live Game Support
+### Tier 2: Corrected Prediction and Evaluation Foundation
 
-**Goal:** support in-game decision analysis.
+#### 4. Generate one clean canonical weekly forecast
 
-Required foundations:
+Exercise the complete current path:
 
-- live score, clock, down, distance, possession, and timeout state;
-- timestamped live market data;
-- a validated live win-probability model;
-- live edge and hedge calculations;
-- streaming or polling transport;
-- strict freshness and stale-state presentation.
+```text
+complete retained history
+-> deterministic Elo reconstruction
+-> verified Elo lineage
+-> strict statistical availability
+-> policy resolution
+-> evidence-aware execution
+-> immutable input snapshots and family evidence
+-> forecast events
+-> weekly product
+-> explicit current selection
+-> readiness verification
+-> API and frontend serialization
+```
 
-This remains lower priority than reliable pregame multi-book data and injury/news integration.
+The run may be identified honestly as development validation rather than historically live evidence.
 
-### Remaining API Batch-Artifact Boundaries
+#### 5. Rebuild historical game-model evaluation
 
-**Goal:** ensure every API endpoint serializes persisted artifacts rather than performing meaningful computation at request time.
+Inspect whether current backfills, prediction archives, evaluation summaries, and baseline reports were built from complete and valid inputs. Rebuild uncertain artifacts using leakage-safe, time-ordered boundaries.
 
-Known candidate for verification:
+Required outcomes:
 
-- model-performance summaries should be confirmed as batch-produced artifacts; if still computed on request, add a batch writer and serialize its output.
+- authoritative evaluation periods and exclusions;
+- explicit chronological training and holdout boundaries;
+- regenerated backfilled predictions where needed;
+- independent classification and regression evaluation;
+- regenerated baseline reports from corrected evidence.
 
-For each candidate:
+#### 6. Evaluate all current game-model families
 
-1. identify the current request-time computation;
-2. define the persisted artifact schema and writer;
-3. add freshness and provenance;
-4. migrate loaders to read the artifact;
-5. keep routes and serializers thin;
-6. add parity tests before removing the old path.
+Win families:
 
-Do not assume a listed historical deviation still exists. Verify it against current code before scheduling work.
+- Elo;
+- Logistic;
+- Random Forest;
+- XGBoost.
 
-### Frontend Product Enhancements
+Win evaluation should include Brier score, log loss, calibration error, calibration slope and intercept when supported, accuracy as secondary context, probability sharpness, season-level stability, and reliability by confidence band.
 
-The core game-day and portfolio surfaces are functional. Remaining work should be pulled by real data availability and user value.
+Total families:
+
+- Random Forest;
+- XGBoost.
+
+Total evaluation should include MAE, RMSE, median absolute error, bias, interval coverage when uncertainty is emitted, season-level stability, and performance by relevant game environment.
+
+#### 7. Reassess calibration and champion selection
+
+Use only corrected evaluation evidence to determine whether current champions remain justified. When warranted:
+
+- regenerate calibration artifacts;
+- promote corrected champions through the static manifest boundary;
+- verify complete upcoming-game feature coverage;
+- execute the weekly policy with the selected champions;
+- regenerate dependent baseline and operational artifacts.
+
+### Tier 3: Explainability and Analytical Trust
+
+#### 8. Persist Logistic explanation evidence
+
+Prefer exact scaled-feature-by-coefficient contributions in log-odds space as the first explanation method.
+
+Required behavior:
+
+- bind explanations to exact model, scaler, feature schema, transformed inputs, and forecast identity;
+- preserve the intercept explicitly;
+- reconstruct the persisted estimator output within a strict tolerance;
+- generate and persist explanations in batch;
+- serialize persisted explanation artifacts through the API;
+- perform no request-time model inference;
+- distinguish contribution from causality.
+
+#### 9. Evaluate tree-model attribution only if justified
+
+After Logistic explanation evidence is complete, assess Tree SHAP or another appropriate method for tree champions. Require exact model-byte and feature-schema binding, consistency tests, and persisted outputs.
+
+#### 10. Build comparable-game retrieval
+
+Define similarity from authenticated model inputs, prevent future-information leakage, explain why games are comparable, and derive any thresholds empirically.
+
+### Tier 4: Market and Recommendation Proof
+
+#### 11. Complete selected-plan quote collection evidence
+
+Complete the calendar-gated selected-plan executions, verify claim and result completeness, accumulate repeated real observations, validate worker synchronization, and resolve any incomplete claims deliberately.
+
+#### 12. Complete market closeout and CLV
+
+Produce market-specific closing evidence for Moneyline, Spread, and Total using exact provider-aware offer identities and latest eligible non-live quotes before kickoff. Preserve missing and ambiguous close states explicitly.
+
+#### 13. Mature recommendation policy from empirical evidence
+
+Require sufficient completed outcomes, repeated quote depth, validated closeout, CLV samples, settled returns, and explicit sample sufficiency before deriving actionable thresholds. Do not invent a policy when evidence is incomplete.
+
+#### 14. Complete end-to-end production-chain proof
+
+Prove the complete chain for Moneyline, Spread, and Total:
+
+```text
+forecast
+-> quote history
+-> candidate issuance
+-> policy
+-> recommendation evaluation
+-> recorded wager
+-> closeout
+-> CLV
+-> realized return
+-> performance report
+```
+
+### Tier 5: Model and Feature Improvement
+
+#### 15. Research model ensembles
+
+Evaluate Brier-weighted averaging, constrained blending, time-ordered Logistic stacking, and simple probability averaging against corrected champions. Require honest out-of-sample gains, preserved calibration, deployable metadata, complete feature coverage, and no API-time computation.
+
+#### 16. Research game-model features
+
+Candidate areas:
+
+- offensive and defensive strength decomposition;
+- coaching and coordinator effects;
+- pace and neutral-situation tendencies;
+- special teams;
+- penalties, pressure, and situational efficiency;
+- opponent-quality cohorts;
+- calibrated uncertainty.
+
+Every feature must preserve chronology, avoid leakage, and use empirical thresholds.
+
+#### 17. Improve prop models and expand supported prop families
+
+Potential work includes richer distribution models, target-specific uncertainty, playing-time and usage treatment, injury-dependent projections, corrected historical evaluation, additional prop families, and calibrated Over/Under probabilities.
+
+### Tier 6: External Data Foundations
+
+#### 18. Add injury and news ingestion
+
+Choose a reliable source and usage policy, preserve fetched-at and effective-at timestamps, distinguish reported, confirmed, and resolved status, map players and teams canonically, retain historical availability, and expose incomplete coverage explicitly.
+
+#### 19. Add supported historical market backfill
+
+Use the source-neutral provider contract with exact observation timestamps, sportsbook identity, kickoff and live-state validation, and honest coverage gaps. Do not invent opening, closing, or movement interpretations.
+
+### Tier 7: Scenario Analysis
+
+#### 20. Build bounded what-if computation
+
+Support explicit hypothetical adjustments such as team strength, player absence, usage redistribution, environment, alternate lines, or alternate model selection without mutating production forecasts or current weekly products.
+
+#### 21. Persist scenario request and result contracts
+
+Bind every scenario to an exact base forecast and explicit modifications:
+
+```text
+scenario request
+-> exact base forecast identity
+-> explicit modifications
+-> computation version
+-> result
+-> comparison with base forecast
+```
+
+### Tier 8: API and Frontend Completion
+
+#### 22. Verify remaining API batch-artifact boundaries
+
+Inspect each candidate endpoint before scheduling work. Move meaningful request-time computation to persisted batch artifacts, retain thin loaders and serializers, and add parity tests before removing prior behavior.
+
+The known candidate is model-performance summary delivery, but the current implementation must be inspected before treating it as a gap.
+
+#### 23. Add explanation and scenario surfaces
+
+After backend evidence exists, expose explanations, comparable games, and scenarios with exact provenance and truthful unavailable states.
+
+#### 24. Complete evidence-backed frontend enhancements
 
 Potential enhancements:
 
 - multi-book line-shopping views;
 - injury and news presentation;
-- scenario and explanation surfaces;
-- line-movement and live-game charts;
+- explanation and scenario surfaces;
+- line-movement charts;
 - richer bankroll history and Kelly-adherence views;
-- recorded-bet export and an explicitly designed recorded-bet write workflow;
+- recorded-bet export;
 - remaining table, layout, and accessibility polish;
-- a real-data pending-state visual audit after all required backend artifacts are populated.
+- a real-data pending-state visual audit.
 
-BetSlip remains a draft decision workspace. Any recorded-bet write workflow requires duplicate protection, bankroll transaction coupling, partial-failure semantics, and an explicit user action. It is not sportsbook execution.
+### Tier 9: Live and Real-Time Support
 
-### Model and Feature Research
+#### 25. Add live game state
+
+Foundations include score, clock, down, distance, possession, timeouts, timestamped live markets, freshness rules, and streaming or polling transport.
+
+#### 26. Develop and validate in-game models
+
+Require time-indexed training data, a validated live win-probability model, stale-state behavior, live edge and hedge evaluation, and operational transport. This remains lower priority than complete pregame foundations.
+
+### Tier 10: Tooling and Operational Hardening
+
+#### 27. Strengthen CI and quality automation
+
+Potential work:
+
+- exercise `gridiron verify --strict` in a real CI surface;
+- run separate frontend lint, build, and test gates in CI;
+- maintain generated OpenAPI and TypeScript contract checks;
+- establish performance baselines where useful;
+- improve long-running composite resume diagnostics;
+- verify remaining baseline-report parser edge cases;
+- review lint exclusions only through dedicated behavior-preserving work.
+
+Repository-wide Ruff and Pyrefly are currently active quality gates. Do not describe their baseline as future work unless a verified gap reappears.
+
+#### 28. Define upstream data-cadence behavior
+
+Define truthful handling for unpublished current-season PBP, offseason empty schedules, upstream season lag, weather availability, provider quotas, and stale operational artifacts.
+
+#### 29. Revisit storage architecture only when justified
+
+Retain file-backed storage until demonstrated multi-user concurrency, transaction, or query requirements justify a database.
+
+## Calendar-Gated Work
+
+### Market Unit 26
+
+Market Unit 26 remains active but calendar-gated. Its detailed plan and roadmap remain in:
+
+- `docs/programs/market-unit-26/PLAN.md`
+- `docs/programs/market-unit-26/ROADMAP.md`
+
+Remaining proof includes selected-plan execution, repeated quote coverage, completed outcomes, validated closeout and CLV, empirical recommendation thresholds, realized performance, and complete Moneyline, Spread, and Total production-chain acceptance.
+
+The root roadmap may proceed independently while this evidence matures. Calendar-gated work must not occupy the one active root implementation unit unless the required real-world evidence is available.
+
+## Research Backlog
+
+Research should not displace integrity, evaluation, or calendar-eligible operational proof.
 
 Candidate research areas:
 
-- offensive and defensive rating decomposition;
-- coaching and coordinator effects;
-- pace and neutral-situation tendencies;
-- special-teams features;
-- penalties, pressure, and situational efficiency;
-- additional opponent-quality cohorts;
-- richer prop distribution models;
-- era-aware feature availability and imputation;
-- calibrated uncertainty for ratings and projections.
+- ensemble methods;
+- additional game-model features;
+- richer prop distributions;
+- comparable-game retrieval;
+- tree-model attribution;
+- supported historical market data;
+- scenario methods;
+- live model design.
 
-Every new feature must preserve chronological construction, avoid leakage, and use empirical thresholds rather than arbitrary bins.
-
-### Tooling and CI
-
-Future tooling work:
-
-- restore the intended repository-wide Pyrefly boundary using
-  `uvx pyrefly check`;
-- define the production, test, script, and exploratory-notebook type-check
-  scope explicitly;
-- correct repository and test import roots before treating missing test-fixture
-  imports as source defects;
-- triage configuration failures, production-source findings, shared fixture
-  annotations, negative validation tests, Pandas inference limitations, and
-  exploratory notebook diagnostics separately;
-- establish and enforce a zero-error repository-wide baseline without
-  suppressing genuine production defects;
-- preserve focused Pyrefly checks during bounded implementation units while the
-  repository-wide baseline is being restored;
-- exercise `gridiron verify --strict` in a real CI surface;
-- run the separate frontend lint, build, and test gates in CI;
-- consider performance baselines if test or training runtime regresses;
-- maintain generated OpenAPI and TypeScript contract checks;
-- improve long-running composite resume diagnostics where needed;
-- clamp current-season PBP requests to the maximum season published by the
-  upstream source once that policy is defined;
-- verify and repair any remaining baseline-report parser edge cases;
-- review repository-wide lint exclusions only through dedicated,
-  behavior-preserving work.
+Research results do not become operational behavior without time-ordered evaluation, deployment contracts, availability handling, persisted provenance, and explicit acceptance criteria.
 
 ## Known Limitations
 
-#### Weekly prediction input integrity
+### Canonical Week 2 state is unresolved
 
-The original immutable 2026 Week 2 live logistic Win evidence is formally
-classified by schema-1 disposition
-`05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb`
-as known defective because its Elo inputs came from incomplete source history.
+The selected Week 2 development product is currently governed by a known-defect disposition because its Logistic Win predictions consumed incomplete-history Elo inputs. The reconciliation program must decide whether to retain this state as a regression fixture or replace it with corrected canonical development artifacts.
 
-The affected selected product is blocked from prediction readiness, weekly edge
-calculation, candidate issuance, and manual prediction rendering. Original
-forecast events, weekly products, index entries, and the scoped selection remain
-unchanged and historically loadable.
+Until that decision is executed, readiness, edge calculation, candidate issuance, and manual rendering remain blocked for the affected selection under the current contract. The Games API, frontend, and postgame paths may still expose the persisted development artifact according to their existing boundaries.
 
-The Games API and frontend continue to serialize the persisted Week 2 Win
-probability and derived spread without disposition metadata. Postgame closeout
-also continues to read the affected product as historical evidence of what was
-actually selected. These paths are intentionally outside the Unit 4 operational
-enforcement boundary.
+### Historical evaluation may require regeneration
 
-Exact computational reproduction is now available for newly generated live
-weekly forecasts through immutable schema-1 prediction-input evidence. Existing
-historical events, including the affected immutable 2026 Week 2 events, were not
-retrofitted and remain governed by their original evidence and disposition.
-Corrected operational forecasts and model-quality evaluation must follow that
-evidence boundary. Explanation surfaces remain later work.
+Collateral impact from the truncated-history period has not yet been fully classified. Historical predictions, evaluation archives, backfills, closeout artifacts, preflight evidence, and derived datasets must not be treated as corrected until verified or regenerated.
 
-### Market data
+### Market proof is incomplete
 
-The Odds API v4 client, parser, provider-aware quote contract, partitioned
-historical observations, explicit ingest command, sportsbook-specific offer
-evaluation, operational edge integration, frontend sportsbook preferences,
-Line Shopping, Bet Slip quote identity, kickoff-aware collection planning,
-single-shot execution, and active-plan selection are implemented.
+Repeated selected-plan quote coverage, validated closeout and CLV, empirical recommendation thresholds, recommendation product integration, realized performance, and complete Moneyline, Spread, and Total proof remain incomplete or calendar-gated.
 
-A Raspberry Pi quote-collection worker is running through a systemd timer.
-Repository-owned deployment assets, installation verification, monitoring,
-recovery, and operational artifact synchronization remain active work.
-Repeated real quote coverage, validated closeout and CLV, empirical
-recommendation thresholds, recommendation product integration, and full
-Moneyline, Spread, and Total production proof remain incomplete.
+### Injury, news, and live state are unavailable
 
-### Injury, news, and live state
+There is no integrated injury/news feed or live-game state. Dependent API and frontend fields must remain explicitly blocked.
 
-There is no integrated injury/news feed or live-game state. Related API and frontend fields must remain explicitly blocked.
+### Scenario and explanation evidence are unavailable
 
-### Scenario and explanation
+Persisted feature attribution, comparable-game retrieval, and what-if propagation are not implemented.
 
-Feature attribution, comparable-game retrieval, and what-if propagation are not implemented.
+### Current-season PBP may lag
 
-### Current-season PBP cadence
+The upstream source may not publish the current season immediately. Pipeline refresh may warn while continuing with available historical feature state. A bounded cleanup should define and implement the repository policy for clamping requests to supported seasons.
 
-The upstream source may not publish the current season immediately. Pipeline refresh can warn while continuing with available historical feature state. A future cleanup may clamp requests to the latest published season.
+### Postgame work requires completed outcomes
 
-### Postgame timing
+`post-week` correctly exits nonzero and lists missing outcomes when run before all scoped games finish.
 
-`post-week` requires completed outcomes. Running it before games finish correctly exits nonzero and lists missing outcomes.
+### Markets and predictions remain independent
 
-### Markets versus predictions
+A selected weekly product can be prediction-ready while market readiness is blocked. Missing market data means no current edge result; it does not invalidate a valid forecast.
 
-A selected weekly product can be prediction-ready while market readiness is blocked. Missing market data means no current edge result; it does not invalidate forecasts.
+### File-backed architecture is intentional
 
-### File-backed architecture
-
-Files remain appropriate for the current single-user workflow. Revisit this only for real multi-user concurrency, transactional guarantees, or query requirements.
+Files remain appropriate for the current single-user workflow. Revisit this only for demonstrated concurrency, transactional, or query requirements.
 
 ## Prioritization Guidance
 
-The next major work should normally be chosen from:
+The next major work should normally be chosen in this order:
 
-1. corrected operational forecast generation and evaluation on top of the
-   completed immutable prediction-input evidence boundary;
-2. ~~statistical availability metadata preflight alignment;~~
-3. supported market provider and multi-book shopping;
-4. model ensemble research;
-5. injury/news source;
-6. scenario engine and explanations;
-7. remaining API batch-artifact migrations;
-8. frontend enhancements unlocked by real data;
-9. real-time and live-game support.
+1. repository state and canonical artifact reconciliation;
+2. canonical Week 2 retain-or-replace decision;
+3. truncated-history and stale-artifact audit;
+4. one clean canonical weekly forecast;
+5. corrected historical evaluation and backfills;
+6. calibration and champion reassessment;
+7. persisted Logistic explanation evidence;
+8. calendar-eligible market collection, closeout, CLV, and realized-return proof;
+9. recommendation-policy maturation;
+10. ensemble and feature research;
+11. injury and news data;
+12. bounded scenario analysis;
+13. remaining API batch-artifact verification;
+14. evidence-backed frontend surfaces;
+15. prop-model improvements;
+16. CI, operational cadence, and source handling;
+17. live-game support after pregame foundations are complete.
 
 Before starting a new work item:
 
-- verify the gap still exists in current code;
-- add it to `PLAN.md` as a bounded execution unit;
-- record any locked architectural choice in `DECISIONS.md`;
+- verify the gap against current code and artifacts;
+- add exactly one bounded active unit to `PLAN.md`;
+- record locked architectural choices in `DECISIONS.md` only when a new durable decision is made;
 - update `HANDOFF.md` only after behavior ships;
-- record completion in `CHANGELOG.md`.
+- record completed behavior in `CHANGELOG.md`;
+- remove or reclassify the roadmap item when the unit closes.
