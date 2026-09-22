@@ -79,9 +79,23 @@ Units 1 through 5 are complete. Corrected operational forecast generation and ev
    because of incomplete Elo source history and blocks readiness, edge
    calculation, candidate issuance, and manual rendering without modifying or
    reselecting historical evidence.
-5. **Persist immutable prediction-input evidence. Completed September 21, 2026.** Every newly generated live weekly forecast now records its clean tracked source revision, exact bounded source identities, required replay bytes, statistical or Elo computation inputs and outputs, post-processing evidence, final forecast outputs, and exact forecast UUID binding. Binary snapshots and family evidence are immutable and must strictly authenticate before forecast events can persist.
-6. **Tighten statistical availability metadata preflight.** Align `_inspect_trained_model` with strict execution validation for persisted feature-set identity and modeling schema version so stale artifacts are classified unavailable before policy execution. Execution already remains fail-closed.
-7. **Add persisted logistic explanation evidence.** After corrected operational generation and evaluation pass, prefer exact scaled-feature-by-coefficient contributions in log-odds space over Tree SHAP. Explanations must reconstruct persisted model output and remain separate from API-time computation.
+5. **Persist immutable prediction-input evidence. Completed September 21, 2026.**
+  Every newly generated live weekly forecast now records its clean tracked source
+  revision, exact bounded source identities, required replay bytes, statistical or
+  Elo computation inputs and outputs, post-processing evidence, final forecast outputs,
+  and exact forecast UUID binding. Binary snapshots and family evidence are immutable
+  and must strictly authenticate before forecast events can persist.
+6. **Tighten statistical availability metadata preflight. Completed September 22, 2026.**
+  Availability now requires exact persisted feature-set identity,
+   current integer modeling schema version, and exact ordered feature columns
+   before declaring a statistical family available. Stale metadata affects only
+   the exact family, while malformed artifact identity remains explicit.
+   Execution retains independent strict validation.
+7. **Add persisted logistic explanation evidence.**
+  After corrected operational generation and evaluation pass,
+  prefer exact scaled-feature-by-coefficient contributions in
+  log-odds space over Tree SHAP. Explanations must reconstruct
+  persisted model output and remain separate from API-time computation.
 
 Acceptance for this program requires history-preserving weekly refresh,
 deterministic Elo continuity, verified source and output lineage, explicit
@@ -313,7 +327,7 @@ The next major work should normally be chosen from:
 
 1. corrected operational forecast generation and evaluation on top of the
    completed immutable prediction-input evidence boundary;
-2. statistical availability metadata preflight alignment;
+2. ~~statistical availability metadata preflight alignment;~~
 3. supported market provider and multi-book shopping;
 4. model ensemble research;
 5. injury/news source;

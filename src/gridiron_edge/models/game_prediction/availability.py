@@ -14,6 +14,7 @@ from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.features.pipeline import CANONICAL_FEATURES
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
+from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION
 from gridiron_edge.models.game_prediction.model import GamesModel
 from gridiron_edge.models.game_prediction.prediction_policy import PredictionAvailability
 from gridiron_edge.models.registry import ModelRegistry
@@ -159,7 +160,16 @@ def _inspect_trained_model(
     feature_set = model.prediction_feature_set()
     if _requires_verified_elo(feature_set.feature_names) and not lineage_available:
         return False
-    if metadata.feature_columns != feature_set.feature_names:
+
+    modeling_schema_version = metadata.parameters.get("modeling_schema_version")
+    metadata_contract_matches = (
+        metadata.parameters.get("feature_set") == feature_set.name
+        and not isinstance(modeling_schema_version, bool)
+        and isinstance(modeling_schema_version, int)
+        and modeling_schema_version == _SCHEMA_VERSION
+        and metadata.feature_columns == feature_set.feature_names
+    )
+    if not metadata_contract_matches:
         return False
 
     features = feature_set.feature_fn(enriched)

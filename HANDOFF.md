@@ -287,7 +287,21 @@ product composition and selection
 
 Protected validation used the 2026 Week 2 schedule in a clean temporary repository. Logistic Win plus Random Forest Total and Elo Win override plus Random Forest Total passed real execution, replay, persistence, drift rejection, tamper rejection, and idempotency. Protected artifacts remained byte-identical.
 
-Ignored statistical artifacts now contain current feature-set identity, modeling schema version 5, and exact ordered columns. Availability remains a weaker preflight because it does not yet authenticate feature-set identity and modeling schema version; execution performs strict checks and fails before publication.
+Availability and execution now validate the same persisted statistical model
+contract:
+
+- exact model identity and task;
+- exact registered feature-set identity;
+- current integer modeling schema version;
+- exact ordered feature columns.
+
+Availability treats a stale but well-formed model contract as unavailable before
+policy selection. Malformed identity, artifact kind, or task remains an explicit
+error.
+
+Execution independently revalidates the complete contract and remains the
+authoritative fail-closed boundary. Availability does not deserialize model or
+scaler artifacts.
 
 ## Immutable Weekly Products
 

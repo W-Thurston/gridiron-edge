@@ -1,5 +1,46 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-22 - Aligned statistical availability with execution metadata validation
+
+#### Changed
+
+- Weekly statistical-model availability now requires the persisted feature-set
+  identity to match the exact registered prediction feature contract.
+- Availability now requires the persisted modeling schema version to be a
+  non-Boolean integer equal to the current modeling schema version.
+- The existing exact ordered feature-column requirement remains part of the
+  same metadata eligibility contract.
+- Missing or stale contract metadata makes only the affected statistical family
+  unavailable before policy selection.
+- Malformed model identity, artifact kind, and task remain explicit errors.
+- Live prediction execution retains its independent strict metadata validation.
+
+#### Validation
+
+- Added coverage for missing and incorrect feature-set identity.
+- Added coverage for missing, null, Boolean, string, and stale modeling schema
+  versions.
+- Added family-isolation coverage proving stale Logistic metadata does not make
+  a valid Total family unavailable.
+- Preserved coverage proving availability does not deserialize estimators or
+  scalers.
+- Focused availability, policy, weekly-execution, and weekly-CLI validation
+  passed with 84 tests.
+- Ruff, Pyrefly, Python compilation, the full non-slow unit suite, and
+  `git diff --check` passed.
+- Real 2026 Week 2 availability inspection reported Elo and all five current
+  statistical families available.
+- Before-and-after SHA-256 inventories for model, metadata, and scaler artifacts
+  were identical.
+- Independent read-only review approved the unit for closure.
+
+#### Scope
+
+This change affects only read-only statistical availability preflight. It does
+not modify estimators, metadata artifacts, prediction execution, forecast
+events, prediction-input evidence, weekly products, APIs, frontend contracts,
+or persisted schemas.
+
 ### 2026-09-21 - Persisted immutable prediction-input evidence for new live weekly forecasts (Prediction Input Integrity Unit 5)
 
 #### Added

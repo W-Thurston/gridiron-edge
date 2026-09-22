@@ -10,7 +10,10 @@ import pandas as pd
 import pytest
 
 from gridiron_edge.models.artifact import BaseModelMetadata
-from gridiron_edge.models.game_prediction._columns import FeatureSet
+from gridiron_edge.models.game_prediction._columns import (
+    _SCHEMA_VERSION,
+    FeatureSet,
+)
 from gridiron_edge.models.game_prediction.availability import (
     _requires_verified_elo,
     inspect_prediction_availability,
@@ -47,13 +50,29 @@ def _elo(*, missing_home: bool = False) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["NFL_TEAM", "NFL_YEAR", "NFL_WEEK", "ELO"])
 
 
-def _metadata(model_name: str, model_type: str, task: str, columns: list[str]) -> BaseModelMetadata:
+def _metadata(
+    model_name: str,
+    model_type: str,
+    task: str,
+    columns: list[str],
+    *,
+    parameters: dict[str, object] | None = None,
+) -> BaseModelMetadata:
+    resolved_parameters = (
+        {
+            "feature_set": "test",
+            "modeling_schema_version": _SCHEMA_VERSION,
+        }
+        if parameters is None
+        else parameters
+    )
     return BaseModelMetadata(
         model_name=model_name,
         model_type=model_type,
         task=task,
         trained_at="2026-08-03T00:00:00",
         kind="game",
+        parameters=resolved_parameters,
         feature_columns=columns,
     )
 
@@ -66,8 +85,10 @@ def _run(
     artifact_keys: set[str] | None = None,
     lineage_available: bool = True,
     feature_columns: list[str] | None = None,
+    metadata_parameters_by_key: dict[str, dict[str, object]] | None = None,
 ):
     artifact_keys = artifact_keys or set()
+    metadata_parameters_by_key = metadata_parameters_by_key or {}
     resolved_feature_columns = feature_columns if feature_columns is not None else ["feature"]
 
     class FakeModel:
@@ -101,11 +122,13 @@ def _run(
             model_type: str,
         ) -> BaseModelMetadata:
             task = "classification" if model_name == "win_prob" else "regression"
+            registry_key = f"{model_name}_{model_type}"
             return _metadata(
                 model_name,
                 model_type,
                 task,
                 resolved_feature_columns,
+                parameters=metadata_parameters_by_key.get(registry_key),
             )
 
         def artifact_dir(self, model_name: str, model_type: str) -> Path:
@@ -162,6 +185,48 @@ def test_complete_week_is_available_without_inference(tmp_path: Path) -> None:
     )
     load_model.assert_not_called()
     load_scaler.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"modeling_schema_version": _SCHEMA_VERSION},
+        {"feature_set": "wrong", "modeling_schema_version": _SCHEMA_VERSION},
+        {"feature_set": "test"},
+        {"feature_set": "test", "modeling_schema_version": None},
+        {"feature_set": "test", "modeling_schema_version": True},
+        {"feature_set": "test", "modeling_schema_version": str(_SCHEMA_VERSION)},
+        {"feature_set": "test", "modeling_schema_version": _SCHEMA_VERSION + 1},
+    ],
+)
+def test_stale_metadata_contract_is_unavailable(
+    tmp_path: Path,
+    parameters: dict[str, object],
+) -> None:
+    availability, _ = _run(
+        tmp_path,
+        artifact_keys={"win_prob_logistic"},
+        metadata_parameters_by_key={"win_prob_logistic": parameters},
+    )
+
+    assert not availability.win_logistic_features_available
+    assert availability.elo_available
+
+
+def test_stale_metadata_affects_only_exact_family(tmp_path: Path) -> None:
+    availability, _ = _run(
+        tmp_path,
+        artifact_keys={"win_prob_logistic", "total_xgboost"},
+        metadata_parameters_by_key={
+            "win_prob_logistic": {
+                "feature_set": "stale",
+                "modeling_schema_version": _SCHEMA_VERSION,
+            },
+        },
+    )
+
+    assert not availability.win_logistic_features_available
+    assert availability.total_xgboost_features_available
 
 
 def test_partial_feature_coverage_is_unavailable(tmp_path: Path) -> None:

@@ -186,54 +186,40 @@ Market Unit 26 remains active but calendar-gated in:
 - `docs/programs/market-unit-26/PLAN.md`
 - `docs/programs/market-unit-26/ROADMAP.md`
 
-### Weekly Prediction Input Integrity Unit 5: Persist Immutable Input Evidence for New Live Weekly Forecasts [Completed September 21, 2026]
+### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed
 
-Implemented immutable, authenticated prediction-input evidence for every newly generated live weekly forecast event. Statistical and Elo execution now return predictions and exact computational evidence together. Weekly publication persists and authenticates immutable binary snapshots and family evidence before forecast events become durable.
+Aligned weekly statistical-model availability with the persisted metadata
+contract already enforced by live prediction execution.
 
-Existing forecast events and weekly products remain unchanged. This unit does not retrofit historical evidence, regenerate the affected 2026 Week 2 forecasts, select a replacement product, perform corrected evaluation, add explanation evidence, or change API or frontend contracts.
+Availability now requires the exact registered feature-set identity, current
+integer modeling schema version, and exact ordered feature columns before
+declaring a statistical family available.
+
+Stale but well-formed metadata makes only the affected family unavailable.
+Malformed model identity, artifact kind, and task remain explicit errors.
 
 #### Goal
 
-Require every newly generated live weekly forecast event to have complete, immutable, strictly validated prediction-input evidence before persistence.
+Reject stale statistical artifacts during read-only availability inspection
+before policy selection and model execution.
 
-Evidence preserves the clean tracked Git revision, bounded source identities, required replay bytes, exact ordered statistical inputs, transformed estimator inputs, estimator and post-processing outputs, Elo formula inputs, final event outputs, and one-to-one binding to persisted forecast UUIDs.
+Preserve execution as an independent fail-closed validation boundary while
+preventing availability from selecting an artifact that execution would reject.
 
 #### Files Added/Removed/Changed
-
-Added:
-
-- `src/gridiron_edge/evaluation/prediction_input_evidence.py`
-- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py`
-- `src/gridiron_edge/evaluation/prediction_input_sources.py`
-- `src/gridiron_edge/models/game_prediction/prediction_execution.py`
-- `tests/unit/cli/test_weekly_predict_publication.py`
-- `tests/unit/evaluation/test_prediction_input_evidence.py`
-- `tests/unit/evaluation/test_prediction_input_evidence_store.py`
-- `tests/unit/evaluation/test_prediction_input_sources.py`
-- `tests/unit/models/game_prediction/test_elo_prediction_execution.py`
-- `tests/unit/models/game_prediction/test_games_model_evidence.py`
-- `tests/unit/models/game_prediction/test_post_process_resolution.py`
-- `tests/unit/models/game_prediction/test_prediction_execution.py`
-- `tests/unit/models/game_prediction/test_statistical_prediction_execution.py`
-- `tests/unit/models/game_prediction/test_weekly_execution_evidence.py`
 
 Changed:
 
 - `PLAN.md`
-- `src/gridiron_edge/cli/weekly_predict.py`
-- `src/gridiron_edge/models/artifact.py`
-- `src/gridiron_edge/models/elo/model.py`
-- `src/gridiron_edge/models/game_prediction/base.py`
-- `src/gridiron_edge/models/game_prediction/model.py`
-- `src/gridiron_edge/models/game_prediction/post_process.py`
-- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
-- `tests/unit/cli/test_weekly_predict.py`
-- `tests/unit/models/game_prediction/test_weekly_execution.py`
-- `tests/unit/models/test_artifact.py`
-- `tests/unit/models/test_games_model.py`
-- `tests/unit/models/test_games_trainer.py`
+  - Closed the statistical availability metadata preflight alignment unit.
+- `src/gridiron_edge/models/game_prediction/availability.py`
+  - Added exact feature-set identity and modeling schema version checks to the
+    existing ordered feature-column availability contract.
+- `tests/unit/models/game_prediction/test_availability.py`
+  - Updated valid metadata fixtures and added missing, malformed, stale, and
+    family-isolation coverage.
 
 Removed:
 
@@ -241,26 +227,64 @@ Removed:
 
 #### Tests
 
-Passed Ruff, Pyrefly, Python compilation, the full non-slow unit suite, focused Unit 5 suites, and `git diff --check`.
+Validation passed:
 
-Legacy-versus-evidence equivalence passed for all five statistical families: Logistic, Random Forest, and XGBoost Win; Random Forest and XGBoost Total.
+- focused Ruff checks;
+- repository-wide Ruff checks;
+- Pyrefly;
+- Python compilation;
+- 84 focused availability, policy, weekly-execution, and weekly-CLI tests;
+- the full non-slow unit suite;
+- `git diff --check`.
 
-Protected validation used a clean temporary repository and real 2026 Week 2 inputs. The default policy validated `win_prob / logistic` with `total / random_forest`; an override validated `win_prob / elo` with `total / random_forest`.
+Focused coverage proves:
 
-Protected validation proved clean revision resolution, exact source capture and recapture, complete family coverage, unique UUIDs, immutable snapshot and evidence publication, strict reload, idempotency, real statistical and Elo replay, source-drift rejection, tamper rejection, unrelated-event absence, and event persistence only after evidence success. Statistical replay used `rtol=0.0` and `atol=1e-12`.
+- valid current metadata remains available;
+- missing or incorrect feature-set identity is unavailable;
+- missing, null, Boolean, string, and stale modeling schema versions are
+  unavailable;
+- exact ordered feature columns remain required;
+- stale metadata affects only the exact family;
+- malformed identity, kind, and task remain explicit errors;
+- availability does not deserialize estimators or scalers;
+- execution remains an independent unchanged fail-closed boundary.
 
-Independent read-only review found no blocking correctness or safety defect. Requested statistical equivalence and XGBoost coverage were added and passed.
+Protected real-artifact validation inspected the current 2026 Week 2 schedule
+through the public availability boundary. Elo and all five statistical families
+were available:
+
+- `win_prob / logistic`;
+- `win_prob / random_forest`;
+- `win_prob / xgboost`;
+- `total / random_forest`;
+- `total / xgboost`.
+
+A before-and-after SHA-256 comparison of every model, metadata, and scaler
+artifact under `data/models/` produced no differences.
+
+Independent read-only review confirmed all requested correctness, ordering,
+scope, and non-mutation requirements and approved the unit for documentation
+closure.
 
 #### Acceptance
 
-Every newly generated live weekly forecast event is bound to exactly one immutable, strictly validated family evidence artifact before event persistence.
+Availability requires exact persisted feature-set identity, current integer
+modeling schema version, and exact ordered feature columns before declaring a
+statistical family available.
 
-Statistical evidence preserves exact source revision and identities, model and metadata bytes, scaler or explicit absence, external calibrator or explicit absence, ordered feature schema, raw and transformed inputs, raw and post-processed outputs, post-processing resolution, and final outputs.
+Missing, malformed, or stale model-contract metadata makes only the affected
+family unavailable before policy execution.
 
-Elo evidence preserves exact source revision and identities, Elo state and lineage bytes, lineage identities, Away and Home ratings, formula identity, divisor, probabilities, and final outputs.
+Malformed artifact identity, kind, and task remain explicit errors.
 
-Snapshots and evidence are immutable, create-only, strict under reload, idempotent under exact replay, and resistant to conflicting publication. Source inputs must remain byte-identical from capture through publication. Forecast events cannot persist until all evidence is durable and authenticated. Product composition remains downstream.
+Availability rejects stale metadata before runtime feature construction and
+does not deserialize estimators or scalers.
 
-All pre-existing forecast events and weekly products remain byte-identical and readable without Unit 5 evidence. No corrected forecast, replacement product, automatic reselection, corrected evaluation, explanation artifact, API contract, or frontend surface was introduced.
+Live prediction execution retains its independent strict metadata validation
+and remains fail-closed.
 
-Nonblocking follow-up: availability validates feature columns but does not yet validate persisted feature-set identity and modeling schema version as strictly as execution. Execution remains fail-closed.
+Current real statistical artifacts pass the tightened preflight without
+regeneration or modification.
+
+No model artifact, forecast, prediction-input evidence, weekly product, API,
+frontend, or persisted schema contract changed.
