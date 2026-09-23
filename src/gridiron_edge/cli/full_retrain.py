@@ -49,8 +49,10 @@ from gridiron_edge.cli._composites import (
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
-from gridiron_edge.evaluation.archive import load_prediction_log
 from gridiron_edge.evaluation.backfill import backfill_model
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
+from gridiron_edge.evaluation.forecast_selection import select_forecast_run
+from gridiron_edge.evaluation.forecast_store import load_forecast_events
 from gridiron_edge.evaluation.prop_archive import archive_prop_predictions
 from gridiron_edge.models.artifact import (
     ArtifactStore,
@@ -135,28 +137,36 @@ def _stage_refresh_all_data(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_backfill_game_models(ctx: dict[str, Any]) -> StageResult:
-    """Walk-forward backfill all selected game model pairs.
-
-    Iterates over the requested (model_name, model_type) pairs and
-    delegates to backfill_model for each. Each pair runs to completion
-    before the next starts.
-    """
+    """Backfill selected game pairs and retain exact immutable run identities."""
     pairs: list[ModelPair] = ctx["game_pairs"]
     if not pairs:
+        ctx["game_backfill_run_ids"] = {}
         return StageResult(success=True, detail="no game pairs requested")
 
     total_events = 0
-    pair_summaries: list[str] = []
-
+    run_ids: dict[tuple[str, str], str] = {}
     for pair in pairs:
         result = backfill_model(
             model_name=pair.model_name,
             model_type=pair.model_type,
-            mode=None,  # auto-resolve per model
+            mode=None,
         )
+        if result.generated_count == 0:
+            return StageResult(
+                success=False,
+                detail=f"Game backfill generated no forecasts for {pair.composite_key}.",
+            )
+        if result.run_id is None:
+            return StageResult(
+                success=False,
+                detail=(
+                    f"Game backfill generated forecasts without a run ID for {pair.composite_key}."
+                ),
+            )
+        run_ids[(pair.model_name, pair.model_type)] = result.run_id
         total_events += result.inserted_count
-        pair_summaries.append(f"{pair.composite_key}={result.inserted_count:,}")
 
+    ctx["game_backfill_run_ids"] = run_ids
     return StageResult(
         success=True,
         detail=(f"{total_events:,} backfilled forecast events across {len(pairs)} pairs"),
@@ -314,15 +324,8 @@ def _stage_train_prop_models(ctx: dict[str, Any]) -> StageResult:
     )
 
 
-def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
-    """Recompute and persist sigma + margin_std for each game model.
-
-    Reads the newly-built game prediction archive for each
-    ``(model_name, model_type)`` pair, runs ``calibrate_spread_sigma``,
-    computes residual ``margin_std``, updates the in-memory maps for the
-    current process, and persists values to the disk-backed calibration
-    registry consumed by post-processing.
-    """
+def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:  # noqa: PLR0911, PLR0912
+    """Refresh Win calibration from exact immutable backfill runs."""
     from gridiron_edge.models.game_prediction.post_process import (
         _MODEL_MARGIN_STDS,
         calibrate_spread_sigma,
@@ -335,51 +338,33 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
     if not pairs:
         return StageResult(success=True, detail="no game pairs to calibrate")
 
+    run_ids: dict[tuple[str, str], str] = ctx.get("game_backfill_run_ids", {})
     refreshed: list[str] = []
     skipped: list[str] = []
-
-    repo: Path = get_settings().repo_root
-
-    modeling: DataFrame = loaders.load_modeling_file(repo)
-
+    repo = get_settings().repo_root
+    modeling = loaders.load_modeling_file(repo)
     if ACTUAL_MARGIN_TARGET not in modeling.columns:
         return StageResult(
             success=False,
-            detail=(f"canonical modeling artifact is missing {ACTUAL_MARGIN_TARGET}"),
+            detail=f"canonical modeling artifact is missing {ACTUAL_MARGIN_TARGET}",
         )
 
-    actuals = (
-        modeling.loc[
-            :,
-            [
-                "GAME_ID",
-                ACTUAL_MARGIN_TARGET,
-            ],
-        ]
-        .dropna(
-            subset=[
-                "GAME_ID",
-                ACTUAL_MARGIN_TARGET,
-            ]
-        )
-        .copy()
-    )
-
+    actuals = modeling.loc[:, ["GAME_ID", ACTUAL_MARGIN_TARGET]].dropna().copy()
+    actuals["GAME_ID"] = actuals["GAME_ID"].astype(str)
     if actuals["GAME_ID"].duplicated().any():
-        duplicate_ids: list = sorted(
+        duplicate_ids = sorted(
             actuals.loc[
                 actuals["GAME_ID"].duplicated(keep=False),
                 "GAME_ID",
             ]
-            .astype(str)
             .unique()
             .tolist()
         )
         return StageResult(
             success=False,
             detail=(
-                "canonical modeling artifact contains "
-                "duplicate game IDs: " + ", ".join(duplicate_ids)
+                "canonical modeling artifact contains duplicate game IDs: "
+                + ", ".join(duplicate_ids)
             ),
         )
 
@@ -388,45 +373,65 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
             skipped.append(f"{pair.composite_key} (not win_prob)")
             continue
 
-        archive: DataFrame = load_prediction_log(
+        run_id = run_ids.get((pair.model_name, pair.model_type))
+        if run_id is None:
+            return StageResult(
+                success=False,
+                detail=(f"Calibration is missing the exact backfill run for {pair.composite_key}."),
+            )
+
+        events = load_forecast_events(
+            run_id=run_id,
             model_name=pair.model_name,
             model_type=pair.model_type,
+            role=ForecastRole.BACKFILLED,
+            repo=repo,
         )
-        if archive.empty:
-            skipped.append(f"{pair.composite_key} (empty archive)")
-            continue
+        selected = select_forecast_run(events, run_id=run_id)
+        if not selected.found or selected.events.empty:
+            return StageResult(
+                success=False,
+                detail=f"Calibration backfill run is unavailable for {pair.composite_key}.",
+            )
 
-        merged: DataFrame = archive.merge(
+        forecasts = selected.events.copy()
+        if set(forecasts["model_name"].astype(str)) != {pair.model_name}:
+            return StageResult(success=False, detail="Calibration run model_name mismatch.")
+        if set(forecasts["model_type"].astype(str)) != {pair.model_type}:
+            return StageResult(success=False, detail="Calibration run model_type mismatch.")
+        if set(forecasts["role"].astype(str)) != {ForecastRole.BACKFILLED.value}:
+            return StageResult(success=False, detail="Calibration run role mismatch.")
+        if forecasts["game_id"].astype(str).duplicated().any():
+            return StageResult(success=False, detail="Calibration run has duplicate game IDs.")
+
+        forecasts["home_win_prob"] = forecasts["home_win_prob"].astype(float)
+        if forecasts["home_win_prob"].isna().any():
+            return StageResult(success=False, detail="Calibration run has null probabilities.")
+
+        merged = forecasts.merge(
             actuals,
             left_on="game_id",
             right_on="GAME_ID",
             how="inner",
-            validate="many_to_one",
+            validate="one_to_one",
         )
-
         if merged.empty:
-            skipped.append(f"{pair.composite_key} (no game matches)")
-            continue
+            return StageResult(
+                success=False,
+                detail=f"Calibration run has no game matches for {pair.composite_key}.",
+            )
 
-        sigma: float = calibrate_spread_sigma(
+        sigma = calibrate_spread_sigma(
             home_win_probs=merged["home_win_prob"],
             actual_margins=merged[ACTUAL_MARGIN_TARGET],
         )
-
-        register_sigma(
-            pair.model_name,
-            pair.model_type,
-            sigma,
-        )
-
-        margin_std: float = compute_margin_std(
+        register_sigma(pair.model_name, pair.model_type, sigma)
+        margin_std = compute_margin_std(
             home_win_probs=merged["home_win_prob"],
             actual_margins=merged[ACTUAL_MARGIN_TARGET],
             sigma=sigma,
         )
-
         _MODEL_MARGIN_STDS[(pair.model_name, pair.model_type)] = margin_std
-
         save_model_calibration(
             model_name=pair.model_name,
             model_type=pair.model_type,
@@ -434,19 +439,17 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:
             margin_std=margin_std,
             repo=repo,
         )
-
         refreshed.append(f"{pair.composite_key}: sigma={sigma:.2f} margin_std={margin_std:.2f}")
 
-    detail_parts = []
+    detail_parts: list[str] = []
     if refreshed:
         detail_parts.append(f"{len(refreshed)} refreshed")
     if skipped:
         detail_parts.append(f"{len(skipped)} skipped")
-
     return StageResult(
         success=True,
         detail=" · ".join(detail_parts) or "nothing to do",
-        warnings=skipped[:5],  # surface up to 5 skip reasons
+        warnings=skipped[:5],
     )
 
 
@@ -469,7 +472,7 @@ def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
           subset are written.
     """
     from gridiron_edge.evaluation.champion import (
-        select_game_classification_champions,
+        select_game_classification_champions_from_runs,
         select_game_regression_champions,
         select_prop_champions_all_families,
     )
@@ -487,8 +490,9 @@ def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
     game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
     prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
 
-    classification_entries = select_game_classification_champions(
+    classification_entries = select_game_classification_champions_from_runs(
         game_pair_tuples,
+        backfill_run_ids=ctx.get("game_backfill_run_ids", {}),
         repo=repo,
     )
     regression_entries = select_game_regression_champions(
@@ -913,7 +917,7 @@ def _build_stages() -> list:
         ),
         CompositeStage(
             name="refresh-calibrations",
-            description="Recompute sigma + margin_std from archive",
+            description="Recompute sigma + margin_std from exact backfill runs",
             func=_stage_refresh_calibrations,
             depends_on=("backfill-game-models",),
         ),

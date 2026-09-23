@@ -10,7 +10,11 @@ import pandas as pd
 from pandas import DataFrame
 import pytest
 
-from gridiron_edge.evaluation.select import collect_model_metrics, rank_models
+from gridiron_edge.evaluation.select import (
+    collect_forecast_run_metrics,
+    collect_model_metrics,
+    rank_models,
+)
 
 
 class TestCollectModelMetrics:
@@ -140,3 +144,28 @@ class TestRankModels:
         )
         assert len(ranked) == 1
         assert ranked.iloc[0]["model_version"] == "only_v1"
+
+
+class TestCollectForecastRunMetrics:
+    def test_uses_exact_runs_and_excludes_ties(self, tmp_path: Path) -> None:
+        evaluation = DataFrame({"away_win_prob": [0.8, 0.2, 0.5], "away_team_won": [1.0, 0.0, 0.5]})
+        with patch(
+            "gridiron_edge.evaluation.metrics.build_forecast_run_evaluation_df",
+            return_value=evaluation,
+        ) as build:
+            result = collect_forecast_run_metrics(
+                {("win_prob", "logistic"): "run-1"}, repo=tmp_path
+            )
+        assert result[0]["model_key"] == "win_prob_logistic"
+        assert result[0]["n_games"] == 2
+        assert build.call_args.kwargs["run_id"] == "run-1"
+
+    def test_missing_run_error_propagates(self, tmp_path: Path) -> None:
+        with (
+            patch(
+                "gridiron_edge.evaluation.metrics.build_forecast_run_evaluation_df",
+                side_effect=ValueError("Backfilled forecast run is unavailable"),
+            ),
+            pytest.raises(ValueError, match="run is unavailable"),
+        ):
+            collect_forecast_run_metrics({("win_prob", "logistic"): "missing"}, repo=tmp_path)

@@ -476,3 +476,76 @@ class TestBuildEvaluationDfCanonicalOutcomes:
             result = build_evaluation_df(repo=tmp_path)
 
         assert len(result) == 3
+
+
+class TestBuildForecastRunEvaluationDf:
+    def test_exact_run_uses_backfilled_store_not_legacy(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from gridiron_edge.evaluation.forecast_store import FORECAST_EVENT_COLUMNS
+        from gridiron_edge.evaluation.metrics import build_forecast_run_evaluation_df
+
+        values = {
+            "event_id": "event-1",
+            "run_id": "run-1",
+            "role": "backfilled",
+            "generated_at": datetime(2026, 9, 22, tzinfo=UTC),
+            "season": "2025-2026",
+            "week": 1,
+            "game_id": "g1",
+            "model_name": "win_prob",
+            "model_type": "logistic",
+            "game_date": "2025-09-01",
+            "away_team": "Away",
+            "home_team": "Home",
+            "away_elo": None,
+            "home_elo": None,
+            "away_win_prob": 0.7,
+            "home_win_prob": 0.3,
+            "model_spread": None,
+            "model_total": None,
+            "projected_home_score": None,
+            "projected_away_score": None,
+            "margin_std": None,
+            "win_prob_lo": None,
+            "win_prob_hi": None,
+            "confidence_tier": None,
+        }
+        events = DataFrame([{column: values[column] for column in FORECAST_EVENT_COLUMNS}])
+        games = DataFrame({"GAME_ID": ["g1"], "AWAY_SCORE": [24], "HOME_SCORE": [20]})
+        with (
+            patch("gridiron_edge.evaluation.metrics.load_forecast_events", return_value=events),
+            patch("gridiron_edge.evaluation.metrics.loaders.load_games", return_value=games),
+            patch("gridiron_edge.evaluation.metrics.load_prediction_log") as legacy,
+        ):
+            result = build_forecast_run_evaluation_df(
+                run_id="run-1", model_name="win_prob", model_type="logistic", repo=tmp_path
+            )
+        assert result["away_team_won"].tolist() == [1.0]
+        legacy.assert_not_called()
+
+    def test_missing_run_fails_closed(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.forecast_store import empty_forecast_events
+        from gridiron_edge.evaluation.metrics import build_forecast_run_evaluation_df
+
+        with (
+            patch(
+                "gridiron_edge.evaluation.metrics.load_forecast_events",
+                return_value=empty_forecast_events(),
+            ),
+            pytest.raises(ValueError, match="run is unavailable"),
+        ):
+            build_forecast_run_evaluation_df(
+                run_id="missing", model_name="win_prob", model_type="logistic", repo=tmp_path
+            )
+
+    def test_duplicate_outcome_game_ids_fail(self, tmp_path: Path) -> None:
+        from gridiron_edge.evaluation.metrics import _join_completed_outcomes
+
+        predictions = DataFrame({"game_id": ["g1"]})
+        games = DataFrame({"GAME_ID": ["g1", "g1"], "AWAY_SCORE": [24, 24], "HOME_SCORE": [20, 20]})
+        with (
+            patch("gridiron_edge.evaluation.metrics.loaders.load_games", return_value=games),
+            pytest.raises(ValueError, match="duplicate game IDs"),
+        ):
+            _join_completed_outcomes(predictions, repo=tmp_path)

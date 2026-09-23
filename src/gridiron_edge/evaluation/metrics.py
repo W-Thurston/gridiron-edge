@@ -48,6 +48,9 @@ from pandas import DataFrame, Series
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.evaluation.archive import load_prediction_log
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
+from gridiron_edge.evaluation.forecast_selection import select_forecast_run
+from gridiron_edge.evaluation.forecast_store import load_forecast_events
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -65,6 +68,21 @@ DEFAULT_CONFIDENCE_TIERS: Final[list[tuple[float, float]]] = [
 # Threshold above which overconfidence in a high-confidence tier is flagged.
 _HIGH_CONFIDENCE_WARN_THRESHOLD: Final[float] = 0.70
 _CALIBRATION_GAP_WARN: Final[float] = 0.03
+
+_EVALUATION_COLUMNS: Final[tuple[str, ...]] = (
+    "game_id",
+    "season",
+    "week",
+    "away_team",
+    "home_team",
+    "away_win_prob",
+    "away_team_won",
+    "model_name",
+    "model_type",
+)
+_REQUIRED_OUTCOME_COLUMNS: Final[frozenset[str]] = frozenset(
+    {"GAME_ID", "AWAY_SCORE", "HOME_SCORE"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +255,64 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
 # ---------------------------------------------------------------------------
 
 
+def _empty_evaluation_df() -> DataFrame:
+    """Return an empty frame with the canonical evaluation columns."""
+    return DataFrame(columns=list(_EVALUATION_COLUMNS))
+
+
+def _join_completed_outcomes(
+    predictions: DataFrame,
+    *,
+    repo: Path,
+) -> DataFrame:
+    """Join canonical completed outcomes to prediction rows."""
+    if predictions.empty:
+        return _empty_evaluation_df()
+    if "game_id" not in predictions.columns:
+        raise ValueError("Prediction rows are missing required column: game_id")
+
+    normalized = predictions.copy()
+    if normalized["game_id"].isna().any():
+        raise ValueError("Prediction game IDs must not be null.")
+    normalized["game_id"] = normalized["game_id"].astype(str)
+    if normalized["game_id"].str.strip().eq("").any():
+        raise ValueError("Prediction game IDs must not be empty.")
+
+    games = loaders.load_games(repo)
+    missing = sorted(_REQUIRED_OUTCOME_COLUMNS - set(games.columns))
+    if missing:
+        raise ValueError("Canonical games are missing required columns: " + ", ".join(missing))
+    outcomes = games.loc[:, ["GAME_ID", "AWAY_SCORE", "HOME_SCORE"]].copy()
+    if outcomes["GAME_ID"].isna().any():
+        raise ValueError("Canonical game IDs must not be null.")
+    outcomes["GAME_ID"] = outcomes["GAME_ID"].astype(str)
+    if outcomes["GAME_ID"].str.strip().eq("").any():
+        raise ValueError("Canonical game IDs must not be empty.")
+    if outcomes["GAME_ID"].duplicated().any():
+        duplicates = sorted(
+            outcomes.loc[outcomes["GAME_ID"].duplicated(keep=False), "GAME_ID"].unique().tolist()
+        )
+        raise ValueError("Canonical games contain duplicate game IDs: " + ", ".join(duplicates))
+
+    outcomes["AWAY_SCORE"] = pd.to_numeric(outcomes["AWAY_SCORE"], errors="coerce")
+    outcomes["HOME_SCORE"] = pd.to_numeric(outcomes["HOME_SCORE"], errors="coerce")
+    outcomes = outcomes.dropna(subset=["AWAY_SCORE", "HOME_SCORE"]).copy()
+    outcomes["away_team_won"] = 0.0
+    outcomes.loc[outcomes["AWAY_SCORE"] > outcomes["HOME_SCORE"], "away_team_won"] = 1.0
+    outcomes.loc[outcomes["AWAY_SCORE"] == outcomes["HOME_SCORE"], "away_team_won"] = 0.5
+
+    joined = normalized.merge(
+        outcomes.loc[:, ["GAME_ID", "away_team_won"]],
+        how="inner",
+        left_on="game_id",
+        right_on="GAME_ID",
+        validate="many_to_one",
+    ).drop(columns=["GAME_ID"])
+    joined["away_team_won"] = joined["away_team_won"].astype(float)
+    available = [column for column in _EVALUATION_COLUMNS if column in joined.columns]
+    return joined.loc[:, available].reset_index(drop=True)
+
+
 def build_evaluation_df(
     *,
     model_name: str | None = None,
@@ -244,96 +320,49 @@ def build_evaluation_df(
     season: str | None = None,
     repo: Path | None = None,
 ) -> DataFrame:
-    """Join the prediction archive to game outcomes.
-
-    Loads the prediction log, joins to the canonical games table to obtain
-    outcomes, and returns a clean evaluation DataFrame.  Missing outcomes
-    (upcoming games) are dropped.
-
-    Args:
-        model_name: Filter to a specific model purpose (e.g. ``"win_prob"``).
-            If ``None``, all purposes are returned.
-        model_type: Filter to a specific model algorithm
-            (e.g. ``"random_forest"``). If ``None``, all algorithms are
-            returned.
-        season: Filter to a specific season (e.g. ``"2024-2025"``).
-            If ``None``, all seasons are returned.
-        repo: Repository root.  Defaults to settings repo root.
-
-    Returns:
-        DataFrame with columns: game_id, season, week, away_team, home_team,
-        away_win_prob, away_team_won, model_name, model_type. Tied games use
-        away_team_won=0.5.
-        Empty if no data.
-    """
-    resolved_repo: Path = repo or get_settings().repo_root
-
-    log: DataFrame = load_prediction_log(
+    """Join the legacy prediction archive to canonical completed outcomes."""
+    resolved_repo = repo or get_settings().repo_root
+    log = load_prediction_log(
         model_name=model_name,
         model_type=model_type,
         season=season,
         repo=resolved_repo,
     )
+    return _join_completed_outcomes(log, repo=resolved_repo)
 
-    if log.empty:
-        return DataFrame()
 
-    # Join outcomes from canonical games table
-    games: DataFrame = loaders.load_games(resolved_repo)
-
-    # Build an Away-oriented outcome directly from canonical scores.
-    scored_games = games.dropna(
-        subset=[
-            "AWAY_SCORE",
-            "HOME_SCORE",
-        ]
-    ).copy()
-
-    away_scores = pd.to_numeric(
-        scored_games["AWAY_SCORE"],
-        errors="coerce",
+def build_forecast_run_evaluation_df(
+    *,
+    run_id: str,
+    model_name: str,
+    model_type: str,
+    repo: Path,
+) -> DataFrame:
+    """Evaluate one exact immutable backfilled forecast run."""
+    if not run_id.strip():
+        raise ValueError("run_id must not be empty.")
+    events = load_forecast_events(
+        run_id=run_id,
+        model_name=model_name,
+        model_type=model_type,
+        role=ForecastRole.BACKFILLED,
+        repo=repo,
     )
-    home_scores = pd.to_numeric(
-        scored_games["HOME_SCORE"],
-        errors="coerce",
-    )
-
-    scored_games["away_team_won"] = 0.0
-    scored_games.loc[
-        away_scores > home_scores,
-        "away_team_won",
-    ] = 1.0
-    scored_games.loc[
-        away_scores == home_scores,
-        "away_team_won",
-    ] = 0.5
-
-    # pyrefly: ignore [bad-assignment]
-    outcome_map: dict[str, float] = dict(
-        zip(
-            scored_games["GAME_ID"].astype(str),
-            scored_games["away_team_won"].astype(float),
-            strict=True,
-        )
-    )
-
-    log["away_team_won"] = log["game_id"].map(outcome_map)
-    log = log.dropna(subset=["away_team_won"]).copy()
-    log["away_team_won"] = log["away_team_won"].astype(float)
-
-    cols: list[str] = [
-        "game_id",
-        "season",
-        "week",
-        "away_team",
-        "home_team",
-        "away_win_prob",
-        "away_team_won",
-        "model_name",
-        "model_type",
-    ]
-    available: list[str] = [c for c in cols if c in log.columns]
-    return log.loc[:, available].reset_index(drop=True)
+    selected = select_forecast_run(events, run_id=run_id)
+    if not selected.found:
+        raise ValueError(f"Backfilled forecast run is unavailable: {run_id!r}.")
+    selected_events = selected.events.copy()
+    if set(selected_events["run_id"].astype(str)) != {run_id}:
+        raise ValueError("Selected forecast events have the wrong run identity.")
+    if set(selected_events["model_name"].astype(str)) != {model_name}:
+        raise ValueError("Selected forecast events have the wrong model name.")
+    if set(selected_events["model_type"].astype(str)) != {model_type}:
+        raise ValueError("Selected forecast events have the wrong model type.")
+    if set(selected_events["role"].astype(str)) != {ForecastRole.BACKFILLED.value}:
+        raise ValueError("Selected forecast events must be backfilled.")
+    if selected_events["game_id"].astype(str).duplicated().any():
+        raise ValueError("Selected forecast run contains duplicate game IDs.")
+    return _join_completed_outcomes(selected_events, repo=repo)
 
 
 # ---------------------------------------------------------------------------

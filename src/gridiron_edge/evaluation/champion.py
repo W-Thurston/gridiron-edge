@@ -595,6 +595,76 @@ def select_game_classification_champions(
     return entries
 
 
+def select_game_classification_champions_from_runs(
+    pairs: list[tuple[str, str]],
+    *,
+    backfill_run_ids: dict[tuple[str, str], str],
+    repo: Path,
+) -> dict[str, dict[str, Any]]:
+    """Select classification champions from exact immutable backfill runs."""
+    from gridiron_edge.evaluation.select import (
+        collect_forecast_run_metrics,
+        rank_models,
+    )
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    store = ArtifactStore(repo)
+    by_model_name: dict[str, list[str]] = {}
+    for model_name, model_type in pairs:
+        by_model_name.setdefault(model_name, []).append(model_type)
+
+    entries: dict[str, dict[str, Any]] = {}
+    for model_name, model_types in by_model_name.items():
+        eligible_types: list[str] = []
+        for model_type in model_types:
+            if not store.is_trained(model_name, model_type):
+                continue
+            metadata = store.read_metadata(model_name, model_type)
+            if metadata.task != "classification":
+                continue
+            eligible_types.append(model_type)
+
+        if not eligible_types:
+            continue
+
+        model_runs: dict[tuple[str, str], str] = {}
+        for model_type in eligible_types:
+            key = (model_name, model_type)
+            run_id = backfill_run_ids.get(key)
+            if run_id is None or not run_id.strip():
+                raise ValueError(
+                    "Classification champion selection is missing an exact "
+                    f"backfill run for {model_name}/{model_type}."
+                )
+            model_runs[key] = run_id
+
+        rows = collect_forecast_run_metrics(model_runs, repo=repo)
+        if not rows:
+            continue
+        ranked = rank_models(
+            rows,
+            criteria_list=["brier", "ece", "auc"],
+            lower_is_better={"brier", "ece"},
+        )
+        if ranked.empty:
+            continue
+
+        winner_key = str(ranked.iloc[0]["model_key"])
+        winner_type = _model_type_from_composite_key(winner_key, model_name)
+        winner_metadata = store.read_metadata(model_name, winner_type)
+        entries[model_name] = {
+            "model_type": winner_type,
+            "promoted_at": winner_metadata.trained_at,
+            "metrics": {
+                key: winner_metadata.metrics[key]
+                for key in ("brier", "ece", "auc")
+                if key in winner_metadata.metrics
+            },
+        }
+
+    return entries
+
+
 def build_prop_champion_candidates(
     family: str,
     *,

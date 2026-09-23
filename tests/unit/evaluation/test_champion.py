@@ -26,6 +26,7 @@ from gridiron_edge.evaluation.champion import (
     format_regression_comparison,
     promote_champions,
     select_game_classification_champions,
+    select_game_classification_champions_from_runs,
     select_game_regression_champions,
     select_prop_champion,
     select_prop_champion_for_family,
@@ -1019,6 +1020,150 @@ class TestSelectGameClassificationChampions:
         assert set(entries.keys()) == {"win_prob", "cover_prob"}
         assert entries["win_prob"]["model_type"] == "random_forest"
         assert entries["cover_prob"]["model_type"] == "xgboost"
+
+
+class TestSelectGameClassificationChampionsFromRuns:
+    "Exact immutable-run classification champion selection."
+
+    def test_selects_ranked_candidate_from_exact_runs(self, tmp_path: Path) -> None:
+        _save_classification_artifact(
+            tmp_path,
+            "win_prob",
+            "logistic",
+            metrics={"brier": 0.221, "ece": 0.033, "auc": 0.692},
+            trained_at="logistic-time",
+        )
+        _save_classification_artifact(
+            tmp_path,
+            "win_prob",
+            "random_forest",
+            metrics={"brier": 0.222, "ece": 0.029, "auc": 0.686},
+            trained_at="rf-time",
+        )
+        rows = [
+            {
+                "model_key": "win_prob_logistic",
+                "n_games": 100,
+                "brier": 0.221,
+                "ece": 0.033,
+                "auc": 0.692,
+                "accuracy": 0.64,
+                "log_loss": 0.632,
+            },
+            {
+                "model_key": "win_prob_random_forest",
+                "n_games": 100,
+                "brier": 0.222,
+                "ece": 0.029,
+                "auc": 0.686,
+                "accuracy": 0.63,
+                "log_loss": 0.633,
+            },
+        ]
+        ranked = pd.DataFrame(
+            [
+                {**rows[0], "rank_brier": 1, "rank_ece": 2, "rank_auc": 1, "composite_rank": 4},
+                {**rows[1], "rank_brier": 2, "rank_ece": 1, "rank_auc": 2, "composite_rank": 5},
+            ]
+        )
+        run_ids = {
+            ("win_prob", "logistic"): "run-logistic",
+            ("win_prob", "random_forest"): "run-rf",
+        }
+        with (
+            patch(
+                "gridiron_edge.evaluation.select.collect_forecast_run_metrics",
+                return_value=rows,
+            ) as collect,
+            patch("gridiron_edge.evaluation.select.rank_models", return_value=ranked),
+            patch("gridiron_edge.evaluation.select.collect_model_metrics") as legacy,
+        ):
+            entries = select_game_classification_champions_from_runs(
+                [("win_prob", "logistic"), ("win_prob", "random_forest")],
+                backfill_run_ids=run_ids,
+                repo=tmp_path,
+            )
+
+        collect.assert_called_once_with(run_ids, repo=tmp_path)
+        legacy.assert_not_called()
+        assert entries["win_prob"] == {
+            "model_type": "logistic",
+            "promoted_at": "logistic-time",
+            "metrics": {"brier": 0.221, "ece": 0.033, "auc": 0.692},
+        }
+
+    def test_requires_run_for_every_trained_candidate(self, tmp_path: Path) -> None:
+        for model_type in ("logistic", "random_forest"):
+            _save_classification_artifact(
+                tmp_path,
+                "win_prob",
+                model_type,
+                metrics={"brier": 0.22, "ece": 0.03, "auc": 0.69},
+            )
+        with pytest.raises(
+            ValueError,
+            match="missing an exact backfill run for win_prob/random_forest",
+        ):
+            select_game_classification_champions_from_runs(
+                [("win_prob", "logistic"), ("win_prob", "random_forest")],
+                backfill_run_ids={("win_prob", "logistic"): "run-logistic"},
+                repo=tmp_path,
+            )
+
+    def test_untrained_pair_does_not_require_run(self, tmp_path: Path) -> None:
+        _save_classification_artifact(
+            tmp_path,
+            "win_prob",
+            "logistic",
+            metrics={"brier": 0.221, "ece": 0.033, "auc": 0.692},
+            trained_at="logistic-time",
+        )
+        rows = [
+            {
+                "model_key": "win_prob_logistic",
+                "n_games": 100,
+                "brier": 0.221,
+                "ece": 0.033,
+                "auc": 0.692,
+                "accuracy": 0.64,
+                "log_loss": 0.632,
+            }
+        ]
+        ranked = pd.DataFrame(
+            [{**rows[0], "rank_brier": 1, "rank_ece": 1, "rank_auc": 1, "composite_rank": 3}]
+        )
+        with (
+            patch(
+                "gridiron_edge.evaluation.select.collect_forecast_run_metrics",
+                return_value=rows,
+            ) as collect,
+            patch("gridiron_edge.evaluation.select.rank_models", return_value=ranked),
+        ):
+            entries = select_game_classification_champions_from_runs(
+                [("win_prob", "logistic"), ("win_prob", "xgboost")],
+                backfill_run_ids={("win_prob", "logistic"): "run-logistic"},
+                repo=tmp_path,
+            )
+        collect.assert_called_once_with({("win_prob", "logistic"): "run-logistic"}, repo=tmp_path)
+        assert entries["win_prob"]["model_type"] == "logistic"
+
+    def test_empty_exact_run_metrics_returns_empty(self, tmp_path: Path) -> None:
+        _save_classification_artifact(
+            tmp_path,
+            "win_prob",
+            "logistic",
+            metrics={"brier": 0.221, "ece": 0.033, "auc": 0.692},
+        )
+        with patch(
+            "gridiron_edge.evaluation.select.collect_forecast_run_metrics",
+            return_value=[],
+        ):
+            entries = select_game_classification_champions_from_runs(
+                [("win_prob", "logistic")],
+                backfill_run_ids={("win_prob", "logistic"): "run-logistic"},
+                repo=tmp_path,
+            )
+        assert entries == {}
 
 
 def _mock_prop_eval_report(mae: float, rmse: float, r2: float, coverage: float | None) -> object:

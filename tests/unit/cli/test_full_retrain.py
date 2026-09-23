@@ -116,6 +116,7 @@ class TestBackfillGameModelsStage:
         result = _stage_backfill_game_models(ctx)
         assert result.success
         assert "no game pairs requested" in result.detail
+        assert ctx["game_backfill_run_ids"] == {}
 
     @patch("gridiron_edge.cli.full_retrain.backfill_model")
     def test_iterates_over_pairs(self, mock_backfill: MagicMock) -> None:
@@ -123,9 +124,10 @@ class TestBackfillGameModelsStage:
             _stage_backfill_game_models,
         )
 
-        mock_backfill.return_value = SimpleNamespace(
-            inserted_count=100,
-        )
+        mock_backfill.side_effect = [
+            SimpleNamespace(generated_count=100, inserted_count=100, run_id="run-elo"),
+            SimpleNamespace(generated_count=100, inserted_count=100, run_id="run-rf"),
+        ]
         ctx = {
             "game_pairs": [
                 ModelPair(model_name="win_prob", model_type="elo"),
@@ -137,8 +139,41 @@ class TestBackfillGameModelsStage:
         assert result.success
         assert result.rows == 200  # 100 per pair x 2 pairs
         assert mock_backfill.call_count == 2
+        assert ctx["game_backfill_run_ids"] == {
+            ("win_prob", "elo"): "run-elo",
+            ("win_prob", "random_forest"): "run-rf",
+        }
         for call in mock_backfill.call_args_list:
             assert "overwrite" not in call.kwargs
+
+    @patch("gridiron_edge.cli.full_retrain.backfill_model")
+    def test_zero_generation_fails_closed(self, mock_backfill: MagicMock) -> None:
+        from gridiron_edge.cli.full_retrain import _stage_backfill_game_models
+
+        mock_backfill.return_value = SimpleNamespace(
+            generated_count=0,
+            inserted_count=0,
+            run_id=None,
+        )
+        ctx = {"game_pairs": [ModelPair("win_prob", "logistic")]}
+        result = _stage_backfill_game_models(ctx)
+        assert result.success is False
+        assert "generated no forecasts" in result.detail
+        assert "game_backfill_run_ids" not in ctx
+
+    @patch("gridiron_edge.cli.full_retrain.backfill_model")
+    def test_missing_run_id_fails_closed(self, mock_backfill: MagicMock) -> None:
+        from gridiron_edge.cli.full_retrain import _stage_backfill_game_models
+
+        mock_backfill.return_value = SimpleNamespace(
+            generated_count=10,
+            inserted_count=10,
+            run_id=None,
+        )
+        ctx = {"game_pairs": [ModelPair("win_prob", "logistic")]}
+        result = _stage_backfill_game_models(ctx)
+        assert result.success is False
+        assert "without a run ID" in result.detail
 
 
 class TestBackfillPropModelsStage:
@@ -448,9 +483,19 @@ class TestBaselineReportStage:
             "gridiron_edge.cli.full_retrain.get_settings",
             lambda: FakeSettings(repo_root=tmp_path),
         )
+        archive = archive.assign(
+            run_id="run-rf",
+            role="backfilled",
+            model_name="win_prob",
+            model_type="random_forest",
+        )
         monkeypatch.setattr(
-            "gridiron_edge.cli.full_retrain.load_prediction_log",
+            "gridiron_edge.cli.full_retrain.load_forecast_events",
             lambda **_: archive,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.select_forecast_run",
+            lambda events, *, run_id: SimpleNamespace(found=True, events=events),
         )
         monkeypatch.setattr(
             "gridiron_edge.datasets.loaders.load_modeling_file",
@@ -488,7 +533,10 @@ class TestBaselineReportStage:
         )
 
         result = _stage_refresh_calibrations(
-            {"game_pairs": [ModelPair("win_prob", "random_forest")]}
+            {
+                "game_pairs": [ModelPair("win_prob", "random_forest")],
+                "game_backfill_run_ids": {("win_prob", "random_forest"): "run-rf"},
+            }
         )
 
         assert result.success
@@ -772,8 +820,8 @@ class TestStagePromoteChampions:
             self._fake_settings(tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -846,8 +894,8 @@ class TestStagePromoteChampions:
             self._fake_settings(tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -915,8 +963,8 @@ class TestStagePromoteChampions:
             self._fake_settings(tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -969,8 +1017,8 @@ class TestStagePromoteChampions:
             self._fake_settings(tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -1011,8 +1059,8 @@ class TestStagePromoteChampions:
             self._fake_settings(tmp_path),
         )
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {},
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {},
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -1191,3 +1239,37 @@ class TestBaselineReportDiffHelpers:
         newer.write_text("newer")
 
         assert _find_previous_baseline_report(tmp_path) == newer
+
+
+class TestExactRunCalibrationLineage:
+    def test_missing_exact_run_fails_closed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import _stage_refresh_calibrations
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.loaders.load_modeling_file",
+            lambda repo: pd.DataFrame({"GAME_ID": ["g1"], "ACTUAL_MARGIN": [7.0]}),
+        )
+        result = _stage_refresh_calibrations(
+            {
+                "game_pairs": [ModelPair("win_prob", "logistic")],
+                "game_backfill_run_ids": {},
+            }
+        )
+        assert result.success is False
+        assert "missing the exact backfill run" in result.detail

@@ -55,75 +55,86 @@ def _parse_composite_key(key: str) -> tuple[str, str]:
     raise ValueError(msg)
 
 
-def collect_model_metrics(
-    model_keys: list[str],
+def _classification_metric_row(
+    evaluation: DataFrame,
     *,
-    repo: Path,
-) -> list[dict]:
-    """Compute evaluation metrics for all models with archived predictions.
-
-    Args:
-        model_keys: List of ModelRegistry composite keys
-            (e.g. ``"win_prob_random_forest"``).
-        repo: Repository root.
-
-    Returns:
-        List of metric dicts, one per model that has archived predictions.
-        Models with no archived data are silently skipped. Each dict
-        carries a ``"model_key"`` field holding the registry key as a
-        display label.
-    """
+    model_key: str,
+) -> dict[str, float | int | str] | None:
+    """Compute one classification metric row from evaluation data."""
     from gridiron_edge.evaluation.metrics import (
         accuracy,
         brier_score,
-        build_evaluation_df,
         expected_calibration_error,
         log_loss,
         roc_auc,
     )
 
+    if evaluation.empty or "away_win_prob" not in evaluation.columns:
+        return None
+    if evaluation["away_win_prob"].isna().all():
+        return None
+    binary = evaluation.loc[evaluation["away_team_won"].isin([0, 1]), :].copy()
+    if binary.empty:
+        return None
+    p: Series = binary["away_win_prob"]
+    y: Series = binary["away_team_won"]
+    return {
+        "model_key": model_key,
+        "n_games": len(binary),
+        "brier": round(brier_score(p, y), 5),
+        "ece": round(expected_calibration_error(p, y), 5),
+        "auc": round(roc_auc(p, y), 5),
+        "accuracy": round(accuracy(p, y), 5),
+        "log_loss": round(log_loss(p, y), 5),
+    }
+
+
+def collect_model_metrics(
+    model_keys: list[str],
+    *,
+    repo: Path,
+) -> list[dict[str, float | int | str]]:
+    """Compute metrics from the legacy overwriteable prediction archive."""
+    from gridiron_edge.evaluation.metrics import build_evaluation_df
+
     rows: list[dict[str, float | int | str]] = []
     for key in model_keys:
         model_name, model_type = _parse_composite_key(key)
-
-        df_eval: DataFrame = build_evaluation_df(
-            model_name=model_name,
-            model_type=model_type,
-            repo=repo,
+        row = _classification_metric_row(
+            build_evaluation_df(
+                model_name=model_name,
+                model_type=model_type,
+                repo=repo,
+            ),
+            model_key=key,
         )
-        if df_eval.empty:
-            continue
+        if row is not None:
+            rows.append(row)
+    return rows
 
-        # Only classification models have meaningful win-probability metrics.
-        # Regression models (e.g. ``total``) populate ``model_total`` instead
-        # of ``away_win_prob`` and should not be ranked alongside classifiers.
-        if df_eval["away_win_prob"].isna().all():
-            continue
 
-        # Win-probability metrics require a binary outcome. Tied games are
-        # represented as 0.5 by build_evaluation_df and remain available to
-        # general evaluation surfaces, but they are excluded from binary
-        # champion ranking.
-        df_eval = df_eval.loc[
-            df_eval["away_team_won"].isin([0, 1]),
-            :,
-        ].copy()
-        if df_eval.empty:
-            continue
+def collect_forecast_run_metrics(
+    model_runs: dict[tuple[str, str], str],
+    *,
+    repo: Path,
+) -> list[dict[str, float | int | str]]:
+    """Compute metrics from explicitly selected immutable backfill runs."""
+    from gridiron_edge.evaluation.metrics import build_forecast_run_evaluation_df
 
-        p: Series = df_eval["away_win_prob"]
-        y: Series = df_eval["away_team_won"]
-        rows.append(
-            {
-                "model_key": key,
-                "n_games": len(df_eval),
-                "brier": round(brier_score(p, y), 5),
-                "ece": round(expected_calibration_error(p, y), 5),
-                "auc": round(roc_auc(p, y), 5),
-                "accuracy": round(accuracy(p, y), 5),
-                "log_loss": round(log_loss(p, y), 5),
-            }
+    rows: list[dict[str, float | int | str]] = []
+    for (model_name, model_type), run_id in model_runs.items():
+        key = f"{model_name}_{model_type}"
+        row = _classification_metric_row(
+            build_forecast_run_evaluation_df(
+                run_id=run_id,
+                model_name=model_name,
+                model_type=model_type,
+                repo=repo,
+            ),
+            model_key=key,
         )
+        if row is not None:
+            rows.append(row)
     return rows
 
 
