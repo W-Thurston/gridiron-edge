@@ -47,11 +47,7 @@ and a generated-contract React frontend in `frontend/`.
   Run the gate yourself first so hooks don't fail mid-commit.
 
 ## Agent skills
-
-### Issue tracker
-
-Issues live in GitHub Issues for W-Thurston/gridiron-edge, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Domain docs
-
-Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+- Skill overrides live in `docs/agents/`. Issue tracking and domain docs are
+  redirected to `ROADMAP.md`, `PLAN.md`, `HANDOFF.md`, and `DECISIONS.md`.
+- Don't run /setup-matt-pocock-skills in this repo; it would overwrite
+  these overrides.
