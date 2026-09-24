@@ -1130,6 +1130,7 @@ Preferred Python boundary:
 
 ```bash
 uv run ruff check . --fix && \
+uv run ruff format . && \
 uvx pyrefly check && \
 uv run pytest -m "unit and not slow"
 ```
@@ -1170,8 +1171,9 @@ and manual rendering reject the selected affected product.
 
 The Games API and its frontend consumers, including Games List, Game Detail,
 and Featured Matchups, continue to display the affected selected product's Win
-probability and derived spread without disposition metadata. This behavior was
-intentionally outside Unit 4. Postgame live-forecast closeout also continues to
+probability and derived spread without disposition metadata. This display path
+was intentionally left outside the disposition's enforcement boundary
+described above. Postgame live-forecast closeout also continues to
 read the affected product as immutable historical evidence of what was actually
 selected and predicted.
 
