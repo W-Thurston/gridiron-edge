@@ -163,6 +163,8 @@ def test_prepare_total_data_retains_tied_games(
             _y_holdout,
             _train_seasons,
             _holdout_seasons,
+            _year_train,
+            _year_holdout,
         ) = _prepare_total_data(tmp_path)
 
     assert 42.0 in y_train.tolist()
@@ -184,6 +186,8 @@ def test_prepare_total_data_excludes_unavailable_rows(
             y_holdout,
             _train_seasons,
             _holdout_seasons,
+            _year_train,
+            _year_holdout,
         ) = _prepare_total_data(tmp_path)
 
     assert len(x_train) == 3
@@ -222,6 +226,8 @@ def test_prepare_total_data_is_chronological(
             _y_holdout,
             _train_seasons,
             _holdout_seasons,
+            _year_train,
+            _year_holdout,
         ) = _prepare_total_data(tmp_path)
 
     assert x_train[marker].tolist() == [
@@ -252,6 +258,8 @@ def test_prepare_total_data_reports_seasons(
             _y_holdout,
             train_seasons,
             holdout_seasons,
+            _year_train,
+            _year_holdout,
         ) = _prepare_total_data(tmp_path)
 
     assert train_seasons == [training]
@@ -274,6 +282,46 @@ def test_prepare_total_data_does_not_mutate_input(
         frame,
         expected,
     )
+
+
+def test_prepare_total_data_excludes_season_after_holdout_window(
+    tmp_path: Path,
+) -> None:
+    """A completed game from a season chronologically after the holdout
+    window (e.g. an in-progress current season) must not appear in either
+    the training or the holdout split (D4)."""
+    training, holdout = _season_pair()
+    after_holdout = f"{int(holdout[:4]) + 3}-{int(holdout[:4]) + 4}"
+
+    frame = _canonical_modeling_frame()
+    extra = frame.loc[frame["GAME_ID"] == "training-earlier"].copy()
+    extra["GAME_ID"] = "after-holdout-game"
+    extra["YEAR"] = after_holdout
+    extra["GAME_DATE"] = f"{after_holdout[:4]}-09-10"
+    extra[ACTUAL_TOTAL_TARGET] = 77.0
+    frame = pd.concat([frame, extra], ignore_index=True)
+
+    with patch(
+        "gridiron_edge.datasets.loaders.load_modeling_file",
+        return_value=frame,
+    ):
+        (
+            x_train,
+            _y_train,
+            x_holdout,
+            _y_holdout,
+            train_seasons,
+            holdout_seasons,
+            _year_train,
+            _year_holdout,
+        ) = _prepare_total_data(tmp_path)
+
+    assert after_holdout not in train_seasons
+    assert after_holdout not in holdout_seasons
+    assert train_seasons == [training]
+    assert holdout_seasons == [holdout]
+    total_rows_seen = len(x_train) + len(x_holdout)
+    assert total_rows_seen == 4  # unchanged from the base fixture's 3 train + 1 holdout
 
 
 def test_missing_actual_total_is_rejected(

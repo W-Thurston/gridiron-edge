@@ -30,9 +30,8 @@ from pandas import DataFrame
 # pyrefly: ignore [missing-import]
 import typer
 
-from gridiron_edge.evaluation.champion import ClassificationComparisonResult
-
 if TYPE_CHECKING:
+    from gridiron_edge.evaluation.champion import RegressionModelResult
     from gridiron_edge.models.artifact import BaseModelMetadata
 
 
@@ -84,6 +83,24 @@ def _split_composite_key(key: str) -> tuple[str, str] | None:
     return None
 
 
+def _regression_result_from_metadata(meta: BaseModelMetadata) -> RegressionModelResult:
+    """Build a ``RegressionModelResult`` from a trained model's holdout metrics.
+
+    Game Total metadata never records interval coverage, so it surfaces as
+    NaN here; ``compare_regression_models`` skips its coverage gates when a
+    side's coverage is NaN.
+    """
+    from gridiron_edge.evaluation.champion import RegressionModelResult
+
+    return RegressionModelResult(
+        model_type=meta.model_type,
+        mae=meta.metrics.get("mae", float("nan")),
+        rmse=meta.metrics.get("rmse", float("nan")),
+        r2=meta.metrics.get("r2", float("nan")),
+        coverage=meta.metrics.get("coverage", float("nan")),
+    )
+
+
 def _apply_promotion_decision(
     *,
     champion_meta: BaseModelMetadata | None,
@@ -94,6 +111,13 @@ def _apply_promotion_decision(
     no_promote: bool,
 ) -> None:
     """Compare challenger to champion and atomically promote or discard.
+
+    Comparison is task-aware: classification challengers are compared with
+    ``compare_classification_models`` (Brier/ECE/AUC gates); regression
+    challengers (e.g. Total) are compared with ``compare_regression_models``
+    (R²/coverage/MAE gates) instead. A regression challenger must never be
+    evaluated against classification gates, which always reject it because
+    a regression metadata's Brier score is undefined.
 
     The challenger has been trained into ``candidate_dir`` (a sibling of
     ``champion_dir``). This function decides whether to:
@@ -125,11 +149,6 @@ def _apply_promotion_decision(
     """
     import shutil
 
-    from gridiron_edge.evaluation.champion import (
-        compare_classification_models,
-        format_classification_comparison,
-    )
-
     if champion_meta is None:
         # No existing champion - just move candidate into place.
         if champion_dir.exists():
@@ -141,15 +160,37 @@ def _apply_promotion_decision(
         typer.echo(f"  Artifact: {champion_dir}")
         return
 
-    result: ClassificationComparisonResult = compare_classification_models(
-        # pyrefly: ignore [bad-argument-type]
-        champion_meta,
-        # pyrefly: ignore [bad-argument-type]
-        challenger_meta,
-    )
-    typer.echo(format_classification_comparison(result))
+    should_promote_after_gates: bool
+    if challenger_meta.task == "regression":
+        from gridiron_edge.evaluation.champion import (
+            RegressionComparisonResult,
+            compare_regression_models,
+            format_regression_comparison,
+        )
 
-    promote: bool = (result.should_promote or force) and not no_promote
+        reg_result: RegressionComparisonResult = compare_regression_models(
+            _regression_result_from_metadata(champion_meta),
+            _regression_result_from_metadata(challenger_meta),
+        )
+        typer.echo(format_regression_comparison(reg_result))
+        should_promote_after_gates = reg_result.should_promote
+    else:
+        from gridiron_edge.evaluation.champion import (
+            ClassificationComparisonResult,
+            compare_classification_models,
+            format_classification_comparison,
+        )
+
+        clf_result: ClassificationComparisonResult = compare_classification_models(
+            # pyrefly: ignore [bad-argument-type]
+            champion_meta,
+            # pyrefly: ignore [bad-argument-type]
+            challenger_meta,
+        )
+        typer.echo(format_classification_comparison(clf_result))
+        should_promote_after_gates = clf_result.should_promote
+
+    promote: bool = (should_promote_after_gates or force) and not no_promote
 
     if promote:
         # Atomic-ish promotion: delete old champion, move candidate to champion.
@@ -159,7 +200,7 @@ def _apply_promotion_decision(
         if champion_dir.exists():
             shutil.rmtree(champion_dir)
         shutil.move(str(candidate_dir), str(champion_dir))
-        if force and not result.should_promote:
+        if force and not should_promote_after_gates:
             typer.echo("  ⚠️  Force-promoted despite failed gates.")
         else:
             typer.echo("  ✅ New champion promoted.")

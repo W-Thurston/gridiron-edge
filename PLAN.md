@@ -156,6 +156,43 @@ Documentation only; no code, schema, or `data/` change. Verification performed: 
 
 `HANDOFF.md` describes only current behavior for every section touched; the development-role and exact-run-calibration changes are recorded in `CHANGELOG.md` and `DECISIONS.md`; the ROADMAP Tier 1 #1 reconciliation this unit covers is complete.
 
+#### Unit 2: Evaluation correctness [Completed September 25, 2026]
+
+##### Completed
+
+Fixed three verified correctness defects (D2, D3, D4) in the shared game-model training and evaluation infrastructure, all upstream of any evaluation or regeneration work in later units. No model was retrained and no persisted artifact changed; every fix is verified against the real `data/modeling/modeling_file.parquet` read-only.
+
+##### Goal
+
+Make the walk-forward backfill, the gated promotion path, and the standard train/holdout split trustworthy before Tier 2 #5–7 build corrected evaluation evidence on top of them.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/models/game_prediction/_features.py` - Added `_chronological_split_masks()`, a shared helper enforcing that training rows must be strictly before the earliest holdout season (not merely "not a holdout season"), so a season more recent than the holdout window is excluded from both pools instead of silently joining training (D4). `_prepare_data()` now returns two additional aligned `Series` (`year_train`, `year_hold`) giving each row's season label, co-indexed with that row's features.
+- `src/gridiron_edge/models/game_prediction/total.py` - `_prepare_total_data()` uses the same shared `_chronological_split_masks()` helper (D4) and returns the same two additional aligned year `Series` (D2 prerequisite).
+- `src/gridiron_edge/models/game_prediction/_epa_window.py` - `WindowData` gained `year_train`/`year_holdout` fields; `_get_cached_window_data()` threads them through from `_prepare_data()`.
+- `src/gridiron_edge/models/game_prediction/base.py` - `_filter_for_walk_forward()` no longer looks up each row's season via a positional index label into a separately-sorted `df_reference` DataFrame (the source of the misattribution defect, D2); it now takes `year_train_orig`/`year_hold_orig` `Series` that are co-indexed with the feature matrices by construction, eliminating the entire class of index-alignment bugs. `_prepare_window()` updated to source and pass these through for both the classification (EPA-window cache) and regression (`_prepare_total_data`) branches.
+- `src/gridiron_edge/cli/models.py` - `_apply_promotion_decision()` now branches on `challenger_meta.task`: a regression challenger (e.g. Total) is compared with `compare_regression_models()` (R²/coverage/MAE gates), never with the classification Brier/ECE/AUC gates that always rejected it because a regression metadata's Brier score is undefined (D3). Added `_regression_result_from_metadata()` helper.
+- `tests/unit/models/test_win_training_data.py` - Updated 4 existing `_prepare_data()` unpacking sites for the new 8-tuple return; added `TestChronologicalSplitMasks` and an end-to-end test proving a season after the holdout window is excluded from both splits (D4).
+- `tests/unit/models/test_total_training_data.py` - Updated 4 existing `_prepare_total_data()` unpacking sites for the new 8-tuple return; added the equivalent D4 end-to-end test.
+- `tests/unit/models/test_games_trainer.py` - Added `TestFilterForWalkForward`: two tests proving correct season re-attribution using deliberately non-contiguous, gapped indices (the shape upstream row-dropping actually produces), including one row moving from the original holdout pool into the new training pool (D2).
+- `tests/unit/cli/test_models.py` - Added `TestApplyPromotionDecisionRegressionTask`: a genuinely-better regression challenger is promoted, a worse one is rejected, and the printed comparison is confirmed to be the regression format, not the classification one (D3).
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,010 tests, up from 4,001; the 9 new tests are listed above). Real-data validation: ran `_prepare_data()` (Win) and `_prepare_total_data()` (Total) directly against the current `data/modeling/modeling_file.parquet` — the in-progress `2026-2027` season now appears in neither `train_seasons` nor `holdout_seasons` for either task, and zero `2026-2027` rows appear in either split, confirming D4 on real data. Confirmed the pre-fix masking logic would have placed those same rows in training (`~year.isin(holdout)` evaluates `True` for `2026-2027`). No `data/` artifact was written; no model was retrained.
+
+##### Acceptance
+
+The walk-forward backfill attributes every row to its own season using data co-indexed with that row, never by re-deriving row identity from a separately-indexed reference; a Total (regression) challenger can be promoted through `gridiron models train` on its own gates; the standard train/holdout split never trains on a season more recent than the earliest holdout season. All three fixes are proven by tests that fail against the prior behavior and pass against the fix.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

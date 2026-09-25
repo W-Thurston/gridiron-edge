@@ -137,6 +137,36 @@ FEATURE_SETS: dict[str, FeatureSet] = {
 # ---------------------------------------------------------------------------
 
 
+def _chronological_split_masks(
+    year: Series,
+    holdout_seasons: frozenset[str],
+) -> tuple[Series, Series]:
+    """Compute chronological train/holdout membership masks.
+
+    Holdout rows are exactly those whose season label is in
+    ``holdout_seasons``. Training rows are restricted to seasons strictly
+    before the earliest holdout season - never merely "not a holdout
+    season" - so a season more recent than the holdout window (for
+    example an in-progress current season) is excluded from both pools
+    instead of silently joining training. Without this restriction,
+    training could include data chronologically after the fixed holdout
+    window, which breaks holdout's guarantee of evaluating on data the
+    model has never trained on.
+
+    Args:
+        year: Season label per row (e.g. ``"2023-2024"``).
+        holdout_seasons: Season labels reserved for holdout.
+
+    Returns:
+        ``(train_mask, hold_mask)`` boolean Series aligned with ``year``.
+    """
+    earliest_holdout_start = min(int(season.split("-")[0]) for season in holdout_seasons)
+    season_start = year.astype(str).str[:4].astype(int)
+    hold_mask = year.astype(str).isin(holdout_seasons)
+    train_mask = season_start < earliest_holdout_start
+    return train_mask, hold_mask
+
+
 def _prepare_data(
     df: pd.DataFrame,
     feature_fn: Callable,
@@ -147,6 +177,8 @@ def _prepare_data(
     Series,
     list[str],
     list[str],
+    Series,
+    Series,
 ]:
     """Prepare canonical Win train and holdout data.
 
@@ -159,7 +191,11 @@ def _prepare_data(
 
     Returns:
         Train features, train target, holdout features, holdout target,
-        sorted training seasons, and sorted holdout seasons.
+        sorted training seasons, sorted holdout seasons, train-row season
+        labels aligned with the train features, and holdout-row season
+        labels aligned with the holdout features. The last two let
+        walk-forward re-splitting look up each row's season without
+        re-deriving row identity from a differently-indexed DataFrame.
     """
     if HOME_WIN_TARGET not in df.columns:
         raise ValueError(
@@ -188,8 +224,7 @@ def _prepare_data(
 
     y = df[HOME_WIN_TARGET].astype(int)
 
-    train_mask = ~df["YEAR"].isin(HOLDOUT_SEASONS)
-    hold_mask = df["YEAR"].isin(HOLDOUT_SEASONS)
+    train_mask, hold_mask = _chronological_split_masks(df["YEAR"], HOLDOUT_SEASONS)
 
     logger.info(
         "Train: %d rows | Holdout: %d rows",
@@ -235,6 +270,8 @@ def _prepare_data(
         Series,
         y.reindex(hold_index),
     )
+    year_train = cast(Series, df["YEAR"].astype(str).reindex(train_index))
+    year_hold = cast(Series, df["YEAR"].astype(str).reindex(hold_index))
 
     return (
         x_train,
@@ -243,6 +280,8 @@ def _prepare_data(
         y_hold,
         train_seasons,
         hold_seasons,
+        year_train,
+        year_hold,
     )
 
 

@@ -31,6 +31,7 @@ from gridiron_edge.models.game_prediction.base import (
     GameModelSpec,
     GameModelType,
     _create_model,
+    _filter_for_walk_forward,
     _get_param_grid,
     _n_iter_for,
     _resolve_cv_min_train_rows,
@@ -491,3 +492,93 @@ class TestInnerCVTemporalAwareness:
         the calibration curve fit is a simpler problem than HP selection)."""
         model, _ = _create_model(GameModelType.RANDOM_FOREST, "classification")
         assert model.cv.n_splits == 3
+
+
+# ---------------------------------------------------------------------------
+# _filter_for_walk_forward
+# ---------------------------------------------------------------------------
+
+
+class TestFilterForWalkForward:
+    """`_filter_for_walk_forward` must attribute each row to its own season
+    using data co-indexed with that row, never by re-deriving row identity
+    from a separately-prepared reference DataFrame.
+
+    Regression coverage for the walk-forward season-misattribution defect:
+    ``_prepare_data``/``_prepare_total_data`` drop tied games and rows with
+    incomplete features, then reassign a fresh, gap-free index. Looking up
+    each row's season afterward via a positional index label into a
+    DIFFERENT, un-dropped DataFrame silently attributes rows to the wrong
+    season once any rows have been dropped upstream. These tests use a
+    deliberately non-contiguous, gapped index throughout - the shape that
+    upstream row-dropping actually produces - and assert correct season
+    attribution using only the co-indexed year Series the caller supplies.
+    """
+
+    def test_attributes_rows_by_co_indexed_year_not_position(self) -> None:
+        # Original train pool: one 2013-2014 row, one 2014-2015 row.
+        idx_train = pd.Index([0, 5])
+        x_train_orig = pd.DataFrame({"f": [1.0, 2.0]}, index=idx_train)
+        y_train_orig = pd.Series([1, 0], index=idx_train)
+        year_train_orig = pd.Series(["2013-2014", "2014-2015"], index=idx_train)
+
+        # Original holdout pool: one 2014-2015 row, one 2015-2016 row.
+        idx_hold = pd.Index([1, 3])
+        x_hold_orig = pd.DataFrame({"f": [3.0, 4.0]}, index=idx_hold)
+        y_hold_orig = pd.Series([1, 0], index=idx_hold)
+        year_hold_orig = pd.Series(["2014-2015", "2015-2016"], index=idx_hold)
+
+        x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons = _filter_for_walk_forward(
+            x_train_orig,
+            y_train_orig,
+            x_hold_orig,
+            y_hold_orig,
+            train_through_season="2013-2014",
+            year_train_orig=year_train_orig,
+            year_hold_orig=year_hold_orig,
+        )
+
+        # New training is exactly the 2013-2014 row from the original train pool.
+        assert train_seasons == ["2013-2014"]
+        assert x_train["f"].tolist() == [1.0]
+        assert y_train.tolist() == [1]
+
+        # New holdout is exactly 2014-2015, pulled from BOTH original pools
+        # (one row started in train, one in holdout) - proving the
+        # re-split uses each row's own season, not which pool it began in.
+        assert hold_seasons == ["2014-2015"]
+        assert x_hold["f"].tolist() == [2.0, 3.0]
+        assert y_hold.tolist() == [0, 1]
+
+        # The 2015-2016 row is excluded from both the new train and holdout.
+        assert 4.0 not in x_train["f"].tolist()
+        assert 4.0 not in x_hold["f"].tolist()
+
+    def test_does_not_require_a_shared_or_contiguous_index(self) -> None:
+        """Train and holdout index ranges may overlap or be non-monotonic;
+        correctness must not depend on index values being distinct,
+        ordered, or contiguous across the two original pools."""
+        idx_train = pd.Index([9, 4])
+        x_train_orig = pd.DataFrame({"f": [10.0, 20.0]}, index=idx_train)
+        y_train_orig = pd.Series([0, 1], index=idx_train)
+        year_train_orig = pd.Series(["2020-2021", "2021-2022"], index=idx_train)
+
+        idx_hold = pd.Index([2, 0])
+        x_hold_orig = pd.DataFrame({"f": [30.0, 40.0]}, index=idx_hold)
+        y_hold_orig = pd.Series([1, 0], index=idx_hold)
+        year_hold_orig = pd.Series(["2021-2022", "2022-2023"], index=idx_hold)
+
+        x_train, _y_train, x_hold, _y_hold, train_seasons, hold_seasons = _filter_for_walk_forward(
+            x_train_orig,
+            y_train_orig,
+            x_hold_orig,
+            y_hold_orig,
+            train_through_season="2020-2021",
+            year_train_orig=year_train_orig,
+            year_hold_orig=year_hold_orig,
+        )
+
+        assert train_seasons == ["2020-2021"]
+        assert x_train["f"].tolist() == [10.0]
+        assert hold_seasons == ["2021-2022"]
+        assert sorted(x_hold["f"].tolist()) == [20.0, 30.0]

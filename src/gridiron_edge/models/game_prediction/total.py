@@ -24,6 +24,7 @@ from pandas import DataFrame, Index, Series
 from gridiron_edge.models.game_prediction._features import (
     FEATURE_SETS,
     HOLDOUT_SEASONS,
+    _chronological_split_masks,
     _make_expanded_features,
 )
 from gridiron_edge.models.game_prediction.base import (
@@ -52,6 +53,8 @@ def _prepare_total_data(
     Series,
     list[str],
     list[str],
+    Series,
+    Series,
 ]:
     """Prepare canonical Total train and holdout data.
 
@@ -64,7 +67,9 @@ def _prepare_total_data(
 
     Returns:
         Train features, train target, holdout features, holdout target,
-        sorted training seasons, and sorted holdout seasons.
+        sorted training seasons, sorted holdout seasons, train-row season
+        labels aligned with the train features, and holdout-row season
+        labels aligned with the holdout features.
 
     Raises:
         ValueError: If the canonical Total target is unavailable.
@@ -103,8 +108,7 @@ def _prepare_total_data(
 
     y: Series = df[ACTUAL_TOTAL_TARGET].astype(float)
 
-    train_mask = ~df["YEAR"].isin(HOLDOUT_SEASONS)
-    hold_mask = df["YEAR"].isin(HOLDOUT_SEASONS)
+    train_mask, hold_mask = _chronological_split_masks(df["YEAR"], HOLDOUT_SEASONS)
 
     logger.info(
         "Total model data: train=%d  holdout=%d  mean_total=%.1f",
@@ -139,6 +143,8 @@ def _prepare_total_data(
     y_train: Series = y.reindex(train_index)
     x_holdout: DataFrame = features.reindex(holdout_index)
     y_holdout: Series = y.reindex(holdout_index)
+    year_train: Series = df["YEAR"].astype(str).reindex(train_index)
+    year_holdout: Series = df["YEAR"].astype(str).reindex(holdout_index)
 
     return (
         x_train,
@@ -147,6 +153,8 @@ def _prepare_total_data(
         y_holdout,
         train_seasons,
         holdout_seasons,
+        year_train,
+        year_holdout,
     )
 
 

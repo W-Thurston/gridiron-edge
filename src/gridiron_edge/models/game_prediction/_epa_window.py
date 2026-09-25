@@ -69,6 +69,8 @@ class WindowData(NamedTuple):
     y_holdout: Series
     train_seasons: list[str]
     holdout_seasons: list[str]
+    year_train: Series
+    year_holdout: Series
 
 
 # ---------------------------------------------------------------------------
@@ -147,12 +149,13 @@ def _get_cached_window_data(
 
     Returns:
         ``WindowData`` named tuple with df_windowed, x_train, y_train,
-        x_holdout, y_holdout, train_seasons, holdout_seasons.
+        x_holdout, y_holdout, train_seasons, holdout_seasons, year_train,
+        year_holdout.
     """
     if window not in cache:
         from gridiron_edge.models.game_prediction._features import _prepare_data
 
         df_w: DataFrame = _rebuild_features_with_window(df, window=window, repo=repo)
-        x_tr, y_tr, x_ho, y_ho, tr_s, ho_s = _prepare_data(df_w, feature_fn)
-        cache[window] = WindowData(df_w, x_tr, y_tr, x_ho, y_ho, tr_s, ho_s)
+        x_tr, y_tr, x_ho, y_ho, tr_s, ho_s, yr_tr, yr_ho = _prepare_data(df_w, feature_fn)
+        cache[window] = WindowData(df_w, x_tr, y_tr, x_ho, y_ho, tr_s, ho_s, yr_tr, yr_ho)
     return cache[window]

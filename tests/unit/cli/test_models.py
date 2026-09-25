@@ -219,6 +219,131 @@ class TestApplyPromotionDecisionWithChampion:
         assert not candidate_dir.exists()
 
 
+class TestApplyPromotionDecisionRegressionTask:
+    """A regression challenger (e.g. Total) must be compared with
+    ``compare_regression_models``, never with the classification gates.
+
+    Regression coverage for the defect where every regression challenger
+    was silently rejected: the classification Brier gate reads
+    ``meta.metrics.get("brier", nan)``, which is always NaN for a
+    regression model, so ``brier_delta >= min_brier_improvement`` was
+    always False regardless of how much the challenger actually improved
+    MAE, RMSE, or R².
+    """
+
+    def _setup_dirs(self, tmp_path: Path) -> tuple[Path, Path]:
+        champion_dir = tmp_path / "rf"
+        candidate_dir = tmp_path / "rf__candidate"
+        champion_dir.mkdir()
+        candidate_dir.mkdir()
+        (champion_dir / "champion_marker").touch()
+        (candidate_dir / "candidate_marker").touch()
+        return champion_dir, candidate_dir
+
+    def test_better_regression_challenger_is_promoted(self, tmp_path: Path) -> None:
+        """A challenger with genuinely better holdout MAE/R² must be
+        promoted through the real (unmocked) regression gates - this is
+        the exact scenario the classification-only path always rejected."""
+        champion_dir, candidate_dir = self._setup_dirs(tmp_path)
+
+        champion_meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-09-01T00:00:00",
+            metrics={"mae": 12.0, "rmse": 15.0, "r2": 0.10},
+        )
+        challenger_meta = GameModelMetadata(
+            model_name="total",
+            model_type="xgboost",
+            task="regression",
+            trained_at="2026-09-02T00:00:00",
+            metrics={"mae": 10.0, "rmse": 13.0, "r2": 0.20},
+        )
+
+        _apply_promotion_decision(
+            champion_meta=champion_meta,
+            challenger_meta=challenger_meta,
+            champion_dir=champion_dir,
+            candidate_dir=candidate_dir,
+            force=False,
+            no_promote=False,
+        )
+
+        assert (champion_dir / "candidate_marker").exists()
+        assert not (champion_dir / "champion_marker").exists()
+        assert not candidate_dir.exists()
+
+    def test_worse_regression_challenger_is_rejected(self, tmp_path: Path) -> None:
+        """A challenger with worse holdout MAE must be rejected, and the
+        champion must be left untouched."""
+        champion_dir, candidate_dir = self._setup_dirs(tmp_path)
+
+        champion_meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-09-01T00:00:00",
+            metrics={"mae": 10.0, "rmse": 13.0, "r2": 0.20},
+        )
+        challenger_meta = GameModelMetadata(
+            model_name="total",
+            model_type="xgboost",
+            task="regression",
+            trained_at="2026-09-02T00:00:00",
+            metrics={"mae": 12.0, "rmse": 15.0, "r2": 0.10},
+        )
+
+        _apply_promotion_decision(
+            champion_meta=champion_meta,
+            challenger_meta=challenger_meta,
+            champion_dir=champion_dir,
+            candidate_dir=candidate_dir,
+            force=False,
+            no_promote=False,
+        )
+
+        assert (champion_dir / "champion_marker").exists()
+        assert not candidate_dir.exists()
+
+    def test_regression_comparison_output_is_shown_not_classification(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The printed comparison must be the regression format (MAE/R²),
+        never the classification format (Brier/ECE/AUC)."""
+        champion_dir, candidate_dir = self._setup_dirs(tmp_path)
+
+        champion_meta = GameModelMetadata(
+            model_name="total",
+            model_type="random_forest",
+            task="regression",
+            trained_at="2026-09-01T00:00:00",
+            metrics={"mae": 12.0, "rmse": 15.0, "r2": 0.10},
+        )
+        challenger_meta = GameModelMetadata(
+            model_name="total",
+            model_type="xgboost",
+            task="regression",
+            trained_at="2026-09-02T00:00:00",
+            metrics={"mae": 10.0, "rmse": 13.0, "r2": 0.20},
+        )
+
+        _apply_promotion_decision(
+            champion_meta=champion_meta,
+            challenger_meta=challenger_meta,
+            champion_dir=champion_dir,
+            candidate_dir=candidate_dir,
+            force=False,
+            no_promote=False,
+        )
+
+        out = capsys.readouterr().out
+        assert "Brier" not in out
+        assert "MAE" in out or "mae" in out.lower()
+
+
 class TestApplyPromotionDecisionAtomicity:
     """Verify the champion directory is never in an inconsistent state."""
 

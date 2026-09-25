@@ -398,7 +398,8 @@ def _filter_for_walk_forward(
     y_hold_orig: Series,
     train_through_season: str,
     *,
-    df_reference: pd.DataFrame,
+    year_train_orig: Series,
+    year_hold_orig: Series,
 ) -> tuple[pd.DataFrame, Series, pd.DataFrame, Series, list[str], list[str]]:
     """Re-split train+holdout for walk-forward backfill.
 
@@ -419,7 +420,15 @@ def _filter_for_walk_forward(
             ``x_hold_orig``.
         train_through_season: Season label like ``"2014-2015"``. Training
             uses everything before this; new holdout is the next season.
-        df_reference: Original DataFrame with YEAR column used for lookups.
+        year_train_orig: Season label per row, aligned with
+            ``x_train_orig`` by construction (both come from the same
+            ``_prepare_data``/``_prepare_total_data`` call). Looking up
+            YEAR this way - rather than re-deriving row identity from a
+            separately-sorted DataFrame by positional index - avoids
+            misattributing rows to the wrong season when upstream
+            preparation drops rows (ties, incomplete features) and
+            resets the index.
+        year_hold_orig: Season label per row, aligned with ``x_hold_orig``.
 
     Returns:
         Tuple of (x_train, y_train, x_hold, y_hold, train_seasons,
@@ -428,9 +437,8 @@ def _filter_for_walk_forward(
     # Combine into full feature matrix and target.
     x_full = pd.concat([x_train_orig, x_hold_orig])
     y_full = pd.concat([y_train_orig, y_hold_orig])
+    year_series = pd.concat([year_train_orig, year_hold_orig])
 
-    # Look up YEAR for each row
-    year_series = df_reference.loc[x_full.index, "YEAR"]
     train_through_start = int(train_through_season.split("-")[0])
     next_season_start = train_through_start + 1
     next_season_label = f"{next_season_start}-{next_season_start + 1}"
@@ -796,13 +804,21 @@ class GamesTrainer(ABC):
             x_train, y_train = wd.x_train, wd.y_train
             x_hold, y_hold = wd.x_holdout, wd.y_holdout
             train_seasons, hold_seasons = wd.train_seasons, wd.holdout_seasons
+            year_train, year_hold = wd.year_train, wd.year_holdout
 
         else:
             from gridiron_edge.models.game_prediction.total import _prepare_total_data
 
-            x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons = _prepare_total_data(
-                repo
-            )
+            (
+                x_train,
+                y_train,
+                x_hold,
+                y_hold,
+                train_seasons,
+                hold_seasons,
+                year_train,
+                year_hold,
+            ) = _prepare_total_data(repo)
 
         if train_through_season is not None:
             x_train, y_train, x_hold, y_hold, train_seasons, hold_seasons = (
@@ -812,7 +828,8 @@ class GamesTrainer(ABC):
                     x_hold,
                     y_hold,
                     train_through_season=train_through_season,
-                    df_reference=df,
+                    year_train_orig=year_train,
+                    year_hold_orig=year_hold,
                 )
             )
 
