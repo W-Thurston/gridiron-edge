@@ -315,13 +315,17 @@ def resolve_forecast_candidates(
 ) -> tuple[ForecastCandidateResolution, ...]:
     """Resolve eligible events for explicit game and model identities.
 
-    Live events are preferred over backfilled events. When at least one
-    matching live event exists, matching backfilled events are excluded.
+    Roles are preferred in order: live, then development, then backfilled.
+    When at least one matching event exists for a more-preferred role, events
+    from every less-preferred role are excluded. In practice ``events`` is
+    already scoped to one run before this is called, and one run's events
+    always share a single role, so this ordering only matters if a caller
+    ever passes events spanning more than one run.
 
-    Selection succeeds only when exactly one eligible event remains.
-    Multiple eligible live events or multiple eligible backfilled events
-    remain ambiguous. Generation time, storage order, and event ID do not
-    determine which event is selected.
+    Selection succeeds only when exactly one eligible event remains within
+    the most-preferred role that has any match. Multiple eligible events
+    within that role remain ambiguous. Generation time, storage order, and
+    event ID do not determine which event is selected.
 
     Args:
         events: Forecast events conforming to the canonical event schema.
@@ -375,18 +379,11 @@ def resolve_forecast_candidates(
             )
             continue
 
-        live_matches = matches.loc[
-            matches["role"] == ForecastRole.LIVE.value,
-            :,
-        ]
-        eligible = (
-            live_matches
-            if not live_matches.empty
-            else matches.loc[
-                matches["role"] == ForecastRole.BACKFILLED.value,
-                :,
-            ]
-        )
+        eligible = matches.loc[matches["role"] == ForecastRole.LIVE.value, :]
+        if eligible.empty:
+            eligible = matches.loc[matches["role"] == ForecastRole.DEVELOPMENT.value, :]
+        if eligible.empty:
+            eligible = matches.loc[matches["role"] == ForecastRole.BACKFILLED.value, :]
 
         eligible_event_ids = tuple(sorted(eligible["event_id"].astype(str).tolist()))
 

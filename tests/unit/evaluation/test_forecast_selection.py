@@ -539,6 +539,115 @@ class TestResolveForecastCandidates:
         assert resolution.selected is not None
         assert resolution.selected.event_id == "backfilled-event"
 
+    def test_single_development_event_is_eligible_when_no_live_exists(
+        self,
+    ) -> None:
+        events = _event(
+            event_id="development-event",
+            run_id="development-run",
+            role=ForecastRole.DEVELOPMENT,
+            generated_at=datetime(
+                2026,
+                9,
+                1,
+                12,
+                tzinfo=UTC,
+            ),
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "development-event"
+
+    def test_live_event_excludes_development_candidate(
+        self,
+    ) -> None:
+        events = pd.concat(
+            [
+                _event(
+                    event_id="development-event",
+                    run_id="development-run",
+                    role=ForecastRole.DEVELOPMENT,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        2,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+                _event(
+                    event_id="live-event",
+                    run_id="live-run",
+                    role=ForecastRole.LIVE,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        1,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "live-event"
+
+    def test_development_event_excludes_backfilled_candidate(
+        self,
+    ) -> None:
+        events = pd.concat(
+            [
+                _event(
+                    event_id="backfilled-event",
+                    run_id="backfill-run",
+                    role=ForecastRole.BACKFILLED,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        2,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+                _event(
+                    event_id="development-event",
+                    run_id="development-run",
+                    role=ForecastRole.DEVELOPMENT,
+                    generated_at=datetime(
+                        2026,
+                        9,
+                        1,
+                        12,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        resolution = resolve_forecast_candidates(
+            events,
+            [_candidate()],
+        )[0]
+
+        assert resolution.status is ForecastCandidateStatus.SELECTED
+        assert resolution.selected is not None
+        assert resolution.selected.event_id == "development-event"
+
     def test_multiple_live_runs_remain_ambiguous(
         self,
     ) -> None:
