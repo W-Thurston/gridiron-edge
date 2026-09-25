@@ -63,52 +63,79 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-### Repository State and Canonical Artifact Reconciliation
+### Foundation Completion (Tiers 1–4)
 
-**Goal:** establish one verified, authoritative inventory of the current platform, canonical artifacts, stale development state, calendar-gated work, and remaining implementation backlog before beginning another large feature or evaluation program.
+**Goal:** resolve the correctness defects and state drift found while reconciling this roadmap against the repository, establish one corrected evaluation and champion-selection foundation, and complete calendar-driven market proof — all before the next feature or evaluation program (Tier 5 #16) begins.
 
-This program begins with read-only inspection and does not assume that development-era artifacts must survive.
+This supersedes the "Repository State and Canonical Artifact Reconciliation" program named in the 2026-09-24 revision; reconciliation is now Unit 1 below rather than a separate program.
 
-Required work:
+Two coordinated tracks. Track A is sequential (each unit depends on the last). Track B runs in parallel on the NFL calendar and does not block Track A.
 
-1. Verify current code capabilities and artifact state against repository evidence.
-2. Classify each roadmap item as complete, active next, calendar-gated, planned, research, deferred, or rejected.
-3. Remove completed work from future-work sections and eliminate duplicate or stale backlog language.
-4. Identify artifacts produced while cleaned game history was truncated or while model metadata was stale.
-5. Determine which affected artifacts were subsequently rebuilt and which remain questionable.
-6. Decide whether the defective 2026 Week 2 development state should remain as a regression fixture or be replaced with corrected canonical development artifacts.
-7. Define one canonical path for corrected forecast generation, evaluation, calibration, and champion reassessment.
-8. Leave `PLAN.md` with exactly one bounded next implementation unit after reconciliation.
+#### Verified defects (resolve before any evaluation or regeneration runs on top of them)
 
-Acceptance:
+| # | Defect | Evidence |
+|---|---|---|
+| D1 | EPA-window train/serve skew: deployed Win models are tuned with EPA rolling windows of 6 (Logistic), 8 (Random Forest), and 6 (XGBoost), but live and backfill feature construction always uses the default window of 4. | Model metadata `epa_window`; `features/team/epa.py:33,362`; `run_features` constructs every feature with no arguments (`features/registry.py:69,87`); `evaluation/backfill.py:401`. |
+| D2 | Walk-forward leakage: after tied games are dropped and the index is reset, the walk-forward season lookup is misaligned against the original frame, so roughly the first 14 games of each target season are labeled as the prior season and trained on. | `models/game_prediction/_features.py:169-185` vs. `models/game_prediction/base.py:433` (called with `df_reference=df` at `:815`). |
+| D3 | Total models can never be promoted: `gridiron models train` always runs the classification comparison gates against a Total model, which always rejects it. | `cli/models.py:87`; `evaluation/champion.py:72-74,189`. |
+| D4 | Holdout is not chronological: deployed models train through the in-progress 2026-2027 season while `HOLDOUT_SEASONS` is fixed at 2023-24 through 2025-26. | `core/constants.py:17`; `models/game_prediction/_features.py:191`. |
+| D5 | The selected 2026 Week 2 product was reselected outside any repository-owned command to an untracked `development`-role run; the known-defect disposition no longer names the current selection, so its authentication would now raise and readiness/edge blocking no longer applies. | `data/output/weekly_products/current.json`; `evaluation/forecast_evidence_disposition.py:267-311`. |
+| D6 | Calibration and the champion manifest (2026-08-05) predate the current model artifacts (2026-09-21); the manifest also names five prop champions with no corresponding artifact. | `data/output/calibration/`, `data/output/champions/champions.json`. |
+| D7 | Weather train/serve skew: training rows use observed OpenWeatherMap backfill; live predictions use stadium/league-month climatology. | `features/team/weather.py:323`. |
+| D8 | Candidate issuance does not reject non-live forecast roles or forecasts generated after `evaluated_at`. | `cli/production_chain.py:404-480`. |
 
-- this roadmap contains one complete ordered backlog;
+#### Track A — Tiers 1–3 (sequential)
+
+- **Tier 1 #1 — Reconcile roadmap, repository state, and canonical artifacts.**
+  Implementation: **U1**, docs only. Record the development forecast role and the exact-run calibration/champion-ranking change in `CHANGELOG.md`/`DECISIONS.md`; record the ad hoc Week 2 reselection; correct stale `HANDOFF.md` text (forecast roles, the metadata-preflight follow-up note, Week 2 blocking language, role-aware postgame closeout, full-retrain description, the `recommended_bet_results` schema path, and Market Unit 26 identities); give every roadmap item its reconciled status.
+- **Tier 1 #2 — Decide and implement the canonical Week 2 development state.**
+  **Decision: replace** (see below). Implementation: **U6**.
+- **Tier 1 #3 — Audit truncated-history and stale-metadata exposure.**
+  Implementation: **U2** (fix D2 walk-forward leakage and D3 Total promotion, with an explicit chronological evaluation-period policy resolving D4; code only, no data changes), **U3** (fix D1 EPA-window parity: carry each artifact's validated `epa_window` into prediction, availability, and backfill feature construction; record the window in the prediction-input evidence feature schema, which bumps its schema version; target completion before the first Track B proof week's forecast), **U4** (apply dispositions to the stale-artifact inventory: archive or delete pre-fix evaluation plots, training logs, and legacy full-retrain reports; remove champion-manifest entries with no artifact; verify the Week 1 percentile rankings were not reset by the truncation).
+- **Tier 2 #4 — Generate one clean canonical weekly forecast.**
+  Implementation: **U5** (add a repository-owned development-role generation command over the existing development execution wrapper, scoped from retained history so no fetch is needed) and **U6** (archive the disposition-affected Week 2 live runs and the ad hoc development run through a `DECISIONS.md`-recorded archive boundary, regenerate Week 2 through U5 with the U2/U3 fixes applied, select it, and verify readiness, the API, and the frontend).
+- **Tier 2 #5 — Rebuild historical game-model evaluation** and **Tier 2 #6 — Evaluate all current game-model families.**
+  Implementation: **U7** (add the still-missing metrics — Win calibration slope/intercept, sharpness, season stability; Total median absolute error, interval coverage, environment slices — plus one immutable run-bound evaluation report and CLI over all six families on a common game set, and retire the consumers still reading the legacy prediction archive) and **U8** (regenerate walk-forward backfills for all families on the corrected pipeline, produce the report, and resolve the D7 weather-skew disposition for evaluation purposes).
+- **Tier 2 #7 — Reassess calibration and champion selection.**
+  Implementation: **U9** (promote through the gated comparison using corrected evidence, refresh calibration, promote the manifest, regenerate baseline and per-run performance reports, and verify upcoming-game coverage with the reassessed champions).
+- **Tier 3 #8 — Persist Logistic explanation evidence.**
+  Implementation: **U10** (scaled-feature-by-coefficient contributions in log-odds space, reconciled to the persisted estimator output within tolerance, bound to the exact evidence/event/run identities and model/scaler digests already captured in prediction-input evidence; immutable batch store and CLI) and **U11** (change the `/explain` contract from percentage-point deltas to log-odds contributions, regenerate the frontend client, and surface it through field-status).
+- **Tier 3 #9 — Evaluate tree-model attribution only if justified.**
+  Implementation: **U12**, a documented decision: XGBoost's exact margin-space contributions are a reasonable fit; Random Forest sits inside a probability calibrator, so exact attribution for it is doubtful and should not be built without a resolved approach.
+- **Tier 3 #10 — Build comparable-game retrieval.**
+  Implementation: **U13**, research and design first.
+
+#### Track B — Tier 4 / Market Unit 26 (parallel, calendar-driven)
+
+No selected-plan poll has completed from this workstation; the Week 1 plan's polls are all past due. The Raspberry Pi worker has been polling independently all season, but nothing in this repository can currently read its evidence back, and its stored contents beyond the latest quote snapshot are unconfirmed.
+
+- **M1 — Pi evidence inventory.** Read-only, done with the operator: confirm what the worker has persisted (quote-history partitions, claims, results, timer/journal state, credit usage) before deciding what Weeks 1–3 evidence is recoverable.
+- **M2 — Worker evidence sync**, closing part of **Tier 4 #11**: a repository-owned pull (e.g. over SSH/rsync) that copies immutable quote-history partitions, claims, and results into local `data/`, verifying identities and digests, refusing conflicting overwrites, and idempotent on repeat; paired with a plan-rollover procedure that compares identities after every transfer.
+- **M3 — Chain guards and the Week 1 issuance conflict**: resolve D8 (issuance must reject non-live and late-generated forecasts), and resolve Week 1's existing triple-candidate-issuance conflict (archive the extras or add an explicit `DECISIONS.md`-recorded selection rule).
+- **M4 — Weekly proof cadence** (Tier 4 #11, #12, #14): forecast, plan, roll the plan to the worker, issue candidates before the first kickoff, optionally record one BetSlip wager against a candidate, fetch outcomes, sync per M2, and run production-chain assessment — repeated weekly starting from the first week M1 confirms is usable. Close Unit 26's #11/#12/#14 with the recommendation policy recorded as explicitly unavailable.
+- **M5 — Tier 4 #13, recommendation-policy maturation.** A new design unit defining a threshold-selection method and an explicit sample-size rule, then accumulating evidence weekly. This runs independently and is not required for the Tier 5 gate below — matured-policy evidence take most of a season to accumulate.
+
+#### Feature-program gate
+
+ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U13) is complete and Track B has closed Tier 4 #11, #12, and #14. Tier 4 #13 continues independently and does not gate Tier 5.
+
+#### Acceptance
+
+- every defect in the table above has a resolution recorded in code, tests, or an explicit `DECISIONS.md` entry;
 - `HANDOFF.md` describes only current behavior;
-- completed capabilities are not presented as future work;
-- future capabilities are not presented as implemented;
-- every remaining item has a clear status and dependency;
-- the Week 2 development state has an explicit retain-or-replace decision;
-- stale or questionable artifacts have a delete, archive, verify, or regenerate disposition;
-- calendar-gated market proof remains separate from implementation work;
-- the next bounded implementation unit is evidence-based and recorded in `PLAN.md`.
+- the Week 2 decision is executed, not just recorded;
+- historical evaluation, calibration, and the champion manifest are regenerated from the corrected pipeline;
+- Logistic explanation evidence is persisted and served;
+- Market Unit 26 has closed #11, #12, and #14, with #13 continuing on its own calendar;
+- `PLAN.md` names exactly one bounded active unit at a time throughout.
 
-## Canonical Artifact Decision Required
+## Canonical Artifact Decision: 2026 Week 2 Development State — Resolved
 
-### 2026 Week 2 Development State
+Two Week 2 Logistic Win forecast runs were generated from an Elo state rebuilt from only the 16 completed Week 1 games. A schema-1 disposition recorded the affected events and products as known defective; the current Week 2 selection has since drifted to an untracked `development`-role run outside that disposition's scope (see D5 above).
 
-Two Week 2 Logistic Win forecast runs were generated from an Elo state rebuilt from only the 16 completed Week 1 games. A schema-1 disposition currently records the affected events and products as known defective.
+**Decision: replace.** Archive or remove the defective events, affected products, the ad hoc selection, and the operational disposition, then regenerate a coherent Week 2 development fixture through the current history-preserving, lineage-verified, metadata-strict, evidence-aware weekly path (Unit 5's development-generation command, applied after Units 2–3 fix D1–D4). Verify API and frontend serialization against the corrected selected product. Execution is scoped as **U6** above.
 
-Because the project has never been live, preservation is not mandatory merely because these artifacts exist. The reconciliation program must choose one of the following explicitly.
-
-#### Retain as a regression fixture
-
-Retain the events, products, selection, and disposition because they provide useful end-to-end evidence for known-defect governance, readiness blocking, and downstream enforcement. If retained, documentation must describe them as an intentional development regression fixture rather than an untouchable production record.
-
-#### Replace with corrected canonical development state
-
-Archive or remove the defective events, affected products, selection, and operational disposition, then regenerate a coherent Week 2 development fixture through the current history-preserving, lineage-verified, metadata-strict, evidence-aware weekly path. Verify API and frontend serialization against the corrected selected product.
-
-**Recommended default:** replace the defective operational state unless the regression-fixture value is judged greater than the continuing conceptual overhead. The disposition implementation and tests may remain as a supported capability even if the specific Week 2 operational artifact is retired.
+The disposition implementation and its tests remain a supported capability even though the specific Week 2 operational artifact is retired — a future known-defect event would still need to be governed the same way.
 
 ## Ordered Remaining Work
 
@@ -261,17 +288,32 @@ forecast
 
 Evaluate Brier-weighted averaging, constrained blending, time-ordered Logistic stacking, and simple probability averaging against corrected champions. Require honest out-of-sample gains, preserved calibration, deployable metadata, complete feature coverage, and no API-time computation.
 
-#### 16. Research game-model features
+#### 16. Game-model feature program
 
-Candidate areas:
+**Depends on:** the Foundation Completion feature-program gate above (Track A units U1–U13 complete; Track B has closed Tier 4 #11, #12, and #14). Scope is game models only — Win (`HOME_WIN`: Elo, Logistic, Random Forest, XGBoost) and Total (`ACTUAL_TOTAL`: Random Forest, XGBoost). Prop-model features are Tier 5 #17. Feature-level detail, adopted status, and exclusions live in `FEATURES.md` Part III, "Game-Model Build Queue"; this entry owns the program rules and phase ordering.
 
-- offensive and defensive strength decomposition;
-- coaching and coordinator effects;
-- pace and neutral-situation tendencies;
-- special teams;
-- penalties, pressure, and situational efficiency;
-- opponent-quality cohorts;
-- calibrated uncertainty.
+**Program rules**
+
+1. **Screen before promoting.** Evaluate each candidate out of band, with candidate columns joined onto the modeling file by `GAME_ID`. Only adopted batches enter `FeatureRegistry`/`CANONICAL_FEATURES`; a rejected feature never costs a schema bump.
+2. **One batch per unit.** Each batch gets one new `FeatureSet` name, one schema or data version bump (`features/manifest.py`), and one retrain through the gated `gridiron models train` comparison — never through full-retrain promotion, which has no minimum-improvement gate.
+3. **Live availability.** A feature may enter a live feature set only if it has a guaranteed pre-kickoff value for every scheduled game, proven by replaying archived upcoming-schedule inputs. Any NaN feature disables that family for the entire week.
+4. **Missingness decisions.** Era-gapped features (for example CPOE before 2006, moneylines before 2007, Next Gen Stats from 2016, PFR advanced stats from 2018) need a recorded `DECISIONS.md` entry choosing a training-window or indicator-plus-fill policy before adoption.
+5. **New inputs stay out of cleaned games.** `data/cleaned/NFL_wk_by_wk_cleaned.csv`'s exact bytes and columns are pinned by Elo lineage; new schedule fields go in a separate sidecar dataset, added to the prediction-input evidence source inventory. Any persisted rating system needs lineage treatment equivalent to Elo's, recorded in `DECISIONS.md`.
+6. **As-of timing and leakage.** Every feature is built only from what is knowable pre-kickoff, with an explicit leakage test.
+
+**Acceptance per adopted batch**, measured under the Tier 2 corrected walk-forward protocol (same holdout seasons, same games, same hyperparameter budget, fixed seeds, baseline rebuilt without the batch):
+
+- **Win:** Brier score improves by at least 0.002, with the paired game-bootstrap 90% lower bound above zero, holding in at least 2 of 3 holdout seasons; ECE worsens by no more than 0.01; log loss is not worse.
+- **Total:** meets the MAE/RMSE/bias thresholds set by Tier 2 #7's reassessment.
+- **Operational:** the live-availability replay passes, training-row loss is recorded, and a rejected feature's status and reason are recorded in `FEATURES.md`.
+
+**Phase A — free, data already on disk:** construction fixes (a garbage-time filter, a CPOE missingness policy, team `qb_epa`, defensive INT and fumble-lost rates); opponent-adjusted EPA and the unit-efficiency differentials built on it; a QB-and-coach sidecar built from the raw schedule (starting-QB identity and change flag, QB experience, coach tenure); situational context (body-clock kickoff, back-to-back road games, surface, a continuous league scoring environment, Pythagorean luck gap, special-teams and punt/return EPA, wind bins and a cold flag, season week number, a win-streak ablation); ensemble rating inputs (SRS, Massey, Colley, Keener, team Glicko-2); and a market-aware variant (closing spread/total, no-vig win probability) as a separate model identity from the market-blind champion.
+
+**Phase B — free, needs an nflverse re-download** (ask before running): re-ingest play-by-play with the columns needed for a win-probability-based garbage-time filter, quarterback-attributed rolling EPA and CPOE, drive-level features, turnover luck, and penalty yards; depth charts for a live projected starter, only if the sidecar's pre-kickoff QB-identity coverage proves insufficient; pressure rate calibrated between historical participation data and in-season PFR advanced stats.
+
+**Phase C — costs money, last:** live forecast weather (fixes the training/serving weather skew properly); market timing features built from Odds API history going forward (depends on Tier 4 #11 and #19); paid benchmark comparisons (FTN DVOA, PFF) as reference only, not model inputs.
+
+Excluded from this program, with reasons recorded in `FEATURES.md`: injury-dependent features move to Tier 6 #18; player-value and roster/usage features (WAR, on/off splits, backup quality, usage redistribution) move to Tier 7; player-level rating systems (OpenSkill) move to the Research Backlog.
 
 Every feature must preserve chronology, avoid leakage, and use empirical thresholds.
 
@@ -399,11 +441,11 @@ Research results do not become operational behavior without time-ordered evaluat
 
 ## Known Limitations
 
-### Canonical Week 2 state is unresolved
+### Canonical Week 2 state: replacement decided, not yet executed
 
-The selected Week 2 development product is currently governed by a known-defect disposition because its Logistic Win predictions consumed incomplete-history Elo inputs. The reconciliation program must decide whether to retain this state as a regression fixture or replace it with corrected canonical development artifacts.
+The originally disposition-affected Week 2 Logistic Win runs consumed incomplete-history Elo inputs. The current Week 2 selection has since drifted to a different, untracked `development`-role run outside that disposition's scope, so the disposition no longer names the current selection and no longer blocks readiness, edge calculation, candidate issuance, or manual rendering for Week 2 under the current contract. The decision is to replace this state entirely (see "Canonical Artifact Decision," above); execution is scoped as Foundation Completion Unit 6.
 
-Until that decision is executed, readiness, edge calculation, candidate issuance, and manual rendering remain blocked for the affected selection under the current contract. The Games API, frontend, and postgame paths may still expose the persisted development artifact according to their existing boundaries.
+Until U6 executes, the Games API, frontend, and postgame paths continue to expose the untracked development artifact according to their existing boundaries, and no forward operational path treats Week 2 as blocked.
 
 ### Historical evaluation may require regeneration
 
@@ -458,6 +500,8 @@ The next major work should normally be chosen in this order:
 15. prop-model improvements;
 16. CI, operational cadence, and source handling;
 17. live-game support after pregame foundations are complete.
+
+Item 9 runs on its own calendar in parallel with items 1–8 and 10 (Foundation Completion Track B, above) and no longer gates item 10: the game-model feature program (Tier 5 #16) starts once items 1–7 are complete and calendar-eligible market proof (item 8, specifically Tier 4 #11/#12/#14) has closed, without waiting for a matured recommendation policy.
 
 Before starting a new work item:
 

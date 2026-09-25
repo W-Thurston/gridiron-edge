@@ -108,16 +108,37 @@ should read this section before planning or modifying the repository.
 
 ## Planned Implementation Status
 
-### Active Program: Weekly Prediction Input Integrity and Reproducibility
+### Completed Program: Weekly Prediction Input Integrity and Reproducibility [Closed September 25, 2026]
 
 Units 1 through 5 completed history-preserving weekly refresh, deterministic complete-history Elo reconstruction, exact persisted Elo-lineage enforcement, external disposition of the affected immutable 2026 Week 2 forecast evidence, and immutable prediction-input evidence for newly generated live weekly forecasts.
 
-Corrected operational forecast generation and evaluation, model-quality assessment, and explanation evidence remain inactive future units.
+Corrected operational forecast generation and evaluation, model-quality assessment, and explanation evidence are now tracked as ROADMAP.md Tier 2 #4–7 and Tier 3 #8–10, under the active program below.
 
-Market Unit 26 remains active but calendar-gated in:
+### Active Program: Foundation Completion (Tiers 1–4)
+
+Resolves the correctness defects and documentation drift found while reconciling ROADMAP.md against the repository (Tiers 1–3), and completes calendar-driven market proof (Tier 4 / Market Unit 26, running in parallel). Full unit sequencing, the verified-defects table, and acceptance criteria live in ROADMAP.md's "Active Next Program" section.
+
+**Gate:** ROADMAP Tier 5 #16 (the game-model feature program) does not start until every unit here completes and Market Unit 26 has closed Tier 4 #11, #12, and #14. Tier 4 #13 (recommendation-policy maturation) continues independently on its own calendar and does not gate Tier 5.
+
+Market Unit 26's calendar-gated detail remains in:
 
 - `docs/programs/market-unit-26/PLAN.md`
 - `docs/programs/market-unit-26/ROADMAP.md`
+
+#### Unit 1 (active): Docs reconciliation
+
+**Goal:** bring `HANDOFF.md`, `CHANGELOG.md`, and `DECISIONS.md` back into agreement with verified current repository state before any correctness fix or regeneration work begins, so later units aren't built against stale documentation.
+
+**Design decisions:**
+
+- Record the `ForecastRole.DEVELOPMENT` addition (commit `2236adc`) and the exact-run calibration/champion-ranking change (commit `6932c77`) in `CHANGELOG.md`, with a `DECISIONS.md` entry for the development role if none already covers it.
+- Record the ad hoc 2026-09-22 Week 2 reselection to an untracked `development`-role product as a fact of current state, cross-referenced to ROADMAP's "Canonical Artifact Decision" section, not as a decision in itself.
+- Correct `HANDOFF.md` in place (no new sections): the two-role list at the Forecast Event Contract section should name `development` alongside `live`/`backfilled`; the metadata-preflight follow-up note (Canonical Data Pipeline and Known Limitations sections) should reflect that the strict feature-set-identity and modeling-schema-version checks shipped 2026-09-22; the Week 2 known-defect section should reflect that the current selection no longer matches the disposition (cross-reference ROADMAP); the Postgame Workflow section should describe closeout as role-aware; the Full Retrain Workflow section should describe exact-run calibration and champion ranking; the `recommended_bet_results` dataset path should read `schema=3`; Market Unit 26 identities that no longer exist on disk should be corrected or removed.
+- Give every ROADMAP item a reconciled status per the Active Next Program's acceptance criteria.
+
+**Tests:** none (documentation only). Verification is: every corrected `HANDOFF.md` claim is checked against a live read of the current file or artifact it describes; `git diff --check` is clean; no code, schema, or `data/` changes.
+
+**Acceptance:** `HANDOFF.md` describes only current behavior for every section touched; the ROADMAP items this unit covers (Tier 1 #1) have reconciled status; the development role and exact-run calibration changes are recorded in `CHANGELOG.md`.
 
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
