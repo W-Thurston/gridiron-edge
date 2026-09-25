@@ -53,6 +53,15 @@ fall back to the same retained-history schedule adaptation
 (`build_retained_history_schedule()`, added by Unit 5) when the upcoming
 schedule has no rows for the requested season and week.
 
+A third defect surfaced only when the real regeneration was actually run:
+`resolve_forecast_candidates` (`evaluation/forecast_selection.py`) preferred
+`live` events over `backfilled` ones but never accounted for `development`
+events at all. A match against development-role events fell through both
+role filters to an empty frame and crashed with an unhandled `IndexError`
+instead of resolving. Fixed by extending the preference chain to live, then
+development, then backfilled (`fix(evaluation): resolve development-role
+forecast candidates`, committed separately from this decision's own commit).
+
 #### Context
 
 ROADMAP's Tier 1 #2 / Tier 2 #4 called for archiving the defective and ad hoc
@@ -80,6 +89,7 @@ change to `weekly-predict`'s own live-only, upcoming-week-only contract.
 - `src/gridiron_edge/cli/_weekly_product_composition.py`
 - `src/gridiron_edge/cli/development_forecast.py`
 - `src/gridiron_edge/cli/verify_week.py`
+- `src/gridiron_edge/evaluation/forecast_selection.py`
 - `src/gridiron_edge/models/game_prediction/weekly_product_store.py`
 - `data/output/forecast_evidence_dispositions/schema=1/dispositions/05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb.json`
 - `HANDOFF.md`

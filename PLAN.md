@@ -455,7 +455,13 @@ upcoming-schedule snapshot, which had already dropped Week 2 (and any other
 elapsed week) by the time Unit 5 shipped — this made `verify-week` report a
 false `missing_schedule` blocker regardless of the selected product's actual
 state. Both paths now fall back to the retained-history schedule adaptation
-Unit 5 built, for any already-elapsed week.
+Unit 5 built, for any already-elapsed week. A third, more serious defect
+surfaced only when the real regeneration was first run:
+`resolve_forecast_candidates` never accounted for `development`-role events
+at all (only `live`/`backfilled`), crashing with an unhandled `IndexError`
+instead of resolving — fixed in a separate commit since it is a distinct
+correctness defect in shared forecast-selection code, not specific to this
+unit's own new files.
 
 ##### Goal
 
@@ -522,6 +528,11 @@ Changed:
   `season`/`week` and falls back to the retained-history schedule adaptation
   when the fetch-derived upcoming schedule has no rows for that scope.
 - `src/gridiron_edge/cli/main.py` - Registered `regenerate-development-week`.
+- `src/gridiron_edge/evaluation/forecast_selection.py` - `resolve_forecast_candidates`
+  now prefers live, then development, then backfilled events (previously
+  live-then-backfilled only; a development-only match crashed).
+- `tests/unit/evaluation/test_forecast_selection.py` - Added development-role
+  candidate-resolution coverage.
 - `tests/unit/cli/test_verify_week.py` - Added
   `TestLoadScheduleRetainedHistoryFallback` (falls back correctly for an
   elapsed week; prefers the upcoming schedule when present; fails closed to
@@ -546,13 +557,35 @@ Removed:
 ##### Tests
 
 Ruff, Pyrefly, and the full non-slow unit suite passed (4,049 tests, up from
-4,040; the 9 new tests are listed above).
+4,040; the 9 new tests are listed above). A follow-up commit fixing the
+`resolve_forecast_candidates` defect above added 3 more tests and brought the
+suite to 4,052.
 
-Real-artifact validation (writes to `data/`, via the new owning command):
+Real-artifact validation (writes to `data/`, via the new owning command): ran
+`gridiron regenerate-development-week --season 2026-2027 --week 2` against
+the real repository once this unit's own commits landed (satisfying the
+clean-tracked-worktree requirement, D42). It generated development-role run
+`a9213428-5cca-43cf-bcae-d73f1ff155e8`, composed and selected
+`weekly_2026_2027_wk02_a9213428-5cca-43cf-bcae-d73f1ff155e8` as the current
+Week 2 product, and reported `prediction_ready: True`
+(`market_ready: False`, blockers `missing_market_data`/
+`market_scope_mismatch` — expected and independent of prediction readiness,
+since Week 2 has already been played and the current market snapshot holds
+only the current week's odds). Independently confirmed via
+`gridiron verify-week --season 2026-2027 --week 2`: 16 scheduled games, 16
+selected Win predictions, 16 spread values, 16 Total predictions, 16
+projected scores, 16 complete-provenance rows.
 
-TODO — filled in immediately after this commit, once the command's
-clean-tracked-worktree requirement (D42) is satisfied by this unit's own
-commit landing. See the follow-up entry below.
+Before/after SHA-256 comparison confirmed the two disposition-governed live
+Week 2 products, the disposition artifact, and the retired ad hoc product are
+all byte-identical (only `index.json`, additive, and `current.json`'s Week 2
+entry changed). Started the real API server and confirmed
+`GET /games?season=2026-2027&week=2` returns 200 with all 16 games'
+Win/Spread/Total marked `available`, `role: "development"`, and the new
+`run_id` — the frontend reads this same generated schema with no gating on
+`role` anywhere in `frontend/src` (confirmed by source search), so no
+frontend code change or separate browser check was needed for this
+data-only unit.
 
 ##### Acceptance
 

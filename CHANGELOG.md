@@ -1,5 +1,20 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-25 - Resolved development-role forecast candidates
+
+#### Fixed
+
+- `resolve_forecast_candidates` preferred `live` events over `backfilled` ones but never accounted for `development` events (added by D43). A match against development-role events fell through both role filters to an empty frame and crashed with an unhandled `IndexError` on `.iloc[0]` instead of resolving. Extended the role-preference chain to live, then development, then backfilled.
+
+#### Validation
+
+- Added coverage: a lone development event resolves; live still excludes a same-game development candidate; development still excludes a same-game backfilled candidate.
+- Ruff, Pyrefly, and the full non-slow unit suite passed (4,052 tests, up from 4,049).
+
+#### Scope
+
+Found while executing Foundation Completion Track A, Unit 6 (below): the first real caller of weekly-product composition against `development`-role events. No other caller of `resolve_forecast_candidates` passes development-role events today.
+
 ### 2026-09-25 - Regenerated and reselected the canonical Week 2 development state (D45)
 
 #### Added
@@ -10,6 +25,7 @@
 #### Fixed
 
 - Weekly-product composition and readiness verification both sourced the schedule exclusively from the fetch-derived upcoming-schedule snapshot, which only ever holds the current season's not-yet-played weeks. Once a week drops out of it, readiness verification reported a false `missing_schedule` blocker regardless of the selected product's actual state. Both paths now fall back to the retained-history schedule adaptation for any already-elapsed week.
+- `resolve_forecast_candidates` never accounted for `development`-role events (only `live` and `backfilled`); a match against development-role events crashed with an unhandled `IndexError` instead of resolving. Found when the real Week 2 regeneration was first run. Fixed separately (see the 2026-09-25 forecast-candidate-resolution entry above).
 
 #### Changed
 
