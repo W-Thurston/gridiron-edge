@@ -443,25 +443,38 @@ shared publication helpers into `cli/_prediction_publication.py`.
 Replaced the untracked ad hoc 2026 Week 2 `development`-role selection (D5)
 with a freshly generated, repository-owned replacement produced with the
 D1–D4 pipeline fixes (Units 2–3) applied. Recorded the archive boundary as
-`DECISIONS.md` D45: the two disposition-governed live Week 2 products and the
-retired ad hoc product are all left physically unchanged (none has a delete
-path, and disposition-governed evidence must never be edited or deleted);
-"archiving" is the ordinary explicit-reselection mechanism the weekly-product
-store has always supported, driven by a new repository-owned command,
-`gridiron regenerate-development-week`. While executing this unit, found and
-fixed a second, narrower defect: weekly-product composition and readiness
-verification both sourced the schedule exclusively from the fetch-derived
-upcoming-schedule snapshot, which had already dropped Week 2 (and any other
-elapsed week) by the time Unit 5 shipped — this made `verify-week` report a
-false `missing_schedule` blocker regardless of the selected product's actual
-state. Both paths now fall back to the retained-history schedule adaptation
-Unit 5 built, for any already-elapsed week. A third, more serious defect
-surfaced only when the real regeneration was first run:
-`resolve_forecast_candidates` never accounted for `development`-role events
-at all (only `live`/`backfilled`), crashing with an unhandled `IndexError`
-instead of resolving — fixed in a separate commit since it is a distinct
-correctness defect in shared forecast-selection code, not specific to this
-unit's own new files.
+`DECISIONS.md` D45: weekly products and forecast events are immutable,
+append/index-only stores with no delete path, and existing operational
+guidance already forbids editing or deleting disposition-governed evidence,
+so "archive" is this documented decision plus the store's existing
+`select_current_weekly_product()` reselection — not a new store mechanism or
+an "archived" flag. The two disposition-governed live Week 2 products and the
+retired ad hoc product are all left physically unchanged. The replacement is
+driven by a new repository-owned command, `gridiron regenerate-development-week`,
+which generates, composes, selects, and reports readiness atomically in one
+process — composition needs the full in-memory `PredictionPolicy` object
+(availability, status, rationale, provenance), never persisted, so a separate
+`--run-id`-based compose command would have had to fabricate policy metadata
+that was never real. `generate-development-forecast` (Unit 5) keeps its exact
+shipped contract unchanged (generation only, never touching `current.json`).
+The live composition stage's core was factored into a shared, schedule-agnostic
+helper (`cli/_weekly_product_composition.py`, the same extraction pattern
+Unit 5 used for `_prediction_publication.py`); `weekly_predict.py`'s live,
+upcoming-week-only contract is otherwise unchanged.
+
+While executing this unit, found and fixed a second, narrower defect: weekly-
+product composition and readiness verification both sourced the schedule
+exclusively from the fetch-derived upcoming-schedule snapshot, which had
+already dropped Week 2 (and any other elapsed week) by the time Unit 5
+shipped — this made `verify-week` report a false `missing_schedule` blocker
+regardless of the selected product's actual state. Both paths now fall back
+to the retained-history schedule adaptation Unit 5 built, for any already-
+elapsed week. A third, more serious defect surfaced only when the real
+regeneration was first run: `resolve_forecast_candidates` never accounted for
+`development`-role events at all (only `live`/`backfilled`), crashing with an
+unhandled `IndexError` instead of resolving — fixed in a separate commit
+since it is a distinct correctness defect in shared forecast-selection code,
+not specific to this unit's own new files.
 
 ##### Goal
 
@@ -469,36 +482,6 @@ Execute ROADMAP.md's Canonical Artifact Decision for 2026 Week 2: archive the
 disposition-affected live runs and the ad hoc development run through a
 `DECISIONS.md`-recorded boundary, regenerate Week 2 through the corrected
 pipeline, select it, and verify readiness, the API, and the frontend.
-
-##### Design decisions
-
-- Weekly products and forecast events are immutable, append/index-only
-  stores with no delete path, and existing operational guidance already
-  forbids editing or deleting disposition-governed evidence. "Archive" is
-  therefore a `DECISIONS.md` record (D45), not a new store mechanism or an
-  "archived" flag — the retirement mechanic is the store's existing
-  `select_current_weekly_product()` reselection, unchanged.
-- Composition requires the full in-memory `PredictionPolicy` object
-  (availability flags, status, rationale, provenance) at every family
-  `build_weekly_*_product` call, not just a `model_type` string, and that
-  object is never persisted. This ruled out a standalone `--run-id`-based
-  compose command reading an already-persisted run (it would have to
-  fabricate policy metadata that was never real); generation and composition
-  instead happen atomically in one process, in `regenerate-development-week`,
-  sharing the real `execution.policy`/`execution.events`.
-  `generate-development-forecast` (Unit 5) keeps its exact shipped contract —
-  generation only, never touching `current.json` — for exploratory or
-  comparative regeneration.
-- Factored the live composition stage's core (`weekly_predict.py`'s
-  `_stage_compose_weekly_product`) into a shared, schedule-agnostic helper
-  (`cli/_weekly_product_composition.py`), the same extraction pattern Unit 5
-  used for `_prediction_publication.py`. `weekly_predict.py` re-imports it
-  unchanged; its live, upcoming-week-only contract does not change.
-- The schedule-source fallback (retained history when the fetch-derived
-  upcoming schedule has no rows for the requested season/week) is applied
-  only in `verify_week.py`'s readiness loader and the new composition path.
-  `weekly-predict`'s own composition stage is untouched — it only ever
-  targets upcoming weeks, so it never needed the fallback.
 
 ##### Files Added/Removed/Changed
 
