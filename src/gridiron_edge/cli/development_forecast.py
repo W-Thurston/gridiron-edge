@@ -26,6 +26,7 @@ Usage::
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -49,6 +50,9 @@ from gridiron_edge.evaluation.prediction_input_sources import (
     capture_prediction_source_artifacts,
     recapture_and_require_same_prediction_sources,
     resolve_clean_source_revision,
+)
+from gridiron_edge.models.game_prediction.weekly_execution import (
+    WeeklyPredictionExecution,
 )
 
 _RETAINED_HISTORY_RICH_COLUMNS: tuple[str, ...] = (
@@ -105,17 +109,24 @@ def build_retained_history_schedule(games: DataFrame) -> DataFrame:
     return schedule.loc[:, list(_RETAINED_HISTORY_RICH_COLUMNS)].reset_index(drop=True)
 
 
+@dataclass(frozen=True)
+class DevelopmentForecastResult:
+    """One generated development run plus the schedule that produced it."""
+
+    run_id: str
+    generated_at: datetime
+    schedule: DataFrame
+    execution: WeeklyPredictionExecution
+    artifacts: tuple[Path, ...]
+
+
 def _generate_development_forecast(
     *,
     season: str,
     week: int,
     repo: Path,
-) -> tuple[str, int, int, tuple[Path, ...]]:
-    """Execute and publish one evidence-authenticated development forecast run.
-
-    Returns the run ID, event count, evidence-artifact count, and every
-    published artifact path.
-    """
+) -> DevelopmentForecastResult:
+    """Execute and publish one evidence-authenticated development forecast run."""
     from gridiron_edge.models.game_prediction.weekly_execution import (
         execute_development_weekly_prediction_policy,
     )
@@ -156,11 +167,12 @@ def _generate_development_forecast(
     )
     write_result = write_forecast_events(execution.events, repo=repo)
 
-    return (
-        run_id,
-        len(execution.events),
-        len(execution.input_evidence),
-        (*snapshot_paths, *evidence_paths, write_result.path),
+    return DevelopmentForecastResult(
+        run_id=run_id,
+        generated_at=generated_at,
+        schedule=schedule,
+        execution=execution,
+        artifacts=(*snapshot_paths, *evidence_paths, write_result.path),
     )
 
 
@@ -193,19 +205,90 @@ def generate_development_forecast_cmd(
 
     try:
         with step("Generate development forecast") as s:
-            run_id, event_count, evidence_count, artifacts = _generate_development_forecast(
+            result = _generate_development_forecast(
                 season=season,
                 week=week,
                 repo=repo,
             )
             s.set_detail(
-                f"{event_count} development forecast events written with "
-                f"{evidence_count} input evidence artifacts"
+                f"{len(result.execution.events)} development forecast events written with "
+                f"{len(result.execution.input_evidence)} input evidence artifacts"
             )
     except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
         raise typer.Exit(code=1) from exc
 
     typer.echo("")
-    typer.echo(f"Run ID: {run_id}")
-    for artifact in artifacts:
+    typer.echo(f"Run ID: {result.run_id}")
+    for artifact in result.artifacts:
         typer.echo(f"  {artifact}")
+
+
+def regenerate_development_week_cmd(
+    *,
+    week: int = typer.Option(..., help="NFL week number to regenerate."),
+    season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
+) -> None:
+    r"""Generate, compose, select, and verify one development weekly product.
+
+    Runs the same retained-history generation as
+    ``generate-development-forecast``, then composes a weekly product from
+    the freshly generated run, explicitly selects it as the current product
+    for the requested season and week, and prints readiness. Unlike
+    ``generate-development-forecast``, this command changes the current
+    selection: use it only to make a development run the operational Week
+    selection, not for exploratory or comparative regeneration.
+
+    \b
+    Examples:
+      gridiron regenerate-development-week --season 2026-2027 --week 2
+    """
+    from gridiron_edge.cli._weekly_product_composition import (
+        compose_and_select_weekly_product,
+    )
+    from gridiron_edge.cli.verify_week import load_weekly_readiness
+
+    console.header(
+        "regenerate-development-week",
+        subtitle=f"week {week} · {season} · retained history · development role",
+    )
+
+    repo: Path = get_settings().repo_root
+
+    try:
+        with step("Generate development forecast") as s:
+            result = _generate_development_forecast(
+                season=season,
+                week=week,
+                repo=repo,
+            )
+            s.set_detail(
+                f"{len(result.execution.events)} development forecast events written with "
+                f"{len(result.execution.input_evidence)} input evidence artifacts"
+            )
+
+        with step("Compose and select weekly product") as s:
+            composed = compose_and_select_weekly_product(
+                schedule=result.schedule,
+                events=result.execution.events,
+                policy=result.execution.policy,
+                run_id=result.run_id,
+                generated_at=result.generated_at,
+                season=season,
+                week=week,
+                repo=repo,
+            )
+            s.set_detail(f"{composed.row_count} weekly product rows selected")
+    except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
+        raise typer.Exit(code=1) from exc
+
+    typer.echo("")
+    typer.echo(f"Run ID: {result.run_id}")
+    typer.echo(f"Product ID: {composed.product_id}")
+    typer.echo(f"  {composed.artifact}")
+
+    typer.echo("")
+    readiness = load_weekly_readiness(season=season, week=week, repo=repo)
+    typer.echo(f"prediction_ready: {readiness.prediction_ready}")
+    typer.echo(f"market_ready: {readiness.market_ready}")
+    if readiness.blockers:
+        typer.echo("blockers: " + ", ".join(blocker.value for blocker in readiness.blockers))

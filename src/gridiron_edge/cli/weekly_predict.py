@@ -173,30 +173,12 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
 
 def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     """Compose, persist, and explicitly select the live weekly product."""
+    from gridiron_edge.cli._weekly_product_composition import (
+        compose_and_select_weekly_product,
+    )
     from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
-    from gridiron_edge.datasets.writers import (
-        select_current_weekly_product,
-        write_weekly_product,
-    )
-    from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
-    from gridiron_edge.evaluation.forecast_selection import (
-        ForecastCandidateIdentity,
-        resolve_forecast_candidates,
-        select_forecast_run,
-    )
+    from gridiron_edge.evaluation.forecast_selection import select_forecast_run
     from gridiron_edge.evaluation.forecast_store import load_forecast_events
-    from gridiron_edge.models.game_prediction.weekly_game_product import (
-        build_weekly_game_product,
-    )
-    from gridiron_edge.models.game_prediction.weekly_spread_product import (
-        load_and_attach_derived_spreads,
-    )
-    from gridiron_edge.models.game_prediction.weekly_total_product import (
-        load_and_attach_selected_totals,
-    )
-    from gridiron_edge.models.game_prediction.weekly_win_product import (
-        build_weekly_win_product,
-    )
 
     season: str = ctx["season"]
     week: int = ctx["week"]
@@ -209,12 +191,6 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
         return StageResult(success=False, detail="forecast generation time is unavailable")
 
     schedule = load_schedule_upcoming_rich(repo)
-    scoped_schedule = schedule.loc[
-        (schedule["season"].astype(str) == season) & (schedule["week"] == week),
-        :,
-    ].copy()
-    if scoped_schedule.empty:
-        return StageResult(success=False, detail="rich weekly schedule is empty")
 
     events = load_forecast_events(
         season=season,
@@ -229,80 +205,28 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     policy_value = ctx.get("prediction_policy")
     if not isinstance(policy_value, PredictionPolicy):
         return StageResult(success=False, detail="prediction policy is unavailable")
-    policy = policy_value
-    win_resolutions = ()
-    if policy.win.model_type is not None:
-        win_resolutions = resolve_forecast_candidates(
-            selected_run.events,
-            [
-                ForecastCandidateIdentity(
-                    game_id=str(game_id),
-                    model_name="win_prob",
-                    model_type=policy.win.model_type,
-                )
-                for game_id in scoped_schedule["game_id"]
-            ],
-        )
 
-    total_resolutions = ()
-    if policy.total.model_type is not None:
-        total_resolutions = resolve_forecast_candidates(
-            selected_run.events,
-            [
-                ForecastCandidateIdentity(
-                    game_id=str(game_id),
-                    model_name="total",
-                    model_type=policy.total.model_type,
-                )
-                for game_id in scoped_schedule["game_id"]
-            ],
+    try:
+        composed = compose_and_select_weekly_product(
+            schedule=schedule,
+            events=selected_run.events,
+            policy=policy_value,
+            run_id=run_id_value,
+            generated_at=generated_at_value,
+            season=season,
+            week=week,
+            repo=repo,
         )
-    win_product = build_weekly_win_product(
-        scoped_schedule,
-        selected_run.events,
-        win_resolutions,
-        policy=policy,
-        season=season,
-        week=week,
-    )
-    spread_product = load_and_attach_derived_spreads(
-        win_product,
-        repo=repo,
-    )
-    total_product = load_and_attach_selected_totals(
-        spread_product,
-        selected_run.events,
-        total_resolutions,
-        policy=policy,
-        season=season,
-        week=week,
-        repo=repo,
-    )
-    product = build_weekly_game_product(total_product)
+    except ValueError as exc:
+        return StageResult(success=False, detail=str(exc))
 
-    product_id = f"weekly_{season.replace('-', '_')}_wk{week:02d}_{run_id_value}"
-    identity = WeeklyProductIdentity(
-        product_id=product_id,
-        run_id=run_id_value,
-        season=season,
-        week=week,
-        generated_at=generated_at_value,
-    )
-    artifact = write_weekly_product(repo, product, identity=identity)
-    select_current_weekly_product(
-        repo,
-        product_id,
-        season=season,
-        week=week,
-        selected_at=datetime.now(UTC),
-    )
-    ctx["weekly_product_id"] = product_id
-    ctx["weekly_product_path"] = artifact
+    ctx["weekly_product_id"] = composed.product_id
+    ctx["weekly_product_path"] = composed.artifact
     return StageResult(
         success=True,
-        detail=f"{len(product)} weekly product rows selected",
-        rows=len(product),
-        artifacts=[artifact],
+        detail=f"{composed.row_count} weekly product rows selected",
+        rows=composed.row_count,
+        artifacts=[composed.artifact],
     )
 
 

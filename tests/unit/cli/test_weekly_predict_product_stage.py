@@ -123,30 +123,32 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
             return_value=selected_run,
         ) as select_run,
         patch(
-            "gridiron_edge.evaluation.forecast_selection.resolve_forecast_candidates",
+            "gridiron_edge.cli._weekly_product_composition.resolve_forecast_candidates",
             return_value=resolutions,
         ) as resolve_candidates,
         patch(
-            "gridiron_edge.models.game_prediction.weekly_win_product.build_weekly_win_product",
+            "gridiron_edge.cli._weekly_product_composition.build_weekly_win_product",
             return_value=win_product,
         ) as build_win,
         patch(
-            "gridiron_edge.models.game_prediction.weekly_spread_product.load_and_attach_derived_spreads",
+            "gridiron_edge.cli._weekly_product_composition.load_and_attach_derived_spreads",
             return_value=spread_product,
         ) as attach_spread,
         patch(
-            "gridiron_edge.models.game_prediction.weekly_total_product.load_and_attach_selected_totals",
+            "gridiron_edge.cli._weekly_product_composition.load_and_attach_selected_totals",
             return_value=total_product,
         ) as attach_total,
         patch(
-            "gridiron_edge.models.game_prediction.weekly_game_product.build_weekly_game_product",
+            "gridiron_edge.cli._weekly_product_composition.build_weekly_game_product",
             return_value=final_product,
         ) as build_product,
         patch(
-            "gridiron_edge.datasets.writers.write_weekly_product",
+            "gridiron_edge.cli._weekly_product_composition.write_weekly_product",
             return_value=artifact,
         ) as write_product,
-        patch("gridiron_edge.datasets.writers.select_current_weekly_product") as select_product,
+        patch(
+            "gridiron_edge.cli._weekly_product_composition.select_current_weekly_product"
+        ) as select_product,
     ):
         context = _context()
         result = _stage_compose_weekly_product(context)

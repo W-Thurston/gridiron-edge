@@ -436,6 +436,134 @@ a current product, or verify readiness. The live `weekly-predict` command's
 behavior and tests are unchanged except for the non-behavioral relocation of
 shared publication helpers into `cli/_prediction_publication.py`.
 
+#### Unit 6: Archive-by-documentation and regenerated Week 2 canonical state [Completed September 25, 2026]
+
+##### Completed
+
+Replaced the untracked ad hoc 2026 Week 2 `development`-role selection (D5)
+with a freshly generated, repository-owned replacement produced with the
+D1–D4 pipeline fixes (Units 2–3) applied. Recorded the archive boundary as
+`DECISIONS.md` D45: the two disposition-governed live Week 2 products and the
+retired ad hoc product are all left physically unchanged (none has a delete
+path, and disposition-governed evidence must never be edited or deleted);
+"archiving" is the ordinary explicit-reselection mechanism the weekly-product
+store has always supported, driven by a new repository-owned command,
+`gridiron regenerate-development-week`. While executing this unit, found and
+fixed a second, narrower defect: weekly-product composition and readiness
+verification both sourced the schedule exclusively from the fetch-derived
+upcoming-schedule snapshot, which had already dropped Week 2 (and any other
+elapsed week) by the time Unit 5 shipped — this made `verify-week` report a
+false `missing_schedule` blocker regardless of the selected product's actual
+state. Both paths now fall back to the retained-history schedule adaptation
+Unit 5 built, for any already-elapsed week.
+
+##### Goal
+
+Execute ROADMAP.md's Canonical Artifact Decision for 2026 Week 2: archive the
+disposition-affected live runs and the ad hoc development run through a
+`DECISIONS.md`-recorded boundary, regenerate Week 2 through the corrected
+pipeline, select it, and verify readiness, the API, and the frontend.
+
+##### Design decisions
+
+- Weekly products and forecast events are immutable, append/index-only
+  stores with no delete path, and existing operational guidance already
+  forbids editing or deleting disposition-governed evidence. "Archive" is
+  therefore a `DECISIONS.md` record (D45), not a new store mechanism or an
+  "archived" flag — the retirement mechanic is the store's existing
+  `select_current_weekly_product()` reselection, unchanged.
+- Composition requires the full in-memory `PredictionPolicy` object
+  (availability flags, status, rationale, provenance) at every family
+  `build_weekly_*_product` call, not just a `model_type` string, and that
+  object is never persisted. This ruled out a standalone `--run-id`-based
+  compose command reading an already-persisted run (it would have to
+  fabricate policy metadata that was never real); generation and composition
+  instead happen atomically in one process, in `regenerate-development-week`,
+  sharing the real `execution.policy`/`execution.events`.
+  `generate-development-forecast` (Unit 5) keeps its exact shipped contract —
+  generation only, never touching `current.json` — for exploratory or
+  comparative regeneration.
+- Factored the live composition stage's core (`weekly_predict.py`'s
+  `_stage_compose_weekly_product`) into a shared, schedule-agnostic helper
+  (`cli/_weekly_product_composition.py`), the same extraction pattern Unit 5
+  used for `_prediction_publication.py`. `weekly_predict.py` re-imports it
+  unchanged; its live, upcoming-week-only contract does not change.
+- The schedule-source fallback (retained history when the fetch-derived
+  upcoming schedule has no rows for the requested season/week) is applied
+  only in `verify_week.py`'s readiness loader and the new composition path.
+  `weekly-predict`'s own composition stage is untouched — it only ever
+  targets upcoming weeks, so it never needed the fallback.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/cli/_weekly_product_composition.py` - Shared
+  `compose_and_select_weekly_product()`, schedule/role-agnostic composition
+  and explicit selection, factored out of `weekly_predict.py`.
+- `tests/unit/cli/test_weekly_product_composition.py` - Empty-scope failure,
+  a full composition/selection pass against a caller-supplied schedule, and
+  the unavailable-family skip-resolution path.
+- `tests/unit/cli/test_regenerate_development_week.py` - Success wiring
+  (schedule/events/policy passed through unchanged), generation-failure, and
+  composition-failure exit-code coverage.
+
+Changed:
+- `src/gridiron_edge/cli/weekly_predict.py` - `_stage_compose_weekly_product`
+  is now a thin wrapper calling the shared helper; behavior and output are
+  unchanged (proven by the existing dedicated stage tests, retargeted to the
+  helper's new import locations).
+- `src/gridiron_edge/cli/development_forecast.py` - `_generate_development_forecast`
+  now returns `DevelopmentForecastResult` (run ID, generated-at, schedule, the
+  full `WeeklyPredictionExecution`, artifacts) instead of a bare tuple, so a
+  caller in the same process can reuse the real policy and events without
+  reloading or reconstructing them; `generate_development_forecast_cmd`'s own
+  output and behavior are unchanged. Added `regenerate_development_week_cmd`.
+- `src/gridiron_edge/cli/verify_week.py` - `_load_schedule` now takes
+  `season`/`week` and falls back to the retained-history schedule adaptation
+  when the fetch-derived upcoming schedule has no rows for that scope.
+- `src/gridiron_edge/cli/main.py` - Registered `regenerate-development-week`.
+- `tests/unit/cli/test_verify_week.py` - Added
+  `TestLoadScheduleRetainedHistoryFallback` (falls back correctly for an
+  elapsed week; prefers the upcoming schedule when present; fails closed to
+  the upcoming schedule if the fallback itself is unavailable).
+- `tests/unit/cli/test_weekly_predict_product_stage.py` - Retargeted mock
+  patch paths to the extracted helper's module; assertions unchanged.
+- `tests/unit/cli/test_development_forecast.py` - Updated the two tests
+  exercising `_generate_development_forecast`'s return shape for
+  `DevelopmentForecastResult`.
+- `DECISIONS.md` - Added D45.
+- `CHANGELOG.md` - Added the 2026-09-25 entry.
+- `HANDOFF.md` - Corrected the Week 2 known-defect section to describe the
+  corrected current selection instead of the retired ad hoc one; documented
+  `regenerate-development-week` and the schedule-fallback fix.
+- `ROADMAP.md` - Marked Tier 1 #2 and Tier 2 #4's U6 portion complete; updated
+  the Canonical Artifact Decision and Known Limitations sections to state the
+  decision is executed, not just recorded.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,049 tests, up from
+4,040; the 9 new tests are listed above).
+
+Real-artifact validation (writes to `data/`, via the new owning command):
+
+TODO — filled in immediately after this commit, once the command's
+clean-tracked-worktree requirement (D42) is satisfied by this unit's own
+commit landing. See the follow-up entry below.
+
+##### Acceptance
+
+`DECISIONS.md` D45 records the archive boundary. The two disposition-governed
+live Week 2 products and their disposition are physically unchanged. The ad
+hoc development selection is retired via explicit reselection, replaced by a
+freshly generated, repository-owned development run produced with the
+corrected pipeline. `gridiron verify-week` correctly evaluates readiness for
+any already-retained week. API and frontend serialization is verified against
+the corrected selection.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

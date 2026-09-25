@@ -468,6 +468,18 @@ The command:
 
 Composing the resulting run into a weekly product, selecting it as current, and verifying readiness remain separate, explicit steps this command does not perform.
 
+### Regenerating and selecting a development weekly product
+
+Run:
+
+```bash
+uv run gridiron regenerate-development-week --season 2026-2027 --week 2
+```
+
+This runs the same retained-history generation as `generate-development-forecast`, then composes a weekly product from the freshly generated run, explicitly selects it as the current product for that season and week, and prints readiness — one atomic action, sharing the real in-memory prediction policy and events rather than reloading or reconstructing them. Unlike `generate-development-forecast`, this command changes `current.json`: use it only to make a development run the operational selection for a week, not for exploratory or comparative regeneration (use `generate-development-forecast` alone for that).
+
+Weekly-product composition and readiness verification (`gridiron verify-week`) both source the rich schedule from `data/cleaned/NFL_upcoming_schedule_rich.parquet` first; when that fetch-derived, current-season-not-yet-played-only source has no rows for the requested season and week, both fall back to the same retained-history schedule adaptation this command's generation stage uses, so readiness can be verified for any already-retained week, live or development.
+
 ## Market Data and Edge Diagnostics
 
 The current snapshot is:
@@ -1200,7 +1212,7 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 - Some API endpoints may still require batch-artifact refactors to fully satisfy the serialization-boundary design; track verified cases in `ROADMAP.md`.
 - The project has never been live in production. Development-era schemas and artifacts do not require backward compatibility unless a current contract explicitly says otherwise.
 
-#### Week 2 known-defect disposition and intentionally unchanged consumers
+#### Week 2 known-defect disposition and the corrected current selection
 
 The immutable 2026 Week 2 live logistic Win evidence is governed by disposition
 `05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb`.
@@ -1210,17 +1222,17 @@ remain unchanged historical evidence, unedited since the disposition was
 recorded. Their Win probabilities and derived spreads must not be treated as
 validated model-quality evidence.
 
-**This disposition no longer governs the current Week 2 selection.** The
-`current.json` selection for 2026-2027 Week 2 was later pointed, outside any
-repository-owned generation or selection command, at a `development`-role
-product that is not one of the disposition's named affected products. Because
-readiness, weekly edge calculation, candidate issuance, and manual rendering
-all key off the exact selected product, none of those forward paths are
-currently blocked for Week 2, and the Games API and its frontend consumers
-currently display the untracked development-role product rather than the
-disposition-governed evidence. Reconciling this state is tracked in
-`ROADMAP.md`'s "Canonical Artifact Decision: 2026 Week 2 Development State"
-(decision: replace, scoped as Foundation Completion Unit 6).
+**This disposition does not govern the current Week 2 selection.** Between
+2026-09-22 and 2026-09-25, `current.json`'s Week 2 selection instead pointed,
+outside any repository-owned generation or selection command, at an
+untracked `development`-role product (D5). Foundation Completion Track A
+Unit 6 (`ROADMAP.md`'s "Canonical Artifact Decision: 2026 Week 2 Development
+State") retired that ad hoc selection through ordinary, explicit
+reselection — its file and index entry remain on disk for audit, exactly as
+any superseded product already was — and replaced it with a freshly generated
+`development`-role run, produced with the corrected Elo/EPA-window/holdout
+pipeline (Units 2-3) and composed and selected through
+`gridiron regenerate-development-week --season 2026-2027 --week 2`. See D45.
 
 The disposition mechanism itself, and its original named runs, products, and
 events, are otherwise unaffected: a disposition against a product that

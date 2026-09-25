@@ -115,12 +115,38 @@ def _empty_markets() -> DataFrame:
 
 def _load_schedule(
     repo: Path,
+    *,
+    season: str,
+    week: int,
 ) -> DataFrame:
-    """Load rich schedule data without creating or refreshing it."""
+    """Load rich schedule data without creating or refreshing it.
+
+    The fetch-derived upcoming schedule only ever holds the current season's
+    not-yet-played games, so an already-elapsed week (for example, one
+    selected through a `development`-role regeneration) drops out of it. When
+    it has no rows for the requested season and week, fall back to the same
+    retained-history adaptation ``generate-development-forecast`` uses, so
+    readiness can be verified for any already-retained week.
+    """
     try:
-        return load_schedule_upcoming_rich(repo)
+        upcoming = load_schedule_upcoming_rich(repo)
     except FileNotFoundError:
-        return _empty_rich_schedule()
+        upcoming = _empty_rich_schedule()
+
+    scoped = upcoming.loc[
+        (upcoming["season"].astype(str) == season) & (upcoming["week"] == week),
+        :,
+    ]
+    if not scoped.empty:
+        return upcoming
+
+    from gridiron_edge.cli.development_forecast import build_retained_history_schedule
+    from gridiron_edge.datasets.loaders import load_games
+
+    try:
+        return build_retained_history_schedule(load_games(repo))
+    except (FileNotFoundError, ValueError):
+        return upcoming
 
 
 def _schedule_for_readiness(
@@ -380,7 +406,7 @@ def load_weekly_readiness(
         raise ValueError("week must be between 1 and 22.")
 
     resolved_repo = repo or get_settings().repo_root
-    rich_schedule = _load_schedule(resolved_repo)
+    rich_schedule = _load_schedule(resolved_repo, season=season, week=week)
     readiness_schedule = _schedule_for_readiness(rich_schedule)
     markets = _load_markets(resolved_repo)
 

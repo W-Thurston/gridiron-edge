@@ -8,6 +8,86 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D45 - Canonical Week 2 replacement is an archive-by-documentation boundary, not a store mechanism
+
+**Date:** 2026-09-25
+
+#### Decision
+
+The 2026 Week 2 canonical development state (ROADMAP.md's "Canonical Artifact
+Decision," Foundation Completion Track A Unit 6) is replaced by explicit
+reselection, not by deleting, editing, or flagging any existing artifact.
+Weekly products and forecast events are immutable, append/index-only stores
+with no delete path (`weekly_product_store.py`), and existing operational
+guidance already forbids editing or deleting disposition-governed evidence.
+So "archiving" the three prior Week 2 products means:
+
+- the two disposition-governed live logistic Win runs
+  (`weekly_2026_2027_wk02_83c292f9...`, `...918c1cc3...`) remain physically
+  unchanged, still governed unchanged by schema-1 disposition
+  `05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb` exactly
+  as before this unit;
+- the untracked ad hoc `development`-role product
+  (`weekly_2026_2027_wk02_ebe0bd02...`, D5) is retired from `current.json`'s
+  Week 2 selection through the ordinary, already-existing
+  `select_current_weekly_product()` call — its file and index entry are left
+  on disk for audit, exactly as any superseded product already was before
+  this unit;
+- the replacement is a freshly generated `development`-role run, produced
+  with the D1-D4 pipeline fixes (Units 2-3) already applied, composed and
+  selected through a new command, `gridiron regenerate-development-week`.
+
+No new "archived" flag, directory, or store schema was introduced. The
+retirement mechanic is the same explicit reselection this store has always
+supported; only the operator action (a repository-owned command, rather than
+an ad hoc reselection) changed.
+
+A second, narrower defect was found and fixed while executing this unit:
+weekly-product composition and readiness verification both sourced the
+schedule exclusively from the fetch-derived upcoming-schedule snapshot
+(`data/cleaned/NFL_upcoming_schedule_rich.parquet`), which only ever holds the
+current season's not-yet-played weeks. Once a week drops out of it (as Week 2
+already had), readiness verification reported a false `missing_schedule`
+blocker regardless of the selected product's actual state. Both paths now
+fall back to the same retained-history schedule adaptation
+(`build_retained_history_schedule()`, added by Unit 5) when the upcoming
+schedule has no rows for the requested season and week.
+
+#### Context
+
+ROADMAP's Tier 1 #2 / Tier 2 #4 called for archiving the defective and ad hoc
+Week 2 evidence "through a `DECISIONS.md`-recorded archive boundary" before
+regenerating and reselecting a coherent replacement. Investigating the actual
+store implementation showed there is no delete path to design around, and
+operational guidance already treats disposition-governed evidence as
+permanently immutable — so the only architecturally honest reading of
+"archive" is documentary: record why the old selection no longer applies and
+let the store's existing explicit-reselection mechanism do the rest.
+
+#### Consequences
+
+Future known-defect or ad hoc-state replacements follow the same pattern:
+record the decision here, then reselect through a repository-owned command.
+No weekly-product or forecast-event artifact is ever deleted or edited to
+resolve a defect or reselection; the audit trail (every previously selected
+product, plus any disposition governing it) remains permanently on disk.
+Readiness verification and weekly-product composition can now be run
+correctly against any already-retained week, not only Week 2, without a
+change to `weekly-predict`'s own live-only, upcoming-week-only contract.
+
+#### References
+
+- `src/gridiron_edge/cli/_weekly_product_composition.py`
+- `src/gridiron_edge/cli/development_forecast.py`
+- `src/gridiron_edge/cli/verify_week.py`
+- `src/gridiron_edge/models/game_prediction/weekly_product_store.py`
+- `data/output/forecast_evidence_dispositions/schema=1/dispositions/05f36ea9f3f014c3ed2b9bd2f2586540189ac8fea3dcf5db3b354ad020565eeb.json`
+- `HANDOFF.md`
+- `ROADMAP.md`
+- `PLAN.md`
+
+---
+
 ### D44 - Classification champion selection ranks challengers from one exact immutable backfill run per model type
 
 **Date:** 2026-09-22

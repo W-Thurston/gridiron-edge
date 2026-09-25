@@ -1,5 +1,30 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-25 - Regenerated and reselected the canonical Week 2 development state (D45)
+
+#### Added
+
+- `gridiron regenerate-development-week --season --week`: generates one `development`-role forecast run from retained history, composes a weekly product from it, explicitly selects it as the current product for that season and week, and reports readiness — one atomic action, sharing the real in-memory prediction policy rather than reconstructing it after the fact.
+- A shared, schedule-agnostic weekly-product composition helper (`cli/_weekly_product_composition.py`), factored out of the live `weekly-predict` pipeline so composition is not duplicated between the live and development paths.
+
+#### Fixed
+
+- Weekly-product composition and readiness verification both sourced the schedule exclusively from the fetch-derived upcoming-schedule snapshot, which only ever holds the current season's not-yet-played weeks. Once a week drops out of it, readiness verification reported a false `missing_schedule` blocker regardless of the selected product's actual state. Both paths now fall back to the retained-history schedule adaptation for any already-elapsed week.
+
+#### Changed
+
+- Retired the untracked ad hoc `development`-role Week 2 selection (D5) by explicit reselection to a freshly generated, repository-owned replacement produced with the D1-D4 pipeline fixes already applied. The two disposition-governed live Week 2 runs remain unchanged, still governed by their existing schema-1 disposition.
+
+#### Validation
+
+- Ruff, Pyrefly, and the full non-slow unit suite passed.
+- Added focused coverage for the schedule fallback, the extracted composition helper, and the new command's success/failure paths; regression-tested that the live `weekly-predict` composition path's exact call chain and output are unchanged.
+- Real-artifact validation: see `PLAN.md`'s Foundation Completion Track A, Unit 6 record.
+
+#### Scope
+
+This changes weekly-product composition and readiness verification for any already-retained week, and adds one new CLI command. It does not change `weekly-predict`'s live-only, upcoming-week-only contract, the API, or the frontend.
+
 ### 2026-09-22 - Preserved exact full-retrain lineage (D44)
 
 #### Changed

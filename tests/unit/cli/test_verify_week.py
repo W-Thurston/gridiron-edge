@@ -16,6 +16,7 @@ import typer
 from typer.testing import CliRunner
 
 from gridiron_edge.cli.verify_week import (
+    _load_schedule,
     _render_weekly_readiness,
     _schedule_for_readiness,
     load_weekly_readiness,
@@ -581,6 +582,76 @@ def test_missing_rich_schedule_remains_visible(
 
     assert result.scheduled_game_count == 0
     assert WeeklyReadinessBlocker.MISSING_SCHEDULE in result.blockers
+
+
+class TestLoadScheduleRetainedHistoryFallback:
+    """The upcoming rich schedule drops already-elapsed weeks; readiness must
+    fall back to the retained-history adaptation for those weeks instead of
+    reporting a false ``missing_schedule`` blocker."""
+
+    @patch("gridiron_edge.datasets.loaders.load_games")
+    @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
+    def test_falls_back_when_upcoming_lacks_the_requested_scope(
+        self,
+        mock_upcoming: MagicMock,
+        mock_games: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_upcoming.return_value = pd.DataFrame(
+            {"season": ["2026-2027"], "week": [3], "game_id": ["2026_03_KC_LAC"]}
+        )
+        mock_games.return_value = pd.DataFrame(
+            {
+                "GAME_ID": ["2026_02_DET_BUF"],
+                "WEEK_NUM": [2],
+                "YEAR": ["2026-2027"],
+                "GAME_DAY_OF_WEEK": ["Sunday"],
+                "GAME_DATE": ["2026-09-14"],
+                "GAMETIME": ["13:00:00"],
+                "AWAY_TEAM": ["Detroit Lions"],
+                "HOME_TEAM": ["Buffalo Bills"],
+                "IS_NEUTRAL_SITE": [0],
+            }
+        )
+
+        result = _load_schedule(tmp_path, season="2026-2027", week=2)
+
+        assert result["game_id"].tolist() == ["2026_02_DET_BUF"]
+        assert result["week"].tolist() == [2]
+
+    @patch("gridiron_edge.datasets.loaders.load_games")
+    @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
+    def test_prefers_upcoming_schedule_when_scope_is_present(
+        self,
+        mock_upcoming: MagicMock,
+        mock_games: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_upcoming.return_value = pd.DataFrame(
+            {"season": ["2026-2027"], "week": [3], "game_id": ["2026_03_KC_LAC"]}
+        )
+
+        result = _load_schedule(tmp_path, season="2026-2027", week=3)
+
+        assert result["game_id"].tolist() == ["2026_03_KC_LAC"]
+        mock_games.assert_not_called()
+
+    @patch("gridiron_edge.datasets.loaders.load_games")
+    @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
+    def test_fallback_failure_returns_upcoming_schedule_unchanged(
+        self,
+        mock_upcoming: MagicMock,
+        mock_games: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_upcoming.return_value = pd.DataFrame(
+            {"season": ["2026-2027"], "week": [3], "game_id": ["2026_03_KC_LAC"]}
+        )
+        mock_games.side_effect = FileNotFoundError
+
+        result = _load_schedule(tmp_path, season="2026-2027", week=2)
+
+        assert result["game_id"].tolist() == ["2026_03_KC_LAC"]
 
 
 def test_verify_week_uses_rich_schedule_without_legacy_fallback() -> None:

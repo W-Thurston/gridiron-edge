@@ -89,11 +89,11 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 - **Tier 1 #1 — Reconcile roadmap, repository state, and canonical artifacts.**
   Implementation: **U1**, docs only. Record the development forecast role and the exact-run calibration/champion-ranking change in `CHANGELOG.md`/`DECISIONS.md`; record the ad hoc Week 2 reselection; correct stale `HANDOFF.md` text (forecast roles, the metadata-preflight follow-up note, Week 2 blocking language, role-aware postgame closeout, full-retrain description, the `recommended_bet_results` schema path, and Market Unit 26 identities); give every roadmap item its reconciled status.
 - **Tier 1 #2 — Decide and implement the canonical Week 2 development state.**
-  **Decision: replace** (see below). Implementation: **U6**.
+  **Decision: replace** (see below). Implementation: **U6** **[Complete]**.
 - **Tier 1 #3 — Audit truncated-history and stale-metadata exposure.**
   Implementation: **U2** (fix D2 walk-forward leakage and D3 Total promotion, with an explicit chronological evaluation-period policy resolving D4; code only, no data changes), **U3** (fix D1 EPA-window parity: carry each artifact's validated `epa_window` into prediction, availability, and backfill feature construction; record the window in the prediction-input evidence feature schema, which bumps its schema version; target completion before the first Track B proof week's forecast), **U4** (apply dispositions to the stale-artifact inventory: archive or delete pre-fix evaluation plots, training logs, and legacy full-retrain reports; remove champion-manifest entries with no artifact; verify the Week 1 percentile rankings were not reset by the truncation).
 - **Tier 2 #4 — Generate one clean canonical weekly forecast.**
-  Implementation: **U5** (add a repository-owned development-role generation command over the existing development execution wrapper, scoped from retained history so no fetch is needed) **[Complete: `gridiron generate-development-forecast`]** and **U6** (archive the disposition-affected Week 2 live runs and the ad hoc development run through a `DECISIONS.md`-recorded archive boundary, regenerate Week 2 through U5 with the U2/U3 fixes applied, select it, and verify readiness, the API, and the frontend).
+  Implementation: **U5** (add a repository-owned development-role generation command over the existing development execution wrapper, scoped from retained history so no fetch is needed) **[Complete: `gridiron generate-development-forecast`]** and **U6** (archive the disposition-affected Week 2 live runs and the ad hoc development run through a `DECISIONS.md`-recorded archive boundary, regenerate Week 2 through U5 with the U2/U3 fixes applied, select it, and verify readiness, the API, and the frontend) **[Complete: `gridiron regenerate-development-week`, D45]**.
 - **Tier 2 #5 — Rebuild historical game-model evaluation** and **Tier 2 #6 — Evaluate all current game-model families.**
   Implementation: **U7** (add the still-missing metrics — Win calibration slope/intercept, sharpness, season stability; Total median absolute error, interval coverage, environment slices — plus one immutable run-bound evaluation report and CLI over all six families on a common game set, and retire the consumers still reading the legacy prediction archive) and **U8** (regenerate walk-forward backfills for all families on the corrected pipeline, produce the report, and resolve the D7 weather-skew disposition for evaluation purposes).
 - **Tier 2 #7 — Reassess calibration and champion selection.**
@@ -129,13 +129,13 @@ ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A
 - Market Unit 26 has closed #11, #12, and #14, with #13 continuing on its own calendar;
 - `PLAN.md` names exactly one bounded active unit at a time throughout.
 
-## Canonical Artifact Decision: 2026 Week 2 Development State — Resolved
+## Canonical Artifact Decision: 2026 Week 2 Development State — Resolved and executed (U6)
 
-Two Week 2 Logistic Win forecast runs were generated from an Elo state rebuilt from only the 16 completed Week 1 games. A schema-1 disposition recorded the affected events and products as known defective; the current Week 2 selection has since drifted to an untracked `development`-role run outside that disposition's scope (see D5 above).
+Two Week 2 Logistic Win forecast runs were generated from an Elo state rebuilt from only the 16 completed Week 1 games. A schema-1 disposition recorded the affected events and products as known defective; the current Week 2 selection had since drifted to an untracked `development`-role run outside that disposition's scope (see D5 above).
 
-**Decision: replace.** Archive or remove the defective events, affected products, the ad hoc selection, and the operational disposition, then regenerate a coherent Week 2 development fixture through the current history-preserving, lineage-verified, metadata-strict, evidence-aware weekly path (Unit 5's development-generation command, applied after Units 2–3 fix D1–D4). Verify API and frontend serialization against the corrected selected product. Execution is scoped as **U6** above.
+**Decision: replace (executed).** The defective events, affected products, and the disposition itself remain physically unchanged and permanently on disk — none of the three has a delete path, and operational guidance already forbids editing or deleting disposition-governed evidence, so "archive" is the `DECISIONS.md`-recorded boundary D45, not a store change. The ad hoc selection was retired by ordinary explicit reselection to a freshly generated, coherent Week 2 development fixture, produced through the current history-preserving, lineage-verified, metadata-strict, evidence-aware weekly path (Unit 5's development-generation command, applied after Units 2–3 fix D1–D4) and composed/selected through Unit 6's new `gridiron regenerate-development-week` command. API and frontend serialization was verified against the corrected selected product.
 
-The disposition implementation and its tests remain a supported capability even though the specific Week 2 operational artifact is retired — a future known-defect event would still need to be governed the same way.
+The disposition implementation and its tests remain a supported capability even though the specific Week 2 operational artifact it originally named is retired — a future known-defect event would still need to be governed the same way.
 
 ## Ordered Remaining Work
 
@@ -441,11 +441,9 @@ Research results do not become operational behavior without time-ordered evaluat
 
 ## Known Limitations
 
-### Canonical Week 2 state: replacement decided, not yet executed
+### Canonical Week 2 state: replaced (U6, closed)
 
-The originally disposition-affected Week 2 Logistic Win runs consumed incomplete-history Elo inputs. The current Week 2 selection has since drifted to a different, untracked `development`-role run outside that disposition's scope, so the disposition no longer names the current selection and no longer blocks readiness, edge calculation, candidate issuance, or manual rendering for Week 2 under the current contract. The decision is to replace this state entirely (see "Canonical Artifact Decision," above); execution is scoped as Foundation Completion Unit 6.
-
-Until U6 executes, the Games API, frontend, and postgame paths continue to expose the untracked development artifact according to their existing boundaries, and no forward operational path treats Week 2 as blocked.
+The originally disposition-affected Week 2 Logistic Win runs consumed incomplete-history Elo inputs and remain governed unchanged by their existing disposition. The untracked ad hoc `development`-role selection that later replaced them (D5) has been retired and replaced by a freshly generated, repository-owned `development`-role run, composed and selected through `gridiron regenerate-development-week` (see D45). The Games API and frontend now serve this corrected selection.
 
 ### Historical evaluation may require regeneration
 

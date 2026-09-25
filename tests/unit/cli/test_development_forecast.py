@@ -17,6 +17,7 @@ import typer
 from typer.testing import CliRunner
 
 from gridiron_edge.cli.development_forecast import (
+    DevelopmentForecastResult,
     _generate_development_forecast,
     build_retained_history_schedule,
     generate_development_forecast_cmd,
@@ -182,12 +183,13 @@ class TestGenerateDevelopmentForecastPublicationOrder:
 
     def test_publication_order_is_fail_closed(self) -> None:
         order: list[str] = []
-        run_id, event_count, evidence_count, artifacts = _run(order)
+        result = _run(order)
 
-        assert run_id == "run-1"
-        assert event_count == 1
-        assert evidence_count == 1
-        assert artifacts == (
+        assert result.run_id == "run-1"
+        assert result.generated_at == GENERATED_AT
+        assert len(result.execution.events) == 1
+        assert len(result.execution.input_evidence) == 1
+        assert result.artifacts == (
             Path("/repo/snapshot.bin"),
             Path("/repo/evidence.json"),
             Path("/repo/events.parquet"),
@@ -254,11 +256,15 @@ class TestGenerateDevelopmentForecastCommand:
         self,
         mock_generate: MagicMock,
     ) -> None:
-        mock_generate.return_value = (
-            "run-1",
-            2,
-            2,
-            (Path("/repo/evidence.json"),),
+        mock_generate.return_value = DevelopmentForecastResult(
+            run_id="run-1",
+            generated_at=GENERATED_AT,
+            schedule=pd.DataFrame(),
+            execution=SimpleNamespace(
+                events=pd.DataFrame({"event_id": ["event-1", "event-2"]}),
+                input_evidence=(SimpleNamespace(), SimpleNamespace()),
+            ),
+            artifacts=(Path("/repo/evidence.json"),),
         )
 
         result = runner.invoke(
