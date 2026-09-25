@@ -677,6 +677,40 @@ def evaluate_select_model(
     console.summary()
 
 
+@evaluate_app.command("prune-champions")
+def evaluate_prune_champions() -> None:
+    """Remove champion-manifest entries with no corresponding persisted artifact.
+
+    Reads data/output/champions/champions.json and drops any entry whose
+    (model_name, model_type) has no trained artifact under data/models/.
+    Champions backed by a real artifact are preserved unchanged, including
+    their own promoted_at, source_run_id, and metrics.
+
+    Unlike `select-model --write-manifest`, this does not re-rank or
+    re-promote any model - it only removes entries that reference a model
+    that was never actually trained and persisted.
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.champion_resolver import prune_orphaned_champions
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate prune-champions")
+
+    with step("Prune manifest") as s:
+        result = prune_orphaned_champions(repo=repo)
+        s.set_detail(f"{len(result.removed)} removed")
+
+    typer.echo("")
+    if result.removed:
+        for model_name, entry in sorted(result.removed.items()):
+            typer.echo(f"  removed: {model_name} ({entry['model_type']}) - no trained artifact")
+    else:
+        typer.echo("  nothing to prune - every champion has a trained artifact")
+
+    console.summary()
+
+
 def _print_ranking_section(
     ranked_df: DataFrame,
     display_cols: list[str],

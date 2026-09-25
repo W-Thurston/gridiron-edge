@@ -189,6 +189,105 @@ class TestSelectModelWriteManifestFlag:
         assert "Manifest written:" not in result.output
 
 
+class TestPruneChampionsCommand:
+    """Cover the evaluate prune-champions command."""
+
+    def _fake_settings(self, tmp_path: Path):
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def _write_manifest(self, tmp_path: Path, models: dict) -> Path:
+        manifest_dir = tmp_path / "data" / "output" / "champions"
+        manifest_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": 1,
+            "updated_at": "2026-08-05T12:51:53+00:00",
+            "models": models,
+        }
+        path = manifest_dir / "champions.json"
+        path.write_text(json.dumps(manifest))
+        return path
+
+    def _write_artifact(self, tmp_path: Path, model_name: str, model_type: str) -> None:
+        artifact_dir = tmp_path / "data" / "models" / model_name / model_type
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "metadata.json").write_text("{}")
+
+    def test_removes_orphaned_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        manifest_path = self._write_manifest(
+            tmp_path,
+            {
+                "win_prob": {
+                    "model_type": "logistic",
+                    "promoted_at": "2026-07-01T14:20:00Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"brier": 0.213},
+                },
+                "qb_rush_yards": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-08-05T12:45:55Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"mae": 16.5},
+                },
+            },
+        )
+        self._write_artifact(tmp_path, "win_prob", "logistic")
+
+        runner = CliRunner()
+        result = runner.invoke(evaluate_app, ["prune-champions"])
+
+        assert result.exit_code == 0, result.output
+        assert "removed: qb_rush_yards (random_forest)" in result.output
+
+        manifest = json.loads(manifest_path.read_text())
+        assert set(manifest["models"]) == {"win_prob"}
+
+    def test_noop_message_when_nothing_orphaned(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+
+        self._write_manifest(
+            tmp_path,
+            {
+                "win_prob": {
+                    "model_type": "logistic",
+                    "promoted_at": "2026-07-01T14:20:00Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        )
+        self._write_artifact(tmp_path, "win_prob", "logistic")
+
+        runner = CliRunner()
+        result = runner.invoke(evaluate_app, ["prune-champions"])
+
+        assert result.exit_code == 0, result.output
+        assert "nothing to prune" in result.output
+
+
 class TestEvaluateBackfill:
     @staticmethod
     def _result(*, generated: bool = True) -> BackfillResult:

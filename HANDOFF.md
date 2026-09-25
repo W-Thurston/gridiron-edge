@@ -219,6 +219,8 @@ data/output/champions/champions.json
 
 It is written by promotion workflows such as `full-retrain` and consumed as a static runtime artifact. The API does not compare model metrics or select champions at request time.
 
+`gridiron evaluate prune-champions` removes any manifest entry whose `(model_name, model_type)` has no trained artifact under `data/models/`, preserving every other entry byte-for-byte through the same write path.
+
 ## Model Availability and Weekly Policy
 
 Weekly availability is model-specific and truthful.

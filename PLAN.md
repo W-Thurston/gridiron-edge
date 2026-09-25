@@ -232,6 +232,61 @@ Ruff, Pyrefly, and the full non-slow unit suite passed (4,023 tests, up from 4,0
 
 Live prediction, availability inspection, and walk-forward backfill all rebuild canonical EPA at the exact artifact-specific window recorded in that model's persisted (or freshly trained, for backfill) metadata, never the default window of 4, unless an artifact's own window is 4. Missing or malformed `epa_window` metadata makes only the affected family unavailable, consistent with the existing metadata-preflight contract. Prediction-input evidence's feature schema now records the window used and its schema version is bumped to 2; no existing persisted evidence was modified, since nothing in the codebase re-reads previously persisted evidence outside the same write-then-verify command. D1 is proven fixed by tests that fail against the prior behavior (always window 4) and pass against the fix, plus real-data verification that per-family EPA values now differ by window.
 
+#### Unit 4: Stale-artifact disposition and truncation-exposure verification [Completed September 25, 2026]
+
+##### Completed
+
+Deleted 24 pre-fix debugging artifacts (6 evaluation plots, 11 D4 training
+logs, 7 legacy full-retrain reports) that reflected the D1–D4 pipeline bugs
+U2/U3 just fixed and had no code reader; keeping them as a `full-retrain`
+drift baseline would have corrupted the next comparison. Added a
+repository-owned `gridiron evaluate prune-champions` command — rather than
+hand-editing `champions.json` or invoking the existing full
+`--write-manifest` re-promotion path, which re-ranks every family from
+scratch and is Tier 2 #7's job (U9), not available yet — and used it to
+remove the 5 champion-manifest entries with no backing trained artifact
+(D6), preserving `win_prob` and `total` byte-for-byte. Verified the Week 1
+percentile-ranking artifact was not computed from the D38 truncation reset:
+its 32 distinct, non-tied `rating_pct` values are inconsistent with D38's
+two-value (1510/1490) reset, which would force massive ties.
+
+##### Goal
+
+Apply dispositions to the stale-artifact inventory identified by the Tier 1
+#3 audit before Tier 2 evaluation and regeneration work (U7 onward) builds on
+top of it: remove pre-fix debugging output that reflects the D1–D4 pipeline
+bugs U2/U3 just fixed, remove champion-manifest entries with no backing
+artifact (D6), and verify the Week 1 percentile-ranking artifact was not
+computed from the D38 history-truncation reset.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/evaluation/champion_resolver.py` - Added `ChampionPruneResult` and `prune_orphaned_champions()`, which checks every manifest entry's `(model_name, model_type)` against `ArtifactStore.is_trained()` and rewrites the manifest via the existing `write_manifest()` preservation path, keeping only artifact-backed entries.
+- `src/gridiron_edge/cli/evaluate.py` - Added the `evaluate prune-champions` command, reporting each removed entry or a no-op message.
+- `tests/unit/evaluation/test_champion_resolver.py` - Added `TestPruneOrphanedChampions`: removes orphaned entries, preserves kept entries byte-for-byte including their own `source_run_id`, no-ops when nothing is orphaned, raises `ChampionNotFoundError` with no manifest, and treats a manifest `model_type` that doesn't match the actual trained artifact's type as orphaned.
+- `tests/unit/cli/test_evaluate.py` - Added `TestPruneChampionsCommand`: covers the removed-entries and no-op console output paths through `CliRunner`.
+- `HANDOFF.md` - Noted that `gridiron evaluate prune-champions` also writes the champion manifest, alongside the existing promotion workflows.
+- `ROADMAP.md` - Marked D6's orphaned-manifest-entry portion resolved by this unit; left the calibration/manifest currency portion open for U9.
+- `PLAN.md` - Closed out Foundation Completion Track A, Unit 4.
+
+Removed (real `data/` artifacts, not version-controlled, no commit entry):
+- `data/output/evaluation/win_prob_logistic/*.png` (6 files) - pre-fix evaluation plots.
+- `data/output/d4_training_logs/*` (11 files, dated 2026-06-18) - pre-fix training/backfill logs.
+- `data/output/reports/full-retrain-*.md` (7 files, dated 2026-06-22 through 2026-08-05) - pre-fix legacy full-retrain reports.
+- 5 champion-manifest entries (`qb_pass_yards`, `qb_rush_yards`, `rb_rush_yards`, `te_rec_yards`, `wr_rec_yards`) removed from `data/output/champions/champions.json` via `gridiron evaluate prune-champions`.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,030 tests, up from 4,023; the 9 new tests are listed above). Real-artifact validation: ran `gridiron evaluate prune-champions` against the real repository — it removed exactly the 5 entries the audit predicted and left `win_prob`/`total` byte-identical except `updated_at` (verified by direct read of the file before and after). Deleted the real 24 stale files and confirmed `find` over the three source directories returns nothing; confirmed `_stage_baseline_comparison` (the only reader of the reports directory) still soft-fails with `"no full-retrain report directory found"` rather than raising. Re-ran the full non-slow unit suite after the real `data/` deletions to confirm nothing depends on the removed files (4,030 passed, unchanged).
+
+##### Acceptance
+
+The 24 identified pre-fix debugging files no longer exist under `data/output/`. `champions.json` contains only `win_prob` and `total`, each byte-identical to its pre-prune entry except `updated_at`. The Week 1 percentile artifact is confirmed unaffected by D38 and was left unmodified. `gridiron evaluate prune-champions` exists as a repository-owned operation so this disposition never requires hand-editing the manifest again.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

@@ -54,12 +54,14 @@ it as informational only, not depend on specific keys.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
 from typing import Any
 
 from gridiron_edge.core.settings import get_settings
+from gridiron_edge.models.artifact import ArtifactStore
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -253,3 +255,49 @@ def list_current_champions(repo: Path | None = None) -> dict[str, tuple[str, str
 
     models: dict[str, Any] = manifest.get("models", {})
     return {model_name: (model_name, entry["model_type"]) for model_name, entry in models.items()}
+
+
+@dataclass(frozen=True)
+class ChampionPruneResult:
+    """Outcome of :func:`prune_orphaned_champions`."""
+
+    removed: dict[str, dict[str, Any]]
+    manifest_path: Path
+
+
+def prune_orphaned_champions(repo: Path | None = None) -> ChampionPruneResult:
+    """Remove manifest entries with no corresponding persisted artifact.
+
+    Checks each entry's ``(model_name, model_type)`` against the trained-model
+    artifact store and rewrites the manifest keeping only entries backed by an
+    actual artifact under ``data/models/``. Entries that are kept are
+    preserved byte-for-byte (their own ``model_type``, ``promoted_at``,
+    ``source_run_id``, and ``metrics``) via :func:`write_manifest`'s
+    preservation semantics. A no-op write is skipped when nothing is orphaned.
+
+    Args:
+        repo: Repository root override.
+
+    Returns:
+        :class:`ChampionPruneResult` naming the removed entries.
+
+    Raises:
+        ChampionNotFoundError: If the manifest does not exist.
+    """
+    root: Path = repo or get_settings().repo_root
+    manifest: dict[str, Any] = read_manifest(repo=root)
+    models: dict[str, Any] = manifest.get("models", {})
+    store = ArtifactStore(root)
+
+    kept: dict[str, dict[str, Any]] = {}
+    removed: dict[str, dict[str, Any]] = {}
+    for model_name, entry in models.items():
+        if store.is_trained(model_name, entry["model_type"]):
+            kept[model_name] = entry
+        else:
+            removed[model_name] = entry
+
+    if removed:
+        write_manifest(kept, source_run_id="prune-orphaned-champions", repo=root)
+
+    return ChampionPruneResult(removed=removed, manifest_path=_manifest_path(root))

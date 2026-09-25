@@ -13,11 +13,21 @@ from gridiron_edge.evaluation.champion_resolver import (
     CURRENT_SCHEMA_VERSION,
     ChampionNotFoundError,
     list_current_champions,
+    prune_orphaned_champions,
     read_manifest,
     resolve_current_champion,
     resolve_current_champion_with_metadata,
     write_manifest,
 )
+from gridiron_edge.models.artifact import ArtifactStore
+
+
+def _write_fake_artifact(repo: Path, model_name: str, model_type: str) -> None:
+    """Helper: mark a (model_name, model_type) pair as trained via a metadata stub."""
+    store = ArtifactStore(repo)
+    path = store.metadata_path(model_name, model_type)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}")
 
 
 def _write_fixture_manifest(repo: Path, entries: dict[str, dict]) -> Path:
@@ -386,3 +396,107 @@ class TestWriteManifest:
 
         manifest = read_manifest(repo=tmp_path)
         assert manifest["models"]["win_prob"]["metrics"]["brier"] == 0.213
+
+
+class TestPruneOrphanedChampions:
+    def test_raises_when_manifest_missing(self, tmp_path: Path) -> None:
+        with pytest.raises(ChampionNotFoundError):
+            prune_orphaned_champions(repo=tmp_path)
+
+    def test_removes_entries_with_no_trained_artifact(self, tmp_path: Path) -> None:
+        _write_fixture_manifest(
+            tmp_path,
+            {
+                "win_prob": {
+                    "model_type": "logistic",
+                    "promoted_at": "2026-07-01T14:20:00Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"brier": 0.213},
+                },
+                "qb_rush_yards": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-08-05T12:45:55Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"mae": 16.5},
+                },
+            },
+        )
+        _write_fake_artifact(tmp_path, "win_prob", "logistic")
+        # No artifact written for qb_rush_yards/random_forest.
+
+        result = prune_orphaned_champions(repo=tmp_path)
+
+        assert set(result.removed) == {"qb_rush_yards"}
+        manifest = read_manifest(repo=tmp_path)
+        assert set(manifest["models"]) == {"win_prob"}
+
+    def test_kept_entries_preserve_byte_for_byte_fields(self, tmp_path: Path) -> None:
+        _write_fixture_manifest(
+            tmp_path,
+            {
+                "win_prob": {
+                    "model_type": "logistic",
+                    "promoted_at": "2026-07-01T14:20:00Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"brier": 0.213, "ece": 0.031, "auc": 0.692},
+                },
+                "wr_rec_yards": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-08-05T12:51:53Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"mae": 26.03},
+                },
+            },
+        )
+        _write_fake_artifact(tmp_path, "win_prob", "logistic")
+
+        prune_orphaned_champions(repo=tmp_path)
+
+        entry = resolve_current_champion_with_metadata("win_prob", repo=tmp_path)
+        assert entry["model_type"] == "logistic"
+        assert entry["promoted_at"] == "2026-07-01T14:20:00Z"
+        assert entry["source_run_id"] == "RUN1"
+        assert entry["metrics"] == {"brier": 0.213, "ece": 0.031, "auc": 0.692}
+
+    def test_noop_when_every_entry_has_an_artifact(self, tmp_path: Path) -> None:
+        _write_fixture_manifest(
+            tmp_path,
+            {
+                "win_prob": {
+                    "model_type": "logistic",
+                    "promoted_at": "2026-07-01T14:20:00Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"brier": 0.213},
+                },
+            },
+        )
+        _write_fake_artifact(tmp_path, "win_prob", "logistic")
+
+        result = prune_orphaned_champions(repo=tmp_path)
+
+        assert result.removed == {}
+        manifest = read_manifest(repo=tmp_path)
+        assert set(manifest["models"]) == {"win_prob"}
+
+    def test_manifest_type_mismatch_is_treated_as_orphaned(self, tmp_path: Path) -> None:
+        """The manifest's model_type must match an actual trained artifact's
+        model_type exactly - a same-family artifact under a different
+        model_type does not count."""
+        _write_fixture_manifest(
+            tmp_path,
+            {
+                "qb_pass_yards": {
+                    "model_type": "random_forest",
+                    "promoted_at": "2026-08-05T12:43:56Z",
+                    "source_run_id": "RUN1",
+                    "metrics": {"mae": 62.4},
+                },
+            },
+        )
+        _write_fake_artifact(tmp_path, "qb_pass_yards", "elasticnet")
+
+        result = prune_orphaned_champions(repo=tmp_path)
+
+        assert set(result.removed) == {"qb_pass_yards"}
+        manifest = read_manifest(repo=tmp_path)
+        assert manifest["models"] == {}
