@@ -16,6 +16,7 @@ import typer
 
 from gridiron_edge.cli.api import api_app
 from gridiron_edge.cli.betting import betting_app
+from gridiron_edge.cli.development_forecast import generate_development_forecast_cmd
 from gridiron_edge.cli.edges import edges_app
 from gridiron_edge.cli.evaluate import evaluate_app
 from gridiron_edge.cli.features import features_app
@@ -84,6 +85,7 @@ app.add_typer(production_chain_app, name="production-chain")
 app.add_typer(teams_app, name="teams")
 app.add_typer(stadiums_app, name="stadiums")
 app.command("weekly-predict")(weekly_predict_cmd)
+app.command("generate-development-forecast")(generate_development_forecast_cmd)
 app.command("post-week")(post_week_cmd)
 app.command("full-retrain")(full_retrain_cmd)
 app.command("verify")(verify_cmd)

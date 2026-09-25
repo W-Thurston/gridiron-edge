@@ -287,6 +287,155 @@ Ruff, Pyrefly, and the full non-slow unit suite passed (4,030 tests, up from 4,0
 
 The 24 identified pre-fix debugging files no longer exist under `data/output/`. `champions.json` contains only `win_prob` and `total`, each byte-identical to its pre-prune entry except `updated_at`. The Week 1 percentile artifact is confirmed unaffected by D38 and was left unmodified. `gridiron evaluate prune-champions` exists as a repository-owned operation so this disposition never requires hand-editing the manifest again.
 
+#### Unit 5: Repository-owned development-role forecast generation command [Completed September 25, 2026]
+
+##### Completed
+
+Added `gridiron generate-development-forecast`, a repository-owned command
+that generates and persists one `development`-role forecast run (immutable
+forecast events plus per-family prediction-input evidence) for any
+already-retained season and week, including weeks already played, using only
+data already on disk. It calls the existing
+`execute_development_weekly_prediction_policy` wrapper rather than
+duplicating role-aware execution logic, and does not compose a weekly
+product, select a current product, or verify readiness — those remain
+Unit 6's job when it regenerates the disposition-affected 2026 Week 2 state.
+
+##### Goal
+
+Add a repository-owned CLI command that generates and persists one
+development-role forecast run (immutable forecast events plus per-family
+prediction-input evidence) for an arbitrary already-retained season/week,
+using only data already on disk. No external source is fetched. The command
+calls the existing `execute_development_weekly_prediction_policy` wrapper
+(added by the Development Forecast Role Foundation unit) rather than
+duplicating its role-aware execution logic. Weekly-product composition,
+current selection, and readiness verification remain out of scope for this
+unit: Unit 6 performs those steps when it regenerates the disposition-affected
+2026 Week 2 development state through this command.
+
+##### Design decisions
+
+- The live `weekly-predict` command sources its schedule from
+  `data/cleaned/NFL_upcoming_schedule_rich.parquet`, which is fetch-derived
+  and only ever holds unplayed games for the current season (verified: it
+  currently holds only 2026-2027 weeks 3-18; weeks 1-2 have already dropped
+  out). That file cannot supply an already-elapsed week, so the new command
+  instead adapts the retained, append-only `data/cleaned/NFL_wk_by_wk_cleaned.csv`
+  history (`games`) into the same 9-column rich-schedule shape
+  (`season`/`week`/`game_id`/`game_day_of_week`/`game_date`/`game_time`/
+  `away_team`/`home_team`/`neutral_site`) that `_scope_schedule` and
+  `_build_elo_schedule` already require — verified by direct column
+  comparison against `RICH_UPCOMING_COLUMNS` and `_RICH_SCHEDULE_COLUMNS`.
+  This is the literal meaning of "scoped from retained history so no fetch
+  is needed."
+- No leakage risk from reusing "current" Elo/EPA state for an
+  already-elapsed week: `NFL_Team_Elo.csv` stores one row per
+  `(team, season, week)` representing the pre-game rating for that exact
+  week, and the merge in `_merge_elo_predictions` joins on
+  `(team, season, week)`, not on the newest row. Statistical feature
+  construction (`run_features`) is likewise keyed by the schedule's own
+  `WEEK_NUM`/`YEAR`, not wall-clock time. Requesting a past week therefore
+  reconstructs that week's true pre-game state rather than leaking later
+  weeks' results, verified by reading `NFL_Team_Elo.csv` directly (weeks
+  1-3 present as distinct per-team rows for 2026-2027).
+- `capture_prediction_source_artifacts`'s default `PREDICTION_SOURCE_SPECS`
+  already lists `NFL_wk_by_wk_cleaned.csv` as a required bounded source
+  (used by both roles today), so no change to the source-provenance
+  contract is needed.
+- Extract the three role-agnostic publication helpers currently private to
+  `cli/weekly_predict.py` (`_require_execution_provenance`,
+  `_publish_binary_snapshots`, `_publish_and_reload_evidence`) into a new
+  shared module so the development command does not duplicate immutable
+  publish/reload/authenticate logic. `weekly_predict.py` re-imports them
+  under the same names so its existing tests (which patch
+  `gridiron_edge.cli.weekly_predict._publish_binary_snapshots`, etc.) keep
+  passing unmodified.
+- New command name: `gridiron generate-development-forecast --season
+  --week`. Deliberately not a flag on `weekly-predict`, preserving the
+  Development Forecast Role Foundation unit's requirement that the normal
+  weekly command stay live-only with a dedicated development boundary.
+- No `--skip`/`--only`/composite-stage machinery: this is a single-purpose
+  command (matching the `verify-week`/`post-week` pattern), not a multi-stage
+  pipeline like `weekly-predict`.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/cli/_prediction_publication.py` - Extracted the three
+  role-agnostic publication helpers (`_require_execution_provenance`,
+  `_publish_binary_snapshots`, `_publish_and_reload_evidence`) out of
+  `cli/weekly_predict.py` so both the live and development commands share one
+  immutable publish/reload/authenticate path.
+- `src/gridiron_edge/cli/development_forecast.py` - New
+  `generate-development-forecast` command. `build_retained_history_schedule()`
+  adapts the retained `games` dataset (`NFL_wk_by_wk_cleaned.csv`) into the
+  9-column rich-schedule shape `_scope_schedule`/`_build_elo_schedule`
+  require; `_generate_development_forecast()` resolves source revision and
+  artifacts, builds the schedule, calls
+  `execute_development_weekly_prediction_policy`, and publishes forecast
+  events and evidence through the shared helpers above.
+- `tests/unit/cli/test_development_forecast.py` - Column-shape coverage for
+  the schedule adapter (required-column mapping, missing-column rejection,
+  score-column exclusion) and fail-closed publication-order coverage
+  mirroring `test_weekly_predict_publication.py` (revision, capture,
+  schedule, run-id, execute, recapture, snapshots, evidence, events), plus
+  CLI success/failure exit-code coverage.
+
+Changed:
+- `src/gridiron_edge/cli/weekly_predict.py` - Removed the three publication
+  helpers now imported from `cli/_prediction_publication.py`; behavior
+  unchanged. Existing tests continue to patch
+  `gridiron_edge.cli.weekly_predict._publish_binary_snapshots` etc.
+  unmodified, since the names are still bound in that module's namespace via
+  the new import.
+- `src/gridiron_edge/cli/main.py` - Registered
+  `generate-development-forecast`.
+- `HANDOFF.md` - Added a "Development Forecast Generation" workflow section
+  documenting the command and the retained-history/no-leakage design
+  rationale.
+- `ROADMAP.md` - Marked Tier 2 #4's U5 portion complete; U6 (archive,
+  regenerate Week 2, select, verify) remains open.
+- `PLAN.md` - This unit record.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,040 tests, up from
+4,030; the 10 new tests are listed above).
+
+Real-artifact validation (read-only; no persisted artifact written): loaded
+the real retained `games` dataset and confirmed
+`build_retained_history_schedule()` correctly recovers both already-elapsed
+2026-2027 weeks 1 and 2 (16 games each, including a correctly-flagged neutral-
+site game) that no longer exist in the fetch-derived upcoming-schedule
+snapshot. Called `execute_development_weekly_prediction_policy` directly
+against this real retained-history schedule for both weeks: policy correctly
+selected Logistic Win and Random Forest Total for each; all 32 events per
+week carried `role=development`; per-team Elo ratings and win probabilities
+differed correctly between week 1 and week 2 (matching `NFL_Team_Elo.csv`'s
+one-row-per-team-per-season-per-week structure), confirming no leakage from
+reusing "current" Elo/feature state for an already-elapsed week. This
+verification used a synthetic `SourceRevision` and did not call
+`resolve_clean_source_revision` or publish evidence, since this unit's own
+changes leave the tracked worktree intentionally dirty until commit;
+publish-path correctness (binary snapshot and evidence persistence, reload,
+and re-authentication) is covered by the fail-closed unit tests instead, and
+a first genuine on-disk development-role run is Unit 6's job when it
+regenerates Week 2.
+
+##### Acceptance
+
+`gridiron generate-development-forecast` exists as a repository-owned command
+that generates one development-role forecast run from retained history
+alone, for any already-retained season and week including ones already
+played, with no network fetch. It does not compose a weekly product, select
+a current product, or verify readiness. The live `weekly-predict` command's
+behavior and tests are unchanged except for the non-behavioral relocation of
+shared publication helpers into `cli/_prediction_publication.py`.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

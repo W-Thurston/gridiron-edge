@@ -447,6 +447,27 @@ Edge generation soft-fails when market data is unavailable. This does not invali
 
 `weekly-predict` supports `--skip` and `--only`. It does not support `--assume-done`.
 
+## Development Forecast Generation
+
+Run:
+
+```bash
+uv run gridiron generate-development-forecast --season 2026-2027 --week 2
+```
+
+The command generates and persists one `development`-role forecast run (immutable forecast events plus per-family prediction-input evidence) for any already-retained season and week, including a week that has already been played. Unlike `weekly-predict`, it never fetches an external source and does not compose a weekly product, select a current product, or verify readiness.
+
+Because the fetch-derived `data/cleaned/NFL_upcoming_schedule_rich.parquet` only ever holds the current season's not-yet-played games, the command instead adapts the retained, history-preserving `data/cleaned/NFL_wk_by_wk_cleaned.csv` game record into the same rich-schedule column shape `_scope_schedule`/`_build_elo_schedule` already require. Elo and statistical feature construction are keyed by each game's own season and week rather than wall-clock time, so requesting an already-elapsed week reconstructs that week's true pre-game state (`NFL_Team_Elo.csv` stores one row per team per season per week) rather than leaking later weeks' results.
+
+The command:
+
+- resolves a clean tracked Git source revision and the same bounded source-artifact inventory `weekly-predict` uses (already includes the retained game-history file as a required source);
+- adapts retained game history into a rich-schedule frame for the requested season and week;
+- resolves and executes policy-selected development-role Win and Total models through the same evidence-aware boundaries the live command uses (`execute_development_weekly_prediction_policy`);
+- persists immutable forecast events and per-family prediction-input evidence through the same publish/reload/authenticate path `weekly-predict` uses.
+
+Composing the resulting run into a weekly product, selecting it as current, and verifying readiness remain separate, explicit steps this command does not perform.
+
 ## Market Data and Edge Diagnostics
 
 The current snapshot is:
