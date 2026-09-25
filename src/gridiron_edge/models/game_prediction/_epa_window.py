@@ -7,6 +7,12 @@ This module supports alternate tuning windows by delegating EPA
 recalculation to ``HomeAwayEpaFeature`` so standard feature generation
 and hyperparameter search share one implementation.
 
+``_rebuild_features_with_window`` is also imported directly by prediction
+(``model.py``), availability inspection (``availability.py``), and
+walk-forward backfill (``evaluation/backfill.py``) to carry each trained
+artifact's own validated ``epa_window`` into feature construction after
+training, rather than re-deriving EPA at the default window.
+
 Public API
 ----------
 _EPA_RAW_COLS       list[str]       EPA source columns.

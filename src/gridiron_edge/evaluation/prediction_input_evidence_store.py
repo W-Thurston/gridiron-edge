@@ -368,6 +368,7 @@ def _feature_schema(value: object) -> PredictionFeatureSchema:
             "model_type",
             "task",
             "modeling_schema_version",
+            "epa_window",
             "feature_set_name",
             "ordered_columns",
         },
@@ -379,6 +380,7 @@ def _feature_schema(value: object) -> PredictionFeatureSchema:
         model_type=_text(raw["model_type"], "model_type"),
         task=_text(raw["task"], "task"),
         modeling_schema_version=_integer(raw["modeling_schema_version"], "modeling_schema_version"),
+        epa_window=_integer(raw["epa_window"], "epa_window"),
         feature_set_name=_text(raw["feature_set_name"], "feature_set_name"),
         ordered_columns=tuple(
             _text(item, "feature column")

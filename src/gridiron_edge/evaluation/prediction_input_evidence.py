@@ -21,7 +21,7 @@ from gridiron_edge.evaluation.forecast_contracts import (
 )
 from gridiron_edge.evaluation.forecast_store import validate_forecast_events
 
-PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION: Final[int] = 1
+PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION: Final[int] = 2
 _PROBABILITY_TOLERANCE: Final[float] = 1e-12
 _DIGEST_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
@@ -114,6 +114,7 @@ class PredictionFeatureSchema:
     model_type: str
     task: str
     modeling_schema_version: int
+    epa_window: int
     feature_set_name: str
     ordered_columns: tuple[str, ...]
 
@@ -192,6 +193,7 @@ def prediction_feature_schema_id(
     model_type: str,
     task: str,
     modeling_schema_version: int,
+    epa_window: int,
     feature_set_name: str,
     ordered_columns: tuple[str, ...],
 ) -> str:
@@ -201,6 +203,7 @@ def prediction_feature_schema_id(
         model_type=model_type,
         task=task,
         modeling_schema_version=modeling_schema_version,
+        epa_window=epa_window,
         feature_set_name=feature_set_name,
         ordered_columns=ordered_columns,
     )
@@ -213,6 +216,7 @@ def create_prediction_feature_schema(
     model_type: str,
     task: str,
     modeling_schema_version: int,
+    epa_window: int,
     feature_set_name: str,
     ordered_columns: tuple[str, ...],
 ) -> PredictionFeatureSchema:
@@ -223,6 +227,7 @@ def create_prediction_feature_schema(
             model_type=model_type,
             task=task,
             modeling_schema_version=modeling_schema_version,
+            epa_window=epa_window,
             feature_set_name=feature_set_name,
             ordered_columns=ordered_columns,
         ),
@@ -230,6 +235,7 @@ def create_prediction_feature_schema(
         model_type=model_type,
         task=task,
         modeling_schema_version=modeling_schema_version,
+        epa_window=epa_window,
         feature_set_name=feature_set_name,
         ordered_columns=ordered_columns,
     )
@@ -668,6 +674,7 @@ def _validate_feature_schema(schema: PredictionFeatureSchema) -> None:
     if schema.task not in _ALLOWED_TASKS:
         raise ValueError("feature schema task must be classification or regression.")
     _positive_integer(schema.modeling_schema_version, "modeling_schema_version")
+    _positive_integer(schema.epa_window, "epa_window")
     _text(schema.feature_set_name, "feature_set_name")
     if not schema.ordered_columns:
         raise ValueError("ordered feature columns must not be empty.")
@@ -679,6 +686,7 @@ def _validate_feature_schema(schema: PredictionFeatureSchema) -> None:
         model_type=schema.model_type,
         task=schema.task,
         modeling_schema_version=schema.modeling_schema_version,
+        epa_window=schema.epa_window,
         feature_set_name=schema.feature_set_name,
         ordered_columns=schema.ordered_columns,
     )
@@ -887,6 +895,7 @@ def _feature_schema_payload(
     model_type: str,
     task: str,
     modeling_schema_version: int,
+    epa_window: int,
     feature_set_name: str,
     ordered_columns: tuple[str, ...],
 ) -> dict[str, object]:
@@ -902,6 +911,7 @@ def _feature_schema_payload(
         "modeling_schema_version": _positive_integer(
             modeling_schema_version, "modeling_schema_version"
         ),
+        "epa_window": _positive_integer(epa_window, "epa_window"),
         "feature_set_name": _text(feature_set_name, "feature_set_name"),
         "ordered_columns": list(columns),
     }
@@ -954,6 +964,7 @@ def _feature_schema_object(value: PredictionFeatureSchema) -> dict[str, object]:
             model_type=value.model_type,
             task=value.task,
             modeling_schema_version=value.modeling_schema_version,
+            epa_window=value.epa_window,
             feature_set_name=value.feature_set_name,
             ordered_columns=value.ordered_columns,
         ),

@@ -97,6 +97,7 @@ def _schema(
         model_type=model_type,
         task=task,
         modeling_schema_version=5,
+        epa_window=4,
         feature_set_name="test_features",
         ordered_columns=("feature_a", "feature_b"),
     )

@@ -179,6 +179,7 @@ def _metadata(
     feature_set_name: str = "test_features",
     feature_columns: list[str] | None = None,
     modeling_schema_version: object = _SCHEMA_VERSION,
+    epa_window: object = 4,
 ) -> GameModelMetadata:
     return GameModelMetadata(
         model_name=model_name,
@@ -188,6 +189,7 @@ def _metadata(
         parameters={
             "feature_set": feature_set_name,
             "modeling_schema_version": modeling_schema_version,
+            "epa_window": epa_window,
             "calibration_applied": False,
         },
         feature_columns=(
@@ -420,6 +422,50 @@ class TestClassificationEvidenceExecution:
             repo=tmp_path,
         )
 
+    @patch("gridiron_edge.models.game_prediction.model._rebuild_features_with_window")
+    @patch("gridiron_edge.models.game_prediction.model.resolve_prediction_post_processing")
+    @patch("gridiron_edge.models.game_prediction.model._statistical_artifact_references")
+    @patch("gridiron_edge.models.game_prediction.model.run_features")
+    @patch("gridiron_edge.models.game_prediction.model.ArtifactStore")
+    def test_non_default_epa_window_is_rebuilt_before_feature_extraction(
+        self,
+        store_class: MagicMock,
+        run_features: MagicMock,
+        artifact_references: MagicMock,
+        resolve_post_processing: MagicMock,
+        rebuild_features_with_window: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """The artifact's own tuned epa_window (D1), not the default, feeds features."""
+        estimator = MagicMock()
+        estimator.predict_proba.return_value = np.array([[0.40, 0.60], [0.30, 0.70]])
+        _configure_store(
+            store_class,
+            metadata=_metadata(epa_window=6),
+            estimator=estimator,
+            scaler=None,
+        )
+        feature_set, feature_fn = _feature_set()
+        run_output = _feature_output()
+        rebuilt_output = run_output.copy(deep=True)
+        run_features.return_value = run_output
+        rebuild_features_with_window.return_value = rebuilt_output
+        artifact_references.return_value = _artifacts()
+        resolve_post_processing.return_value = _resolution()
+        model = WinProbRandomForestModel()
+
+        with patch.object(model, "prediction_feature_set", return_value=feature_set):
+            model.predict_upcoming_with_evidence(
+                _schedule(),
+                source_revision=_revision(),
+                source_artifacts=_sources(),
+                repo=tmp_path,
+            )
+
+        rebuild_features_with_window.assert_called_once_with(run_output, window=6, repo=tmp_path)
+        feature_fn.assert_called_once()
+        pd.testing.assert_frame_equal(feature_fn.call_args.args[0], rebuilt_output)
+
     @patch("gridiron_edge.models.game_prediction.model.resolve_prediction_post_processing")
     @patch("gridiron_edge.models.game_prediction.model._statistical_artifact_references")
     @patch("gridiron_edge.models.game_prediction.model.run_features")
@@ -546,6 +592,18 @@ class TestClassificationFailureOrdering:
             (
                 _metadata(modeling_schema_version=_SCHEMA_VERSION + 1),
                 "modeling_schema_version does not match",
+            ),
+            (
+                _metadata(epa_window=None),
+                "epa_window must be a positive integer",
+            ),
+            (
+                _metadata(epa_window=True),
+                "epa_window must be a positive integer",
+            ),
+            (
+                _metadata(epa_window=0),
+                "epa_window must be a positive integer",
             ),
         ],
     )
@@ -740,6 +798,51 @@ class TestRegressionEvidenceExecution:
         feature_fn.assert_called_once()
         store.load_scaler.assert_called_once_with("total", "random_forest")
         estimator.predict.assert_called_once()
+
+    @patch("gridiron_edge.models.game_prediction.model._rebuild_features_with_window")
+    @patch("gridiron_edge.models.game_prediction.model._statistical_artifact_references")
+    @patch("gridiron_edge.models.game_prediction.model.run_features")
+    @patch("gridiron_edge.models.game_prediction.model.ArtifactStore")
+    def test_non_default_epa_window_is_rebuilt_before_feature_extraction(
+        self,
+        store_class: MagicMock,
+        run_features: MagicMock,
+        artifact_references: MagicMock,
+        rebuild_features_with_window: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """The artifact's own tuned epa_window (D1), not the default, feeds features."""
+        estimator = MagicMock()
+        estimator.predict.return_value = np.array([44.5, 47.0])
+        _configure_store(
+            store_class,
+            metadata=_metadata(
+                model_name="total",
+                task="regression",
+                epa_window=8,
+            ),
+            estimator=estimator,
+            scaler=None,
+        )
+        feature_set, feature_fn = _feature_set()
+        run_output = _feature_output()
+        rebuilt_output = run_output.copy(deep=True)
+        run_features.return_value = run_output
+        rebuild_features_with_window.return_value = rebuilt_output
+        artifact_references.return_value = _artifacts(model_name="total")
+        model = TotalRandomForestModel()
+
+        with patch.object(model, "prediction_feature_set", return_value=feature_set):
+            model.predict_upcoming_with_evidence(
+                _schedule(),
+                source_revision=_revision(),
+                source_artifacts=_sources(),
+                repo=tmp_path,
+            )
+
+        rebuild_features_with_window.assert_called_once_with(run_output, window=8, repo=tmp_path)
+        feature_fn.assert_called_once()
+        pd.testing.assert_frame_equal(feature_fn.call_args.args[0], rebuilt_output)
 
 
 class TestModelLayerPersistenceBoundary:

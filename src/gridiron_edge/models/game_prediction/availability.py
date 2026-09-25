@@ -15,6 +15,7 @@ from gridiron_edge.features.pipeline import CANONICAL_FEATURES
 from gridiron_edge.features.registry import run_features
 from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION
+from gridiron_edge.models.game_prediction._epa_window import _rebuild_features_with_window
 from gridiron_edge.models.game_prediction.model import GamesModel
 from gridiron_edge.models.game_prediction.prediction_policy import PredictionAvailability
 from gridiron_edge.models.registry import ModelRegistry
@@ -162,24 +163,31 @@ def _inspect_trained_model(
         return False
 
     modeling_schema_version = metadata.parameters.get("modeling_schema_version")
+    epa_window = metadata.parameters.get("epa_window")
+    epa_window_valid = (
+        not isinstance(epa_window, bool) and isinstance(epa_window, int) and epa_window >= 1
+    )
     metadata_contract_matches = (
         metadata.parameters.get("feature_set") == feature_set.name
         and not isinstance(modeling_schema_version, bool)
         and isinstance(modeling_schema_version, int)
         and modeling_schema_version == _SCHEMA_VERSION
+        and epa_window_valid
         and metadata.feature_columns == feature_set.feature_names
     )
     if not metadata_contract_matches:
         return False
 
-    features = feature_set.feature_fn(enriched)
+    windowed = _rebuild_features_with_window(enriched, window=cast(int, epa_window), repo=repo)
+
+    features = feature_set.feature_fn(windowed)
     if features.columns.tolist() != feature_set.feature_names:
         raise ValueError(
             f"{registry_key} produced a feature schema that differs from its contract."
         )
-    if not features.index.equals(enriched.index):
+    if not features.index.equals(windowed.index):
         raise ValueError(f"{registry_key} feature rows are not aligned to the weekly schedule.")
-    return bool(len(features) == len(enriched) and features.notna().all(axis=1).all())
+    return bool(len(features) == len(windowed) and features.notna().all(axis=1).all())
 
 
 def inspect_prediction_availability(

@@ -335,6 +335,10 @@ def _validate_statistical_feature_schema(
         schema.modeling_schema_version,
         "modeling_schema_version",
     )
+    _positive_integer(
+        schema.epa_window,
+        "epa_window",
+    )
     _text(
         schema.feature_set_name,
         "feature_set_name",
@@ -352,6 +356,7 @@ def _validate_statistical_feature_schema(
         model_type=schema.model_type,
         task=schema.task,
         modeling_schema_version=schema.modeling_schema_version,
+        epa_window=schema.epa_window,
         feature_set_name=schema.feature_set_name,
         ordered_columns=schema.ordered_columns,
     )

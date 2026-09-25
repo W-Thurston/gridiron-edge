@@ -54,6 +54,7 @@ from gridiron_edge.evaluation.forecast_contracts import (
 )
 from gridiron_edge.evaluation.forecast_events import build_forecast_events
 from gridiron_edge.evaluation.forecast_store import write_forecast_events
+from gridiron_edge.models.game_prediction._epa_window import _rebuild_features_with_window
 from gridiron_edge.models.game_prediction.base import GameModelType, GamesTrainer
 from gridiron_edge.models.game_prediction.model import (
     build_game_predictions,
@@ -397,6 +398,9 @@ def _walk_forward_one_season(
                 reason=reason,
             ),
         )
+
+    epa_window = meta.parameters.get("epa_window", 4)
+    target_df = _rebuild_features_with_window(target_df, window=epa_window, repo=repo)
 
     feature_fn = trainer.spec.feature_set[gm_type].feature_fn
     features = feature_fn(target_df)

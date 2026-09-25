@@ -191,6 +191,49 @@ class TestWalkForwardOneSeason:
         assert predicted_frame["GAME_ID"].tolist() == ["TARGET_COMPLETE"]
         assert probabilities.tolist() == (pytest.approx([0.65]))
 
+    @patch("gridiron_edge.evaluation.backfill._rebuild_features_with_window")
+    @patch("gridiron_edge.evaluation.backfill.build_game_predictions")
+    def test_target_season_features_use_the_searched_epa_window(
+        self,
+        build_predictions_mock: MagicMock,
+        rebuild_features_with_window: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Walk-forward predicts the target season with the winning iteration's
+        epa_window (D1), not the base modeling file's default window."""
+        trainer = self._trainer(task="classification")
+        trainer.train.return_value = SimpleNamespace(parameters={"epa_window": 6})
+        trainer._model.predict_proba.return_value = np.array([[0.35, 0.65]])
+        canonical_rows = self._canonical_rows()
+        rebuilt_rows = canonical_rows.loc[
+            canonical_rows["GAME_ID"] == "TARGET_COMPLETE",
+            :,
+        ].copy()
+        rebuild_features_with_window.return_value = rebuilt_rows
+        build_predictions_mock.return_value = pd.DataFrame(
+            {"game_id": ["TARGET_COMPLETE"], "home_win_prob": [0.65], "away_win_prob": [0.35]}
+        )
+
+        _walk_forward_one_season(
+            trainer=trainer,
+            gm_type=GameModelType.RANDOM_FOREST,
+            df=canonical_rows,
+            target_season="2024-2025",
+            train_through_season="2023-2024",
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        rebuild_features_with_window.assert_called_once()
+        call = rebuild_features_with_window.call_args
+        assert call.kwargs["window"] == 6
+        assert call.kwargs["repo"] == tmp_path
+        pd.testing.assert_frame_equal(
+            call.args[0],
+            canonical_rows.loc[canonical_rows["YEAR"] == "2024-2025", :],
+        )
+
     @patch("gridiron_edge.evaluation.backfill.build_regression_predictions")
     def test_regression_dispatches_canonical_rows(
         self,

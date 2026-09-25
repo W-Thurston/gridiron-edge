@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -62,6 +63,7 @@ def _metadata(
         {
             "feature_set": "test",
             "modeling_schema_version": _SCHEMA_VERSION,
+            "epa_window": 4,
         }
         if parameters is None
         else parameters
@@ -86,6 +88,7 @@ def _run(
     lineage_available: bool = True,
     feature_columns: list[str] | None = None,
     metadata_parameters_by_key: dict[str, dict[str, object]] | None = None,
+    rebuild_features_with_window: MagicMock | None = None,
 ):
     artifact_keys = artifact_keys or set()
     metadata_parameters_by_key = metadata_parameters_by_key or {}
@@ -138,7 +141,7 @@ def _run(
             return path
 
     source = _schedule()
-    with (
+    patches = [
         patch("gridiron_edge.models.game_prediction.availability.ArtifactStore", FakeStore),
         patch(
             "gridiron_edge.models.game_prediction.availability.ModelRegistry.get",
@@ -156,7 +159,17 @@ def _run(
             "gridiron_edge.models.game_prediction.availability.verify_current_elo_lineage",
             return_value=lineage_available,
         ),
-    ):
+    ]
+    if rebuild_features_with_window is not None:
+        patches.append(
+            patch(
+                "gridiron_edge.models.game_prediction.availability._rebuild_features_with_window",
+                rebuild_features_with_window,
+            )
+        )
+    with contextlib.ExitStack() as stack:
+        for one_patch in patches:
+            stack.enter_context(one_patch)
         result = inspect_prediction_availability(
             source,
             season="2026-2027",
@@ -197,6 +210,27 @@ def test_complete_week_is_available_without_inference(tmp_path: Path) -> None:
         {"feature_set": "test", "modeling_schema_version": True},
         {"feature_set": "test", "modeling_schema_version": str(_SCHEMA_VERSION)},
         {"feature_set": "test", "modeling_schema_version": _SCHEMA_VERSION + 1},
+        {"feature_set": "test", "modeling_schema_version": _SCHEMA_VERSION},
+        {
+            "feature_set": "test",
+            "modeling_schema_version": _SCHEMA_VERSION,
+            "epa_window": None,
+        },
+        {
+            "feature_set": "test",
+            "modeling_schema_version": _SCHEMA_VERSION,
+            "epa_window": True,
+        },
+        {
+            "feature_set": "test",
+            "modeling_schema_version": _SCHEMA_VERSION,
+            "epa_window": "4",
+        },
+        {
+            "feature_set": "test",
+            "modeling_schema_version": _SCHEMA_VERSION,
+            "epa_window": 0,
+        },
     ],
 )
 def test_stale_metadata_contract_is_unavailable(
@@ -227,6 +261,34 @@ def test_stale_metadata_affects_only_exact_family(tmp_path: Path) -> None:
 
     assert not availability.win_logistic_features_available
     assert availability.total_xgboost_features_available
+
+
+def test_each_family_is_rebuilt_at_its_own_epa_window(tmp_path: Path) -> None:
+    """Each family's persisted epa_window is applied independently (D1)."""
+    rebuild = MagicMock(side_effect=lambda enriched, *, window, repo: enriched.copy())
+
+    availability, _ = _run(
+        tmp_path,
+        artifact_keys={"win_prob_logistic", "win_prob_random_forest"},
+        metadata_parameters_by_key={
+            "win_prob_logistic": {
+                "feature_set": "test",
+                "modeling_schema_version": _SCHEMA_VERSION,
+                "epa_window": 6,
+            },
+            "win_prob_random_forest": {
+                "feature_set": "test",
+                "modeling_schema_version": _SCHEMA_VERSION,
+                "epa_window": 8,
+            },
+        },
+        rebuild_features_with_window=rebuild,
+    )
+
+    assert availability.win_logistic_features_available
+    assert availability.win_random_forest_features_available
+    windows = sorted(call.kwargs["window"] for call in rebuild.call_args_list)
+    assert windows == [6, 8]
 
 
 def test_partial_feature_coverage_is_unavailable(tmp_path: Path) -> None:

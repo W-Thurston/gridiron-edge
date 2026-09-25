@@ -56,6 +56,7 @@ from gridiron_edge.models.artifact import (
 )
 from gridiron_edge.models.base import ModelSpec
 from gridiron_edge.models.game_prediction._columns import _SCHEMA_VERSION, FeatureSet
+from gridiron_edge.models.game_prediction._epa_window import _rebuild_features_with_window
 from gridiron_edge.models.game_prediction.base import (
     GameModelMetadata,
     GameModelSpec,
@@ -343,6 +344,14 @@ def _statistical_artifact_references(
     )
 
 
+def _validated_epa_window(parameters: dict[str, object]) -> int:
+    """Validate and return one artifact's persisted EPA rolling window."""
+    epa_window = parameters.get("epa_window")
+    if isinstance(epa_window, bool) or not isinstance(epa_window, int) or epa_window < 1:
+        raise ValueError("Prediction metadata epa_window must be a positive integer.")
+    return epa_window
+
+
 def _validate_prediction_metadata(
     metadata: BaseModelMetadata,
     *,
@@ -382,6 +391,8 @@ def _validate_prediction_metadata(
             "match the current modeling schema."
         )
 
+    _validated_epa_window(metadata.parameters)
+
     persisted_columns = tuple(metadata.feature_columns)
     declared_columns = tuple(feature_set.feature_names)
     runtime_columns = tuple(str(column) for column in features.columns)
@@ -415,6 +426,7 @@ def _prediction_feature_schema(
         model_type=metadata.model_type,
         task=metadata.task,
         modeling_schema_version=modeling_schema_version,
+        epa_window=_validated_epa_window(metadata.parameters),
         feature_set_name=feature_set.name,
         ordered_columns=tuple(metadata.feature_columns),
     )
@@ -829,6 +841,11 @@ class GamesModel:
             feature_names=CANONICAL_FEATURES,
             datasets=datasets,
         )
+        upcoming_df = _rebuild_features_with_window(
+            upcoming_df,
+            window=_validated_epa_window(metadata.parameters),
+            repo=repo,
+        )
 
         feature_set = self.prediction_feature_set()
         features: DataFrame = feature_set.feature_fn(upcoming_df)
@@ -1076,6 +1093,11 @@ class GamesModel:
             df=schedule,
             feature_names=CANONICAL_FEATURES,
             datasets=datasets,
+        )
+        upcoming_df = _rebuild_features_with_window(
+            upcoming_df,
+            window=_validated_epa_window(metadata.parameters),
+            repo=repo,
         )
 
         feature_set = self.prediction_feature_set()

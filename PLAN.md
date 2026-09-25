@@ -193,6 +193,45 @@ Ruff, Pyrefly, and the full non-slow unit suite passed (4,010 tests, up from 4,0
 
 The walk-forward backfill attributes every row to its own season using data co-indexed with that row, never by re-deriving row identity from a separately-indexed reference; a Total (regression) challenger can be promoted through `gridiron models train` on its own gates; the standard train/holdout split never trains on a season more recent than the earliest holdout season. All three fixes are proven by tests that fail against the prior behavior and pass against the fix.
 
+#### Unit 3: EPA-window prediction/serving parity [Completed September 25, 2026]
+
+##### Completed
+
+Fixed D1 (EPA-window train/serve skew): deployed Win models are tuned with EPA rolling windows of 6 (Logistic), 8 (Random Forest), and 6 (XGBoost), but live prediction, availability inspection, and walk-forward backfill always re-derived EPA features at the default window of 4 instead of each artifact's own validated window. Reused the existing training-side `_rebuild_features_with_window()` helper at all three consumption boundaries and recorded the window in prediction-input evidence's feature schema, bumping its schema version. No model was retrained and no persisted artifact or evidence changed; the fix is verified against the real current 2026 Week 3 upcoming schedule read-only.
+
+##### Goal
+
+Carry each artifact's own validated `epa_window` into live prediction, availability inspection, and walk-forward backfill so a model is always served the same EPA rolling window it was tuned and evaluated with.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/models/game_prediction/model.py` - `_predict_upcoming_classification_with_evidence` and `_predict_upcoming_regression_with_evidence` (the only prediction path `weekly_execution.py` calls) now rebuild canonical EPA at the persisted artifact's own `epa_window` before feature extraction. Added `_validated_epa_window()`, applied inside `_validate_prediction_metadata()` (parallel to the existing `modeling_schema_version` check) and by `_prediction_feature_schema()`, which now threads `epa_window` into `create_prediction_feature_schema(...)`.
+- `src/gridiron_edge/models/game_prediction/availability.py` - `_inspect_trained_model()` now validates `metadata.parameters["epa_window"]` as part of `metadata_contract_matches` (missing/malformed makes only that family unavailable, consistent with the existing metadata-preflight contract) and rebuilds a per-family EPA frame at that window before calling `feature_set.feature_fn(...)`, replacing the prior single window=4 frame shared across all five families.
+- `src/gridiron_edge/evaluation/backfill.py` - `_walk_forward_one_season()` rebuilds the target season's EPA columns at that iteration's searched `epa_window` (from the freshly trained `meta.parameters`, default 4) before calling `feature_fn(target_df)`, so walk-forward predicts each target season with the same window the retrained model actually used.
+- `src/gridiron_edge/evaluation/prediction_input_evidence.py` - Added `epa_window: int` to `PredictionFeatureSchema`, threaded through `prediction_feature_schema_id()`, `create_prediction_feature_schema()`, `_feature_schema_payload()`, and `_validate_feature_schema()` (positive-integer check, included in the hashed schema identity). Bumped `PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION` from 1 to 2.
+- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py` - `_feature_schema()` deserialization requires and reads the new `epa_window` key.
+- `src/gridiron_edge/models/game_prediction/prediction_execution.py` - `_validate_statistical_feature_schema()` gained the matching `epa_window` positive-integer check and includes it when recomputing the expected schema identity.
+- `src/gridiron_edge/models/game_prediction/_epa_window.py` - Docstring only: notes `_rebuild_features_with_window` is now also imported by prediction, availability, and backfill, not just training.
+- `tests/unit/evaluation/test_prediction_input_evidence.py`, `tests/unit/models/game_prediction/test_statistical_prediction_execution.py`, `tests/unit/models/game_prediction/test_weekly_execution.py` - Updated the direct `create_prediction_feature_schema(...)` call sites to pass `epa_window=4`; added a schema-identity test proving two schemas differing only in `epa_window` produce different `schema_id`s.
+- `tests/unit/models/game_prediction/test_availability.py` - `_metadata()` fixture now includes `epa_window: 4` by default; extended the stale-metadata parametrization with missing/`None`/bool/string/zero `epa_window` cases; added `test_each_family_is_rebuilt_at_its_own_epa_window` proving two families with different persisted windows each get their own rebuilt frame.
+- `tests/unit/models/game_prediction/test_games_model_evidence.py` - Shared `_metadata()` fixture gained an `epa_window` parameter (default 4, preserving prior test behavior via the window-4 no-op fast path); added `epa_window=None/True/0` cases to `TestClassificationFailureOrdering`; added `test_non_default_epa_window_is_rebuilt_before_feature_extraction` to both the classification and regression evidence-execution test classes.
+- `tests/unit/evaluation/test_backfill.py` - Added `test_target_season_features_use_the_searched_epa_window` proving the target season's features are rebuilt at the walk-forward iteration's searched window.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,023 tests, up from 4,010; the 13 new tests are listed above). Real-artifact validation (read-only, no `data/` writes): called `inspect_prediction_availability()` against the real current 2026 Week 3 upcoming schedule — all five statistical families and Elo remained available, matching pre-fix behavior. Directly rebuilt the real Week 3 enriched frame at windows 4, 6, and 8 and confirmed `AWAY_OFF_EPA_PER_PLAY`/`HOME_OFF_EPA_PER_PLAY` differ meaningfully across windows (e.g. Atlanta @ Green Bay: -0.232/-0.154 at window 4 vs. -0.109/-0.089 at window 6 vs. -0.105/-0.000 at window 8), confirming each family's own tuned window now reaches feature construction instead of the prior fixed default. No weekly forecast, backfill run, or evidence was generated as part of this unit.
+
+##### Acceptance
+
+Live prediction, availability inspection, and walk-forward backfill all rebuild canonical EPA at the exact artifact-specific window recorded in that model's persisted (or freshly trained, for backfill) metadata, never the default window of 4, unless an artifact's own window is 4. Missing or malformed `epa_window` metadata makes only the affected family unavailable, consistent with the existing metadata-preflight contract. Prediction-input evidence's feature schema now records the window used and its schema version is bumped to 2; no existing persisted evidence was modified, since nothing in the codebase re-reads previously persisted evidence outside the same write-then-verify command. D1 is proven fixed by tests that fail against the prior behavior (always window 4) and pass against the fix, plus real-data verification that per-family EPA values now differ by window.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

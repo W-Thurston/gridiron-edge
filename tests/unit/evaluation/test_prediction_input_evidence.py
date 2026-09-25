@@ -141,6 +141,7 @@ def _feature_schema():
         model_type="random_forest",
         task="classification",
         modeling_schema_version=5,
+        epa_window=4,
         feature_set_name="expanded_current",
         ordered_columns=("ELO_DIFF", "HOME_ELO"),
     )
@@ -314,11 +315,26 @@ class TestFeatureSchema:
             model_type=first.model_type,
             task=first.task,
             modeling_schema_version=first.modeling_schema_version,
+            epa_window=first.epa_window,
             feature_set_name=first.feature_set_name,
             ordered_columns=tuple(reversed(first.ordered_columns)),
         )
 
         assert first.schema_id != reversed_id
+
+    def test_identity_changes_when_epa_window_changes(self) -> None:
+        first = _feature_schema()
+        different_window_id = prediction_feature_schema_id(
+            model_name=first.model_name,
+            model_type=first.model_type,
+            task=first.task,
+            modeling_schema_version=first.modeling_schema_version,
+            epa_window=first.epa_window + 2,
+            feature_set_name=first.feature_set_name,
+            ordered_columns=first.ordered_columns,
+        )
+
+        assert first.schema_id != different_window_id
 
     def test_duplicate_columns_are_rejected(self) -> None:
         with pytest.raises(ValueError, match="nonempty and unique"):
@@ -327,6 +343,7 @@ class TestFeatureSchema:
                 model_type="random_forest",
                 task="classification",
                 modeling_schema_version=5,
+                epa_window=4,
                 feature_set_name="features",
                 ordered_columns=("ELO_DIFF", "ELO_DIFF"),
             )
@@ -398,6 +415,7 @@ class TestStatisticalEvidence:
             model_type="random_forest",
             task="classification",
             modeling_schema_version=5,
+            epa_window=4,
             feature_set_name="features",
             ordered_columns=("ELO_DIFF", "HOME_ELO"),
         )
