@@ -1,5 +1,51 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-22 - Preserved exact full-retrain lineage (D44)
+
+#### Changed
+
+- `full-retrain` retains immutable forecast run identities for every game-model backfill, instead of allowing later stages to reference backfilled evidence by convenience or modification time.
+- Win-model calibration refresh now uses exclusively the exact backfilled forecast runs produced by the same invocation.
+- Classification champion ranking uses explicit immutable-run evidence: each candidate model type's metrics come from one specific backfill `run_id`, summed across Brier, ECE, and AUC rank.
+- Total champion selection continues to use each freshly trained artifact's own persisted holdout metadata, unchanged.
+- Legacy archive-based evaluation is preserved for non-authoritative reporting surfaces only.
+- Missing, empty, mismatched, duplicate, or malformed lineage now fails closed rather than silently substituting a different run.
+
+#### Validation
+
+- Added focused evaluation, champion-selection, and full-retrain orchestration tests.
+- Ruff, Pyrefly, focused tests, and the full unit suite passed.
+
+#### Scope
+
+This changes only `full-retrain`'s classification champion-selection and calibration-refresh stages. It does not change the gated `gridiron models train` comparison path, forecast events, weekly products, the API, or the frontend.
+
+### 2026-09-22 - Added development forecast role (D43)
+
+#### Added
+
+- Added `ForecastRole.DEVELOPMENT`, a role for retrospectively generated canonical weekly fixtures, distinct from `live` (pre-kickoff operational issuance) and `backfilled` (historical evaluation reconstructions).
+- `development` events can carry exact immutable prediction-input evidence and participate in one role-coherent selected weekly product, on the same terms as `live`.
+- Selected-event postgame closeout authenticates against the exact role the weekly product actually carries and reports Win and Total roles explicitly, instead of assuming `live`.
+- Added a dedicated `development` weekly execution boundary (`execute_development_weekly_prediction_policy`), separate from the live wrapper the normal weekly command uses.
+
+#### Changed
+
+- Weekly products now require one coherent role (`live` or `development`) across every available selected component and game; mixed-role products are rejected.
+- Derived Spread production provenance explicitly inherits the live-role requirement from its source Win forecast.
+
+#### Validation
+
+- Added role, evidence, product, closeout, execution, qualification, production-proof, and disposition-preservation coverage.
+- Confirmed live-only recommendation qualification, candidate issuance, and production-chain proof remain isolated from `development` evidence.
+- Confirmed the existing Week 2 known-defect disposition and Week 3 schema-1 evidence remained valid and unaffected.
+- Before-and-after SHA-256 inventories of forecast events, weekly products, and prediction-input evidence were byte-identical.
+- Ruff, Pyrefly, the full unit suite, and focused integration tests passed.
+
+#### Scope
+
+The normal weekly prediction command (`weekly-predict`) remains live-only; it does not call the new development wrapper. No production caller of the development boundary exists yet — see `ROADMAP.md` Foundation Completion Track A, Unit U5, for the repository-owned generation command this role still needs.
+
 ### 2026-09-22 - Aligned statistical availability with execution metadata validation
 
 #### Changed

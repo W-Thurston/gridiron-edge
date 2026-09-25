@@ -125,20 +125,36 @@ Market Unit 26's calendar-gated detail remains in:
 - `docs/programs/market-unit-26/PLAN.md`
 - `docs/programs/market-unit-26/ROADMAP.md`
 
-#### Unit 1 (active): Docs reconciliation
+#### Unit 1: Docs reconciliation [Completed September 25, 2026]
 
-**Goal:** bring `HANDOFF.md`, `CHANGELOG.md`, and `DECISIONS.md` back into agreement with verified current repository state before any correctness fix or regeneration work begins, so later units aren't built against stale documentation.
+##### Completed
 
-**Design decisions:**
+Brought `HANDOFF.md`, `CHANGELOG.md`, and `DECISIONS.md` back into agreement with verified current repository state: two previously undocumented shipped changes (the development forecast role and full-retrain's exact-run classification champion selection) now have `CHANGELOG.md` entries and `DECISIONS.md` records; seven stale or inaccurate `HANDOFF.md` passages were corrected in place against a live read of the code and data they describe, with no new sections added.
 
-- Record the `ForecastRole.DEVELOPMENT` addition (commit `2236adc`) and the exact-run calibration/champion-ranking change (commit `6932c77`) in `CHANGELOG.md`, with a `DECISIONS.md` entry for the development role if none already covers it.
-- Record the ad hoc 2026-09-22 Week 2 reselection to an untracked `development`-role product as a fact of current state, cross-referenced to ROADMAP's "Canonical Artifact Decision" section, not as a decision in itself.
-- Correct `HANDOFF.md` in place (no new sections): the two-role list at the Forecast Event Contract section should name `development` alongside `live`/`backfilled`; the metadata-preflight follow-up note (Canonical Data Pipeline and Known Limitations sections) should reflect that the strict feature-set-identity and modeling-schema-version checks shipped 2026-09-22; the Week 2 known-defect section should reflect that the current selection no longer matches the disposition (cross-reference ROADMAP); the Postgame Workflow section should describe closeout as role-aware; the Full Retrain Workflow section should describe exact-run calibration and champion ranking; the `recommended_bet_results` dataset path should read `schema=3`; Market Unit 26 identities that no longer exist on disk should be corrected or removed.
-- Give every ROADMAP item a reconciled status per the Active Next Program's acceptance criteria.
+##### Goal
 
-**Tests:** none (documentation only). Verification is: every corrected `HANDOFF.md` claim is checked against a live read of the current file or artifact it describes; `git diff --check` is clean; no code, schema, or `data/` changes.
+Prevent later Foundation Completion units (U2 onward) from being scoped or verified against documentation that no longer matches the repository.
 
-**Acceptance:** `HANDOFF.md` describes only current behavior for every section touched; the ROADMAP items this unit covers (Tier 1 #1) have reconciled status; the development role and exact-run calibration changes are recorded in `CHANGELOG.md`.
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `CHANGELOG.md` - Added entries for the development forecast role (`2236adc`) and full-retrain's exact-run classification champion selection (`6932c77`), both shipped 2026-09-22 with no prior changelog record.
+- `DECISIONS.md` - Added D43 (development forecast role) and D44 (exact-run classification champion selection); corrected D42's stale claim that the availability/execution metadata-parity follow-up was still outstanding.
+- `HANDOFF.md` - Forecast Event Contract now lists `development` alongside `live`/`backfilled` with its actual eligibility and exclusions; the Canonical Data Pipeline and Known Limitations sections no longer list the shipped availability metadata preflight as outstanding; the Pregame Workflow section states that availability and execution now share one strict metadata contract instead of describing availability as a weaker preflight; the Week 2 known-defect section states that the current selection no longer matches the disposition, with a cross-reference to `ROADMAP.md`'s Canonical Artifact Decision; the Postgame Workflow section describes closeout as reporting the product's actual role rather than assuming `live`; the Full Retrain Workflow section describes exact-run calibration and champion ranking; the `recommended_bet_results` dataset path reads `schema=3`; the Production Recommendation Chain section states that three candidate-issuance, two governance, and three policy artifacts currently exist for Week 1 rather than presenting one canonical identity set, with a cross-reference to `ROADMAP.md` Track B Unit M3.
+
+Removed:
+- None.
+
+##### Tests
+
+Documentation only; no code, schema, or `data/` change. Verification performed: every corrected claim checked against a live read of the source file, code, or on-disk artifact it describes (`ForecastRole` enum, `availability.py`, `champion.py`, `live_forecast_closeout.py`, `current.json`, the forecast-evidence disposition, and the candidate-issuance/governance/policy/preflight directories); `git diff --check` clean on every commit in this unit.
+
+##### Acceptance
+
+`HANDOFF.md` describes only current behavior for every section touched; the development-role and exact-run-calibration changes are recorded in `CHANGELOG.md` and `DECISIONS.md`; the ROADMAP Tier 1 #1 reconciliation this unit covers is complete.
 
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 

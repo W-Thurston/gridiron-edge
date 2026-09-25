@@ -8,6 +8,69 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D44 - Classification champion selection ranks challengers from one exact immutable backfill run per model type
+
+**Date:** 2026-09-22
+
+#### Decision
+
+`full-retrain` classification (Win) champion selection ranks challenger model types only from the exact immutable backfill run produced by that same invocation's `backfill-game-models` stage, never from an ad hoc, unrelated, or prior backfill run picked by convenience or modification time. Each candidate's Brier, ECE, and AUC come from one specific backfill `run_id`, keyed by `(model_name, model_type)`; selection raises rather than silently substituting a different run if any eligible candidate lacks an exact run. Ranking sums Brier, ECE, and AUC rank across candidates sharing the same exact-run evidence.
+
+Regression (Total) champion selection is unaffected: it continues to use each freshly trained deployable artifact's own persisted holdout metadata rather than a backfill run, because no regression backfill-comparison path exists yet.
+
+#### Context
+
+Before this change, classification champion promotion inside `full-retrain` could compare model types using whatever backfilled forecast events happened to exist on disk, which need not share a common evaluation window, training cutoff, or even reflect the current feature contract. That risked promoting a champion based on an apples-to-oranges comparison. Requiring one exact backfill run per candidate, produced in the same invocation, ties the comparison to a single honest, time-ordered evaluation.
+
+#### Consequences
+
+`full-retrain` cannot select a classification champion for a model family unless every eligible candidate type in that family has a corresponding exact backfill run from the same invocation. A partial or skipped backfill stage makes champion selection for the affected family fail closed rather than fall back to stale or mismatched evidence. This does not change how Total champions are selected, and does not change the gated `gridiron models train` comparison path, which uses a different (currently classification-only) promotion gate.
+
+#### References
+
+- `src/gridiron_edge/evaluation/champion.py`
+- `src/gridiron_edge/evaluation/select.py`
+- `src/gridiron_edge/evaluation/metrics.py`
+- `src/gridiron_edge/cli/full_retrain.py`
+- `CHANGELOG.md`
+
+---
+
+### D43 - Development forecast role is distinct from live and backfilled
+
+**Date:** 2026-09-22
+
+#### Decision
+
+Forecast events carry an explicit `development` role alongside `live` and `backfilled`. `development` events are retrospectively generated canonical fixtures: they can carry exact immutable prediction-input evidence and compose one role-coherent selected weekly product, exactly like `live` events, but are never represented as pre-kickoff live issuance. A weekly product's available Win and Total components must share one coherent role (`live` or `development`, never mixed, and never `backfilled`). Selected-event postgame closeout authenticates against the exact role the weekly product actually carries and reports it explicitly rather than assuming `live`.
+
+Live-only recommendation qualification, candidate issuance, and production-chain proof remain isolated from `development` evidence: a `development` product cannot qualify for a recommendation or complete production-chain proof, only `live` can. Derived Spread production provenance explicitly inherits the live-role requirement from its source Win forecast.
+
+The normal weekly prediction command (`weekly-predict`) remains live-only. `development` execution has a dedicated boundary (`execute_development_weekly_prediction_policy`) with no current production caller; retrospective fixture generation requires a repository-owned command to be added before it is used operationally (tracked in `ROADMAP.md`, Foundation Completion Track A, Unit U5).
+
+#### Context
+
+Retrospective canonical fixtures (for example, regenerating a corrected historical week for validation or testing) previously had no truthful role to carry: labeling them `live` would misrepresent them as pre-kickoff issuance, and `backfilled` already has a distinct, narrower meaning (time-ordered historical reconstruction for evaluation and champion comparison, ineligible for weekly-product selection or input evidence). `development` fills that gap without weakening what `live` means operationally.
+
+#### Consequences
+
+Every forecast-event and weekly-product consumer that branches on role must handle three values, not two. A weekly product's role is not inferable from its content alone and must be read from its events. Because no repository-owned command currently generates `development` products, any such product observed on disk (for example, an ad hoc reselection of Week 2 to a `development`-role run outside any documented generation step) is evidence of manual or exploratory action, not of a supported operational path, until Unit U5 ships.
+
+#### References
+
+- `src/gridiron_edge/evaluation/forecast_contracts.py`
+- `src/gridiron_edge/evaluation/forecast_events.py`
+- `src/gridiron_edge/evaluation/prediction_input_evidence.py`
+- `src/gridiron_edge/evaluation/live_forecast_closeout.py`
+- `src/gridiron_edge/models/game_prediction/product_validation.py`
+- `src/gridiron_edge/models/game_prediction/weekly_execution.py`
+- `src/gridiron_edge/market/production_chain_preflight.py`
+- `PLAN.md`
+- `HANDOFF.md`
+- `ROADMAP.md`
+
+---
+
 ### D42 - New live forecast events require immutable prediction-input evidence
 
 **Date:** 2026-09-21
@@ -39,7 +102,7 @@ A failure after snapshot or evidence publication may leave inert unreferenced ar
 
 Statistical replay uses exact transformed inputs and compares raw outputs with `rtol=0.0` and `atol=1e-12`.
 
-Availability and execution validation remain separate. A nonblocking follow-up is to make `_inspect_trained_model` validate persisted `feature_set` and `modeling_schema_version`. Execution already rejects stale metadata before any publication.
+Availability and execution validation remain separate boundaries. The nonblocking follow-up noted here at the time — making `_inspect_trained_model` validate persisted `feature_set` and `modeling_schema_version` — shipped 2026-09-22 (see `CHANGELOG.md`, "Aligned statistical availability with execution metadata validation"); availability now performs the same check as a read-only preflight, and execution independently repeats it as a fail-closed boundary before publication.
 
 #### Context
 
