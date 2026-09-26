@@ -1,5 +1,51 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-25 - Restored fixed-hyperparameter walk-forward retraining; closed the current-season weather gap; regenerated the canonical six-family evaluation report
+
+#### Added
+
+- `gridiron ingest weather-backfill`: registers the previously-documented-but-
+  never-wired `backfill_weather()` gap-filling function as a CLI command.
+  Walks every completed game not already present in the observed weather
+  archive and fetches the remainder from OpenWeatherMap's historical
+  timemachine endpoint, skipping games already on disk; supports
+  `--season-year`, `--dry-run`, and `--max-calls`.
+- `models/game_prediction/base.py::GamesTrainer._fit_with_fixed_hyperparameters()`
+  and `train(..., fixed_hyperparameters=...)`: fits one model directly from
+  given hyperparameters and `epa_window`, with no per-call HP search.
+- `evaluation/backfill.py::_load_champion_hyperparameters()`: loads the
+  currently-deployed champion's own persisted hyperparameters (stripping
+  bookkeeping keys) for walk-forward to retrain each season with.
+- `start_season`/`end_season` support for current-model backfill: post-filters
+  exported predictions by season after the full chronological simulation
+  runs, letting Elo's exported game set align with the walk-forward families'.
+
+#### Changed
+
+- `evaluation/backfill.py`: walk-forward retraining now uses each family's
+  currently-deployed champion's fixed hyperparameters and `epa_window`
+  instead of re-running a full randomized HP search on every season -
+  restoring conformance with `DECISIONS.md` D1, which already specified
+  fixed-hyperparameter walk-forward but had silently drifted to per-season
+  search. Cuts the five ML families' combined regeneration time from an
+  estimated ~30 hours to roughly 70 minutes on the real repository.
+- Regenerated all six game-model families' walk-forward/current-model
+  backfills over the aligned 2003-2004 through 2025-2026 range (one season
+  later than the walk-forward default, since 2002-2003 contains the Houston
+  Texans' franchise-inaugural game, which the shared ML feature pipeline
+  cannot score but Elo can - see D48) and built a new canonical
+  `GameModelEvaluationReport` over the resulting verified 6,232-game common
+  set, superseding the mismatched runs U7 flagged (Elo 7,276 games vs. 6,498
+  for the other five).
+
+#### Fixed
+
+- Closed the 2026-2027 season's weather-data gap (32 games, weeks 1-2) via
+  `gridiron ingest weather-backfill`; see `DECISIONS.md` D49 for the full D7
+  disposition.
+
+---
+
 ### 2026-09-25 - Comprehensive game-model evaluation metrics, cross-family report, and legacy-archive retirement
 
 #### Added

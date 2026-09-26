@@ -9,8 +9,8 @@ resume because it skips GAME_IDs already present in the output file.
 
 Usage (via CLI):
     gridiron ingest weather-backfill --season-year 2024-2025
-    gridiron ingest weather-backfill --all-years
-    gridiron ingest weather-backfill --all-years --dry-run
+    gridiron ingest weather-backfill --dry-run
+    gridiron ingest weather-backfill  # every season, all gaps
 
 API requirements:
     Requires an OpenWeatherMap One Call API 3.0 subscription (paid tier).

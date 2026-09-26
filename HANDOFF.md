@@ -112,6 +112,16 @@ full-artifact replacement. Recurring refresh rejects an empty selected-season
 response before writing and propagates fetch failures without modifying the
 existing artifact.
 
+`fetch-weather` (`gridiron ingest weather`) only ever fetches the most
+recently completed week for a season; it does not backfill any week that was
+missed. `gridiron ingest weather-backfill` closes gaps instead: it walks
+every completed game not already present in the observed weather archive
+(`data/cleaned/NFL_wk_by_wk_w_weather.csv`) and fetches the remainder from
+OpenWeatherMap's historical timemachine endpoint, skipping games already on
+disk. Safe to run repeatedly until a season's gap is fully closed; supports
+`--season-year`, `--dry-run`, and `--max-calls` to stay within a daily OWM
+quota.
+
 `fetch_nflverse_games()` remains the explicit replacement and all-years fetch
 boundary. `clean-games` rebuilds canonical cleaned history from the complete
 retained raw artifact and does not independently merge prior cleaned history.
@@ -935,6 +945,10 @@ The command refreshes outcomes, refreshes next-week schedule and feature state, 
 Historical backfills write `backfilled` forecast events using honest time-ordered training cutoffs. They support model evaluation, champion comparison, and baseline reporting.
 
 Do not combine live and backfilled roles when measuring operational forecast performance. Postgame closeout evaluates the selected product’s exact live event identities.
+
+Walk-forward backfill (`gridiron evaluate backfill`, the default for trained ML models) retrains each target season with the currently-deployed champion's own persisted hyperparameters and `epa_window`, never a fresh per-season search — a season with no trained champion artifact yet fails closed. This keeps every season's fit comparable, so `season_stability` (below) measures genuine performance drift rather than hyperparameter-search noise, and makes a full six-family regeneration take roughly one direct fit per season per family instead of a full randomized search per season.
+
+Current-model backfill (Elo) always simulates the complete chronological history regardless of any requested `--start-season`/`--end-season` — Elo ratings must accumulate from the first season onward to be honest for any later one. Season bounds instead post-filter which of the simulated predictions are exported, letting Elo's run align to the exact same game set as the five walk-forward families.
 
 Prop evaluation and champion selection are likewise archive-driven. Prop projections require persisted deployable artifacts.
 

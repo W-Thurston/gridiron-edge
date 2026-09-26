@@ -760,6 +760,133 @@ unchanged. `/model/performance`'s contract, query parameters, and frontend
 consumers are unchanged. A canonical six-family report over the corrected,
 regenerated backfills remains U8's job.
 
+#### Unit 8: Restored fixed-hyperparameter walk-forward retraining and the canonical six-family evaluation report [Completed September 25, 2026]
+
+##### Completed
+
+Restored `evaluation/backfill.py` walk-forward retraining to `DECISIONS.md`
+D1's already-decided fixed-hyperparameter contract (each target season now
+retrains with the currently-deployed champion's own persisted hyperparameters
+and `epa_window`, instead of a fresh randomized HP search every season - a
+regression from D1, not a new design choice), added current-model season-bound
+export alignment for Elo, closed the current season's weather-data gap by
+registering the previously-undiscoverable `gridiron ingest weather-backfill`
+command, and regenerated all six game-model families' backfills on a verified
+common 6,232-game set (seasons 2003-2004 through 2025-2026) to build the
+canonical `GameModelEvaluationReport` U7 built the capability for.
+
+##### Goal
+
+Regenerate walk-forward and current-model backfills for all six game-model
+families on a verified common game set, using the D1-D4 corrected pipeline,
+produce the canonical `GameModelEvaluationReport` U7 built the capability
+for, and resolve D7 (weather train/serve skew) for evaluation purposes.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `tests/unit/cli/test_ingest_weather_cli.py` - Coverage for `gridiron ingest
+  weather` and the newly-registered `gridiron ingest weather-backfill`
+  command wiring.
+
+Changed:
+- `src/gridiron_edge/models/game_prediction/base.py` - Added
+  `GamesTrainer._fit_with_fixed_hyperparameters()` and a `fixed_hyperparameters`
+  parameter on `train()`: fits one model directly from given hyperparameters
+  and `epa_window`, with no per-call HP search loop.
+- `src/gridiron_edge/evaluation/backfill.py` - Added
+  `_load_champion_hyperparameters()` (loads the currently-deployed champion's
+  persisted hyperparameters, stripping bookkeeping keys); walk-forward now
+  calls `trainer.train(..., fixed_hyperparameters=...)` instead of
+  `min_cv_train_rows=`. Current-model mode gained `start_season`/`end_season`
+  post-filtering of exported predictions, with the underlying simulation
+  always run over full history. `_validate_backfill_request` no longer
+  rejects season bounds for current-model mode. Removed the now-dead
+  `_WALK_FORWARD_MIN_CV_TRAIN_ROWS` constant and its stale contract comment.
+- `src/gridiron_edge/cli/ingest.py` - Added the `weather-backfill` command,
+  wiring the previously-unregistered `backfill_weather()` function.
+- `src/gridiron_edge/ingest/weather/__init__.py` - Exported `backfill_weather`.
+- `src/gridiron_edge/ingest/weather/backfill.py` - Corrected the module
+  docstring's stale `--all-years` CLI example (that flag never existed).
+- `tests/unit/models/test_games_trainer.py` - Added
+  `TestFitWithFixedHyperparameters`: proves a single direct fit at the given
+  hyperparameters/window for both tasks, and that `train(fixed_hyperparameters=...)`
+  never calls `_run_hp_search`.
+- `tests/unit/evaluation/test_backfill.py` - Added `TestLoadChampionHyperparameters`
+  (strips only bookkeeping keys; raises when no champion artifact exists) and
+  `TestCurrentModelSeasonBounds` (full history always simulated; only the
+  requested season range is exported). Updated all `_walk_forward_one_season`
+  call sites for the new `hyperparameters` parameter; replaced
+  `test_current_model_rejects_season_bounds` with
+  `test_current_model_accepts_season_bounds`.
+- `HANDOFF.md` - Documented `gridiron ingest weather-backfill` alongside
+  `fetch-weather`'s single-week limitation; documented walk-forward's
+  fixed-hyperparameter retraining and current-model season-bound alignment
+  in the "Historical Backfills and Evaluation" section.
+- `DECISIONS.md` - Added D48 (walk-forward restored to D1's fixed-hyperparameter
+  contract; current-model season-bound export alignment; the 2003-2004
+  evaluation-window floor found while aligning all six families) and D49
+  (D7 disposed as a closed data-completeness gap, not a live-serving
+  architecture defect).
+- `CHANGELOG.md` - Recorded the shipped behavior.
+- `ROADMAP.md` - Marked Tier 2 #5/#6's U8 portion complete; marked D7 resolved
+  in the verified-defects table with a cross-reference to D49.
+- `PLAN.md` - This unit record.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,080 tests, up from
+4,069; the net-new tests are listed above).
+
+Real-artifact validation (writes to `data/`, via owning commands):
+- The user ran `gridiron ingest weather-backfill --season-year 2026-2027`
+  against the real repository: 32 games fetched, 0 failed. Confirmed
+  `data/cleaned/NFL_wk_by_wk_w_weather.csv` grew from 7,276 to 7,308 rows and
+  now includes 2026-2027 games.
+- Ran all six `gridiron evaluate backfill` invocations against the real
+  repository, bounded to `--start-season 2003-2004 --end-season 2025-2026`:
+  Logistic/Random Forest/XGBoost Win and Random Forest/XGBoost Total
+  (walk-forward) and Elo (current-model) each produced exactly 6,232 events.
+  Combined walk-forward wall-clock was approximately 70 minutes (Logistic
+  ~24 min, Random Forest Win ~23 min, XGBoost Win ~21 min, Random Forest
+  Total ~1 min, XGBoost Total ~2 min), down from an estimated ~30 hours
+  before the fix; Elo's current-model run took under 4 seconds.
+- An initial run at the walk-forward default `--start-season 2002-2003`
+  produced 6,498 events for the five ML families but 6,499 for Elo; traced
+  the exact one-game difference to `2002_01_DAL_HOU`, the Houston Texans'
+  franchise-inaugural game, which Elo can score (a new franchise gets a
+  default starting rating) but the shared ML feature pipeline cannot
+  (days-rest-family features have no prior game to reference). Confirmed via
+  direct inspection of `modeling_file.parquet` and the persisted forecast
+  events that no other row is affected anywhere in the 1999-2000 through
+  2025-2026 range, then re-ran all six bounded to 2003-2004 onward to
+  produce the aligned 6,232-game set.
+- Ran `gridiron evaluate model-report` against the six aligned real run IDs:
+  built successfully (report ID
+  `5c2e1428f907741630e0e21d4d5c7991dfd541a9127f23e01c0d21a1ba8691fc`, 6,232
+  games) with sane, non-null metrics for every family - Logistic Win
+  brier=0.2209/ece=0.0167/auc=0.6848/calibration slope=1.01 (best-calibrated);
+  Random Forest Win brier=0.2232/ece=0.0217; XGBoost Win brier=0.2251/
+  ece=0.0194; Elo brier=0.2301/ece=0.0646 (uncalibrated, as expected); Random
+  Forest Total mae=10.80/coverage=0.903; XGBoost Total mae=10.84/coverage=0.903
+  (both against a 0.90 nominal interval). Selected as the current report.
+
+##### Acceptance
+
+Walk-forward backfill retrains each season using the deployed champion's own
+fixed hyperparameters and `epa_window`, never a fresh per-season search,
+proven by a test that fails against the old search-every-season behavior and
+verified on the real repository. All six families regenerated over an
+identical explicit season range, producing one verified common 6,232-game set.
+`gridiron ingest weather-backfill` exists, was exercised against the real
+2026-2027 gap, and `DECISIONS.md` D49 records D7's disposition as a closed
+data-completeness gap with the residual pre-kickoff limitation explicitly
+documented as out of scope. The canonical six-family `GameModelEvaluationReport`
+was built and selected as current against the six aligned regenerated runs.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

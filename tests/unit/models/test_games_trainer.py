@@ -20,6 +20,8 @@ static surface only.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
@@ -279,6 +281,161 @@ class TestTrainSpecValidation:
         empty_df = pd.DataFrame()
         with pytest.raises(ValueError, match="not supported by spec"):
             trainer.train(empty_df, model_type=GameModelType.LOGISTIC)
+
+
+# ---------------------------------------------------------------------------
+# Fixed-hyperparameter fitting (walk-forward backfill's no-search path)
+# ---------------------------------------------------------------------------
+
+
+class TestFitWithFixedHyperparameters:
+    """_fit_with_fixed_hyperparameters fits once, with no HP search loop."""
+
+    def test_classification_fits_once_at_the_given_window(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        trainer = WinProbTrainer()
+
+        x_train = pd.DataFrame({"F": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0]})
+        y_train = pd.Series([0, 1, 0, 1, 0, 1, 0, 1])
+        x_hold = pd.DataFrame({"F": [0.0, 1.0]})
+        y_hold = pd.Series([0, 1])
+
+        prepare_window_calls: list[int] = []
+
+        def fake_prepare_window(
+            *,
+            df: pd.DataFrame,
+            window: int,
+            window_cache: dict[int, Any],
+            feature_fn: Any,
+            repo: Any,
+            train_through_season: str | None,
+        ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, list[str], list[str]]:
+            prepare_window_calls.append(window)
+            return x_train, y_train, x_hold, y_hold, ["2020-2021"], ["2021-2022"]
+
+        monkeypatch.setattr(trainer, "_prepare_window", fake_prepare_window)
+
+        result = trainer._fit_with_fixed_hyperparameters(
+            df=pd.DataFrame(),
+            model_type=GameModelType.RANDOM_FOREST,
+            feature_fn=lambda frame: frame,
+            repo=Path("."),
+            train_through_season="2020-2021",
+            hyperparameters={
+                "n_estimators": 50,
+                "max_depth": 3,
+                "min_samples_leaf": 2,
+                "max_features": "sqrt",
+                "epa_window": 6,
+            },
+        )
+
+        # Exactly one train/holdout split resolved, at the requested window -
+        # no per-combo iteration.
+        assert prepare_window_calls == [6]
+        assert result.params == {
+            "n_estimators": 50,
+            "max_depth": 3,
+            "min_samples_leaf": 2,
+            "max_features": "sqrt",
+            "epa_window": 6,
+        }
+        assert result.train_seasons == ["2020-2021"]
+        assert result.hold_seasons == ["2021-2022"]
+        # The returned model is actually fit and can score the holdout split.
+        probs = result.model.predict_proba(x_hold.values)
+        assert probs.shape == (2, 2)
+
+    def test_regression_fits_once_and_scores_holdout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        trainer = TotalTrainer()
+
+        x_train = pd.DataFrame({"F": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
+        y_train = pd.Series([40.0, 42.0, 44.0, 46.0, 48.0, 50.0])
+        x_hold = pd.DataFrame({"F": [7.0, 8.0]})
+        y_hold = pd.Series([52.0, 54.0])
+
+        def fake_prepare_window(
+            *,
+            df: pd.DataFrame,
+            window: int,
+            window_cache: dict[int, Any],
+            feature_fn: Any,
+            repo: Any,
+            train_through_season: str | None,
+        ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, list[str], list[str]]:
+            return x_train, y_train, x_hold, y_hold, ["2020-2021"], ["2021-2022"]
+
+        monkeypatch.setattr(trainer, "_prepare_window", fake_prepare_window)
+
+        result = trainer._fit_with_fixed_hyperparameters(
+            df=pd.DataFrame(),
+            model_type=GameModelType.RANDOM_FOREST,
+            feature_fn=lambda frame: frame,
+            repo=Path("."),
+            train_through_season="2020-2021",
+            hyperparameters={"n_estimators": 20, "max_depth": 3},
+        )
+
+        # Regression grids never carry epa_window; the default is recorded.
+        assert result.params["epa_window"] == 4
+        assert result.params["n_estimators"] == 20
+        preds = result.model.predict(x_hold.values)
+        assert preds.shape == (2,)
+        assert isinstance(result.score, float)
+
+    def test_train_uses_fixed_hyperparameters_without_searching(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """train(fixed_hyperparameters=...) never calls the HP search loop."""
+        trainer = WinProbTrainer()
+
+        x_train = pd.DataFrame({"F": [0.0, 1.0, 0.0, 1.0]})
+        y_train = pd.Series([0, 1, 0, 1])
+        x_hold = pd.DataFrame({"F": [0.0, 1.0]})
+        y_hold = pd.Series([0, 1])
+
+        from sklearn.linear_model import LogisticRegression
+
+        fitted = LogisticRegression().fit(x_train.values, y_train)
+
+        fixed_result = SimpleNamespace(
+            model=fitted,
+            scaler=None,
+            params={"epa_window": 4},
+            score=0.2,
+            x_train=x_train,
+            y_train=y_train,
+            x_hold=x_hold,
+            y_hold=y_hold,
+            train_seasons=["2020-2021"],
+            hold_seasons=["2021-2022"],
+        )
+
+        def fail_if_called(*args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("_run_hp_search must not be called when hyperparameters are fixed")
+
+        monkeypatch.setattr(trainer, "_run_hp_search", fail_if_called)
+        monkeypatch.setattr(
+            trainer,
+            "_fit_with_fixed_hyperparameters",
+            lambda **_kwargs: fixed_result,
+        )
+
+        metadata = trainer.train(
+            pd.DataFrame(),
+            model_type=GameModelType.LOGISTIC,
+            persist=False,
+            fixed_hyperparameters={"epa_window": 4},
+        )
+
+        assert metadata.parameters["epa_window"] == 4
 
 
 # ---------------------------------------------------------------------------

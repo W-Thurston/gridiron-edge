@@ -13,16 +13,21 @@ import pytest
 
 from gridiron_edge.evaluation.backfill import (
     _CURRENT_MODEL_DEFAULTS,
+    _METADATA_BOOKKEEPING_KEYS,
     BackfillMode,
     BackfillResult,
     BackfillSeasonResult,
     BackfillSeasonStatus,
+    _load_champion_hyperparameters,
     _resolve_mode,
     _validate_backfill_request,
     _validate_season_label,
     _walk_forward_one_season,
+    backfill_model,
 )
+from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction.base import (
+    GameModelMetadata,
     GameModelType,
 )
 
@@ -169,6 +174,7 @@ class TestWalkForwardOneSeason:
             train_through_season="2023-2024",
             model_name="win_prob",
             model_type="random_forest",
+            hyperparameters={"n_estimators": 100, "epa_window": 6},
             repo=tmp_path,
         )
 
@@ -184,6 +190,7 @@ class TestWalkForwardOneSeason:
         train_kwargs = trainer.train.call_args.kwargs
         assert train_kwargs["train_through_season"] == "2023-2024"
         assert train_kwargs["persist"] is False
+        assert train_kwargs["fixed_hyperparameters"] == {"n_estimators": 100, "epa_window": 6}
 
         predicted_frame = build_predictions_mock.call_args.args[0]
         probabilities = build_predictions_mock.call_args.args[1]
@@ -222,6 +229,7 @@ class TestWalkForwardOneSeason:
             train_through_season="2023-2024",
             model_name="win_prob",
             model_type="random_forest",
+            hyperparameters={"epa_window": 6},
             repo=tmp_path,
         )
 
@@ -259,6 +267,7 @@ class TestWalkForwardOneSeason:
             train_through_season="2023-2024",
             model_name="total",
             model_type="random_forest",
+            hyperparameters={"n_estimators": 100},
             repo=tmp_path,
         )
 
@@ -287,6 +296,7 @@ class TestWalkForwardOneSeason:
             train_through_season="2024-2025",
             model_name="win_prob",
             model_type="random_forest",
+            hyperparameters={},
             repo=tmp_path,
         )
 
@@ -317,6 +327,7 @@ class TestWalkForwardOneSeason:
                 train_through_season=("2023-2024"),
                 model_name="win_prob",
                 model_type="random_forest",
+                hyperparameters={},
                 repo=tmp_path,
             )
 
@@ -349,6 +360,7 @@ class TestWalkForwardOneSeason:
             train_through_season="2023-2024",
             model_name="win_prob",
             model_type="random_forest",
+            hyperparameters={},
             repo=tmp_path,
         )
 
@@ -449,10 +461,140 @@ class TestBackfillRequestValidation:
                 end_season="2024-2025",
             )
 
-    def test_current_model_rejects_season_bounds(self) -> None:
-        with pytest.raises(ValueError, match="walk-forward mode"):
-            _validate_backfill_request(
-                mode=BackfillMode.CURRENT_MODEL,
-                start_season="2024-2025",
-                end_season=None,
+    def test_current_model_accepts_season_bounds(self) -> None:
+        """Season bounds are supported in current-model mode too (they
+        post-filter exported predictions; see TestCurrentModelSeasonBounds)."""
+        _validate_backfill_request(
+            mode=BackfillMode.CURRENT_MODEL,
+            start_season="2024-2025",
+            end_season="2025-2026",
+        )
+
+
+class TestLoadChampionHyperparameters:
+    """Champion metadata parameters minus persisted bookkeeping keys."""
+
+    def test_strips_only_bookkeeping_keys(self, tmp_path: Path) -> None:
+        metadata = GameModelMetadata(
+            model_name="win_prob",
+            model_type="random_forest",
+            task="classification",
+            trained_at="2026-06-18T00:00:00",
+            n_train_rows=100,
+            n_holdout_rows=20,
+            metrics={"brier": 0.22},
+            parameters={
+                "n_estimators": 300,
+                "max_depth": 5,
+                "min_samples_leaf": 10,
+                "max_features": "sqrt",
+                "epa_window": 8,
+                "cv_brier": 0.21,
+                "train_brier": 0.19,
+                "overfit_gap": 0.02,
+                "calibration_applied": False,
+                "modeling_schema_version": 4,
+                "feature_set": "combined_32",
+            },
+        )
+        ArtifactStore(tmp_path).save_metadata(metadata)
+
+        hyperparameters = _load_champion_hyperparameters(
+            model_name="win_prob",
+            model_type="random_forest",
+            repo=tmp_path,
+        )
+
+        assert hyperparameters == {
+            "n_estimators": 300,
+            "max_depth": 5,
+            "min_samples_leaf": 10,
+            "max_features": "sqrt",
+            "epa_window": 8,
+        }
+        assert not (set(hyperparameters) & _METADATA_BOOKKEEPING_KEYS)
+
+    def test_raises_when_no_champion_artifact_exists(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            _load_champion_hyperparameters(
+                model_name="win_prob",
+                model_type="xgboost",
+                repo=tmp_path,
             )
+
+
+class TestCurrentModelSeasonBounds:
+    """backfill_model(mode='current-model') post-filters exported predictions."""
+
+    def _predictions(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "game_id": ["G1", "G2", "G3"],
+                "season": ["2000-2001", "2001-2002", "2002-2003"],
+                "home_win_prob": [0.5, 0.6, 0.7],
+                "away_win_prob": [0.5, 0.4, 0.3],
+            }
+        )
+
+    @patch("gridiron_edge.evaluation.backfill.write_forecast_events")
+    @patch("gridiron_edge.evaluation.backfill.build_forecast_events")
+    @patch("gridiron_edge.evaluation.backfill._backfill_current_model")
+    def test_full_history_simulated_but_export_is_bounded(
+        self,
+        backfill_current_model_mock: MagicMock,
+        build_forecast_events_mock: MagicMock,
+        write_forecast_events_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        backfill_current_model_mock.return_value = self._predictions()
+        build_forecast_events_mock.return_value = pd.DataFrame({"game_id": ["G2"]})
+        write_forecast_events_mock.return_value = SimpleNamespace(
+            inserted_count=1,
+            existing_count=0,
+        )
+
+        result = backfill_model(
+            model_name="win_prob",
+            model_type="elo",
+            start_season="2001-2002",
+            end_season="2001-2002",
+            repo=tmp_path,
+        )
+
+        # The simulation itself is never given season bounds - Elo ratings
+        # must accumulate from the first season onward.
+        backfill_current_model_mock.assert_called_once_with(
+            model_name="win_prob",
+            model_type="elo",
+            repo=tmp_path,
+        )
+        # Only the requested season's predictions were exported.
+        exported = build_forecast_events_mock.call_args.args[0]
+        assert exported["season"].tolist() == ["2001-2002"]
+        assert result.generated_count == 1
+
+    @patch("gridiron_edge.evaluation.backfill.write_forecast_events")
+    @patch("gridiron_edge.evaluation.backfill.build_forecast_events")
+    @patch("gridiron_edge.evaluation.backfill._backfill_current_model")
+    def test_no_bounds_exports_every_simulated_season(
+        self,
+        backfill_current_model_mock: MagicMock,
+        build_forecast_events_mock: MagicMock,
+        write_forecast_events_mock: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        backfill_current_model_mock.return_value = self._predictions()
+        build_forecast_events_mock.return_value = pd.DataFrame({"game_id": ["G1", "G2", "G3"]})
+        write_forecast_events_mock.return_value = SimpleNamespace(
+            inserted_count=3,
+            existing_count=0,
+        )
+
+        backfill_model(
+            model_name="win_prob",
+            model_type="elo",
+            repo=tmp_path,
+        )
+
+        exported = build_forecast_events_mock.call_args.args[0]
+        assert exported["season"].tolist() == ["2000-2001", "2001-2002", "2002-2003"]

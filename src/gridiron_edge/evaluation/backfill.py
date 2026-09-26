@@ -6,7 +6,8 @@ Two modes:
 
 - **Walk-forward** (default for trained ML models): for each historical
   season N, retrain the model on data strictly through season N-1 using
-  fixed hyperparameters from the current spec, then predict season N.
+  the currently-deployed champion's own fixed hyperparameters and
+  ``epa_window`` (no per-season HP re-search), then predict season N.
   Intermediate models are discarded after their predictions are written.
   Each cutoff uses only modeling rows available through the preceding
   season.
@@ -14,6 +15,10 @@ Two modes:
 - **Current-model** (default for analytic models like elo): use the
   currently-trained model for all historical games. Honest for
   Elo because its state is built chronologically game-by-game.
+  ``start_season``/``end_season`` post-filter the exported predictions
+  only — the chronological simulation itself always runs over full
+  history, since Elo ratings must accumulate from the first season
+  onward to be honest for any later one.
 
 Typical usage::
 
@@ -77,44 +82,20 @@ _CURRENT_MODEL_DEFAULTS: frozenset[tuple[str, str]] = frozenset(
 # Walk-forward data-sufficiency contract
 # ---------------------------------------------------------------------------
 #
-# Two knobs together determine when walk-forward will attempt a cutoff:
-#
-#   1. ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` (below) sets a *season* floor.
-#      _backfill_walk_forward will not attempt any cutoff whose training
-#      pool covers fewer than this many prior seasons. Prevents obviously
-#      degenerate early cutoffs from entering the loop at all.
-#
-#   2. ``min_cv_train_rows`` passed to ``trainer.train(...)`` sets a *row*
-#      floor inside HP search. TimeSeriesSplit(n_splits=5) produces
-#      training folds of roughly N/6 ... 5N/6. Any fold below this row
-#      count is skipped by ``GamesTrainer._cv_score``. If every fold is
-#      skipped for every combo, ``_run_hp_search`` raises.
-#
-# For champion training on the full-history split (~13k rows), the module
-# default from ``_features.MIN_CV_TRAIN_ROWS`` (4000) leaves folds 2-5
-# surviving. Walk-forward's training pools are much smaller, so
-# ``_walk_forward_one_season`` explicitly overrides with a lower value.
-# The two knobs must stay in rough agreement: at
-# ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` seasons, at least one CV fold must
-# clear ``min_cv_train_rows``, otherwise the earliest cutoff will raise
-# and the whole retrain fails.
-#
-# ~272 games/season x 1 canonical row per game ≈ 272 rows/season.
-# At 3 seasons, the training pool is approximately 816 rows and the
-# largest TimeSeriesSplit training fold is approximately 680 rows.
-# The walk-forward override of ``min_cv_train_rows=200`` allows multiple
-# folds to survive at the earliest supported cutoff.
+# _backfill_walk_forward will not attempt any cutoff whose training pool
+# covers fewer than ``_MIN_WALK_FORWARD_TRAIN_SEASONS`` prior seasons,
+# preventing obviously degenerate early cutoffs from entering the loop at
+# all. Each season is fit directly against the currently-deployed
+# champion's own fixed hyperparameters and epa_window (no per-season HP
+# search), so there is no CV-fold row floor to keep in agreement here —
+# a single direct fit tolerates a much smaller training pool than the
+# TimeSeriesSplit-based search champion training itself uses.
 #
 # ---------------------------------------------------------------------------
 
 #: Minimum number of prior seasons required before walk-forward will
 #: attempt a cutoff. See "Walk-forward data-sufficiency contract" above.
 _MIN_WALK_FORWARD_TRAIN_SEASONS: int = 3
-
-#: Minimum training rows per CV fold for the walk-forward path.
-#: Overrides the champion-training default of ``MIN_CV_TRAIN_ROWS``.
-#: See "Walk-forward data-sufficiency contract" above.
-_WALK_FORWARD_MIN_CV_TRAIN_ROWS: int = 200
 
 
 class BackfillMode(StrEnum):
@@ -263,15 +244,19 @@ def _validate_backfill_request(
     start_season: str | None,
     end_season: str | None,
 ) -> None:
-    """Validate mode-specific season bounds before loading model data."""
+    """Validate season bounds before loading model data.
+
+    Season bounds are supported in both modes. In current-model mode they
+    post-filter the exported predictions only; see ``_backfill_current_model``
+    and ``backfill_model`` for why the simulation input itself is never
+    truncated.
+    """
     if start_season is not None:
         _validate_season_label(start_season, field_name="start_season")
     if end_season is not None:
         _validate_season_label(end_season, field_name="end_season")
     if start_season is not None and end_season is not None and start_season > end_season:
         raise ValueError("start_season must not be later than end_season.")
-    if mode is BackfillMode.CURRENT_MODEL and (start_season is not None or end_season is not None):
-        raise ValueError("Season bounds are supported only in walk-forward mode.")
 
 
 def _backfill_current_model(
@@ -284,6 +269,12 @@ def _backfill_current_model(
 
     Used for analytic models (elo) where state is built chronologically
     and the current artifact produces honest historical predictions.
+
+    Always simulates the complete chronological history regardless of any
+    requested season bounds: Elo ratings must accumulate from the first
+    season onward to be honest for any later season. Callers that need a
+    bounded season range (e.g. to align with a walk-forward run's game set)
+    filter the returned predictions by season instead; see ``backfill_model``.
     """
     from typing import cast
 
@@ -304,6 +295,52 @@ def _backfill_current_model(
     ].copy()
 
     return model.predict_historical(games, repo=repo)
+
+
+#: Keys ``GamesTrainer._build_classification_metadata``/
+#: ``_build_regression_metadata`` add to persisted ``parameters`` alongside
+#: the actual hyperparameters. Stripped when reusing a champion's persisted
+#: parameters as ``fixed_hyperparameters`` for a fresh fit.
+_METADATA_BOOKKEEPING_KEYS: frozenset[str] = frozenset(
+    {
+        "cv_brier",
+        "cv_mae",
+        "train_brier",
+        "train_mae",
+        "train_rmse",
+        "overfit_gap",
+        "calibration_applied",
+        "modeling_schema_version",
+        "feature_set",
+        "mean_target_train",
+        "mean_target_holdout",
+    }
+)
+
+
+def _load_champion_hyperparameters(
+    *,
+    model_name: str,
+    model_type: str,
+    repo: Path,
+) -> dict[str, object]:
+    """Load the currently-deployed champion's own hyperparameters.
+
+    Walk-forward retrains every season with these exact fixed values
+    (including ``epa_window``, when present) instead of re-searching from
+    scratch, matching this module's documented walk-forward contract.
+
+    Raises:
+        FileNotFoundError: If no trained artifact exists for this pair.
+    """
+    from gridiron_edge.models.artifact import ArtifactStore
+
+    metadata = ArtifactStore(repo).read_metadata(model_name, model_type)
+    return {
+        key: value
+        for key, value in metadata.parameters.items()
+        if key not in _METADATA_BOOKKEEPING_KEYS
+    }
 
 
 def _resolve_walk_forward_trainer(
@@ -369,9 +406,14 @@ def _walk_forward_one_season(
     train_through_season: str,
     model_name: str,
     model_type: str,
+    hyperparameters: dict[str, object],
     repo: Path,
 ) -> WalkForwardSeasonOutput:
-    """Retrain through the prior season and predict one target season."""
+    """Retrain through the prior season and predict one target season.
+
+    Retrains with ``hyperparameters`` fixed (the deployed champion's own
+    already-tuned values) rather than re-searching for this season.
+    """
     logger.info(
         "Walk-forward iteration: train through %s, predict %s",
         train_through_season,
@@ -383,7 +425,7 @@ def _walk_forward_one_season(
         repo=repo,
         train_through_season=train_through_season,
         persist=False,
-        min_cv_train_rows=_WALK_FORWARD_MIN_CV_TRAIN_ROWS,
+        fixed_hyperparameters=dict(hyperparameters),
     )
     target_df = df.loc[df["YEAR"] == target_season, :].copy()
     if target_df.empty:
@@ -467,6 +509,12 @@ def _backfill_walk_forward(
         )
         return BackfillGeneration(predictions=DataFrame(), seasons=())
 
+    hyperparameters = _load_champion_hyperparameters(
+        model_name=model_name,
+        model_type=model_type,
+        repo=repo,
+    )
+
     all_predictions: list[DataFrame] = []
     season_results: list[BackfillSeasonResult] = []
     for target_season in targets:
@@ -494,6 +542,7 @@ def _backfill_walk_forward(
             train_through_season=train_through,
             model_name=model_name,
             model_type=model_type,
+            hyperparameters=hyperparameters,
             repo=repo,
         )
         season_results.append(output.result)
@@ -530,10 +579,11 @@ def backfill_model(
         model_type: Model algorithm (e.g. ``"random_forest"``).
         mode: Explicit mode override. ``None`` selects the default for
             this model (see ``_CURRENT_MODEL_DEFAULTS``).
-        start_season: First season to predict (walk-forward only).
-            Defaults to the second-earliest available season.
-        end_season: Last season to predict (walk-forward only).
-            Defaults to the most recent season.
+        start_season: First season to export predictions for. Walk-forward
+            defaults to the second-earliest available season; current-model
+            mode exports every simulated season when omitted.
+        end_season: Last season to export predictions for. Defaults to the
+            most recent season in both modes.
         repo: Repository root. Defaults to settings repo root.
 
     Returns:
@@ -566,6 +616,10 @@ def backfill_model(
             model_type=model_type,
             repo=resolved_repo,
         )
+        if start_season is not None:
+            df_new = df_new.loc[df_new["season"] >= start_season, :]
+        if end_season is not None:
+            df_new = df_new.loc[df_new["season"] <= end_season, :]
         season_counts = df_new.groupby("season", sort=True).size().items()
         generation = BackfillGeneration(
             predictions=df_new,

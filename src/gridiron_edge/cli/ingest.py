@@ -196,6 +196,60 @@ def ingest_weather(
     console.summary()
 
 
+@ingest_app.command("weather-backfill")
+def ingest_weather_backfill(
+    season_year: str | None = typer.Option(
+        None,
+        help="NFL season label like '2026-2027'. If omitted, backfills every season.",
+    ),
+    owm_api_key: str | None = typer.Option(
+        None,
+        help="OpenWeather API key. If omitted, uses env var OWM_API_KEY.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run/--no-dry-run",
+        help="Log what would be fetched without making API calls or writing to disk.",
+    ),
+    max_calls: int | None = typer.Option(
+        None,
+        help="Stop after this many API calls (stays within a daily OWM quota).",
+    ),
+) -> None:
+    r"""Fill gaps in the observed weather archive for completed games.
+
+    Unlike ``ingest weather`` (which only ever fetches the most recently
+    completed week), this walks every completed game not already present in
+    ``weather_enriched`` and fetches the remainder, skipping games already on
+    disk. Safe to run repeatedly until a season's gap is fully closed.
+
+    \b
+    Examples:
+      gridiron ingest weather-backfill --season-year 2026-2027
+      gridiron ingest weather-backfill --season-year 2026-2027 --dry-run
+      gridiron ingest weather-backfill  # every season, all gaps
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.ingest.weather import backfill_weather
+
+    key: str = get_owm_api_key(owm_api_key)
+    subtitle: str = season_year if season_year is not None else "all seasons"
+    console.header("ingest weather-backfill", subtitle=subtitle)
+
+    with step(f"Backfill weather ({subtitle})") as s:
+        n_fetched, n_failed = backfill_weather(
+            season_year=season_year,
+            owm_api_key=key,
+            dry_run=dry_run,
+            max_calls=max_calls,
+        )
+        s.set_detail(f"{n_fetched} fetched, {n_failed} failed")
+
+    typer.echo(f"Fetched: {n_fetched}")
+    typer.echo(f"Failed: {n_failed}")
+    console.summary()
+
+
 @ingest_app.command("pbp")
 def ingest_pbp(
     *,

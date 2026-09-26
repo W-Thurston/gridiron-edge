@@ -516,6 +516,7 @@ class GamesTrainer(ABC):
         train_through_season: str | None = None,
         persist: bool = True,
         min_cv_train_rows: int | None = None,
+        fixed_hyperparameters: dict[str, Any] | None = None,
     ) -> GameModelMetadata:
         """Full training pipeline: prepare data, HP search, fit, evaluate, save.
 
@@ -539,7 +540,16 @@ class GamesTrainer(ABC):
                 default sized for the full-history split. Walk-forward
                 backfill passes a smaller value; see the "walk-forward
                 data-sufficiency contract" in ``evaluation/backfill.py``.
-
+                Ignored when ``fixed_hyperparameters`` is set, since no CV
+                search loop runs.
+            fixed_hyperparameters: When set, skip the randomized HP search
+                entirely and fit once with exactly these hyperparameters
+                (including ``epa_window``, if applicable). Used by
+                walk-forward backfill to retrain each season with the
+                currently-deployed champion's own already-tuned
+                hyperparameters, matching this module's documented
+                walk-forward contract and avoiding search noise across
+                seasons.
 
         Returns:
             ``GameModelMetadata`` with task-appropriate holdout metrics
@@ -569,14 +579,25 @@ class GamesTrainer(ABC):
         feature_names: list[str] = list(feature_set.feature_names)
         feature_set_name: str = feature_set.name
 
-        search: _SearchResult = self._run_hp_search(
-            df=df,
-            model_type=model_type,
-            feature_fn=feature_fn,
-            repo=resolved_repo,
-            train_through_season=train_through_season,
-            min_cv_train_rows=min_cv_train_rows,
-        )
+        search: _SearchResult
+        if fixed_hyperparameters is not None:
+            search = self._fit_with_fixed_hyperparameters(
+                df=df,
+                model_type=model_type,
+                feature_fn=feature_fn,
+                repo=resolved_repo,
+                train_through_season=train_through_season,
+                hyperparameters=fixed_hyperparameters,
+            )
+        else:
+            search = self._run_hp_search(
+                df=df,
+                model_type=model_type,
+                feature_fn=feature_fn,
+                repo=resolved_repo,
+                train_through_season=train_through_season,
+                min_cv_train_rows=min_cv_train_rows,
+            )
 
         self._model = search.model
         self._scaler = search.scaler
@@ -620,6 +641,65 @@ class GamesTrainer(ABC):
                 overwrite=True,
             )
         return metadata
+
+    def _fit_with_fixed_hyperparameters(
+        self,
+        *,
+        df: pd.DataFrame,
+        model_type: GameModelType,
+        feature_fn: Callable,
+        repo: Path,
+        train_through_season: str | None,
+        hyperparameters: dict[str, Any],
+    ) -> _SearchResult:
+        """Fit one model directly from already-tuned hyperparameters.
+
+        No CV search loop and no combo iteration — exactly one fit against
+        the resolved train/holdout split. ``hyperparameters`` may include
+        ``epa_window``; it is popped and forwarded to ``_prepare_window``
+        rather than applied to the estimator itself.
+        """
+        from gridiron_edge.evaluation.metrics import brier_score
+
+        spec: GameModelSpec = self.spec
+        params: dict[str, Any] = dict(hyperparameters)
+        window: int = params.pop("epa_window", 4)
+
+        x_train, y_train, x_hold, y_hold, train_szns, hold_szns = self._prepare_window(
+            df=df,
+            window=window,
+            window_cache={},
+            feature_fn=feature_fn,
+            repo=repo,
+            train_through_season=train_through_season,
+        )
+
+        model, scaler = _create_model(model_type, spec.task)
+        _apply_params(model, params)
+        x_train_arr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
+        model.fit(x_train_arr, y_train)
+
+        x_hold_arr = scaler.transform(x_hold) if scaler is not None else x_hold.values
+        score: float
+        if spec.task == "classification":
+            hold_probs = pd.Series(model.predict_proba(x_hold_arr)[:, 1], index=x_hold.index)
+            score = brier_score(hold_probs, y_hold.astype(float))
+        else:
+            hold_preds = model.predict(x_hold_arr)
+            score = float(np.sqrt(np.mean((hold_preds - np.asarray(y_hold, dtype=float)) ** 2)))
+
+        return _SearchResult(
+            model=model,
+            scaler=scaler,
+            params={**params, "epa_window": window},
+            score=score,
+            x_train=x_train,
+            y_train=y_train,
+            x_hold=x_hold,
+            y_hold=y_hold,
+            train_seasons=train_szns,
+            hold_seasons=hold_szns,
+        )
 
     def _run_hp_search(
         self,

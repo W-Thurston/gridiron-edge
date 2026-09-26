@@ -8,6 +8,129 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D49 - D7 (weather train/serve skew) is a closed data-completeness gap, not a live-serving architecture defect
+
+**Date:** 2026-09-25
+
+#### Decision
+
+D7 is disposed as closed for evaluation purposes without a live-forecast-weather
+integration. `data/cleaned/NFL_wk_by_wk_w_weather.csv` (the observed OpenWeatherMap
+archive) had zero rows for the 2026-2027 season in progress, because
+`gridiron ingest weather` (`fetch_weather`) only ever fetches the most recently
+completed week for a season and has no gap-filling logic - any week not fetched
+promptly is permanently skipped, not merely delayed. The existing gap-filling
+`backfill_weather()` function already had a documented CLI usage
+(`gridiron ingest weather-backfill`) that was never actually registered;
+registering it (`cli/ingest.py`) and running it against the real repository
+closed the gap (32 games fetched, 0 failed, covering the season's two already-
+played weeks). Walk-forward evaluation was never exposed to this gap in the
+first place, since D4 already excludes the in-progress season from every
+family's training/holdout and target-season range. The residual condition -
+a live prediction made before kickoff cannot use observed weather because the
+game has not happened yet - is an inherent pre-kickoff forecasting boundary,
+not a data defect, and remains deferred to the paid Tier 5 Phase C
+live-weather-forecast integration (ROADMAP.md).
+
+#### Context
+
+ROADMAP.md Tier 2 #5/#6, Unit 8 required resolving D7 "for evaluation
+purposes" before the canonical six-family `GameModelEvaluationReport`
+(D46/D47) could be regenerated on the corrected pipeline. Verified real-data
+coverage: the archive covered every completed game through the 2025-2026
+season (7,276 rows) and none of 2026-2027 before the backfill; 7,308 rows
+(7,276 + 32) after.
+
+#### Alternatives considered
+
+- Rebuild each walk-forward target season's weather features through the
+  climatology-only fallback path (the same pattern D1/Unit 3 used for the
+  EPA-window train/serve skew), to make evaluation honestly reflect live
+  serving's weather degradation. Rejected once real-data inspection showed
+  walk-forward never predicts the in-progress season (D4), so no evaluation
+  season is actually exposed to missing-weather conditions - the rebuild
+  would have changed evaluation numbers to simulate a condition evaluation
+  never experiences, for no correctness gain.
+- Documenting the skew as an accepted, unmeasured limitation without closing
+  the underlying data gap. Rejected: the gap-filling capability already
+  existed in code (`backfill_weather()`) and was cheap to run (32 games,
+  well within the OWM daily quota) and correctly register - leaving it
+  unregistered would have preserved stale documentation (a CLI command
+  documented but never wired up) that this program exists to reconcile.
+
+---
+
+### D48 - Walk-forward backfill restores D1's fixed-hyperparameter contract; current-model backfill gains season-bound export alignment
+
+**Date:** 2026-09-25
+
+#### Decision
+
+`evaluation/backfill.py`'s walk-forward path now retrains each target season
+with the currently-deployed champion's own persisted hyperparameters and
+`epa_window` (`GamesTrainer.train(..., fixed_hyperparameters=...)`,
+`_load_champion_hyperparameters()`), never a fresh per-season randomized HP
+search. This restores conformance with D1 ("Walk-forward backfill with fixed
+hyperparameters"), which already decided historical retraining should use
+"fixed hyperparameters from the most recent tune" - the module's own
+docstring repeated that claim, but the implementation had drifted to run a
+full `_run_hp_search` (many candidate combos x 5-fold CV) on every single
+walk-forward season, an unrecorded regression from D1's decision rather than
+a new design choice. "The most recent tune" is operationalized as the
+currently-deployed champion artifact's own persisted `parameters`, since that
+artifact is the most recent tune's output for that model.
+
+Current-model (Elo) backfill gains `start_season`/`end_season` support:
+`backfill_model()` post-filters exported predictions by season after the full
+chronological simulation runs - the simulation input itself is never
+truncated, since Elo ratings must accumulate from the first season onward to
+be honest for any later one. This lets Elo's exported game set align exactly
+with the five walk-forward families' game set.
+
+Aligning all six families' backfills also surfaced a second, narrower
+boundary: Elo's simulation can score a brand-new franchise's very first game
+(a sensible default starting rating), but the shared ML feature pipeline
+cannot (`AWAY_DAYS_REST`/`HOME_DAYS_REST`-family features have no prior game
+to reference), so `2002_01_DAL_HOU` - the Houston Texans' franchise-inaugural
+game - was the sole row present in Elo's current-model export and the
+underlying modeling file but absent from every walk-forward family's
+predictions. Rather than special-case one `GAME_ID`, all six families'
+evaluation window now starts at the 2003-2004 season (one season later than
+the walk-forward default), by which point every team already has at least
+one prior season of recorded history; real-data verification found this is
+the only such gap across the full 1999-2000 through 2025-2026 range.
+
+#### Context
+
+ROADMAP.md Tier 2 #5/#6, Unit 8. Real-data verification: before the fix, the
+five walk-forward families (Logistic/RF/XGBoost Win, RF/XGBoost Total) took
+an estimated ~30 hours combined to regenerate; after, the same regeneration
+(now spanning seasons 2003-2004 through 2025-2026) took approximately 70
+minutes combined (Logistic Win ~24 min, RF Win ~23 min, XGBoost Win ~21 min,
+RF Total ~1 min, XGBoost Total ~2 min), each producing an identical 6,232-game
+set; Elo's current-model backfill over the same bounds took under 4 seconds
+and produced the same 6,232 games. `gridiron evaluate model-report` then
+built the canonical six-family report on this verified common game set with
+sane, non-null metrics for every family (see `CHANGELOG.md`).
+
+#### Alternatives considered
+
+- Leave per-season HP search in place and instead shrink the walk-forward
+  season range to make a full regeneration practical. Rejected: it does not
+  fix the underlying contract violation of D1, and independently re-searched
+  hyperparameters per season inject search noise into the `season_stability`
+  metric (D47's evaluation report), confounding genuine performance drift
+  with search-selection noise across seasons.
+- Special-case excluding `2002_01_DAL_HOU` by `GAME_ID` to preserve the full
+  2002-2003 season for the other 270-plus otherwise-valid games. Rejected:
+  adds one-off, undocumented-outside-code exclusion machinery for a single
+  historical row; trimming the shared evaluation-window floor by one season
+  is a general, self-explaining boundary ("every team must have at least one
+  prior season of history") that needs no per-game special-casing and is
+  verified to affect no other row in the full history.
+
+---
+
 ### D46 - Game-model evaluation reads only immutable backfill runs; the legacy prediction archive is retired
 
 **Date:** 2026-09-25
