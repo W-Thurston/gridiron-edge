@@ -887,6 +887,223 @@ data-completeness gap with the residual pre-kickoff limitation explicitly
 documented as out of scope. The canonical six-family `GameModelEvaluationReport`
 was built and selected as current against the six aligned regenerated runs.
 
+#### Unit 9: Reassess calibration and champion selection [Completed September 26, 2026]
+
+##### Completed
+
+Reassessed every game-model champion against U8's corrected, aligned
+6,232-game evidence. Retrained all five trainable game-model pairs
+through the gated `gridiron models train` comparison: four challengers
+(`win_prob logistic/random_forest/xgboost`, `total xgboost`) failed
+their promotion gates and left the existing champion in place;
+`total random_forest` passed (MAE 10.41 → 10.40) and was promoted.
+Refreshed Win calibration (`sigma`/`margin_std`) for all four win_prob
+families from the aligned backfill runs, and promoted the champion
+manifest — `win_prob` stays on `logistic`, `total` moves to the
+freshly-retrained `random_forest`, and five previously-orphaned prop
+champions (pruned for having no backing artifact in U4) were
+repopulated from their own already-current archives. Verified all six
+families remain feature-available for the current upcoming week
+(2026-2027 Week 3) and regenerated the 2026-2027 Week 2 development
+product end-to-end with the reassessed champions
+(`prediction_ready: True`, 16/16 coverage on every readiness
+dimension). Regenerated the baseline report, the first since U4 removed
+the stale pre-fix reports.
+
+While executing this unit, found and fixed a second, narrower defect in
+a separate commit (`13abfb8`): `full-retrain`'s `refresh-calibrations`
+and `promote-champions` stages read backfill run identities exclusively
+from `ctx["game_backfill_run_ids"]`, populated only by the
+same-invocation `backfill-game-models` stage. The module's own
+documented `--only refresh-calibrations --only promote-champions`
+resume example — and this unit's own need to reuse U8's
+already-regenerated backfills without a fresh ~70-minute six-family
+re-backfill — crashed on that path. Both stages now fall back to each
+pair's latest already-persisted backfill run via
+`latest_backfilled_run_id()`, mirroring `promote_champions()`'s existing
+resume behavior.
+
+##### Goal
+
+Use only the U8-corrected evaluation evidence (the aligned 6,232-game
+common set and the canonical `GameModelEvaluationReport`) to determine
+whether the current game-model champions (`win_prob`, `total`) remain
+justified; where warranted, refresh each deployed artifact, the Win
+calibration registry, and the champion manifest, then verify the
+reassessed champions still produce complete upcoming-game feature
+coverage and a coherent weekly forecast, and regenerate the baseline
+report.
+
+##### Design decisions (pre-implementation audit)
+
+- Current state confirming D6 is still open: `champions.json`'s
+  `source_run_id` (`20260805_065153`, promoted 2026-08-04/05) and
+  `game_model_calibration.json` (updated 2026-08-05) both predate every
+  D1-D4 pipeline fix (U2/U3) and U8's regenerated, aligned backfills —
+  neither has been touched since.
+- Retrain the five trainable game-model pairs (`win_prob
+  logistic/random_forest/xgboost`, `total random_forest/xgboost`) via
+  `gridiron models train <name> <type>` (gated, not `--force`) against
+  the current `modeling_file.parquet` (now including 2026-2027 weeks
+  1-3) under the corrected D1-D4 `_prepare_data`/`_prepare_total_data`
+  pipeline. This is required specifically because
+  `select_game_regression_champions` (Total's cross-type selector)
+  reads each model_type's own persisted holdout metrics directly from
+  `ArtifactStore`, not from a backfill run — unlike win_prob's
+  classification selector, which already reads U8's aligned backfill
+  runs and needs no retrain to reflect corrected evidence. Elo is
+  excluded (analytic, not `Trainable`, already current-model backfilled
+  in U8).
+- Refresh Win calibration (`sigma`/`margin_std`) from the same
+  U8-aligned backfilled runs, reusing
+  `full_retrain._stage_refresh_calibrations`'s exact read/merge/persist
+  logic rather than duplicating it — invoked directly, not through the
+  full `full-retrain` composite, since its other stages
+  (`refresh-all-data`, `backfill-*`, `train-prop-models`) are out of
+  scope or already done by U8.
+- Promote the champion manifest via `gridiron evaluate select-model
+  --write-manifest` (`write_champion_manifest` → `promote_champions`
+  over the full catalog). Win_prob's classification ranking is already
+  sourced from U8's aligned runs; Total's regression ranking now
+  reflects the retrained artifacts above. Prop-family entries are
+  refreshed from their own already-current archives as an accepted,
+  unavoidable byproduct of the shared manifest-writing path — no new
+  prop evaluation work is in scope for this unit.
+- Verify complete upcoming-game feature coverage with the reassessed
+  champions via the existing availability-inspection path (the same
+  check `weekly-predict`/`verify-week` use), against data already on
+  disk — no external fetch.
+- Execute the weekly policy with the reassessed champions by
+  regenerating a `development`-role forecast for the current upcoming
+  week through the existing no-fetch commands
+  (`gridiron generate-development-forecast` /
+  `gridiron regenerate-development-week`, Units 5-6), not `gridiron
+  weekly-predict` — its default stages call nflverse/Odds API refresh
+  and current-odds edge generation, which are out of scope under
+  "ask before running: external sources." This proves the reassessed
+  champions produce a coherent forecast without touching the live
+  production selection or any external source.
+- Regenerate the baseline report via
+  `full_retrain._stage_baseline_report`'s logic, producing the first
+  `data/output/reports/full-retrain-*.md` snapshot since U4 removed the
+  stale pre-fix reports; its delta table will correctly state no
+  previous report exists.
+- The canonical six-family `GameModelEvaluationReport` (U8) is not
+  rebuilt here: it is keyed to specific backfill run IDs, none of which
+  change when a deployed artifact is retrained (a train/holdout split,
+  not a new walk-forward backfill run), so the currently-selected
+  report remains valid corrected evidence throughout this unit.
+
+##### Ask before running
+
+This unit ran `gridiron models train` five times (each an internal
+hyperparameter search plus fit) and rewrote the live-serving champion
+manifest and calibration registry that weekly production inference
+reads. Per `CLAUDE.md`'s ask-before-running gate, execution started only
+after explicit user confirmation, even though each individual step is a
+repository-owned command.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/cli/full_retrain.py` - `_stage_refresh_calibrations`
+  and `_stage_promote_champions` fall back to
+  `latest_backfilled_run_id()` per pair when `ctx["game_backfill_run_ids"]`
+  has no entry, instead of failing closed or raising.
+- `tests/unit/cli/test_full_retrain.py` - Added one fallback test per
+  stage proving the resume path succeeds against the latest on-disk
+  backfill run when `ctx` omits `game_backfill_run_ids` entirely.
+- `PLAN.md` - This unit record.
+
+Removed:
+- None.
+
+Real `data/` artifacts regenerated via owning commands (not
+version-controlled, no commit entry):
+- `data/models/total/random_forest/` - retrained and promoted.
+- `data/output/calibration/game_model_calibration.json` - all four
+  win_prob families recalibrated from U8's aligned backfill runs.
+- `data/output/champions/champions.json` - re-promoted; `total` now
+  points at the retrained `random_forest` artifact, five orphaned prop
+  entries repopulated.
+- `data/output/reports/full-retrain-2026-09-25-235711.md` - new
+  baseline report (first since U4).
+- `data/output/weekly_products/` - 2026-2027 Week 2 development product
+  regenerated (run `deb7ebd3-5fee-4242-b58a-d86db7e4bb53`) with the
+  reassessed champions; the prior Week 2 development selection remains
+  physically unchanged on disk per D45 (explicit reselection, no delete
+  path).
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed after the
+`full_retrain.py` fallback fix (43/43 in `test_full_retrain.py`,
+including the 2 new fallback tests).
+
+Real-artifact validation (writes to `data/`, via owning commands):
+- `gridiron models train` ×5: `win_prob logistic` challenger rejected
+  (Brier 0.22109 → 0.22100, improvement below the gate's minimum);
+  `win_prob random_forest` rejected (Brier worsened to 0.22218);
+  `win_prob xgboost` rejected (Brier worsened to 0.22419);
+  `total random_forest` **promoted** (MAE 10.41 → 10.40, R² 0.045 →
+  0.043, both gates passed); `total xgboost` rejected (MAE worsened to
+  10.46). Each challenger was trained under the corrected D1-D4
+  `_prepare_data`/`_prepare_total_data` pipeline against the current
+  `modeling_file.parquet` (now including 2026-2027 weeks 1-3).
+- `gridiron full-retrain --only refresh-calibrations --assume-done
+  backfill-game-models`: all four win_prob families recalibrated
+  (`updated_at` refreshed to 2026-09-26) using the fallback fix against
+  U8's real aligned backfill runs; `total_random_forest`/`total_xgboost`
+  correctly skipped as "(not win_prob)".
+- `gridiron evaluate select-model --write-manifest`: ranked all four
+  win_prob families on the real aligned 6,218-game evaluation set
+  (`win_prob_logistic` brier=0.22133/ece=0.01671/auc=0.68482, confirmed
+  best) and wrote the full manifest — `win_prob` unchanged at
+  `logistic`, `total` now `random_forest`, and `qb_pass_yards`,
+  `qb_rush_yards`, `rb_rush_yards`, `wr_rec_yards`, `te_rec_yards`
+  repopulated from their own real archives.
+- Availability inspection (`inspect_prediction_availability`) against
+  the real 2026-2027 Week 3 upcoming schedule: all six families
+  (`elo`, `win_logistic`, `win_random_forest`, `win_xgboost`,
+  `total_random_forest`, `total_xgboost`) reported available under the
+  reassessed champions.
+- `gridiron regenerate-development-week --season 2026-2027 --week 2`
+  (Week 3 is not yet in retained history - only weeks 1-2 of 2026-2027
+  have been played - so Week 2 was used to exercise the reassessed
+  champions end-to-end): generated development run
+  `deb7ebd3-5fee-4242-b58a-d86db7e4bb53`, composed and selected
+  `weekly_2026_2027_wk02_deb7ebd3-5fee-4242-b58a-d86db7e4bb53`,
+  `prediction_ready: True`. Independently confirmed via `gridiron
+  verify-week --season 2026-2027 --week 2`: 16 scheduled games, 16
+  selected Win predictions, 16 spread values, 16 Total predictions, 16
+  projected scores, 16 complete-provenance rows;
+  `market_ready: False` on `missing_market_data`/
+  `market_scope_mismatch`, expected and independent of prediction
+  readiness (Week 2 already played; the current market snapshot only
+  covers the current week).
+- `gridiron full-retrain --only baseline-report --assume-done
+  promote-champions`: wrote the first baseline report since U4, correctly
+  showing "no previous report found" for the delta table, `win_prob`
+  metrics matching the unchanged champion, and `total` metrics matching
+  the newly-promoted `random_forest` artifact (MAE 10.40, RMSE 13.31,
+  R² 0.043).
+
+##### Acceptance
+
+Every game-model champion was reassessed against corrected evidence:
+four of five retrained challengers were correctly rejected by the
+existing promotion gates and one was correctly promoted. Win
+calibration and the champion manifest (D6) no longer predate the
+current model artifacts. The reassessed champions produce complete
+upcoming-game feature coverage and a coherent, fully-ready weekly
+forecast, verified end-to-end without any external-source call. The
+baseline report reflects current reality. A real, verified defect in
+`full-retrain`'s advertised resume workflow was found and fixed
+separately, with tests proving the fix.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

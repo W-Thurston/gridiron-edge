@@ -1,5 +1,40 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - Reassessed game-model champions and calibration against corrected evidence
+
+#### Changed
+
+- Retrained all five trainable game-model pairs (`win_prob
+  logistic/random_forest/xgboost`, `total random_forest/xgboost`) through
+  the gated `gridiron models train` comparison against U8's corrected
+  pipeline and current `modeling_file.parquet`. `total_random_forest`
+  passed its promotion gates (MAE 10.41 → 10.40) and was promoted; the
+  other four challengers were correctly rejected, leaving their champions
+  unchanged.
+- Refreshed Win calibration (`sigma`/`margin_std`) for all four win_prob
+  families from U8's aligned backfill runs.
+- Re-promoted the champion manifest: `win_prob` unchanged at `logistic`,
+  `total` now `random_forest`; repopulated five prop-family entries
+  (`qb_pass_yards`, `qb_rush_yards`, `rb_rush_yards`, `wr_rec_yards`,
+  `te_rec_yards`) that U4 had pruned for lacking a backing artifact, now
+  backed by their own current archives.
+- Regenerated the 2026-2027 Week 2 development product with the
+  reassessed champions and confirmed `prediction_ready: True` with
+  complete 16/16 coverage; regenerated the baseline report (the first
+  since U4 removed the stale pre-fix reports).
+
+#### Fixed
+
+- `full-retrain`'s `refresh-calibrations` and `promote-champions` stages
+  crashed when resumed without a same-session `backfill-game-models` run
+  (the module's own documented `--only refresh-calibrations --only
+  promote-champions` example), since `ctx["game_backfill_run_ids"]` is
+  only populated by that stage. Both now fall back to each pair's latest
+  already-persisted backfill run, matching `promote_champions()`'s
+  existing resume behavior.
+
+---
+
 ### 2026-09-25 - Restored fixed-hyperparameter walk-forward retraining; closed the current-season weather gap; regenerated the canonical six-family evaluation report
 
 #### Added
