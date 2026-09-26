@@ -1082,6 +1082,71 @@ class TestStagePromoteChampions:
         assert result.success
         assert any("no game champions selected" in w for w in result.warnings)
 
+    def test_falls_back_to_latest_backfilled_run_when_ctx_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`--only promote-champions` without a same-session backfill.
+
+        ``ctx["game_backfill_run_ids"]`` is only populated by the
+        ``backfill-game-models`` stage. When that stage didn't run this
+        session, the classification selector must still receive each
+        pair's latest already-persisted backfill run rather than an empty
+        mapping (which raises inside
+        ``select_game_classification_champions_from_runs``).
+        """
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_promote_champions,
+        )
+
+        classification_result = {
+            "win_prob": {
+                "model_type": "random_forest",
+                "promoted_at": "2026-07-01T14:00:00",
+                "metrics": {"brier": 0.213, "ece": 0.041, "auc": 0.721},
+            },
+        }
+        seen_run_ids: dict[str, object] = {}
+
+        def fake_classification_selector(pairs, *, backfill_run_ids, repo):
+            seen_run_ids["backfill_run_ids"] = dict(backfill_run_ids)
+            return classification_result
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            fake_classification_selector,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_regression_champions",
+            lambda pairs, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_prop_champions_all_families",
+            lambda families, *, repo: {},
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "latest-run",
+        )
+
+        ctx = {
+            "game_pairs": [ModelPair("win_prob", "random_forest")],
+            "prop_pairs": [],
+            "upcoming_season_int": None,
+            # No "game_backfill_run_ids" key at all.
+        }
+
+        result = _stage_promote_champions(ctx)
+
+        assert result.success
+        assert seen_run_ids["backfill_run_ids"] == {("win_prob", "random_forest"): "latest-run"}
+
 
 class TestCommandInvocation:
     """End-to-end test of the composite via CliRunner."""
@@ -1273,3 +1338,88 @@ class TestExactRunCalibrationLineage:
         )
         assert result.success is False
         assert "missing the exact backfill run" in result.detail
+
+    def test_falls_back_to_latest_backfilled_run_when_ctx_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`--only refresh-calibrations` without a same-session backfill.
+
+        ``ctx["game_backfill_run_ids"]`` is only populated by the
+        ``backfill-game-models`` stage. When that stage didn't run this
+        session (e.g. resumed via ``--assume-done``), this stage must fall
+        back to each pair's latest already-persisted backfill run instead
+        of failing closed, matching ``promote_champions()``'s existing
+        resume-without-rebackfill behavior.
+        """
+        from dataclasses import dataclass
+
+        import pandas as pd
+
+        from gridiron_edge.cli.full_retrain import (
+            ModelPair,
+            _stage_refresh_calibrations,
+        )
+        from gridiron_edge.models.game_prediction.post_process import (
+            load_model_calibrations,
+        )
+
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        archive = pd.DataFrame(
+            {
+                "game_id": ["g1"],
+                "home_team": ["A"],
+                "home_win_prob": [0.60],
+                "run_id": ["latest-run"],
+                "role": ["backfilled"],
+                "model_name": ["win_prob"],
+                "model_type": ["logistic"],
+            }
+        )
+        modeling = pd.DataFrame({"GAME_ID": ["g1"], "ACTUAL_MARGIN": [7.0]})
+
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.get_settings",
+            lambda: FakeSettings(repo_root=tmp_path),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "latest-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.load_forecast_events",
+            lambda **_: archive,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.cli.full_retrain.select_forecast_run",
+            lambda events, *, run_id: SimpleNamespace(found=True, events=events),
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_modeling_file",
+            lambda repo: modeling,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.game_prediction.post_process.calibrate_spread_sigma",
+            lambda *, home_win_probs, actual_margins: 11.25,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.models.game_prediction.post_process.compute_margin_std",
+            lambda *, home_win_probs, actual_margins, sigma: 13.75,
+        )
+
+        result = _stage_refresh_calibrations(
+            {
+                "game_pairs": [ModelPair("win_prob", "logistic")],
+                # No "game_backfill_run_ids" key at all - simulates
+                # `--only refresh-calibrations --assume-done backfill-game-models`.
+            }
+        )
+
+        assert result.success
+        payload = load_model_calibrations(tmp_path)["win_prob_logistic"]
+        assert payload["sigma"] == pytest.approx(11.25)
+        assert payload["margin_std"] == pytest.approx(13.75)

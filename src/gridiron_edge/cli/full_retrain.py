@@ -326,6 +326,7 @@ def _stage_train_prop_models(ctx: dict[str, Any]) -> StageResult:
 
 def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:  # noqa: PLR0911, PLR0912
     """Refresh Win calibration from exact immutable backfill runs."""
+    from gridiron_edge.evaluation.select import latest_backfilled_run_id
     from gridiron_edge.models.game_prediction.post_process import (
         _MODEL_MARGIN_STDS,
         calibrate_spread_sigma,
@@ -374,6 +375,12 @@ def _stage_refresh_calibrations(ctx: dict[str, Any]) -> StageResult:  # noqa: PL
             continue
 
         run_id = run_ids.get((pair.model_name, pair.model_type))
+        if run_id is None:
+            # Same-session backfill (this stage's own dependency) didn't run -
+            # e.g. `--only refresh-calibrations --assume-done backfill-game-models`.
+            # Fall back to the latest already-persisted backfill run, matching
+            # promote_champions()'s existing resume-without-rebackfill behavior.
+            run_id = latest_backfilled_run_id(pair.model_name, pair.model_type, repo=repo)
         if run_id is None:
             return StageResult(
                 success=False,
@@ -481,6 +488,7 @@ def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
         read_manifest,
         write_manifest,
     )
+    from gridiron_edge.evaluation.select import latest_backfilled_run_id
 
     repo = get_settings().repo_root
 
@@ -490,9 +498,21 @@ def _stage_promote_champions(ctx: dict[str, Any]) -> StageResult:
     game_pair_tuples: list[tuple[str, str]] = [(p.model_name, p.model_type) for p in game_pairs]
     prop_families: list[str] = sorted({stat for stat, _algorithm in prop_pairs})
 
+    # Same-session backfill (this stage's own dependency) didn't run - e.g.
+    # `--only promote-champions --assume-done backfill-game-models`. Fall
+    # back to each pair's latest already-persisted backfill run, matching
+    # promote_champions()'s existing resume-without-rebackfill behavior.
+    backfill_run_ids: dict[tuple[str, str], str] = dict(ctx.get("game_backfill_run_ids", {}))
+    for pair_key in game_pair_tuples:
+        if pair_key in backfill_run_ids:
+            continue
+        resolved_run_id = latest_backfilled_run_id(*pair_key, repo=repo)
+        if resolved_run_id is not None:
+            backfill_run_ids[pair_key] = resolved_run_id
+
     classification_entries = select_game_classification_champions_from_runs(
         game_pair_tuples,
-        backfill_run_ids=ctx.get("game_backfill_run_ids", {}),
+        backfill_run_ids=backfill_run_ids,
         repo=repo,
     )
     regression_entries = select_game_regression_champions(
