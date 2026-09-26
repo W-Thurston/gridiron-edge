@@ -1,5 +1,40 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - `/explain` log-odds contract and field-status wiring
+
+#### Changed
+
+- `GET /games/{game_id}/explain` now resolves `headline_win_prob` and
+  `factors` from the game's selected weekly product row and (for a Logistic
+  champion) the persisted Logistic explanation store, instead of always
+  returning a `scenario_engine`-blocked null shape. Unknown `game_id` now
+  returns 404. `band`, `distribution`, and `market_implied` are unchanged,
+  still blocked `scenario_engine`.
+- `ExplainFactor.delta` (documented as a "percentage-point contribution,"
+  never wired to real data) is replaced with `log_odds_contribution`; added
+  `coefficient` and `transformed_value`; removed the unused `description`
+  field. No backward compatibility preserved. `api-schema.json` and the
+  generated frontend client are regenerated.
+- Added `Unavailable.NO_WIN_FORECAST`, `NO_EXPLANATION_EVIDENCE`, and
+  `AMBIGUOUS_EXPLANATION_EVIDENCE` field-status slugs.
+- `logistic_explanation_evidence_store.py`'s `find_logistic_explanation_by_event`
+  now raises a dedicated `AmbiguousLogisticExplanationError(ValueError)`
+  instead of a bare `ValueError` when more than one persisted batch claims
+  the same event, so the route can catch it specifically rather than
+  masking a genuinely malformed-artifact `ValueError`. See `DECISIONS.md`
+  D52.
+
+#### Real-artifact validation
+
+Called `GET /games/{game_id}/explain` through the real FastAPI app against
+the real repository. The selected 2026-2027 Week 2 product's `2026_02_CAR_ATL`
+returned `headline_win_prob=0.5541...` (the persisted `home_win_prob`) with
+`factors` blocked `ambiguous_explanation_evidence` - the real store already
+has two immutable batches both covering all 16 events of that product's run,
+which `find_logistic_explanation_by_event` correctly refuses to resolve
+silently. An unknown `game_id` returned 404. No `data/` artifact changed;
+this unit is read-only at the API layer.
+
 ### 2026-09-26 - Persisted Logistic explanation evidence
 
 #### Added

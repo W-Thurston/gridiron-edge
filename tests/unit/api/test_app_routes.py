@@ -30,7 +30,6 @@ LIST_ENDPOINTS: list[tuple[str, str, str]] = [
 DETAIL_ENDPOINTS: list[tuple[str, str, str]] = [
     ("GET", "/live/sf-bal", "live_state_ingest"),
     ("GET", "/games/sf-bal/injuries", "injury_data_source"),
-    ("GET", "/games/sf-bal/explain", "scenario_engine"),
     ("GET", "/games/sf-bal/swing-factors", "feature_attribution"),
     ("GET", "/games/sf-bal/comparables", "comparables_retrieval"),
     ("GET", "/props/lamar-rush/shop", "multi_book_ingest"),

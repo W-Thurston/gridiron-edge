@@ -8,6 +8,81 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D52 - `/explain` serializes log-odds contributions with a three-way unavailability rule, and treats duplicate explanation batches as ambiguous rather than crashing
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #8's U11: `GET /games/{game_id}/explain` now resolves
+`headline_win_prob` and `factors` from persisted state instead of
+unconditionally returning a `scenario_engine`-blocked null shape. `band`,
+`distribution`, and `market_implied` remain unconditionally blocked on
+`scenario_engine` - out of this unit's scope.
+
+`ExplainFactor.delta` ("percentage-point contribution," never wired to real
+data) is replaced with `log_odds_contribution`, plus new `coefficient` and
+`transformed_value` fields exposing U10's persisted decomposition directly;
+the unused `description` field is dropped. No backward compatibility is
+preserved (dev-era contract, never served real data).
+
+`factors` resolution is a three-way rule based on the selected weekly
+product row, not request-time inference:
+
+1. `win_status != "available"`: both `headline_win_prob` and `factors` are
+   null, blocked on a new `Unavailable.NO_WIN_FORECAST` (mirrors the
+   existing `NO_ELO_FORECAST` family-specific convention).
+2. `win_status == "available"` and `win_model_type != "logistic"` (Random
+   Forest/XGBoost champion): `headline_win_prob` is populated;`factors` is
+   null, blocked on the existing `Blocker.FEATURE_ATTRIBUTION` (same slug
+   `props.py`/`games.py` already use - Tier 3 #9 is still unresolved).
+3. `win_model_type == "logistic"`: look up the row's own `win_event_id` in
+   the immutable Logistic explanation store
+   (`find_logistic_explanation_by_event`). No batch found yet (the CLI is a
+   manual per-run command, not run automatically per weekly forecast):
+   `factors` null, blocked on a new `Unavailable.NO_EXPLANATION_EVIDENCE`.
+   Batch found: `factors` populated, with the intercept as its own leading
+   `is_baseline=True` factor.
+
+Real-artifact validation against the currently selected 2026-2027 Week 2
+product (all 16 games `win_status=available`, `win_model_type=logistic`)
+surfaced a fourth, unplanned state: `find_logistic_explanation_by_event`
+raises when more than one persisted batch claims the same event, and the
+real store already has exactly that - two batches
+(`36265a5f8b1a...`/`e2c399f98809...`) both covering the same 16 events for
+run `deb7ebd3-5fee-4242-b58a-d86db7e4bb53` (the store is immutable,
+create-only, with no "current" selection concept per D50, so re-running
+`explain-logistic` over the same run's evidence at a different time
+legitimately produces a second, equally-valid batch). The store now raises
+a dedicated `AmbiguousLogisticExplanationError(ValueError)` for this case
+instead of a bare `ValueError`, so the route can catch it specifically
+without masking a genuinely malformed-artifact `ValueError` as the same
+condition. The route catches it and blocks `factors` on a new
+`Unavailable.AMBIGUOUS_EXPLANATION_EVIDENCE`, mirroring `props.py`'s
+existing `ChampionNotFoundError`-to-field-status pattern rather than
+letting it 500. As of this unit, every currently explainable real game hits
+this path, not the "batch found" path - both are exercised by fixture-based
+tests instead.
+
+#### Alternatives considered
+
+- Silently picking one batch (e.g. the newest `generated_at`) when more
+  than one claims an event. Rejected: `find_logistic_explanation_by_event`
+  already fails closed on this by design; silently resolving it at the API
+  layer would hide a genuine data-provenance ambiguity instead of surfacing
+  it through field-status like every other unavailability case.
+- Deleting or archiving one of the two real duplicate batches to make the
+  "happy path" observable in production data. Rejected: out of this unit's
+  scope, and the store's own immutability contract (D50) does not provide a
+  disposition path for this - a future unit can decide one if the
+  duplication needs resolving.
+- Reusing `Unavailable.NO_MODEL_CONTEXT` for the win-unavailable case
+  instead of adding `NO_WIN_FORECAST`. Rejected: the existing
+  family-specific `NO_ELO_FORECAST` precedent is more accurate and keeps
+  diagnostics unambiguous for whoever builds the ExplainPage UI later.
+
+---
+
 ### D51 - Prediction-input evidence scan tolerates earlier-schema artifacts instead of failing closed on the whole store
 
 **Date:** 2026-09-26

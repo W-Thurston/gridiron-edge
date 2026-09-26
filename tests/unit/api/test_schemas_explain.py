@@ -74,7 +74,28 @@ class TestElementShapes:
         assert band.hi == 0.78
 
     def test_explain_factor_default(self) -> None:
-        assert ExplainFactor() is not None
+        factor = ExplainFactor()
+        assert factor.log_odds_contribution is None
+        assert factor.coefficient is None
+        assert factor.transformed_value is None
+
+    def test_explain_factor_populated(self) -> None:
+        factor = ExplainFactor(
+            key="ELO_DIFF",
+            label="ELO_DIFF",
+            log_odds_contribution=0.512,
+            coefficient=0.256,
+            transformed_value=2.0,
+            is_baseline=False,
+            is_adjustable=False,
+        )
+        assert factor.log_odds_contribution == 0.512
+        assert factor.coefficient == 0.256
+        assert factor.transformed_value == 2.0
+
+    def test_explain_factor_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            ExplainFactor.model_validate({"unexpected": "x"})
 
     def test_explain_distribution_default(self) -> None:
         assert ExplainDistribution() is not None
@@ -100,7 +121,13 @@ class TestGameExplainComposition:
             headline_win_prob=0.71,
             band=CredibleBand(point=0.71, lo=0.62, hi=0.78),
             factors=[
-                ExplainFactor(key="rush", label="Rushing matchup", delta=7.0),
+                ExplainFactor(
+                    key="rush",
+                    label="Rushing matchup",
+                    log_odds_contribution=0.34,
+                    coefficient=0.12,
+                    transformed_value=2.83,
+                ),
             ],
             distribution=ExplainDistribution(samples=2000, mean_margin=5.8, sd=10.5),
         )

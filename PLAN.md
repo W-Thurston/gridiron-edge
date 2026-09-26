@@ -1209,6 +1209,153 @@ attribution and the `/explain` API contract change remain explicitly out of
 scope. The prediction-input evidence scan-based lookups are usable against
 the real repository's permanent legacy-schema artifacts for the first time.
 
+#### Unit 11: `/explain` log-odds contract and field-status wiring [Completed September 26, 2026]
+
+##### Completed
+
+Implemented ROADMAP.md Tier 3 #8's U11: `GET /games/{game_id}/explain` now
+resolves `headline_win_prob` and `factors` from the game's selected weekly
+product row and, for a Logistic champion, U10's persisted Logistic
+explanation store, instead of unconditionally returning a
+`scenario_engine`-blocked null shape. `ExplainFactor.delta` (a
+never-wired, mislabeled "percentage-point contribution") is replaced with
+`log_odds_contribution`, `coefficient`, and `transformed_value`. `band`,
+`distribution`, and `market_implied` are unchanged, still blocked
+`scenario_engine`. While performing real-artifact validation, found that
+the real explanation store already has two immutable batches claiming the
+same events for the currently selected run — a legitimate consequence of
+the store's create-only, no-current-selection design (D50) — and fixed the
+route to treat that as a distinct blocked state
+(`ambiguous_explanation_evidence`) instead of letting the store's
+fail-closed `ValueError` become an unhandled 500.
+
+##### Goal
+
+Change the `/explain` contract from percentage-point deltas to log-odds
+contributions, regenerate the frontend client, and serialize persisted
+Logistic explanation evidence through `_meta.field_status` wherever it
+exists — with no request-time inference and no ExplainPage UI work (still
+gated on the scenario engine / comparable-game work in Tier 3 #9–10).
+
+##### Design decisions
+
+- Three-way `factors` unavailability rule keyed on the selected weekly
+  product row: `win_status != "available"` → `NO_WIN_FORECAST` (new,
+  mirrors the existing `NO_ELO_FORECAST` family-specific slug); Win
+  champion isn't Logistic → the existing `Blocker.FEATURE_ATTRIBUTION`
+  (same slug `props.py`/`games.py` already use, Tier 3 #9 unresolved);
+  Logistic with no batch found yet → `NO_EXPLANATION_EVIDENCE` (new — the
+  CLI is manual, not run per weekly forecast). `headline_win_prob` is
+  populated whenever `win_status == "available"`, independent of the
+  champion's model type or explanation-evidence state, since it is just the
+  already-persisted `home_win_prob`.
+- Real-artifact validation surfaced a fourth state:
+  `find_logistic_explanation_by_event` raises when more than one batch
+  claims an event, and the real store already has exactly that. Gave the
+  store a dedicated `AmbiguousLogisticExplanationError(ValueError)` instead
+  of a bare `ValueError` so the route can catch it specifically without
+  masking a genuinely malformed-artifact error as the same condition;
+  mapped to a new `Unavailable.AMBIGUOUS_EXPLANATION_EVIDENCE` slug via the
+  same route-catches-a-domain-exception pattern `props.py` already uses for
+  `ChampionNotFoundError`. See `DECISIONS.md` D52.
+- `ExplainFactor` gained `coefficient`/`transformed_value` (already computed
+  and persisted by U10) alongside the renamed `log_odds_contribution`; the
+  unused `description` field was dropped. No backward compatibility
+  preserved — the prior shape was dev-era and never served real data.
+- The intercept is serialized as its own leading `ExplainFactor` with
+  `is_baseline=True` rather than a new top-level `GameExplain` field,
+  reusing a field the schema already carried for exactly this purpose.
+- No human-readable feature-label mapping exists anywhere in the repo, so
+  `label` is the raw feature name — not invented text.
+- `frontend/src/screens/ExplainPage.tsx` and `WhyLink.tsx` are unchanged:
+  both already document that unblocking the page's content is separate,
+  future work from this contract change.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/api/serializers/explain.py` - `serialize_game_explain()`
+  builds the response and owns all `_meta.field_status` construction per
+  D18, including the three-way `factors` rule and the always-blocked
+  scenario-engine fields.
+- `tests/unit/api/test_serializers_explain.py` - Coverage for all five
+  `factors` states (win-unavailable, non-Logistic champion, no evidence yet,
+  ambiguous evidence, evidence found) plus the always-blocked fields.
+- `tests/unit/api/test_routes_explain.py` - `TestClient` coverage: 404 on
+  unknown `game_id`; 200 with real factors; non-Logistic-champion,
+  win-unavailable, and ambiguous-evidence blocked states, each via mocking
+  the route's own loader functions (mirroring
+  `test_edges_route_diagnostics.py`'s pattern).
+
+Changed:
+- `src/gridiron_edge/api/schemas/explain.py` - `ExplainFactor`: removed
+  `delta`/`description`; added `log_odds_contribution`, `coefficient`,
+  `transformed_value`.
+- `src/gridiron_edge/api/routes/explain.py` - Real resolution logic
+  (`load_game` → 404 or branch on `win_status`/`win_model_type` →
+  optionally `load_logistic_explanation_for_event`, catching
+  `AmbiguousLogisticExplanationError`) replacing the unconditional stub.
+- `src/gridiron_edge/api/loaders.py` - Added
+  `load_logistic_explanation_for_event()`, wrapping
+  `find_logistic_explanation_by_event` with `repo=settings.repo_root` per
+  D19.
+- `src/gridiron_edge/api/meta.py` - Added `Unavailable.NO_WIN_FORECAST`,
+  `NO_EXPLANATION_EVIDENCE`, `AMBIGUOUS_EXPLANATION_EVIDENCE`.
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence_store.py` -
+  `find_logistic_explanation_by_event` now raises
+  `AmbiguousLogisticExplanationError` (a `ValueError` subclass) instead of a
+  bare `ValueError` for the multiple-claims case.
+- `tests/unit/api/test_schemas_explain.py` - Updated for the renamed/added
+  `ExplainFactor` fields.
+- `tests/unit/api/test_app_routes.py` - Removed `/games/{game_id}/explain`
+  from the generic always-200-stub smoke table; it now legitimately 404s on
+  an unknown `game_id`, covered instead by the dedicated route test file.
+- `api-schema.json` - Regenerated via `gridiron api export-schema`.
+- `HANDOFF.md` - Added a `/games/{game_id}/explain` subsection under
+  "Logistic Explanation Evidence" documenting the four resolution states.
+- `CHANGELOG.md`, `DECISIONS.md` (D52) - This unit's record.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,133 tests, up from
+4,122; the 11 new tests are listed above). Frontend gate passed:
+`pnpm gen:api` regenerated `frontend/src/api/schema.ts` (gitignored, not
+checked in) from the updated `api-schema.json`; `pnpm lint`, `pnpm build`
+(148 modules, no reference to the removed `delta`/`description` fields
+anywhere in the frontend), and `pnpm test:run` (511 tests) all passed
+unchanged.
+
+Real-artifact validation (read-only, no `data/` writes — this unit adds no
+writer): called `GET /games/{game_id}/explain` through the real FastAPI app
+against the real repository. `2026_02_CAR_ATL` (from the selected
+2026-2027 Week 2 product, run `deb7ebd3-5fee-4242-b58a-d86db7e4bb53`)
+returned `headline_win_prob=0.5541168882599108` (the persisted
+`home_win_prob`) with `factors` blocked `ambiguous_explanation_evidence` -
+confirmed by direct inspection that the real store holds two batches
+(`36265a5f8b1a...`, `e2c399f98809...`) both covering the same 16 events for
+that run, so all 16 real games in the current selection hit this path, not
+the populated-factors path. An unknown `game_id` returned 404. The
+non-Logistic-champion, win-unavailable, and single-batch-found states do
+not currently exist in the real repository's data, so they are proven by
+the fixture-based unit and route tests instead.
+
+##### Acceptance
+
+`GET /games/{game_id}/explain` serializes only persisted state — the
+selected weekly product row and, when applicable, the persisted Logistic
+explanation store — with no request-time inference. `ExplainFactor`
+carries log-odds contributions (`coefficient * transformed_value`), not the
+prior mislabeled percentage-point `delta`. Every non-populated `factors`
+state (win unavailable, non-Logistic champion, no evidence yet, ambiguous
+evidence) is marked through `_meta.field_status` with a slug distinguishing
+its cause; none produces a 500. `band`, `distribution`, and
+`market_implied` remain unchanged. `api-schema.json` and the generated
+frontend client reflect the new contract; no frontend UI behavior changed.
+ROADMAP.md Tier 3 #8 (U10 + U11) is now fully complete.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

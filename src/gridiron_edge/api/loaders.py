@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     from gridiron_edge.evaluation.historical_backtest_report_loader import (
         CurrentHistoricalBacktestReport,
     )
+    from gridiron_edge.evaluation.logistic_explanation_evidence import (
+        LogisticExplanationEvent,
+    )
     from gridiron_edge.market.edge_report import EdgeResult
     from gridiron_edge.market.recommended_bet_result import RecommendedBetResult
 
@@ -1056,6 +1059,25 @@ def load_game(
     if len(matches) != 1:
         raise ValueError(f"Selected weekly product contains duplicate game_id={game_id!r}.")
     return matches.iloc[0].to_dict()
+
+
+def load_logistic_explanation_for_event(
+    settings: Settings,
+    *,
+    event_id: str,
+) -> LogisticExplanationEvent | None:
+    """Load one persisted Logistic explanation event, if one has been generated.
+
+    Scans the immutable `data/output/logistic_explanations/` store. Returns
+    `None` when no batch covers this event yet (`gridiron evaluate
+    explain-logistic` is a manual per-run command, not run automatically for
+    every weekly forecast).
+    """
+    from gridiron_edge.evaluation.logistic_explanation_evidence_store import (
+        find_logistic_explanation_by_event,
+    )
+
+    return find_logistic_explanation_by_event(event_id, repo=settings.repo_root)
 
 
 def load_edges_for_week(

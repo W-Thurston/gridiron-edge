@@ -1658,9 +1658,9 @@
       },
       "ExplainFactor": {
         "additionalProperties": false,
-        "description": "A single factor in the win-prob waterfall.",
+        "description": "One feature's exact log-odds contribution to the headline prediction.\n\nA contribution is a linear decomposition of the fitted estimator's own\ndecision function (`coefficient * transformed_value`), not a causal\neffect estimate. The intercept is represented as its own factor with\n`is_baseline=True` and `coefficient`/`transformed_value` unset.",
         "properties": {
-          "delta": {
+          "coefficient": {
             "anyOf": [
               {
                 "type": "number"
@@ -1669,20 +1669,8 @@
                 "type": "null"
               }
             ],
-            "description": "Percentage-point contribution to win prob.",
-            "title": "Delta"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "One-line rationale.",
-            "title": "Description"
+            "description": "The fitted estimator's coefficient for this feature.",
+            "title": "Coefficient"
           },
           "is_adjustable": {
             "anyOf": [
@@ -1729,6 +1717,30 @@
             ],
             "description": "Human-readable label.",
             "title": "Label"
+          },
+          "log_odds_contribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contribution to the headline prediction, in log-odds space.",
+            "title": "Log Odds Contribution"
+          },
+          "transformed_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scaled feature value the coefficient was applied to.",
+            "title": "Transformed Value"
           }
         },
         "title": "ExplainFactor",
@@ -8667,7 +8679,7 @@
     },
     "/games/{game_id}/explain": {
       "get": {
-        "description": "Return a null explainability shape until the scenario engine lands.",
+        "description": "Return one selected game's explainability shape.",
         "operationId": "get_game_explain_games__game_id__explain_get",
         "parameters": [
           {

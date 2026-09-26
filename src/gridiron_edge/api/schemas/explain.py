@@ -1,8 +1,11 @@
 # src/gridiron_edge/api/schemas/explain.py
 """Schemas for per-game explainability endpoints (/games/{game_id}/explain).
 
-Currently blocked on the scenario engine; responses return null shapes
-with structured `_meta.field_status` entries. See ROADMAP §9.5.
+`factors` serializes persisted Logistic explanation evidence (exact
+scaled-feature-by-coefficient contributions in log-odds space) when it
+exists for the game's selected Win forecast. `band`, `distribution`, and
+`market_implied` remain null with structured `_meta.field_status` entries;
+they are blocked on the scenario engine.
 """
 
 from __future__ import annotations
@@ -13,16 +16,29 @@ from gridiron_edge.api.schemas._base import BaseResponse
 
 
 class ExplainFactor(BaseModel):
-    """A single factor in the win-prob waterfall."""
+    """One feature's exact log-odds contribution to the headline prediction.
+
+    A contribution is a linear decomposition of the fitted estimator's own
+    decision function (`coefficient * transformed_value`), not a causal
+    effect estimate. The intercept is represented as its own factor with
+    `is_baseline=True` and `coefficient`/`transformed_value` unset.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     key: str | None = Field(default=None, description="Stable factor identifier.")
     label: str | None = Field(default=None, description="Human-readable label.")
-    description: str | None = Field(default=None, description="One-line rationale.")
-    delta: float | None = Field(
+    log_odds_contribution: float | None = Field(
         default=None,
-        description="Percentage-point contribution to win prob.",
+        description="Contribution to the headline prediction, in log-odds space.",
+    )
+    coefficient: float | None = Field(
+        default=None,
+        description="The fitted estimator's coefficient for this feature.",
+    )
+    transformed_value: float | None = Field(
+        default=None,
+        description="The scaled feature value the coefficient was applied to.",
     )
     is_baseline: bool | None = Field(default=None)
     is_adjustable: bool | None = Field(default=None)

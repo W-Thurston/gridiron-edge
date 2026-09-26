@@ -342,8 +342,38 @@ data/output/logistic_explanations/schema=1/batches/{batch_id}.json
 
 The store is immutable and create-only; there is no "current" selection
 concept, since batches are keyed by run and source evidence rather than
-superseded. Random Forest/XGBoost attribution and the `/games/{game_id}/explain`
-API contract change are separately scoped (ROADMAP.md Tier 3 #9, #8's U11).
+superseded. Random Forest/XGBoost attribution is separately scoped
+(ROADMAP.md Tier 3 #9).
+
+### `/games/{game_id}/explain`
+
+Serializes persisted state only, resolved from the game's selected weekly
+product row and (for a Logistic champion) the Logistic explanation store
+above:
+
+- `win_status != "available"`: `headline_win_prob` and `factors` are null,
+  blocked `no_win_forecast`.
+- `win_status == "available"` and the Win champion isn't Logistic (Random
+  Forest/XGBoost): `headline_win_prob` populated; `factors` null, blocked
+  `feature_attribution` (Tier 3 #9 unresolved).
+- Win champion is Logistic and no batch covers the row's `win_event_id` yet:
+  `factors` null, blocked `no_explanation_evidence`. `explain-logistic` is a
+  manual per-run command, not run automatically for every weekly forecast.
+- More than one persisted batch claims the same event
+  (`AmbiguousLogisticExplanationError`, since the store is create-only with
+  no "current" selection concept — see above): `factors` null, blocked
+  `ambiguous_explanation_evidence`, not a 500. This is not hypothetical: the
+  real store currently has two batches both covering all 16 events of the
+  selected 2026-2027 Week 2 product's run, so every currently explainable
+  real game hits this path today, not the populated-factors path.
+- Otherwise: `factors` is populated from the persisted event, with the
+  intercept as its own leading factor (`is_baseline=True`) ahead of one
+  factor per feature in persisted order. Each factor carries
+  `log_odds_contribution` (`coefficient * transformed_value`), plus the raw
+  `coefficient` and `transformed_value` themselves.
+
+`band`, `distribution`, and `market_implied` remain null, blocked
+`scenario_engine` — unchanged, out of scope (ROADMAP.md Tier 3 #10).
 
 `list_prediction_input_evidence_by_run`/`find_prediction_input_evidence_by_event`
 (the scan-based prediction-input evidence lookups this command depends on)

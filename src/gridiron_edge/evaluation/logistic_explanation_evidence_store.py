@@ -25,6 +25,17 @@ _STORE_DIRECTORY = "data/output/logistic_explanations"
 _STORE_SCHEMA_VERSION = 1
 
 
+class AmbiguousLogisticExplanationError(ValueError):
+    """More than one persisted batch claims the same event.
+
+    The store is immutable and create-only with no "current" selection
+    concept (see `list_logistic_explanation_batches`), so this can
+    genuinely happen — e.g. two separate `explain-logistic` invocations
+    over the same run's evidence. Distinct from a malformed-artifact
+    `ValueError`, which callers should treat as store corruption.
+    """
+
+
 def logistic_explanation_root(repo: Path | None = None) -> Path:
     """Return the canonical Logistic explanation evidence store root."""
     return (repo or get_settings().repo_root) / _STORE_DIRECTORY
@@ -136,7 +147,9 @@ def find_logistic_explanation_by_event(
             if event.event_id == normalized:
                 matches.append(event)
     if len(matches) > 1:
-        raise ValueError(f"Multiple logistic explanation batches claim event {normalized!r}.")
+        raise AmbiguousLogisticExplanationError(
+            f"Multiple logistic explanation batches claim event {normalized!r}."
+        )
     return matches[0] if matches else None
 
 
