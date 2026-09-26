@@ -25,6 +25,7 @@ from pandas import DataFrame
 from gridiron_edge.core.settings import Settings
 
 if TYPE_CHECKING:
+    from gridiron_edge.evaluation.comparable_games_evidence import ComparableGamesBatch
     from gridiron_edge.evaluation.historical_backtest_report_loader import (
         CurrentHistoricalBacktestReport,
     )
@@ -1078,6 +1079,25 @@ def load_logistic_explanation_for_event(
     )
 
     return find_logistic_explanation_by_event(event_id, repo=settings.repo_root)
+
+
+def load_comparable_games_for_event(
+    settings: Settings,
+    *,
+    event_id: str,
+) -> ComparableGamesBatch | None:
+    """Load one persisted comparable-games retrieval batch, if one has been generated.
+
+    Scans the immutable `data/output/comparable_games/` store. Returns
+    `None` when no batch covers this event yet (`gridiron evaluate
+    find-comparables` is a manual per-run command, not run automatically
+    for every weekly forecast).
+    """
+    from gridiron_edge.evaluation.comparable_games_evidence_store import (
+        find_comparable_games_by_event,
+    )
+
+    return find_comparable_games_by_event(event_id, repo=settings.repo_root)
 
 
 def load_edges_for_week(

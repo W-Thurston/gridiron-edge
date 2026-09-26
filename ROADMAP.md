@@ -84,7 +84,7 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 | D7 | Weather train/serve skew: training rows use observed OpenWeatherMap backfill; live predictions use stadium/league-month climatology. **Resolved by U8:** the underlying cause was a closed data-completeness gap (the current 2026-2027 season had zero observed weather rows because `fetch_weather` never backfills a missed week), not a live-serving architecture defect; walk-forward evaluation was never exposed to it (D4 already excludes the in-progress season). See D49. | `features/team/weather.py:323`. |
 | D8 | Candidate issuance does not reject non-live forecast roles or forecasts generated after `evaluated_at`. | `cli/production_chain.py:404-480`. |
 
-#### Track A — Tiers 1–3 (sequential)
+#### Track A — Tiers 1–3 (sequential) [Complete: U1–U14]
 
 - **Tier 1 #1 — Reconcile roadmap, repository state, and canonical artifacts.**
   Implementation: **U1**, docs only. Record the development forecast role and the exact-run calibration/champion-ranking change in `CHANGELOG.md`/`DECISIONS.md`; record the ad hoc Week 2 reselection; correct stale `HANDOFF.md` text (forecast roles, the metadata-preflight follow-up note, Week 2 blocking language, role-aware postgame closeout, full-retrain description, the `recommended_bet_results` schema path, and Market Unit 26 identities); give every roadmap item its reconciled status.
@@ -103,7 +103,7 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 - **Tier 3 #9 — Evaluate tree-model attribution only if justified.**
   Implementation: **U12** **[Complete: documented decision, `DECISIONS.md` D53]**. Random Forest is unconditionally wrapped in isotonic calibration, so exact attribution against its raw output can never reconstruct the served probability. XGBoost is only conditionally recalibrated per training run based on holdout ECE — the current on-disk artifact is uncalibrated, so its margin-space contributions would be exact today, but that is not a fixed property of the model type. Neither tree type is the current Win champion (`logistic` is, unchanged through U9), so nothing is built; the precondition for building this later (pre-calibration-space attribution plus per-artifact branching on calibration status) is recorded but not resolved.
 - **Tier 3 #10 — Build comparable-game retrieval.**
-  Implementation: **U13** (backend: a new historical feature-vector corpus for every `win_prob`/`logistic` game, scaled in the champion's own standardized feature space, plus a per-run retrieval-evidence batch matching each event against it by Euclidean distance with an empirically-derived threshold; immutable stores and CLI, no API change) **[Complete: `gridiron evaluate build-comparable-corpus`/`find-comparables`, D54]** and **U14** (wire `/games/{game_id}/comparables` to serve the persisted retrieval evidence, mirroring U11's `/explain` contract change), **not yet started**.
+  Implementation: **U13** (backend: a new historical feature-vector corpus for every `win_prob`/`logistic` game, scaled in the champion's own standardized feature space, plus a per-run retrieval-evidence batch matching each event against it by Euclidean distance with an empirically-derived threshold; immutable stores and CLI, no API change) **[Complete: `gridiron evaluate build-comparable-corpus`/`find-comparables`, D54]** and **U14** (wire `/games/{game_id}/comparables` to serve the persisted retrieval evidence, mirroring U11's `/explain` contract change) **[Complete: D55]**.
 
 #### Track B — Tier 4 / Market Unit 26 (parallel, calendar-driven)
 
@@ -117,7 +117,7 @@ No selected-plan poll has completed from this workstation; the Week 1 plan's pol
 
 #### Feature-program gate
 
-ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U14) is complete and Track B has closed Tier 4 #11, #12, and #14. Tier 4 #13 continues independently and does not gate Tier 5.
+ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U14) is complete and Track B has closed Tier 4 #11, #12, and #14. Track A is now complete; the gate remains closed on Track B. Tier 4 #13 continues independently and does not gate Tier 5.
 
 #### Acceptance
 
@@ -249,11 +249,11 @@ After Logistic explanation evidence is complete, assess Tree SHAP or another app
 
 Assessed and not built: Random Forest's Win classifier is unconditionally wrapped in isotonic calibration with no closed-form decomposition, so exact attribution against its raw output cannot satisfy the required reconstruction test. XGBoost's Win classifier is only conditionally recalibrated per training run (holdout ECE threshold); its current on-disk artifact is uncalibrated, so exact margin-space attribution would be reasonable for it today, but an attribution mechanism cannot assume that holds for every future retrain. Neither tree type is the current Win champion, so there is no consumer to validate a mechanism against yet. Revisit only once a resolved approach exists for attributing through the calibration boundary (D53's stated precondition).
 
-#### 10. Build comparable-game retrieval [Backend complete (U13, `DECISIONS.md` D54); API/frontend wiring (U14) not started]
+#### 10. Build comparable-game retrieval [Complete: U13 backend (`DECISIONS.md` D54), U14 API wiring (D55)]
 
 Define similarity from authenticated model inputs, prevent future-information leakage, explain why games are comparable, and derive any thresholds empirically.
 
-Backend done: a historical feature-vector corpus in the `win_prob`/logistic champion's own standardized space, Euclidean-distance retrieval per run event with an empirically-derived (leave-one-out, p90) distance threshold, real recorded outcomes, and named top-contributing features — all immutable, batch-computed, and idempotent on rebuild. `/games/{game_id}/comparables` still serves its existing `Blocker.COMPARABLES` null shape until U14.
+Done: a historical feature-vector corpus in the `win_prob`/logistic champion's own standardized space, Euclidean-distance retrieval per run event with an empirically-derived (leave-one-out, p90) distance threshold, real recorded outcomes, and named top-contributing features — all immutable, batch-computed, and idempotent on rebuild. `GET /games/{game_id}/comparables` serves this evidence directly, with an honest empty result (not a blocked state) when a matchup has no sufficiently similar historical game. Frontend UI consumption remains future work (Tier 8 #23/#24).
 
 ### Tier 4: Market and Recommendation Proof
 
@@ -472,7 +472,7 @@ There is no integrated injury/news feed or live-game state. Dependent API and fr
 
 ### Scenario and explanation evidence are unavailable
 
-Persisted feature attribution and what-if propagation are not implemented. Comparable-game retrieval evidence is now persisted (U13, `DECISIONS.md` D54), but `/games/{game_id}/comparables` is not yet wired to serve it (U14) — the route still returns its existing `Blocker.COMPARABLES` null shape.
+Persisted feature attribution and what-if propagation are not implemented. Comparable-game retrieval is complete and served (U13/U14, `DECISIONS.md` D54/D55); no frontend surface consumes it yet (Tier 8 #23/#24).
 
 ### Champion selection does not yet gate on explainability
 

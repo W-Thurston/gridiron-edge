@@ -437,10 +437,36 @@ matched against two different corpus generations (for example before and
 after a champion retrain), not from re-running the same command.
 
 Neither command is run automatically; both are manual, per invocation.
-`/games/{game_id}/comparables` does not yet serve this evidence — it still
-returns its existing `Blocker.COMPARABLES` null shape until a future unit
-(U14) wires the API contract, mirroring how U11 wired `/explain` after U10
-persisted Logistic explanation evidence.
+
+### `/games/{game_id}/comparables`
+
+Serializes persisted state only, resolved from the game's selected weekly
+product row and (for a Logistic champion) the comparable-games evidence
+store above:
+
+- `win_status != "available"`: `comparables`, `sample_size`,
+  `favorite_win_rate`, and `favorite_cover_rate` are all null, blocked
+  `no_win_forecast`.
+- `win_status == "available"` and the Win champion isn't Logistic: all four
+  null, blocked `comparables_retrieval` — no corpus exists yet for that
+  model type (D54), not a calibration problem.
+- More than one persisted batch claims the same event
+  (`AmbiguousComparableGamesError` — the event was matched against two
+  different corpus generations): all four null, blocked
+  `ambiguous_comparable_evidence`, not a 500.
+- Win champion is Logistic and no batch covers the row's `win_event_id` yet:
+  all four null, blocked `no_comparable_evidence`. `find-comparables` is a
+  manual per-run command, not run automatically for every weekly forecast.
+- Otherwise: all four fields populated from the persisted batch. An empty
+  `matches` tuple serializes as `comparables: []`, `sample_size: 0` with no
+  blocked `_meta.field_status` entry — a genuinely unusual matchup, not
+  missing evidence. `ComparableGame` exposes the match's real fields
+  (`game_id`, `rank`, `distance`, `season`, `week`, `game_date`, team
+  names, scores, `favorite_team`, `spread_magnitude`, `favorite_won`,
+  `favorite_covered`, `top_contributing_features`) directly — no
+  server-generated display strings; formatting is a frontend concern (D55).
+
+No frontend surface consumes this contract yet (Tier 8 #23/#24).
 
 ## Immutable Weekly Products
 

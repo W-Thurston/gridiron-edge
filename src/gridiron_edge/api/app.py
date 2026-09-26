@@ -44,7 +44,11 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "comparables",
-        "description": "Historical comparable games. Blocked on comparables retrieval.",
+        "description": (
+            "Historical comparable games for a Logistic Win champion's selected forecast "
+            "event. Blocked for non-Logistic champions or when no retrieval evidence has "
+            "been generated for this run."
+        ),
     },
     {
         "name": "prop-shop",

@@ -166,6 +166,8 @@ class Unavailable:
     NO_WIN_FORECAST: tuple[str, str] = ("no_win_forecast", "data")
     NO_EXPLANATION_EVIDENCE: tuple[str, str] = ("no_explanation_evidence", "data")
     AMBIGUOUS_EXPLANATION_EVIDENCE: tuple[str, str] = ("ambiguous_explanation_evidence", "data")
+    NO_COMPARABLE_EVIDENCE: tuple[str, str] = ("no_comparable_evidence", "data")
+    AMBIGUOUS_COMPARABLE_EVIDENCE: tuple[str, str] = ("ambiguous_comparable_evidence", "data")
     NO_SCHEDULE_DATA: tuple[str, str] = ("no_schedule_data", "data")
     NO_SETTLED_BETS: tuple[str, str] = ("no_settled_bets", "data")
     NO_SPLIT_DATA: tuple[str, str] = ("no_split_data", "data")

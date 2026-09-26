@@ -589,32 +589,51 @@
         "title": "BlockedStatus",
         "type": "object"
       },
+      "ComparableFactor": {
+        "additionalProperties": false,
+        "description": "One feature's contribution to the squared distance between two games.",
+        "properties": {
+          "candidate_value": {
+            "title": "Candidate Value",
+            "type": "number"
+          },
+          "feature_name": {
+            "title": "Feature Name",
+            "type": "string"
+          },
+          "query_value": {
+            "title": "Query Value",
+            "type": "number"
+          },
+          "squared_difference": {
+            "title": "Squared Difference",
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature_name",
+          "query_value",
+          "candidate_value",
+          "squared_difference"
+        ],
+        "title": "ComparableFactor",
+        "type": "object"
+      },
       "ComparableGame": {
         "additionalProperties": false,
-        "description": "A historical game similar to the current matchup.",
+        "description": "A historical game similar to the current matchup, with its real outcome.",
         "properties": {
-          "date_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "e.g. '2024 \u00b7 Wk 11'.",
-            "title": "Date Label"
+          "away_score": {
+            "title": "Away Score",
+            "type": "integer"
           },
-          "favorite": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Favorite"
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "distance": {
+            "title": "Distance",
+            "type": "number"
           },
           "favorite_covered": {
             "anyOf": [
@@ -627,6 +646,18 @@
             ],
             "title": "Favorite Covered"
           },
+          "favorite_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Long team name of the historical favorite; null if no line.",
+            "title": "Favorite Team"
+          },
           "favorite_won": {
             "anyOf": [
               {
@@ -638,51 +669,66 @@
             ],
             "title": "Favorite Won"
           },
-          "final_score": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Final Score"
+          "game_date": {
+            "title": "Game Date",
+            "type": "string"
           },
-          "line": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Line"
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
           },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
+          "home_score": {
+            "title": "Home Score",
+            "type": "integer"
           },
-          "underdog": {
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "spread_magnitude": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Underdog"
+            "description": "Absolute historical closing spread; null if no line.",
+            "title": "Spread Magnitude"
+          },
+          "top_contributing_features": {
+            "items": {
+              "$ref": "#/components/schemas/ComparableFactor"
+            },
+            "title": "Top Contributing Features",
+            "type": "array"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
           }
         },
+        "required": [
+          "game_id",
+          "rank",
+          "distance",
+          "season",
+          "week",
+          "game_date",
+          "away_team",
+          "home_team",
+          "away_score",
+          "home_score"
+        ],
         "title": "ComparableGame",
         "type": "object"
       },
@@ -8636,7 +8682,7 @@
     },
     "/games/{game_id}/comparables": {
       "get": {
-        "description": "Return null comparables until comparables retrieval lands.",
+        "description": "Return one selected game's comparable-games shape.",
         "operationId": "get_game_comparables_games__game_id__comparables_get",
         "parameters": [
           {
@@ -10049,7 +10095,7 @@
       "name": "swing-factors"
     },
     {
-      "description": "Historical comparable games. Blocked on comparables retrieval.",
+      "description": "Historical comparable games for a Logistic Win champion's selected forecast event. Blocked for non-Logistic champions or when no retrieval evidence has been generated for this run.",
       "name": "comparables"
     },
     {

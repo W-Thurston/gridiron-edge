@@ -1,5 +1,41 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - `/comparables` contract wiring
+
+#### Changed
+
+- `GET /games/{game_id}/comparables` now resolves `comparables`,
+  `sample_size`, `favorite_win_rate`, and `favorite_cover_rate` from the
+  game's selected weekly product row and (for a Logistic champion) the
+  persisted comparable-games retrieval evidence, instead of always
+  returning a `Blocker.COMPARABLES`-blocked null shape. Unknown `game_id`
+  now returns 404.
+- `ComparableGame`'s prior speculative fields (`date_label`, `favorite`,
+  `underdog`, `line`, `final_score`, `note` — never wired to real data) are
+  replaced with the persisted match's own fields: `game_id`, `rank`,
+  `distance`, `season`, `week`, `game_date`, `away_team`, `home_team`,
+  `away_score`, `home_score`, `favorite_team`, `spread_magnitude`,
+  `favorite_won`, `favorite_covered`, `top_contributing_features`. No
+  backward compatibility preserved. `api-schema.json` and the generated
+  frontend client are regenerated.
+- Added `Unavailable.NO_COMPARABLE_EVIDENCE` and
+  `AMBIGUOUS_COMPARABLE_EVIDENCE` field-status slugs.
+- An honestly-empty result (`comparables: []`, `sample_size: 0`) is
+  distinguished from a blocked one — a genuinely unusual matchup, not
+  missing evidence.
+
+#### Real-artifact validation
+
+Called `GET /games/{game_id}/comparables` through the real FastAPI app
+against the real repository. The selected 2026-2027 Week 2 product's
+`2026_02_CAR_ATL` returned 6 real comparables
+(`favorite_win_rate=1.0`, `favorite_cover_rate=0.167`); `2026_02_GB_NYJ`
+returned the honest-empty path (`sample_size=0`, no blocked field_status).
+An unknown `game_id` returned 404. No `data/` artifact changed; this unit
+is read-only at the API layer. See `DECISIONS.md` D55.
+
+ROADMAP.md Tier 3 #10 is now fully complete, closing Track A (U1–U14).
+
 ### 2026-09-26 - Comparable-games historical corpus and retrieval evidence
 
 #### Added

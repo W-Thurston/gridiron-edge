@@ -8,6 +8,75 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D55 - `/comparables` serializes real `ComparableGameMatch` fields directly, not pre-formatted display strings
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #10's U14: `GET /games/{game_id}/comparables` now
+resolves `comparables`, `sample_size`, `favorite_win_rate`, and
+`favorite_cover_rate` from the game's selected weekly product row and
+(when applicable) U13's persisted comparable-games retrieval evidence,
+instead of unconditionally returning a `Blocker.COMPARABLES`-blocked null
+shape.
+
+`ComparableGame`'s prior speculative fields (`date_label`, `favorite`,
+`underdog`, `line`, `final_score`, `note` — dev-era text never wired to
+real data) are replaced with the persisted `ComparableGameMatch`'s own
+fields directly: `game_id`, `rank`, `distance`, `season`, `week`,
+`game_date`, `away_team`, `home_team`, `away_score`, `home_score`,
+`favorite_team`, `spread_magnitude`, `favorite_won`, `favorite_covered`,
+and `top_contributing_features` (raw feature names, matching D52's "no
+invented human-readable labels" precedent for `ExplainFactor`). No
+`date_label`-style formatted string is generated server-side — combining
+`season`/`week` into a display label is a frontend concern, same
+reasoning D52 applied to feature labels.
+
+`comparables` resolution is a four-way rule based on the selected weekly
+product row, mirroring `/explain`'s shape (D52) exactly:
+
+1. `win_status != "available"`: all four fields null, blocked
+   `Unavailable.NO_WIN_FORECAST` (reused, not a new slug — a missing Win
+   forecast blocks comparables for the identical reason it blocks
+   `/explain`'s factors).
+2. `win_status == "available"` and `win_model_type != "logistic"`: blocked
+   `Blocker.COMPARABLES` (reused) — no corpus exists yet for a non-Logistic
+   champion (U13's scope, D54), not a calibration problem.
+3. `win_model_type == "logistic"`, more than one persisted batch claims the
+   row's `win_event_id` (`AmbiguousComparableGamesError` — the event was
+   matched against two different corpus generations, D54): blocked, new
+   `Unavailable.AMBIGUOUS_COMPARABLE_EVIDENCE`.
+4. `win_model_type == "logistic"`, no batch found yet: blocked, new
+   `Unavailable.NO_COMPARABLE_EVIDENCE` (`find-comparables` is a manual
+   per-run command, not run automatically for every weekly forecast).
+5. Otherwise: all four fields populated directly from the persisted batch,
+   with zero request-time computation — an empty `matches` tuple (a
+   genuinely unusual matchup, D54) serializes as `comparables: []`,
+   `sample_size: 0`, not a blocked state, since it is real evidence saying
+   "nothing was similar enough," not missing evidence.
+
+Real-artifact validation against the currently selected 2026-2027 Week 2
+product confirmed both branches of the "populated" case exist today:
+`2026_02_CAR_ATL` returns 6 real comparables (favorite win rate 1.0, cover
+rate 0.167); `2026_02_GB_NYJ` returns an honest empty list
+(`sample_size: 0`, no blocked field_status) rather than a placeholder.
+
+#### Alternatives considered
+
+- Keeping `date_label`/`line`/`final_score` as formatted strings computed
+  server-side. Rejected: formatting is a presentation concern with no
+  single canonical format, and the API already has precedent (D52) for
+  exposing raw computed values and letting the frontend format them.
+- Introducing a new `Unavailable` slug for the non-Logistic-champion case
+  instead of reusing `Blocker.COMPARABLES`. Rejected: `Blocker.COMPARABLES`
+  already means exactly "comparables retrieval, deferred" in the registry,
+  and D54 already established that this case isn't blocked by a data
+  problem but by U13's deliberate model-type scoping — the existing slug
+  fits without inventing a near-duplicate.
+
+---
+
 ### D54 - Comparable-games retrieval is built from a new historical feature-vector corpus, not the existing prediction-input or backtest evidence stores
 
 **Date:** 2026-09-26

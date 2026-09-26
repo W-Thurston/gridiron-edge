@@ -1591,6 +1591,133 @@ comparable" is named per real feature, and the retrieval threshold is
 derived empirically rather than chosen. `/games/{game_id}/comparables`
 remains correctly blocked until Unit 14 wires the API contract.
 
+#### Unit 14: `/comparables` contract wiring [Completed September 26, 2026]
+
+##### Completed
+
+Implemented ROADMAP.md Tier 3 #10's remaining half: `GET
+/games/{game_id}/comparables` now resolves `comparables`, `sample_size`,
+`favorite_win_rate`, and `favorite_cover_rate` from the game's selected
+weekly product row and, for a Logistic champion, U13's persisted
+comparable-games retrieval evidence — instead of an unconditional
+`Blocker.COMPARABLES`-blocked null shape. `ComparableGame`'s prior
+speculative, never-wired fields (`date_label`, `favorite`, `underdog`,
+`line`, `final_score`, `note`) are replaced with the persisted
+`ComparableGameMatch`'s own fields directly. This closes Tier 3 #10 and,
+with it, Track A (U1–U14) in full.
+
+##### Goal
+
+Wire `/games/{game_id}/comparables` to serve U13's persisted evidence with
+no request-time computation, mirroring U11's `/explain` contract change,
+and regenerate the frontend client.
+
+##### Design decisions
+
+- Four-way `comparables` unavailability rule mirroring D52's `/explain`
+  shape exactly: `win_status != "available"` → reused `NO_WIN_FORECAST`;
+  Win champion isn't Logistic → reused `Blocker.COMPARABLES` (no corpus
+  exists for that model type yet, per U13's scope, not a calibration
+  problem); more than one batch claims the event
+  (`AmbiguousComparableGamesError`) → new `AMBIGUOUS_COMPARABLE_EVIDENCE`;
+  Logistic with no batch yet → new `NO_COMPARABLE_EVIDENCE`. All four
+  response fields are blocked or populated together — unlike `/explain`,
+  there is no independent "headline" field here.
+- `ComparableGame` redesigned to expose `game_id`, `rank`, `distance`,
+  `season`, `week`, `game_date`, `away_team`, `home_team`, `away_score`,
+  `home_score`, `favorite_team`, `spread_magnitude`, `favorite_won`,
+  `favorite_covered`, and `top_contributing_features` directly — no
+  server-generated display strings (`date_label`, `line`, `final_score`).
+  Formatting real values into presentation text is a frontend concern,
+  same reasoning D52 applied to feature labels.
+- An empty `matches` tuple serializes as `comparables: []`, `sample_size:
+  0` — not a blocked state. It is real evidence ("nothing was similar
+  enough"), not missing evidence; two of the real selected Week 2 games
+  (`2026_02_GB_NYJ`, `2026_02_MIN_CHI`) exercise this path today.
+- `/games/sf-bal/comparables` removed from `test_app_routes.py`'s
+  generic always-200 smoke table: an unknown `game_id` now legitimately
+  404s, exactly as U11 did for `/explain`, covered instead by a dedicated
+  route test file.
+- See `DECISIONS.md` D55.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/api/serializers/comparables.py` -
+  `serialize_game_comparables()` builds the response and owns all
+  `_meta.field_status` construction per D18, including the four-way rule.
+- `tests/unit/api/test_serializers_comparables.py` - Coverage for all five
+  states (win-unavailable, non-Logistic champion, ambiguous evidence, no
+  evidence yet, populated including the honest-empty case).
+- `tests/unit/api/test_routes_comparables.py` - `TestClient` coverage: 404
+  on unknown `game_id`; 200 with real comparables; non-Logistic-champion,
+  win-unavailable, ambiguous-evidence, and no-evidence-yet blocked states,
+  mocking the route's own loader functions.
+
+Changed:
+- `src/gridiron_edge/api/schemas/comparables.py` - `ComparableGame`:
+  removed `date_label`/`favorite`/`underdog`/`line`/`final_score`/`note`;
+  added `game_id`, `rank`, `distance`, `season`, `week`, `game_date`,
+  `away_team`, `home_team`, `away_score`, `home_score`,
+  `top_contributing_features` (new `ComparableFactor` element type).
+- `src/gridiron_edge/api/routes/comparables.py` - Real resolution logic
+  (`load_game` → 404 or branch on `win_status`/`win_model_type` →
+  optionally `load_comparable_games_for_event`, catching
+  `AmbiguousComparableGamesError`) replacing the unconditional stub.
+- `src/gridiron_edge/api/loaders.py` - Added
+  `load_comparable_games_for_event()`, wrapping
+  `find_comparable_games_by_event` with `repo=settings.repo_root` per D19.
+- `src/gridiron_edge/api/meta.py` - Added
+  `Unavailable.NO_COMPARABLE_EVIDENCE`, `AMBIGUOUS_COMPARABLE_EVIDENCE`.
+- `src/gridiron_edge/api/app.py` - Updated the `comparables` tag
+  description to reflect the real contract instead of "blocked."
+- `tests/unit/api/test_schemas_comparables.py` - Rewritten for the new
+  `ComparableGame`/`ComparableFactor` shape.
+- `tests/unit/api/test_app_routes.py` - Removed
+  `/games/{game_id}/comparables` from the generic always-200 smoke table.
+- `api-schema.json` - Regenerated via `gridiron api export-schema`.
+- `HANDOFF.md` - `/games/{game_id}/comparables` subsection now describes
+  the real four-state contract instead of "not yet wired."
+- `CHANGELOG.md`, `DECISIONS.md` (D55) - This unit's record.
+- `ROADMAP.md` - Tier 3 #10 marked fully complete; Track A gate confirmed
+  at U1–U14, all closed.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,188 tests, up
+from 4,173; the 15 net new/changed tests are listed above). Frontend gate
+passed: `pnpm gen:api` regenerated `frontend/src/api/schema.ts` (gitignored)
+from the updated `api-schema.json`; `pnpm lint`, `pnpm build` (148 modules,
+no reference to the removed display-string fields anywhere in the
+frontend), and `pnpm test:run` (511 tests) all passed unchanged — no
+frontend UI consumes this contract yet.
+
+Real-artifact validation (read-only, no `data/` writes): called `GET
+/games/{game_id}/comparables` through the real FastAPI app against the
+real repository. `2026_02_CAR_ATL` (selected 2026-2027 Week 2 product)
+returned 6 real comparables (`favorite_win_rate=1.0`,
+`favorite_cover_rate=0.167`), matching U13's CLI validation exactly.
+`2026_02_GB_NYJ` returned `comparables: []`, `sample_size: 0`, with no
+blocked `_meta.field_status` entry — the honest-empty path, confirmed live
+rather than only in fixtures. An unknown `game_id` returned 404.
+
+##### Acceptance
+
+`GET /games/{game_id}/comparables` serializes only persisted state — the
+selected weekly product row and, when applicable, U13's persisted
+comparable-games evidence — with no request-time computation.
+`ComparableGame` carries real match fields, not the prior unwired display
+strings. Every non-populated state (win unavailable, non-Logistic
+champion, no evidence yet, ambiguous evidence) is marked through
+`_meta.field_status` with a distinguishing slug; none produces a 500. An
+honestly-empty result is distinguished from a blocked one. `api-schema.json`
+and the generated frontend client reflect the new contract; no frontend UI
+behavior changed. ROADMAP.md Tier 3 #10 (U13 + U14) is now fully complete,
+and Track A (U1–U14) is complete.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed
