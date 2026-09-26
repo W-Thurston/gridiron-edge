@@ -362,9 +362,11 @@ Inspect each candidate endpoint before scheduling work. Move meaningful request-
 
 The known candidate is model-performance summary delivery, but the current implementation must be inspected before treating it as a gap.
 
-#### 23. Add explanation and scenario surfaces
+#### 23. Add explanation and scenario surfaces [Partial: explanation + comparables shipped, U16]
 
 After backend evidence exists, expose explanations, comparable games, and scenarios with exact provenance and truthful unavailable states.
+
+Done: `ExplainPage` renders the real factor waterfall (sorted by magnitude, collapsed beyond the top 8 with a "show more" disclosure) and the real comparable-games table, both served from persisted evidence with no request-time computation; a genuinely-empty comparables result is shown distinctly from a blocked one. Not done: the credible band, outcome distribution, and market comparison remain `ComingSoonCard` placeholders — they depend on the scenario engine (Tier 7), which is unbuilt.
 
 #### 24. Complete evidence-backed frontend enhancements
 
@@ -470,9 +472,9 @@ Repeated selected-plan quote coverage, validated closeout and CLV, empirical rec
 
 There is no integrated injury/news feed or live-game state. Dependent API and frontend fields must remain explicitly blocked.
 
-### Scenario and explanation evidence are unavailable
+### What-if scenario evidence is unavailable
 
-Persisted feature attribution and what-if propagation are not implemented. Comparable-game retrieval is complete and served (U13/U14, `DECISIONS.md` D54/D55); no frontend surface consumes it yet (Tier 8 #23/#24).
+What-if propagation and the scenario engine (Tier 7) are not implemented. `ExplainPage` shows this honestly as three "not yet available" placeholders (credible band, outcome distribution, market comparison) rather than fabricated interactivity. Persisted feature attribution and comparable-game retrieval are both complete and served through the real `ExplainPage` UI (U13/U14/U16, `DECISIONS.md` D54/D55/D57).
 
 ### Champion selection does not yet gate on explainability
 

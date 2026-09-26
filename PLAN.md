@@ -1830,6 +1830,102 @@ live API. The two disposed duplicate batches are gone, not edited in
 place, with the disposition and its rationale recorded in `DECISIONS.md`
 D56; `prediction_input_evidence` is untouched.
 
+#### Unit 16: `ExplainPage` — factor waterfall and comparables, no scenario controls [Completed September 26, 2026]
+
+##### Completed
+
+Rebuilt `ExplainPage` from a hardcoded `BlockedScreen` into a real,
+data-driven page over U10/U11's Logistic explanation evidence and
+U13/U14's comparable-games evidence — the first frontend consumer of
+either contract. Shows the real factor waterfall (sorted by magnitude,
+top 8 with a "show more" disclosure) and the real comparable-games table
+(with an honest distinct empty state), while the credible band, outcome
+distribution, and market comparison stay explicit `ComingSoonCard`
+placeholders pending the scenario engine (Tier 7, unbuilt). Verified live
+in a headless browser against the real dev server and API, not just
+component tests. See `DECISIONS.md` D57.
+
+##### Goal
+
+Give the persisted explanation and comparable-games evidence (Tier 3 #8,
+#10) a real frontend surface, scoped to what the backend actually
+supports today — no fabricated sensitivity controls, distribution, or
+market comparison.
+
+##### Design decisions
+
+- New hooks `useExplain(gameId)`/`useComparables(gameId)` in
+  `api/hooks.ts`, exact shape of the existing `useGame` (react-query +
+  generated client, `enabled: gameId !== null`).
+- Header data (team names, game date) comes from the existing `useGame`
+  hook — `GameExplain` itself carries no team/date fields, so the page
+  composes three independent queries for one screen.
+- Factors: intercept pinned first, remaining 111 sorted by descending
+  `|log_odds_contribution|`, top 8 shown with a "Show N more factors"
+  toggle — implements the collapsible-waterfall request made earlier this
+  session; no data is dropped, only the default view is bounded.
+- Comparables: an empty `comparables: []` renders a distinct plain-text
+  "no historical game was similar enough" message, never conflated with a
+  blocked `_meta.field_status` state.
+- Every field renders through the existing `FieldValue`/`BlockedField`
+  components — no new field-status presentation code needed, and no field
+  is silently hidden when unavailable.
+- `TeamMark` already resolves team identity by either abbreviation or long
+  name (`useTeamByAbbr` checks both), so `ComparableGame`'s persisted long
+  team names render correctly with zero new resolution code.
+- `route.params.gameId` was already threaded in everywhere `WhyLink` is
+  used, so no navigation changes were needed.
+- See `DECISIONS.md` D57 for the full rationale and alternatives
+  considered (why not the full mockup-style cumulative waterfall bar; why
+  not hide the scenario-dependent sections entirely).
+
+##### Files Added/Removed/Changed
+
+Added:
+- `frontend/src/screens/ExplainPage.test.tsx` - Component coverage: loading
+  state, populated factors/comparables, magnitude sorting and the
+  show-more/show-fewer toggle, blocked-factors placeholder, honestly-empty
+  comparables, and a populated comparable row's real outcome fields.
+
+Changed:
+- `frontend/src/screens/ExplainPage.tsx` - Full rewrite from
+  `BlockedScreen` to a real page (header, factor waterfall, comparables
+  table, scenario-dependent `ComingSoonCard`s).
+- `frontend/src/api/hooks.ts` - Added `useExplain`, `useComparables`.
+- `DECISIONS.md` (D57), `CHANGELOG.md`, `ROADMAP.md` - This unit's record.
+
+Removed:
+- None.
+
+##### Tests
+
+`pnpm lint`, `pnpm build` (149 modules, zero type errors against the
+regenerated `schema.ts`), and `pnpm test:run` (517 tests, up from 511 — 6
+new) all passed.
+
+Real-browser validation (headless Chromium against the real
+`gridiron api serve` and `pnpm dev`, not a mock): navigated to
+`#/explain?gameId=2026_02_CAR_ATL` — real headline win probability
+(55.4%), 112 real factor rows (8 shown, "Show 103 more factors" expands to
+all, "Show fewer factors" collapses back), 6 real comparable games with
+correct team colors/scores/favorite/won/cover, and all three
+scenario-dependent cards showing "Not yet available." Navigated to
+`#/explain?gameId=2026_02_GB_NYJ` (a genuinely unusual matchup) — real
+factors populated normally, comparables section shows the honest-empty
+message instead of a blocked state. Zero console errors on either page.
+Screenshots captured for both.
+
+##### Acceptance
+
+`ExplainPage` shows real factors and real comparables for a real game with
+both evidence types generated, verified live in a browser against the real
+API — not fabricated, not silently hidden when unavailable. Unavailable
+and honestly-empty states are visually distinct. The scenario-dependent
+section is clearly marked "not yet available," not omitted or faked.
+ROADMAP.md Tier 3 #10 and Tier 8 #23 both now have a shipped frontend
+surface for explanation and comparable-games evidence; the scenario engine
+(band/distribution/market comparison) remains explicitly future work.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

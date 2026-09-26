@@ -1,5 +1,32 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - `ExplainPage`: real factor waterfall and comparable-games table
+
+#### Added
+
+- `ExplainPage` is a real, data-driven page for the first time — replaces
+  the hardcoded `BlockedScreen` placeholder. Shows the real Logistic factor
+  waterfall (sorted by contribution magnitude, top 8 with a "show more"
+  disclosure revealing all 111) and the real comparable-games table (with
+  a distinct honest-empty state for a genuinely unusual matchup), both
+  served from persisted evidence with no request-time computation.
+- The credible band, outcome distribution, and market comparison remain
+  explicit `ComingSoonCard` "not yet available" placeholders — they depend
+  on the scenario engine (Tier 7), which does not exist yet.
+- New `useExplain`/`useComparables` hooks in `api/hooks.ts`.
+
+#### Verified
+
+Live in a headless browser against the real `gridiron api serve` and
+`pnpm dev`, not just component tests: `2026_02_CAR_ATL` renders a real
+55.4% headline probability, 112 real factor rows, and 6 real comparable
+games with correct team colors, scores, and outcomes; `2026_02_GB_NYJ`
+renders the honest-empty comparables message. Zero console errors on
+either. `pnpm lint`, `pnpm build`, and `pnpm test:run` (517 tests, up from
+511) all passed.
+
+See `DECISIONS.md` D57.
+
 ### 2026-09-26 - Logistic explanation batch identity fix and duplicate disposition
 
 #### Fixed

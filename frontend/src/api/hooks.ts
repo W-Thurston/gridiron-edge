@@ -56,6 +56,47 @@ export function useGame(gameId: string | null) {
     enabled: gameId !== null,
   });
 }
+
+/**
+ * Fetches persisted Logistic explanation evidence for a single game.
+ */
+export function useExplain(gameId: string | null) {
+  return useQuery({
+    queryKey: ["explain", gameId],
+    queryFn: async () => {
+      if (!gameId) throw new Error("gameId required");
+      const { data, error } = await apiClient.GET("/games/{game_id}/explain", {
+        params: { path: { game_id: gameId } },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: gameId !== null,
+  });
+}
+
+/**
+ * Fetches persisted comparable-games retrieval evidence for a single game.
+ */
+export function useComparables(gameId: string | null) {
+  return useQuery({
+    queryKey: ["comparables", gameId],
+    queryFn: async () => {
+      if (!gameId) throw new Error("gameId required");
+      const { data, error } = await apiClient.GET("/games/{game_id}/comparables", {
+        params: { path: { game_id: gameId } },
+      });
+      if (error) {
+        throw new Error(JSON.stringify(error));
+      }
+      return data;
+    },
+    enabled: gameId !== null,
+  });
+}
+
 /**
  * Fetches the team rankings list.
  */

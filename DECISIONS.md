@@ -8,6 +8,72 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D57 - `ExplainPage` sorts factors by magnitude with a top-8 disclosure; scenario-dependent sections stay explicit placeholders
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #10/Tier 8 #23's U16 rebuilds `ExplainPage` from a
+hardcoded `BlockedScreen` into a real page over persisted evidence
+(`GET /games/{game_id}/explain`, `GET /games/{game_id}/comparables`), scoped
+deliberately: the factor waterfall and comparables table are real; the
+credible band, outcome distribution, and market comparison stay
+`ComingSoonCard` placeholders, since all three depend on the unbuilt
+scenario engine (Tier 7) and showing them as real content would fabricate
+interactivity the backend cannot back.
+
+**Factor presentation:** the persisted `factors` array is in feature-schema
+order, not a meaningful presentation order for 111 real features. The page
+pins the intercept first (the model's own baseline, `is_baseline=True`),
+then sorts the remaining factors by descending `|log_odds_contribution|`
+and shows the top 8 with a "Show N more factors" disclosure revealing the
+rest. This directly implements a specific request made earlier in this
+session ("I want all features to be explainable and then, on the frontend,
+we can hide the less important ones under a collapsible section") — full
+data stays available (nothing is dropped or truncated server-side; U10/U11
+already persist and serve every feature), only the *default* screen
+real-estate is bounded. Sorting by real contribution magnitude is a
+legitimate presentation choice, not fabricated content — no label,
+description, or grouping was invented.
+
+**Comparables presentation:** an empty `comparables: []` (a genuinely
+unusual matchup, D54) renders a distinct plain-text message from a blocked
+`_meta.field_status` entry (rendered via the existing `BlockedField`/
+`FieldValue` components) — conflating the two would misrepresent "nothing
+was similar enough" as "no evidence exists yet."
+
+**Team identity:** `TeamMark`/`TeamHero` primitives already resolve either
+a short abbreviation or a long team name via `useTeamByAbbr` (checks both
+`team.abbr` and `team.name`), so `ComparableGame.away_team`/`home_team`
+(persisted as long names) render correctly with no new resolution code.
+
+Real-browser validation (headless Chromium against the real dev server and
+API, not just component tests): `2026_02_CAR_ATL` renders 112 real factor
+rows (sorted, 8 shown + expandable) and 6 real comparable games with
+correct team colors, scores, and win/cover outcomes; `2026_02_GB_NYJ`
+renders the honest-empty comparables message; zero console errors on
+either. Screenshots captured for both.
+
+#### Alternatives considered
+
+- Building the full mockup-style cumulative probability-space waterfall bar
+  visualization instead of a sorted value list. Rejected for this unit:
+  the *data* (real, persisted contributions) is the new and valuable part;
+  a richer bar-chart treatment is a natural follow-up that doesn't change
+  the underlying contract, and building it now without a decided visual
+  language would be presentation work ahead of need.
+- Showing all 111 features with no collapse. Rejected: unreadable at a
+  glance and defeats the point of highlighting what actually moved the
+  number; the full list stays one click away, never removed.
+- Hiding the scenario-dependent sections entirely instead of showing
+  `ComingSoonCard` placeholders. Rejected: the frontend's own convention
+  (CLAUDE.md: "never silently hide unavailable data") already exists and
+  fits exactly — an explicit "not yet available" beats a missing section
+  a viewer might mistake for an oversight.
+
+---
+
 ### D56 - `LogisticExplanationBatch` identity excludes `generated_at`; the real duplicate batches are disposed of, not archived in place
 
 **Date:** 2026-09-26
