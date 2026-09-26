@@ -80,17 +80,23 @@ def logistic_explanation_batch_id(
     model_content_digest: str,
     scaler_content_digest: str,
     feature_schema: PredictionFeatureSchema,
-    generated_at: datetime,
     events: tuple[LogisticExplanationEvent, ...],
 ) -> str:
-    """Return the SHA-256 identity of one canonical explanation batch payload."""
+    """Return the SHA-256 identity of one canonical explanation batch payload.
+
+    Deliberately excludes ``generated_at``: identity is determined entirely
+    by the source run/evidence and the reconstructed events, so re-running
+    ``explain-logistic`` against unchanged evidence reproduces the same
+    ``batch_id`` (an idempotent write-or-replay) instead of a second batch
+    that legitimately claims the same events (see `DECISIONS.md` D56 and
+    D54's identical fix for comparable-games evidence).
+    """
     payload = _identity_payload(
         run_id=run_id,
         evidence_id=evidence_id,
         model_content_digest=model_content_digest,
         scaler_content_digest=scaler_content_digest,
         feature_schema=feature_schema,
-        generated_at=generated_at,
         events=events,
     )
     return _canonical_digest(payload)
@@ -113,7 +119,6 @@ def create_logistic_explanation_batch(
         model_content_digest=model_content_digest,
         scaler_content_digest=scaler_content_digest,
         feature_schema=feature_schema,
-        generated_at=generated_at,
         events=events,
     )
     batch = LogisticExplanationBatch(
@@ -152,7 +157,6 @@ def validate_logistic_explanation_batch(batch: LogisticExplanationBatch) -> None
         model_content_digest=batch.model_content_digest,
         scaler_content_digest=batch.scaler_content_digest,
         feature_schema=batch.feature_schema,
-        generated_at=batch.generated_at,
         events=batch.events,
     )
     if batch.batch_id != expected_id:
@@ -167,13 +171,13 @@ def logistic_explanation_batch_payload(
     return {
         "schema_version": batch.schema_version,
         "batch_id": batch.batch_id,
+        "generated_at": batch.generated_at.isoformat(),
         **_identity_payload(
             run_id=batch.run_id,
             evidence_id=batch.evidence_id,
             model_content_digest=batch.model_content_digest,
             scaler_content_digest=batch.scaler_content_digest,
             feature_schema=batch.feature_schema,
-            generated_at=batch.generated_at,
             events=batch.events,
         ),
     }
@@ -313,7 +317,6 @@ def _identity_payload(
     model_content_digest: str,
     scaler_content_digest: str,
     feature_schema: PredictionFeatureSchema,
-    generated_at: datetime,
     events: tuple[LogisticExplanationEvent, ...],
 ) -> dict[str, object]:
     return {
@@ -322,7 +325,6 @@ def _identity_payload(
         "model_content_digest": _digest(model_content_digest, "model_content_digest"),
         "scaler_content_digest": _digest(scaler_content_digest, "scaler_content_digest"),
         "feature_schema": _feature_schema_payload(feature_schema),
-        "generated_at": _utc(generated_at, "generated_at").isoformat(),
         "events": [_event_payload(event) for event in events],
     }
 

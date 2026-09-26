@@ -29,16 +29,34 @@ class AmbiguousLogisticExplanationError(ValueError):
     """More than one persisted batch claims the same event.
 
     The store is immutable and create-only with no "current" selection
-    concept (see `list_logistic_explanation_batches`), so this can
-    genuinely happen — e.g. two separate `explain-logistic` invocations
-    over the same run's evidence. Distinct from a malformed-artifact
-    `ValueError`, which callers should treat as store corruption.
+    concept (see `list_logistic_explanation_batches`). `batch_id` is
+    idempotent per (run, evidence) pair as of D56, so this no longer
+    happens from re-running `explain-logistic` against unchanged evidence
+    — it now specifically indicates a genuine data-provenance conflict
+    (for example two distinct evidence generations claiming the same
+    event) requiring deliberate resolution. Distinct from a
+    malformed-artifact `ValueError`, which callers should treat as store
+    corruption.
     """
 
 
 def logistic_explanation_root(repo: Path | None = None) -> Path:
     """Return the canonical Logistic explanation evidence store root."""
     return (repo or get_settings().repo_root) / _STORE_DIRECTORY
+
+
+def _embedded_id(path: Path, *, key: str) -> str | None:
+    """Return one already-written artifact's embedded identity, or ``None``.
+
+    Malformed JSON or an unexpected shape both resolve to ``None`` (never
+    matches a real identity), which the caller treats as a genuine
+    conflict rather than letting the decode error propagate uncaught.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return raw.get(key) if isinstance(raw, dict) else None
 
 
 def logistic_explanation_batch_path(
@@ -61,9 +79,25 @@ def write_logistic_explanation_batch(
     *,
     repo: Path | None = None,
 ) -> Path:
-    """Create one immutable explanation batch artifact or accept exact replay."""
+    """Create one immutable explanation batch artifact or accept an idempotent replay.
+
+    ``batch_id`` deliberately excludes ``generated_at`` (D56), so re-running
+    `explain-logistic` against unchanged evidence legitimately produces a
+    payload that differs only in that timestamp. This does not compare full
+    encoded bytes on replay: an existing file at this identity-addressed
+    path is definitionally a valid prior write of the same content; only
+    its own embedded identity is re-checked.
+    """
     validate_logistic_explanation_batch(batch)
     path = logistic_explanation_batch_path(batch.batch_id, repo=repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if _embedded_id(path, key="batch_id") != batch.batch_id:
+            raise ValueError(
+                "Logistic explanation batch identity cannot be reused with different content."
+            )
+        return path
+
     encoded = (
         json.dumps(
             {
@@ -77,15 +111,6 @@ def write_logistic_explanation_batch(
         )
         + "\n"
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        if path.read_text(encoding="utf-8") != encoded:
-            raise ValueError(
-                "Logistic explanation batch identity cannot be reused with different content."
-            )
-        read_logistic_explanation_batch(path)
-        return path
-
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
         with temporary.open("x", encoding="utf-8") as stream:
@@ -95,11 +120,10 @@ def write_logistic_explanation_batch(
         try:
             os.link(temporary, path)
         except FileExistsError:
-            if path.read_text(encoding="utf-8") != encoded:
+            if _embedded_id(path, key="batch_id") != batch.batch_id:
                 raise ValueError(
                     "Logistic explanation batch identity cannot be reused with different content."
                 ) from None
-        read_logistic_explanation_batch(path)
     finally:
         temporary.unlink(missing_ok=True)
     return path

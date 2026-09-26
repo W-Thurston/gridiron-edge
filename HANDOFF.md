@@ -342,8 +342,12 @@ data/output/logistic_explanations/schema=1/batches/{batch_id}.json
 
 The store is immutable and create-only; there is no "current" selection
 concept, since batches are keyed by run and source evidence rather than
-superseded. Random Forest/XGBoost attribution is not built: Random Forest
-is unconditionally wrapped in isotonic calibration, and XGBoost is
+superseded. `batch_id` excludes `generated_at` from its identity (D56), so
+re-running `explain-logistic` against unchanged evidence is a true no-op,
+not a second batch claiming the same events.
+
+Random Forest/XGBoost attribution is not built: Random Forest is
+unconditionally wrapped in isotonic calibration, and XGBoost is
 conditionally wrapped depending on holdout ECE per training run, so neither
 can assume its raw output is what is actually served (ROADMAP.md Tier 3
 #9; `DECISIONS.md` D53).
@@ -366,10 +370,11 @@ above:
 - More than one persisted batch claims the same event
   (`AmbiguousLogisticExplanationError`, since the store is create-only with
   no "current" selection concept — see above): `factors` null, blocked
-  `ambiguous_explanation_evidence`, not a 500. This is not hypothetical: the
-  real store currently has two batches both covering all 16 events of the
-  selected 2026-2027 Week 2 product's run, so every currently explainable
-  real game hits this path today, not the populated-factors path.
+  `ambiguous_explanation_evidence`, not a 500. As of D56's identity fix this
+  no longer happens from re-running `explain-logistic`; the real store's
+  two accidental duplicate batches (from before that fix) were disposed of
+  and regenerated as one clean batch, so all 16 real Week 2 games currently
+  hit the populated-factors path below, not this one.
 - Otherwise: `factors` is populated from the persisted event, with the
   intercept as its own leading factor (`is_baseline=True`) ahead of one
   factor per feature in persisted order. Each factor carries

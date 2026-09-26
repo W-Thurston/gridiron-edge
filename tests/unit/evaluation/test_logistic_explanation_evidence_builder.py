@@ -245,6 +245,27 @@ class TestBuildAndWriteLogisticExplanationBatch:
         assert first.batch.batch_id == second.batch.batch_id
         assert first.manifest_path == second.manifest_path
 
+    def test_is_idempotent_on_rerun_with_different_timestamp(self, tmp_path: Path) -> None:
+        """A real CLI rerun always passes a fresh `datetime.now(UTC)`.
+
+        `generated_at` is excluded from `batch_id` (D56), so this must not
+        raise "does not exactly replay input" even though the two calls'
+        constructed (pre-write) batches differ in that one field.
+        """
+        evidence = _write_evidence(tmp_path)
+
+        first = build_and_write_logistic_explanation_batch(
+            run_id=evidence.run_id, generated_at=GENERATED_AT, repo=tmp_path
+        )
+        second = build_and_write_logistic_explanation_batch(
+            run_id=evidence.run_id,
+            generated_at=datetime(2027, 1, 1, tzinfo=UTC),
+            repo=tmp_path,
+        )
+
+        assert first.batch.batch_id == second.batch.batch_id
+        assert second.batch.generated_at == GENERATED_AT
+
     def test_rejects_run_with_no_logistic_evidence(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="No win_prob/logistic"):
             build_and_write_logistic_explanation_batch(

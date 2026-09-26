@@ -72,14 +72,14 @@ def _event(*, event_id: str = "event-1", game_id: str = "game-1") -> LogisticExp
     )
 
 
-def _batch(*, run_id: str = "run-123", events=None):
+def _batch(*, run_id: str = "run-123", events=None, generated_at: datetime = GENERATED_AT):
     return create_logistic_explanation_batch(
         run_id=run_id,
         evidence_id=EVIDENCE_ID,
         model_content_digest=MODEL_DIGEST,
         scaler_content_digest=SCALER_DIGEST,
         feature_schema=_feature_schema(),
-        generated_at=GENERATED_AT,
+        generated_at=generated_at,
         events=events if events is not None else (_event(),),
     )
 
@@ -98,6 +98,17 @@ class TestLogisticExplanationStore:
         assert first == second
         assert read_logistic_explanation_batch(first) == batch
         assert _temporary_files(tmp_path) == []
+
+    def test_rerun_with_different_generated_at_is_idempotent(self, tmp_path: Path) -> None:
+        first = _batch(generated_at=GENERATED_AT)
+        second = _batch(generated_at=datetime(2027, 1, 1, tzinfo=UTC))
+        assert first.batch_id == second.batch_id
+
+        write_logistic_explanation_batch(first, repo=tmp_path)
+        path = write_logistic_explanation_batch(second, repo=tmp_path)
+
+        read_back = read_logistic_explanation_batch(path)
+        assert read_back.generated_at == GENERATED_AT
 
     def test_existing_conflicting_content_is_rejected_without_overwrite(
         self, tmp_path: Path

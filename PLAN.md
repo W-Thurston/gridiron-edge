@@ -1718,6 +1718,118 @@ and the generated frontend client reflect the new contract; no frontend UI
 behavior changed. ROADMAP.md Tier 3 #10 (U13 + U14) is now fully complete,
 and Track A (U1–U14) is complete.
 
+#### Unit 15: Logistic explanation batch identity fix and duplicate disposition [Completed September 26, 2026]
+
+##### Completed
+
+Fixed the real defect D52 found but deferred: `LogisticExplanationBatch`'s
+identity included `generated_at`, so two `explain-logistic` invocations
+over the same run's evidence produced two distinct, otherwise-identical
+batches both legitimately claiming the same events — exactly what the real
+store had, blocking all 16 real 2026-2027 Week 2 games behind
+`ambiguous_explanation_evidence` instead of serving actual factors. Fixed
+the identity to exclude `generated_at` (mirroring D54's identical fix for
+comparable-games evidence), found and fixed a second related bug in the
+builder's own post-write self-check that the first fix exposed, disposed
+of the two real duplicate batches (deleted, not archived in place — this
+store has no selection layer to redirect), and regenerated one clean batch.
+All 16 real games now resolve to populated `factors` through the real API.
+See `DECISIONS.md` D56.
+
+##### Goal
+
+Make `explain-logistic` reruns idempotent (no second batch for unchanged
+evidence), and unblock the real store's actual duplicate-batch condition
+so `/explain` serves real data for the currently selected week instead of
+a permanently-blocked state.
+
+##### Design decisions
+
+- `logistic_explanation_batch_id`/`_identity_payload` no longer take or
+  hash `generated_at`; `logistic_explanation_batch_payload` still records
+  it in the stored JSON (informational), just outside the identity
+  computation. Exact mirror of D54's `comparable_games_batch_id` fix.
+- `write_logistic_explanation_batch`'s "reject a replay with different
+  content" check now compares the embedded `batch_id` on an existing file,
+  not full encoded bytes — the same fix already applied twice to the
+  comparable-games stores (D54), applied here for the same reason.
+- Found while exercising the fix against real data, not anticipated up
+  front: `logistic_explanation_evidence_builder.py`'s own post-write
+  verification did `if stored != batch: raise` (full dataclass equality),
+  which fails on every genuinely idempotent rerun now that `generated_at`
+  legitimately differs between the freshly-constructed `batch` and the
+  `stored` object read back from a prior run. Changed to compare
+  `batch_id` only; the build result now returns the actually-stored batch,
+  not the transient one. Neither comparable-games builder has this bug —
+  neither performs a full-equality post-write self-check, so D54 never
+  exercised this path.
+- Disposition of the two real duplicate batches: deleted, not archived in
+  place per D45's precedent, since (a) this store has no selection pointer
+  for "archived" to redirect away from — every file in the directory is
+  scanned unconditionally — and (b) both old files' embedded `batch_id`
+  would fail the new identity validation as corrupt regardless, since they
+  were hashed under the prior scheme. Confirmed byte-identical in substance
+  before deleting (same run/evidence/digests/all 16 events), so nothing
+  unique was lost. `prediction_input_evidence` (the primary evidence) was
+  never touched.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence.py` -
+  Identity payload excludes `generated_at`.
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence_store.py` -
+  Replay check compares embedded identity, not full bytes; updated
+  `AmbiguousLogisticExplanationError` docstring.
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence_builder.py` -
+  Post-write verification compares `batch_id`, not full equality; returns
+  the actually-stored batch.
+- `tests/unit/evaluation/test_logistic_explanation_evidence.py`,
+  `test_logistic_explanation_evidence_store.py`,
+  `test_logistic_explanation_evidence_builder.py` - Added
+  identity-excludes-`generated_at`, idempotent-rewrite, and
+  idempotent-rerun-with-a-different-timestamp coverage (the last of which
+  reproduces the builder bug found above).
+- `DECISIONS.md` (D56), `HANDOFF.md`, `CHANGELOG.md`, `ROADMAP.md` - This
+  unit's record.
+
+Removed:
+- `data/output/logistic_explanations/schema=1/batches/36265a5f8b1a791a433cdc2b3c64c075db8e6a9d254381e80471588f371011a9.json`,
+  `.../e2c399f9880929524e833b9014730e87675127ff769896067fdd3c13428afcd8.json`
+  - Confirmed byte-identical accidental duplicates from before this fix;
+    deleted per the disposition above, replaced by one freshly-regenerated
+    batch under the fixed identity scheme.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,191 tests, up
+from 4,188; the 3 new tests are listed above).
+
+Real-artifact validation (writes to `data/output/logistic_explanations/`,
+the store this unit owns): deleted the two confirmed-identical stale
+batches, ran `gridiron evaluate explain-logistic --run-id
+deb7ebd3-5fee-4242-b58a-d86db7e4bb53` to regenerate one clean batch
+(`bc98cdb5...`, max reconciliation error 1.11e-16, matching the original
+build's precision exactly), and confirmed re-running the same command a
+second time is a true no-op (same `batch_id`, no error) — the exact
+scenario that previously raised "does not exactly replay input" once the
+identity fix was in place without the builder fix. Called
+`GET /games/{game_id}/explain` through the real FastAPI app for all 16 real
+games in the selected 2026-2027 Week 2 product: every one now returns
+populated `factors` with no `_meta.field_status` entry for that field,
+where all 16 previously returned `ambiguous_explanation_evidence`.
+
+##### Acceptance
+
+Re-running `explain-logistic` against unchanged evidence never produces a
+second batch. All 16 real Week 2 games serve real `factors` through the
+live API. The two disposed duplicate batches are gone, not edited in
+place, with the disposition and its rationale recorded in `DECISIONS.md`
+D56; `prediction_input_evidence` is untouched.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

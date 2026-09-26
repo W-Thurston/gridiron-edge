@@ -146,8 +146,9 @@ def build_and_write_logistic_explanation_batch(
     )
     manifest_path = write_logistic_explanation_batch(batch, repo=repo)
     stored = read_logistic_explanation_batch(manifest_path)
-    if stored != batch:
+    if stored.batch_id != batch.batch_id:
         raise ValueError("Stored logistic explanation batch does not exactly replay input.")
+    batch = stored
 
     max_error = max(
         abs(event.reconstructed_probability - event.raw_estimator_output) for event in events

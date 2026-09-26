@@ -8,6 +8,80 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D56 - `LogisticExplanationBatch` identity excludes `generated_at`; the real duplicate batches are disposed of, not archived in place
+
+**Date:** 2026-09-26
+
+#### Decision
+
+`logistic_explanation_batch_id`'s identity payload no longer includes
+`generated_at`, backporting the fix already applied to comparable-games
+evidence (D54). Re-running `gridiron evaluate explain-logistic` against
+unchanged prediction-input evidence now reproduces the same `batch_id` — a
+true no-op — instead of a second, otherwise-identical batch that
+legitimately claims the same events (D52's original `AmbiguousLogisticExplanationError`
+trigger). `write_logistic_explanation_batch`'s replay check was fixed the
+same way as the comparable-games stores: it compares the embedded
+`batch_id`, not full encoded bytes, since `generated_at` now legitimately
+differs across idempotent reruns.
+
+A second, related bug surfaced only once this fix was exercised against the
+real store: `logistic_explanation_evidence_builder.py`'s own post-write
+verification (`if stored != batch: raise ...`) compared full dataclass
+equality, which — now that `generated_at` is excluded from `batch_id` but
+still a real field — fails on every genuinely idempotent rerun with a fresh
+timestamp, since `stored.generated_at` (the first run's) and `batch.generated_at`
+(this run's) legitimately differ. Fixed to compare `batch_id` only, and the
+build result now returns the actually-stored batch (with its original
+`generated_at`), not the freshly-constructed-but-never-persisted one.
+Neither comparable-games builder has this bug: neither does a full-equality
+post-write self-check, so D54's identity fix never hit it.
+
+**Disposition of the two existing real duplicate batches**
+(`36265a5f8b1a...`, `e2c399f9880929...`): confirmed byte-identical in
+substance — same `run_id`, `evidence_id`, model/scaler digest, and all 16
+events' content, differing only in `generated_at` (14 seconds apart),
+confirming an accidental double-invocation during earlier dev work, not a
+genuine data conflict. Unlike D45's Week 2 product replacement
+(archive-by-documentation, files left physically unchanged, since a
+selection pointer could simply stop pointing at them), the Logistic
+explanation store has no selection layer — `find_logistic_explanation_by_event`
+scans every file in the directory unconditionally, so leaving both
+duplicates in place would keep triggering the ambiguity error indefinitely.
+Separately, both old files' embedded `batch_id` was computed under the
+prior (`generated_at`-inclusive) scheme, so they would fail this unit's own
+new identity validation as corrupt regardless of the duplication. Both were
+deleted and one clean batch (`bc98cdb54b09a423c8b9e94f7322d54fd997a2651fcea882fbee03a34dda5c1c`)
+was regenerated via `explain-logistic --run-id deb7ebd3-5fee-4242-b58a-d86db7e4bb53`
+under the fixed scheme — not an edit of persisted evidence in place (the
+files are gone, not modified), and consistent with CLAUDE.md's "no backward
+compatibility for development-era contracts without a current need" and
+U4's direct precedent for deleting stale derived artifacts (`prune-champions`).
+`prediction_input_evidence` (the underlying primary evidence these batches
+were derived from) was never touched.
+
+Real-artifact validation: all 16 real games in the selected 2026-2027 Week
+2 product now resolve to populated `factors` through the real
+`/games/{game_id}/explain` API (previously all 16 hit
+`ambiguous_explanation_evidence`, per D52's original finding).
+
+#### Alternatives considered
+
+- Teaching the scan to tolerate old-identity-scheme batches (mirroring
+  D51's schema-version-tolerant scan), rather than deleting the two stale
+  files. Rejected: would require introducing a real identity-scheme version
+  field to distinguish "old scheme" from "genuine tampering," a
+  disproportionate amount of new machinery for disposing of two accidental,
+  content-identical, dev-era duplicates — D51's tolerance existed for
+  artifacts genuinely worth preserving across a real schema evolution
+  (pre-U3 evidence), not a same-day double-invocation.
+- Leaving both duplicates in place per D45's exact precedent. Rejected: D45's
+  mechanism works only because weekly products have a selection pointer to
+  redirect; this store's scan-everything design has no equivalent, so
+  "archiving" here cannot mean "leave in place, stop pointing at it."
+
+---
+
 ### D55 - `/comparables` serializes real `ComparableGameMatch` fields directly, not pre-formatted display strings
 
 **Date:** 2026-09-26

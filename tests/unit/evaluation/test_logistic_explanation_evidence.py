@@ -77,14 +77,14 @@ def _event(
     )
 
 
-def _batch(events=None):
+def _batch(events=None, *, generated_at: datetime = GENERATED_AT):
     return create_logistic_explanation_batch(
         run_id=RUN_ID,
         evidence_id=EVIDENCE_ID,
         model_content_digest=MODEL_DIGEST,
         scaler_content_digest=SCALER_DIGEST,
         feature_schema=_feature_schema(),
-        generated_at=GENERATED_AT,
+        generated_at=generated_at,
         events=events if events is not None else (_event(),),
     )
 
@@ -107,6 +107,11 @@ class TestCreateLogisticExplanationBatch:
         first = _batch()
         second = _batch(events=(_event(event_id="event-2"),))
         assert first.batch_id != second.batch_id
+
+    def test_identity_excludes_generated_at(self) -> None:
+        first = _batch(generated_at=GENERATED_AT)
+        second = _batch(generated_at=datetime(2027, 1, 1, tzinfo=UTC))
+        assert first.batch_id == second.batch_id
 
     def test_payload_is_json_stable(self) -> None:
         batch = _batch()

@@ -1,5 +1,30 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - Logistic explanation batch identity fix and duplicate disposition
+
+#### Fixed
+
+- `LogisticExplanationBatch`'s identity (`batch_id`) no longer includes
+  `generated_at`, mirroring D54's identical fix for comparable-games
+  evidence. Re-running `gridiron evaluate explain-logistic` against
+  unchanged evidence is now a true no-op instead of producing a second
+  batch that legitimately claims the same events — the exact real
+  condition D52 found (two duplicate batches, both covering all 16 events
+  of the selected 2026-2027 Week 2 product's run) and deferred resolving.
+- Found and fixed a related bug the identity fix exposed:
+  `logistic_explanation_evidence_builder.py`'s own post-write verification
+  compared full dataclass equality, which fails on a genuinely idempotent
+  rerun now that `generated_at` legitimately differs. Now compares
+  `batch_id` only.
+- Disposed of the two real duplicate batches (confirmed byte-identical in
+  substance; deleted, not archived in place — this store has no selection
+  layer to redirect) and regenerated one clean batch. All 16 real Week 2
+  games now resolve to populated `factors` through the real
+  `/games/{game_id}/explain` API, where all 16 previously returned
+  `ambiguous_explanation_evidence`.
+
+See `DECISIONS.md` D56.
+
 ### 2026-09-26 - `/comparables` contract wiring
 
 #### Changed
