@@ -930,6 +930,106 @@ def evaluate_explain_logistic(
     console.summary()
 
 
+@evaluate_app.command("build-comparable-corpus")
+def evaluate_build_comparable_corpus() -> None:
+    r"""Build and persist the win_prob/logistic comparable-games corpus.
+
+    Replays the exact feature-construction pipeline live prediction and
+    walk-forward evaluation already use (the currently deployed champion's
+    own epa_window and feature set) over every historical game, scales the
+    result with the champion's own fitted scaler, and derives a distance
+    threshold empirically from leave-one-out nearest-neighbor distances.
+    Idempotent: rebuilding against unchanged model/scaler bytes and
+    modeling data reproduces the same corpus_id.
+
+    \b
+    Example:
+      gridiron evaluate build-comparable-corpus
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.comparable_games_corpus_builder import (
+        build_and_write_comparable_games_corpus,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate build-comparable-corpus")
+
+    try:
+        with step("Replay feature construction and derive empirical threshold") as s:
+            result = build_and_write_comparable_games_corpus(
+                generated_at=datetime.now(UTC),
+                repo=repo,
+            )
+            s.set_detail(f"{result.row_count} games")
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo("")
+    corpus = result.corpus
+    typer.echo(f"Corpus ID: {corpus.corpus_id}")
+    typer.echo(f"Games: {result.row_count}")
+    pctl = corpus.leave_one_out_percentile
+    typer.echo(f"Distance threshold (p{pctl:.0f}): {corpus.distance_threshold:.4f}")
+    typer.echo(f"Leave-one-out median distance: {corpus.leave_one_out_median_distance:.4f}")
+
+    console.summary()
+
+
+@evaluate_app.command("find-comparables")
+def evaluate_find_comparables(
+    *,
+    run_id: str = typer.Option(
+        ..., "--run-id", help="Exact run_id whose win_prob/logistic evidence to match."
+    ),
+    k: int = typer.Option(20, "--k", help="Maximum comparables requested per event."),
+) -> None:
+    r"""Persist comparable-games retrieval evidence for one run's Win events.
+
+    Matches each win_prob/logistic event already persisted in the run's
+    prediction-input evidence against the comparable-games corpus by
+    Euclidean distance in the champion's own standardized feature space.
+    Fails closed if the corpus is stale relative to this run's evidence
+    (a different model or scaler snapshot).
+
+    \b
+    Example:
+      gridiron evaluate find-comparables --run-id <run-id>
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.comparable_games_evidence_builder import (
+        build_and_write_comparable_games_batches,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate find-comparables")
+
+    try:
+        with step("Match run events against the comparable-games corpus") as s:
+            result = build_and_write_comparable_games_batches(
+                run_id=run_id,
+                generated_at=datetime.now(UTC),
+                repo=repo,
+                k=k,
+            )
+            s.set_detail(f"{result.event_count} events")
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo("")
+    typer.echo(f"Events matched: {result.event_count}")
+    for batch in result.batches:
+        n, thr = batch.sample_size, batch.distance_threshold
+        typer.echo(f"  {batch.game_id}: {n} comparables (threshold {thr:.4f})")
+
+    console.summary()
+
+
 def _print_ranking_section(
     ranked_df: DataFrame,
     display_cols: list[str],

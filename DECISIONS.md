@@ -8,6 +8,212 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D54 - Comparable-games retrieval is built from a new historical feature-vector corpus, not the existing prediction-input or backtest evidence stores
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #10's U13 implements comparable-game retrieval as two new
+immutable stores, both scoped to `win_prob`/`logistic`, matching D50/D52's
+existing scope discipline:
+
+- `comparable_games_corpus.py`/`_store.py`/`_builder.py` - a one-time (or
+  periodic, after a champion retrain) batch build
+  (`gridiron evaluate build-comparable-corpus`) that replays the exact
+  feature-construction pipeline live prediction and walk-forward evaluation
+  already trust (`load_modeling_file`, `_rebuild_features_with_window` -
+  D1/U3's fix - and `FEATURE_SETS["combined"]`) over every historical game
+  with a complete feature vector and a decided winner (7,271 of 7,308 total
+  games), scales the result with the currently deployed champion's own
+  fitted `StandardScaler`, and derives an empirical distance threshold from
+  leave-one-out nearest-neighbor distances (90th percentile) rather than a
+  chosen constant. `VEGAS_LINE`/`FAVORITED` (favorite identity and spread
+  magnitude) are joined from `data/cleaned/NFL_wk_by_wk_cleaned.csv`,
+  already present for the full historical range - no Tier 6 #19 market
+  backfill dependency.
+- `comparable_games_evidence.py`/`_store.py`/`_builder.py` - a per-run batch
+  build (`gridiron evaluate find-comparables --run-id <run_id>`) that reads
+  each `win_prob`/`logistic` event's already-persisted
+  `transformed_feature_values` (D50's exact evidence, never recomputed),
+  measures Euclidean distance to every corpus row in that already-scaled
+  space, excludes the query's own `game_id`, keeps only matches within the
+  corpus's threshold, and persists real recorded outcomes
+  (`favorite_won`/`favorite_covered`, computed from actual scores and the
+  historical spread - never a prediction) plus the top contributing
+  features to each match's distance (raw feature names, no invented
+  human-readable labels - same precedent as D52).
+
+This is unaffected by D53's tree-calibration problem: nearest-neighbor
+distance measures feature-space proximity, not a decomposition of a
+calibrated decision function, so it does not care whether the champion is
+wrapped in isotonic calibration. It is, however, still scoped to Logistic
+only for now, since (a) the champion is Logistic and (b) the corpus is
+bound to one specific `(model_content_digest, scaler_content_digest)` pair
+- a future tree champion would need its own corpus and its own analysis of
+whether "the champion's own feature space" is even well-defined for it.
+
+Both new identities (`corpus_id`, `batch_id`) deliberately exclude
+`generated_at` from their content-addressed hash, unlike
+`LogisticExplanationBatch`: rebuilding from unchanged inputs reproduces the
+same id, so re-running either CLI command is a true no-op rather than
+producing a second artifact that legitimately claims the same content (the
+exact failure mode D52 had to add `AmbiguousLogisticExplanationError` to
+work around). `AmbiguousComparableGamesError` still exists for
+`find_comparable_games_by_event`, but now specifically signals that an
+event was retrieved against two *different* corpus generations (for
+example before and after a champion retrain) - a genuine staleness
+condition, not a duplicate-run artifact.
+
+#### Context
+
+While implementing the idempotent-identity design, real-artifact validation
+surfaced that excluding `generated_at` from an identity is not enough by
+itself: the immutable-store write path's "reject on replay with different
+content" check must also key off the identity field, not full-byte
+equality, since two runs' encoded payloads legitimately differ in their
+`generated_at` timestamp alone. The first implementation compared full
+bytes (mirroring `write_logistic_explanation_batch`, where this is correct
+because `generated_at` **is** part of that store's identity) and failed a
+real rebuild with "identity cannot be reused with different content" even
+though the underlying model, scaler, and historical data were byte-for-byte
+unchanged. Fixed in both `comparable_games_corpus_store.py` and
+`comparable_games_evidence_store.py` to compare only the embedded identity
+field on replay. Verified against the real repository: `build-comparable-corpus`
+produced a 7,271-game corpus (`corpus_id` `15567f84...`) with a p90 distance
+threshold of 9.2768 and a leave-one-out median of 8.2393, twice in a row
+with an identical `corpus_id`; `find-comparables` against the selected
+2026-2027 Week 2 run (`deb7ebd3-5fee-4242-b58a-d86db7e4bb53`) matched all 16
+games, with sample sizes honestly ranging from 0 (two genuinely unusual
+matchups, `2026_02_GB_NYJ` and `2026_02_MIN_CHI`) to the requested cap of
+20, also reproducible on rerun.
+
+#### Alternatives considered
+
+- Reusing `prediction_input_evidence`'s own store for historical games.
+  Rejected: that store's docstring and scope are explicitly "for selected
+  weekly forecasts" - extending it to persist every historical game's
+  feature vector would conflate two different lifecycles (one forecast
+  event vs. one static historical corpus) under one contract.
+- A single combined "corpus build + retrieval" command instead of two.
+  Rejected: the corpus is expensive-ish (order a minute) and shared across
+  every future retrieval call, while retrieval is per-run and cheap
+  (under a second for 16 events); splitting them mirrors U10/U11's
+  precedent of separating expensive batch evidence generation from cheap
+  per-query resolution, and lets the corpus be rebuilt independently after
+  a champion retrain without re-deriving every historical run's matches.
+- Picking a fixed k (for example the mockup's "17 comparable spots") rather
+  than an empirically-derived distance threshold. Rejected: ROADMAP Tier 3
+  #10 explicitly requires thresholds to be derived empirically, and a fixed
+  k would force genuinely dissimilar games into a comparable list rather
+  than honestly returning fewer (or zero, as two of the 16 real Week 2
+  games do).
+
+---
+
+### D53 - Tree-model attribution for Win-family champions is not built; isotonic calibration wrapping is the blocking precondition, and it is not fixed per model type
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #9's U12 resolves as a documented decision, not an
+implementation: no attribution mechanism is built for `win_prob`/`random_forest`
+or `win_prob`/`xgboost`. `/games/{game_id}/explain`'s `factors` field remains
+blocked on `Blocker.FEATURE_ATTRIBUTION` for any non-Logistic Win champion,
+unchanged from D52/U11's serializer behavior
+(`api/serializers/explain.py:108`).
+
+`_create_model()` (`models/game_prediction/base.py:171-199`) shows the two
+tree types do not share one calibration story:
+
+- `RANDOM_FOREST`/classification is **unconditionally** wrapped in
+  `CalibratedClassifierCV(method="isotonic", cv=TimeSeriesSplit(n_splits=3))`
+  before it ever trains. Isotonic regression is a nonparametric,
+  piecewise-constant monotonic remapping with no closed-form decomposition;
+  a Shapley-value or coefficient-based attribution computed against the
+  underlying `RandomForestClassifier`'s raw probability would not
+  reconstruct the model's actually-served (calibrated) probability within
+  any meaningful tolerance, breaking the same reconstruction requirement
+  D50 enforces for Logistic (`abs_tol=1e-9`, probability space). This is a
+  permanent property of every Random Forest Win artifact, not a
+  training-run outcome.
+- `XGBOOST`/classification is only **conditionally** recalibrated, post
+  training, when holdout ECE exceeds `_ECE_CALIBRATION_THRESHOLD` (0.025;
+  `base.py:1038-1085`) - and when it is, it is wrapped in the identical
+  `CalibratedClassifierCV(isotonic)`. The current on-disk
+  `data/models/win_prob/xgboost/metadata.json` artifact records
+  `parameters.calibration_applied: false` (holdout ECE 0.0245, just under
+  the 0.025 threshold), so XGBoost's built-in `pred_contribs` (TreeSHAP,
+  exact and additive by construction in margin space) would be a reasonable
+  fit for *this specific artifact*. But `calibration_applied` is a
+  per-training-run outcome recorded in that artifact's own `parameters`,
+  not an architectural guarantee of the `xgboost` model type - a future
+  `win_prob`/xgboost retrain that crosses the ECE threshold hits the
+  identical Random Forest problem. Any attribution mechanism would have to
+  branch on the persisted `calibration_applied` flag per artifact and fail
+  closed (fall back to `FEATURE_ATTRIBUTION`) whenever it is true, rather
+  than assume XGBoost is always exempt.
+
+Neither tree type is the current Win champion -
+`data/output/champions/champions.json` records `win_prob` as `logistic`,
+unchanged through U9's four rejected challengers - so `/explain`'s
+non-Logistic branch is not exercised by any currently-served game. Building
+an attribution mechanism now, with no real consumer and no resolved
+calibration-boundary story, would mean maintaining
+persisted-output-reconstruction code that cannot be validated against a real
+champion and could silently misreconstruct the moment calibration status
+changes.
+
+#### Preconditions to revisit this later
+
+Tier 3 #9 stays open in spirit until a resolved approach exists: attribute
+in the pre-calibration margin/probability space (as XGBoost's native
+`pred_contribs` already does) and surface the isotonic remapping explicitly
+as a separate, non-attributed adjustment - the same way U10 keeps the
+Logistic intercept its own explicit, non-feature factor - combined with
+per-artifact branching on `calibration_applied` (Random Forest: always
+branch to blocked) so the mechanism fails closed instead of silently
+misreconstructing. This decision does not invent that approach: doing so
+pre-emptively, without a real tree champion to validate the reconstruction
+tolerance against, is exactly the built-ahead-of-need work `CLAUDE.md`'s
+invariants and D50's own no-live-inference precedent guard against.
+
+#### Alternatives considered
+
+- Build `pred_contribs`/TreeSHAP for XGBoost now, in raw margin space, since
+  the current on-disk artifact is uncalibrated. Rejected: XGBoost is not
+  the current champion, so there is no consumer, and the mechanism would
+  still need to handle (or explicitly refuse) the calibrated case to avoid
+  becoming silently wrong the instant a future retrain crosses the ECE
+  threshold - the unresolved precondition above.
+- Build a permutation-importance or ablation-based approximation as an
+  "appropriate method" fallback so tree champions have something today.
+  Rejected: Tier 3 #9's required behavior mirrors D50 - exact model-byte
+  and feature-schema binding plus a reconstruction/consistency test - and
+  no approximation satisfies an exact-reconstruction test against a
+  calibrated output regardless of method, so it would not remove the actual
+  blocker.
+- Leave Tier 3 #9 open/unresolved rather than recording a decision.
+  Rejected: ROADMAP's own Track A note already scoped U12 as "a documented
+  decision," and `PLAN.md` must name exactly one bounded active unit at a
+  time; closing #9 as "assessed, not built, with recorded preconditions" is
+  the bounded unit, not silence.
+
+#### Context
+
+Verified against the current repository state, not assumed: `champions.json`
+(`win_prob` = `logistic`); `data/models/win_prob/random_forest/metadata.json`
+and `data/models/win_prob/xgboost/metadata.json` (ECE 0.0291 and 0.0245
+respectively; the latter's `calibration_applied: false`); and
+`models/game_prediction/base.py`'s `_create_model` and
+`GamesTrainer._evaluate_holdout`-equivalent calibration branch. See D50 for
+the Logistic explanation contract this decision deliberately does not
+extend, and D52 for the `/explain` `FEATURE_ATTRIBUTION` blocking behavior
+this decision leaves unchanged.
+
+---
+
 ### D52 - `/explain` serializes log-odds contributions with a three-way unavailability rule, and treats duplicate explanation batches as ambiguous rather than crashing
 
 **Date:** 2026-09-26

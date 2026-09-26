@@ -1,5 +1,50 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - Comparable-games historical corpus and retrieval evidence
+
+#### Added
+
+- `gridiron evaluate build-comparable-corpus`: builds and persists a new
+  immutable historical feature-vector corpus for `win_prob`/`logistic`
+  (7,271 games), scaled by the champion's own fitted `StandardScaler`, with
+  a distance threshold derived empirically from leave-one-out
+  nearest-neighbor distances. Idempotent: rebuilding from unchanged
+  model/scaler bytes and modeling data reproduces the same `corpus_id`.
+- `gridiron evaluate find-comparables --run-id <run_id>`: matches each
+  `win_prob`/`logistic` event already persisted in a run's
+  prediction-input evidence against the corpus by Euclidean distance,
+  excludes the query's own game, threshold-filters, and persists real
+  recorded outcomes (`favorite_won`/`favorite_covered`) plus the top
+  contributing feature names per match. Fails closed against a corpus
+  bound to a different model/scaler snapshot. Also idempotent per
+  (event, corpus) pair.
+- New immutable stores: `data/output/comparable_games_corpus/` (manifest +
+  Parquet frame) and `data/output/comparable_games/` (per-event batches).
+- `/games/{game_id}/comparables` is unchanged for now — still blocked
+  `comparables_retrieval` — pending a future unit to wire the API contract
+  to this new evidence, mirroring how U11 wired `/explain` after U10.
+
+See `DECISIONS.md` D54 for the scope, design, and a real store-replay bug
+found and fixed while building this (comparing full encoded bytes on
+rebuild, rather than the embedded identity, incorrectly rejected a
+legitimate no-op rebuild whose only difference was `generated_at`).
+
+### 2026-09-26 - Tree-model attribution decision (Random Forest, XGBoost Win champions)
+
+#### Decided
+
+- ROADMAP.md Tier 3 #9 resolved as a documented decision: no attribution
+  mechanism is built for `win_prob`/`random_forest` or `win_prob`/`xgboost`.
+  Random Forest's Win classifier is unconditionally wrapped in isotonic
+  calibration with no closed-form decomposition; XGBoost's is only
+  conditionally recalibrated per training run based on holdout ECE, so its
+  attribution feasibility is a per-artifact outcome, not a fixed property
+  of the model type. Neither tree type is the current Win champion
+  (`logistic` is, unchanged through U9), so `/games/{game_id}/explain`'s
+  `factors` field stays blocked `feature_attribution` for both, unchanged
+  from U11's behavior. See `DECISIONS.md` D53 for the full audit and the
+  precondition for revisiting this later. No source code changed.
+
 ### 2026-09-26 - `/explain` log-odds contract and field-status wiring
 
 #### Changed

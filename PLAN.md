@@ -1356,6 +1356,241 @@ its cause; none produces a 500. `band`, `distribution`, and
 frontend client reflect the new contract; no frontend UI behavior changed.
 ROADMAP.md Tier 3 #8 (U10 + U11) is now fully complete.
 
+#### Unit 12: Tree-model attribution decision [Completed September 26, 2026]
+
+##### Completed
+
+Resolved ROADMAP.md Tier 3 #9 as a documented decision rather than an
+implementation: audited the actual calibration architecture behind both Win
+tree model types and recorded why neither gets an attribution mechanism
+now, plus the precondition that would unblock one later. No source code
+changed — `/games/{game_id}/explain`'s existing `FEATURE_ATTRIBUTION`
+blocking behavior for non-Logistic champions (D52/U11) is unchanged.
+
+##### Goal
+
+Decide, from the real on-disk model and calibration architecture rather
+than assumption, whether Tree SHAP or another exact-attribution method is
+buildable now for the Win family's tree champions (Random Forest,
+XGBoost), and record that decision so it does not stay silently open.
+
+##### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `DECISIONS.md` (D53) - Records that Random Forest/classification is
+  unconditionally wrapped in `CalibratedClassifierCV(isotonic)`
+  (`models/game_prediction/base.py:171-184`), making exact attribution
+  against its raw output permanently unable to reconstruct the actually-
+  served calibrated probability; that XGBoost/classification is only
+  *conditionally* recalibrated post-training when holdout ECE exceeds
+  0.025 (`base.py:1038-1085`) — the current on-disk `win_prob`/`xgboost`
+  artifact has `calibration_applied: false` (ECE 0.0245), so it is
+  currently uncalibrated, but that is a per-training-run outcome, not an
+  architectural guarantee; and that neither tree type is the current Win
+  champion (`champions.json`: `win_prob` = `logistic`), so the blocked
+  branch has no real consumer today. Records the unresolved precondition
+  for building this later: attribute in pre-calibration margin space and
+  surface the isotonic remap as an explicit, non-attributed adjustment,
+  with per-artifact branching on `calibration_applied` to fail closed.
+- `HANDOFF.md` - Reworded the two `/games/{game_id}/explain` references to
+  Tier 3 #9 from "unresolved" to point at D53's recorded decision, since
+  the roadmap item is now resolved even though the served behavior
+  (blocked `feature_attribution`) is unchanged.
+- `ROADMAP.md` - Tier 3 #9's Track A implementation note marked
+  `[Complete: documented decision, D53]`.
+- `CHANGELOG.md` - This unit's record.
+
+Removed:
+- None.
+
+##### Tests
+
+No source code changed, so no test suite run beyond confirming this by
+inspection. Verified the decision's factual claims directly against the
+repository rather than trusting ROADMAP's prior framing: read
+`models/game_prediction/base.py`'s `_create_model` (calibration wrapping)
+and post-training recalibration branch; inspected
+`data/models/win_prob/random_forest/metadata.json` and
+`.../xgboost/metadata.json` for real ECE values and the `calibration_applied`
+flag; inspected `data/output/champions/champions.json` to confirm the
+current Win champion is `logistic`, not a tree model; and re-read
+`api/serializers/explain.py` to confirm the `FEATURE_ATTRIBUTION` blocking
+path this decision leaves unchanged.
+
+##### Acceptance
+
+ROADMAP.md Tier 3 #9 has a recorded, evidence-grounded decision
+(`DECISIONS.md` D53) rather than being silently open: no attribution is
+built for either Win tree model type; the reason is specific to each
+type's actual calibration behavior, not a blanket "trees are hard"
+assumption; and the precondition for revisiting it later is stated
+explicitly. `/games/{game_id}/explain` behavior is unchanged and still
+correct under this decision.
+
+#### Unit 13: Comparable-games historical corpus and retrieval evidence [Completed September 26, 2026]
+
+##### Completed
+
+Implemented ROADMAP.md Tier 3 #10's backend half: a new immutable
+historical feature-vector corpus (`gridiron evaluate build-comparable-corpus`)
+covering 7,271 historical `win_prob`/`logistic` games, and a new per-run
+comparable-games retrieval evidence store
+(`gridiron evaluate find-comparables --run-id <run_id>`) that matches each
+event's already-persisted feature vector against the corpus by Euclidean
+distance in the champion's own standardized feature space, excludes the
+query's own game, filters to an empirically-derived distance threshold, and
+persists real recorded outcomes plus the top contributing features per
+match. No `/games/{game_id}/comparables` API or frontend change — that
+route stays on its existing `Blocker.COMPARABLES` null shape until a future
+unit (**Unit 14**, mirroring how U10/U11 split Logistic explanation into a
+backend unit and an API unit). While implementing the idempotent-identity
+design both new stores share, found and fixed a real bug: comparing full
+encoded bytes on replay (mirroring `LogisticExplanationBatch`'s pattern)
+incorrectly rejected a genuine no-op rebuild, since `generated_at` legitimately
+differs between runs but isn't part of either artifact's identity. See
+`DECISIONS.md` D54.
+
+##### Goal
+
+Build comparable-game retrieval scoped to `win_prob`/`logistic`: define
+similarity from the champion's own authenticated model inputs, prevent
+future-information leakage, explain why games are comparable, and derive
+the retrieval threshold empirically — as a persisted, batch-computed
+artifact pair, not request-time computation.
+
+##### Design decisions
+
+- Similarity space is the exact `combined_111` feature vector the deployed
+  `win_prob`/logistic champion trains on, scaled by that champion's own
+  fitted `StandardScaler` — reusing `_rebuild_features_with_window` (D1/U3)
+  and `FEATURE_SETS["combined"]` rather than writing new feature-engineering
+  code. Leakage prevention is inherited structurally from that
+  already-trusted pipeline (every row's features are pre-kickoff by
+  construction), not a temporal restriction between the query game and
+  candidate pool — a 2026 game can legitimately be compared against a 2003
+  or a 2025 historical game.
+- The corpus is a new artifact pair, not an extension of
+  `prediction_input_evidence` (scoped to selected weekly forecasts only)
+  or the historical backtest evidence store (persists prediction outputs,
+  not feature vectors). Bound to one exact
+  `(model_content_digest, scaler_content_digest)` pair computed from the
+  live `data/models/win_prob/logistic/` artifact at build time; retrieval
+  fails closed if a run's own evidence was produced by a different
+  snapshot (a stale corpus after a champion retrain), never silently
+  comparing incompatible scaled spaces.
+- Historical `VEGAS_LINE`/`FAVORITED` are joined from
+  `data/cleaned/NFL_wk_by_wk_cleaned.csv` — already complete for the full
+  historical range, so no Tier 6 #19 market-data dependency.
+- Distance metric is plain Euclidean distance in the already-standardized
+  space (no cosine/Mahalanobis justification needed once features share
+  roughly unit variance); the threshold is the 90th percentile of
+  leave-one-out nearest-neighbor distances computed once at corpus-build
+  time, not a chosen constant. "Why comparable" is the top 5
+  highest-squared-difference feature names per match — raw names, no
+  invented human-readable labels, same precedent as D52.
+- Not affected by D53's tree-calibration problem: nearest-neighbor distance
+  doesn't decompose a calibrated decision function, so this technique would
+  work regardless of champion model type — it stays Logistic-scoped only
+  because that's the current champion and the corpus is snapshot-bound, not
+  because of a calibration blocker.
+- Both `corpus_id` and `batch_id` exclude `generated_at` from their
+  content-addressed identity, so rebuilding from unchanged inputs is a true
+  no-op instead of producing a second artifact claiming the same content —
+  a deliberate improvement on `LogisticExplanationBatch`'s precedent, which
+  is why D52 needed `AmbiguousLogisticExplanationError` in the first place.
+  `AmbiguousComparableGamesError` still exists for
+  `find_comparable_games_by_event`, but now specifically means "this event
+  was matched against two different corpus generations," a genuine
+  staleness signal rather than a duplicate-run artifact.
+- Real-artifact validation surfaced that idempotent identity alone isn't
+  sufficient: the store's own "reject a replay with different content"
+  check must compare the embedded identity field, not full encoded bytes,
+  since a legitimately-idempotent rebuild still produces a different
+  `generated_at`. Fixed in both new stores. See `DECISIONS.md` D54.
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/comparable_games_corpus.py` - Immutable
+  corpus contracts: identity, validation, and the NaN-tolerant frame content
+  digest.
+- `src/gridiron_edge/evaluation/comparable_games_corpus_store.py` - JSON
+  manifest plus Parquet frame persistence; idempotent replay; `find_latest`
+  by model identity.
+- `src/gridiron_edge/evaluation/comparable_games_corpus_builder.py` -
+  Replays `_rebuild_features_with_window`/`FEATURE_SETS["combined"]` over
+  every historical game, scales with the live champion's scaler, derives
+  the empirical distance threshold, and persists the corpus.
+- `src/gridiron_edge/evaluation/comparable_games_evidence.py` - Immutable
+  per-event retrieval batch contracts: identity, validation (contiguous
+  ranks, non-decreasing distance, threshold-bounded matches), payload.
+- `src/gridiron_edge/evaluation/comparable_games_evidence_store.py` - JSON
+  batch persistence; idempotent replay; `find_comparable_games_by_event`
+  with `AmbiguousComparableGamesError` for genuine cross-corpus staleness.
+- `src/gridiron_edge/evaluation/comparable_games_evidence_builder.py` -
+  Matches each run event against the corpus by Euclidean distance,
+  self-excludes, threshold-filters, ranks, and computes real outcomes plus
+  top contributing features.
+- `tests/unit/evaluation/test_comparable_games_corpus.py`,
+  `test_comparable_games_corpus_store.py`,
+  `test_comparable_games_evidence.py`, `test_comparable_games_evidence_store.py`,
+  `test_comparable_games_evidence_builder.py` - Contract, persistence, and
+  ranking/threshold/outcome coverage (40 tests).
+
+Changed:
+- `src/gridiron_edge/cli/evaluate.py` - Added `build-comparable-corpus` and
+  `find-comparables` commands.
+- `DECISIONS.md` (D54), `CHANGELOG.md`, `ROADMAP.md` - This unit's record;
+  Track A's completion gate widened from U1–U13 to U1–U14 to name the
+  deferred API-wiring unit explicitly.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,173 tests, up
+from 4,133; the 40 new tests are listed above).
+`comparable_games_corpus_builder.py`'s real orchestration (live
+`ArtifactStore` reads, `load_modeling_file`, historical CSV join) is
+covered by real-artifact validation below rather than a fixture-based unit
+test, since faithfully mocking it would require reconstructing the live
+modeling file's full 125-column schema; `comparable_games_evidence_builder.py`
+is fully unit-tested against a small synthetic corpus and evidence pair
+(ranking, self-exclusion, threshold filtering, real-outcome computation,
+idempotent rerun, stale-corpus rejection, no-corpus-yet rejection).
+
+Real-artifact validation (writes to `data/output/comparable_games_corpus/`
+and `data/output/comparable_games/`, both new stores this unit owns):
+`gridiron evaluate build-comparable-corpus` against the real repository
+produced a 7,271-game corpus (of 7,308 total; 37 excluded for incomplete
+features or a tied game), `corpus_id` `15567f84e1340c749f7bf70f52018bfe68873a24d35570ab7e6b3927bec971bd`,
+distance threshold (p90) 9.2768, leave-one-out median 8.2393 — reproduced
+identically on a second run (idempotent). `gridiron evaluate find-comparables
+--run-id deb7ebd3-5fee-4242-b58a-d86db7e4bb53` (the selected 2026-2027 Week
+2 product) matched all 16 real games; sample sizes honestly ranged from 0
+(`2026_02_GB_NYJ`, `2026_02_MIN_CHI` — genuinely unusual matchups) to the
+requested cap of 20 (`2026_02_DET_BUF`, `2026_02_LV_LAC`), reproduced
+identically on rerun. Inspected one real match
+(`2026_02_CAR_ATL`'s closest comparable, the 2006 NFC Wild Card
+Seahawks–Cowboys game) and confirmed the persisted score, favorite, cover
+outcome, and top contributing feature names are all correct against the
+real historical record.
+
+##### Acceptance
+
+`gridiron evaluate build-comparable-corpus` and
+`gridiron evaluate find-comparables` persist immutable, content-addressed
+evidence with no request-time computation; both are idempotent on rerun
+against unchanged inputs. Similarity is defined over the champion's own
+authenticated feature space, leakage is prevented structurally, "why
+comparable" is named per real feature, and the retrieval threshold is
+derived empirically rather than chosen. `/games/{game_id}/comparables`
+remains correctly blocked until Unit 14 wires the API contract.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

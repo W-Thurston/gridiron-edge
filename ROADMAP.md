@@ -101,9 +101,9 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 - **Tier 3 #8 — Persist Logistic explanation evidence.**
   Implementation: **U10** (scaled-feature-by-coefficient contributions in log-odds space, reconciled to the persisted estimator output within tolerance, bound to the exact evidence/event/run identities and model/scaler digests already captured in prediction-input evidence; immutable batch store and CLI) **[Complete: `gridiron evaluate explain-logistic`, D50; found and fixed a prediction-input-evidence scan defect, D51]** and **U11** (change the `/explain` contract from percentage-point deltas to log-odds contributions, regenerate the frontend client, and surface it through field-status) **[Complete: D52; found and fixed an additional gap — the real explanation store already has two batches claiming the same events, so the route treats that as a distinct blocked state (`ambiguous_explanation_evidence`) instead of a 500]**.
 - **Tier 3 #9 — Evaluate tree-model attribution only if justified.**
-  Implementation: **U12**, a documented decision: XGBoost's exact margin-space contributions are a reasonable fit; Random Forest sits inside a probability calibrator, so exact attribution for it is doubtful and should not be built without a resolved approach.
+  Implementation: **U12** **[Complete: documented decision, `DECISIONS.md` D53]**. Random Forest is unconditionally wrapped in isotonic calibration, so exact attribution against its raw output can never reconstruct the served probability. XGBoost is only conditionally recalibrated per training run based on holdout ECE — the current on-disk artifact is uncalibrated, so its margin-space contributions would be exact today, but that is not a fixed property of the model type. Neither tree type is the current Win champion (`logistic` is, unchanged through U9), so nothing is built; the precondition for building this later (pre-calibration-space attribution plus per-artifact branching on calibration status) is recorded but not resolved.
 - **Tier 3 #10 — Build comparable-game retrieval.**
-  Implementation: **U13**, research and design first.
+  Implementation: **U13** (backend: a new historical feature-vector corpus for every `win_prob`/`logistic` game, scaled in the champion's own standardized feature space, plus a per-run retrieval-evidence batch matching each event against it by Euclidean distance with an empirically-derived threshold; immutable stores and CLI, no API change) **[Complete: `gridiron evaluate build-comparable-corpus`/`find-comparables`, D54]** and **U14** (wire `/games/{game_id}/comparables` to serve the persisted retrieval evidence, mirroring U11's `/explain` contract change), **not yet started**.
 
 #### Track B — Tier 4 / Market Unit 26 (parallel, calendar-driven)
 
@@ -117,7 +117,7 @@ No selected-plan poll has completed from this workstation; the Week 1 plan's pol
 
 #### Feature-program gate
 
-ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U13) is complete and Track B has closed Tier 4 #11, #12, and #14. Tier 4 #13 continues independently and does not gate Tier 5.
+ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U14) is complete and Track B has closed Tier 4 #11, #12, and #14. Tier 4 #13 continues independently and does not gate Tier 5.
 
 #### Acceptance
 
@@ -243,13 +243,17 @@ Required behavior:
 - perform no request-time model inference;
 - distinguish contribution from causality.
 
-#### 9. Evaluate tree-model attribution only if justified
+#### 9. Evaluate tree-model attribution only if justified [Resolved: not built — see `DECISIONS.md` D53]
 
 After Logistic explanation evidence is complete, assess Tree SHAP or another appropriate method for tree champions. Require exact model-byte and feature-schema binding, consistency tests, and persisted outputs.
 
-#### 10. Build comparable-game retrieval
+Assessed and not built: Random Forest's Win classifier is unconditionally wrapped in isotonic calibration with no closed-form decomposition, so exact attribution against its raw output cannot satisfy the required reconstruction test. XGBoost's Win classifier is only conditionally recalibrated per training run (holdout ECE threshold); its current on-disk artifact is uncalibrated, so exact margin-space attribution would be reasonable for it today, but an attribution mechanism cannot assume that holds for every future retrain. Neither tree type is the current Win champion, so there is no consumer to validate a mechanism against yet. Revisit only once a resolved approach exists for attributing through the calibration boundary (D53's stated precondition).
+
+#### 10. Build comparable-game retrieval [Backend complete (U13, `DECISIONS.md` D54); API/frontend wiring (U14) not started]
 
 Define similarity from authenticated model inputs, prevent future-information leakage, explain why games are comparable, and derive any thresholds empirically.
+
+Backend done: a historical feature-vector corpus in the `win_prob`/logistic champion's own standardized space, Euclidean-distance retrieval per run event with an empirically-derived (leave-one-out, p90) distance threshold, real recorded outcomes, and named top-contributing features — all immutable, batch-computed, and idempotent on rebuild. `/games/{game_id}/comparables` still serves its existing `Blocker.COMPARABLES` null shape until U14.
 
 ### Tier 4: Market and Recommendation Proof
 
@@ -290,7 +294,7 @@ Evaluate Brier-weighted averaging, constrained blending, time-ordered Logistic s
 
 #### 16. Game-model feature program
 
-**Depends on:** the Foundation Completion feature-program gate above (Track A units U1–U13 complete; Track B has closed Tier 4 #11, #12, and #14). Scope is game models only — Win (`HOME_WIN`: Elo, Logistic, Random Forest, XGBoost) and Total (`ACTUAL_TOTAL`: Random Forest, XGBoost). Prop-model features are Tier 5 #17. Feature-level detail, adopted status, and exclusions live in `FEATURES.md` Part III, "Game-Model Build Queue"; this entry owns the program rules and phase ordering.
+**Depends on:** the Foundation Completion feature-program gate above (Track A units U1–U14 complete; Track B has closed Tier 4 #11, #12, and #14). Scope is game models only — Win (`HOME_WIN`: Elo, Logistic, Random Forest, XGBoost) and Total (`ACTUAL_TOTAL`: Random Forest, XGBoost). Prop-model features are Tier 5 #17. Feature-level detail, adopted status, and exclusions live in `FEATURES.md` Part III, "Game-Model Build Queue"; this entry owns the program rules and phase ordering.
 
 **Program rules**
 
@@ -431,8 +435,17 @@ Candidate research areas:
 - ensemble methods;
 - additional game-model features;
 - richer prop distributions;
-- comparable-game retrieval;
-- tree-model attribution;
+- calibration-transparent tree-model attribution: pre-calibration TreeSHAP /
+  `pred_contribs` plus an explicit, separately-labeled calibration-adjustment
+  step, rather than attempting to reconstruct the calibrated output directly
+  (see `DECISIONS.md` D53, which found no resolved approach exists yet);
+- explainability as an explicit champion-selection criterion, not only an
+  accuracy/calibration gate — and whether already-promoted opaque champions
+  (for example `total`/random_forest) should be reconsidered under it;
+- Explainable Boosting Machines (EBM) or other GAM-style additive models as
+  an accuracy-vs-explainability bridge for future Win, Total, and prop
+  model families — potentially exact per-prediction decomposition (like
+  Logistic) without Random Forest/XGBoost's calibration-boundary problem;
 - supported historical market data;
 - scenario methods;
 - live model design.
@@ -459,7 +472,11 @@ There is no integrated injury/news feed or live-game state. Dependent API and fr
 
 ### Scenario and explanation evidence are unavailable
 
-Persisted feature attribution, comparable-game retrieval, and what-if propagation are not implemented.
+Persisted feature attribution and what-if propagation are not implemented. Comparable-game retrieval evidence is now persisted (U13, `DECISIONS.md` D54), but `/games/{game_id}/comparables` is not yet wired to serve it (U14) — the route still returns its existing `Blocker.COMPARABLES` null shape.
+
+### Champion selection does not yet gate on explainability
+
+`evaluation/champion.py`'s promotion gates currently select on predictive and calibration metrics only. As of the current champion manifest, `total`/random_forest and two prop champions (`qb_pass_yards`, `wr_rec_yards`) have no per-prediction attribution, and none is required for promotion. Whether explainability should become an explicit champion-selection criterion — and whether existing opaque champions should be reconsidered under it — is open; see the Research Backlog.
 
 ### Current-season PBP may lag
 

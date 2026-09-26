@@ -342,8 +342,11 @@ data/output/logistic_explanations/schema=1/batches/{batch_id}.json
 
 The store is immutable and create-only; there is no "current" selection
 concept, since batches are keyed by run and source evidence rather than
-superseded. Random Forest/XGBoost attribution is separately scoped
-(ROADMAP.md Tier 3 #9).
+superseded. Random Forest/XGBoost attribution is not built: Random Forest
+is unconditionally wrapped in isotonic calibration, and XGBoost is
+conditionally wrapped depending on holdout ECE per training run, so neither
+can assume its raw output is what is actually served (ROADMAP.md Tier 3
+#9; `DECISIONS.md` D53).
 
 ### `/games/{game_id}/explain`
 
@@ -355,7 +358,8 @@ above:
   blocked `no_win_forecast`.
 - `win_status == "available"` and the Win champion isn't Logistic (Random
   Forest/XGBoost): `headline_win_prob` populated; `factors` null, blocked
-  `feature_attribution` (Tier 3 #9 unresolved).
+  `feature_attribution` (ROADMAP.md Tier 3 #9: decided not to build, not
+  built yet pending a resolved approach — `DECISIONS.md` D53).
 - Win champion is Logistic and no batch covers the row's `win_event_id` yet:
   `factors` null, blocked `no_explanation_evidence`. `explain-logistic` is a
   manual per-run command, not run automatically for every weekly forecast.
@@ -383,6 +387,60 @@ guarantees permanently retain earlier-schema artifacts (e.g. four pre-U3
 artifacts predating the `epa_window` schema-2 addition) alongside current
 ones. A direct `read_prediction_input_evidence` call on a known path remains
 exactly as strict and fail-closed as before.
+
+## Comparable-Games Corpus and Retrieval Evidence
+
+Two new immutable stores, both scoped to `win_prob`/`logistic` (ROADMAP.md
+Tier 3 #10, U13; `DECISIONS.md` D54):
+
+`gridiron evaluate build-comparable-corpus` replays the exact
+feature-construction pipeline live prediction and walk-forward evaluation
+already use (`load_modeling_file`, `_rebuild_features_with_window` at the
+deployed champion's own `epa_window`, `FEATURE_SETS["combined"]`) over
+every historical game with a complete feature vector and a decided winner,
+scales the result with the champion's own fitted `StandardScaler`, and
+derives a distance threshold empirically (the 90th percentile of
+leave-one-out nearest-neighbor distances). Historical `VEGAS_LINE`/
+`FAVORITED` are joined from `data/cleaned/NFL_wk_by_wk_cleaned.csv`. Bound
+to one exact `(model_content_digest, scaler_content_digest)` pair computed
+from the live model artifact at build time. Stored at:
+
+```text
+data/output/comparable_games_corpus/schema=1/corpora/{corpus_id}.json
+data/output/comparable_games_corpus/schema=1/frames/{corpus_id}.parquet
+```
+
+`corpus_id` deliberately excludes `generated_at`: rebuilding from unchanged
+model/scaler bytes and modeling data reproduces the same id, so rerunning
+the command is a true no-op rather than a second artifact.
+
+`gridiron evaluate find-comparables --run-id <run_id>` matches each
+`win_prob`/`logistic` event already persisted in that run's
+prediction-input evidence (D50's exact `transformed_feature_values`, never
+recomputed) against the corpus by Euclidean distance in that same scaled
+space, excludes the query's own `game_id`, keeps only matches within the
+corpus's distance threshold, and persists each match's real recorded
+outcome (`favorite_won`/`favorite_covered`, computed from actual scores and
+the historical spread) plus the top 5 feature names contributing most to
+the distance. Fails closed if the corpus is bound to a different
+model/scaler snapshot than the run's own evidence (a stale corpus after a
+champion retrain). `batch_id` also excludes `generated_at` for the same
+idempotent-replay reason. Stored at:
+
+```text
+data/output/comparable_games/schema=1/batches/{batch_id}.json
+```
+
+`find_comparable_games_by_event` raises `AmbiguousComparableGamesError` if
+more than one batch claims the same event — expected only when an event was
+matched against two different corpus generations (for example before and
+after a champion retrain), not from re-running the same command.
+
+Neither command is run automatically; both are manual, per invocation.
+`/games/{game_id}/comparables` does not yet serve this evidence — it still
+returns its existing `Blocker.COMPARABLES` null shape until a future unit
+(U14) wires the API contract, mirroring how U11 wired `/explain` after U10
+persisted Logistic explanation evidence.
 
 ## Immutable Weekly Products
 
