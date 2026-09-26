@@ -3,7 +3,8 @@
 """Evaluation metrics for game prediction models.
 
 All functions accept a standard *evaluation DataFrame* produced by
-``build_evaluation_df``.  The schema is:
+``build_forecast_run_evaluation_df``, which evaluates one exact immutable
+backfilled forecast run.  The schema is:
 
     game_id          str   - canonical YYYY_WW_AWAY_HOME identifier
     season           str   - e.g. "2024-2025"
@@ -17,7 +18,8 @@ All functions accept a standard *evaluation DataFrame* produced by
 
 Public API
 ----------
-build_evaluation_df          Join archive to outcomes; primary entry point.
+build_forecast_run_evaluation_df   Evaluate one exact immutable backfill run;
+                                    primary entry point.
 summarise                    Grouped Brier/accuracy table.
 calibration_table            Predicted vs actual win-rate by bucket.
 brier_score                  Scalar Brier score.
@@ -32,12 +34,27 @@ brier_decomposition          Murphy (1973) decomposition: reliability,
 brier_by_confidence_tier     Brier + calibration gap per predicted-prob bucket.
 brier_by_season              Per-season Brier with delta vs mean; drift detection.
 biggest_misses               Top-N games by |predicted_prob - outcome|.
+calibration_slope_intercept  Logistic-fit calibration slope/intercept.
+sharpness                    Variance of predicted probabilities.
+season_stability             Stdev of per-season Brier scores.
+
+Total (regression) metrics operate on a *Total evaluation DataFrame* from
+``build_forecast_run_total_evaluation_df`` instead, with columns
+``model_total``/``actual_total`` in place of ``away_win_prob``/
+``away_team_won``:
+
+median_absolute_error        Median |predicted - actual| total points.
+interval_coverage            Actual vs nominal coverage of a residual-std
+                              prediction interval.
+environment_slice_metrics    Total error metrics sliced by an environment
+                              dimension (e.g. dome/outdoor, temperature band).
 """
 
 from __future__ import annotations
 
 import itertools
 from pathlib import Path
+from statistics import NormalDist
 from typing import Any, Final
 
 import numpy as np
@@ -45,9 +62,7 @@ from numpy import dtype, float64, ndarray, signedinteger
 import pandas as pd
 from pandas import DataFrame, Series
 
-from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
-from gridiron_edge.evaluation.archive import load_prediction_log
 from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.evaluation.forecast_selection import select_forecast_run
 from gridiron_edge.evaluation.forecast_store import load_forecast_events
@@ -83,6 +98,21 @@ _EVALUATION_COLUMNS: Final[tuple[str, ...]] = (
 _REQUIRED_OUTCOME_COLUMNS: Final[frozenset[str]] = frozenset(
     {"GAME_ID", "AWAY_SCORE", "HOME_SCORE"}
 )
+
+_TOTAL_EVALUATION_COLUMNS: Final[tuple[str, ...]] = (
+    "game_id",
+    "season",
+    "week",
+    "away_team",
+    "home_team",
+    "model_total",
+    "actual_total",
+    "model_name",
+    "model_type",
+)
+
+# Default nominal coverage level for residual-std prediction intervals.
+_DEFAULT_NOMINAL_COVERAGE: Final[float] = 0.90
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +280,206 @@ def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, 
     }
 
 
+def calibration_slope_intercept(
+    p: Series,
+    y: Series,
+    *,
+    eps: float = 1e-7,
+) -> tuple[float, float]:
+    """Fit calibration slope and intercept via logistic regression on logit(p).
+
+    Regresses outcome ``y`` on a single feature, ``logit(clip(p, eps, 1-eps))``,
+    using an unregularized logistic regression so the fitted coefficient is
+    not shrunk toward zero. A perfectly calibrated model has slope ≈ 1.0 and
+    intercept ≈ 0.0: slope < 1 indicates the model is too extreme (overconfident
+    at the tails), slope > 1 indicates it is too conservative, and a nonzero
+    intercept indicates a systematic bias toward one side.
+
+    Tied games (``y == 0.5``) are excluded before fitting, since the fit
+    requires a strictly binary outcome; ``p`` is unaffected.
+
+    Args:
+        p: Predicted probabilities (floats in [0, 1]).
+        y: Outcomes - 0 or 1, or 0.5 for a tied game (excluded from the fit).
+        eps: Clipping epsilon to avoid infinite logits at 0 or 1.
+
+    Returns:
+        ``(slope, intercept)``. Both are ``nan`` if fewer than two distinct
+        binary outcomes remain after excluding ties (the fit is undefined).
+    """
+    # pyrefly: ignore [missing-import]
+    from sklearn.linear_model import LogisticRegression
+
+    binary_mask: Series[bool] = y.isin([0.0, 1.0])
+    p_binary: Series = p[binary_mask]
+    y_binary: Series = y[binary_mask]
+    if y_binary.nunique() < 2:
+        return float("nan"), float("nan")
+
+    p_clipped: ndarray = p_binary.clip(eps, 1 - eps).to_numpy()
+    logit: ndarray = np.log(p_clipped / (1 - p_clipped)).reshape(-1, 1)
+
+    model = LogisticRegression(C=np.inf, solver="lbfgs", max_iter=1000)
+    model.fit(logit, y_binary.to_numpy())
+    slope: float = float(model.coef_[0][0])
+    intercept: float = float(model.intercept_[0])
+    return slope, intercept
+
+
+def sharpness(p: Series) -> float:
+    """Compute the sharpness (variance) of predicted probabilities.
+
+    Sharpness measures how spread out a model's forecasts are, independent of
+    whether those forecasts are correct. A model that always predicts near
+    0.5 has low sharpness (uninformative); one that confidently predicts near
+    0 or 1 has high sharpness. Unlike ``brier_decomposition``'s ``resolution``
+    term (which is conditioned on observed outcome within each bin), this is
+    the raw variance of the predictions themselves.
+
+    Args:
+        p: Predicted probabilities (floats in [0, 1]).
+
+    Returns:
+        Variance of ``p`` (higher means more confident/spread-out forecasts).
+    """
+    return float(np.var(p.to_numpy(dtype=float)))
+
+
+def season_stability(df: DataFrame) -> float:
+    """Compute the standard deviation of per-season Brier scores.
+
+    Built on top of ``brier_by_season``. A model whose Brier score varies
+    widely from season to season is less trustworthy going forward than one
+    with a stable, consistent Brier score across seasons, even if their
+    average Brier scores are similar.
+
+    Args:
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df`` or
+            ``build_forecast_run_evaluation_df``.
+
+    Returns:
+        Standard deviation (ddof=1) of per-season Brier scores. ``nan`` if
+        fewer than two seasons are present (matches ``pandas.Series.std``'s
+        behavior for a single observation).
+    """
+    by_season: DataFrame = brier_by_season(df)
+    if by_season.empty:
+        return float("nan")
+    return float(by_season["brier"].std())
+
+
+# ---------------------------------------------------------------------------
+# Total (regression) metric functions
+# ---------------------------------------------------------------------------
+
+
+def median_absolute_error(y_pred: Series, y_true: Series) -> float:
+    """Compute the median absolute error between predicted and actual totals.
+
+    Less sensitive to outlier games (e.g. a blowout) than mean absolute
+    error, which is already available from persisted training metadata.
+
+    Args:
+        y_pred: Predicted total points.
+        y_true: Actual total points.
+
+    Returns:
+        Median of ``|y_pred - y_true|`` (lower is better).
+    """
+    return float((y_pred - y_true).abs().median())
+
+
+def interval_coverage(
+    y_true: Series,
+    y_pred: Series,
+    *,
+    residual_std: float,
+    nominal: float = _DEFAULT_NOMINAL_COVERAGE,
+) -> dict[str, float]:
+    """Compute actual vs. nominal coverage of a residual-std prediction interval.
+
+    Total game models do not persist a per-game prediction interval, so the
+    interval here is constructed from the evaluated run's own holdout
+    residual standard deviation: a symmetric normal-quantile band around each
+    point prediction, ``y_pred ± z * residual_std``, where ``z`` is the
+    two-sided normal quantile for ``nominal`` coverage. This is a descriptive
+    evaluation diagnostic (how wide would an interval need to be, and does
+    that width actually achieve its nominal coverage on this run), not a
+    live-serving prediction interval.
+
+    Args:
+        y_true: Actual total points.
+        y_pred: Predicted total points.
+        residual_std: Standard deviation of holdout residuals for this run.
+        nominal: Nominal (target) coverage level, e.g. 0.90 for a 90% interval.
+
+    Returns:
+        Dict with keys ``"nominal_coverage"``, ``"actual_coverage"``, and
+        ``"mean_interval_width"``. ``actual_coverage`` and
+        ``mean_interval_width`` are ``nan`` if ``residual_std`` is not a
+        positive finite number.
+    """
+    if not np.isfinite(residual_std) or residual_std <= 0:
+        return {
+            "nominal_coverage": nominal,
+            "actual_coverage": float("nan"),
+            "mean_interval_width": float("nan"),
+        }
+
+    z: float = NormalDist().inv_cdf((1.0 + nominal) / 2.0)
+    half_width: float = z * residual_std
+    lower: Series = y_pred - half_width
+    upper: Series = y_pred + half_width
+    within: Series[bool] = (y_true >= lower) & (y_true <= upper)
+    return {
+        "nominal_coverage": nominal,
+        "actual_coverage": float(within.mean()),
+        "mean_interval_width": float(2.0 * half_width),
+    }
+
+
+def environment_slice_metrics(df: DataFrame, *, dimension: str) -> DataFrame:
+    """Break down Total error metrics by an environment dimension.
+
+    Args:
+        df: Total evaluation DataFrame (``model_total``/``actual_total``
+            columns) with an additional slice-label column named
+            ``dimension`` already computed by the caller (e.g. a boolean
+            ``IS_DOME`` column, or a precomputed temperature/wind band).
+        dimension: Name of the slice-label column to group by.
+
+    Returns:
+        DataFrame with one row per non-empty slice, columns:
+
+            <dimension>            the slice label
+            n_games         int
+            mae             float - mean absolute error within the slice
+            median_absolute_error  float
+            bias            float - mean(predicted - actual); (+) = over-predicts
+
+    Raises:
+        ValueError: If ``dimension`` is not a column in ``df``.
+    """
+    if dimension not in df.columns:
+        raise ValueError(f"dimension column not found in evaluation frame: {dimension!r}")
+
+    rows: list[dict] = []
+    for label, group in df.groupby(dimension):
+        y_pred: Series = group["model_total"]
+        y_true: Series = group["actual_total"]
+        errors: Series = y_pred - y_true
+        rows.append(
+            {
+                dimension: label,
+                "n_games": len(group),
+                "mae": round(float(errors.abs().mean()), 4),
+                "median_absolute_error": round(median_absolute_error(y_pred, y_true), 4),
+                "bias": round(float(errors.mean()), 4),
+            }
+        )
+    return DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # Archive access
 # ---------------------------------------------------------------------------
@@ -313,24 +543,6 @@ def _join_completed_outcomes(
     return joined.loc[:, available].reset_index(drop=True)
 
 
-def build_evaluation_df(
-    *,
-    model_name: str | None = None,
-    model_type: str | None = None,
-    season: str | None = None,
-    repo: Path | None = None,
-) -> DataFrame:
-    """Join the legacy prediction archive to canonical completed outcomes."""
-    resolved_repo = repo or get_settings().repo_root
-    log = load_prediction_log(
-        model_name=model_name,
-        model_type=model_type,
-        season=season,
-        repo=resolved_repo,
-    )
-    return _join_completed_outcomes(log, repo=resolved_repo)
-
-
 def build_forecast_run_evaluation_df(
     *,
     run_id: str,
@@ -365,6 +577,98 @@ def build_forecast_run_evaluation_df(
     return _join_completed_outcomes(selected_events, repo=repo)
 
 
+def _join_total_completed_outcomes(
+    predictions: DataFrame,
+    *,
+    repo: Path,
+) -> DataFrame:
+    """Join canonical completed outcomes (actual total points) to Total predictions."""
+    if predictions.empty:
+        return DataFrame(columns=list(_TOTAL_EVALUATION_COLUMNS))
+    if "game_id" not in predictions.columns:
+        raise ValueError("Prediction rows are missing required column: game_id")
+
+    normalized = predictions.copy()
+    if normalized["game_id"].isna().any():
+        raise ValueError("Prediction game IDs must not be null.")
+    normalized["game_id"] = normalized["game_id"].astype(str)
+    if normalized["game_id"].str.strip().eq("").any():
+        raise ValueError("Prediction game IDs must not be empty.")
+
+    games = loaders.load_games(repo)
+    missing = sorted(_REQUIRED_OUTCOME_COLUMNS - set(games.columns))
+    if missing:
+        raise ValueError("Canonical games are missing required columns: " + ", ".join(missing))
+    outcomes = games.loc[:, ["GAME_ID", "AWAY_SCORE", "HOME_SCORE"]].copy()
+    if outcomes["GAME_ID"].isna().any():
+        raise ValueError("Canonical game IDs must not be null.")
+    outcomes["GAME_ID"] = outcomes["GAME_ID"].astype(str)
+    if outcomes["GAME_ID"].str.strip().eq("").any():
+        raise ValueError("Canonical game IDs must not be empty.")
+    if outcomes["GAME_ID"].duplicated().any():
+        duplicates = sorted(
+            outcomes.loc[outcomes["GAME_ID"].duplicated(keep=False), "GAME_ID"].unique().tolist()
+        )
+        raise ValueError("Canonical games contain duplicate game IDs: " + ", ".join(duplicates))
+
+    outcomes["AWAY_SCORE"] = pd.to_numeric(outcomes["AWAY_SCORE"], errors="coerce")
+    outcomes["HOME_SCORE"] = pd.to_numeric(outcomes["HOME_SCORE"], errors="coerce")
+    outcomes = outcomes.dropna(subset=["AWAY_SCORE", "HOME_SCORE"]).copy()
+    outcomes["actual_total"] = outcomes["AWAY_SCORE"] + outcomes["HOME_SCORE"]
+
+    joined = normalized.merge(
+        outcomes.loc[:, ["GAME_ID", "actual_total"]],
+        how="inner",
+        left_on="game_id",
+        right_on="GAME_ID",
+        validate="many_to_one",
+    ).drop(columns=["GAME_ID"])
+    joined["actual_total"] = joined["actual_total"].astype(float)
+    available = [column for column in _TOTAL_EVALUATION_COLUMNS if column in joined.columns]
+    return joined.loc[:, available].reset_index(drop=True)
+
+
+def build_forecast_run_total_evaluation_df(
+    *,
+    run_id: str,
+    model_type: str,
+    repo: Path,
+) -> DataFrame:
+    """Evaluate one exact immutable backfilled Total forecast run.
+
+    Mirrors ``build_forecast_run_evaluation_df`` for the Total (regression)
+    task: the model purpose is fixed to ``"total"`` and the returned frame
+    carries ``model_total``/``actual_total`` in place of
+    ``away_win_prob``/``away_team_won``.
+    """
+    if not run_id.strip():
+        raise ValueError("run_id must not be empty.")
+    events = load_forecast_events(
+        run_id=run_id,
+        model_name="total",
+        model_type=model_type,
+        role=ForecastRole.BACKFILLED,
+        repo=repo,
+    )
+    selected = select_forecast_run(events, run_id=run_id)
+    if not selected.found:
+        raise ValueError(f"Backfilled forecast run is unavailable: {run_id!r}.")
+    selected_events = selected.events.copy()
+    if set(selected_events["run_id"].astype(str)) != {run_id}:
+        raise ValueError("Selected forecast events have the wrong run identity.")
+    if set(selected_events["model_name"].astype(str)) != {"total"}:
+        raise ValueError("Selected forecast events have the wrong model name.")
+    if set(selected_events["model_type"].astype(str)) != {model_type}:
+        raise ValueError("Selected forecast events have the wrong model type.")
+    if set(selected_events["role"].astype(str)) != {ForecastRole.BACKFILLED.value}:
+        raise ValueError("Selected forecast events must be backfilled.")
+    if selected_events["game_id"].astype(str).duplicated().any():
+        raise ValueError("Selected forecast run contains duplicate game IDs.")
+    if selected_events["model_total"].isna().any():
+        raise ValueError("Selected Total forecast run has missing model_total values.")
+    return _join_total_completed_outcomes(selected_events, repo=repo)
+
+
 # ---------------------------------------------------------------------------
 # Aggregate metric tables
 # ---------------------------------------------------------------------------
@@ -374,7 +678,7 @@ def summarise(df: DataFrame, *, group_by: str = "season") -> DataFrame:
     """Compute grouped Brier score and accuracy summary.
 
     Args:
-        df: Evaluation DataFrame from ``build_evaluation_df``.
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df``.
         group_by: Column to group by - one of ``"season"``, ``"week"``,
             ``"model_name"``, or ``"model_type"``.
 
@@ -409,7 +713,7 @@ def calibration_table(df: DataFrame, *, n_buckets: int = 10) -> DataFrame:
     """Build a calibration table: predicted probability bucket vs actual win rate.
 
     Args:
-        df: Evaluation DataFrame from ``build_evaluation_df``.
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df``.
         n_buckets: Number of equal-width probability buckets (default 10).
 
     Returns:
@@ -468,7 +772,7 @@ def brier_by_confidence_tier(
     diagnosing exact overconfidence magnitude.
 
     Args:
-        df: Evaluation DataFrame from ``build_evaluation_df``.
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df``.
         tiers: List of ``(lo, hi)`` half-open intervals defining confidence
             bands.  Defaults to ``DEFAULT_CONFIDENCE_TIERS`` - four bands:
             50-60 %, 60-70 %, 70-80 %, 80-100 %.
@@ -542,7 +846,7 @@ def brier_by_season(df: DataFrame) -> DataFrame:
     average (higher Brier) and negative when it is *better* than average.
 
     Args:
-        df: Evaluation DataFrame from ``build_evaluation_df``.
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df``.
 
     Returns:
         DataFrame sorted by season with columns:
@@ -600,7 +904,7 @@ def biggest_misses(df: DataFrame, *, n: int = 10) -> DataFrame:
     readable without reference to the away/home convention.
 
     Args:
-        df: Evaluation DataFrame from ``build_evaluation_df``.
+        df: Evaluation DataFrame from ``build_forecast_run_evaluation_df``.
         n: Number of top misses to return (default 10).
 
     Returns:

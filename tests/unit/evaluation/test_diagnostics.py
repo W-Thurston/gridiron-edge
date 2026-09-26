@@ -20,10 +20,10 @@ from gridiron_edge.evaluation.diagnostics import (
 
 
 def _make_eval_df(n: int = 200) -> pd.DataFrame:
-    """Build a minimal evaluation DataFrame with the canonical archive schema.
+    """Build a minimal evaluation DataFrame with the canonical schema.
 
     Uses (model_name, model_type) columns per WS2's composite key convention,
-    matching what build_evaluation_df actually returns.
+    matching what build_forecast_run_evaluation_df actually returns.
     """
     rng: np.random.Generator = np.random.default_rng(42)
     probs = rng.uniform(0.2, 0.8, n)

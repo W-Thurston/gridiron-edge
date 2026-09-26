@@ -109,8 +109,8 @@ class TestPropsChampionWriteManifestFlag:
             },
         }
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {},
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {},
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -178,8 +178,8 @@ class TestPropsChampionWriteManifestFlag:
             },
         }
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {},
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {},
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",

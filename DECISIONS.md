@@ -8,6 +8,134 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D46 - Game-model evaluation reads only immutable backfill runs; the legacy prediction archive is retired
+
+**Date:** 2026-09-25
+
+#### Decision
+
+`evaluation/archive.py` (the append-only, overwriteable `predictions_log.parquet`
+log written by `append_to_prediction_log`/`write_archive_rows`) is deleted, along
+with `evaluation/metrics.py`'s `build_evaluation_df()`, its sole reader. Every
+remaining code path that computes game-model quality metrics -
+`cli/evaluate.py`'s `summary`/`calibration`/`diagnostics`/`select-model`/`report`
+commands, `evaluation/select.py`, `evaluation/champion.py`'s
+`promote_champions()` classification selection, and the `/model/performance`
+API route - now reads `evaluation/forecast_store.py`'s immutable, role-scoped
+forecast events exclusively, via `build_forecast_run_evaluation_df()` /
+`build_forecast_run_total_evaluation_df()`. `gridiron output predictions`
+(`cli/output.py`) never actually wrote to this archive despite the archive
+module's own docstring claiming otherwise - that claim was already stale
+before this unit; the archive had no real writer left, only `load_prediction_log`
+readers, all now migrated.
+
+Two run-selection policies coexist, both reading only real immutable runs,
+never the retired archive:
+
+- **Exact caller-supplied run_id** - required by `evaluation/champion.py`'s
+  `select_game_classification_champions_from_runs()` (already the pattern
+  `full-retrain` used) and by the new cross-family `GameModelEvaluationReport`
+  builder. A ranking or report that silently mixed runs from different
+  invocations would be exactly the "ad hoc or unrelated prior runs" problem
+  `full-retrain`'s classification promotion already guards against.
+- **Latest-by-`generated_at`** (`evaluation/select.py::latest_backfilled_run_id()`)
+  - used by the CLI's `summary`/`calibration`/`diagnostics`/`select-model`/
+  `report` commands, the API's `/model/performance` route, and
+  `promote_champions()`'s manual `--write-manifest` path. These are
+  best-effort, single-invocation conveniences (not an in-process,
+  same-invocation backfill guarantee like `full-retrain`'s), so "most recent
+  persisted run per family, or silently skip" is the correct default -
+  matching the legacy archive path's own prior behavior of skipping families
+  with no evaluable data, without requiring every caller to look up and pass
+  an exact run_id by hand.
+
+`/model/performance`'s response contract (`ModelPerformance`, its `season`/
+`model_name`/`model_type`/`group_by` query parameters, and the frontend
+screens that read it) is unchanged - only the request-time data source moved
+from the archive to the corrected forecast-store path. A full redesign to
+serialize a persisted report (matching `/model/historical-performance`'s
+already-immutable pattern) was considered and rejected for this unit: the
+frontend actively depends on this route's live filter/group-by shape across
+multiple components, and that redesign is a separate, larger, product-facing
+change, not a data-source retirement.
+
+#### Context
+
+ROADMAP.md Tier 2 #5/#6, Unit 7 (`gridiron evaluate model-report` and the new
+metrics below) required retiring every remaining legacy-archive consumer.
+Auditing the archive's consumers surfaced a second, independent defect:
+`champion.py`'s `promote_champions()` (the shared selector behind
+`evaluate select-model --write-manifest` and `props champion --write-manifest`)
+called the archive-backed `select_game_classification_champions()`, a
+different, older code path than the one `full-retrain` actually uses
+(`select_game_classification_champions_from_runs()`), meaning the two
+manifest-writing surfaces could disagree on which model wins. The archive-backed
+selector is deleted; `promote_champions()` now resolves each pair's latest
+backfill run and calls the same run-based selector `full-retrain` uses.
+
+#### Alternatives considered
+
+- Extending the existing `HistoricalBacktestReport` (`data/output/model_performance/`)
+  to also carry model-quality metrics for all six families. Rejected: that
+  report's schema is betting/ROI-focused (`MoneylineBacktestSummary`,
+  `TotalBacktestSummary`: accuracy, ROI, hit rate) with no overlap with
+  calibration/sharpness/season-stability/interval-coverage/environment-slice
+  metrics; forcing them into one schema would make both harder to validate
+  and version independently. A new, schema-versioned, sibling report type
+  (`GameModelEvaluationReport`) was added instead, at
+  `data/output/game_model_evaluation/`, following the same
+  content-addressed-Parquet-plus-manifest immutability pattern.
+- Converting `/model/performance` to serialize a persisted report immediately,
+  matching this unit's original design note. Rejected once the audit found
+  the frontend's `ModelPerformanceRail`/`ModelPerformance` screen depends on
+  live `season`/`model_name`/`model_type`/`group_by` filtering that a fixed,
+  periodically-rebuilt report cannot reproduce without its own UI redesign.
+
+---
+
+### D47 - Total interval coverage is a residual-std report-time diagnostic, not a persisted prediction interval
+
+**Date:** 2026-09-25
+
+#### Decision
+
+`evaluation/metrics.py::interval_coverage()` (added for ROADMAP.md Tier 2 #5/#6,
+Unit 7) builds a symmetric normal-quantile interval around each point
+prediction from the *evaluated run's own* holdout residual standard
+deviation (`y_pred ± z * residual_std`), then reports actual-vs-nominal
+coverage against that self-referential interval. This is deliberately an
+in-sample descriptive diagnostic ("how wide would a nominal-coverage
+interval need to be for this run, and does that width actually achieve its
+target"), not a live-serving prediction interval: Total game models
+(Random Forest, XGBoost) persist only a point prediction in forecast events
+(`model_total`); no per-game lower/upper bound exists anywhere in the
+pipeline, and the persisted training-metadata `coverage` metric
+`champion.py`/`cli/models.py` already read is confirmed to never actually be
+populated by training (`GameModelMetadata._build_regression_metadata()` only
+ever sets `mae`/`rmse`/`r2`) - its promotion gate has always silently
+no-opped on `NaN`. Building genuine per-game prediction intervals (e.g.
+quantile regression, conformal calibration) would be a modeling change, not
+an evaluation-metrics addition, and is not in this unit's scope.
+
+Calibration slope/intercept (`calibration_slope_intercept()`) fits an
+unregularized `sklearn.linear_model.LogisticRegression(C=np.inf)` on a
+single feature, `logit(clip(p))`, excluding tied games (`y == 0.5`) before
+fitting, since a strictly-binary logistic fit cannot use a fractional
+label and NFL history contains real ties. `roc_auc()` (pre-existing) has the
+same limitation and is not itself patched by this unit - the new
+`GameModelEvaluationReport` builder filters to binary outcomes before
+calling it, rather than changing `roc_auc()`'s existing contract for its
+other callers.
+
+#### Context
+
+Confirmed the dormant `coverage` metadata field's gate is currently a
+permanent no-op against the real repository (`meta.metrics.get("coverage", nan)`
+is never anything but `nan` today) - not a regression, a pre-existing gap this
+unit's new report-level metric does not attempt to fix.
+
+---
+
 ### D45 - Canonical Week 2 replacement is an archive-by-documentation boundary, not a store mechanism
 
 **Date:** 2026-09-25

@@ -938,6 +938,43 @@ Do not combine live and backfilled roles when measuring operational forecast per
 
 Prop evaluation and champion selection are likewise archive-driven. Prop projections require persisted deployable artifacts.
 
+### Game-model evaluation
+
+All game-model quality evaluation (Win and Total) reads immutable
+`backfilled` forecast events directly (`evaluation/metrics.py`'s
+`build_forecast_run_evaluation_df`/`build_forecast_run_total_evaluation_df`).
+The legacy overwriteable prediction archive (`evaluation/archive.py`) has
+been retired entirely — `gridiron output predictions` never actually wrote
+to it, and every reader has been migrated.
+
+Two run-selection policies exist, both reading only real immutable runs:
+
+- **Exact caller-supplied run_id** — required by champion selection
+  (`select_game_classification_champions_from_runs`, used by both
+  `full-retrain` and the manual `evaluate select-model --write-manifest` /
+  `props champion --write-manifest` paths) and by the cross-family
+  evaluation report below, so a ranking or report never silently mixes runs
+  from unrelated invocations.
+- **Latest-by-`generated_at`** (`evaluation/select.py::latest_backfilled_run_id`)
+  — used by `gridiron evaluate summary`/`calibration`/`diagnostics`/
+  `select-model`/`report` and the `/model/performance` API route: a
+  best-effort, single-invocation convenience that resolves each family's
+  most recently generated backfill run, silently skipping any family with
+  no backfill run yet. `/model/performance`'s response contract, query
+  parameters, and the frontend screens that read it are unchanged — only
+  the request-time data source moved off the archive.
+
+`gridiron evaluate model-report` builds one new, immutable, run-bound
+`GameModelEvaluationReport` (`data/output/game_model_evaluation/`) covering
+all six game-model families (Win: Elo, Logistic, Random Forest, XGBoost;
+Total: Random Forest, XGBoost) on a verified common game set — it requires
+an exact backfill run_id per family and fails closed if the six families'
+game sets disagree. It is a sibling to, not an extension of, the existing
+`HistoricalBacktestReport` (below): that report is betting/ROI-focused for
+the current champion pair; this one is model-quality-focused (calibration,
+sharpness, season stability, error, interval coverage, environment slices)
+across all six families. See `DECISIONS.md` D46/D47.
+
 ## Full Retrain Workflow
 
 Run:

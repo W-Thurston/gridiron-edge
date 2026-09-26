@@ -197,15 +197,22 @@ def load_evaluation_df(
     model_type: str | None = None,
     season: str | None = None,
 ) -> DataFrame:
-    """Return the evaluation DataFrame (predictions joined to outcomes)."""
-    from gridiron_edge.evaluation.metrics import build_evaluation_df
+    """Return each matching family's latest immutable backfill run, evaluated.
 
-    return build_evaluation_df(
+    Sources from the corrected forecast-store-backed path (each family's own
+    most recent backfill run), never the legacy overwriteable prediction
+    archive.
+    """
+    from gridiron_edge.evaluation.select import build_latest_run_evaluation_df
+
+    df_eval = build_latest_run_evaluation_df(
         model_name=model_name,
         model_type=model_type,
-        season=season,
         repo=settings.repo_root,
     )
+    if season is not None and not df_eval.empty:
+        df_eval = df_eval.loc[df_eval["season"] == season].reset_index(drop=True)
+    return df_eval
 
 
 def load_games_df(settings: Settings) -> pd.DataFrame:

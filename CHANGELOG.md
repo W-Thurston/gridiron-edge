@@ -1,5 +1,81 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-25 - Comprehensive game-model evaluation metrics, cross-family report, and legacy-archive retirement
+
+#### Added
+
+- `evaluation/metrics.py`: Win calibration slope/intercept (unregularized
+  logistic fit on `logit(p)`, ties excluded), sharpness (variance of
+  predicted probabilities), and season stability (stdev of per-season
+  Brier); Total median absolute error, residual-std interval coverage, and
+  environment-slice metrics (dome/outdoor, cold, windy); a Total-task
+  evaluation-frame builder (`build_forecast_run_total_evaluation_df`) - the
+  prior forecast-store path only supported Win.
+- A new immutable, run-bound, schema-versioned `GameModelEvaluationReport`
+  covering all six game-model families (Win: Elo, Logistic, Random Forest,
+  XGBoost; Total: Random Forest, XGBoost) on a verified common game set,
+  content-addressed at `data/output/game_model_evaluation/`, sibling to (not
+  an extension of) the existing betting/ROI-focused
+  `HistoricalBacktestReport`. New `gridiron evaluate model-report` command
+  requires an exact backfill run_id per family and fails closed if the six
+  families' game sets disagree.
+- `evaluation/select.py::latest_backfilled_run_id()` /
+  `collect_latest_forecast_run_metrics()` / `build_latest_run_evaluation_df()`
+  - single-invocation "most recent persisted run per family" resolution used
+    by the CLI and API's best-effort evaluation surfaces.
+
+#### Removed
+
+- `evaluation/archive.py` (the append-only, overwriteable prediction log) and
+  `evaluation/metrics.py::build_evaluation_df()`, its only reader. Confirmed
+  `gridiron output predictions` never actually wrote to this archive despite
+  the module's own docstring - the archive had no writer left in production,
+  only readers, all migrated to the forecast-store-backed path.
+- `evaluation/champion.py::select_game_classification_champions()` (legacy,
+  archive-backed) - `promote_champions()`'s manual `--write-manifest` path
+  now calls the same run-based `select_game_classification_champions_from_runs()`
+  selector `full-retrain` already used, resolving each pair's latest
+  backfill run itself. The two manifest-writing surfaces could previously
+  disagree on which model wins.
+
+#### Changed
+
+- `cli/evaluate.py`'s `summary`/`calibration`/`diagnostics`/`select-model`/
+  `report` commands and `api/loaders.py::load_evaluation_df`
+  (`/model/performance`) now source each family's latest immutable backfill
+  run instead of the legacy archive. `/model/performance`'s response
+  contract, query parameters, and the frontend screens that read it are
+  unchanged - see `DECISIONS.md` D46 for why a persisted-report redesign of
+  that route was considered and deferred.
+
+#### Validation
+
+- Ruff, Pyrefly, and the full non-slow unit suite passed (4,069 tests).
+  `pnpm lint`, `pnpm build`, and `pnpm test:run` (511 tests) passed after
+  regenerating `api-schema.json` (a one-line description-text diff from a
+  docstring change) and confirming the generated frontend client
+  (`frontend/src/api/schema.ts`) is byte-identical.
+- Real-artifact validation: the new metrics and report builder were run
+  against the real repository's existing backfill runs. Confirmed the six
+  families' *current* on-disk backfill runs do not actually share a common
+  game set (Elo's two runs cover 7,276 games; the other five families' most
+  recent runs share an identical, different 6,498-game set) - the new
+  report's fail-closed common-game-set check correctly rejects this real
+  mismatch. Verified per-family metric values against the five aligned real
+  runs (e.g. Logistic Win: brier=0.223, calibration slope=0.92, AUC=0.68;
+  Random Forest Total: MAE=10.8, 90%-nominal actual coverage=0.90).
+  `gridiron evaluate select-model`/`summary`/`calibration`/`report` and the
+  live `/model/performance` route were exercised against real data.
+
+#### Scope
+
+A canonical `GameModelEvaluationReport` built from all six families on the
+corrected, regenerated walk-forward backfills - the real six-family success
+case - is ROADMAP.md Tier 2 #5/#6's other half (Unit 8), since today's real
+backfill runs don't share a common game set. This unit builds and proves the
+capability; U8 regenerates the aligned backfills and produces the canonical
+report from them.
+
 ### 2026-09-25 - Resolved development-role forecast candidates
 
 #### Fixed

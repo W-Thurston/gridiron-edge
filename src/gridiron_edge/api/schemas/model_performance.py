@@ -23,7 +23,7 @@ class ModelPerformanceFilters(BaseModel):
 
 
 class ModelQualityBlock(BaseModel):
-    """Top-line model-quality metrics from build_evaluation_df."""
+    """Top-line model-quality metrics from build_latest_run_evaluation_df."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

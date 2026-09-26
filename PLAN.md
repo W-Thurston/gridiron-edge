@@ -580,6 +580,186 @@ corrected pipeline. `gridiron verify-week` correctly evaluates readiness for
 any already-retained week. API and frontend serialization is verified against
 the corrected selection.
 
+#### Unit 7: Comprehensive game-model evaluation metrics, cross-family report, and legacy-archive retirement [Completed September 25, 2026]
+
+##### Completed
+
+Implemented ROADMAP.md Tier 2 #5/#6's U7: added the model-quality metrics
+`evaluation/metrics.py` was missing (Win calibration slope/intercept,
+sharpness, season stability; Total median absolute error, interval
+coverage, environment slices); added one new immutable, run-bound
+`GameModelEvaluationReport` and CLI command (`gridiron evaluate
+model-report`) covering all six game-model families on a verified common
+game set; and retired every code consumer of the legacy prediction archive
+(`evaluation/archive.py`), which is now deleted. While migrating consumers,
+found and fixed a second defect: `champion.py::promote_champions()` (the
+shared selector behind the manual `evaluate select-model --write-manifest`
+and `props champion --write-manifest` flags) called a different, older,
+archive-backed classification selector than `full-retrain` actually uses -
+the two manifest-writing surfaces could disagree on which model wins. Fixed
+by switching it to the same run-based selector, resolving each pair's
+latest backfill run itself.
+
+Real-artifact verification against the actual repository found that the six
+families' *current* on-disk backfill runs do not share a common game set
+(Elo's two runs cover 7,276 games; the other five families' most recent
+runs share a different, identical 6,498-game set) - confirming this
+report's fail-closed common-game-set guard is necessary, and that producing
+a genuine six-family canonical report requires U8's corrected,
+regenerated, aligned backfills, not this unit's job.
+
+##### Goal
+
+Add the missing model-quality metrics, add one cross-family immutable
+evaluation report and CLI, and retire every consumer of the legacy
+prediction archive in favor of the forecast-store-backed path - building
+and proving the capability against whatever backfill runs exist today,
+without regenerating backfills (U8) or touching calibration/the champion
+manifest (U9).
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/game_model_evaluation_report.py` - Frozen
+  `GameModelEvaluationReport`/`WinFamilyMetrics`/`TotalFamilyMetrics`
+  contracts, content-addressed frame references, and canonical-identity
+  validation, sibling to (not an extension of) `historical_backtest_report.py`.
+- `src/gridiron_edge/evaluation/game_model_evaluation_report_builder.py` -
+  `build_and_write_game_model_evaluation_report()`: evaluates all six
+  families from caller-supplied exact run IDs, asserts common `GAME_ID`
+  coverage (fails closed on mismatch), computes per-family metrics and a
+  combined environment-slice table (dome/outdoor, cold, windy, joined from
+  already-present `modeling_file.parquet` columns), and persists with exact
+  replay verification.
+- `src/gridiron_edge/evaluation/game_model_evaluation_report_store.py` /
+  `_selection.py` / `_loader.py` - Immutable JSON+Parquet persistence,
+  explicit current-selection, and strict deserialization, mirroring
+  `historical_backtest_report_store.py`/`_selection.py`/`_loader.py`'s
+  conventions.
+- `tests/unit/evaluation/test_game_model_evaluation_report.py` /
+  `_builder.py` / `_store.py` / `_selection.py` / `_loader.py` - Contract
+  validation/tamper detection, full six-family build-and-replay plus the
+  common-game-set-mismatch fail-closed path (proven against real backfill
+  data), round-trip persistence, and selection/loading coverage.
+
+Changed:
+- `src/gridiron_edge/evaluation/metrics.py` - Added
+  `calibration_slope_intercept` (unregularized logistic fit on
+  `logit(clip(p))`, ties excluded), `sharpness`, `season_stability`,
+  `median_absolute_error`, `interval_coverage` (residual-std diagnostic),
+  `environment_slice_metrics`, and `build_forecast_run_total_evaluation_df`
+  (the Total-task counterpart to the existing Win-only
+  `build_forecast_run_evaluation_df`). Removed `build_evaluation_df()` and
+  the `evaluation.archive` import; module docstring updated.
+- `src/gridiron_edge/evaluation/select.py` - Added
+  `registered_game_model_pairs`, `latest_backfilled_run_id`,
+  `collect_latest_forecast_run_metrics`, `build_latest_run_evaluation_df`.
+  Removed the legacy `collect_model_metrics`; `compute_report_data` now
+  takes an explicit `run_id` instead of an archive-wide `season` filter
+  (season is now a post-filter on the run's own games).
+- `src/gridiron_edge/evaluation/champion.py` - Deleted the archive-backed
+  `select_game_classification_champions`; `promote_champions()` now
+  resolves each pair's latest backfill run and calls
+  `select_game_classification_champions_from_runs`, the same selector
+  `full-retrain` uses.
+- `src/gridiron_edge/evaluation/diagnostics.py` - Docstrings updated to
+  name the current builder function.
+- `src/gridiron_edge/cli/evaluate.py` - `summary`/`calibration`/
+  `diagnostics`/`select-model`/`report` migrated to each family's latest
+  backfill run. Added `evaluate model-report` (six required exact-run-id
+  options, `--select/--no-select`).
+- `src/gridiron_edge/api/loaders.py` - `load_evaluation_df` now calls
+  `build_latest_run_evaluation_df` instead of the legacy archive.
+- `src/gridiron_edge/api/routes/model.py`,
+  `src/gridiron_edge/api/schemas/model_performance.py`,
+  `src/gridiron_edge/api/serializers/model_performance.py` - Comment/
+  docstring updates only; `/model/performance`'s response contract, query
+  parameters, and behavior are unchanged (see `DECISIONS.md` D46 for why a
+  persisted-report redesign was considered and deferred).
+- `api-schema.json`, `frontend/src/api/schema.ts` - Regenerated via
+  `gridiron api export-schema` + `pnpm gen:api` (one-line description-text
+  diff from the schema docstring change above; the generated TS client is
+  byte-identical).
+- `tests/unit/evaluation/test_metrics.py`, `test_select.py`,
+  `test_champion.py`, `test_diagnostics.py` - Retargeted to the new
+  functions/signatures; removed assertions about the deleted legacy path.
+- `tests/unit/cli/test_evaluate.py`,
+  `tests/unit/cli/test_props_champion_write_manifest.py`,
+  `tests/unit/api/test_loaders.py` - Retargeted champion-selection and
+  evaluation-loader mocks to the run-based functions; added
+  `TestModelReportCommand` and `TestLoadEvaluationDf`.
+- `tests/fixtures/helpers.py`, `tests/fixtures/repos.py` - Removed
+  `assert_archive_schema_valid`/`with_predictions_archive`, dead after the
+  archive's removal.
+- `tests/integration/test_edges_cli.py` - Removed a dead, unused patch-path
+  constant referencing the deleted archive module.
+- `DECISIONS.md` - Added D46 (legacy-archive retirement and the two
+  run-selection policies) and D47 (interval-coverage/calibration-slope
+  methodology).
+- `CHANGELOG.md`, `ROADMAP.md` - Recorded the shipped behavior; marked
+  Tier 2 #5/#6's U7 portion complete.
+- `HANDOFF.md` - Added a "Game-model evaluation" subsection describing the
+  retired archive, the two run-selection policies, and the new report.
+
+Removed:
+- `src/gridiron_edge/evaluation/archive.py` - The append-only, overwriteable
+  prediction log. Confirmed dead: `gridiron output predictions` never
+  actually wrote to it despite the module's own docstring; every reader
+  migrated to the forecast-store-backed path.
+- `tests/unit/evaluation/test_archive.py`, `test_archive_schema.py`,
+  `tests/integration/test_archive_roundtrip.py` - Dedicated coverage for
+  the deleted module.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,069 tests, net
++17 over the prior 4,052 after new coverage and deleted legacy tests).
+`cd frontend && pnpm lint && pnpm build && pnpm test:run` passed (511
+tests) after regenerating the client from the re-exported schema.
+
+Real-artifact validation (read-only against the real repository; no `data/`
+writes beyond ones this unit's own owning command performed):
+- Ran the new report builder against the real repository's existing
+  backfill runs: five families (Total RF/XGB, Win Logistic/RF/XGB) share an
+  identical real 6,498-game set; Elo's two real runs cover a different,
+  larger 7,276-game set. The builder's common-game-set check correctly
+  raised, listing the exact mismatched games.
+- Computed per-family metrics directly against the five aligned real runs:
+  Logistic Win brier=0.223, ECE=0.018, AUC=0.677, calibration slope=0.92;
+  Random Forest/XGBoost Total MAE≈10.8/10.9, 90%-nominal actual
+  coverage≈0.90/0.90 - all sane, none NaN.
+  Environment-slice metrics (dome/cold/windy) produced sensible per-slice
+  breakdowns joined from the real `modeling_file.parquet`.
+- Ran `gridiron evaluate model-report` against the real mismatched run IDs
+  and confirmed the same fail-closed behavior end-to-end through the CLI.
+- Ran `gridiron evaluate select-model`, `summary`, `calibration`, and
+  `report` against the real repository (no mocking): correct per-family
+  metrics, calibration tables, season-stability trend flags, and top-misses
+  output, all sourced from real backfill runs.
+- Started the real API server and called `/model/performance`; confirmed
+  `roc_auc: null` (present on both old and new code paths against the real
+  archive/backfill data - a pre-existing tie-handling gap in `roc_auc()`,
+  unrelated to this unit) and otherwise sane `model_quality` values.
+- `git diff --stat` confirmed `frontend/src/api/schema.ts` is byte-identical
+  after `pnpm gen:api`, since only a schema description string changed.
+
+##### Acceptance
+
+`evaluation/metrics.py` computes calibration slope/intercept, sharpness,
+and season stability for Win, and median absolute error, interval
+coverage, and environment slices for Total, proven correct on constructed
+fixtures and sane on real data. One new immutable, run-bound,
+schema-versioned `GameModelEvaluationReport` exists covering all six
+families evaluated on a verified common game set, with a CLI command that
+fails closed on a real game-set mismatch. Every code consumer of the legacy
+prediction archive is migrated to the forecast-store-backed path; the
+archive module and its dedicated tests are removed. `promote_champions()`'s
+classification selection now agrees with `full-retrain`'s. Champion
+selection's ranking, gates, and persisted-metadata inputs are otherwise
+unchanged. `/model/performance`'s contract, query parameters, and frontend
+consumers are unchanged. A canonical six-family report over the corrected,
+regenerated backfills remains U8's job.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

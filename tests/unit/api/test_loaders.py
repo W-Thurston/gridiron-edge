@@ -507,7 +507,7 @@ class TestLoadGamesForWeek:
         assert calls == [{"repo_root": tmp_path, "season": "2026-2027", "week": 1}]
         assert result is not product
 
-    def test_does_not_load_archive_or_resolve_champion(self, tmp_path: Path) -> None:
+    def test_does_not_resolve_champion(self, tmp_path: Path) -> None:
         from gridiron_edge.api.loaders import load_games_for_week
 
         settings = self._fake_settings(tmp_path)
@@ -519,14 +519,12 @@ class TestLoadGamesForWeek:
                 "gridiron_edge.datasets.loaders.load_current_weekly_product",
                 return_value=product,
             ),
-            patch("gridiron_edge.evaluation.archive.load_prediction_log") as archive,
             patch(
                 "gridiron_edge.evaluation.champion_resolver.resolve_current_champion"
             ) as champion,
         ):
             load_games_for_week(settings, season="2026-2027", week=1)
 
-        archive.assert_not_called()
         champion.assert_not_called()
 
 
@@ -1633,3 +1631,48 @@ class TestLoadProjectionGridData:
 
         assert result.season == "2026-2027"
         assert result.schedule["season"].unique().tolist() == ["2026-2027"]
+
+
+class TestLoadEvaluationDf:
+    """Cover the model-performance evaluation-frame loader."""
+
+    def test_sources_from_latest_run_not_legacy_archive(self, tmp_path: Path) -> None:
+        from gridiron_edge.api.loaders import load_evaluation_df
+
+        settings = _make_settings(tmp_path)
+        evaluation = DataFrame(
+            {
+                "season": ["2025-2026", "2025-2026"],
+                "away_win_prob": [0.6, 0.4],
+                "away_team_won": [1.0, 0.0],
+            }
+        )
+        with patch(
+            "gridiron_edge.evaluation.select.build_latest_run_evaluation_df",
+            return_value=evaluation,
+        ) as build:
+            result = load_evaluation_df(settings, model_name="win_prob", model_type="logistic")
+
+        assert build.call_args.kwargs["model_name"] == "win_prob"
+        assert build.call_args.kwargs["model_type"] == "logistic"
+        assert build.call_args.kwargs["repo"] == tmp_path
+        pd.testing.assert_frame_equal(result, evaluation)
+
+    def test_applies_season_as_a_post_filter(self, tmp_path: Path) -> None:
+        from gridiron_edge.api.loaders import load_evaluation_df
+
+        settings = _make_settings(tmp_path)
+        evaluation = DataFrame(
+            {
+                "season": ["2024-2025", "2025-2026"],
+                "away_win_prob": [0.6, 0.4],
+                "away_team_won": [1.0, 0.0],
+            }
+        )
+        with patch(
+            "gridiron_edge.evaluation.select.build_latest_run_evaluation_df",
+            return_value=evaluation,
+        ):
+            result = load_evaluation_df(settings, season="2025-2026")
+
+        assert result["season"].unique().tolist() == ["2025-2026"]

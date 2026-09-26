@@ -87,7 +87,7 @@ def _model_key(eval_df: pd.DataFrame) -> str:
     paths.
 
     Args:
-        eval_df: Evaluation DataFrame from build_evaluation_df.
+        eval_df: Evaluation DataFrame from build_forecast_run_evaluation_df.
 
     Returns:
         Composite key f"{model_name}_{model_type}".
@@ -133,7 +133,7 @@ def plot_calibration_curve(
     diagonal mean the model is underconfident; below means overconfident.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root (determines output path).
         n_buckets: Number of probability buckets.
 
@@ -207,7 +207,7 @@ def plot_confidence_distribution(
     advantage). A spike at 0.5 suggests the model is underconfident.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root.
         n_bins: Number of histogram bins.
 
@@ -281,7 +281,7 @@ def plot_roc_curve(
     is perfect; AUC = 0.5 is random.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root.
 
     Returns:
@@ -335,7 +335,7 @@ def plot_brier_decomposition(
     Uncertainty: inherent unpredictability. Fixed for the dataset.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root.
 
     Returns:
@@ -564,7 +564,7 @@ def plot_performance_by_context(
     seasons, or at particular confidence levels.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root.
 
     Returns:
@@ -694,7 +694,7 @@ def plot_single_model(
     returns all output paths.
 
     Args:
-        eval_df: Output of ``build_evaluation_df()`` for one model.
+        eval_df: Output of ``build_forecast_run_evaluation_df()`` for one model.
         repo: Repository root.
 
     Returns:

@@ -51,8 +51,8 @@ def serialize_model_performance(
     """Build the /model/performance response.
 
     Args:
-        df_eval: Output of build_evaluation_df, filtered to the requested
-            scope. Empty if no evaluated games.
+        df_eval: Output of build_latest_run_evaluation_df, filtered to the
+            requested scope. Empty if no evaluated games.
         summary_df: Output of summarise(df_eval, group_by=filters['group_by']).
             One row per group value.
         model_bet_summary: The subset of performance.summary() fields

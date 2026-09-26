@@ -22,10 +22,13 @@ import typer
 
 from gridiron_edge.cli._composites import write_champion_manifest
 from gridiron_edge.evaluation.select import (
-    collect_model_metrics as _collect_model_metrics,
+    collect_latest_forecast_run_metrics as _collect_latest_forecast_run_metrics,
 )
 from gridiron_edge.evaluation.select import (
     compute_report_data as _compute_report_data,
+)
+from gridiron_edge.evaluation.select import (
+    latest_backfilled_run_id as _latest_backfilled_run_id,
 )
 from gridiron_edge.evaluation.select import (
     rank_models as _rank_models,
@@ -85,6 +88,65 @@ def _split_composite_key(key: str) -> tuple[str | None, str | None]:
     )
 
 
+def _resolved_run_id_or_exit(target_key: str, *, repo: Path) -> str:
+    """Resolve one composite key's latest backfilled run_id or exit with a message."""
+    target_model_name, target_model_type = _split_composite_key(target_key)
+    run_id = (
+        _latest_backfilled_run_id(target_model_name, target_model_type, repo=repo)
+        if target_model_name is not None and target_model_type is not None
+        else None
+    )
+    if run_id is None:
+        typer.echo(f"No backfilled run for {target_key!r}.")
+        raise typer.Exit(1)
+    return run_id
+
+
+def _latest_run_evaluation_df(
+    model_name: str,
+    model_type: str,
+    *,
+    repo: Path,
+) -> DataFrame:
+    """Evaluate one family's most recent immutable backfill run, if any.
+
+    Returns an empty DataFrame if the family has never been backfilled -
+    the caller decides how to report that.
+    """
+    from gridiron_edge.evaluation.metrics import build_forecast_run_evaluation_df
+
+    run_id = _latest_backfilled_run_id(model_name, model_type, repo=repo)
+    if run_id is None:
+        return DataFrame()
+    return build_forecast_run_evaluation_df(
+        run_id=run_id,
+        model_name=model_name,
+        model_type=model_type,
+        repo=repo,
+    )
+
+
+def _latest_run_evaluation_df_for_keys(
+    keys: list[str],
+    *,
+    repo: Path,
+) -> DataFrame:
+    """Concatenate each key's latest-run evaluation frame; skips families with no run."""
+    import pandas as pd
+
+    frames: list[DataFrame] = []
+    for key in keys:
+        name_filter, type_filter = _split_composite_key(key)
+        if name_filter is None or type_filter is None:
+            continue
+        frame = _latest_run_evaluation_df(name_filter, type_filter, repo=repo)
+        if not frame.empty:
+            frames.append(frame)
+    if not frames:
+        return DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
 @evaluate_app.command("summary")
 def evaluate_summary(
     *,
@@ -101,7 +163,7 @@ def evaluate_summary(
         help="Group results by: season, week, model_name, or model_type.",
     ),
 ) -> None:
-    r"""Print prediction accuracy summary from the archive.
+    r"""Print prediction accuracy summary for each family's latest backfill run.
 
     \b
     Examples:
@@ -111,23 +173,27 @@ def evaluate_summary(
       gridiron evaluate summary --model-key win_prob_random_forest
     """
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.metrics import build_evaluation_df, summarise
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.metrics import summarise
 
-    name_filter, type_filter = _split_composite_key(model_key)
+    repo: Path = get_settings().repo_root
     subtitle: str = f"model={model_key}"
     if season:
         subtitle += f"  season={season}"
     subtitle += f"  group={group_by}"
     console.header("evaluate summary", subtitle=subtitle)
 
-    with step("Join predictions to outcomes") as s:
-        df_eval: DataFrame = build_evaluation_df(
-            model_name=name_filter,
-            model_type=type_filter,
-            season=season,
-        )
+    with step("Evaluate each family's latest backfill run") as s:
+        if model_key == "all":
+            df_eval: DataFrame = _latest_run_evaluation_df_for_keys(
+                _registered_game_model_keys(), repo=repo
+            )
+        else:
+            df_eval = _latest_run_evaluation_df_for_keys([model_key], repo=repo)
+        if season is not None and not df_eval.empty:
+            df_eval = df_eval.loc[df_eval["season"] == season].reset_index(drop=True)
         if df_eval.empty:
-            s.set_detail("no evaluated games - run 'output predictions' first")
+            s.set_detail("no backfilled runs - run 'evaluate backfill' first")
         else:
             s.set_detail(f"{len(df_eval)} games")
 
@@ -163,22 +229,26 @@ def evaluate_calibration(
       gridiron evaluate calibration --model-key win_prob_random_forest
     """
     from gridiron_edge.core.console import console, step
-    from gridiron_edge.evaluation.metrics import build_evaluation_df, calibration_table
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.metrics import calibration_table
 
-    name_filter, type_filter = _split_composite_key(model_key)
+    repo: Path = get_settings().repo_root
     subtitle: str = f"model={model_key}"
     if season:
         subtitle += f"  season={season}"
     console.header("evaluate calibration", subtitle=subtitle)
 
-    with step("Join predictions to outcomes") as s:
-        df_eval: DataFrame = build_evaluation_df(
-            model_name=name_filter,
-            model_type=type_filter,
-            season=season,
-        )
+    with step("Evaluate the family's latest backfill run") as s:
+        if model_key == "all":
+            df_eval: DataFrame = _latest_run_evaluation_df_for_keys(
+                _registered_game_model_keys(), repo=repo
+            )
+        else:
+            df_eval = _latest_run_evaluation_df_for_keys([model_key], repo=repo)
+        if season is not None and not df_eval.empty:
+            df_eval = df_eval.loc[df_eval["season"] == season].reset_index(drop=True)
         if df_eval.empty:
-            s.set_detail("no evaluated games - run 'output predictions' first")
+            s.set_detail("no backfilled runs - run 'evaluate backfill' first")
         else:
             s.set_detail(f"{len(df_eval)} games")
 
@@ -474,7 +544,6 @@ def evaluate_diagnostics(
         plot_model_comparison,
         plot_single_model,
     )
-    from gridiron_edge.evaluation.metrics import build_evaluation_df
 
     repo: Path = get_settings().repo_root
     subtitle_parts: list[str] = []
@@ -486,12 +555,8 @@ def evaluate_diagnostics(
 
     # Single-model diagnostics
     if model_key != "all":
-        name_filter, type_filter = _split_composite_key(model_key)
-        with step(f"Load predictions - {model_key}") as s:
-            df_eval: DataFrame = build_evaluation_df(
-                model_name=name_filter,
-                model_type=type_filter,
-            )
+        with step(f"Evaluate latest backfill run - {model_key}") as s:
+            df_eval: DataFrame = _latest_run_evaluation_df_for_keys([model_key], repo=repo)
             if df_eval.empty:
                 s.set_detail("no data - run evaluate backfill first")
                 raise typer.Exit(1)
@@ -510,11 +575,10 @@ def evaluate_diagnostics(
 
         all_keys: list[str] = _registered_game_model_keys()
 
-        with step("Load predictions - all models") as s:
+        with step("Evaluate latest backfill runs - all models") as s:
             eval_dfs: dict = {}
             for key in all_keys:
-                nm, ty = _split_composite_key(key)
-                df: DataFrame = build_evaluation_df(model_name=nm, model_type=ty)
+                df: DataFrame = _latest_run_evaluation_df_for_keys([key], repo=repo)
                 if not df.empty:
                     eval_dfs[key] = df
             s.set_detail(f"{len(eval_dfs)} models with data")
@@ -597,16 +661,16 @@ def evaluate_select_model(
         typer.echo(f"Unknown criteria: {invalid}. Valid: {sorted(valid_criteria)}")
         raise typer.Exit(1)
 
-    # Compute metrics for all models with archived predictions
+    # Compute metrics for all models with a backfilled run
     with step("Compute metrics for all models") as s:
-        rows: list[dict] = _collect_model_metrics(
+        rows: list[dict] = _collect_latest_forecast_run_metrics(
             _registered_game_model_keys(),
             repo=repo,
         )
         s.set_detail(f"{len(rows)} models evaluated")
 
     if not rows:
-        typer.echo("No models with archived predictions found. Run evaluate backfill first.")
+        typer.echo("No models with a backfilled run found. Run evaluate backfill first.")
         raise typer.Exit(1)
 
     df = pd.DataFrame(rows)
@@ -707,6 +771,110 @@ def evaluate_prune_champions() -> None:
             typer.echo(f"  removed: {model_name} ({entry['model_type']}) - no trained artifact")
     else:
         typer.echo("  nothing to prune - every champion has a trained artifact")
+
+    console.summary()
+
+
+@evaluate_app.command("model-report")
+def evaluate_model_report(
+    *,
+    win_elo_run: str = typer.Option(..., help="Exact backfill run_id for win_prob/elo."),
+    win_logistic_run: str = typer.Option(..., help="Exact backfill run_id for win_prob/logistic."),
+    win_random_forest_run: str = typer.Option(
+        ..., help="Exact backfill run_id for win_prob/random_forest."
+    ),
+    win_xgboost_run: str = typer.Option(..., help="Exact backfill run_id for win_prob/xgboost."),
+    total_random_forest_run: str = typer.Option(
+        ..., help="Exact backfill run_id for total/random_forest."
+    ),
+    total_xgboost_run: str = typer.Option(..., help="Exact backfill run_id for total/xgboost."),
+    select: bool = typer.Option(
+        True,
+        "--select/--no-select",
+        help="Select this report as current after building it.",
+    ),
+) -> None:
+    r"""Build one immutable evaluation report across all six game-model families.
+
+    Requires an exact backfill run_id for each of the six families (Win:
+    elo, logistic, random_forest, xgboost; Total: random_forest, xgboost) so
+    every family is evaluated on a caller-verified common game set. Fails
+    closed if the six families' game sets disagree - use `gridiron evaluate
+    backfill` to produce aligned runs first.
+
+    \b
+    Examples:
+      gridiron evaluate model-report \\
+        --win-elo-run <run-id> --win-logistic-run <run-id> \\
+        --win-random-forest-run <run-id> --win-xgboost-run <run-id> \\
+        --total-random-forest-run <run-id> --total-xgboost-run <run-id>
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.game_model_evaluation_report_builder import (
+        build_and_write_game_model_evaluation_report,
+    )
+    from gridiron_edge.evaluation.game_model_evaluation_report_selection import (
+        select_current_game_model_evaluation_report,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate model-report")
+
+    win_run_ids: dict[str, str] = {
+        "elo": win_elo_run,
+        "logistic": win_logistic_run,
+        "random_forest": win_random_forest_run,
+        "xgboost": win_xgboost_run,
+    }
+    total_run_ids: dict[str, str] = {
+        "random_forest": total_random_forest_run,
+        "xgboost": total_xgboost_run,
+    }
+    generated_at = datetime.now(UTC)
+
+    try:
+        with step("Evaluate all six families on a common game set") as s:
+            result = build_and_write_game_model_evaluation_report(
+                win_run_ids=win_run_ids,
+                total_run_ids=total_run_ids,
+                generated_at=generated_at,
+                repo=repo,
+            )
+            s.set_detail(f"{result.report.game_count} games")
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo("")
+    typer.echo(f"Report ID: {result.report.report_id}")
+    typer.echo(f"Games: {result.report.game_count}")
+    typer.echo("")
+    typer.echo("Win families:")
+    for metric in result.report.win_metrics:
+        typer.echo(
+            f"  {metric.model_type}: brier={metric.brier} ece={metric.ece} "
+            f"auc={metric.auc} calibration_slope={metric.calibration_slope} "
+            f"calibration_intercept={metric.calibration_intercept} "
+            f"sharpness={metric.sharpness} season_stability={metric.season_stability}"
+        )
+    typer.echo("Total families:")
+    for metric in result.report.total_metrics:
+        typer.echo(
+            f"  {metric.model_type}: mae={metric.mae} "
+            f"median_absolute_error={metric.median_absolute_error} rmse={metric.rmse} "
+            f"actual_coverage={metric.actual_coverage} (nominal={metric.nominal_coverage})"
+        )
+
+    if select:
+        select_current_game_model_evaluation_report(
+            result.report.report_id,
+            selected_at=generated_at,
+            repo=repo,
+        )
+        typer.echo("")
+        typer.echo(f"Selected as current: {result.report.report_id}")
 
     console.summary()
 
@@ -913,11 +1081,13 @@ def evaluate_report(
 
     # ── Rank all models ─────────────────────────────────────────────────────
     with step("Compute metrics - all models") as s:
-        all_rows: list[dict] = _collect_model_metrics(_registered_game_model_keys(), repo=repo)
-        s.set_detail(f"{len(all_rows)} models with archived predictions")
+        all_rows: list[dict] = _collect_latest_forecast_run_metrics(
+            _registered_game_model_keys(), repo=repo
+        )
+        s.set_detail(f"{len(all_rows)} models with a backfilled run")
 
     if not all_rows:
-        typer.echo("No models with archived predictions. Run 'gridiron evaluate backfill' first.")
+        typer.echo("No models with a backfilled run. Run 'gridiron evaluate backfill' first.")
         raise typer.Exit(1)
 
     ranked_df: DataFrame = _rank_models(
@@ -939,15 +1109,16 @@ def evaluate_report(
 
     if target_key not in {str(r["model_key"]) for r in all_rows}:
         typer.echo(
-            f"No archived predictions for {target_key!r}. "
+            f"No backfilled run for {target_key!r}. "
             f"Run 'gridiron evaluate backfill --model-name <name> --model-type <type>' first."
         )
         raise typer.Exit(1)
 
     # ── Compute depth metrics ────────────────────────────────────────────────
+    run_id = _resolved_run_id_or_exit(target_key, repo=repo)
     try:
         _df_eval, df_tiers, df_seasons, df_misses = _compute_report_data(
-            target_key=target_key, season=season, top_misses=top_misses, repo=repo
+            target_key=target_key, run_id=run_id, season=season, top_misses=top_misses, repo=repo
         )
     except ValueError as exc:
         typer.echo(str(exc))

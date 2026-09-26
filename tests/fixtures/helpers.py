@@ -2,7 +2,7 @@
 
 """Shared test helpers for integration and end-to-end tests.
 
-Three named helpers, organized by what they do - not where they're used.
+Two named helpers, organized by what they do - not where they're used.
 Tests import from this module instead of duplicating context-manager and
 assertion patterns across multiple test files.
 
@@ -12,8 +12,6 @@ patch_minimal_param_grid    Context manager: replace HP grids with a
                             single combination for fast tests.
 assert_predictions_reasonable  Assert prediction outputs are in valid range
                                and not all NaN / not all extreme.
-assert_archive_schema_valid    Assert archive DataFrame matches the
-                               canonical prediction-archive schema.
 """
 
 from __future__ import annotations
@@ -24,8 +22,7 @@ from typing import Any
 from unittest.mock import patch
 
 import numpy as np
-import pandas as pd
-from pandas import DataFrame, Series
+from pandas import Series
 
 # ---------------------------------------------------------------------------
 # HP grid minimization
@@ -177,44 +174,3 @@ def assert_predictions_reasonable(
     else:
         msg = f"task must be 'classification' or 'regression', got {task!r}"
         raise ValueError(msg)
-
-
-# ---------------------------------------------------------------------------
-# Archive schema assertions
-# ---------------------------------------------------------------------------
-
-
-def assert_archive_schema_valid(df: DataFrame) -> None:
-    """Assert a DataFrame conforms to the prediction-archive schema.
-
-    Used in archive round-trip tests to catch schema drift. The check
-    is column-presence-based - extra columns are allowed (downstream code
-    handles them), but required columns must be present and have the
-    expected dtypes for the identity fields.
-
-    Args:
-        df: DataFrame written to or read from the prediction archive.
-
-    Raises:
-        AssertionError: If schema mismatch is detected.
-    """
-    from gridiron_edge.evaluation.archive import _ARCHIVE_COLUMNS
-
-    missing: set[str] = set(_ARCHIVE_COLUMNS) - set(df.columns)
-    if missing:
-        msg: str = (
-            f"archive DataFrame missing required columns: {sorted(missing)}. "
-            f"Expected columns: {_ARCHIVE_COLUMNS}"
-        )
-        raise AssertionError(msg)
-
-    # Identity field type checks - these are the dedup key fields.
-    if not pd.api.types.is_string_dtype(df["model_name"]) and df["model_name"].dtype != "object":
-        msg = f"model_name column has unexpected dtype: {df['model_name'].dtype}"
-        raise AssertionError(msg)
-    if not pd.api.types.is_string_dtype(df["model_type"]) and df["model_type"].dtype != "object":
-        msg = f"model_type column has unexpected dtype: {df['model_type'].dtype}"
-        raise AssertionError(msg)
-    if not pd.api.types.is_string_dtype(df["game_id"]) and df["game_id"].dtype != "object":
-        msg = f"game_id column has unexpected dtype: {df['game_id'].dtype}"
-        raise AssertionError(msg)

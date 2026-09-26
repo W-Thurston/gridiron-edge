@@ -3798,7 +3798,7 @@
       },
       "ModelQualityBlock": {
         "additionalProperties": false,
-        "description": "Top-line model-quality metrics from build_evaluation_df.",
+        "description": "Top-line model-quality metrics from build_latest_run_evaluation_df.",
         "properties": {
           "accuracy": {
             "anyOf": [

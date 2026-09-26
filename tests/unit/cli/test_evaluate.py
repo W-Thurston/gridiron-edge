@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -42,7 +43,7 @@ class TestSelectModelWriteManifestFlag:
         --write-manifest side effect.
         """
         monkeypatch.setattr(
-            "gridiron_edge.cli.evaluate._collect_model_metrics",
+            "gridiron_edge.cli.evaluate._collect_latest_forecast_run_metrics",
             lambda names, *, repo: [
                 {
                     "model_key": "win_prob_random_forest",
@@ -78,8 +79,12 @@ class TestSelectModelWriteManifestFlag:
             },
         }
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "fake-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -142,8 +147,12 @@ class TestSelectModelWriteManifestFlag:
             },
         }
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: classification_result,
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "fake-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: classification_result,
         )
         monkeypatch.setattr(
             "gridiron_edge.evaluation.champion.select_game_regression_champions",
@@ -379,4 +388,154 @@ class TestEvaluateBackfill:
 
         assert result.exit_code != 0
         assert "must use consecutive years" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestModelReportCommand:
+    """Cover the evaluate model-report command."""
+
+    _ARGS: ClassVar[list[str]] = [
+        "model-report",
+        "--win-elo-run",
+        "run-elo",
+        "--win-logistic-run",
+        "run-logistic",
+        "--win-random-forest-run",
+        "run-rf-win",
+        "--win-xgboost-run",
+        "run-xgb-win",
+        "--total-random-forest-run",
+        "run-rf-total",
+        "--total-xgboost-run",
+        "run-xgb-total",
+    ]
+
+    def _fake_settings(self, tmp_path: Path):
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def _fake_result(self):
+        from types import SimpleNamespace
+
+        report = SimpleNamespace(
+            report_id="a" * 64,
+            game_count=4,
+            win_metrics=[
+                SimpleNamespace(
+                    model_type="elo",
+                    brier=0.22,
+                    ece=0.02,
+                    auc=0.65,
+                    calibration_slope=0.9,
+                    calibration_intercept=0.01,
+                    sharpness=0.03,
+                    season_stability=0.01,
+                ),
+            ],
+            total_metrics=[
+                SimpleNamespace(
+                    model_type="random_forest",
+                    mae=10.0,
+                    median_absolute_error=9.0,
+                    rmse=13.0,
+                    actual_coverage=0.9,
+                    nominal_coverage=0.9,
+                ),
+            ],
+        )
+        return SimpleNamespace(report=report)
+
+    def test_builds_prints_and_selects_the_report(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        fake_result = self._fake_result()
+        with (
+            patch(
+                "gridiron_edge.evaluation.game_model_evaluation_report_builder."
+                "build_and_write_game_model_evaluation_report",
+                return_value=fake_result,
+            ) as build,
+            patch(
+                "gridiron_edge.evaluation.game_model_evaluation_report_selection."
+                "select_current_game_model_evaluation_report",
+            ) as select,
+        ):
+            result = CliRunner().invoke(evaluate_app, self._ARGS)
+
+        assert result.exit_code == 0, result.output
+        assert "a" * 64 in result.output
+        assert "Selected as current" in result.output
+        build.assert_called_once()
+        assert build.call_args.kwargs["win_run_ids"] == {
+            "elo": "run-elo",
+            "logistic": "run-logistic",
+            "random_forest": "run-rf-win",
+            "xgboost": "run-xgb-win",
+        }
+        assert build.call_args.kwargs["total_run_ids"] == {
+            "random_forest": "run-rf-total",
+            "xgboost": "run-xgb-total",
+        }
+        select.assert_called_once()
+        assert select.call_args.args[0] == "a" * 64
+
+    def test_no_select_flag_skips_selection(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        with (
+            patch(
+                "gridiron_edge.evaluation.game_model_evaluation_report_builder."
+                "build_and_write_game_model_evaluation_report",
+                return_value=self._fake_result(),
+            ),
+            patch(
+                "gridiron_edge.evaluation.game_model_evaluation_report_selection."
+                "select_current_game_model_evaluation_report",
+            ) as select,
+        ):
+            result = CliRunner().invoke(evaluate_app, [*self._ARGS, "--no-select"])
+
+        assert result.exit_code == 0, result.output
+        select.assert_not_called()
+        assert "Selected as current" not in result.output
+
+    def test_mismatched_game_set_is_a_clean_cli_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        with patch(
+            "gridiron_edge.evaluation.game_model_evaluation_report_builder."
+            "build_and_write_game_model_evaluation_report",
+            side_effect=ValueError("do not share a common game set"),
+        ):
+            result = CliRunner().invoke(evaluate_app, self._ARGS)
+
+        assert result.exit_code != 0
+        assert "do not share a common game set" in result.output
         assert "Traceback" not in result.output

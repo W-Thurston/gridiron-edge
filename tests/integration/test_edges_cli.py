@@ -145,7 +145,6 @@ def _make_long_odds(
     return pd.DataFrame(rows)
 
 
-_PREDICTIONS_PATH = "gridiron_edge.evaluation.archive.load_prediction_log"
 _CURRENT_ODDS_PATH = "gridiron_edge.ingest.odds.store.load_current_odds"
 _ODDS_LEDGER_PATH = "gridiron_edge.ingest.odds.store.load_odds_ledger"
 _MARGIN_STD_PATH = "gridiron_edge.models.game_prediction.post_process.get_margin_std"

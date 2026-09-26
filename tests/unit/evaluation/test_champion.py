@@ -25,7 +25,6 @@ from gridiron_edge.evaluation.champion import (
     format_classification_comparison,
     format_regression_comparison,
     promote_champions,
-    select_game_classification_champions,
     select_game_classification_champions_from_runs,
     select_game_regression_champions,
     select_prop_champion,
@@ -631,397 +630,6 @@ class TestSelectGameRegressionChampions:
         assert entries["total"]["model_type"] == "xgboost"
 
 
-class TestSelectGameClassificationChampions:
-    def test_selects_top_ranked_model_type(self, tmp_path):
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-            trained_at="2026-07-01T14:00:00",
-        )
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "xgboost",
-            metrics={"brier": 0.220, "ece": 0.055, "auc": 0.710},
-            trained_at="2026-07-01T14:05:00",
-        )
-
-        # Mock collect_model_metrics + rank_models: win_prob_random_forest wins
-        mock_rows = [
-            {
-                "model_key": "win_prob_random_forest",
-                "n_games": 100,
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            },
-            {
-                "model_key": "win_prob_xgboost",
-                "n_games": 100,
-                "brier": 0.220,
-                "ece": 0.055,
-                "auc": 0.710,
-                "accuracy": 0.63,
-                "log_loss": 0.63,
-            },
-        ]
-        mock_ranked = pd.DataFrame(
-            [
-                {
-                    **mock_rows[0],
-                    "rank_brier": 1,
-                    "rank_ece": 1,
-                    "rank_auc": 1,
-                    "composite_rank": 3,
-                },
-                {
-                    **mock_rows[1],
-                    "rank_brier": 2,
-                    "rank_ece": 2,
-                    "rank_auc": 2,
-                    "composite_rank": 6,
-                },
-            ]
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=mock_rows,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                return_value=mock_ranked,
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("win_prob", "random_forest"), ("win_prob", "xgboost")],
-                repo=tmp_path,
-            )
-
-        assert set(entries.keys()) == {"win_prob"}
-        assert entries["win_prob"]["model_type"] == "random_forest"
-        assert entries["win_prob"]["promoted_at"] == "2026-07-01T14:00:00"
-        assert entries["win_prob"]["metrics"] == {"brier": 0.213, "ece": 0.041, "auc": 0.721}
-
-    def test_skips_regression_artifacts(self, tmp_path):
-        _save_regression_artifact(
-            tmp_path,
-            "total",
-            "xgboost",
-            metrics={"mae": 10.24, "rmse": 12.87, "r2": 0.18},
-        )
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-        )
-
-        mock_rows = [
-            {
-                "model_key": "win_prob_random_forest",
-                "n_games": 100,
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            }
-        ]
-        mock_ranked = pd.DataFrame(
-            [
-                {
-                    **mock_rows[0],
-                    "rank_brier": 1,
-                    "rank_ece": 1,
-                    "rank_auc": 1,
-                    "composite_rank": 3,
-                }
-            ]
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=mock_rows,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                return_value=mock_ranked,
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("total", "xgboost"), ("win_prob", "random_forest")],
-                repo=tmp_path,
-            )
-
-        assert set(entries.keys()) == {"win_prob"}
-
-    def test_skips_untrained_pairs(self, tmp_path):
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-        )
-        # xgboost is in pair list but not trained
-
-        mock_rows = [
-            {
-                "model_key": "win_prob_random_forest",
-                "n_games": 100,
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            }
-        ]
-        mock_ranked = pd.DataFrame(
-            [
-                {
-                    **mock_rows[0],
-                    "rank_brier": 1,
-                    "rank_ece": 1,
-                    "rank_auc": 1,
-                    "composite_rank": 3,
-                }
-            ]
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=mock_rows,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                return_value=mock_ranked,
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("win_prob", "random_forest"), ("win_prob", "xgboost")],
-                repo=tmp_path,
-            )
-
-        assert entries["win_prob"]["model_type"] == "random_forest"
-
-    def test_empty_pairs_returns_empty(self, tmp_path):
-        entries = select_game_classification_champions([], repo=tmp_path)
-        assert entries == {}
-
-    def test_no_trained_artifacts_returns_empty(self, tmp_path):
-        entries = select_game_classification_champions(
-            [("win_prob", "random_forest"), ("win_prob", "xgboost")],
-            repo=tmp_path,
-        )
-        assert entries == {}
-
-    def test_empty_archive_returns_empty(self, tmp_path):
-        """Trained artifacts exist but archive has no rows → no champion."""
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=[],
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("win_prob", "random_forest")],
-                repo=tmp_path,
-            )
-
-        assert entries == {}
-
-    def test_metrics_narrowed_to_brier_ece_auc(self, tmp_path):
-        """Even if metadata carries accuracy/log_loss, manifest entry has only brier/ece/auc."""
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            },
-        )
-
-        mock_rows = [
-            {
-                "model_key": "win_prob_random_forest",
-                "n_games": 100,
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            }
-        ]
-        mock_ranked = pd.DataFrame(
-            [
-                {
-                    **mock_rows[0],
-                    "rank_brier": 1,
-                    "rank_ece": 1,
-                    "rank_auc": 1,
-                    "composite_rank": 3,
-                }
-            ]
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=mock_rows,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                return_value=mock_ranked,
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("win_prob", "random_forest")],
-                repo=tmp_path,
-            )
-
-        assert entries["win_prob"]["metrics"] == {
-            "brier": 0.213,
-            "ece": 0.041,
-            "auc": 0.721,
-        }
-
-    def test_composite_key_parse_error_raises(self, tmp_path):
-        """If rank_models returns a key that doesn't match model_name, fail loudly."""
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-        )
-
-        mock_rows = [
-            {
-                "model_key": "malformed_key",
-                "n_games": 100,
-                "brier": 0.213,
-                "ece": 0.041,
-                "auc": 0.721,
-                "accuracy": 0.65,
-                "log_loss": 0.61,
-            }
-        ]
-        mock_ranked = pd.DataFrame(
-            [
-                {
-                    **mock_rows[0],
-                    "rank_brier": 1,
-                    "rank_ece": 1,
-                    "rank_auc": 1,
-                    "composite_rank": 3,
-                }
-            ]
-        )
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                return_value=mock_rows,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                return_value=mock_ranked,
-            ),
-            pytest.raises(ValueError, match="does not start with expected prefix"),
-        ):
-            select_game_classification_champions(
-                [("win_prob", "random_forest")],
-                repo=tmp_path,
-            )
-
-    def test_handles_multiple_model_names_independently(self, tmp_path):
-        """Two classification model_names → two independent rankings."""
-        # Hypothetical: two classification model_names. Currently only win_prob,
-        # but this future-proofs for e.g. cover_prob or over_prob.
-        _save_classification_artifact(
-            tmp_path,
-            "win_prob",
-            "random_forest",
-            metrics={"brier": 0.213, "ece": 0.041, "auc": 0.721},
-            trained_at="wp_rf",
-        )
-        _save_classification_artifact(
-            tmp_path,
-            "cover_prob",
-            "xgboost",
-            metrics={"brier": 0.245, "ece": 0.062, "auc": 0.685},
-            trained_at="cp_xgb",
-        )
-
-        # Mock returns different rows depending on which composite keys are passed.
-        def mock_collect(model_keys, *, repo):
-            rows_by_key = {
-                "win_prob_random_forest": {
-                    "model_key": "win_prob_random_forest",
-                    "n_games": 100,
-                    "brier": 0.213,
-                    "ece": 0.041,
-                    "auc": 0.721,
-                    "accuracy": 0.65,
-                    "log_loss": 0.61,
-                },
-                "cover_prob_xgboost": {
-                    "model_key": "cover_prob_xgboost",
-                    "n_games": 100,
-                    "brier": 0.245,
-                    "ece": 0.062,
-                    "auc": 0.685,
-                    "accuracy": 0.60,
-                    "log_loss": 0.67,
-                },
-            }
-            return [rows_by_key[k] for k in model_keys if k in rows_by_key]
-
-        def mock_rank(rows, *, criteria_list, lower_is_better):
-            # Trivial rank: preserve input order.
-            df = pd.DataFrame(rows)
-            for c in criteria_list:
-                df[f"rank_{c}"] = 1
-            df["composite_rank"] = 3
-            return df
-
-        with (
-            patch(
-                "gridiron_edge.evaluation.select.collect_model_metrics",
-                side_effect=mock_collect,
-            ),
-            patch(
-                "gridiron_edge.evaluation.select.rank_models",
-                side_effect=mock_rank,
-            ),
-        ):
-            entries = select_game_classification_champions(
-                [("win_prob", "random_forest"), ("cover_prob", "xgboost")],
-                repo=tmp_path,
-            )
-
-        assert set(entries.keys()) == {"win_prob", "cover_prob"}
-        assert entries["win_prob"]["model_type"] == "random_forest"
-        assert entries["cover_prob"]["model_type"] == "xgboost"
-
-
 class TestSelectGameClassificationChampionsFromRuns:
     "Exact immutable-run classification champion selection."
 
@@ -1076,7 +684,6 @@ class TestSelectGameClassificationChampionsFromRuns:
                 return_value=rows,
             ) as collect,
             patch("gridiron_edge.evaluation.select.rank_models", return_value=ranked),
-            patch("gridiron_edge.evaluation.select.collect_model_metrics") as legacy,
         ):
             entries = select_game_classification_champions_from_runs(
                 [("win_prob", "logistic"), ("win_prob", "random_forest")],
@@ -1085,7 +692,6 @@ class TestSelectGameClassificationChampionsFromRuns:
             )
 
         collect.assert_called_once_with(run_ids, repo=tmp_path)
-        legacy.assert_not_called()
         assert entries["win_prob"] == {
             "model_type": "logistic",
             "promoted_at": "logistic-time",
@@ -1455,8 +1061,12 @@ class TestPromoteChampions:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "fake-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {
                 "win_prob": {
                     "model_type": "random_forest",
                     "promoted_at": "2026-07-01T14:00:00",
@@ -1494,8 +1104,12 @@ class TestPromoteChampions:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "fake-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {
                 "win_prob": {
                     "model_type": "random_forest",
                     "promoted_at": "x",
@@ -1545,8 +1159,12 @@ class TestPromoteChampions:
         (manifest_dir / "champions.json").write_text(json.dumps(prior_manifest))
 
         monkeypatch.setattr(
-            "gridiron_edge.evaluation.champion.select_game_classification_champions",
-            lambda pairs, *, repo: {
+            "gridiron_edge.evaluation.select.latest_backfilled_run_id",
+            lambda model_name, model_type, *, repo: "fake-run",
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.champion.select_game_classification_champions_from_runs",
+            lambda pairs, *, backfill_run_ids, repo: {
                 "win_prob": {
                     "model_type": "random_forest",
                     "promoted_at": "2026-07-01T14:00:00",

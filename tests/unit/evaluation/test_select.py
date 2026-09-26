@@ -1,8 +1,9 @@
 # tests/unit/evaluation/test_select.py
-"""Tests for gridiron_edge.evaluation.select - collect_model_metrics, rank_models."""
+"""Tests for gridiron_edge.evaluation.select."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,99 +13,85 @@ import pytest
 
 from gridiron_edge.evaluation.select import (
     collect_forecast_run_metrics,
-    collect_model_metrics,
+    collect_latest_forecast_run_metrics,
+    latest_backfilled_run_id,
     rank_models,
 )
 
 
-class TestCollectModelMetrics:
-    def test_returns_empty_list_when_no_data(self, tmp_path: Path) -> None:
-        """Models with no archived predictions should be silently skipped."""
+class TestLatestBackfilledRunId:
+    def test_returns_none_when_no_events(self, tmp_path: Path) -> None:
         with patch(
-            "gridiron_edge.evaluation.metrics.build_evaluation_df",
-            return_value=pd.DataFrame(),
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            return_value=DataFrame(),
         ):
-            result: list[dict] = collect_model_metrics(["win_prob_fake"], repo=tmp_path)
-            assert result == []
+            assert latest_backfilled_run_id("win_prob", "logistic", repo=tmp_path) is None
 
-    def test_returns_metrics_dict_when_data_exists(self, tmp_path: Path) -> None:
-        eval_df = pd.DataFrame(
+    def test_returns_the_most_recently_generated_run(self, tmp_path: Path) -> None:
+        events = DataFrame(
             {
-                "away_win_prob": [0.6, 0.4, 0.7, 0.3, 0.5],
-                "away_team_won": [1, 0, 1, 0, 1],
+                "run_id": ["run-old", "run-old", "run-new"],
+                "generated_at": [
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    datetime(2026, 2, 1, tzinfo=UTC),
+                ],
             }
         )
         with patch(
-            "gridiron_edge.evaluation.metrics.build_evaluation_df",
-            return_value=eval_df,
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            return_value=events,
         ):
-            result: list[dict] = collect_model_metrics(["win_prob_test"], repo=tmp_path)
-            assert len(result) == 1
-            row: dict = result[0]
-            assert "model_key" in row
-            assert result[0]["model_key"] == "win_prob_test"
+            run_id = latest_backfilled_run_id("win_prob", "logistic", repo=tmp_path)
+        assert run_id == "run-new"
 
-    def test_skips_models_without_data(self, tmp_path: Path) -> None:
-        """If one model has data and another doesn't, only the valid one appears."""
-
-        def mock_build(*, model_name: str, model_type: str, repo: Path) -> pd.DataFrame:
-            if model_name == "win_prob" and model_type == "good":
-                return pd.DataFrame(
-                    {
-                        "away_win_prob": [0.6, 0.4],
-                        "away_team_won": [1, 0],
-                    }
-                )
-            return pd.DataFrame()
-
-        with patch(
-            "gridiron_edge.evaluation.metrics.build_evaluation_df",
-            side_effect=mock_build,
-        ):
-            result: list[dict] = collect_model_metrics(
-                ["win_prob_good", "win_prob_empty"], repo=tmp_path
-            )
-            assert len(result) == 1
-            assert result[0]["model_key"] == "win_prob_good"
-
-    def test_excludes_ties_from_binary_metrics(self, tmp_path: Path) -> None:
-        eval_df = pd.DataFrame(
+    def test_ties_break_by_run_id(self, tmp_path: Path) -> None:
+        same_timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+        events = DataFrame(
             {
-                "away_win_prob": [0.8, 0.2, 0.5],
-                "away_team_won": [1.0, 0.0, 0.5],
+                "run_id": ["run-a", "run-b"],
+                "generated_at": [same_timestamp, same_timestamp],
             }
         )
         with patch(
-            "gridiron_edge.evaluation.metrics.build_evaluation_df",
-            return_value=eval_df,
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            return_value=events,
         ):
-            result = collect_model_metrics(
-                ["win_prob_test"],
-                repo=tmp_path,
-            )
+            run_id = latest_backfilled_run_id("win_prob", "logistic", repo=tmp_path)
+        assert run_id == "run-b"
 
-        assert len(result) == 1
-        assert result[0]["n_games"] == 2
-        assert result[0]["brier"] == pytest.approx(0.04)
-        assert result[0]["auc"] == pytest.approx(1.0)
 
-    def test_skips_tie_only_archive(self, tmp_path: Path) -> None:
-        eval_df = pd.DataFrame(
-            {
-                "away_win_prob": [0.5],
-                "away_team_won": [0.5],
-            }
-        )
+class TestCollectLatestForecastRunMetrics:
+    def test_skips_models_with_no_backfill_run(self, tmp_path: Path) -> None:
         with patch(
-            "gridiron_edge.evaluation.metrics.build_evaluation_df",
-            return_value=eval_df,
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            return_value=DataFrame(),
         ):
-            result = collect_model_metrics(
-                ["win_prob_test"],
-                repo=tmp_path,
+            result: list[dict] = collect_latest_forecast_run_metrics(
+                ["win_prob_fake"], repo=tmp_path
             )
-
         assert result == []
+
+    def test_resolves_and_evaluates_the_latest_run(self, tmp_path: Path) -> None:
+        events = DataFrame(
+            {"run_id": ["run-1"], "generated_at": [datetime(2026, 1, 1, tzinfo=UTC)]}
+        )
+        evaluation = pd.DataFrame({"away_win_prob": [0.6, 0.4], "away_team_won": [1.0, 0.0]})
+        with (
+            patch(
+                "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+                return_value=events,
+            ),
+            patch(
+                "gridiron_edge.evaluation.metrics.build_forecast_run_evaluation_df",
+                return_value=evaluation,
+            ) as build,
+        ):
+            result: list[dict] = collect_latest_forecast_run_metrics(
+                ["win_prob_test"], repo=tmp_path
+            )
+        assert result[0]["model_key"] == "win_prob_test"
+        assert build.call_args.kwargs["run_id"] == "run-1"
 
 
 class TestRankModels:

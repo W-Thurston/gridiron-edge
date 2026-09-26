@@ -252,26 +252,6 @@ class MiniRepoBuilder:
         (manifest_dir / "champions.json").write_text(json.dumps(manifest, indent=2))
         return self
 
-    def with_predictions_archive(
-        self,
-        df: pd.DataFrame,
-    ) -> MiniRepoBuilder:
-        """Add a predictions archive parquet.
-
-        Writes ``data/output/predictions/predictions_log.parquet``, the
-        path that ``evaluation.archive.load_prediction_log`` reads from.
-
-        Args:
-            df: Predictions DataFrame matching the archive schema.
-
-        Returns:
-            Self, for builder chaining.
-        """
-        predictions_dir: Path = self._root / "data" / "output" / "predictions"
-        predictions_dir.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(predictions_dir / "predictions_log.parquet", index=False)
-        return self
-
     def with_odds_snapshot(
         self,
         df: pd.DataFrame,

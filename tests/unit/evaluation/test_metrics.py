@@ -371,11 +371,16 @@ class TestBiggestMisses:
         assert result.empty
 
 
-class TestBuildEvaluationDfCanonicalOutcomes:
-    """Build evaluation outcomes from canonical Away/Home scores."""
+class TestJoinCompletedOutcomesCanonicalOutcomes:
+    """Join completed outcomes from canonical Away/Home scores.
+
+    Covers ``_join_completed_outcomes``, the shared join logic used by
+    ``build_forecast_run_evaluation_df`` (the correct, forecast-store-backed
+    path - the legacy archive-backed ``build_evaluation_df`` was retired).
+    """
 
     @staticmethod
-    def _prediction_log() -> pd.DataFrame:
+    def _predictions() -> pd.DataFrame:
         return pd.DataFrame(
             {
                 "game_id": [
@@ -423,21 +428,13 @@ class TestBuildEvaluationDfCanonicalOutcomes:
         self,
         tmp_path: Path,
     ) -> None:
-        from gridiron_edge.evaluation.metrics import (
-            build_evaluation_df,
-        )
+        from gridiron_edge.evaluation.metrics import _join_completed_outcomes
 
-        with (
-            patch(
-                "gridiron_edge.evaluation.metrics.load_prediction_log",
-                return_value=self._prediction_log(),
-            ),
-            patch(
-                "gridiron_edge.evaluation.metrics.loaders.load_games",
-                return_value=self._games(),
-            ),
+        with patch(
+            "gridiron_edge.evaluation.metrics.loaders.load_games",
+            return_value=self._games(),
         ):
-            result = build_evaluation_df(repo=tmp_path)
+            result = _join_completed_outcomes(self._predictions(), repo=tmp_path)
 
         outcomes = result.set_index("game_id")["away_team_won"].to_dict()
 
@@ -452,9 +449,7 @@ class TestBuildEvaluationDfCanonicalOutcomes:
         self,
         tmp_path: Path,
     ) -> None:
-        from gridiron_edge.evaluation.metrics import (
-            build_evaluation_df,
-        )
+        from gridiron_edge.evaluation.metrics import _join_completed_outcomes
 
         games = self._games()
 
@@ -463,17 +458,11 @@ class TestBuildEvaluationDfCanonicalOutcomes:
         assert "GAME_LOCATION" not in games.columns
         assert "WIN_OR_TIE" not in games.columns
 
-        with (
-            patch(
-                "gridiron_edge.evaluation.metrics.load_prediction_log",
-                return_value=self._prediction_log(),
-            ),
-            patch(
-                "gridiron_edge.evaluation.metrics.loaders.load_games",
-                return_value=games,
-            ),
+        with patch(
+            "gridiron_edge.evaluation.metrics.loaders.load_games",
+            return_value=games,
         ):
-            result = build_evaluation_df(repo=tmp_path)
+            result = _join_completed_outcomes(self._predictions(), repo=tmp_path)
 
         assert len(result) == 3
 
@@ -516,13 +505,11 @@ class TestBuildForecastRunEvaluationDf:
         with (
             patch("gridiron_edge.evaluation.metrics.load_forecast_events", return_value=events),
             patch("gridiron_edge.evaluation.metrics.loaders.load_games", return_value=games),
-            patch("gridiron_edge.evaluation.metrics.load_prediction_log") as legacy,
         ):
             result = build_forecast_run_evaluation_df(
                 run_id="run-1", model_name="win_prob", model_type="logistic", repo=tmp_path
             )
         assert result["away_team_won"].tolist() == [1.0]
-        legacy.assert_not_called()
 
     def test_missing_run_fails_closed(self, tmp_path: Path) -> None:
         from gridiron_edge.evaluation.forecast_store import empty_forecast_events
@@ -549,3 +536,249 @@ class TestBuildForecastRunEvaluationDf:
             pytest.raises(ValueError, match="duplicate game IDs"),
         ):
             _join_completed_outcomes(predictions, repo=tmp_path)
+
+
+class TestCalibrationSlopeIntercept:
+    def test_well_calibrated_predictions_yield_slope_near_one(self) -> None:
+        import numpy as np
+
+        from gridiron_edge.evaluation.metrics import calibration_slope_intercept
+
+        rng = np.random.default_rng(0)
+        p = Series(rng.uniform(0.0, 1.0, 2000))
+        y = Series((rng.uniform(0.0, 1.0, 2000) < p).astype(float))
+
+        slope, intercept = calibration_slope_intercept(p, y)
+
+        assert 0.9 <= slope <= 1.1
+        assert -0.1 <= intercept <= 0.1
+
+    def test_single_class_outcome_returns_nan(self) -> None:
+        import math
+
+        from gridiron_edge.evaluation.metrics import calibration_slope_intercept
+
+        p = Series([0.5, 0.6, 0.7])
+        y = Series([1.0, 1.0, 1.0])
+
+        slope, intercept = calibration_slope_intercept(p, y)
+
+        assert math.isnan(slope)
+        assert math.isnan(intercept)
+
+    def test_tied_games_are_excluded_from_the_fit(self) -> None:
+        import math
+
+        from gridiron_edge.evaluation.metrics import calibration_slope_intercept
+
+        p = Series([0.9, 0.1, 0.5])
+        y = Series([1.0, 0.0, 0.5])
+
+        slope, intercept = calibration_slope_intercept(p, y)
+
+        assert not math.isnan(slope)
+        assert not math.isnan(intercept)
+
+
+class TestSharpness:
+    def test_constant_predictions_have_zero_sharpness(self) -> None:
+        from gridiron_edge.evaluation.metrics import sharpness
+
+        assert sharpness(Series([0.5, 0.5, 0.5])) == 0.0
+
+    def test_spread_out_predictions_have_higher_sharpness(self) -> None:
+        from gridiron_edge.evaluation.metrics import sharpness
+
+        narrow = sharpness(Series([0.45, 0.5, 0.55]))
+        wide = sharpness(Series([0.05, 0.5, 0.95]))
+
+        assert wide > narrow
+
+
+class TestSeasonStability:
+    def test_identical_per_season_brier_is_perfectly_stable(self) -> None:
+        from gridiron_edge.evaluation.metrics import season_stability
+
+        df = _make_eval_df(
+            [
+                {"season": "2024-2025", "away_win_prob": 0.6, "away_team_won": 1.0},
+                {"season": "2024-2025", "away_win_prob": 0.6, "away_team_won": 1.0},
+                {"season": "2025-2026", "away_win_prob": 0.6, "away_team_won": 1.0},
+                {"season": "2025-2026", "away_win_prob": 0.6, "away_team_won": 1.0},
+            ]
+        )
+
+        assert season_stability(df) == 0.0
+
+    def test_divergent_per_season_brier_is_unstable(self) -> None:
+        from gridiron_edge.evaluation.metrics import season_stability
+
+        df = _make_eval_df(
+            [
+                {"season": "2024-2025", "away_win_prob": 0.9, "away_team_won": 1.0},
+                {"season": "2024-2025", "away_win_prob": 0.9, "away_team_won": 1.0},
+                {"season": "2025-2026", "away_win_prob": 0.9, "away_team_won": 0.0},
+                {"season": "2025-2026", "away_win_prob": 0.9, "away_team_won": 0.0},
+            ]
+        )
+
+        assert season_stability(df) > 0.0
+
+    def test_single_season_returns_nan(self) -> None:
+        import math
+
+        from gridiron_edge.evaluation.metrics import season_stability
+
+        df = _make_eval_df([{"season": "2024-2025", "away_win_prob": 0.6, "away_team_won": 1.0}])
+
+        assert math.isnan(season_stability(df))
+
+
+class TestMedianAbsoluteError:
+    def test_computes_median_of_absolute_errors(self) -> None:
+        from gridiron_edge.evaluation.metrics import median_absolute_error
+
+        y_pred = Series([40.0, 45.0, 50.0, 55.0])
+        y_true = Series([42.0, 44.0, 53.0, 50.0])
+
+        assert median_absolute_error(y_pred, y_true) == 2.5
+
+
+class TestIntervalCoverage:
+    def test_reports_actual_and_nominal_coverage(self) -> None:
+        from gridiron_edge.evaluation.metrics import interval_coverage
+
+        y_true = Series([44.0, 48.0, 41.0, 45.0])
+        y_pred = Series([45.0, 50.0, 40.0, 42.0])
+
+        result = interval_coverage(y_true, y_pred, residual_std=3.0, nominal=0.90)
+
+        assert result["nominal_coverage"] == 0.90
+        assert 0.0 <= result["actual_coverage"] <= 1.0
+        assert result["mean_interval_width"] > 0.0
+
+    def test_nonpositive_residual_std_returns_nan_coverage(self) -> None:
+        import math
+
+        from gridiron_edge.evaluation.metrics import interval_coverage
+
+        y_true = Series([44.0])
+        y_pred = Series([45.0])
+
+        result = interval_coverage(y_true, y_pred, residual_std=0.0)
+
+        assert math.isnan(result["actual_coverage"])
+        assert math.isnan(result["mean_interval_width"])
+
+
+class TestEnvironmentSliceMetrics:
+    def test_breaks_down_error_by_dimension(self) -> None:
+        from gridiron_edge.evaluation.metrics import environment_slice_metrics
+
+        df = DataFrame(
+            {
+                "model_total": [45.0, 50.0, 40.0, 42.0],
+                "actual_total": [44.0, 48.0, 41.0, 45.0],
+                "IS_DOME": [True, True, False, False],
+            }
+        )
+
+        result = environment_slice_metrics(df, dimension="IS_DOME")
+
+        assert set(result["IS_DOME"]) == {True, False}
+        assert (result["n_games"] == 2).all()
+
+    def test_missing_dimension_column_raises(self) -> None:
+        from gridiron_edge.evaluation.metrics import environment_slice_metrics
+
+        df = DataFrame({"model_total": [1.0], "actual_total": [1.0]})
+
+        with pytest.raises(ValueError, match="dimension column not found"):
+            environment_slice_metrics(df, dimension="IS_DOME")
+
+
+class TestBuildForecastRunTotalEvaluationDf:
+    def test_exact_run_joins_actual_total_from_scores(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from gridiron_edge.evaluation.forecast_store import FORECAST_EVENT_COLUMNS
+        from gridiron_edge.evaluation.metrics import build_forecast_run_total_evaluation_df
+
+        values = {
+            "event_id": "event-1",
+            "run_id": "run-1",
+            "role": "backfilled",
+            "generated_at": datetime(2026, 9, 22, tzinfo=UTC),
+            "season": "2025-2026",
+            "week": 1,
+            "game_id": "g1",
+            "model_name": "total",
+            "model_type": "random_forest",
+            "game_date": "2025-09-01",
+            "away_team": "Away",
+            "home_team": "Home",
+            "away_elo": None,
+            "home_elo": None,
+            "away_win_prob": None,
+            "home_win_prob": None,
+            "model_spread": None,
+            "model_total": 44.0,
+            "projected_home_score": None,
+            "projected_away_score": None,
+            "margin_std": None,
+            "win_prob_lo": None,
+            "win_prob_hi": None,
+            "confidence_tier": None,
+        }
+        events = DataFrame([{column: values[column] for column in FORECAST_EVENT_COLUMNS}])
+        games = DataFrame({"GAME_ID": ["g1"], "AWAY_SCORE": [24], "HOME_SCORE": [20]})
+        with (
+            patch("gridiron_edge.evaluation.metrics.load_forecast_events", return_value=events),
+            patch("gridiron_edge.evaluation.metrics.loaders.load_games", return_value=games),
+        ):
+            result = build_forecast_run_total_evaluation_df(
+                run_id="run-1", model_type="random_forest", repo=tmp_path
+            )
+        assert result["actual_total"].tolist() == [44.0]
+        assert result["model_total"].tolist() == [44.0]
+
+    def test_missing_model_total_fails_closed(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from gridiron_edge.evaluation.forecast_store import FORECAST_EVENT_COLUMNS
+        from gridiron_edge.evaluation.metrics import build_forecast_run_total_evaluation_df
+
+        values = {
+            "event_id": "event-1",
+            "run_id": "run-1",
+            "role": "backfilled",
+            "generated_at": datetime(2026, 9, 22, tzinfo=UTC),
+            "season": "2025-2026",
+            "week": 1,
+            "game_id": "g1",
+            "model_name": "total",
+            "model_type": "random_forest",
+            "game_date": "2025-09-01",
+            "away_team": "Away",
+            "home_team": "Home",
+            "away_elo": None,
+            "home_elo": None,
+            "away_win_prob": None,
+            "home_win_prob": None,
+            "model_spread": None,
+            "model_total": None,
+            "projected_home_score": None,
+            "projected_away_score": None,
+            "margin_std": None,
+            "win_prob_lo": None,
+            "win_prob_hi": None,
+            "confidence_tier": None,
+        }
+        events = DataFrame([{column: values[column] for column in FORECAST_EVENT_COLUMNS}])
+        with (
+            patch("gridiron_edge.evaluation.metrics.load_forecast_events", return_value=events),
+            pytest.raises(ValueError, match="missing model_total"),
+        ):
+            build_forecast_run_total_evaluation_df(
+                run_id="run-1", model_type="random_forest", repo=tmp_path
+            )

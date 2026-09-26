@@ -501,100 +501,6 @@ def select_game_regression_champions(
     return entries
 
 
-def select_game_classification_champions(
-    pairs: list[tuple[str, str]],
-    *,
-    repo: Path,
-) -> dict[str, dict[str, Any]]:
-    """Select the champion model_type for each classification game model_name.
-
-    For each unique ``model_name`` in ``pairs`` whose trained artifacts
-    have ``task == "classification"``, ranks the trained ``model_types``
-    via :func:`evaluation.select.collect_model_metrics` +
-    :func:`evaluation.select.rank_models` on Brier / ECE / AUC, and
-    returns the top-ranked entry as a manifest entry.
-
-    Reuses the composite-key ranking already used by
-    ``gridiron evaluate select-model`` so the two surfaces agree
-    exactly on which model wins.
-
-    Args:
-        pairs: List of ``(model_name, model_type)`` pairs to consider.
-            Typically ``ctx["game_pairs"]`` from ``full-retrain``. Pairs
-            whose artifacts are missing, whose task is not classification,
-            or whose model_name produces no archive rows are silently
-            skipped.
-        repo: Repository root.
-
-    Returns:
-        Mapping of ``model_name`` → manifest entry. Each entry has
-        ``model_type``, ``promoted_at`` (from artifact metadata's
-        ``trained_at``), and ``metrics`` (``brier``, ``ece``, ``auc``).
-        Empty dict if no classification pairs have rankable archive rows.
-    """
-    from gridiron_edge.evaluation.select import (
-        collect_model_metrics,
-        rank_models,
-    )
-    from gridiron_edge.models.artifact import ArtifactStore
-
-    store = ArtifactStore(repo)
-
-    # Group by model_name, preserving pair order for downstream determinism.
-    by_model_name: dict[str, list[str]] = {}
-    for model_name, model_type in pairs:
-        by_model_name.setdefault(model_name, []).append(model_type)
-
-    entries: dict[str, dict[str, Any]] = {}
-
-    for model_name, model_types in by_model_name.items():
-        # Filter to trained classification artifacts only.
-        eligible_types: list[str] = []
-        for model_type in model_types:
-            if not store.is_trained(model_name, model_type):
-                continue
-            meta = store.read_metadata(model_name, model_type)
-            if meta.task != "classification":
-                continue
-            eligible_types.append(model_type)
-
-        if not eligible_types:
-            continue
-
-        # Build composite keys for select.py's API.
-        composite_keys: list[str] = [f"{model_name}_{model_type}" for model_type in eligible_types]
-
-        rows = collect_model_metrics(composite_keys, repo=repo)
-        if not rows:
-            # No archive rows for any of these pairs — nothing to rank.
-            continue
-
-        ranked = rank_models(
-            rows,
-            criteria_list=["brier", "ece", "auc"],
-            lower_is_better={"brier", "ece"},
-        )
-        if ranked.empty:
-            continue
-
-        winner_key: str = ranked.iloc[0]["model_key"]
-        winner_type: str = _model_type_from_composite_key(winner_key, model_name)
-
-        # Read metadata again for trained_at and defensive metrics narrowing.
-        winner_meta = store.read_metadata(model_name, winner_type)
-        entries[model_name] = {
-            "model_type": winner_type,
-            "promoted_at": winner_meta.trained_at,
-            "metrics": {
-                key: winner_meta.metrics[key]
-                for key in ("brier", "ece", "auc")
-                if key in winner_meta.metrics
-            },
-        }
-
-    return entries
-
-
 def select_game_classification_champions_from_runs(
     pairs: list[tuple[str, str]],
     *,
@@ -866,9 +772,23 @@ def promote_champions(
         read_manifest,
         write_manifest,
     )
+    from gridiron_edge.evaluation.select import latest_backfilled_run_id
 
-    classification_entries = select_game_classification_champions(
-        game_pairs,
+    # Best-effort ranking: a pair with no backfill run yet is silently
+    # excluded (matching the prior archive-based behavior of skipping models
+    # with no evaluable rows), rather than raising, since this manual
+    # write-manifest path - unlike full-retrain's own same-invocation
+    # backfill guarantee - may be called against a partially backfilled repo.
+    backfill_run_ids: dict[tuple[str, str], str] = {}
+    runnable_game_pairs: list[tuple[str, str]] = []
+    for model_name, model_type in game_pairs:
+        run_id = latest_backfilled_run_id(model_name, model_type, repo=repo)
+        if run_id is not None:
+            backfill_run_ids[(model_name, model_type)] = run_id
+            runnable_game_pairs.append((model_name, model_type))
+    classification_entries = select_game_classification_champions_from_runs(
+        runnable_game_pairs,
+        backfill_run_ids=backfill_run_ids,
         repo=repo,
     )
     regression_entries = select_game_regression_champions(

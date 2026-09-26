@@ -63,7 +63,7 @@ def get_model_performance(
             detail=(f"Invalid group_by '{group_by}'. Must be one of: {list(_VALID_GROUP_BY)}."),
         )
 
-    # Model-quality side: build_evaluation_df → summarise
+    # Model-quality side: build_latest_run_evaluation_df → summarise
     df_eval = load_evaluation_df(
         settings,
         model_name=model_name,
