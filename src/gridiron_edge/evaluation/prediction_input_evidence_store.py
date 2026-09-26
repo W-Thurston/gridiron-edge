@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import sha256
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -14,6 +15,7 @@ from uuid import uuid4
 
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.evaluation.prediction_input_evidence import (
+    PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION,
     BinaryArtifactReference,
     CalibrationResolutionSource,
     EloPredictionEventEvidence,
@@ -30,6 +32,8 @@ from gridiron_edge.evaluation.prediction_input_evidence import (
     prediction_input_evidence_payload,
     validate_prediction_input_evidence,
 )
+
+logger = logging.getLogger(__name__)
 
 _STORE_DIRECTORY = "data/output/prediction_input_evidence"
 _STORE_SCHEMA_VERSION = 1
@@ -229,15 +233,52 @@ def find_prediction_input_evidence_by_event(
 
 
 def _all_evidence(*, repo: Path | None) -> tuple[PredictionInputEvidence, ...]:
+    """Scan and strictly read every current-schema evidence artifact.
+
+    The store is immutable and append-only: an evidence-content
+    ``schema_version`` bump (e.g. epa_window's schema-2 addition) leaves
+    earlier-schema artifacts permanently on disk alongside current ones.
+    Scanning skips any artifact whose embedded ``schema_version`` is not the
+    current one rather than failing the entire scan; a direct
+    :func:`read_prediction_input_evidence` call on a known path remains
+    exactly as strict and fail-closed as before.
+    """
     directory = (
         prediction_input_evidence_root(repo) / f"schema={_STORE_SCHEMA_VERSION}" / "evidence"
     )
     if not directory.exists():
         return ()
-    values = tuple(
-        read_prediction_input_evidence(path) for path in sorted(directory.glob("*.json"))
-    )
+    values: list[PredictionInputEvidence] = []
+    for path in sorted(directory.glob("*.json")):
+        version = _embedded_schema_version(path)
+        if version != PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION:
+            logger.warning(
+                "Skipping prediction-input evidence at %s: embedded schema_version %r "
+                "does not match the current schema_version %r.",
+                path,
+                version,
+                PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION,
+            )
+            continue
+        values.append(read_prediction_input_evidence(path))
     return tuple(sorted(values, key=lambda value: value.evidence_id))
+
+
+def _embedded_schema_version(path: Path) -> int | None:
+    """Return one artifact's embedded evidence schema_version, or None if unreadable."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    evidence = raw.get("evidence")
+    if not isinstance(evidence, dict):
+        return None
+    version = evidence.get("schema_version")
+    if isinstance(version, bool) or not isinstance(version, int):
+        return None
+    return version
 
 
 def _event_ids(evidence: PredictionInputEvidence) -> tuple[str, ...]:

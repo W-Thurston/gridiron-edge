@@ -1104,6 +1104,111 @@ baseline report reflects current reality. A real, verified defect in
 `full-retrain`'s advertised resume workflow was found and fixed
 separately, with tests proving the fix.
 
+#### Unit 10: Persist Logistic explanation evidence [Completed September 26, 2026]
+
+##### Completed
+
+Implemented ROADMAP.md Tier 3 #8's U10: `gridiron evaluate explain-logistic
+--run-id <run_id>` reconstructs and persists, in one immutable batch, exact
+scaled-feature-by-coefficient contributions in log-odds space for every event
+in that run's `win_prob`/`logistic` prediction-input evidence, reloading the
+fitted estimator's `coef_`/`intercept_` from its exact immutable binary
+snapshot rather than the live mutable model store. While performing this
+unit's real-artifact validation, found and fixed a second, narrower defect
+(D51): `prediction_input_evidence_store.py`'s scan-based lookups crashed the
+entire scan on the first pre-U3, schema-version-1 evidence artifact they
+encountered - both functions had no production caller until this unit's
+builder became the first, so the defect was latent since U3 shipped.
+
+##### Goal
+
+Generate and persist, in batch, exact scaled-feature-by-coefficient
+contributions in log-odds space for every `win_prob`/`logistic` statistical
+event already captured in one run's prediction-input evidence, bound to that
+evidence's exact model, scaler, feature schema, and forecast-event
+identities, with the reconstructed estimator output verified against the
+persisted `raw_estimator_output` within a strict tolerance. No request-time
+inference, no API or frontend change (U11's job), and no tree-family
+attribution (Tier 3 #9's job, gated on a resolved approach).
+
+##### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence.py` - Frozen
+  `LogisticExplanationBatch`/`LogisticExplanationEvent`/
+  `LogisticFeatureContribution` contracts, canonical SHA-256 identity, and
+  reconciliation/invariant validation (contribution arithmetic,
+  reconstructed-log-odds/probability consistency, tolerance-bound agreement
+  with `raw_estimator_output`).
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence_builder.py` -
+  `build_and_write_logistic_explanation_batch()`: resolves one run's
+  `win_prob`/`logistic` persisted-estimator evidence, reloads the model from
+  its immutable binary snapshot, computes and persists contributions, and
+  exact-replay-verifies the write.
+- `src/gridiron_edge/evaluation/logistic_explanation_evidence_store.py` -
+  Immutable JSON persistence
+  (`data/output/logistic_explanations/schema=1/batches/{batch_id}.json`)
+  mirroring `prediction_input_evidence_store.py`'s atomic
+  create-only/idempotent-replay write path; `find_logistic_explanation_by_event`.
+- `tests/unit/evaluation/test_logistic_explanation_evidence.py` /
+  `_builder.py` / `_store.py` - Contract validation/tamper detection,
+  real reconstruction and fail-closed reconciliation coverage, and
+  round-trip/idempotent-replay/lookup coverage.
+
+Changed:
+- `src/gridiron_edge/cli/evaluate.py` - Added `evaluate explain-logistic`.
+- `src/gridiron_edge/evaluation/prediction_input_evidence_store.py` -
+  `_all_evidence()` now skips any artifact whose embedded `schema_version`
+  is not current (logging a warning) instead of failing the whole scan;
+  added `_embedded_schema_version()`. `read_prediction_input_evidence` on a
+  known path is unchanged.
+- `tests/unit/evaluation/test_prediction_input_evidence_store.py` - Added
+  `test_scan_skips_earlier_schema_version_artifacts`.
+- `tests/unit/cli/test_evaluate.py` - Added `TestExplainLogisticCommand`.
+- `DECISIONS.md` - Added D50 (reconstruction design) and D51 (scan-tolerance
+  fix).
+- `CHANGELOG.md` - Recorded the shipped behavior.
+- `HANDOFF.md` - Added a "Logistic Explanation Evidence" subsection.
+- `ROADMAP.md` - Marked Tier 3 #8's U10 portion complete.
+
+Removed:
+- None.
+
+##### Tests
+
+Ruff, Pyrefly, and the full non-slow unit suite passed (4,122 tests, up from
+4,080; the ~41 new tests are listed above).
+
+Real-artifact validation (writes to `data/`, via the new owning command
+only): ran `gridiron evaluate explain-logistic --run-id
+deb7ebd3-5fee-4242-b58a-d86db7e4bb53` (the current 2026-2027 Week 2
+development run) against the real repository. All 16 `win_prob`/`logistic`
+events reconstructed with a maximum reconciliation error of `1.11e-16` -
+nine orders of magnitude tighter than the required `1e-9` tolerance.
+Inspecting one persisted event directly confirmed a coherent, interpretable
+decomposition (`ELO_DIFF` and `OFF_PASS_EPA_DIFF` as the two largest
+contributions for `2026_02_CAR_ATL`). Before the scan-tolerance fix, this
+same command raised on any `--run-id` because the store's real four legacy
+pre-U3 evidence artifacts crashed the underlying scan; confirmed fixed by
+rerunning the same command after the fix, which correctly logged four
+"skipping" warnings for the legacy artifacts and resolved the target run's
+evidence.
+
+##### Acceptance
+
+Every `win_prob`/`logistic` statistical event in a given run's
+prediction-input evidence has a persisted, immutable log-odds explanation
+record bound to that run's exact evidence, model, and scaler identity — not
+the live mutable model store. Each record's contributions plus intercept
+reconstruct the evidence's own persisted `raw_estimator_output` within a
+documented strict tolerance, proven exact (not merely tolerance-passing) on
+real data; a violation fails the build rather than persisting
+silently-wrong evidence. No request-time model inference is introduced
+anywhere; the new CLI command is the only write path. Random Forest/XGBoost
+attribution and the `/explain` API contract change remain explicitly out of
+scope. The prediction-input evidence scan-based lookups are usable against
+the real repository's permanent legacy-schema artifacts for the first time.
+
 ### Statistical Availability Metadata Preflight Alignment [Completed September 22, 2026]
 
 #### Completed

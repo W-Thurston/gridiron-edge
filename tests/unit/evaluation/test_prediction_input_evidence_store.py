@@ -494,3 +494,32 @@ class TestEvidenceLookup:
 
         with pytest.raises(ValueError, match=r"Multiple.*claim event"):
             find_prediction_input_evidence_by_event("event-1", repo=tmp_path)
+
+    def test_scan_skips_earlier_schema_version_artifacts(self, tmp_path: Path) -> None:
+        """A permanent, pre-schema-bump artifact must not crash the whole scan.
+
+        The store is immutable and append-only, so an evidence-content
+        schema_version bump (e.g. epa_window's schema-2 addition) leaves
+        earlier-schema artifacts on disk forever. Regression coverage for a
+        real defect: scanning previously crashed entirely the first time any
+        legacy-schema artifact was read alongside current ones.
+        """
+        current = _evidence(run_id="run-1")
+        write_prediction_input_evidence(current, repo=tmp_path)
+
+        legacy_path = (
+            prediction_input_evidence_root(tmp_path) / "schema=1" / "evidence" / f"{DIGEST_A}.json"
+        )
+        legacy_payload = json.loads(
+            prediction_input_evidence_path(current.evidence_id, repo=tmp_path).read_text(
+                encoding="utf-8"
+            )
+        )
+        legacy_payload["evidence"]["schema_version"] = 1
+        legacy_path.write_text(json.dumps(legacy_payload), encoding="utf-8")
+
+        results = list_prediction_input_evidence_by_run("run-1", repo=tmp_path)
+        found = find_prediction_input_evidence_by_event("event-1", repo=tmp_path)
+
+        assert results == (current,)
+        assert found == current

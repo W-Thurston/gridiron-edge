@@ -315,6 +315,45 @@ Execution independently revalidates the complete contract and remains the
 authoritative fail-closed boundary. Availability does not deserialize model or
 scaler artifacts.
 
+### Logistic Explanation Evidence
+
+`gridiron evaluate explain-logistic --run-id <run_id>` reconstructs and
+persists, in one immutable batch, exact scaled-feature-by-coefficient
+contributions in log-odds space for every event in that run's
+`win_prob`/`logistic` prediction-input evidence. It performs no feature
+construction, scaling, or model inference of its own: the transformed feature
+vector and estimator output come directly from that already-persisted
+evidence. The model is reloaded from its exact immutable binary snapshot
+(content-addressed under `data/output/prediction_input_evidence/`), never
+from the live, mutable `data/models/win_prob/logistic/` store, since a later
+champion retrain overwrites that path.
+
+Each event's contributions plus intercept must reconstruct the evidence's own
+persisted `raw_estimator_output` within a strict tolerance (1e-9 in
+probability space); a violation fails the build rather than persisting
+silently-wrong evidence. A contribution is a linear decomposition of one
+fitted estimator's own decision function, not a causal effect estimate.
+
+Stored at:
+
+```text
+data/output/logistic_explanations/schema=1/batches/{batch_id}.json
+```
+
+The store is immutable and create-only; there is no "current" selection
+concept, since batches are keyed by run and source evidence rather than
+superseded. Random Forest/XGBoost attribution and the `/games/{game_id}/explain`
+API contract change are separately scoped (ROADMAP.md Tier 3 #9, #8's U11).
+
+`list_prediction_input_evidence_by_run`/`find_prediction_input_evidence_by_event`
+(the scan-based prediction-input evidence lookups this command depends on)
+skip any evidence artifact whose embedded `schema_version` is not the current
+one rather than failing the entire scan, since the store's own immutability
+guarantees permanently retain earlier-schema artifacts (e.g. four pre-U3
+artifacts predating the `epa_window` schema-2 addition) alongside current
+ones. A direct `read_prediction_input_evidence` call on a known path remains
+exactly as strict and fail-closed as before.
+
 ## Immutable Weekly Products
 
 Weekly products are stored under:

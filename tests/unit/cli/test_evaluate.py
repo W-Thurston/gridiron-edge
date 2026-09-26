@@ -539,3 +539,69 @@ class TestModelReportCommand:
         assert result.exit_code != 0
         assert "do not share a common game set" in result.output
         assert "Traceback" not in result.output
+
+
+class TestExplainLogisticCommand:
+    """Cover the evaluate explain-logistic command."""
+
+    def _fake_settings(self, tmp_path: Path):
+        @dataclass
+        class FakeSettings:
+            repo_root: Path
+
+        return lambda: FakeSettings(repo_root=tmp_path)
+
+    def _fake_result(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            batch=SimpleNamespace(batch_id="a" * 64, evidence_id="b" * 64),
+            event_count=16,
+            max_reconciliation_error=1.2e-12,
+        )
+
+    def test_builds_and_persists_the_batch(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        with patch(
+            "gridiron_edge.evaluation.logistic_explanation_evidence_builder."
+            "build_and_write_logistic_explanation_batch",
+            return_value=self._fake_result(),
+        ) as build:
+            result = CliRunner().invoke(evaluate_app, ["explain-logistic", "--run-id", "run-1"])
+
+        assert result.exit_code == 0, result.output
+        assert "a" * 64 in result.output
+        assert "16" in result.output
+        build.assert_called_once()
+        assert build.call_args.kwargs["run_id"] == "run-1"
+
+    def test_value_error_is_a_clean_cli_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        monkeypatch.setattr(
+            "gridiron_edge.core.settings.get_settings",
+            self._fake_settings(tmp_path),
+        )
+        with patch(
+            "gridiron_edge.evaluation.logistic_explanation_evidence_builder."
+            "build_and_write_logistic_explanation_batch",
+            side_effect=ValueError("No win_prob/logistic persisted-estimator evidence found"),
+        ):
+            result = CliRunner().invoke(evaluate_app, ["explain-logistic", "--run-id", "run-1"])
+
+        assert result.exit_code != 0
+        assert "No win_prob/logistic persisted-estimator evidence found" in result.output
+        assert "Traceback" not in result.output

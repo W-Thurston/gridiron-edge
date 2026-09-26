@@ -8,6 +8,113 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+### D51 - Prediction-input evidence scan tolerates earlier-schema artifacts instead of failing closed on the whole store
+
+**Date:** 2026-09-26
+
+#### Decision
+
+`prediction_input_evidence_store.py`'s scan-based lookups
+(`list_prediction_input_evidence_by_run`, `find_prediction_input_evidence_by_event`)
+now skip any evidence artifact whose embedded `schema_version` does not match
+the current `PREDICTION_INPUT_EVIDENCE_SCHEMA_VERSION`, logging a warning,
+rather than letting one such artifact raise and fail the entire scan. A direct
+`read_prediction_input_evidence(path)` call on a known path is unchanged:
+exactly as strict and fail-closed as before, including its own internal
+`schema_version` check and full tamper-detection replay. Mirrors
+`ArtifactStore.list_trained()`'s existing precedent of catching a per-file
+read problem and logging a warning rather than crashing the whole listing.
+
+#### Context
+
+Found while building U10's Logistic explanation evidence CLI (ROADMAP.md
+Tier 3 #8), the first real caller of either scan function outside their own
+tests. The prediction-input evidence store is immutable and append-only
+(`CLAUDE.md`'s "persisted evidence is never modified in place"), so U3's
+`epa_window` schema-2 addition permanently left four pre-U3, schema-version-1
+evidence artifacts on disk (the two disposition-governed defective Week 2
+live runs' `win_prob`/`logistic` and `total`/`random_forest` evidence,
+generated 2026-09-22) alongside every current schema-version-2 artifact.
+Before this fix, any call to either scan function raised
+`"Feature schema keys do not match the current schema."` the instant it
+reached the first legacy artifact, regardless of which run or event the
+caller actually wanted - both functions were silently unusable against the
+real repository from the moment U3 shipped.
+
+#### Alternatives considered
+
+- Archiving or deleting the four legacy artifacts. Rejected: the store's own
+  contract (and the disposition governing two of these exact runs) forbids
+  modifying or removing persisted evidence; a reader must tolerate its own
+  store's permanent history, not the other way around.
+- Gating on `schema_version` inside `_evidence()` before parsing nested
+  fields, to turn the crash into a clearer error. Rejected alone: it would
+  still fail the entire scan on the first legacy artifact instead of
+  resolving the caller's actual query.
+
+---
+
+### D50 - Logistic explanation evidence reconstructs from evidence and an immutable model snapshot, never live inference
+
+**Date:** 2026-09-26
+
+#### Decision
+
+ROADMAP.md Tier 3 #8's U10 persists exact scaled-feature-by-coefficient
+contributions in log-odds space for `win_prob`/`logistic` by reading the
+already-persisted `StatisticalPredictionEventEvidence` for one run
+(`transformed_feature_values`, `raw_estimator_output`) and reloading only the
+fitted estimator's own `coef_`/`intercept_` from its exact immutable binary
+snapshot (`data/output/prediction_input_evidence/schema=1/artifacts/{digest}.bin`),
+never from the live, mutable `data/models/win_prob/logistic/` artifact store.
+`ArtifactStore.save(..., overwrite=True)` replaces that path on every
+promoted retrain, so it is not guaranteed to hold the exact bytes that
+produced an older run's evidence; the content-addressed snapshot is. No
+feature construction, scaling, or model inference is performed by this unit -
+the transformed vector and estimator output are read, not recomputed.
+
+Each event's contributions plus intercept must reconstruct the evidence's own
+`raw_estimator_output` within `abs_tol=1e-9` (probability space) or the build
+raises rather than persisting a silently-wrong explanation. Persisted as one
+immutable `LogisticExplanationBatch` per run
+(`data/output/logistic_explanations/schema=1/batches/{batch_id}.json`,
+`gridiron evaluate explain-logistic --run-id <run_id>`), with no "current"
+selection concept: batches are keyed by run and source evidence, not
+superseded, mirroring prediction-input evidence's own no-selection design
+rather than the evaluation report store's.
+
+Scope is strictly `win_prob`/`logistic`,
+`PredictionExecutionKind.PERSISTED_ESTIMATOR` evidence. Random Forest/XGBoost
+attribution is a separate, doubtful decision deferred to Tier 3 #9 (Random
+Forest sits inside a probability calibrator, making exact attribution for it
+doubtful). The `/games/{game_id}/explain` API contract change, frontend
+regeneration, and field-status wiring are U11's job, not this unit's.
+
+#### Context
+
+Real-artifact validation against the current 2026-2027 Week 2 development
+run (`deb7ebd3-5fee-4242-b58a-d86db7e4bb53`) reconstructed all 16
+`win_prob`/`logistic` events with a maximum reconciliation error of
+`1.11e-16` - nine orders of magnitude tighter than the required tolerance -
+confirming the reconstruction is numerically exact, not merely
+tolerance-passing. See also D51, a scan-tolerance defect found and fixed
+while performing this validation.
+
+#### Alternatives considered
+
+- Reloading the model from the live `data/models/win_prob/logistic/` store.
+  Rejected: correct only until the next promoted retrain of the same
+  `(model_name, model_type)` pair, after which older runs' explanations would
+  silently reconstruct against the wrong estimator.
+- A CLI that discovers and explains every run for a season/week itself.
+  Rejected for this unit: kept to one run per invocation
+  (`--run-id`, mirroring `evaluate model-report`'s explicit-run-id,
+  no-auto-discovery style), matching the unit's bounded scope; a
+  season/week-driven wrapper can be added later without changing this
+  contract.
+
+---
+
 ### D49 - D7 (weather train/serve skew) is a closed data-completeness gap, not a live-serving architecture defect
 
 **Date:** 2026-09-25

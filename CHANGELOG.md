@@ -1,5 +1,49 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-26 - Persisted Logistic explanation evidence
+
+#### Added
+
+- `gridiron evaluate explain-logistic --run-id <run_id>`: reconstructs and
+  persists, in one immutable batch, exact scaled-feature-by-coefficient
+  contributions in log-odds space for every `win_prob`/`logistic` event in
+  that run's prediction-input evidence. Reloads the fitted estimator's
+  `coef_`/`intercept_` from its exact immutable binary snapshot, never the
+  live mutable model store; performs no feature construction, scaling, or
+  model inference of its own. Each event's reconstructed probability must
+  reconcile with the evidence's own persisted `raw_estimator_output` within
+  `abs_tol=1e-9` or the build fails closed.
+- `evaluation/logistic_explanation_evidence.py`,
+  `logistic_explanation_evidence_builder.py`,
+  `logistic_explanation_evidence_store.py`: the contract, builder, and
+  immutable JSON store, sibling to `prediction_input_evidence.py` and
+  `game_model_evaluation_report.py`. Stored at
+  `data/output/logistic_explanations/schema=1/batches/{batch_id}.json`, with
+  no "current" selection concept - batches are keyed by run and source
+  evidence, not superseded.
+
+#### Fixed
+
+- `prediction_input_evidence_store.py`'s scan-based lookups
+  (`list_prediction_input_evidence_by_run`, `find_prediction_input_evidence_by_event`)
+  crashed the entire scan on the first prediction-input evidence artifact
+  whose embedded `schema_version` predates the current one - both functions
+  were unusable against the real repository since U3's schema-2 bump, since
+  neither had a production caller until this unit's builder became the
+  first. They now skip earlier-schema artifacts with a logged warning; a
+  direct `read_prediction_input_evidence` call remains exactly as strict as
+  before. See `DECISIONS.md` D51.
+
+#### Real-artifact validation
+
+Ran `gridiron evaluate explain-logistic` against the real current
+2026-2027 Week 2 development run (`deb7ebd3-5fee-4242-b58a-d86db7e4bb53`):
+reconstructed all 16 `win_prob`/`logistic` events with a maximum
+reconciliation error of `1.11e-16` against the persisted
+`raw_estimator_output`.
+
+---
+
 ### 2026-09-26 - Reassessed game-model champions and calibration against corrected evidence
 
 #### Changed

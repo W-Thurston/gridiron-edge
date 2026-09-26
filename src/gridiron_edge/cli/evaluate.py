@@ -879,6 +879,57 @@ def evaluate_model_report(
     console.summary()
 
 
+@evaluate_app.command("explain-logistic")
+def evaluate_explain_logistic(
+    *,
+    run_id: str = typer.Option(
+        ..., "--run-id", help="Exact run_id whose win_prob/logistic evidence to explain."
+    ),
+) -> None:
+    r"""Persist one immutable Logistic explanation evidence batch for one run.
+
+    Reconstructs exact scaled-feature-by-coefficient log-odds contributions
+    from the run's already-persisted win_prob/logistic prediction-input
+    evidence, reloading the model from its exact immutable binary snapshot
+    (never the live, mutable model store). Fails closed if the run has no
+    win_prob/logistic evidence or if any event's reconstructed probability
+    does not reconcile with its persisted estimator output within tolerance.
+
+    \b
+    Example:
+      gridiron evaluate explain-logistic --run-id <run-id>
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.logistic_explanation_evidence_builder import (
+        build_and_write_logistic_explanation_batch,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate explain-logistic")
+
+    try:
+        with step("Reconstruct log-odds contributions from persisted evidence") as s:
+            result = build_and_write_logistic_explanation_batch(
+                run_id=run_id,
+                generated_at=datetime.now(UTC),
+                repo=repo,
+            )
+            s.set_detail(f"{result.event_count} events")
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo("")
+    typer.echo(f"Batch ID: {result.batch.batch_id}")
+    typer.echo(f"Evidence ID: {result.batch.evidence_id}")
+    typer.echo(f"Events: {result.event_count}")
+    typer.echo(f"Max reconciliation error: {result.max_reconciliation_error:.3e}")
+
+    console.summary()
+
+
 def _print_ranking_section(
     ranked_df: DataFrame,
     display_cols: list[str],
