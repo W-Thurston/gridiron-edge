@@ -151,15 +151,15 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | Dome/outdoor flag | Stadium type | Game, Props | 🟡 Med | Low | ✅ Done |
 | Neutral site flag | London, Mexico, etc. | Game | 🟡 Med | Low | ✅ Done |
 | Altitude | High-altitude venue (Denver) | Game | 🟢 Low | Low | ✅ Done |
-| Season week number | Early vs late season dynamics. Built as `WEEK_NUM`, present in `expanded_152` but not the Logistic `combined_111` set (2026-09-25) | Game | 🟢 Low | Low | ⚠️ Partial |
+| Season week number | Early vs late season dynamics. Built as `WEEK_NUM`, present in `expanded_152` but not the Logistic `combined_111` set (2026-09-25) Built as `WEEK_NUM`; a game-level feature in `expanded_v11` (tree models), deliberately absent from Logistic's `combined`. Status corrected 2026-09-28 (Unit 4). | Game | 🟢 Low | Low | ✅ Done |
 | Playoff/elimination context | Must-win games may play differently | Game | 🟢 Low | Med | ❌ |
 | Rest differential | Team A days rest minus Team B days rest | Game | 🟡 Med | Low | ✅ Done |
 | Opponent rest | The other team's rest situation | Game | 🟡 Med | Low | ✅ Done |
-| Back-to-back road games | Fatigue / travel compounding | Game | 🟢 Low | Low | ❌ |
+| Back-to-back road games | Fatigue / travel compounding Built 2026-09-28 (Unit 4) as `AWAY_/HOME_BACK_TO_BACK_ROAD`: schedule-based, reset by a bye or new season. | Game | 🟢 Low | Low | ✅ Done |
 | 🆕 Seeding locked / rest-starters risk | Team has clinched, or can't change, its seed late in the season, so starters often sit (especially Week 18). The mirror image of Playoff/elimination context. Few games a year, but large misses when ignored | Game, Props | 🔴 High | Med | ❌ |
-| 🆕 Body-clock kickoff time | Kickoff time converted to each team's home time zone (a 1 pm ET kickoff is 10 am for a West Coast team). Extends Timezone shift; circadian research found West Coast teams did better in night games | Game | 🟢 Low | Low | ❌ |
-| 🆕 Field surface | Grass vs artificial turf (`surface` in nflverse schedules; already tracked in the stadium reference). More relevant to speed and injury risk than to outcomes | Game, Props | 🟢 Low | Low | ❌ |
-| 🆕 League scoring environment & rule era | Season-level league average points/EPA, plus era flags for structural changes (2024 dynamic kickoff; 2025 touchback to the 35 and regular-season overtime change). Keeps totals models from pooling incompatible seasons | Game, Props | 🟡 Med | Low | ❌ |
+| 🆕 Body-clock kickoff time | Kickoff time converted to each team's home time zone (a 1 pm ET kickoff is 10 am for a West Coast team). Extends Timezone shift; circadian research found West Coast teams did better in night games Built 2026-09-28 (Unit 4) as `AWAY_/HOME_BODY_CLOCK_KICKOFF_HOUR`, evaluated at the game date (D68). | Game | 🟢 Low | Low | ✅ Done |
+| 🆕 Field surface | Grass vs artificial turf (`surface` in nflverse schedules; already tracked in the stadium reference). More relevant to speed and injury risk than to outcomes Built 2026-09-28 (Unit 4) as `IS_ARTIFICIAL_TURF`. | Game, Props | 🟢 Low | Low | ✅ Done |
+| 🆕 League scoring environment & rule era | Season-level league average points/EPA, plus era flags for structural changes (2024 dynamic kickoff; 2025 touchback to the 35 and regular-season overtime change). Keeps totals models from pooling incompatible seasons Built 2026-09-28 (Unit 4) as continuous `LEAGUE_PPG_TO_DATE`; no era flags (holdout-only, unlearnable). D68. | Game, Props | 🟡 Med | Low | ✅ Done |
 
 ---
 
@@ -173,9 +173,9 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | Wind speed (mph) | Affects kicking, deep passing | Game, Props | 🟡 Med | Low | ✅ Done |
 | Precipitation flag | Rain/snow binary | Game, Props | 🟡 Med | Low | ✅ Done |
 | Weather → feature wiring | OWM weather data wired into prediction features (completed as Priority v1 #1) | Game, Props | 🟡 Med | Low | ✅ Done |
-| Wind speed bins | Calm (0–10), moderate (10–20), high (20+) | Game, Props | 🟡 Med | Low | ❌ |
+| Wind speed bins | Calm (0–10), moderate (10–20), high (20+) Built 2026-09-28 (Unit 4) as ordinal `WIND_SPEED_BIN` (10/20 mph). | Game, Props | 🟡 Med | Low | ✅ Done |
 | Cold weather flag | Below 32°F threshold | Props | 🟡 Med | Low | ❌ |
-| Indoor override | If dome, weather features zeroed out. Mostly built via `IS_DOME`/`COVERED_STADIUMS` (2026-09-25); the remaining refinement is retractable roofs when closed (`roof` = closed in nflverse schedules), which is null for a meaningful share of future weeks | Game, Props | 🟡 Med | Low | ⚠️ Partial |
+| Indoor override | If dome, weather features zeroed out. Mostly built via `IS_DOME`/`COVERED_STADIUMS` (2026-09-25); the remaining refinement is retractable roofs when closed (`roof` = closed in nflverse schedules), which is null for a meaningful share of future weeks Built via venue-type classification. 2026-09-28 (Unit 4) fix: 755 retractable-stadium games were classified outdoor in training but covered when serving (D67). The observed-roof-state refinement is declined: it is unknowable before kickoff. | Game, Props | 🟡 Med | Low | ✅ Done |
 | Precipitation type | Rain vs snow (different effects) | Game | 🟢 Low | Med | ❌ |
 | Historical weather impact | Team's performance split by weather bucket | Game | 🟢 Low | Med | ❌ |
 
@@ -338,11 +338,11 @@ Step 5 - Edge Re-Calculation:
 | Performance as favorite/underdog | Does the team cover more as dog or fav? | Game | 🟡 Med | Med | ❌ |
 | Performance by spread bucket | ATS record in -3 to -7 range vs -7+ etc. | Game | 🟢 Low | Med | ❌ |
 | Scoring by quarter | Is the team a fast or slow starter? | Game | 🟢 Low | Med | ❌ |
-| Season week performance | Early vs mid vs late season form | Game | 🟢 Low | Low | ❌ |
+| Season week performance | Early vs mid vs late season form Built 2026-09-28 (Unit 4) as `FORM_TREND` (last-4 margin minus season-to-date margin), an ablation candidate (D68). | Game | 🟢 Low | Low | ✅ Done |
 | ↺ Average score differential | `avg_score_diff`. Built per the 2026-06-04 changelog entry; had no row | Game | 🟡 Med | Low | ✅ Done |
 | ↺ Close game % | `close_game_pct`. Built per the 2026-06-04 changelog entry; had no row | Game | 🟢 Low | Low | ✅ Done |
-| 🆕 Pythagorean win % / luck gap | Expected win % from points scored and allowed vs actual win %. Teams winning more than their scoring supports tend to fall back | Game | 🟡 Med | Low | ❌ |
-| 🆕 One-score game record | Record in games decided by 8 points or fewer; regresses hard toward .500 | Game | 🟡 Med | Low | ❌ |
+| 🆕 Pythagorean win % / luck gap | Expected win % from points scored and allowed vs actual win %. Teams winning more than their scoring supports tend to fall back Built 2026-09-28 (Unit 4) as `PYTHAG_WIN_PCT`/`PYTHAG_LUCK_GAP`, fit exponent 2.66 (D68). | Game | 🟡 Med | Low | ✅ Done |
+| 🆕 One-score game record | Record in games decided by 8 points or fewer; regresses hard toward .500 Built 2026-09-28 (Unit 4) as `ONE_SCORE_WIN_PCT`/`ONE_SCORE_GAMES`. | Game | 🟡 Med | Low | ✅ Done |
 
 ---
 
@@ -352,9 +352,9 @@ Step 5 - Edge Re-Calculation:
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| 🆕 Special teams EPA/play | Combined kicking, punting, and return EPA from PBP | Game | 🟡 Med | Low | ❌ |
+| 🆕 Special teams EPA/play | Combined kicking, punting, and return EPA from PBP Built 2026-09-28 (Unit 4) as `st_epa_per_play`; kickoffs excluded (D66). | Game | 🟡 Med | Low | ✅ Done |
 | 🆕 Field goal accuracy over expected | Kicker make rate vs expectation for distance and conditions (wind, altitude) | Game, Props | 🟡 Med | Med | ❌ |
-| 🆕 Punt & return efficiency | Net punting and return EPA: the field-position flippers | Game | 🟢 Low | Low | ❌ |
+| 🆕 Punt & return efficiency | Net punting and return EPA: the field-position flippers Built 2026-09-28 (Unit 4) as `punt_epa_per_play` (D66). | Game | 🟢 Low | Low | ✅ Done |
 | 🆕 Average drive start (off/def) | Where drives begin. Blends special teams, turnovers, and defense into one field-position number | Game | 🟡 Med | Low | ❌ |
 | 🆕 Kicker opportunity | FG and extra-point attempts per game, driven by red-zone stalls (Red zone TD % already exists). High signal for kicker props specifically | Props | 🔴 High | Low | ❌ |
 
@@ -599,7 +599,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 **A3 QB and coach sidecar — wired, promotion deferred to Unit 7:** QB EPA/play, career (D4, now ✅ Done); QB EPA/play, rolling L4–L6 (D4, now ✅ Done); CPOE, rolling (D4, now ✅ Done); QB change flag (D4, now ✅ Done); QB experience (D4, now ✅ Done); Head coach win %, career (D10, now ✅ Done); HC tenure (D10, now ✅ Done); New coaching staff flag (D10, now ✅ Done). Built a new `data/cleaned/NFL_qb_coach_sidecar.parquet` sidecar per program rule 5 (starting-QB and head-coach identity, projected from raw nflverse schedule fields the existing `games`/`schedule_upcoming_rich` clean steps don't carry). Starting-QB identity for unplayed games uses a carry-forward-most-recent-known-starter policy (`DECISIONS.md` D65) to satisfy the live-availability rule; head-coach identity needs no such fallback since it is known before every season starts. Schema bumped to 10/7. Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep across accumulated Phase A units — see `ROADMAP.md` and `PLAN.md`.
 
-**A4 Situational context:** Season week number (D5 — **status correction:** already built as `WEEK_NUM`, present in `expanded_152` but not `combined_111`; reclassify ⚠️ Partial, not ❌); Back-to-back road games (D5); Body-clock kickoff time (D5 🆕); Field surface (D5 🆕); League scoring environment & rule era (D5 🆕, as a continuous season-to-date signal — fixed rule-era flags exist only in holdout seasons and can't be learned); Wind speed bins (D6 🆕); Indoor override (D6 — **status correction:** mostly built via `IS_DOME`/`COVERED_STADIUMS`; reclassify ⚠️ Partial; the remaining closed-roof refinement is low priority because `roof` is null for a meaningful share of future weeks); Season week performance (D11); Pythagorean win % / luck gap (D11 🆕); One-score game record (D11 🆕); Special teams EPA/play (D12 🆕, from stored play-by-play once special-teams play types are included in aggregation); Punt & return efficiency (D12 🆕).
+**A4 Situational context — wired, promotion deferred to Unit 7:** Season week number (D5, now ✅ Done — already `WEEK_NUM`, in `expanded_v11` but not Logistic's `combined`); Back-to-back road games (D5, now ✅ Done); Body-clock kickoff time (D5, now ✅ Done); Field surface (D5, now ✅ Done); League scoring environment & rule era (D5, now ✅ Done as a continuous season-to-date signal); Wind speed bins (D6, now ✅ Done); Indoor override (D6, now ✅ Done — a train/serve skew for 755 retractable-stadium games was fixed, D67; the observed-roof-state refinement is declined); Season week performance (D11, now ✅ Done as a form trend, D68); Pythagorean win % / luck gap (D11, now ✅ Done); One-score game record (D11, now ✅ Done); Special teams EPA/play (D12, now ✅ Done, kickoffs excluded, D66); Punt & return efficiency (D12, now ✅ Done). Schema bumped to 11/8 (`DECISIONS.md` D66-D68). Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep — see `ROADMAP.md` and `PLAN.md`.
 
 **A5 Rating ensemble inputs:** QB Elo / QB-specific rating (D4, via Glicko-2/OpenSkill; needs the same lineage treatment as team Elo); Team Glicko-2 rating + RD + volatility (D14 🆕); Keener / Colley / Massey ratings (D14 🆕); Rating uncertainty as a feature (D14 🆕).
 
@@ -647,15 +647,15 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ## Summary Statistics
 
-*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1), Unit 2 (batch A2), and Unit 3 (batch A3) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
+*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1-4 (batches A1-A4) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
 
 | Metric | Count |
 |--------|-------|
 | Catalog rows | 179 (178 unique; "Implied team total" is cross-listed in Domains 7 and 8) |
 | Domains | 14 (11 original + 3 new) |
-| ✅ Done | 72 |
-| ⚠️ Partial | 2 (Season week number; Indoor override) |
-| ❌ Missing | 104 |
+| ✅ Done | 84 |
+| ⚠️ Partial | 0 |
+| ❌ Missing | 94 |
 | 🔴 High signal | 49 |
 | ❓ Unknown signal | 4 |
 | Low cost | 115 |
@@ -671,14 +671,14 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 | 2. Team Defensive Efficiency | 17 | 10 | 1 |
 | 3. Turnover & Discipline | 9 | 5 | 1 |
 | 4. Quarterback Quality | 16 | 5 | 3 |
-| 5. Schedule & Situational Context | 20 | 13 | 4 |
-| 6. Weather & Environment | 9 | 4 | 0 |
+| 5. Schedule & Situational Context | 20 | 18 | 4 |
+| 6. Weather & Environment | 9 | 6 | 0 |
 | 7. Market-Derived Features | 11 | 1 | 2 |
 | 8. Player-Level Features | 29 | 10 | 5 |
 | 9. Roster & Personnel | 14 | 0 | 1 |
 | 10. Coaching & Scheme | 8 | 3 | 0 |
-| 11. Historical Trends | 13 | 4 | 2 |
-| 12. Special Teams & Field Position | 5 | 0 | 5 |
+| 11. Historical Trends | 13 | 7 | 2 |
+| 12. Special Teams & Field Position | 5 | 2 | 5 |
 | 13. Unit Matchups & Interactions | 3 | 2 | 3 |
 | 14. Rating-System Outputs | 6 | 2 | 4 |
 
@@ -758,6 +758,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Implemented Game-Model Build Queue Unit 4 (batch A4): marked all twelve A4 rows ✅ Done — Season week number and Indoor override (status corrections; the latter also fixed a real train/serve skew for 755 retractable-stadium games, `DECISIONS.md` D67), Back-to-back road games, Body-clock kickoff time, Field surface, League scoring environment & rule era (continuous, no era flags), Wind speed bins, Season week performance (interpreted as a form trend), Pythagorean win % / luck gap, One-score game record (Domains 5, 6, 11), and Special teams EPA/play and Punt & return efficiency (Domain 12; kickoffs excluded on structural-break evidence, D66). No PBP re-download and no new sidecar were needed. `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES`/`_TEAM_FEATURES` grew to 124/62/19/34 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 186/239); schema bumped to 11/8. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 3 (batch A3): marked QB EPA/play career and rolling, CPOE rolling, QB change flag, QB experience (Domain 4), and Head coach win % career, HC tenure, New coaching staff flag (Domain 10) all ✅ Done. Built a new `data/cleaned/NFL_qb_coach_sidecar.parquet` sidecar (program rule 5) carrying starting-QB and head-coach identity that the existing `games`/`schedule_upcoming_rich` clean steps intentionally drop; QB EPA/CPOE are sourced from `player_game_logs` (per-QB `passing_epa`/`passing_cpoe`/`attempts`), not raw PBP, which does not carry passer identity. Starting-QB identity for unplayed games uses a carry-forward-most-recent-known-starter policy (`DECISIONS.md` D65), verified against the real 226-game current upcoming schedule at 100% coverage; head-coach identity needed no such fallback (known before every season starts). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_TEAM_FEATURES` grew to 110/55/30 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 165/211); schema bumped to 10/7. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 2 (batch A2): marked Opponent-adjusted EPA/play and Opponent-adjusted def EPA/play (Domain 1/2) ✅ Done — a ridge regression on play-level PBP with offense and defense terms, fit fresh per (season, week) as-of cutoff from season-to-date data rather than persisted like Elo (`DECISIONS.md` D63); Unit efficiency differentials (Domain 13) ✅ Done as four one-sided raw matchup columns plus two home-minus-away diffs, not diff-only, so Total keeps the "both sides face weak defenses" level signal; and Projected total plays (Domain 13) ✅ Done for its market-blind variant only (a plain sum of each side's rolling pace — the spread-adjusted version is Unit 6's separate market-aware model). Surfaced and fixed a real correctness gap along the way: raw PBP's short team codes don't match the canonical frame's long team names, which would have silently produced all-`NaN` output (`DECISIONS.md` D64). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` grew across three schema bumps to reach 96/48/16 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 144/186). Retrain deferred to Unit 7 per the same-day D62 wiring/promotion split. |
 | 2026-09-28 | Decoupled Phase A wiring from promotion (`DECISIONS.md` D62): Units 1–6 each wire and test one batch with its own schema bump but no longer individually retrain; a new Unit 7 runs one consolidated incremental walk-forward sweep across accumulated units and makes the adopt/reject call, so batch attribution is preserved without a full gated retrain after every small unit. Regenerated `data/cleaned/epa_by_game.parquet` and the modeling file for Unit 1 (batch A1) under the new schema and verified the result; the gated retrain itself is now Unit 7's scope, not Unit 1's. |

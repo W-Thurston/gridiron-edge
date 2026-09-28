@@ -19,12 +19,12 @@ Roof type groupings
 The audit caught a semantic discrepancy between two files that both
 produce an "is_dome"-style flag from the ``ROOF`` column:
 
-- ``features/team/weather.py``: previously ``_DOME_ROOF_VALUES =
-  {"dome", "retractable"}``. Used to determine whether to override
+- ``features/team/weather.py``: determines whether to override
   OWM weather data with controlled-environment defaults. For this use
   case, the question is "does this stadium have a roof that can keep
   weather out at all?" - so retractable counts, even when the roof
-  is open. The new alias is :data:`COVERED_STADIUMS`.
+  is open (recorded as ``open``/``closed`` in historical games). The
+  alias is :data:`COVERED_STADIUMS`.
 
 - ``features/player/game_context.py``: previously ``_DOME_ROOFS =
   {"dome", "closed"}``. Used as a player prop feature. For this use
@@ -75,7 +75,16 @@ class RoofType(StrEnum):
 #: regardless of whether the roof was open or closed on game day.
 #: Use for OWM weather overrides where the question is whether the
 #: physical building shields the field from the elements at all.
-COVERED_STADIUMS: frozenset[RoofType] = frozenset({RoofType.DOME, RoofType.RETRACTABLE})
+#:
+#: The historical games dataset records a retractable-roof stadium's
+#: per-game state as ``open`` or ``closed`` (never ``retractable``), while
+#: upcoming games resolve the same stadiums to ``retractable`` from the
+#: stadium reference. All four values therefore denote a covered venue, so
+#: training and live serving classify a given stadium identically; the
+#: game-day roof state is not knowable before kickoff.
+COVERED_STADIUMS: frozenset[RoofType] = frozenset(
+    {RoofType.DOME, RoofType.RETRACTABLE, RoofType.OPEN, RoofType.CLOSED}
+)
 
 #: Games actually played indoors. Use as a prop model feature where
 #: what matters is whether the players experienced indoor conditions,

@@ -38,6 +38,10 @@ _ROOF_VALUE_ALIASES: Final[dict[str, str]] = {
     "retractable roof": "retractable",
 }
 
+# Wind-speed bin edges (mph): calm < 10 <= moderate < 20 <= high.
+_WIND_MODERATE_MPH: Final[float] = 10.0
+_WIND_HIGH_MPH: Final[float] = 20.0
+
 # OWM WEATHER_MAIN values that indicate precipitation
 _PRECIP_WEATHER_MAINS: Final[frozenset[str]] = frozenset(
     {"Rain", "Snow", "Drizzle", "Thunderstorm"}
@@ -85,7 +89,25 @@ _WEATHER_OUTPUT_COLS: Final[list[str]] = [
 _WEATHER_FEATURE_COLUMNS: Final[list[str]] = [
     "IS_DOME",
     *[column for column in _WEATHER_OUTPUT_COLS if column != "GAME_ID"],
+    "WIND_SPEED_BIN",
 ]
+
+
+def wind_speed_bin(wind_mph: Series) -> Series:
+    """Return the ordinal wind bin: 0 calm (<10), 1 moderate, 2 high (>=20).
+
+    Null wind stays null. Apply after the controlled-environment override so
+    covered venues are always calm.
+    """
+    bins = pd.Series(
+        np.select(
+            [wind_mph >= _WIND_HIGH_MPH, wind_mph >= _WIND_MODERATE_MPH],
+            [2, 1],
+            default=0,
+        ),
+        index=wind_mph.index,
+    )
+    return bins.astype("Int64").mask(wind_mph.isna())
 
 
 def _load_weather(
@@ -517,6 +539,7 @@ class HomeAwayWeatherFeature:
         result.loc[dome_mask, "SNOW_FLAG"] = 0
         result.loc[dome_mask, "LOW_VIS_FLAG"] = 0
         result.loc[dome_mask, "WIND_CHILL_DELTA"] = 0.0
+        result["WIND_SPEED_BIN"] = wind_speed_bin(result["WIND_SPEED_MPH"])
 
         return (
             result.sort_values("_INPUT_ORDER", kind="stable")

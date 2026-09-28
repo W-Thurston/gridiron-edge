@@ -59,6 +59,9 @@ EPA_COLS: Final[list[str]] = [
     "off_penalty_rate",
     "off_avg_score_diff",
     "off_close_game_pct",
+    # --- Special teams (own-perspective; kickoffs excluded) ---
+    "st_epa_per_play",
+    "punt_epa_per_play",
     # --- Defensive ---
     "def_epa_per_play",
     "def_pass_epa",

@@ -321,6 +321,7 @@ class TestHomeAwayWeatherFeature:
             "SNOW_FLAG",
             "LOW_VIS_FLAG",
             "WIND_CHILL_DELTA",
+            "WIND_SPEED_BIN",
         ]
 
     @pytest.mark.parametrize(
@@ -329,8 +330,9 @@ class TestHomeAwayWeatherFeature:
             ("dome", 1),
             ("DOME", 1),
             ("retractable", 1),
+            ("open", 1),
+            ("closed", 1),
             ("outdoors", 0),
-            ("open", 0),
         ],
     )
     def test_historical_roof_state(self, roof: str, expected: int) -> None:

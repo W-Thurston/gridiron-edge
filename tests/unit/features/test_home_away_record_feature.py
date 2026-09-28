@@ -13,6 +13,7 @@ import pytest
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.features.registry import FeatureRegistry
 from gridiron_edge.features.team.record import (
+    _PYTHAGOREAN_EXPONENT,
     HomeAwayRecordFeature,
 )
 
@@ -111,6 +112,16 @@ def test_spec_contains_canonical_outputs() -> None:
         "HOME_WIN_PCT",
         "HOME_WIN_STREAK",
         "HOME_LOSS_STREAK",
+        "AWAY_FORM_TREND",
+        "AWAY_PYTHAG_WIN_PCT",
+        "AWAY_PYTHAG_LUCK_GAP",
+        "AWAY_ONE_SCORE_WIN_PCT",
+        "AWAY_ONE_SCORE_GAMES",
+        "HOME_FORM_TREND",
+        "HOME_PYTHAG_WIN_PCT",
+        "HOME_PYTHAG_LUCK_GAP",
+        "HOME_ONE_SCORE_WIN_PCT",
+        "HOME_ONE_SCORE_GAMES",
     ]
 
 
@@ -310,3 +321,120 @@ def test_week_one_uses_zero_record_defaults() -> None:
     assert row["HOME_WINS"] == pytest.approx(0.0)
     assert row["HOME_LOSSES"] == pytest.approx(0.0)
     assert row["HOME_WIN_PCT"] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Same-season performance metrics
+# ---------------------------------------------------------------------------
+
+
+def _pythag(points_for: float, points_against: float) -> float:
+    pf = points_for**_PYTHAGOREAN_EXPONENT
+    pa = points_against**_PYTHAGOREAN_EXPONENT
+    return pf / (pf + pa)
+
+
+def _team_history(
+    scores: list[tuple[int, int]],
+    *,
+    team: str = "Away Team",
+    year: str = "2025-2026",
+) -> DataFrame:
+    """One team playing at home against distinct opponents, weeks 1..n."""
+    return DataFrame(
+        [
+            _historical_game(
+                game_id=f"{year}-{team}-{week}",
+                week=week,
+                away_team=f"Opponent {week}",
+                home_team=team,
+                away_score=points_against,
+                home_score=points_for,
+                year=year,
+            )
+            for week, (points_for, points_against) in enumerate(scores, start=1)
+        ]
+    )
+
+
+def _performance(scores: list[tuple[int, int]], *, week: int | None = None) -> pd.Series:
+    target = _target()
+    target["WEEK_NUM"] = week if week is not None else len(scores) + 1
+    return (
+        HomeAwayRecordFeature()
+        .compute(df=target, datasets=_datasets(_team_history(scores)))
+        .iloc[0]
+    )
+
+
+def test_performance_metrics_for_distinct_sides() -> None:
+    row = HomeAwayRecordFeature().compute(df=_target(), datasets=_datasets(_history())).iloc[0]
+
+    # Away Team: won 24-17 and 27-20 (both one-score margins of 7).
+    assert row["AWAY_FORM_TREND"] == pytest.approx(0.0)
+    assert row["AWAY_PYTHAG_WIN_PCT"] == pytest.approx(_pythag(51, 37))
+    assert row["AWAY_PYTHAG_LUCK_GAP"] == pytest.approx(1.0 - _pythag(51, 37))
+    assert row["AWAY_ONE_SCORE_WIN_PCT"] == pytest.approx(1.0)
+    assert row["AWAY_ONE_SCORE_GAMES"] == 2
+
+    # Home Team: lost 14-21.
+    assert row["HOME_PYTHAG_WIN_PCT"] == pytest.approx(_pythag(14, 21))
+    assert row["HOME_PYTHAG_LUCK_GAP"] == pytest.approx(0.0 - _pythag(14, 21))
+    assert row["HOME_ONE_SCORE_WIN_PCT"] == pytest.approx(0.0)
+    assert row["HOME_ONE_SCORE_GAMES"] == 1
+
+
+def test_week_one_performance_uses_neutral_values() -> None:
+    row = _performance([(30, 10)], week=1)  # week-1 target has no prior games
+
+    assert row["AWAY_FORM_TREND"] == pytest.approx(0.0)
+    assert row["AWAY_PYTHAG_WIN_PCT"] == pytest.approx(0.5)
+    assert row["AWAY_PYTHAG_LUCK_GAP"] == pytest.approx(0.0)
+    assert row["AWAY_ONE_SCORE_WIN_PCT"] == pytest.approx(0.5)
+    assert row["AWAY_ONE_SCORE_GAMES"] == 0
+
+
+def test_form_trend_is_zero_with_four_or_fewer_games() -> None:
+    row = _performance([(30, 10), (10, 30), (24, 20), (13, 27)])
+
+    assert row["AWAY_FORM_TREND"] == pytest.approx(0.0)
+
+
+def test_form_trend_compares_recent_games_with_season_mean() -> None:
+    # Margins +10, +10, +10, +10, -6: last four = 6.0, season mean = 6.8.
+    row = _performance([(20, 10), (20, 10), (20, 10), (20, 10), (10, 16)])
+
+    assert row["AWAY_FORM_TREND"] == pytest.approx(6.0 - 6.8)
+
+
+def test_one_score_boundary_and_ties() -> None:
+    # Margin exactly 8 (win) counts; 9 does not; a 17-17 tie counts as 0.5.
+    row = _performance([(28, 20), (29, 20), (17, 17)])
+
+    assert row["AWAY_ONE_SCORE_GAMES"] == 2
+    assert row["AWAY_ONE_SCORE_WIN_PCT"] == pytest.approx(0.75)
+
+
+def test_luck_gap_is_actual_minus_pythagorean() -> None:
+    # 2-0 on tiny margins: actual 1.0, Pythagorean barely above .5.
+    row = _performance([(21, 20), (22, 21)])
+
+    assert row["AWAY_PYTHAG_LUCK_GAP"] == pytest.approx(1.0 - _pythag(43, 41))
+    assert row["AWAY_PYTHAG_LUCK_GAP"] > 0.4
+
+
+def test_performance_metrics_reset_by_season_and_ignore_future_weeks() -> None:
+    history = pd.concat(
+        [
+            _team_history([(50, 0), (50, 0)], year="2024-2025"),
+            _team_history([(20, 17)]),
+            _team_history([(0, 40)]).assign(WEEK_NUM=5, GAME_ID="future"),
+        ],
+        ignore_index=True,
+    )
+    target = _target()
+    target["WEEK_NUM"] = 2
+    row = HomeAwayRecordFeature().compute(df=target, datasets=_datasets(history)).iloc[0]
+
+    assert row["AWAY_PYTHAG_WIN_PCT"] == pytest.approx(_pythag(20, 17))
+    assert row["AWAY_ONE_SCORE_GAMES"] == 1

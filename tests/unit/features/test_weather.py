@@ -20,6 +20,7 @@ from gridiron_edge.features.registry import (
 from gridiron_edge.features.team.weather import (
     _DOME_TEMP_F,
     HomeAwayWeatherFeature,
+    wind_speed_bin,
 )
 
 # ---------------------------------------------------------------------------
@@ -124,12 +125,29 @@ class TestIsDome:
         )
         assert result.iloc[0]["IS_DOME"] == 0
 
-    def test_open_is_not_dome(self) -> None:
+    @pytest.mark.parametrize("roof", ["open", "closed"])
+    def test_per_game_retractable_state_is_covered(self, roof: str) -> None:
+        """Historical retractable-stadium games are recorded open/closed.
+
+        Live serving resolves the same stadiums to ``retractable`` from the
+        stadium reference, so training must classify them as covered too.
+        """
         result = HomeAwayWeatherFeature().compute(
             df=_make_modeling_row(),
-            datasets=_make_accessor(_make_games("open")),
+            datasets=_make_accessor(_make_games(roof)),
         )
-        assert result.iloc[0]["IS_DOME"] == 0
+        assert result.iloc[0]["IS_DOME"] == 1
+
+    def test_open_roof_weather_is_overridden_like_live_serving(self) -> None:
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(
+                _make_games("open"),
+                weather=_make_weather_row(wind_mps=15.0),
+            ),
+        )
+        assert result.iloc[0]["WIND_SPEED_MPH"] == pytest.approx(0.0)
+        assert result.iloc[0]["WIND_SPEED_BIN"] == 0
 
     def test_dome_is_dome(self) -> None:
         result = HomeAwayWeatherFeature().compute(
@@ -250,6 +268,46 @@ class TestIsDome:
         )
 
         assert result.iloc[0]["IS_DOME"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Wind speed bins
+# ---------------------------------------------------------------------------
+
+
+class TestWindSpeedBin:
+    """Ordinal wind bins: calm < 10 <= moderate < 20 <= high."""
+
+    @pytest.mark.parametrize(
+        ("wind_mph", "expected"),
+        [(0.0, 0), (9.99, 0), (10.0, 1), (19.99, 1), (20.0, 2), (39.0, 2)],
+    )
+    def test_bin_boundaries(self, wind_mph: float, expected: int) -> None:
+        assert wind_speed_bin(pd.Series([wind_mph])).iloc[0] == expected
+
+    def test_null_wind_stays_null(self) -> None:
+        assert pd.isna(wind_speed_bin(pd.Series([float("nan")])).iloc[0])
+
+    def test_outdoor_game_uses_converted_wind(self) -> None:
+        # 10 m/s = 22.4 mph -> high.
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(
+                _make_games("outdoors"),
+                weather=_make_weather_row(wind_mps=10.0),
+            ),
+        )
+        assert result.iloc[0]["WIND_SPEED_BIN"] == 2
+
+    def test_dome_is_always_calm(self) -> None:
+        result = HomeAwayWeatherFeature().compute(
+            df=_make_modeling_row(),
+            datasets=_make_accessor(
+                _make_games("dome"),
+                weather=_make_weather_row(wind_mps=15.0),
+            ),
+        )
+        assert result.iloc[0]["WIND_SPEED_BIN"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +608,7 @@ class TestHomeAwayWeatherFeatureSpec:
             "SNOW_FLAG",
             "LOW_VIS_FLAG",
             "WIND_CHILL_DELTA",
+            "WIND_SPEED_BIN",
         ]
 
     def test_registered_under_canonical_name(

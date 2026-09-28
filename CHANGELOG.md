@@ -1,5 +1,48 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Unit 4 (batch A4) wired: situational context
+
+#### Added
+
+- `IS_ARTIFICIAL_TURF` (`features/team/surface.py`): normalized surface label
+  reduced to a flag; null historical surfaces filled from the stadium
+  reference at (stadium, season); an unrecognized label raises.
+- `AWAY_/HOME_BODY_CLOCK_KICKOFF_HOUR` (`features/team/body_clock.py`): ET
+  kickoff converted to each team's home zone at the game's own date.
+- `AWAY_/HOME_BACK_TO_BACK_ROAD` (`features/team/road_trips.py`): schedule-
+  based (played and unplayed games), reset by a bye or a new season.
+- `LEAGUE_PPG_TO_DATE` (`features/team/league_environment.py`): season-to-date
+  league scoring blended with the prior season by an empirically derived
+  weight; no rule-era flags.
+- `AWAY_/HOME_FORM_TREND`, `_PYTHAG_WIN_PCT`, `_PYTHAG_LUCK_GAP`,
+  `_ONE_SCORE_WIN_PCT`, `_ONE_SCORE_GAMES` (`features/team/record.py`) with
+  `_DIFF` columns; `WIND_SPEED_BIN` (`features/team/weather.py`).
+- `st_epa_per_play` and `punt_epa_per_play` in `epa_by_game.parquet` and
+  `EPA_COLS` (kickoffs excluded; `DECISIONS.md` D66).
+- Test coverage: four new feature test modules plus extended weather, record,
+  and EPA suites.
+
+#### Changed
+
+- **Value-changing fix (`DECISIONS.md` D67):** 755 historical games at
+  retractable-roof stadiums (`open`/`closed`) were classified outdoor while
+  the same stadiums are classified covered when serving live. They are now
+  covered: `IS_DOME` and the weather columns changed for those games only.
+- `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES`/`_TEAM_FEATURES` grew to
+  124/62/19/34 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 186/239); `EPA_COLS`
+  41 to 43; schema bumped 10 to 11, data version 7 to 8.
+- Regenerated `epa_by_game.parquet` (all pre-existing columns byte-identical)
+  and the modeling file (7,308 rows, 187 columns).
+
+#### Verified
+
+- Live-availability replay over the real 226-game 2026-2027 schedule: zero
+  NaNs across all new columns at every horizon. Elo and strength-of-victory
+  are NaN beyond the next week; both are pre-existing and out of scope.
+- Expanded training pool loses 15 games (1999 Monday games with no recorded
+  `gametime`); recorded in `DECISIONS.md` D68. Promotion deferred to Unit 7
+  (D62).
+
 ### 2026-09-28 - Unit 3 (batch A3) wired: QB-and-coach sidecar
 
 #### Added

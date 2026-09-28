@@ -42,6 +42,7 @@ from gridiron_edge.models.game_prediction._columns import (
     _QB_PROFILE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
+    _SEASON_PERFORMANCE_SUFFIXES,
     _TEAM_FEATURES,
     _UNIT_EFFICIENCY_SUFFIXES,
     FeatureSet,
@@ -86,6 +87,7 @@ def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
         *_UNIT_EFFICIENCY_SUFFIXES,
         *_QB_PROFILE_SUFFIXES,
         *_COACH_PROFILE_SUFFIXES,
+        *_SEASON_PERFORMANCE_SUFFIXES,
     ):
         out[f"{suffix}_DIFF"] = df[f"HOME_{suffix}"] - df[f"AWAY_{suffix}"]
     return out.loc[:, _DIFF_FEATURES]

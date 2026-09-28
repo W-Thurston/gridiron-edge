@@ -38,6 +38,10 @@ _EXPECTED_CANONICAL_FEATURES = [
     "home_away_divisional",
     "home_away_primetime",
     "home_away_weather",
+    "home_away_surface",
+    "league_environment",
+    "home_away_road_trips",
+    "home_away_body_clock",
 ]
 
 

@@ -44,6 +44,14 @@ Output schema (``epa_by_game.parquet``)::
                                      faced (not adopted as a model feature;
                                      see DECISIONS.md D60)
     def_sack_rate           float   Sacks generated per opponent dropback
+    st_epa_per_play     float   Special-teams EPA per play from the team's own
+                                perspective: punts as punter (EPA) and as
+                                returner/coverage (-EPA), plus the team's own
+                                field-goal and extra-point attempts (kicker
+                                side only). Kickoffs are excluded; see
+                                ``_agg_special_teams``.
+    punt_epa_per_play   float   Net punting and return EPA per punt play, own
+                                perspective (punter EPA, returner -EPA)
 
 Note on EPA reliability: nflfastR EPA model is reliable from 2006 onward.
 Seasons before 2006 will have NaN EPA values and are handled gracefully.
@@ -72,6 +80,14 @@ logger: Logger = logging.getLogger(__name__)
 
 # Play types that count as offensive scrimmage plays for EPA
 _SCRIMMAGE_PLAY_TYPES: frozenset[str] = frozenset(["pass", "run"])
+
+# Special-teams play types that feed team special-teams EPA. Kickoffs are
+# deliberately absent: kickoff EPA has structural breaks that a model cannot
+# learn (exactly 0 on ~10-15% of plays 1999-2010, 42-60% 2011-2022, 74% in
+# 2023, then a +0.25 mean under the 2024 dynamic kickoff), and post-2024 it
+# also rewards whichever team scores more, since scoring teams kick more.
+_PUNT_PLAY_TYPE: str = "punt"
+_KICK_ATTEMPT_PLAY_TYPES: frozenset[str] = frozenset(["field_goal", "extra_point"])
 
 
 def _safe_mean(series: pd.Series) -> float:
@@ -237,6 +253,51 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
     return result
 
 
+def _agg_special_teams(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate special-teams EPA per team per game from own-team perspective.
+
+    PBP ``epa`` is from the possessing (kicking/punting) team's perspective.
+    Each team's rows are therefore:
+
+    - punts it made: ``epa``;
+    - punts it returned or covered: ``-epa`` (the opponent's punt);
+    - its own field-goal and extra-point attempts: ``epa``. The defense is
+      not credited ``-epa`` for the opponent's kick, which would double-count
+      defense.
+
+    ``punt_epa_per_play`` averages the punt rows (net punting and return);
+    ``st_epa_per_play`` averages every row. Kickoffs are excluded (see
+    ``_KICK_ATTEMPT_PLAY_TYPES``). Team codes are nflverse short codes, as in
+    ``_agg_side``; the caller maps them to long names after joining.
+
+    Returns:
+        One row per (game_id, season, week, team) that had at least one
+        qualifying play.
+    """
+    keys: list[str] = ["game_id", "season", "week"]
+    plays: DataFrame = pbp.loc[
+        pbp["play_type"].isin({_PUNT_PLAY_TYPE, *_KICK_ATTEMPT_PLAY_TYPES})
+        & pbp["epa"].notna()
+        & pbp["posteam"].notna(),
+        [*keys, "play_type", "posteam", "defteam", "epa"],
+    ]
+    own: DataFrame = plays.assign(team=plays["posteam"], value=plays["epa"])
+    punts: DataFrame = plays.loc[
+        (plays["play_type"] == _PUNT_PLAY_TYPE) & plays["defteam"].notna(), :
+    ]
+    returned: DataFrame = punts.assign(team=punts["defteam"], value=-punts["epa"])
+
+    rows: DataFrame = pd.concat([own, returned], ignore_index=True)
+    rows["is_punt"] = rows["play_type"] == _PUNT_PLAY_TYPE
+
+    group_keys: list[str] = [*keys, "team"]
+    st_epa: Series = rows.groupby(group_keys)["value"].mean().rename("st_epa_per_play")
+    punt_epa: Series = (
+        rows.loc[rows["is_punt"], :].groupby(group_keys)["value"].mean().rename("punt_epa_per_play")
+    )
+    return pd.concat([st_epa, punt_epa], axis=1).reset_index()
+
+
 def aggregate_epa(
     seasons: list[int] | None = None,
     *,
@@ -313,6 +374,16 @@ def aggregate_epa(
         def_df,
         on=["game_id", "season", "week", "team"],
         how="outer",
+    )
+
+    # Special-teams EPA joins on the same short-code keys, so it must merge
+    # before the long-name mapping below (DECISIONS.md D64).
+    special_teams: DataFrame = _agg_special_teams(pbp)
+    result = result.merge(
+        special_teams,
+        on=["game_id", "season", "week", "team"],
+        how="left",
+        validate="one_to_one",
     )
 
     # Map nflverse short team codes to canonical long names so the

@@ -52,6 +52,12 @@ from gridiron_edge.features.team.projected_total_plays import (
 # QB profile metric names - single source of truth in features.team.qb_profile.
 from gridiron_edge.features.team.qb_profile import QB_PROFILE_METRICS as _QB_PROFILE_METRICS_RAW
 
+# Same-season performance metric names (form trend, Pythagorean, one-score
+# record) - single source of truth in features.team.record.
+from gridiron_edge.features.team.record import (
+    SEASON_PERFORMANCE_METRICS as _SEASON_PERFORMANCE_METRICS_RAW,
+)
+
 # Unit-matchup efficiency suffixes - single source of truth in
 # features.team.unit_efficiency.
 from gridiron_edge.features.team.unit_efficiency import (
@@ -94,6 +100,12 @@ _COACH_PROFILE_SUFFIXES: Final[list[str]] = [
     metric.upper() for metric in _COACH_PROFILE_METRICS_RAW
 ]
 
+# Same-season performance suffixes. Already-final per-team values built from
+# completed results, so they follow the same manual-list pattern.
+_SEASON_PERFORMANCE_SUFFIXES: Final[list[str]] = [
+    metric.upper() for metric in _SEASON_PERFORMANCE_METRICS_RAW
+]
+
 # Raw Away/Home feature columns.
 _RAW_FEATURES: Final[list[str]] = (
     ["AWAY_ELO", "HOME_ELO"]
@@ -107,6 +119,8 @@ _RAW_FEATURES: Final[list[str]] = (
     + [f"HOME_{suffix}" for suffix in _QB_PROFILE_SUFFIXES]
     + [f"AWAY_{suffix}" for suffix in _COACH_PROFILE_SUFFIXES]
     + [f"HOME_{suffix}" for suffix in _COACH_PROFILE_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
 )
 
 # Differential feature names. Every differential is HOME - AWAY.
@@ -117,6 +131,7 @@ _DIFF_FEATURES: Final[list[str]] = (
     + [f"{suffix}_DIFF" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _QB_PROFILE_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _COACH_PROFILE_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
 )
 
 # Differential features followed by direct Away/Home values.
@@ -141,6 +156,9 @@ _GAME_FEATURES: Final[list[str]] = [
     "IS_NEUTRAL_SITE",
     "GAME_SITE_ALTITUDE",
     "IS_PRIMETIME",
+    "WIND_SPEED_BIN",
+    "IS_ARTIFICIAL_TURF",
+    "LEAGUE_PPG_TO_DATE",
     "WEEK_NUM",
     _PROJECTED_TOTAL_PLAYS_RAW,
 ]
@@ -177,6 +195,10 @@ _TEAM_FEATURES: Final[list[str]] = [
     "HOME_QB_CHANGE_FLAG",
     "AWAY_NEW_COACHING_STAFF_FLAG",
     "HOME_NEW_COACHING_STAFF_FLAG",
+    "AWAY_BACK_TO_BACK_ROAD",
+    "HOME_BACK_TO_BACK_ROAD",
+    "AWAY_BODY_CLOCK_KICKOFF_HOUR",
+    "HOME_BODY_CLOCK_KICKOFF_HOUR",
 ]
 
 _EXPANDED_FEATURES: Final[list[str]] = [

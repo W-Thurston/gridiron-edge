@@ -44,10 +44,13 @@ class TestRoofGroupings:
         assert RoofType.DOME in COVERED_STADIUMS
         assert RoofType.RETRACTABLE in COVERED_STADIUMS
 
-    def test_covered_stadiums_excludes_closed_and_outdoors(self) -> None:
-        assert RoofType.CLOSED not in COVERED_STADIUMS
+    def test_covered_stadiums_includes_per_game_retractable_states(self) -> None:
+        """Historical retractable-stadium games are recorded open/closed."""
+        assert RoofType.CLOSED in COVERED_STADIUMS
+        assert RoofType.OPEN in COVERED_STADIUMS
+
+    def test_covered_stadiums_excludes_outdoors(self) -> None:
         assert RoofType.OUTDOORS not in COVERED_STADIUMS
-        assert RoofType.OPEN not in COVERED_STADIUMS
 
     def test_dome_like_roofs_includes_dome_and_closed(self) -> None:
         assert RoofType.DOME in DOME_LIKE_ROOFS

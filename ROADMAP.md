@@ -63,7 +63,7 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–3 (batches A1–A3) are wired (schema v10) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 4 (batch A4, situational context) is next and must be deliberately scoped into `PLAN.md` before work begins.
+**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–4 (batches A1–A4) are wired (schema v11) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 5 (batch A5, rating ensemble inputs) is next and must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
@@ -318,7 +318,7 @@ Units 1–6 each wire one batch into `EPA_COLS`/`CANONICAL_FEATURES` with its ow
 - **Unit 1 — A1, construction fixes.** CPOE (Domain 1, currently ⚠️ Partial), fumble rate/offense (Domain 3, ❌), and a correction to the stale INT-rate/defense classification (already built, mis-marked ❌). **Closed: wired, tested, live-availability replay passed (schema v6, `DECISIONS.md` D60/D61) — promotion deferred to Unit 7.**
 - **Unit 2 — A2, opponent-adjusted EPA and unit interactions.** Opponent-adjusted offensive and defensive EPA/play (pass + rush), unit efficiency differentials built on it, and the market-blind variant of projected total plays. **Closed: wired, tested, live-availability replay passed (schema v9, `DECISIONS.md` D63/D64) — promotion deferred to Unit 7.**
 - **Unit 3 — A3, QB-and-coach sidecar.** QB EPA (career + rolling), CPOE rolling, QB change flag, QB experience, head-coach win % and tenure, new-coaching-staff flag. **Closed: wired, tested, live-availability replay passed (schema v10, `DECISIONS.md` D65) — promotion deferred to Unit 7.**
-- **Unit 4 — A4, situational context.** Season week number and indoor-override status corrections, back-to-back road games, body-clock kickoff, field surface, league scoring environment/rule era, wind speed bins, season week performance, Pythagorean luck gap, one-score game record, special-teams and punt/return EPA.
+- **Unit 4 — A4, situational context.** Season week number and indoor-override status corrections, back-to-back road games, body-clock kickoff, field surface, league scoring environment/rule era, wind speed bins, season week performance, Pythagorean luck gap, one-score game record, special-teams and punt/return EPA. **Closed: wired, tested, live-availability replay passed (schema v11, `DECISIONS.md` D66–D68) — promotion deferred to Unit 7.** Also fixed a train/serve roof-classification skew (D67).
 - **Unit 5 — A5, rating ensemble inputs.** QB Elo/rating (needs the same lineage treatment as team Elo, per program rule 5), team Glicko-2 (rating + RD + volatility), Keener/Colley/Massey ratings, rating uncertainty as a feature.
 - **Unit 6 — A6, market-aware variant.** Consensus closing spread/total, no-vig market win probability, historical closing line as a prior, season ATS/O-U record, performance as favorite/underdog — as a separate model identity from the market-blind champion, not a drop-in feature set. Needs its own `DECISIONS.md` entries per program rule 4 before adoption.
 - **Unit 7 — Phase A screening and promotion.** Builds a one-off incremental walk-forward sweep — baseline, then baseline+A1, baseline+A1+A2, and so on in wiring order — reusing the existing chronological holdout split and `compare_classification_models`/`compare_regression_models` gates, so each batch's own attributable Brier/MAE delta is measured against the batch immediately before it, not just against the pre-Phase-A baseline (preserving the "baseline rebuilt without the batch" acceptance methodology while amortizing the walk-forward cost across every wired batch at once). Produces one consolidated report; promotes whichever batches clear the acceptance bar (recorded in `FEATURES.md`) and forward-removes (a new schema bump, never a rewind) any that don't. Runs whenever enough units have accumulated to be worth evaluating together, not necessarily only after Unit 6.
@@ -486,6 +486,24 @@ What remains open, on its own calendar and not gating anything else: maturing
 empirical recommendation thresholds from accumulating weekly evidence, and
 realized performance, which stays explicitly unavailable until a wager is
 recorded (optional, not a gap).
+
+### Timezone shift is evaluated at the build date, not the game date
+
+`features/team/travel.py`'s `_build_tz_cache` computes UTC offsets at
+`datetime.now(UTC)`, so `AWAY_TZ_SHIFT`/`HOME_TZ_SHIFT` for Arizona (no DST)
+pairings vary with the day the modeling file is built, which is a
+reproducibility defect. The body-clock feature (Unit 4, `DECISIONS.md` D68)
+deliberately evaluates offsets at each game's date and does not inherit it.
+Fixing the older feature changes existing values, so it needs its own small
+unit with a data-version bump.
+
+### Elo, strength of victory, and rest are next-week only
+
+Replaying the full upcoming schedule (Unit 4) shows Elo and strength of
+victory are NaN for weeks beyond the next one, and `rest.py` measures rest
+from the last completed game. All three are correct for next-week serving,
+which is what the live path uses; none has been verified for longer
+lookahead. The batch A4 columns are exact at any horizon.
 
 ### Injury, news, and live state are unavailable
 

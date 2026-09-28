@@ -110,7 +110,118 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-No unit is currently active. Units 1–3 (batches A1–A3) closed below.
+No unit is currently active. Units 1–4 (batches A1–A4) closed below.
+
+### Unit 4 — Phase A Batch A4: Situational Context [Completed September 28, 2026]
+
+#### Completed
+
+Wired twelve Domain 5/6/11/12 catalog rows into the canonical Win/Total
+feature set: season week number and indoor override (status corrections),
+back-to-back road games, body-clock kickoff hour, field surface, a continuous
+league scoring level, wind speed bins, form trend, Pythagorean win % and luck
+gap, one-score record, and special-teams and punt/return EPA. No PBP
+re-download and no new sidecar were needed. Reconciling the indoor-override
+row found a real train/serve skew: 755 historical retractable-stadium games
+were classified outdoor in training while the same stadiums are classified
+covered when serving live; they are now covered (`DECISIONS.md` D67).
+Kickoffs are excluded from special teams on structural-break evidence (D66).
+Verified against regenerated real data and a full replay of the upcoming
+schedule. Promotion is deferred to Unit 7, per D62.
+
+#### Goal
+
+Close the Domain 5/6/11/12 Game-Model Build Queue rows in `FEATURES.md` A4 and
+correct the two whose recorded status was wrong, using data already on disk,
+with leakage-safe and pre-kickoff-available definitions recorded where a
+choice cannot be re-derived from code (D66-D68).
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/features/team/surface.py` - `IS_ARTIFICIAL_TURF` from
+  schedule surface, filled from the stadium reference at (stadium, season);
+  unknown labels raise.
+- `src/gridiron_edge/features/team/body_clock.py` - each team's home-clock
+  kickoff hour, evaluated at the game date.
+- `src/gridiron_edge/features/team/road_trips.py` - schedule-based
+  back-to-back road flags.
+- `src/gridiron_edge/features/team/league_environment.py` - season-to-date
+  league points per team-game blended with the prior season.
+- `tests/unit/features/test_surface.py` (16), `test_body_clock.py` (15),
+  `test_road_trips.py` (12), `test_league_environment.py` (10).
+
+Changed:
+- `src/gridiron_edge/core/enums.py` - `COVERED_STADIUMS` includes the per-game
+  `open`/`closed` retractable states (D67).
+- `src/gridiron_edge/features/team/weather.py` - `WIND_SPEED_BIN`; covered
+  classification and climatology follow the corrected enum.
+- `src/gridiron_edge/features/team/record.py` - form trend, Pythagorean
+  win %/luck gap, one-score record from the same result history.
+- `src/gridiron_edge/transform/clean/epa.py` - `_agg_special_teams`; merges
+  special-teams EPA before the short-code mapping (D64).
+- `src/gridiron_edge/features/team/epa.py` - `st_epa_per_play`,
+  `punt_epa_per_play` in `EPA_COLS`.
+- `src/gridiron_edge/features/pipeline.py` - registers the four new features.
+- `src/gridiron_edge/features/manifest.py` - schema 10 to 11, data 7 to 8.
+- `src/gridiron_edge/models/game_prediction/_columns.py`, `_features.py` -
+  new game, team, and season-performance columns; the diff builder loops the
+  new suffix list.
+- `tests/unit/core/test_enums.py`, `test_weather.py`,
+  `test_home_away_game_features.py`, `test_home_away_record_feature.py`,
+  `tests/unit/features/test_epa.py`, `test_canonical_feature_sequence.py`,
+  `tests/unit/models/test_game_feature_sets.py`,
+  `tests/unit/transform/clean/test_epa.py` - new coverage and updated counts.
+- `FEATURES.md` - twelve rows corrected/marked Done, summary and coverage.
+- `ROADMAP.md` - Unit 4 closed; two known limitations recorded.
+- `DECISIONS.md` - D66, D67, D68.
+- `CHANGELOG.md` - this unit's entry.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/cleaned/epa_by_game.parquet` via `gridiron transform aggregate-epa`;
+  `data/modeling/modeling_file.parquet` and manifest via
+  `gridiron features model-inputs --all-years`.
+
+#### Tests
+
+Validation passed:
+- 53 new tests across the four new modules, plus new cases in the extended
+  weather, record, and special-teams suites; ruff, pyrefly, and the full non-slow unit suite
+  (4,401 tests). One test failed before the fix and exposed a live bug: a
+  season with no completed games (first week of a new season) had no
+  prior-season lookup and returned NaN.
+
+Real-data validation:
+- `epa_by_game.parquet` regenerated: 14,610 rows and 7,305 games unchanged,
+  every pre-existing column identical, special-teams nulls under 1% per
+  season, DET-KC 2023 punt EPA matches a hand calculation.
+- Modeling file: `schema_version 11`, `data_version 8`, 187 columns, 7,308
+  rows. Only weather columns changed among pre-existing ones (755 games);
+  `IS_DOME` flipped for exactly those 755. Body-clock nulls are exactly the
+  259 games of 1999; Arizona reads 10.0 in September and 11.0 in winter.
+- Training-row loss versus schema 10: 15 games in the expanded pool, all
+  1999 Monday games with no recorded `gametime` (D68). Logistic's `combined`
+  pool is unchanged.
+- Live-availability replay (program rule 3): all 226 upcoming games (weeks
+  3-18) through the full `CANONICAL_FEATURES` pipeline: zero NaNs across all
+  29 new columns at every horizon. Week 3 has zero NaNs across all 239
+  expanded features; Elo and strength of victory are NaN beyond next week
+  (pre-existing, recorded in ROADMAP).
+
+#### Acceptance
+
+Every A4 row is built with leakage-safe, live-available values or corrected
+with an accurate recorded status; the retractable-roof skew is fixed and its
+effect measured; special teams exclude kickoffs on recorded evidence; the
+modeling file is regenerated at schema 11; the replay shows zero NaNs in the
+new columns; decisions are recorded; the Python gate passes. The unit
+deviates from its scoped plan in two recorded ways: back-to-back road lives in
+a new `road_trips.py` module rather than extending `rest.py` (whose
+completed-only history cannot see unplayed prior games), and the training-row
+loss is 15 games rather than zero. Promotion remains deferred to Unit 7 (D62).
 
 ### Unit 3 — Phase A Batch A3: QB-and-Coach Sidecar [Completed September 28, 2026]
 

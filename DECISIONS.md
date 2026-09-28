@@ -8,6 +8,157 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D68 - Situational-context feature definitions that cannot be re-derived from the code
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP Tier 5 #16 Unit 4 (batch A4) built nine situational
+features from schedule, result, and PBP data. Several definitions involved a
+choice a later reader could not reconstruct from the code alone.
+
+**Decision:**
+
+1. **Season week performance is a form trend, not a phase split.** The
+   catalog row says only "early vs mid vs late season form". The literal
+   reading (each team's historical results by season phase) has roughly five
+   to six games per phase per season on rosters that turn over, which
+   measures noise. `FORM_TREND` is the mean point margin over a team's last
+   four same-season games minus its season-to-date mean margin. With four or
+   fewer games played the two are equal, so the value is exactly 0 and needs
+   no fill policy. It is a momentum-adjacent signal, so it is an ablation
+   candidate under `FEATURES.md` II.8.
+2. **Pythagorean exponent is fit, not the literature default.** 2.66,
+   least-squares over 765 regular-season team-seasons 1999-2022 (the
+   pre-holdout window); MSE 0.00637 versus 0.00662 at 2.37. Never fit on the
+   2023-2026 holdout seasons.
+3. **League scoring level is an empirical-Bayes blend.** `LEAGUE_PPG_TO_DATE`
+   blends the previous regular season's mean with the season-to-date mean,
+   weighting the prior at 48.5 games: within-season per-game variance (~49.5)
+   over the true between-season variance of the league mean (~1.02, after
+   removing ~0.19 of sampling noise from the observed 1.20). The prior is
+   looked up by season label, not by adjacency among seasons that have
+   completed games, so the first week of a new season (no completed games
+   yet) still resolves it; a test failed on exactly this before the fix. No
+   rule-era flags: 2024/2025 rules exist only in holdout seasons and cannot be
+   learned. League EPA/play is excluded: it is about 0 every season
+   (-0.06 to +0.03).
+4. **Body-clock kickoff hours are evaluated at the game's own date.**
+   nflverse `gametime` is Eastern; each team's home zone comes from its
+   franchise-season origin coordinates; the offset is computed at the kickoff
+   instant, so the value is deterministic and daylight-saving-correct
+   (Arizona reads 10.0 for a 1 pm ET September kickoff and 11.0 in winter).
+   The home team keeps its own home clock at neutral sites. This deliberately
+   does not reuse `travel.py`'s offset cache, which is evaluated at the build
+   date (see ROADMAP).
+5. **Back-to-back road is schedule-based.** Built from historical plus
+   upcoming schedules (not completed games only), so it is exact at any
+   lookahead. Road means designated Away or neutral site; a gap of 13 or more
+   days (a bye) resets it; a team's first game of a season is 0.
+6. **Surface unknowns raise.** An unrecognized non-null surface label is a
+   data-contract change, and emitting null would disable the live feature
+   family for the whole week (program rule 3). Null historical surfaces are
+   filled from the stadium reference at (stadium, season), never stadium
+   alone: 20 stadiums changed surface over the years.
+
+**Implications:**
+- One-score record carries a games count beside the win %, so trees can learn
+  the "regresses toward .500" reliability instead of a hard-coded shrinkage.
+- New expanded-pool training-row loss is 15 games: 1999 Monday games have a
+  valid `IS_PRIMETIME` (Monday implies primetime) but no recorded `gametime`,
+  so no body-clock hour exists. Not filled; it would invent a value. 0.2% of
+  the pool, all in the oldest season.
+
+**Revisit triggers:**
+- If Unit 7 rejects `FORM_TREND` (likely, per the no-momentum finding), remove
+  it with a forward schema bump.
+- Refit the Pythagorean exponent and blend weight only if the holdout window
+  is formally re-defined.
+
+**References:**
+- `src/gridiron_edge/features/team/record.py`
+- `src/gridiron_edge/features/team/league_environment.py`
+- `src/gridiron_edge/features/team/body_clock.py`
+- `src/gridiron_edge/features/team/road_trips.py`
+- `src/gridiron_edge/features/team/surface.py`
+
+---
+
+## D67 - Roof state is classified by venue type, not by observed per-game roof state
+
+**Date:** 2026-09-28
+
+**Context:** Reconciling `IS_DOME` for ROADMAP Tier 5 #16 Unit 4 found a
+training/serving skew in an already-built feature. Historical games record a
+retractable-roof stadium's per-game state as `open` (128 games) or `closed`
+(627), never `retractable`. `COVERED_STADIUMS` was `{dome, retractable}`, so
+all 755 of those games had `IS_DOME = 0` and kept observed outdoor weather
+(mean wind 9.2 mph, identical to outdoor games). Upcoming games at the same
+stadiums have a null `roof`, are filled from the stadium reference as
+`retractable roof`, and are classified covered with weather zeroed. Models
+trained on the former were served the latter.
+
+**Decision:** Every roof value at a covered venue (`dome`, `retractable`,
+`open`, `closed`) is covered, so training and serving classify a stadium
+identically and the controlled-environment override applies to both. The
+alternative, using actual open/closed state, is declined: the roof decision is
+announced hours before kickoff, so it is unknowable for a live week ahead and
+would leak game-day information (program rule 6). `DOME_LIKE_ROOFS` (played
+indoors, used for props) is unchanged; its question differs.
+
+**Implications:**
+- Existing values changed for 755 historical games: `IS_DOME`, wind, temp,
+  feels-like, humidity, visibility, precipitation/snow/low-visibility flags,
+  and wind-chill delta (verified: no other pre-existing column changed).
+  Data version bumped 7 to 8.
+- Real weather at retractable venues on open-roof days is discarded, matching
+  what live serving can know.
+
+**Revisit triggers:**
+- Phase C's live forecast weather plus roof-status reporting may justify
+  modeling roof state if a pre-kickoff source appears.
+
+**References:**
+- `src/gridiron_edge/core/enums.py`
+- `src/gridiron_edge/features/team/weather.py`
+
+---
+
+## D66 - Special-teams EPA excludes kickoffs and credits only the kicking side of field goals and extra points
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP Tier 5 #16 Unit 4 adds special-teams EPA/play and punt
+and return efficiency. Cached PBP already has `punt`, `field_goal`,
+`extra_point`, and `kickoff` plays with 100% non-null `epa` and `posteam`
+from 1999, so no re-download is needed and no era-gap policy (D60) applies.
+Kickoff EPA, however, has structural breaks a model cannot learn: exactly 0 on
+10-15% of plays 1999-2010, 42-60% 2011-2022, 74% in 2023, then 0.5% with a
++0.25 mean in 2024-2026 (dynamic kickoff), and after 2024 it also rewards
+whichever team scores more, since scoring teams kick more. Punt EPA is stable
+(never exactly 0, means -0.15 to +0.09).
+
+**Decision:** `st_epa_per_play` and `punt_epa_per_play` (added to `epa_by_game`
+and `EPA_COLS`, so they roll like other raw per-game stats) use own-team
+perspective: punts as punter `epa`, as returner/coverage `-epa`; a team's own
+field goals and extra points `epa`, kicker side only (crediting the defense
+`-epa` for an opponent's kick would double-count defense). Kickoffs are
+excluded from both. The join happens on short team codes before the long-name
+mapping, so D64 holds by construction.
+
+**Implications:**
+- The two metrics overlap (punts dominate); Unit 7 screens both.
+- Punt EPA is zero-sum per game by construction (verified on 2023 DET-KC).
+
+**Revisit triggers:**
+- If a several-season post-2024 kickoff sample makes kickoff EPA stationary,
+  reconsider including it.
+
+**References:**
+- `src/gridiron_edge/transform/clean/epa.py`
+- `src/gridiron_edge/features/team/epa.py`
+
+---
+
 ## D65 - Starting-QB identity for live serving carries forward each team's most recent known starter
 
 **Date:** 2026-09-28

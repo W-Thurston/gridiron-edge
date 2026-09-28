@@ -23,17 +23,21 @@ from gridiron_edge.features.registry import FeatureRegistry, run_features, valid
 # Side-effect imports: each module registers its feature class with
 # FeatureRegistry via the @FeatureRegistry.register(...) decorator.
 # The imports must be preserved even though no name is referenced directly.
+import gridiron_edge.features.team.body_clock
 import gridiron_edge.features.team.coach_profile
 import gridiron_edge.features.team.divisional
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.epa
+import gridiron_edge.features.team.league_environment
 import gridiron_edge.features.team.opponent_adjusted_epa
 import gridiron_edge.features.team.primetime
 import gridiron_edge.features.team.projected_total_plays
 import gridiron_edge.features.team.qb_profile
 import gridiron_edge.features.team.record
 import gridiron_edge.features.team.rest
+import gridiron_edge.features.team.road_trips
 import gridiron_edge.features.team.schedule_strength
+import gridiron_edge.features.team.surface
 import gridiron_edge.features.team.travel
 import gridiron_edge.features.team.unit_efficiency
 import gridiron_edge.features.team.venue_hfa
@@ -62,6 +66,10 @@ CANONICAL_FEATURES: Final[list[str]] = [
     "home_away_divisional",
     "home_away_primetime",
     "home_away_weather",
+    "home_away_surface",
+    "league_environment",
+    "home_away_road_trips",
+    "home_away_body_clock",
 ]
 
 # Validate that the ordering above satisfies all depends_on constraints.

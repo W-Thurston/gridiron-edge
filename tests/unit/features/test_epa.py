@@ -21,8 +21,8 @@ class TestEpaConstants:
     def test_default_rolling_window_is_4(self) -> None:
         assert DEFAULT_ROLLING_WINDOW == 4
 
-    def test_epa_cols_has_41_metrics(self) -> None:
-        assert len(EPA_COLS) == 41
+    def test_epa_cols_has_43_metrics(self) -> None:
+        assert len(EPA_COLS) == 43
 
     def test_epa_cols_contains_expected_metrics(self) -> None:
         expected: set[str] = {
@@ -47,6 +47,8 @@ class TestEpaConstants:
             "off_penalty_rate",
             "off_avg_score_diff",
             "off_close_game_pct",
+            "st_epa_per_play",
+            "punt_epa_per_play",
             "def_epa_per_play",
             "def_pass_epa",
             "def_rush_epa",

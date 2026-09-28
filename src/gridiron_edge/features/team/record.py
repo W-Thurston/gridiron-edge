@@ -40,6 +40,31 @@ _HOME_AWAY_RECORD_HISTORY_COLUMNS: Final[tuple[str, ...]] = (
     "HOME_SCORE",
 )
 
+# Same-season performance metrics derived from the same result history.
+# Each is an already-final per-team value (one per side, HOME - AWAY
+# differenced downstream), not a raw per-game stat needing a rolling mean.
+SEASON_PERFORMANCE_METRICS: Final[list[str]] = [
+    "form_trend",
+    "pythag_win_pct",
+    "pythag_luck_gap",
+    "one_score_win_pct",
+    "one_score_games",
+]
+
+# Pythagorean exponent: least-squares fit of full-season win % on
+# PF^e / (PF^e + PA^e) over team-seasons before the holdout window
+# (1999-2022, regular season, 765 team-seasons). Fit, not the 2.37
+# literature default, and never tuned on the holdout seasons.
+_PYTHAGOREAN_EXPONENT: Final[float] = 2.66
+
+# Games decided by this many points or fewer are one-score games.
+_ONE_SCORE_MAX_MARGIN: Final[int] = 8
+
+# Recent-form window (games) for the form trend; matches the default rolling
+# EPA window. With this many games or fewer played, the recent and
+# season-to-date means coincide and the trend is exactly 0.
+_FORM_WINDOW: Final[int] = 4
+
 _HOME_AWAY_RECORD_COLUMNS: Final[tuple[str, ...]] = (
     "AWAY_WINS",
     "AWAY_LOSSES",
@@ -51,6 +76,8 @@ _HOME_AWAY_RECORD_COLUMNS: Final[tuple[str, ...]] = (
     "HOME_WIN_PCT",
     "HOME_WIN_STREAK",
     "HOME_LOSS_STREAK",
+    *(f"AWAY_{metric.upper()}" for metric in SEASON_PERFORMANCE_METRICS),
+    *(f"HOME_{metric.upper()}" for metric in SEASON_PERFORMANCE_METRICS),
 )
 
 
@@ -130,6 +157,8 @@ def _build_home_away_result_history(
             "AWAY_TEAM": "TEAM",
         }
     )
+    away_results["POINTS_FOR"] = completed["AWAY_SCORE"]
+    away_results["POINTS_AGAINST"] = completed["HOME_SCORE"]
     away_results["RESULT"] = np.select(
         [
             away_won,
@@ -156,6 +185,8 @@ def _build_home_away_result_history(
             "HOME_TEAM": "TEAM",
         }
     )
+    home_results["POINTS_FOR"] = completed["HOME_SCORE"]
+    home_results["POINTS_AGAINST"] = completed["AWAY_SCORE"]
     home_results["RESULT"] = np.select(
         [
             home_won,
@@ -257,6 +288,46 @@ def _record_entering_week(
     )
 
 
+def _season_performance_entering_week(
+    results: DataFrame,
+    *,
+    team: str,
+    year: str,
+    week: int,
+) -> tuple[float, float, float, float, int]:
+    """Return one team's same-season performance metrics entering a week.
+
+    Order matches ``SEASON_PERFORMANCE_METRICS``: form trend, Pythagorean
+    win %, luck gap, one-score win %, one-score games. Uses the same as-of
+    rule as ``_record_entering_week`` (same season, earlier weeks only).
+    With no prior games every metric takes its neutral value: trend 0,
+    Pythagorean 0.5, gap 0, one-score win % 0.5, one-score games 0.
+    """
+    prior = results.loc[
+        (results["TEAM"].astype(str) == team)
+        & (results["YEAR"].astype(str) == year)
+        & (results["WEEK_NUM"] < week),
+        :,
+    ]
+    if prior.empty:
+        return (0.0, 0.5, 0.0, 0.5, 0)
+
+    margin = prior["POINTS_FOR"] - prior["POINTS_AGAINST"]
+    form_trend = float(margin.tail(_FORM_WINDOW).mean() - margin.mean())
+
+    points_for = float(prior["POINTS_FOR"].sum())
+    points_against = float(prior["POINTS_AGAINST"].sum())
+    pf_power = points_for**_PYTHAGOREAN_EXPONENT
+    pa_power = points_against**_PYTHAGOREAN_EXPONENT
+    pythag = pf_power / (pf_power + pa_power) if (pf_power + pa_power) > 0 else 0.5
+    luck_gap = float(prior["RESULT"].mean()) - pythag
+
+    one_score = prior.loc[margin.abs() <= _ONE_SCORE_MAX_MARGIN, "RESULT"]
+    one_score_win_pct = float(one_score.mean()) if not one_score.empty else 0.5
+
+    return (form_trend, pythag, luck_gap, one_score_win_pct, len(one_score))
+
+
 @FeatureRegistry.register("home_away_record")
 class HomeAwayRecordFeature:
     """Compute canonical Away and Home records entering each week."""
@@ -323,6 +394,46 @@ class HomeAwayRecordFeature:
             )
         ]
 
+        away_performance = [
+            _season_performance_entering_week(
+                results,
+                team=str(team),
+                year=str(year),
+                week=int(week),
+            )
+            for team, year, week in zip(
+                source["AWAY_TEAM"],
+                source["YEAR"],
+                source["WEEK_NUM"],
+                strict=True,
+            )
+        ]
+        home_performance = [
+            _season_performance_entering_week(
+                results,
+                team=str(team),
+                year=str(year),
+                week=int(week),
+            )
+            for team, year, week in zip(
+                source["HOME_TEAM"],
+                source["YEAR"],
+                source["WEEK_NUM"],
+                strict=True,
+            )
+        ]
+        performance_columns = [metric.upper() for metric in SEASON_PERFORMANCE_METRICS]
+        away_performance_frame = DataFrame(
+            away_performance,
+            index=source.index,
+            columns=[f"AWAY_{column}" for column in performance_columns],
+        )
+        home_performance_frame = DataFrame(
+            home_performance,
+            index=source.index,
+            columns=[f"HOME_{column}" for column in performance_columns],
+        )
+
         away_frame = DataFrame(
             away_records,
             index=source.index,
@@ -352,6 +463,8 @@ class HomeAwayRecordFeature:
                 source,
                 away_frame,
                 home_frame,
+                away_performance_frame,
+                home_performance_frame,
             ],
             axis=1,
         ).reset_index(drop=True)
