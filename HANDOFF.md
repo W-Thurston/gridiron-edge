@@ -1045,11 +1045,41 @@ Disabling the timer does not delete plans, selections, claims, terminal results,
 
 Weekly rollover
 
-Generate and validate the new weekly plan on the reviewed development checkout. Transfer the rich upcoming schedule, scoped plan, and global current selection to the worker. Compare source and destination identities before enabling or continuing the timer.
+`gridiron ops rollover-collector-week --season <label> --week <n>` refreshes
+the upcoming schedule from nflverse, builds and persists the new week's
+collection plan, prints a summary (games, kickoff groups, planned polls,
+projected credits, first/last poll) for review, and -- after an interactive
+confirmation (or `--yes`) -- selects it as the local current plan and pushes
+exactly three artifacts to the worker: the rich upcoming schedule, the
+scoped week's plan, and the global current-selection pointer. It requires
+explicit `--season`/`--week` like every other weekly command in this CLI;
+it never infers which week is current.
 
-The installer does not generate, select, or transfer weekly plans.
+`--host` (or env var `GRIDIRON_COLLECTOR_HOST`) selects the worker;
+`--user`, `--remote-repository`, and `--identity` override the connection
+defaults, matching `gridiron ops pull-collector-evidence`. Each of the three
+transfers is a separate SSH connection with no agent caching, so an
+unlocked identity key prompts for its passphrase up to three times per run.
 
-Verify after every plan rollover:
+The three files push in a specific order -- schedule, then the scoped
+week's plan, then the current-selection pointer last -- precisely so a
+partial failure (a mistyped passphrase, a dropped connection) can never
+leave the pointer referencing a plan file that has not arrived. Real
+incident, 2026-09-27: a mistyped passphrase left `current.json` pointing at
+a week whose plan file had not yet transferred, and the timer's next tick
+failed with `FileNotFoundError` for that plan (`journalctl -u
+gridiron-edge-collector.service` showed it directly) until the retry
+completed. Re-running the same `rollover-collector-week` invocation is
+always the fix -- every step is safe to repeat. `sudo systemctl start
+gridiron-edge-collector.service` triggers one immediate run rather than
+waiting for the next five-minute tick, useful for confirming a fix
+immediately.
+
+The installer does not generate, select, or transfer weekly plans, and this
+command does not activate or restart the worker's timer -- only the plan
+and schedule artifacts it reads move. Verify after every plan rollover
+(the rollover command prints this exact invocation, with the connection
+details it resolved, when it finishes):
 
 sudo \
   /home/thursty/apps/gridiron-edge/.venv/bin/python \
