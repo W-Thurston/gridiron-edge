@@ -8,6 +8,62 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D58 - Pi collector deployment stays manually-copied; no passphrase automation yet
+
+**Date:** 2026-09-27
+
+**Context:** Closing out Market Unit 26 required deploying a bug fix
+(`storage_health` false-positive) to the Raspberry Pi quote-collection
+worker and diagnosing why. That surfaced two things: the Pi's `.git`
+tracks `origin` but is frozen at `08c1b07` (2026-08-13) -- everything the
+worker actually runs (`deploy/`, `src/gridiron_edge/deployment/`) exists
+there only as manually-copied, untracked files, meaning code has always
+reached the Pi by ad hoc copy, never `git pull`. Separately, the new
+`gridiron ops pull-collector-evidence` and `rollover-collector-week`
+commands need an SSH key passphrase entered once per file transferred (up
+to 6 prompts across a full rollover), which blocks the `systemd --user`
+timer built to automate `pull-collector-evidence` from ever running
+unattended.
+
+**Decision:** Leave both as-is.
+
+- The Pi's role is narrowly scoped: it only runs the already-deployed
+  quote-collection worker (`execute-selected-odds-plan` via its systemd
+  timer) against plans generated and reviewed on this dev machine. It does
+  not run the API, frontend, model training, or the rest of
+  `src/gridiron_edge` that the stale git tree affects. Deploying a targeted
+  fix is one `rsync` of the changed file (exactly how tonight's
+  `storage_health` fix reached it), not a `git pull` -- so the stale tree
+  does not block getting fixes there when needed.
+- Passphrase automation would require either a standing unlocked
+  `ssh-agent` wired into the systemd user session, or a new dedicated
+  passphrase-less key scoped just to this sync path. Both are real security
+  trade-offs not worth making to unblock something that already works fine
+  run manually.
+
+**Implications:**
+- Any future `deploy/` or `src/gridiron_edge/deployment/` change reaches
+  the Pi via the same targeted `rsync` pattern, not `git pull` -- pulling
+  would also require reconciling the untracked `deploy/`/`deployment/`
+  files against whatever the incoming commits expect at those paths.
+- `deploy/systemd/gridiron-edge-collector-sync.timer` is installed-ready
+  but not enabled; enabling it today would fail silently every cycle
+  without a passphrase.
+- `gridiron ops pull-collector-evidence` and `rollover-collector-week`
+  remain manually triggered, by design, for now.
+
+**Revisit triggers:**
+- If the Pi's role expands beyond quote collection (HANDOFF.md's "Genuine
+  Follow-On" list already names optional API/frontend appliance hosting as
+  a future possibility), reconcile the stale git tree deliberately --
+  likely a fresh clone, given the untracked-file conflict a plain `git
+  pull` would hit.
+- If manual passphrase entry becomes a real operational bottleneck (missed
+  weekly rollovers, forgotten syncs), revisit the ssh-agent/dedicated-key
+  trade-off.
+
+---
+
 ### D57 - `ExplainPage` sorts factors by magnitude with a top-8 disclosure; scenario-dependent sections stay explicit placeholders
 
 **Date:** 2026-09-26

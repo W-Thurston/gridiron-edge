@@ -1059,7 +1059,8 @@ it never infers which week is current.
 `--user`, `--remote-repository`, and `--identity` override the connection
 defaults, matching `gridiron ops pull-collector-evidence`. Each of the three
 transfers is a separate SSH connection with no agent caching, so an
-unlocked identity key prompts for its passphrase up to three times per run.
+unlocked identity key prompts for its passphrase up to three times per run
+-- deliberately not automated away yet; see DECISIONS.md D58.
 
 The three files push in a specific order -- schedule, then the scoped
 week's plan, then the current-selection pointer last -- precisely so a
@@ -1127,6 +1128,11 @@ claim/result receipts persist only on the Pi until explicitly pulled onto
 whichever machine is running `production-chain assess` -- without that pull,
 `collection_execution` reads `INCOMPLETE` even after the worker has resolved
 every due poll, because the dev checkout simply cannot see the receipts.
+
+Both the sync/rollover commands below and the Pi's own code deployment stay
+deliberately manual for now -- see DECISIONS.md D58 for why (the Pi's
+`.git` is frozen and out of scope, and passphrase automation is a real
+security trade-off not yet worth making).
 
 Pull manually:
 
