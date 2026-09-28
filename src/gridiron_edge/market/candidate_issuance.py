@@ -14,6 +14,7 @@ from typing import Any, Final, cast
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.evaluation.forecast_contracts import ForecastRole
 from gridiron_edge.evaluation.forecast_store import validate_forecast_events
 from gridiron_edge.ingest.odds.store import (
     OBSERVATION_IDENTITY_COLUMNS,
@@ -199,6 +200,7 @@ def issue_pregame_candidates(
     evaluated = _require_utc(evaluated_at, label="evaluated_at")
     product_rows = _validate_selected_product(product)
     events = validate_forecast_events(forecast_events)
+    _reject_non_live_or_late_events(events, evaluated_at=evaluated)
     quote_rows = validate_quote_rows(quotes)
     _reject_duplicate_quotes(quote_rows)
 
@@ -426,6 +428,28 @@ def _validate_selected_product(product: DataFrame) -> DataFrame:
 def _reject_duplicate_quotes(quotes: DataFrame) -> None:
     if quotes.duplicated(subset=list(OBSERVATION_IDENTITY_COLUMNS)).any():
         raise ValueError("Candidate issuance contains duplicate quote observation identities.")
+
+
+def _reject_non_live_or_late_events(events: DataFrame, *, evaluated_at: datetime) -> None:
+    """Reject a non-live forecast role or a forecast generated after evaluation.
+
+    A development or backfilled forecast role is never eligible for a real
+    pregame recommendation, and a forecast generated after the issuance's own
+    evaluation time could not have been known at that moment -- evaluating
+    against it would be look-ahead leakage.
+    """
+    if events.empty:
+        return
+    invalid_roles = sorted(set(events["role"].astype(str)) - {ForecastRole.LIVE.value})
+    if invalid_roles:
+        raise ValueError(
+            "Candidate issuance requires exclusively live forecast events; found: "
+            + ", ".join(invalid_roles)
+        )
+    if events["generated_at"].apply(_datetime).gt(evaluated_at).any():
+        raise ValueError(
+            "Candidate issuance must not reference a forecast generated after evaluated_at."
+        )
 
 
 def _quote_identity(row: Series) -> tuple[object, ...]:

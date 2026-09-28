@@ -1,16 +1,19 @@
 # Market Unit 26 Roadmap
 
-**Status:** Active production-proof program.
+**Status:** Closed 2026-09-27. Real 2026 Week 1 production-chain proof complete for Moneyline, Spread, and Total.
 
 **Historical snapshot:** `docs/archive/market-program-through-unit-26/ROADMAP.md`.
 
-This document preserves the implemented market platform, the active real-week proof, remaining calendar-gated acceptance, and genuine follow-on market capabilities associated with Market Unit 26. It does not control unrelated future programs in the root `ROADMAP.md`.
+This document preserves the implemented market platform, the closed real-week proof, and genuine follow-on market capabilities associated with Market Unit 26. It does not control unrelated future programs in the root `ROADMAP.md`.
 
 ---
 
 ### Supported Market Provider and Multi-Book Shopping
 
-**Status:** Active program, with Market Unit 26 as the only active bounded unit.
+**Status:** Market Unit 26, its only bounded unit, closed 2026-09-27. The
+program itself continues on Tier 4 #13's independent calendar
+(recommendation-policy maturation) and the Genuine Follow-On Market
+Capabilities below; neither is a bounded active unit today.
 
 **Goal:** operate a truthful provider-aware, multi-book recommendation product
 whose persisted evidence can be followed from selected forecasts and exact
@@ -84,12 +87,12 @@ not prevent immediate pregame model recommendations.
 - The repository-wide Ruff, Pyrefly, Python test, and frontend quality
   boundaries are restored and enforced.
 
-#### Active Proof: Market Unit 26
+#### Closed Proof: Market Unit 26 [Closed 2026-09-27]
 
-The active unit is proving the complete production recommendation chain for one
-real completed NFL week independently for Moneyline, Spread, and Total.
+The unit proved the complete production recommendation chain for one real
+completed NFL week independently for Moneyline, Spread, and Total.
 
-The real 2026 Week 1 rehearsal has already established:
+The real 2026 Week 1 rehearsal established:
 
 - one explicitly selected 16-game weekly product with complete selected
   forecast provenance;
@@ -123,15 +126,14 @@ dropdowns on primary betting surfaces;
   historical-boundary, market-family evaluation, cleaned-game, and optional
   settled-wager owners.
 
-The persisted rehearsal identities are maintained in the active `PLAN.md` unit.
+The persisted closing identities are recorded in the closed `PLAN.md` unit.
 
-#### Remaining Unit 26 Acceptance
+#### Unit 26 Acceptance — Closed 2026-09-27
 
-As of the 2026-09-27 checkpoint
+As of the closing checkpoint
 (`cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54`; full
-detail in the active `PLAN.md` unit), items 1-6 below are done against real
-2026 Week 1 evidence. The active unit remains open only on item 7 and a
-deliberate decision to close:
+detail in the closed `PLAN.md` unit), all items are done or validly closed
+against real 2026 Week 1 evidence:
 
 1. **Done.** Executed due polls from the selected 2026 Week 1 collection plan
    through the repository-owned worker and preserved immutable claim and
@@ -148,23 +150,22 @@ deliberate decision to close:
    `AVAILABLE`.
 4. **Done.** Validated Moneyline price CLV, Spread point CLV, and Total point
    CLV independently; `clv` is `AVAILABLE` for all three market families.
-5. Evaluate realized performance only from uniquely attributed settled-wager
-   evidence. No recorded wager is required; absent wager evidence must remain
-   explicitly unavailable rather than zero. Currently, validly,
-   `UNAVAILABLE` -- no wager has been recorded.
+5. **Closed, validly unavailable.** Realized performance is evaluated only
+   from uniquely attributed settled-wager evidence. No recorded wager is
+   required; absent wager evidence remains explicitly `UNAVAILABLE` rather
+   than zero -- no wager has been recorded, and none is required to close.
 6. **Done.** Persisted a chronological production-chain assessment at an
    explicit UTC timestamp (`2026-09-27T23:51:51.131315+00:00`); exact replay
    verified without reassessing mutable repository state.
-7. Complete a final real-data frontend presentation review now that outcome,
-   closeout, and CLV evidence exists. Presentation cleanup must not change
-   persisted recommendation semantics.
+7. **Deferred to Genuine Follow-On Market Capabilities, below.** A final
+   real-data frontend presentation review is density/readability polish, not
+   evidence -- it does not gate closing the unit and is not evidence this
+   proof is incomplete.
 
-Market Unit 26 closes only after a real completed week satisfies independent
+Market Unit 26 closes when a real completed week satisfies independent
 Moneyline, Spread, and Total proof or records an explicit evidence-backed
-unavailable state for a component that cannot validly become available. Every
-component now satisfies that bar for the real 2026 Week 1 rehearsal --
-item 7's frontend review and a deliberate decision to run closeout are what
-remain.
+unavailable state for a component that cannot validly become available.
+Every component satisfies that bar for the real 2026 Week 1 rehearsal.
 
 #### Genuine Follow-On Market Capabilities
 

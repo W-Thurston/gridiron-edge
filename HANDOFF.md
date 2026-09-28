@@ -694,42 +694,56 @@ The production recommendation workflow is explicit and identity-addressed. It
 does not select artifacts by modification time, infer recommendation state from
 positive expected value, or place sportsbook wagers.
 
-### 2026 Week 1 identities: multiple artifacts exist, reconciliation pending
+### 2026 Week 1 identities: one canonical chain, resolved 2026-09-27
 
-The single-identity example below is illustrative of the chain's shape, not the
-current on-disk state. `data/output/candidate_issuance/issuances/` currently
-holds three issuance artifacts for Week 1, `recommendation_governance` holds
-two versions, and `recommendation_policies` holds three, from repeated
-exploratory runs rather than one canonical evaluation. The most recent
-production-chain preflight assessment
-(`data/output/production_chain_preflight/schema=1/assessments/fe209aa4...`,
-assessed 2026-08-27) reflects this state. Resolving it — by archiving the
-extra artifacts or adding an explicit selection rule (`DECISIONS.md` D27) — is
-tracked in `ROADMAP.md`'s Foundation Completion Track B, Unit M3.
+`data/output/candidate_issuance/issuances/` briefly held three issuance
+artifacts for Week 1 from repeated exploratory runs during development,
+rather than one canonical evaluation, with two corresponding orphaned
+`recommendation_policies`. Row comparison confirmed all three issuances were
+content-identical re-evaluations of unchanged forecast and quote-history
+state; reference tracing confirmed only one was ever carried through
+`derive-policy` and `evaluate-recommendations` into persisted
+`recommended_bet_results`. The two unreferenced issuances and their two
+unreferenced policies were deleted after confirming nothing downstream
+referenced them (`DECISIONS.md` D58's neighbor -- see the Market Unit 26
+`PLAN.md` for the full incident record). `issue-candidates --write` and
+`evaluate-recommendations --write` now refuse to create a second immutable
+artifact for the same exact product or issuance scope, so this cannot recur.
 
 ```text
-Candidate issuance (illustrative shape):
-278d60da4e2dc089ff7eb973620f49050f83de336034cbff0c8c1a097401ccff
+Candidate issuance:
+e945987f2903435ac8c798ea5085bd5a39d3ffe2a7741cf5123cabf221e427c0
 
-Recommendation governance (illustrative shape):
+Recommendation governance:
 56757db59c2d04a55eb3f980299699403fdc982e4fe7ff4963f0898112f4824e
 
-Recommendation policy (illustrative shape):
-9e2cc3363656366eae76ec0935f01ff201ce9c9784e2736936fd0af9ab0ab024
+Recommendation policy:
+33255cc82cced0c438fd067ff30261cc4344cfbec2c72f7914124b8a9d3ccb6f
 
-Recommended-bet evaluation (illustrative shape):
-8301fb74e1eaa10437376ff3b616aaa1efc3477944d1a8da0df94abd55de073c
+Recommended-bet evaluation:
+100a70a86b73d19c55d5e810355529c553cf690a324ab108bf62ee06ab13b709
 
-Production-chain checkpoint (illustrative shape):
-acf50214f67aed1833e38f998685c3bde4f8f5489a3771f1e50adc319bb887fb
+Production-chain checkpoint:
+cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54
 ```
 
-None of the five identities above currently resolve to a file on disk; they
-illustrate the chain's shape from an earlier, since-superseded run. One of the
-three current candidate issuances evaluated 1,680 canonical quote observations
-and contains 698 candidates, 982 not-candidates, and zero unavailable rows.
-Its linked recommendation evaluation contains 698 unavailable results and no
-qualified, recommended, failed, or conflicting results.
+The candidate issuance evaluated 1,680 canonical quote observations (at the
+time of evaluation; the canonical Week 1 ledger has since grown as the real
+collector worker executed its full plan) and contains 698 candidates, 982
+not-candidates, and zero unavailable rows. Its linked recommendation
+evaluation contains 698 unavailable results and no qualified, recommended,
+failed, or conflicting results -- both valid, since completed-outcome,
+closeout, and CLV evidence did not exist yet when it was derived. The
+persisted checkpoint above, assessed after that evidence existed, confirms
+every component `AVAILABLE` for Moneyline, Spread, and Total except
+`recorded_wager`/`realized_performance`, which remain explicitly
+`UNAVAILABLE` because no wager has been recorded -- see Market Unit 26's
+`PLAN.md` for the complete acceptance record.
+
+`issue_pregame_candidates` also now rejects a non-`live` forecast role and a
+forecast generated after the issuance's own `evaluated_at` (`DECISIONS.md`
+D59) -- look-ahead leakage and development/backfilled forecasts were
+previously accepted without validation.
 
 ### Issue candidates
 
@@ -779,7 +793,7 @@ Exact replay is idempotent. Different content cannot reuse an existing identity.
 
 ```bash
 uv run gridiron production-chain derive-policy \
-  --issuance-id 278d60da4e2dc089ff7eb973620f49050f83de336034cbff0c8c1a097401ccff \
+  --issuance-id e945987f2903435ac8c798ea5085bd5a39d3ffe2a7741cf5123cabf221e427c0 \
   --governance-id 56757db59c2d04a55eb3f980299699403fdc982e4fe7ff4963f0898112f4824e \
   --created-at 2026-08-18T15:45:00+00:00 \
   --write
@@ -789,15 +803,17 @@ Policy derivation consumes the exact issuance, governance, canonical quote
 history and boundaries, cleaned outcomes, available closeout evidence, and
 available settled-wager return evidence. Moneyline, Spread, and Total are
 derived independently. Missing required evidence produces an unavailable family
-policy rather than an invented threshold.
+policy rather than an invented threshold. `derive-policy` and
+`evaluate-recommendations --write` refuse to create a second immutable
+artifact for the same exact issuance scope.
 
 ### Evaluate recommendations
 
 ```bash
 uv run gridiron production-chain evaluate-recommendations \
-  --issuance-id 278d60da4e2dc089ff7eb973620f49050f83de336034cbff0c8c1a097401ccff \
-  --policy-id 9e2cc3363656366eae76ec0935f01ff201ce9c9784e2736936fd0af9ab0ab024 \
-  --decision-at 2026-08-18T15:50:00+00:00 \
+  --issuance-id e945987f2903435ac8c798ea5085bd5a39d3ffe2a7741cf5123cabf221e427c0 \
+  --policy-id 33255cc82cced0c438fd067ff30261cc4344cfbec2c72f7914124b8a9d3ccb6f \
+  --decision-at 2026-08-27T23:34:46.784000+00:00 \
   --write
 ```
 
@@ -813,17 +829,17 @@ artifacts.
 uv run gridiron production-chain assess \
   --season 2026-2027 \
   --week 1 \
-  --assessed-at 2026-08-18T15:50:00+00:00 \
   --write
 ```
 
 ```bash
 uv run gridiron production-chain verify \
-  --preflight-id acf50214f67aed1833e38f998685c3bde4f8f5489a3771f1e50adc319bb887fb
+  --preflight-id cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54
 ```
 
-`assess` reads current repository evidence once. `verify` reads one exact stored
-assessment and does not reassess mutable state.
+`assess` reads current repository evidence once (defaulting `--assessed-at` to
+now if omitted). `verify` reads one exact stored assessment and does not
+reassess mutable state.
 
 Preflight classifies every component independently as available, incomplete,
 unavailable, invalid, conflicting, or not yet eligible. Candidate issuance,
@@ -831,15 +847,14 @@ policy, and recommendation evidence are accepted only through strict artifact
 readers and exact season, week, product, run, issuance, policy, and evaluation
 relationships.
 
-The current Week 1 assessment reports the selected product, forecast
+The real Week 1 assessment above (2026-09-27) reports every component
+`AVAILABLE` for Moneyline, Spread, and Total -- selected product, forecast
 provenance, quote snapshot, repeated quote history, selected collection plan,
-candidate issuance, recommendation policy, recommendation results, backend
-serialization, and frontend presentation as available for Moneyline, Spread,
-and Total.
-
-Collection execution remains not yet eligible until the first selected-plan
-poll at `2026-09-08T12:00:00Z`. Completed outcomes, market closeout, CLV, and
-realized performance remain not yet eligible before kickoff.
+collection execution, candidate issuance, recommendation policy,
+recommendation results, backend serialization, and frontend presentation --
+except `recorded_wager`/`realized_performance`, which remain explicitly
+`UNAVAILABLE` because no wager has been recorded. This is Market Unit 26's
+closing evidence; see its `PLAN.md` for the full record.
 
 ### Backend and frontend result delivery
 
@@ -1504,7 +1519,7 @@ Pre-commit runs Python lint, type checking, and unit tests. Pre-push adds integr
 ## Known Limitations
 
 - The Odds API v4 current-market path, provider-aware current and partitioned historical quote storage, selected-plan acquisition, exact-offer evaluation, Line Shopping, immutable candidate issuance, validated closeout and market-specific CLV contracts, recommendation governance, policy, persisted results, API attachment, frontend presentation, explicit local wager recording, and repository-owned Raspberry Pi worker deployment are implemented.
-- The real 2026 Week 1 rehearsal has two fetch timestamps and complete repeated depth for current exact identities. The selected plan has not reached its first scheduled poll, and completed Week 1 outcomes, real latest-eligible closeouts, real CLV, and realized performance are not yet eligible.
+- The real 2026 Week 1 production-chain proof is complete and closed (Market Unit 26): the repository-owned worker executed its full 34-poll plan, and completed outcomes, latest-eligible closeouts, and CLV are all real and `AVAILABLE`. Realized performance remains explicitly `UNAVAILABLE` because no wager has been recorded -- optional, not a gap. See "2026 Week 1 identities" above and Market Unit 26's `PLAN.md` for the full record.
 - Current production policy remains unavailable because matured empirical outcome, closeout, and return evidence does not yet support an active threshold-selection method. Arbitrage, middles, movement interpretation, backtesting, and supported historical provider backfill remain future capabilities.
 - Injury and news data are not integrated.
 - Scenario analysis, feature attribution, and historical comparable retrieval remain future capabilities.

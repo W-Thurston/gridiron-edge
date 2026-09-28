@@ -336,6 +336,20 @@ def test_quote_scope_must_match_selected_product() -> None:
         _issue(quotes=_quotes(_quote(week=2)))
 
 
+def test_non_live_forecast_role_is_rejected() -> None:
+    """A development or backfilled forecast can never back a real recommendation."""
+    events = _events().assign(role="development")
+    with pytest.raises(ValueError, match="exclusively live forecast events"):
+        _issue(events=events)
+
+
+def test_forecast_generated_after_evaluated_at_is_rejected() -> None:
+    """Evaluating against a forecast generated after the fact is look-ahead leakage."""
+    events = _events().assign(generated_at=EVALUATED_AT + timedelta(minutes=1))
+    with pytest.raises(ValueError, match="generated after evaluated_at"):
+        _issue(events=events)
+
+
 def test_output_is_deterministic_and_inputs_are_not_mutated() -> None:
     """Input order cannot change persisted ordering or source frames."""
     product = _product()

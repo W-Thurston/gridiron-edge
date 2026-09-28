@@ -1,5 +1,78 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-27 - Market Unit 26 closed: real Week 1 production-chain proof, collector sync, D8 fixed
+
+#### Added
+
+- `gridiron ops pull-collector-evidence` — one-way, additive-only `rsync`
+  pull of the deployed quote-collection worker's `data/odds` (current and
+  historical quotes, collection plans, collection-run claim/result
+  receipts) into the local repository. Never touches `data/output`; never
+  deletes a local file missing on the remote side.
+- `gridiron ops rollover-collector-week --season <label> --week <n>` —
+  refreshes the upcoming schedule from nflverse, builds and persists the
+  new week's collection plan, prints a review summary, and (after
+  confirmation) selects it as current and pushes exactly three artifacts to
+  the worker (schedule, scoped plan, current-selection pointer, in that
+  order so a partial failure never leaves the pointer referencing a plan
+  that has not arrived). Requires explicit `--season`/`--week`, matching
+  every other weekly command in this CLI.
+- `deploy/systemd/gridiron-edge-collector-sync.{service,timer}` — an
+  optional `systemd --user` timer to automate future pulls (not yet
+  enabled; needs a passphrase-free credential path first, see
+  `DECISIONS.md` D58).
+- `issue_pregame_candidates` now rejects a non-`live` forecast role and a
+  forecast generated after the issuance's own `evaluated_at` (resolves D8;
+  see `DECISIONS.md` D59).
+- `issue-candidates --write` and `evaluate-recommendations --write` now
+  refuse to create a second immutable artifact for the same exact product
+  or issuance scope.
+
+#### Fixed
+
+- `_postgame_family_from_evidence`'s `market_closeout`/`clv` timestamp
+  collections are deduplicated before sorting, fixing a crash
+  (`Component timestamps must be sorted and unique.`) that only manifested
+  once real closeout candidates sharing a fetch timestamp reached postgame
+  assembly for the first time.
+- The `market_closeout` validation's broken cross-game timestamp check
+  (comparing the latest fetch time across every game in a family against
+  one arbitrary game's kickoff) was removed and replaced with a correct
+  per-candidate assertion.
+- `verify_quote_collection_worker.py`'s `storage_health` check no longer
+  flags `zram`/`loop` virtual devices reporting their size once at boot as
+  a storage fault — it had reported `Worker status: degraded` on a
+  month-old, harmless boot message the entire time.
+- Three duplicate Week 1 candidate-issuance artifacts (from repeated
+  development runs, content-identical) and two corresponding orphaned
+  policies were found and the two unreferenced issuances plus two
+  unreferenced policies deleted, resolving `candidate_issuance:
+  CONFLICTING`.
+
+#### Real-data validation
+
+- Confirmed on the deployed Raspberry Pi worker directly: all 34 scheduled
+  Week 1 polls resolved with terminal `claim.json`/`result.json` receipts,
+  zero unresolved; the timer ran every five minutes, uninterrupted, since
+  2026-08-19.
+- Pulled that evidence onto this workspace and persisted a fresh
+  production-chain checkpoint
+  (`cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54`)
+  resolving every component `AVAILABLE` for Moneyline, Spread, and Total —
+  selected product, forecast provenance, quote snapshot and history,
+  collection plan and execution, candidate issuance, recommendation policy
+  and result, backend/frontend serialization, completed outcomes, market
+  closeout, and CLV — except `recorded_wager`/`realized_performance`,
+  explicitly and validly `UNAVAILABLE` because no wager was recorded.
+- Ran `gridiron ops rollover-collector-week` for real against Week 3 (2
+  remaining games, 11 polls, 33 credits) and confirmed via the worker's own
+  verify script that it was selected and is collecting.
+- This closes Market Unit 26 (Tier 4 #11/#12/#14) and, with it, the entire
+  Foundation Completion program (Tiers 1–4): every verified defect (D1–D8)
+  now has a resolution.
+
+See `DECISIONS.md` D58, D59.
+
 ### 2026-09-26 - `ExplainPage`: real factor waterfall and comparable-games table
 
 #### Added

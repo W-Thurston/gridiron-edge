@@ -63,7 +63,9 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-### Foundation Completion (Tiers 1–4)
+**None selected.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met. The next program must be deliberately selected from Tier 5 onward (Tier 5 #16, the game-model feature program, is now unblocked) and scoped into `PLAN.md` before work begins — `PLAN.md` currently names no active unit.
+
+### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
 **Goal:** resolve the correctness defects and state drift found while reconciling this roadmap against the repository, establish one corrected evaluation and champion-selection foundation, and complete calendar-driven market proof — all before the next feature or evaluation program (Tier 5 #16) begins.
 
@@ -82,7 +84,7 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 | D5 | The selected 2026 Week 2 product was reselected outside any repository-owned command to an untracked `development`-role run; the known-defect disposition no longer names the current selection, so its authentication would now raise and readiness/edge blocking no longer applies. | `data/output/weekly_products/current.json`; `evaluation/forecast_evidence_disposition.py:267-311`. |
 | D6 | Calibration and the champion manifest (2026-08-05) predate the current model artifacts (2026-09-21). **Resolved by U4 and U9:** U4 removed the manifest's five orphaned prop entries (no corresponding artifact) via `gridiron evaluate prune-champions`; U9 reassessed every game-model champion against U8's corrected evidence (promoting a retrained `total_random_forest`), refreshed Win calibration from the aligned backfill runs, and re-promoted the manifest (repopulating the five prop families U4 had pruned, now backed by real archives). | `data/output/calibration/`, `data/output/champions/champions.json`. |
 | D7 | Weather train/serve skew: training rows use observed OpenWeatherMap backfill; live predictions use stadium/league-month climatology. **Resolved by U8:** the underlying cause was a closed data-completeness gap (the current 2026-2027 season had zero observed weather rows because `fetch_weather` never backfills a missed week), not a live-serving architecture defect; walk-forward evaluation was never exposed to it (D4 already excludes the in-progress season). See D49. | `features/team/weather.py:323`. |
-| D8 | Candidate issuance does not reject non-live forecast roles or forecasts generated after `evaluated_at`. | `cli/production_chain.py:404-480`. |
+| D8 | Candidate issuance does not reject non-live forecast roles or forecasts generated after `evaluated_at`. **Resolved:** `issue_pregame_candidates` now rejects any non-`live` forecast role and any forecast generated after the issuance's own `evaluated_at` (`DECISIONS.md` D59). | `market/candidate_issuance.py` `_reject_non_live_or_late_events`; `tests/unit/market/test_candidate_issuance_evaluation.py`. |
 
 #### Track A — Tiers 1–3 (sequential) [Complete: U1–U14]
 
@@ -105,29 +107,25 @@ Two coordinated tracks. Track A is sequential (each unit depends on the last). T
 - **Tier 3 #10 — Build comparable-game retrieval.**
   Implementation: **U13** (backend: a new historical feature-vector corpus for every `win_prob`/`logistic` game, scaled in the champion's own standardized feature space, plus a per-run retrieval-evidence batch matching each event against it by Euclidean distance with an empirically-derived threshold; immutable stores and CLI, no API change) **[Complete: `gridiron evaluate build-comparable-corpus`/`find-comparables`, D54]** and **U14** (wire `/games/{game_id}/comparables` to serve the persisted retrieval evidence, mirroring U11's `/explain` contract change) **[Complete: D55]**.
 
-#### Track B — Tier 4 / Market Unit 26 (parallel, calendar-driven)
+#### Track B — Tier 4 / Market Unit 26 (parallel, calendar-driven) [Closed 2026-09-27]
 
-No selected-plan poll has completed from this workstation; the Week 1 plan's polls are all past due. The Raspberry Pi worker has been polling independently all season, but nothing in this repository can currently read its evidence back, and its stored contents beyond the latest quote snapshot are unconfirmed.
+M1 through M4 are done. The Raspberry Pi worker's own evidence was inventoried directly over SSH (M1); `gridiron ops pull-collector-evidence` (M2) now syncs its immutable `data/odds` — quote history, collection plans, collection-run claim/result receipts — into this repository, one-way and additive-only, with `gridiron ops rollover-collector-week` handling the paired weekly plan-rollover push. D8 and the real Week 1 triple-candidate-issuance conflict are both resolved (M3): the conflict traced to three content-identical re-evaluations from repeated development runs, of which only one was ever carried through to persisted results — the two orphans and their two orphaned policies were deleted after confirming nothing referenced them, and `issue-candidates`/`evaluate-recommendations` now refuse to create a second immutable artifact for the same exact scope, so it cannot recur. The real 2026 Week 1 weekly proof cadence (M4, Tier 4 #11/#12/#14) is complete: the persisted production-chain checkpoint (`cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54`) resolves every component `AVAILABLE` for Moneyline, Spread, and Total except `recorded_wager`/`realized_performance`, both explicitly and validly `UNAVAILABLE` because no wager was recorded. Full detail: `docs/programs/market-unit-26/PLAN.md`.
 
-- **M1 — Pi evidence inventory.** Read-only, done with the operator: confirm what the worker has persisted (quote-history partitions, claims, results, timer/journal state, credit usage) before deciding what Weeks 1–3 evidence is recoverable.
-- **M2 — Worker evidence sync**, closing part of **Tier 4 #11**: a repository-owned pull (e.g. over SSH/rsync) that copies immutable quote-history partitions, claims, and results into local `data/`, verifying identities and digests, refusing conflicting overwrites, and idempotent on repeat; paired with a plan-rollover procedure that compares identities after every transfer.
-- **M3 — Chain guards and the Week 1 issuance conflict**: resolve D8 (issuance must reject non-live and late-generated forecasts), and resolve Week 1's existing triple-candidate-issuance conflict (archive the extras or add an explicit `DECISIONS.md`-recorded selection rule).
-- **M4 — Weekly proof cadence** (Tier 4 #11, #12, #14): forecast, plan, roll the plan to the worker, issue candidates before the first kickoff, optionally record one BetSlip wager against a candidate, fetch outcomes, sync per M2, and run production-chain assessment — repeated weekly starting from the first week M1 confirms is usable. Close Unit 26's #11/#12/#14 with the recommendation policy recorded as explicitly unavailable.
-- **M5 — Tier 4 #13, recommendation-policy maturation.** A new design unit defining a threshold-selection method and an explicit sample-size rule, then accumulating evidence weekly. This runs independently and is not required for the Tier 5 gate below — matured-policy evidence take most of a season to accumulate.
+- **M5 — Tier 4 #13, recommendation-policy maturation.** Still open, on its own calendar, independent of the closed items above: a new design unit defining a threshold-selection method and an explicit sample-size rule, then accumulating evidence weekly. Matured-policy evidence takes most of a season to accumulate; this does not gate Tier 5.
 
 #### Feature-program gate
 
-ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U14) is complete and Track B has closed Tier 4 #11, #12, and #14. Track A is now complete; the gate remains closed on Track B. Tier 4 #13 continues independently and does not gate Tier 5.
+ROADMAP Tier 5 #16 (the game-model feature program) does not begin until Track A (U1–U14) is complete and Track B has closed Tier 4 #11, #12, and #14. **Both are now done — the gate is lifted.** Tier 4 #13 continues independently on its own calendar and does not gate Tier 5.
 
-#### Acceptance
+#### Acceptance — all met
 
-- every defect in the table above has a resolution recorded in code, tests, or an explicit `DECISIONS.md` entry;
-- `HANDOFF.md` describes only current behavior;
-- the Week 2 decision is executed, not just recorded;
-- historical evaluation, calibration, and the champion manifest are regenerated from the corrected pipeline;
-- Logistic explanation evidence is persisted and served;
-- Market Unit 26 has closed #11, #12, and #14, with #13 continuing on its own calendar;
-- `PLAN.md` names exactly one bounded active unit at a time throughout.
+- [x] every defect in the table above has a resolution recorded in code, tests, or an explicit `DECISIONS.md` entry (D1–D8 all resolved);
+- [x] `HANDOFF.md` describes only current behavior;
+- [x] the Week 2 decision is executed, not just recorded;
+- [x] historical evaluation, calibration, and the champion manifest are regenerated from the corrected pipeline;
+- [x] Logistic explanation evidence is persisted and served;
+- [x] Market Unit 26 has closed #11, #12, and #14, with #13 continuing on its own calendar;
+- [x] `PLAN.md` named exactly one bounded active unit at a time throughout.
 
 ## Canonical Artifact Decision: 2026 Week 2 Development State — Resolved and executed (U6)
 
@@ -417,16 +415,16 @@ Retain file-backed storage until demonstrated multi-user concurrency, transactio
 
 ## Calendar-Gated Work
 
-### Market Unit 26
+### Market Unit 26 [Closed 2026-09-27]
 
-Market Unit 26 remains active but calendar-gated. Its detailed plan and roadmap remain in:
+Market Unit 26 closed 2026-09-27: real 2026 Week 1 selected-plan execution, repeated quote coverage, completed outcomes, validated closeout and CLV, and complete Moneyline/Spread/Total production-chain proof are all done. Its detailed record remains in:
 
 - `docs/programs/market-unit-26/PLAN.md`
 - `docs/programs/market-unit-26/ROADMAP.md`
 
-Remaining proof includes selected-plan execution, repeated quote coverage, completed outcomes, validated closeout and CLV, empirical recommendation thresholds, realized performance, and complete Moneyline, Spread, and Total production-chain acceptance.
+What remains open on Unit 26's own calendar, not gating anything else: maturing empirical recommendation thresholds (Tier 4 #13) from accumulating weekly evidence, and realized performance, which stays explicitly unavailable until a wager is recorded.
 
-The root roadmap may proceed independently while this evidence matures. Calendar-gated work must not occupy the one active root implementation unit unless the required real-world evidence is available.
+The root roadmap may proceed independently while that evidence matures. Calendar-gated work must not occupy the one active root implementation unit unless the required real-world evidence is available.
 
 ## Research Backlog
 
@@ -464,9 +462,15 @@ The originally disposition-affected Week 2 Logistic Win runs consumed incomplete
 
 Collateral impact from the truncated-history period has not yet been fully classified. Historical predictions, evaluation archives, backfills, closeout artifacts, preflight evidence, and derived datasets must not be treated as corrected until verified or regenerated.
 
-### Market proof is incomplete
+### Recommendation-policy maturation is ongoing (Tier 4 #13)
 
-Repeated selected-plan quote coverage, validated closeout and CLV, empirical recommendation thresholds, recommendation product integration, realized performance, and complete Moneyline, Spread, and Total proof remain incomplete or calendar-gated.
+Market Unit 26 closed 2026-09-27: real 2026 Week 1 selected-plan quote
+coverage, validated closeout, CLV, and complete Moneyline/Spread/Total
+production-chain proof are done (see `docs/programs/market-unit-26/PLAN.md`).
+What remains open, on its own calendar and not gating anything else: maturing
+empirical recommendation thresholds from accumulating weekly evidence, and
+realized performance, which stays explicitly unavailable until a wager is
+recorded (optional, not a gap).
 
 ### Injury, news, and live state are unavailable
 

@@ -8,6 +8,48 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D59 - Candidate issuance rejects non-live and late-generated forecasts (resolves D8)
+
+**Date:** 2026-09-27
+
+**Context:** ROADMAP.md's verified-defects table recorded D8: `issue_pregame_candidates`
+accepted forecast events of any role (`live`, `development`, `backfilled`)
+and any generation time, with no check against the issuance's own
+`evaluated_at`. A development or backfilled forecast is not a real pregame
+recommendation input, and a forecast generated after the moment being
+evaluated could not have been known at that moment — evaluating a candidate
+against it is look-ahead leakage. Neither condition ever produced a wrong
+result in the real, persisted Week 1 evidence (that forecast happened to be
+a timely `live` run), but the gap was real and undefended.
+
+**Decision:** `issue_pregame_candidates` now validates every supplied
+forecast event before evaluating any quote: every event's `role` must equal
+`live`, and every event's `generated_at` must be at or before the
+issuance's `evaluated_at`. Either violation raises `ValueError` and no
+issuance is produced. The check runs once, up front, against the whole
+supplied `forecast_events` frame (not per-referenced-row), since one
+issuance call is expected to evaluate against one coherent forecast run
+generated in one deliberate act.
+
+**Implications:**
+- A caller can no longer accidentally issue candidates against a
+  `development`-role forecast, or against a forecast whose generation
+  postdates the evaluation moment being claimed.
+- This is enforced at the pure-function boundary
+  (`market/candidate_issuance.py`), so it protects every caller (the
+  `issue-candidates` CLI command, any future caller) uniformly, not just
+  one entry point.
+- No existing persisted issuance was invalidated: the real Week 1 issuance
+  already satisfied both conditions.
+
+**Revisit triggers:**
+- If a legitimate need emerges to issue candidates against a
+  `development`-role forecast (for rehearsal or backtesting purposes
+  distinct from a real pregame recommendation), this would need an
+  explicit, separately-labeled path rather than relaxing this check.
+
+---
+
 ## D58 - Pi collector deployment stays manually-copied; no passphrase automation yet
 
 **Date:** 2026-09-27
