@@ -63,7 +63,7 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1 and 2 (batches A1, A2) are wired (schema v9) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 3 (batch A3, QB-and-coach sidecar) is next and must be deliberately scoped into `PLAN.md` before work begins.
+**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–3 (batches A1–A3) are wired (schema v10) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 4 (batch A4, situational context) is next and must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
@@ -317,7 +317,7 @@ Units 1–6 each wire one batch into `EPA_COLS`/`CANONICAL_FEATURES` with its ow
 
 - **Unit 1 — A1, construction fixes.** CPOE (Domain 1, currently ⚠️ Partial), fumble rate/offense (Domain 3, ❌), and a correction to the stale INT-rate/defense classification (already built, mis-marked ❌). **Closed: wired, tested, live-availability replay passed (schema v6, `DECISIONS.md` D60/D61) — promotion deferred to Unit 7.**
 - **Unit 2 — A2, opponent-adjusted EPA and unit interactions.** Opponent-adjusted offensive and defensive EPA/play (pass + rush), unit efficiency differentials built on it, and the market-blind variant of projected total plays. **Closed: wired, tested, live-availability replay passed (schema v9, `DECISIONS.md` D63/D64) — promotion deferred to Unit 7.**
-- **Unit 3 — A3, QB-and-coach sidecar.** QB EPA (career + rolling), CPOE rolling, QB change flag, QB experience, head-coach win % and tenure, new-coaching-staff flag. Needs a new sidecar dataset per program rule 5 (raw schedule fields kept out of `NFL_wk_by_wk_cleaned.csv`).
+- **Unit 3 — A3, QB-and-coach sidecar.** QB EPA (career + rolling), CPOE rolling, QB change flag, QB experience, head-coach win % and tenure, new-coaching-staff flag. **Closed: wired, tested, live-availability replay passed (schema v10, `DECISIONS.md` D65) — promotion deferred to Unit 7.**
 - **Unit 4 — A4, situational context.** Season week number and indoor-override status corrections, back-to-back road games, body-clock kickoff, field surface, league scoring environment/rule era, wind speed bins, season week performance, Pythagorean luck gap, one-score game record, special-teams and punt/return EPA.
 - **Unit 5 — A5, rating ensemble inputs.** QB Elo/rating (needs the same lineage treatment as team Elo, per program rule 5), team Glicko-2 (rating + RD + volatility), Keener/Colley/Massey ratings, rating uncertainty as a feature.
 - **Unit 6 — A6, market-aware variant.** Consensus closing spread/total, no-vig market win probability, historical closing line as a prior, season ATS/O-U record, performance as favorite/underdog — as a separate model identity from the market-blind champion, not a drop-in feature set. Needs its own `DECISIONS.md` entries per program rule 4 before adoption.

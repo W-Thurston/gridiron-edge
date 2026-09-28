@@ -23,12 +23,14 @@ from gridiron_edge.features.registry import FeatureRegistry, run_features, valid
 # Side-effect imports: each module registers its feature class with
 # FeatureRegistry via the @FeatureRegistry.register(...) decorator.
 # The imports must be preserved even though no name is referenced directly.
+import gridiron_edge.features.team.coach_profile
 import gridiron_edge.features.team.divisional
 import gridiron_edge.features.team.elo
 import gridiron_edge.features.team.epa
 import gridiron_edge.features.team.opponent_adjusted_epa
 import gridiron_edge.features.team.primetime
 import gridiron_edge.features.team.projected_total_plays
+import gridiron_edge.features.team.qb_profile
 import gridiron_edge.features.team.record
 import gridiron_edge.features.team.rest
 import gridiron_edge.features.team.schedule_strength
@@ -50,6 +52,8 @@ CANONICAL_FEATURES: Final[list[str]] = [
     "home_away_opponent_adjusted_epa",
     "unit_efficiency_differentials",
     "projected_total_plays",
+    "home_away_qb_profile",
+    "home_away_coach_profile",
     "home_away_rest",
     "home_away_record",
     "home_away_schedule_strength",

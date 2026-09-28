@@ -33,6 +33,7 @@ class PredictionSourceSpec:
 PREDICTION_SOURCE_SPECS: Final[tuple[PredictionSourceSpec, ...]] = (
     PredictionSourceSpec("data/cleaned/NFL_Team_Elo.csv", required=True),
     PredictionSourceSpec("data/cleaned/NFL_Team_Elo.metadata.json", required=True),
+    PredictionSourceSpec("data/cleaned/NFL_qb_coach_sidecar.parquet", required=False),
     PredictionSourceSpec("data/cleaned/NFL_stadium_reference.csv", required=False),
     PredictionSourceSpec("data/cleaned/NFL_upcoming_schedule_rich.parquet", required=True),
     PredictionSourceSpec("data/cleaned/NFL_wk_by_wk_cleaned.csv", required=True),

@@ -318,6 +318,7 @@ class TestEnsureDataFreshStage:
                 "clean-games",
                 "fetch-upcoming",
                 "clean-upcoming",
+                "clean-qb-coach-sidecar",
                 "build-epa",
                 "build-elo",
                 "build-features",

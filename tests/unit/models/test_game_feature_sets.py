@@ -8,12 +8,14 @@ import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.models.game_prediction._columns import (
+    _COACH_PROFILE_SUFFIXES,
     _COMBINED_FEATURES,
     _DIFF_FEATURES,
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
     _OPPONENT_ADJUSTED_EPA_SUFFIXES,
+    _QB_PROFILE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
     _TEAM_FEATURES,
@@ -46,6 +48,14 @@ def _canonical_frame() -> DataFrame:
         values[f"AWAY_{suffix}"] = [float(index)]
         values[f"HOME_{suffix}"] = [float(index + 100)]
 
+    for index, suffix in enumerate(_QB_PROFILE_SUFFIXES, start=1):
+        values[f"AWAY_{suffix}"] = [float(index)]
+        values[f"HOME_{suffix}"] = [float(index + 100)]
+
+    for index, suffix in enumerate(_COACH_PROFILE_SUFFIXES, start=1):
+        values[f"AWAY_{suffix}"] = [float(index)]
+        values[f"HOME_{suffix}"] = [float(index + 100)]
+
     for index, column in enumerate([*_GAME_FEATURES, *_TEAM_FEATURES], start=1):
         values[column] = [index]
 
@@ -54,12 +64,12 @@ def _canonical_frame() -> DataFrame:
 
 def test_feature_declaration_counts_and_uniqueness() -> None:
     expected = {
-        "raw": (_RAW_FEATURES, 96),
-        "diff": (_DIFF_FEATURES, 48),
-        "combined": (_COMBINED_FEATURES, 144),
+        "raw": (_RAW_FEATURES, 110),
+        "diff": (_DIFF_FEATURES, 55),
+        "combined": (_COMBINED_FEATURES, 165),
         "game": (_GAME_FEATURES, 16),
-        "team": (_TEAM_FEATURES, 26),
-        "expanded": (_EXPANDED_FEATURES, 186),
+        "team": (_TEAM_FEATURES, 30),
+        "expanded": (_EXPANDED_FEATURES, 211),
     }
 
     for columns, count in expected.values():
@@ -98,6 +108,10 @@ def test_diff_features_use_home_minus_away() -> None:
     for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES:
         assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
     for suffix in _UNIT_EFFICIENCY_SUFFIXES:
+        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
+    for suffix in _QB_PROFILE_SUFFIXES:
+        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
+    for suffix in _COACH_PROFILE_SUFFIXES:
         assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
 
 

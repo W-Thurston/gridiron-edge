@@ -110,6 +110,7 @@ ALL_STAGES: list[str] = [
     "clean-games",
     "fetch-upcoming",
     "clean-upcoming",
+    "clean-qb-coach-sidecar",
     "fetch-weather",
     "build-epa",
     "build-elo",
@@ -247,6 +248,17 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
             from gridiron_edge.transform.clean import clean_nflverse_upcoming
 
             path = clean_nflverse_upcoming()
+            s.set_detail(path.name)
+
+    with step(
+        "Build QB/coach sidecar",
+        skip=not runs("clean-qb-coach-sidecar"),
+    ) as s:
+        if runs("clean-qb-coach-sidecar"):
+            # pyrefly: ignore [missing-module-attribute]
+            from gridiron_edge.transform.clean import build_qb_coach_sidecar
+
+            path = build_qb_coach_sidecar()
             s.set_detail(path.name)
 
     with step("Fetch weather", skip=not runs("fetch-weather")) as s:

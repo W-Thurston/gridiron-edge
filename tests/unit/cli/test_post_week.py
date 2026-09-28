@@ -88,6 +88,7 @@ def test_refresh_next_week_state_is_independent(run_pipeline: MagicMock) -> None
         active={
             "fetch-upcoming",
             "clean-upcoming",
+            "clean-qb-coach-sidecar",
             "build-epa",
             "build-elo",
             "build-features",

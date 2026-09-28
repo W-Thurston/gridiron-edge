@@ -204,6 +204,7 @@ class TestSourceInventory:
         assert paths == (
             "data/cleaned/NFL_Team_Elo.csv",
             "data/cleaned/NFL_Team_Elo.metadata.json",
+            "data/cleaned/NFL_qb_coach_sidecar.parquet",
             "data/cleaned/NFL_stadium_reference.csv",
             "data/cleaned/NFL_upcoming_schedule_rich.parquet",
             "data/cleaned/NFL_wk_by_wk_cleaned.csv",

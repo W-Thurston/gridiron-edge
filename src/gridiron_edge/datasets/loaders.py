@@ -91,6 +91,33 @@ def load_epa_by_game(repo_root: Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def load_player_game_logs(repo_root: Path) -> pd.DataFrame:
+    """Load cleaned per-player per-game statistics.
+
+    Returns:
+        DataFrame with one row per (player, game). Empty DataFrame if not
+        yet ingested.
+    """
+    path: Path = dataset_path(repo_root, "player_game_logs")
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
+def load_qb_coach_sidecar(repo_root: Path) -> pd.DataFrame:
+    """Load the QB-and-coach identity sidecar.
+
+    Returns:
+        DataFrame with one row per game containing starting-QB and
+        head-coach identity for both sides. Empty DataFrame if not yet
+        built (see ``gridiron transform clean-qb-coach-sidecar``).
+    """
+    path: Path = dataset_path(repo_root, "qb_coach_sidecar")
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
 def load_pbp(
     repo_root: Path,
     *,

@@ -8,6 +8,84 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D65 - Starting-QB identity for live serving carries forward each team's most recent known starter
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP Tier 5 #16 Unit 3 (batch A3) wires QB EPA/play (career +
+rolling), QB CPOE (rolling), a QB-change flag, and QB experience -- all of
+which require resolving each side's starting QB per game. nflverse
+schedules (`home_qb_id`/`away_qb_id`) record the *actual* starter, which is
+only known once a game has been played: for the current archived upcoming
+schedule (226 games, weeks 3-18 of 2026), 100% of unplayed rows have a
+null starting-QB ID for both sides. Program rule 3 ("A feature may enter a
+live feature set only if it has a guaranteed pre-kickoff value for every
+scheduled game") makes this a hard blocker unless some pre-kickoff
+identity source stands in for the unknown actual starter.
+`FEATURES.md` already flagged this ("live use needs the projected
+starter from depth charts, injury reports, or manual input"), and
+`ROADMAP.md`'s Phase B section reserves depth-chart ingestion for exactly
+this case, conditioned on "only if the sidecar's pre-kickoff QB-identity
+coverage proves insufficient."
+
+**Decision:** Before building Phase B's depth-chart ingestion, test the
+cheapest possible projected-starter source: carrying forward each team's
+most recently *known* starter (from either the historical or upcoming raw
+nflverse schedule cache, resolved chronologically) whenever the actual
+starter for a given game is unknown. Checked directly against the real
+226-game current archived upcoming schedule: 100% coverage (every team has
+a resolvable prior starter for every upcoming game), and every carried-
+forward QB ID also has at least one prior row in `player_game_logs`, so
+the resulting rolling/career EPA and CPOE values are non-null too. This
+clears program rule 3's bar without any new ingestion.
+
+This is implemented as a single code path (`features/team/qb_profile.py`
+`_resolve_starting_qb_history`, via a per-team forward-fill over the
+sidecar's chronological QB-identity history), not two diverging
+train/live branches: a historical (played) row's own actual starter is
+already present and is therefore never overwritten by the forward-fill;
+only unplayed rows -- structurally the live-serving case -- ever fall
+through to the carried-forward value. Training and live serving are
+therefore guaranteed to use identical logic, mirroring D63's "one
+recompute path, not two" precedent.
+
+**Implications:**
+- The QB-change flag is defined relative to this same resolved (carry-
+  forward-aware) identity, not the raw actual-starter field. For an
+  unplayed game this means the flag is, by construction, always `0`
+  relative to the carried-forward baseline: a *real* upcoming QB change
+  (an injury, a benching) cannot be detected without a genuine live
+  source (depth charts, injury reports), which remains Phase B/Tier 6
+  scope. The flag is fully accurate for every historical (played) game,
+  where the actual starter is always used.
+- No new persisted state or lineage subsystem is introduced. The
+  carry-forward resolution, like opponent-adjusted EPA (D63), is a
+  deterministic function of already-reproducible cached inputs (the QB/
+  coach sidecar), so ROADMAP rule 5's "persisted rating system" lineage
+  requirement does not bind.
+- Head-coach identity needs no equivalent policy: `home_coach`/
+  `away_coach` are 0% null even for unplayed games (a season's coaching
+  staff is set before the season starts), so `features/team/
+  coach_profile.py` reads the sidecar's coach fields directly with no
+  fallback.
+
+**Revisit triggers:**
+- If Phase B's depth-chart ingestion lands, replace the carry-forward
+  fallback for live serving with a real projected-starter source (the
+  historical-training path is unaffected, since it never uses the
+  fallback).
+- If a future season's carry-forward coverage check (re-run this same
+  check against a later archived upcoming schedule) finds real gaps --
+  for example a team with a first-ever start already at the top of its
+  schedule -- revisit before that week's replay would otherwise fail.
+
+**References:**
+- `src/gridiron_edge/features/team/qb_profile.py`
+- `src/gridiron_edge/features/team/coach_profile.py`
+- `src/gridiron_edge/transform/clean/qb_coach_sidecar.py`
+
+---
+
 ## D64 - Any feature reading raw PBP directly must map short team codes to canonical long names before joining
 
 **Date:** 2026-09-28

@@ -116,18 +116,18 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
 | QB Elo / QB-specific rating | Separate Elo track for the starting QB. Glicko-2 or OpenSkill (Part II.3) are alternatives that add an uncertainty estimate; see Domain 14 | Game | 🔴 High | High | ❌ |
-| QB EPA/play (career) | Baseline quality signal (`qb_epa` and passer IDs are in PBP) | Game, Props | 🔴 High | Low | ❌ |
-| QB EPA/play (rolling L4–L6) | Recent form | Game, Props | 🔴 High | Low | ❌ |
+| QB EPA/play (career) | Baseline quality signal. Built from `player_game_logs` (per-QB `passing_epa`/`attempts`), not raw PBP (which does not carry passer identity); resolved starter uses the carry-forward policy for unplayed games (D65) | Game, Props | 🔴 High | Low | ✅ Done |
+| QB EPA/play (rolling L4–L6) | Recent form | Game, Props | 🔴 High | Low | ✅ Done |
 | Passer rating (rolling) | Traditional metric, still informative | Props | 🟡 Med | Low | ❌ |
 | Completion % (rolling) | Raw and rolling | Props | 🟡 Med | Low | ❌ |
-| CPOE (rolling) | Accuracy over expectation (same PBP column as Domain 1 CPOE) | Game, Props | 🔴 High | Low | ❌ |
+| CPOE (rolling) | Accuracy over expectation. Same pre-2007 era gap as Domain 1 CPOE, same D60 indicator-plus-fill policy, applied per-QB | Game, Props | 🔴 High | Low | ✅ Done |
 | Sack rate taken | How often the QB gets sacked | Props | 🟡 Med | Low | ❌ |
 | Scramble rate | How often the QB runs when play breaks down (`qb_scramble` flag in PBP) | Props | 🟡 Med | Low | ❌ |
 | Designed rush rate | Designed QB runs per game - key for rushing props (QB carries where `qb_scramble` = 0) | Props | 🟡 Med | Low | ❌ |
 | QB rush yards / game (rolling) | Direct input for QB rush prop models | Props | 🔴 High | Low | ❌ |
 | QB pass yards / game (rolling) | Direct input for QB pass prop models | Props | 🔴 High | Low | ❌ |
-| QB change flag | Is a different QB starting than last week? Historical starters are in nflverse schedules (`home_qb_id` / `away_qb_id`); live use needs the projected starter from depth charts, injury reports, or manual input | Game, What-If | 🔴 High | Med | ❌ |
-| QB experience (games started) | Rookie vs veteran signal | Game | 🟢 Low | Low | ❌ |
+| QB change flag | Is a different QB starting than last week? Historical starters are in nflverse schedules (`home_qb_id` / `away_qb_id`) and always used for played games; an unplayed game compares against the carry-forward-resolved identity (D65), so it cannot detect a real upcoming change without a depth-chart/injury source (Phase B) | Game, What-If | 🔴 High | Med | ✅ Done |
+| QB experience (games started) | Rookie vs veteran signal. Career count of prior QB pass-attempt games in `player_game_logs` for the resolved starter | Game | 🟢 Low | Low | ✅ Done |
 | 🆕 Time to throw | Average seconds from snap to release (NGS weekly passing stats, 2016+). Helps separate QB-driven sacks and pressure from line-driven ones | Game, Props | 🟡 Med | Low | ❌ |
 | 🆕 Pressure-to-sack rate | Sacks divided by pressures faced. Sack avoidance behaves more like a QB trait than a line trait, so it travels with the QB | Game, Props | 🟡 Med | Med | ❌ |
 | 🆕 Interception-worthy throw rate | FTN charting's `is_interception_worthy` flag (2022+). A steadier read on turnover risk than actual INTs, which are noisy | Game, Props | 🟡 Med | Med | ❌ |
@@ -313,14 +313,14 @@ Step 5 - Edge Re-Calculation:
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| Head coach win % (career) | Baseline coaching quality (head coaches are in nflverse schedules) | Game | 🟢 Low | Low | ❌ |
-| HC tenure (years with team) | Stability / familiarity | Game | 🟢 Low | Low | ❌ |
+| Head coach win % (career) | Baseline coaching quality. Career (not same-season) win % across any team the coach has led, recomputed fresh from the QB/coach sidecar joined to completed-game results | Game | 🟢 Low | Low | ✅ Done |
+| HC tenure (years with team) | Stability / familiarity. Consecutive seasons (including the current one) this exact coach has led this exact team; head-coach identity is known before every season starts, so this needs no live-availability fallback | Game | 🟢 Low | Low | ✅ Done |
 | Offensive coordinator tenure | New OC = scheme adjustment period | Game, Props | 🟡 Med | Med | ❌ |
 | Play-calling tendency (pass/run) | Coaching scheme signature. Overlaps the Domain 1 pass-rate rows; build once, reuse | Props | 🟡 Med | Med | ❌ |
 | Aggressiveness (4th down go rate) | Risk tolerance proxy | Game | 🟢 Low | Med | ❌ |
 | Historical ATS performance | Some coaches consistently beat/miss spreads | Game | 🟢 Low | Med | ❌ |
 | Coaching matchup history | H2H coaching record | Game | 🟢 Low | Med | ❌ |
-| New coaching staff flag | First-year HC/OC/DC (HC from schedules; OC/DC need another source) | Game | 🟡 Med | Low | ❌ |
+| New coaching staff flag | First-year HC (`HC tenure == 1`); an interim mid-season coach with no prior-season history under that team correctly flags too. OC/DC need another source | Game | 🟡 Med | Low | ✅ Done |
 
 ---
 
@@ -597,7 +597,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 **A2 Opponent-adjusted EPA and unit interactions — wired, promotion deferred to Unit 7:** Opponent-adjusted EPA/play, pass+rush (D1 🆕, now ✅ Done); Opponent-adjusted def EPA/play, pass+rush (D2 🆕, now ✅ Done); Unit efficiency differentials (D13 🆕, now ✅ Done); Projected total plays, market-blind variant (D13 🆕, now ✅ Done — market-blind only, per this batch's scope). Schema bumped to 9/6 across three sub-steps (`DECISIONS.md` D63/D64). Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep across accumulated Phase A units — see `ROADMAP.md` and `PLAN.md`.
 
-**A3 QB and coach sidecar:** QB EPA/play, career (D4); QB EPA/play, rolling L4–L6 (D4); CPOE, rolling (D4); QB change flag (D4); QB experience (D4); Head coach win %, career (D10); HC tenure (D10); New coaching staff flag (D10).
+**A3 QB and coach sidecar — wired, promotion deferred to Unit 7:** QB EPA/play, career (D4, now ✅ Done); QB EPA/play, rolling L4–L6 (D4, now ✅ Done); CPOE, rolling (D4, now ✅ Done); QB change flag (D4, now ✅ Done); QB experience (D4, now ✅ Done); Head coach win %, career (D10, now ✅ Done); HC tenure (D10, now ✅ Done); New coaching staff flag (D10, now ✅ Done). Built a new `data/cleaned/NFL_qb_coach_sidecar.parquet` sidecar per program rule 5 (starting-QB and head-coach identity, projected from raw nflverse schedule fields the existing `games`/`schedule_upcoming_rich` clean steps don't carry). Starting-QB identity for unplayed games uses a carry-forward-most-recent-known-starter policy (`DECISIONS.md` D65) to satisfy the live-availability rule; head-coach identity needs no such fallback since it is known before every season starts. Schema bumped to 10/7. Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep across accumulated Phase A units — see `ROADMAP.md` and `PLAN.md`.
 
 **A4 Situational context:** Season week number (D5 — **status correction:** already built as `WEEK_NUM`, present in `expanded_152` but not `combined_111`; reclassify ⚠️ Partial, not ❌); Back-to-back road games (D5); Body-clock kickoff time (D5 🆕); Field surface (D5 🆕); League scoring environment & rule era (D5 🆕, as a continuous season-to-date signal — fixed rule-era flags exist only in holdout seasons and can't be learned); Wind speed bins (D6 🆕); Indoor override (D6 — **status correction:** mostly built via `IS_DOME`/`COVERED_STADIUMS`; reclassify ⚠️ Partial; the remaining closed-roof refinement is low priority because `roof` is null for a meaningful share of future weeks); Season week performance (D11); Pythagorean win % / luck gap (D11 🆕); One-score game record (D11 🆕); Special teams EPA/play (D12 🆕, from stored play-by-play once special-teams play types are included in aggregation); Punt & return efficiency (D12 🆕).
 
@@ -647,15 +647,15 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ## Summary Statistics
 
-*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1) and Unit 2 (batch A2) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
+*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1), Unit 2 (batch A2), and Unit 3 (batch A3) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
 
 | Metric | Count |
 |--------|-------|
 | Catalog rows | 179 (178 unique; "Implied team total" is cross-listed in Domains 7 and 8) |
 | Domains | 14 (11 original + 3 new) |
-| ✅ Done | 64 |
+| ✅ Done | 72 |
 | ⚠️ Partial | 2 (Season week number; Indoor override) |
-| ❌ Missing | 112 |
+| ❌ Missing | 104 |
 | 🔴 High signal | 49 |
 | ❓ Unknown signal | 4 |
 | Low cost | 115 |
@@ -670,13 +670,13 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 | 1. Team Offensive Efficiency | 19 | 13 | 1 |
 | 2. Team Defensive Efficiency | 17 | 10 | 1 |
 | 3. Turnover & Discipline | 9 | 5 | 1 |
-| 4. Quarterback Quality | 16 | 0 | 3 |
+| 4. Quarterback Quality | 16 | 5 | 3 |
 | 5. Schedule & Situational Context | 20 | 13 | 4 |
 | 6. Weather & Environment | 9 | 4 | 0 |
 | 7. Market-Derived Features | 11 | 1 | 2 |
 | 8. Player-Level Features | 29 | 10 | 5 |
 | 9. Roster & Personnel | 14 | 0 | 1 |
-| 10. Coaching & Scheme | 8 | 0 | 0 |
+| 10. Coaching & Scheme | 8 | 3 | 0 |
 | 11. Historical Trends | 13 | 4 | 2 |
 | 12. Special Teams & Field Position | 5 | 0 | 5 |
 | 13. Unit Matchups & Interactions | 3 | 2 | 3 |
@@ -758,6 +758,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Implemented Game-Model Build Queue Unit 3 (batch A3): marked QB EPA/play career and rolling, CPOE rolling, QB change flag, QB experience (Domain 4), and Head coach win % career, HC tenure, New coaching staff flag (Domain 10) all ✅ Done. Built a new `data/cleaned/NFL_qb_coach_sidecar.parquet` sidecar (program rule 5) carrying starting-QB and head-coach identity that the existing `games`/`schedule_upcoming_rich` clean steps intentionally drop; QB EPA/CPOE are sourced from `player_game_logs` (per-QB `passing_epa`/`passing_cpoe`/`attempts`), not raw PBP, which does not carry passer identity. Starting-QB identity for unplayed games uses a carry-forward-most-recent-known-starter policy (`DECISIONS.md` D65), verified against the real 226-game current upcoming schedule at 100% coverage; head-coach identity needed no such fallback (known before every season starts). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_TEAM_FEATURES` grew to 110/55/30 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 165/211); schema bumped to 10/7. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 2 (batch A2): marked Opponent-adjusted EPA/play and Opponent-adjusted def EPA/play (Domain 1/2) ✅ Done — a ridge regression on play-level PBP with offense and defense terms, fit fresh per (season, week) as-of cutoff from season-to-date data rather than persisted like Elo (`DECISIONS.md` D63); Unit efficiency differentials (Domain 13) ✅ Done as four one-sided raw matchup columns plus two home-minus-away diffs, not diff-only, so Total keeps the "both sides face weak defenses" level signal; and Projected total plays (Domain 13) ✅ Done for its market-blind variant only (a plain sum of each side's rolling pace — the spread-adjusted version is Unit 6's separate market-aware model). Surfaced and fixed a real correctness gap along the way: raw PBP's short team codes don't match the canonical frame's long team names, which would have silently produced all-`NaN` output (`DECISIONS.md` D64). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` grew across three schema bumps to reach 96/48/16 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 144/186). Retrain deferred to Unit 7 per the same-day D62 wiring/promotion split. |
 | 2026-09-28 | Decoupled Phase A wiring from promotion (`DECISIONS.md` D62): Units 1–6 each wire and test one batch with its own schema bump but no longer individually retrain; a new Unit 7 runs one consolidated incremental walk-forward sweep across accumulated units and makes the adopt/reject call, so batch attribution is preserved without a full gated retrain after every small unit. Regenerated `data/cleaned/epa_by_game.parquet` and the modeling file for Unit 1 (batch A1) under the new schema and verified the result; the gated retrain itself is now Unit 7's scope, not Unit 1's. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 1 (batch A1): marked CPOE (Domain 1) ✅ Done (⚠️ Partial → ✅; `off_cpoe`/`def_cpoe` now in `EPA_COLS` with a D60 indicator-plus-fill era-gap policy, not the early-season prior originally proposed, which remains unbuilt), Fumble rate/off (Domain 3) ✅ Done (❌ → ✅; per-play denominator, not per-touch, D60), and corrected INT rate/def (Domain 3) ❌ → ✅ Done (it was already built as `def_int_rate` since 2026-06-04; this row was simply never updated). `EPA_COLS` 36→41; `_RAW_FEATURES`/`_DIFF_FEATURES`/`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` grew to 84/42/126/167; `FeatureSet` names now derive from the schema version rather than a hand-counted total (D61). Retrain and live-availability replay not yet run — see `PLAN.md`. |

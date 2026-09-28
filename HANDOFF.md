@@ -87,6 +87,7 @@ fetch-games
 clean-games
 fetch-upcoming
 clean-upcoming
+clean-qb-coach-sidecar
 fetch-weather
 build-epa
 build-elo

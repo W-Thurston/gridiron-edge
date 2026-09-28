@@ -77,6 +77,25 @@ class DatasetAccessor:
         """
         return loaders.load_pbp(self.repo, seasons=seasons, columns=columns)
 
+    def player_game_logs(self) -> pd.DataFrame:
+        """Load cleaned per-player per-game statistics.
+
+        Returns:
+            DataFrame with one row per (player, game). Empty DataFrame if
+            not yet ingested.
+        """
+        return loaders.load_player_game_logs(self.repo)
+
+    def qb_coach_sidecar(self) -> pd.DataFrame:
+        """Load the QB-and-coach identity sidecar.
+
+        Returns:
+            DataFrame with one row per game containing starting-QB and
+            head-coach identity for both sides. Empty DataFrame if not yet
+            built.
+        """
+        return loaders.load_qb_coach_sidecar(self.repo)
+
     def weather_enriched(self) -> pd.DataFrame:
         """Load the weather-enriched game dataset.
 

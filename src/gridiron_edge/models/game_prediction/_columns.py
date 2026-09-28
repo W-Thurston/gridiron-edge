@@ -28,6 +28,12 @@ from typing import Final
 # Schema version - single source of truth in features.manifest.
 from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION as _CURRENT
 
+# Head-coach profile metric names - single source of truth in
+# features.team.coach_profile.
+from gridiron_edge.features.team.coach_profile import (
+    COACH_PROFILE_METRICS as _COACH_PROFILE_METRICS_RAW,
+)
+
 # EPA metric names - single source of truth in features.team.epa.
 from gridiron_edge.features.team.epa import EPA_COLS as _EPA_COLS_RAW
 
@@ -42,6 +48,9 @@ from gridiron_edge.features.team.opponent_adjusted_epa import (
 from gridiron_edge.features.team.projected_total_plays import (
     PROJECTED_TOTAL_PLAYS as _PROJECTED_TOTAL_PLAYS_RAW,
 )
+
+# QB profile metric names - single source of truth in features.team.qb_profile.
+from gridiron_edge.features.team.qb_profile import QB_PROFILE_METRICS as _QB_PROFILE_METRICS_RAW
 
 # Unit-matchup efficiency suffixes - single source of truth in
 # features.team.unit_efficiency.
@@ -76,6 +85,15 @@ _OPPONENT_ADJUSTED_EPA_SUFFIXES: Final[list[str]] = [
 # per-game stats, so they follow the same manual-list pattern.
 _UNIT_EFFICIENCY_SUFFIXES: Final[list[str]] = list(_UNIT_EFFICIENCY_SUFFIXES_RAW)
 
+# QB and head-coach profile suffixes. Also already-final per-team values
+# (a resolved starter's own career/rolling stats; a coach's own career
+# win %/tenure), not raw per-game stats, so they follow the same
+# manual-list pattern - see DECISIONS.md.
+_QB_PROFILE_SUFFIXES: Final[list[str]] = [metric.upper() for metric in _QB_PROFILE_METRICS_RAW]
+_COACH_PROFILE_SUFFIXES: Final[list[str]] = [
+    metric.upper() for metric in _COACH_PROFILE_METRICS_RAW
+]
+
 # Raw Away/Home feature columns.
 _RAW_FEATURES: Final[list[str]] = (
     ["AWAY_ELO", "HOME_ELO"]
@@ -85,6 +103,10 @@ _RAW_FEATURES: Final[list[str]] = (
     + [f"HOME_{suffix}" for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES]
     + [f"AWAY_{suffix}" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
     + [f"HOME_{suffix}" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _QB_PROFILE_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _QB_PROFILE_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _COACH_PROFILE_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _COACH_PROFILE_SUFFIXES]
 )
 
 # Differential feature names. Every differential is HOME - AWAY.
@@ -93,6 +115,8 @@ _DIFF_FEATURES: Final[list[str]] = (
     + [f"{suffix}_DIFF" for suffix in _EPA_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _QB_PROFILE_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _COACH_PROFILE_SUFFIXES]
 )
 
 # Differential features followed by direct Away/Home values.
@@ -149,6 +173,10 @@ _TEAM_FEATURES: Final[list[str]] = [
     "AWAY_SOV",
     "HOME_SOS",
     "HOME_SOV",
+    "AWAY_QB_CHANGE_FLAG",
+    "HOME_QB_CHANGE_FLAG",
+    "AWAY_NEW_COACHING_STAFF_FLAG",
+    "HOME_NEW_COACHING_STAFF_FLAG",
 ]
 
 _EXPANDED_FEATURES: Final[list[str]] = [

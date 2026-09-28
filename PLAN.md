@@ -110,10 +110,146 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-No unit is currently active. Units 1 and 2 (batches A1, A2) closed below.
-Unit 3 (batch A3, QB-and-coach sidecar) is queued next in `ROADMAP.md`'s
-Phase A unit sequence and must be deliberately scoped into this file
-before work begins.
+No unit is currently active. Units 1–3 (batches A1–A3) closed below.
+
+### Unit 3 — Phase A Batch A3: QB-and-Coach Sidecar [Completed September 28, 2026]
+
+#### Completed
+
+Wired eight Domain 4/10 features — QB EPA/play (career + rolling), QB CPOE
+(rolling), a QB-change flag, QB experience, head-coach win % (career), HC
+tenure, and a new-coaching-staff flag — into the canonical Win/Total
+feature set. Built a new QB/coach identity sidecar per program rule 5,
+since starting-QB and head-coach identity are nflverse schedule fields the
+existing `games`/`schedule_upcoming_rich` clean steps don't carry.
+Starting-QB identity for unplayed games uses a carry-forward-most-recent-
+known-starter policy (`DECISIONS.md` D65), verified at 100% coverage
+against the real current upcoming schedule. Verified against regenerated
+real data and a full replay of the current upcoming schedule. Promotion is
+deferred to Unit 7, per D62.
+
+#### Goal
+
+Close seven `❌` Domain 4/10 Game-Model Build Queue rows (`FEATURES.md`
+A3), establishing the first Phase A batch that reads new nflverse
+**schedule** fields not present in any existing cleaned dataset, and the
+program's first genuinely new missingness policy (carry-forward starter
+identity) rather than reusing D60's existing era-gap pattern outright.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/transform/clean/qb_coach_sidecar.py` -
+  `build_qb_coach_sidecar()`: combines completed rows from
+  `games_raw_nflverse` and unplayed rows from
+  `schedule_upcoming_raw_nflverse` (the same two raw artifacts `games`/
+  `schedule_upcoming_rich` already read) into the new QB/coach identity
+  sidecar. No new external fetch.
+- `src/gridiron_edge/features/team/qb_profile.py` - Resolves each side's
+  starting QB from the sidecar (carry-forward policy, D65), then derives
+  career/rolling EPA and CPOE, experience, and a change flag from
+  `player_game_logs`. Registers `home_away_qb_profile`.
+- `src/gridiron_edge/features/team/coach_profile.py` - Career (not
+  same-season) coach win % from the sidecar joined to completed-game
+  results; tenure and a new-staff flag from consecutive-season
+  (team, coach) continuity. Registers `home_away_coach_profile`.
+- `tests/unit/transform/clean/test_qb_coach_sidecar.py` (7 tests),
+  `tests/unit/features/test_qb_profile.py` (21 tests),
+  `tests/unit/features/test_coach_profile.py` (18 tests).
+
+Changed:
+- `src/gridiron_edge/datasets/registry.py` - New `qb_coach_sidecar`
+  `DatasetKey`/`DatasetSpec`.
+- `src/gridiron_edge/datasets/loaders.py` / `accessor.py` - Added
+  `qb_coach_sidecar()` and `player_game_logs()` (the latter was missing
+  despite `player_game_logs` already being a registered dataset key).
+- `src/gridiron_edge/transform/clean/__init__.py` /
+  `src/gridiron_edge/cli/transform.py` - Exported `build_qb_coach_sidecar`
+  and added `gridiron transform clean-qb-coach-sidecar`.
+- `src/gridiron_edge/cli/main.py` - `run-data-pipeline` gained a
+  `clean-qb-coach-sidecar` stage between `clean-upcoming` and
+  `fetch-weather`, so the standard pipeline keeps the sidecar current
+  rather than requiring a separate manual step.
+- `src/gridiron_edge/cli/post_week.py` - Next-week-state refresh also
+  runs the new stage.
+- `src/gridiron_edge/models/game_prediction/_columns.py` - Added
+  `_QB_PROFILE_SUFFIXES`/`_COACH_PROFILE_SUFFIXES` (Elo-pattern manual
+  lists, per D63) to `_RAW_FEATURES`/`_DIFF_FEATURES`; added the two
+  boolean flags directly to `_TEAM_FEATURES` (no diff column, matching
+  `AWAY_SHORT_WEEK`/`HOME_SHORT_WEEK`).
+- `src/gridiron_edge/models/game_prediction/_features.py` - Fixed
+  `_make_diff_features` to loop over the two new suffix lists — the same
+  gap Unit 2 hit (declared `*_DIFF` columns without computing them),
+  caught this time before the unit closed.
+- `src/gridiron_edge/features/pipeline.py` - Registered
+  `home_away_qb_profile`/`home_away_coach_profile` in
+  `CANONICAL_FEATURES`.
+- `src/gridiron_edge/features/manifest.py` - `CURRENT_SCHEMA_VERSION`
+  9→10, `CURRENT_DATA_VERSION` 6→7.
+- `src/gridiron_edge/evaluation/prediction_input_sources.py` - Added the
+  new sidecar to `PREDICTION_SOURCE_SPECS` (`required=False`, matching
+  `epa_by_game.parquet`'s existing entry) — program rule 5 names this
+  requirement specifically for new schedule-derived sidecars.
+- `tests/unit/features/test_canonical_feature_sequence.py`,
+  `tests/unit/models/test_game_feature_sets.py` - Updated the hardcoded
+  `CANONICAL_FEATURES` sequence and feature counts (110/55/165/16/30/211).
+- `tests/unit/datasets/test_registry.py`,
+  `tests/unit/evaluation/test_prediction_input_sources.py` - Updated
+  hardcoded dataset-key and source-spec counts/contents.
+- `tests/unit/cli/test_main.py`, `tests/unit/cli/test_weekly_predict.py`,
+  `tests/unit/cli/test_post_week.py` - Updated hardcoded pipeline
+  stage sets for the new `clean-qb-coach-sidecar` stage.
+- `FEATURES.md` - Domain 4/10 status corrections; Game-Model Build Queue
+  and Summary Statistics updates; changelog entries.
+- `ROADMAP.md` - Unit 3 marked closed in the Phase A unit sequence.
+- `HANDOFF.md` - Canonical Data Pipeline stage list.
+- `DECISIONS.md` - Added D65 (carry-forward starter policy).
+- `CHANGELOG.md` - This unit's entry.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/cleaned/NFL_qb_coach_sidecar.parquet` (new) via
+  `gridiron transform clean-qb-coach-sidecar`.
+- `data/modeling/modeling_file.parquet` and its manifest via
+  `gridiron features model-inputs --all-years`.
+
+#### Tests
+
+Validation passed:
+- 46 new focused tests across the sidecar transform and the two new
+  features;
+- repository-wide Ruff and Pyrefly;
+- the full non-slow unit suite (4,322 tests).
+
+Real-data validation:
+- `data/raw/NFL_wk_by_wk_nflverse.parquet` inspected directly: starting-QB
+  and head-coach identity are 0% null for every completed game 1999–2025;
+  345 of 348 distinct QB IDs resolve against `player_game_logs`; CPOE is
+  100% null before 2006, the same boundary as team-level CPOE.
+- The modeling file regenerated in full: manifest shows `schema_version:
+  10`, `data_version: 7`, 166 columns, row count unchanged (7,308).
+- Live-availability replay (program rule 3) against the real 2026-2027
+  upcoming schedule (weeks 3-18, 226 scheduled games), run through the
+  full `CANONICAL_FEATURES` pipeline: zero NaNs across all eighteen new
+  columns for every scheduled game — carrying forward each team's most
+  recent known starter gives 100% coverage, and every carried-forward
+  QB has prior `player_game_logs` history.
+
+#### Acceptance
+
+QB EPA/CPOE, QB change/experience, and head-coach win %/tenure/new-staff
+are correctly computed, leakage-safe, and available in the canonical
+Win/Total feature set. Regenerated data and the live-availability replay
+confirm the new columns are guaranteed pre-kickoff values for every
+currently scheduled game, including the QB-identity-dependent columns via
+the carry-forward policy recorded in `DECISIONS.md` D65. The new sidecar
+is registered in the prediction-input evidence source inventory, and the
+standard `run-data-pipeline`/`post-week` commands keep it current.
+Promotion (the gated Brier/MAE comparison against the current champion)
+remains explicitly deferred to Unit 7 per D62 and is not part of this
+unit's acceptance bar.
 
 ### Unit 2 — Phase A Batch A2: Opponent-Adjusted EPA and Unit Interactions [Completed September 28, 2026]
 

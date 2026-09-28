@@ -16,6 +16,7 @@ DatasetKey = Literal[
     "team_metadata",
     "epa_by_game",
     "player_game_logs",
+    "qb_coach_sidecar",
     # ---- Derived modeling artifacts ----
     "modeling_base",
     "modeling_full",
@@ -57,6 +58,7 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "team_metadata": DatasetSpec("data/cleaned/NFL_team_metadata.csv"),
     "epa_by_game": DatasetSpec("data/cleaned/epa_by_game.parquet"),
     "player_game_logs": DatasetSpec("data/cleaned/player_game_logs.parquet"),
+    "qb_coach_sidecar": DatasetSpec("data/cleaned/NFL_qb_coach_sidecar.parquet"),
     # ---- Ratings / state ----
     "elo_state": DatasetSpec("data/cleaned/NFL_Team_Elo.csv"),
     # ---- Derived modeling artifacts ----

@@ -1,5 +1,75 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Unit 3 (batch A3) wired: QB-and-coach sidecar
+
+#### Added
+
+- `data/cleaned/NFL_qb_coach_sidecar.parquet` (`transform/clean/qb_coach_sidecar.py`,
+  `gridiron transform clean-qb-coach-sidecar`): starting-QB identity
+  (`AWAY_/HOME_QB_ID`/`_NAME`) and head-coach identity (`AWAY_/HOME_COACH`)
+  for every game, historical and upcoming — nflverse schedule fields the
+  existing `games`/`schedule_upcoming_rich` clean steps intentionally drop
+  (program rule 5). Reads the two already-cached raw nflverse schedule
+  pulls directly; no new external fetch.
+- `AWAY_/HOME_QB_EPA_PLAY_CAREER`, `AWAY_/HOME_QB_EPA_PLAY_ROLLING`,
+  `AWAY_/HOME_QB_CPOE_ROLLING` (+ `_AVAILABLE`), `AWAY_/HOME_QB_EXPERIENCE`,
+  `AWAY_/HOME_QB_CHANGE_FLAG` (`features/team/qb_profile.py`): resolves
+  each side's starting QB from the sidecar — carrying forward the most
+  recent known starter for unplayed games (`DECISIONS.md` D65) — then
+  derives that QB's own career/rolling stats from `player_game_logs`
+  (per-QB `passing_epa`/`passing_cpoe`/`attempts`), not raw PBP, which
+  does not carry passer identity. QB CPOE reuses D60's era-gap
+  indicator-plus-fill policy.
+- `AWAY_/HOME_HC_WIN_PCT_CAREER`, `AWAY_/HOME_HC_TENURE`,
+  `AWAY_/HOME_NEW_COACHING_STAFF_FLAG` (`features/team/coach_profile.py`):
+  career (not same-season) coach win % recomputed from the sidecar joined
+  to completed-game results; tenure and the new-staff flag from
+  consecutive-season (team, coach) continuity, needing no carry-forward
+  fallback since head-coach identity is known before every season starts.
+- `DatasetAccessor.player_game_logs()`/`.qb_coach_sidecar()` and their
+  loaders — `player_game_logs` had no accessor despite being a registered
+  dataset key.
+- New test coverage: `test_qb_coach_sidecar.py` (7 tests),
+  `test_qb_profile.py` (21 tests), `test_coach_profile.py` (18 tests).
+
+#### Changed
+
+- `_RAW_FEATURES`/`_DIFF_FEATURES`/`_TEAM_FEATURES` grew to reach
+  110/55/30 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 165/211). The QB
+  and coach career/rolling metrics follow the Elo/opponent-adjusted-EPA
+  manual suffix-list pattern (already-final per-team values); the two
+  boolean flags (QB change, new-coaching-staff) join `_TEAM_FEATURES`
+  directly with no diff counterpart, matching `AWAY_/HOME_SHORT_WEEK`.
+- `_make_diff_features` now loops over the new QB- and coach-profile
+  suffixes too — the same gap Unit 2 hit (declaring `*_DIFF` columns
+  without computing them), caught this time before the unit closed
+  rather than by a failing test.
+- `evaluation/prediction_input_sources.py`'s `PREDICTION_SOURCE_SPECS`
+  gained the new sidecar (`required=False`, matching `epa_by_game.parquet`'s
+  existing entry) — program rule 5 names this requirement specifically for
+  new schedule-derived sidecars.
+- `cli/main.py`'s `run-data-pipeline` gained a `clean-qb-coach-sidecar`
+  stage (between `clean-upcoming` and `fetch-weather`); `post_week.py`'s
+  next-week-state refresh also runs it. Without this, the standard
+  pipeline command would silently leave the sidecar stale relative to
+  freshly fetched raw schedule data.
+- `FEATURES.md`: QB EPA/play career and rolling, CPOE rolling, QB change
+  flag, QB experience (Domain 4), and Head coach win % career, HC tenure,
+  New coaching staff flag (Domain 10) all marked Done.
+- `data/modeling/modeling_file.parquet` regenerated under the new schema
+  (`gridiron features model-inputs --all-years`); row count unchanged
+  (7,308), 166 columns.
+
+#### Verified
+
+- Live-availability replay (program rule 3): the real 2026-2027 upcoming
+  schedule (weeks 3-18, 226 scheduled games) produces zero NaNs across all
+  eighteen new columns for every scheduled game — carrying forward each
+  team's most recent known starter gives 100% starting-QB coverage, and
+  every carried-forward QB has prior `player_game_logs` history.
+- Full non-slow unit suite (4,322 tests), Ruff, and Pyrefly pass against
+  the regenerated data.
+
 ### 2026-09-28 - Unit 2 (batch A2) wired: opponent-adjusted EPA, unit efficiency differentials, projected total plays
 
 #### Added

@@ -32,12 +32,14 @@ from gridiron_edge.core.constants import HOLDOUT_SEASONS
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.models.artifact import ArtifactStore
 from gridiron_edge.models.game_prediction._columns import (
+    _COACH_PROFILE_SUFFIXES,
     _COMBINED_FEATURES,
     _DIFF_FEATURES,
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
     _OPPONENT_ADJUSTED_EPA_SUFFIXES,
+    _QB_PROFILE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
     _TEAM_FEATURES,
@@ -82,6 +84,8 @@ def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
         *_EPA_SUFFIXES,
         *_OPPONENT_ADJUSTED_EPA_SUFFIXES,
         *_UNIT_EFFICIENCY_SUFFIXES,
+        *_QB_PROFILE_SUFFIXES,
+        *_COACH_PROFILE_SUFFIXES,
     ):
         out[f"{suffix}_DIFF"] = df[f"HOME_{suffix}"] - df[f"AWAY_{suffix}"]
     return out.loc[:, _DIFF_FEATURES]

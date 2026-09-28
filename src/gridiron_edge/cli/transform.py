@@ -45,6 +45,23 @@ def clean_upcoming() -> None:
     console.summary()
 
 
+@transform_app.command("clean-qb-coach-sidecar")
+def clean_qb_coach_sidecar() -> None:
+    """Build the QB-and-coach identity sidecar from cached raw nflverse schedules."""
+    from gridiron_edge.core.console import console, step
+
+    # pyrefly: ignore [missing-module-attribute]
+    from gridiron_edge.transform.clean import build_qb_coach_sidecar
+
+    console.header("transform clean-qb-coach-sidecar")
+
+    with step("Build QB/coach sidecar") as s:
+        path = build_qb_coach_sidecar()
+        s.set_detail(str(path))
+
+    console.summary()
+
+
 @transform_app.command("aggregate-epa")
 def transform_aggregate_epa(
     *,
