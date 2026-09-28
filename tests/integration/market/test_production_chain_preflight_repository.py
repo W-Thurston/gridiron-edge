@@ -42,11 +42,22 @@ def test_historical_week_one_evidence_is_classified_truthfully() -> None:
         history = family.component("repeated_quote_history")
         assert history.state is ProofComponentState.AVAILABLE
         assert history.distinct_timestamp_count == 34
-        assert family.component("selected_collection_plan").state is ProofComponentState.AVAILABLE
+        # The global current collection-plan selection has since rolled over
+        # past Week 1 (real operations progressed to Week 3 on 2026-09-27),
+        # so these two components -- which are defined relative to whatever
+        # is *currently* selected, not Week 1 specifically -- now correctly
+        # read as not matching this scope. This is expected drift as the
+        # season progresses, not a regression: the immutable Week 1 evidence
+        # asserted elsewhere in this test (candidate issuance, policy,
+        # recommendation result) is unaffected by which week is current.
+        selected_plan = family.component("selected_collection_plan")
+        assert selected_plan.state is ProofComponentState.UNAVAILABLE
+        assert selected_plan.reason == "No selected collection plan exists for this scope."
         collection_execution = family.component("collection_execution")
-        assert collection_execution.state is ProofComponentState.AVAILABLE
-        assert collection_execution.observation_count == 34
-        assert collection_execution.distinct_timestamp_count == 34
+        assert collection_execution.state is ProofComponentState.CONFLICTING
+        assert collection_execution.reason == (
+            "The selected collection-plan scope does not match the weekly product."
+        )
         candidate = family.component("candidate_issuance")
         assert candidate.state is ProofComponentState.AVAILABLE
         assert candidate.reason == (

@@ -145,9 +145,7 @@ class TestEvaluateSelectModelSmoke:
         assert result.exit_code == 1
         assert isinstance(result.exception, SystemExit)
         assert result.exception.code == 1
-        assert (
-            "No models with archived predictions found. Run evaluate backfill first."
-        ) in combined
+        assert ("No models with a backfilled run found. Run evaluate backfill first.") in combined
         assert "Recommendation:" not in combined
 
     def test_ignores_registered_prop_families(
@@ -176,9 +174,7 @@ class TestEvaluateSelectModelSmoke:
         assert result.exit_code == 1
         assert isinstance(result.exception, SystemExit)
         assert result.exception.code == 1
-        assert (
-            "No models with archived predictions found. Run evaluate backfill first."
-        ) in combined
+        assert ("No models with a backfilled run found. Run evaluate backfill first.") in combined
         assert "qb_pass_yards" not in combined
         assert "Recommendation:" not in combined
 

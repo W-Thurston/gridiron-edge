@@ -64,12 +64,16 @@ ENDPOINTS: list[tuple[str, type]] = [
     ("/live", BaseListResponse[LiveGameSummary]),
     ("/news", BaseListResponse[NewsItem]),
     ("/news/alerts", BaseListResponse[NewsItem]),
-    # Detail endpoints (single object)
-    ("/live/sf-bal", LiveGame),
-    ("/games/sf-bal/injuries", GameInjuries),
-    ("/games/sf-bal/explain", GameExplain),
-    ("/games/sf-bal/swing-factors", GameSwingFactors),
-    ("/games/sf-bal/comparables", GameComparables),
+    # Detail endpoints (single object). 2026_01_SF_LA is a real, immutable
+    # Week 1 game_id (YYYY_WW_AWAY_HOME) -- "sf-bal" was never a valid ID in
+    # that scheme, so /explain and /comparables (the only two endpoints here
+    # that actually resolve game_id, rather than accepting any string as a
+    # not-yet-implemented stub) always 404'd on it.
+    ("/live/2026_01_SF_LA", LiveGame),
+    ("/games/2026_01_SF_LA/injuries", GameInjuries),
+    ("/games/2026_01_SF_LA/explain", GameExplain),
+    ("/games/2026_01_SF_LA/swing-factors", GameSwingFactors),
+    ("/games/2026_01_SF_LA/comparables", GameComparables),
     ("/props/lamar-rush/shop", PropShop),
     ("/props/lamar-rush/reasoning", PropReasoning),
     ("/weeks/current", CurrentWeek),

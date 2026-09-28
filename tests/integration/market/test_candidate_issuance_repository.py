@@ -31,5 +31,10 @@ def test_current_week_one_history_can_issue_candidates() -> None:
     )
     assert issuance.product_id == product["product_id"].iloc[0]
     assert issuance.product_run_id == run_ids[0]
-    assert len(issuance.rows) == len(quotes) == 1680
+    # The canonical Week 1 quote ledger has grown as the real collector
+    # worker executed its full 34-poll plan (pulled onto this workspace via
+    # `gridiron ops pull-collector-evidence`); it no longer stops at the
+    # original 1,680-row rehearsal snapshot. Row count must simply match the
+    # ledger it was issued from, not a frozen historical value.
+    assert len(issuance.rows) == len(quotes) > 1680
     assert {row.market for row in issuance.rows} == {"moneyline", "spread", "total"}
