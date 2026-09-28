@@ -291,6 +291,81 @@ def test_verifier_reports_degraded_for_unresolved_claim(
     assert unresolved.status is WorkerCheckStatus.WARNING
 
 
+def _runner_with_dmesg(dmesg_output: str):
+    def runner(command) -> subprocess.CompletedProcess[str]:
+        resolved = tuple(command)
+        if resolved == ("dmesg",):
+            return _complete(resolved, dmesg_output)
+        return _healthy_runner(resolved)
+
+    return runner
+
+
+def test_verifier_ignores_benign_zram_and_loop_capacity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real incident, 2026-09-27: zram and loop devices report a capacity
+    change once at boot -- this has no bearing on physical storage health
+    and must never mark the worker degraded, no matter how long ago it
+    happened or how long dmesg's ring buffer retains it."""
+    repo = _repo(tmp_path)
+    config = _config(tmp_path, repo)
+    for path in (config.wrapper_path, config.service_path, config.timer_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("safe\n", encoding="utf-8")
+    _permit_test_environment(monkeypatch)
+    dmesg_output = (
+        "[Wed Aug 19 02:39:44 2026] loop0: detected capacity change from 0 to 4194304\n"
+        "[Wed Aug 19 02:39:44 2026] zram0: detected capacity change from 0 to 4194304\n"
+    )
+
+    report = verify_quote_collection_worker(config, runner=_runner_with_dmesg(dmesg_output))
+    storage = next(check for check in report.checks if check.name == "storage_health")
+
+    assert storage.status is WorkerCheckStatus.PASSED
+    assert report.status is WorkerVerificationStatus.READY
+
+
+def test_verifier_flags_real_capacity_change_on_physical_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    config = _config(tmp_path, repo)
+    for path in (config.wrapper_path, config.service_path, config.timer_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("safe\n", encoding="utf-8")
+    _permit_test_environment(monkeypatch)
+    dmesg_output = "[   12.345678] sda: detected capacity change from 3907029168 to 0\n"
+
+    report = verify_quote_collection_worker(config, runner=_runner_with_dmesg(dmesg_output))
+    storage = next(check for check in report.checks if check.name == "storage_health")
+
+    assert storage.status is WorkerCheckStatus.WARNING
+    assert report.status is WorkerVerificationStatus.DEGRADED
+
+
+def test_verifier_still_flags_usb_disconnect_on_a_zram_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The benign-device exception is scoped to `capacity change` only --
+    it must not blanket-exempt zram/loop lines from every marker."""
+    repo = _repo(tmp_path)
+    config = _config(tmp_path, repo)
+    for path in (config.wrapper_path, config.service_path, config.timer_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("safe\n", encoding="utf-8")
+    _permit_test_environment(monkeypatch)
+    dmesg_output = "[   12.345678] usb 1-1: USB disconnect, device number 3\n"
+
+    report = verify_quote_collection_worker(config, runner=_runner_with_dmesg(dmesg_output))
+    storage = next(check for check in report.checks if check.name == "storage_health")
+
+    assert storage.status is WorkerCheckStatus.WARNING
+
+
 def _mode(path: Path) -> int:
     return path.stat().st_mode & 0o777
 

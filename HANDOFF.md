@@ -1108,6 +1108,17 @@ The validated healthy state had throttled=0x0, root storage on /dev/sda2, and no
 
 The SSD must remain on the proven stable USB 2 path.
 
+`verify_quote_collection_worker.py`'s `storage_health` check runs this same
+`dmesg` scan automatically. Real incident, 2026-09-27: it reported
+`Worker status: degraded` on `capacity change` for over a month, which
+traced back to `loop0`/`zram0` reporting their size once at boot (Aug 19,
+the day the worker was installed) -- a virtual-device initialization
+message with no bearing on the physical SSD, not a storage fault. The check
+now excludes `capacity change` lines that reference `loop` or `zram`
+devices specifically; a real capacity change on the physical disk (`sda` or
+similar) still flags a warning, and the other three markers (USB
+disconnect, I/O error, cache-synchronization) are unaffected.
+
 ## Collector Evidence Sync (Dev Machine)
 
 The worker's `data/` is gitignored and machine-local, exactly like the dev

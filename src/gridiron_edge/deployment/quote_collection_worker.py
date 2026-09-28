@@ -107,6 +107,20 @@ def _run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+# Virtual block devices that legitimately report a capacity change once, at
+# creation, with no bearing on physical storage health: zram (compressed-RAM
+# swap) reports its configured size at boot, and loop devices report the
+# backing file's size once mounted. Real physical-storage capacity changes
+# (a failing or resizing disk) never mention these device names.
+_BENIGN_CAPACITY_CHANGE_DEVICES: Final[tuple[str, ...]] = ("loop", "zram")
+
+
+def _is_benign_capacity_change(marker: str, line: str) -> bool:
+    return marker == "capacity change" and any(
+        device in line for device in _BENIGN_CAPACITY_CHANGE_DEVICES
+    )
+
+
 def render_wrapper(config: QuoteCollectionWorkerConfig) -> str:
     """Render the selected-plan invocation wrapper with shell-safe paths."""
     repository = shlex.quote(str(config.repository))
@@ -365,14 +379,21 @@ def _system_checks(
         )
     )
     storage = runner(("dmesg",))
-    storage_text = f"{storage.stdout}\n{storage.stderr}".lower()
+    storage_lines = f"{storage.stdout}\n{storage.stderr}".lower().splitlines()
     markers = (
         "usb disconnect",
         "i/o error",
         "capacity change",
         "synchronize cache",
     )
-    found = tuple(marker for marker in markers if marker in storage_text)
+    found = tuple(
+        marker
+        for marker in markers
+        if any(
+            marker in line and not _is_benign_capacity_change(marker, line)
+            for line in storage_lines
+        )
+    )
     checks.append(
         WorkerVerificationCheck(
             name="storage_health",
