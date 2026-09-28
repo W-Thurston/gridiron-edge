@@ -245,11 +245,10 @@ def _validate_family(family: MarketFamilyProductionPreflight) -> None:
         raise ValueError(f"{family.market.value} CLV kind does not match its market family.")
 
     closeout = family.component("market_closeout")
-    if closeout.state is ProofComponentState.AVAILABLE:
-        if not closeout.provider or not closeout.sportsbook or closeout.kickoff is None:
-            raise ValueError("Available closeout requires provider, sportsbook, and kickoff.")
-        if closeout.timestamps and closeout.timestamps[-1] >= closeout.kickoff:
-            raise ValueError("Closeout observation must precede kickoff.")
+    if closeout.state is ProofComponentState.AVAILABLE and (
+        not closeout.provider or not closeout.sportsbook or closeout.kickoff is None
+    ):
+        raise ValueError("Available closeout requires provider, sportsbook, and kickoff.")
     if clv.state is ProofComponentState.AVAILABLE and (
         clv.provider != closeout.provider or clv.sportsbook != closeout.sportsbook
     ):
@@ -633,6 +632,16 @@ def _postgame_family_from_evidence(
         for result in closeouts
         if result.reference.reference_id and result.status is MarketCloseoutStatus.AVAILABLE
     )
+    for result in candidates:
+        if (
+            result.closeout_fetched_at is not None
+            and result.closeout_kickoff is not None
+            and result.closeout_fetched_at >= result.closeout_kickoff
+        ):
+            raise ValueError(
+                "Closeout observation for "
+                f"{result.reference.reference_id} does not precede its own kickoff."
+            )
     closeout_state = (
         ProofComponentState.AVAILABLE if candidates else ProofComponentState.UNAVAILABLE
     )
@@ -646,9 +655,11 @@ def _postgame_family_from_evidence(
         tuple(sorted(result.reference.reference_id for result in candidates)),
         tuple(
             sorted(
-                result.closeout_fetched_at
-                for result in candidates
-                if result.closeout_fetched_at is not None
+                {
+                    result.closeout_fetched_at
+                    for result in candidates
+                    if result.closeout_fetched_at is not None
+                }
             )
         ),
         observation_count=coverage.closeout_available_count,
@@ -683,9 +694,11 @@ def _postgame_family_from_evidence(
         tuple(sorted(result.reference.reference_id for result in clv_results)),
         tuple(
             sorted(
-                result.closeout_fetched_at
-                for result in clv_results
-                if result.closeout_fetched_at is not None
+                {
+                    result.closeout_fetched_at
+                    for result in clv_results
+                    if result.closeout_fetched_at is not None
+                }
             )
         ),
         observation_count=coverage.clv_available_count,

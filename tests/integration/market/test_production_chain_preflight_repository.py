@@ -35,39 +35,49 @@ def test_historical_week_one_evidence_is_classified_truthfully() -> None:
         assert family.component("selected_product").state is ProofComponentState.AVAILABLE
         assert family.component("forecast_provenance").state is ProofComponentState.AVAILABLE
         quote_snapshot = family.component("quote_snapshot")
-        assert quote_snapshot.state is ProofComponentState.UNAVAILABLE
-        assert quote_snapshot.observation_count == 0
-        assert quote_snapshot.distinct_timestamp_count == 0
-        assert quote_snapshot.timestamps == ()
+        assert quote_snapshot.state is ProofComponentState.AVAILABLE
+        assert quote_snapshot.observation_count == 18
+        assert quote_snapshot.distinct_timestamp_count == 1
+        assert len(quote_snapshot.timestamps) == 1
         history = family.component("repeated_quote_history")
         assert history.state is ProofComponentState.AVAILABLE
-        assert history.distinct_timestamp_count == 2
+        assert history.distinct_timestamp_count == 34
         assert family.component("selected_collection_plan").state is ProofComponentState.AVAILABLE
-        assert (
-            family.component("collection_execution").state is ProofComponentState.NOT_YET_ELIGIBLE
-        )
+        collection_execution = family.component("collection_execution")
+        assert collection_execution.state is ProofComponentState.AVAILABLE
+        assert collection_execution.observation_count == 34
+        assert collection_execution.distinct_timestamp_count == 34
         candidate = family.component("candidate_issuance")
-        assert candidate.state is ProofComponentState.CONFLICTING
+        assert candidate.state is ProofComponentState.AVAILABLE
         assert candidate.reason == (
-            "Multiple immutable candidate issuances match the selected product scope."
+            "One immutable candidate issuance exactly matches the selected product scope."
         )
-        assert len(candidate.evidence_ids) == 3
-        assert candidate.observation_count == 5040
-        assert len(candidate.timestamps) == 3
+        assert candidate.evidence_ids == (
+            "e945987f2903435ac8c798ea5085bd5a39d3ffe2a7741cf5123cabf221e427c0",
+        )
+        assert candidate.observation_count == 1680
+        assert len(candidate.timestamps) == 1
 
         policy = family.component("recommendation_policy")
-        assert policy.state is ProofComponentState.UNAVAILABLE
+        assert policy.state is ProofComponentState.AVAILABLE
         assert policy.reason == (
-            "No exact candidate issuance is available to anchor policy evidence."
+            "One immutable recommendation policy is referenced by the exact issuance evaluation."
         )
-        assert policy.evidence_ids == ()
+        assert policy.evidence_ids == (
+            "33255cc82cced0c438fd067ff30261cc4344cfbec2c72f7914124b8a9d3ccb6f",
+        )
 
         recommendation = family.component("recommendation_result")
-        assert recommendation.state is ProofComponentState.UNAVAILABLE
+        assert recommendation.state is ProofComponentState.AVAILABLE
         assert recommendation.reason == (
-            "No exact candidate issuance is available to anchor recommendation results."
+            "One immutable recommendation evaluation exactly "
+            "matches the candidate issuance and week."
         )
-        assert recommendation.evidence_ids == ()
+        assert recommendation.evidence_ids == (
+            "100a70a86b73d19c55d5e810355529c553cf690a324ab108bf62ee06ab13b709",
+            "33255cc82cced0c438fd067ff30261cc4344cfbec2c72f7914124b8a9d3ccb6f",
+        )
+        assert recommendation.observation_count == 698
         assert family.component("backend_serialization").state is ProofComponentState.AVAILABLE
         assert family.component("frontend_presentation").state is ProofComponentState.AVAILABLE
         assert family.component("completed_outcome").state is ProofComponentState.NOT_YET_ELIGIBLE

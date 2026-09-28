@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull Gridiron Edge collector evidence from the deployed quote-collection worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/thursty/workspace/github.com/w-thurston/gridiron-edge
+Environment=GRIDIRON_COLLECTOR_HOST=10.0.0.49
+ExecStart=/home/thursty/.local/bin/uv run gridiron ops pull-collector-evidence

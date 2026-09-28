@@ -1078,6 +1078,51 @@ The validated healthy state had throttled=0x0, root storage on /dev/sda2, and no
 
 The SSD must remain on the proven stable USB 2 path.
 
+## Collector Evidence Sync (Dev Machine)
+
+The worker's `data/` is gitignored and machine-local, exactly like the dev
+checkout's own `data/`. Quote history, collection plans, and collection-run
+claim/result receipts persist only on the Pi until explicitly pulled onto
+whichever machine is running `production-chain assess` -- without that pull,
+`collection_execution` reads `INCOMPLETE` even after the worker has resolved
+every due poll, because the dev checkout simply cannot see the receipts.
+
+Pull manually:
+
+```bash
+uv run gridiron ops pull-collector-evidence
+```
+
+Requires `GRIDIRON_COLLECTOR_HOST` (the Pi's LAN IP; a DHCP reservation is
+recommended so it does not change) set in the environment, or passed as
+`--host`. `--user`, `--remote-repository`, and `--identity` override the
+defaults (`thursty`, `/home/thursty/apps/gridiron-edge`, and ssh's own
+default identity resolution, respectively). Add `--dry-run` to preview.
+
+The pull is one-way and additive only: it mirrors the worker's `data/odds`
+tree (current and historical quotes, collection plans, collection-run
+receipts) into the local `data/odds`, via `rsync` over `ssh`. It never
+touches `data/output` -- candidate issuance, policy, and recommendation
+artifacts stay exactly as this machine generated them -- and it never
+deletes a local file that is missing from the worker.
+
+Automate with a `systemd --user` timer (requires `systemd=true` under
+`[boot]` in `/etc/wsl.conf`, confirmed enabled for this dev environment):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/systemd/gridiron-edge-collector-sync.service ~/.config/systemd/user/
+cp deploy/systemd/gridiron-edge-collector-sync.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now gridiron-edge-collector-sync.timer
+```
+
+The timer fires shortly after the WSL session starts and every 15 minutes
+after, with `Persistent=true` so a missed interval (the machine was off)
+catches up on the next start. The service and timer templates hardcode this
+dev machine's repository path and the Pi's current LAN IP; update both files
+before copying them if either changes.
+
 ## Postgame Workflow
 
 Run only after completed outcomes are available:

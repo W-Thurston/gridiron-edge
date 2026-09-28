@@ -992,3 +992,139 @@ def test_issue_candidates_requires_one_product_identity(
 
     assert result.exit_code == 2
     assert "one nonempty product_id" in result.stderr
+
+
+def test_issue_candidates_write_rejects_second_issuance_for_same_product(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A product is issued against exactly once. Re-running issue-candidates
+    for the same exact product scope must refuse rather than persist a second
+    immutable issuance the production-chain preflight can no longer
+    disambiguate."""
+    from dataclasses import replace
+
+    from tests.unit.market.test_candidate_issuance_store import _issuance
+
+    from gridiron_edge.ingest.odds.store import empty_quote_frame
+    from gridiron_edge.market.candidate_issuance import candidate_issuance_id
+    from gridiron_edge.market.candidate_issuance_store import (
+        candidate_issuance_root,
+        write_candidate_issuance,
+    )
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _bankroll_wiring_settings(tmp_path),
+    )
+
+    existing = _issuance()
+    write_candidate_issuance(existing, repo=tmp_path)
+
+    second_evaluated = existing.evaluated_at + timedelta(hours=1)
+    second_id = candidate_issuance_id(
+        product_id=existing.product_id,
+        product_run_id=existing.product_run_id,
+        season=existing.season,
+        week=existing.week,
+        evaluated_at=second_evaluated,
+    )
+    second_issuance = replace(existing, issuance_id=second_id, evaluated_at=second_evaluated)
+
+    monkeypatch.setattr(
+        "gridiron_edge.datasets.loaders.load_current_weekly_product",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {
+                "product_id": [existing.product_id],
+                "product_run_id": [existing.product_run_id],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+        lambda **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.ingest.odds.store.load_odds_ledger",
+        lambda **_kwargs: empty_quote_frame(),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.market.candidate_issuance.issue_pregame_candidates",
+        lambda **_kwargs: second_issuance,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "production-chain",
+            "issue-candidates",
+            "--season",
+            existing.season,
+            "--week",
+            str(existing.week),
+            "--evaluated-at",
+            second_evaluated.isoformat(),
+            "--write",
+        ],
+    )
+
+    assert result.exit_code != 0
+    normalized_stderr = " ".join(result.stderr.replace("│", " ").split())
+    assert "already exists for this exact product scope" in normalized_stderr
+    assert existing.issuance_id in normalized_stderr
+    remaining = sorted((candidate_issuance_root(tmp_path) / "issuances").glob("*.json"))
+    assert [path.stem for path in remaining] == [existing.issuance_id]
+
+
+def test_evaluate_recommendations_write_rejects_second_evaluation_for_same_issuance(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """An issuance is evaluated against a policy exactly once. Re-running
+    evaluate-recommendations for the same exact issuance must refuse rather
+    than persist a second immutable evaluation the production-chain preflight
+    can no longer disambiguate."""
+    from gridiron_edge.market.recommended_bet_result import evaluate_recommendation_issuance
+    from gridiron_edge.market.recommended_bet_result_store import (
+        recommended_bet_result_root,
+        write_recommended_bet_evaluation,
+    )
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _bankroll_wiring_settings(tmp_path),
+    )
+    _patch_bankroll_wiring_issuance_and_policy(monkeypatch)
+
+    issuance = _bankroll_wiring_issuance()
+    policy = _bankroll_wiring_policy()
+    existing_evaluation = evaluate_recommendation_issuance(
+        policy=policy,
+        issuance=issuance,
+        decision_at=_BANKROLL_WIRING_DECISION,
+        bankroll=None,
+        portfolio=None,
+    )
+    write_recommended_bet_evaluation(existing_evaluation, repo=tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "production-chain",
+            "evaluate-recommendations",
+            "--issuance-id",
+            issuance.issuance_id,
+            "--policy-id",
+            policy.policy_id,
+            "--decision-at",
+            (_BANKROLL_WIRING_DECISION + timedelta(minutes=1)).isoformat(),
+            "--write",
+        ],
+    )
+
+    assert result.exit_code != 0
+    normalized_stderr = " ".join(result.stderr.replace("│", " ").split())
+    assert "already exists for this exact candidate issuance" in normalized_stderr
+    assert existing_evaluation.evaluation_id in normalized_stderr
+    remaining = sorted(
+        (recommended_bet_result_root(tmp_path) / "schema=3" / "evaluations").glob("*.json")
+    )
+    assert [path.stem for path in remaining] == [existing_evaluation.evaluation_id]

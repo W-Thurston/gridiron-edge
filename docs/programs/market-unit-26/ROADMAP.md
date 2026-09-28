@@ -127,31 +127,44 @@ The persisted rehearsal identities are maintained in the active `PLAN.md` unit.
 
 #### Remaining Unit 26 Acceptance
 
-The active unit remains open for evidence that cannot exist yet:
+As of the 2026-09-27 checkpoint
+(`cf860776f0d4bf16804551e4b9ccaa12c91f394d2a9aa1a0dd5877d1bec1eb54`; full
+detail in the active `PLAN.md` unit), items 1-6 below are done against real
+2026 Week 1 evidence. The active unit remains open only on item 7 and a
+deliberate decision to close:
 
-1. Execute due polls from the selected 2026 Week 1 collection plan through the
-   repository-owned worker and preserve immutable claim and terminal-result
-   receipts. The first planned poll is `2026-09-08T12:00:00Z`.
-2. Refresh cleaned completed-game outcomes after Week 1 games finish and
-   reconcile them to the exact selected weekly product and forecast events.
-3. Close exact issued candidates against the latest eligible non-live quote
-   observed strictly before kickoff from the same provider, provider event,
-   sportsbook, game, market, and side.
-4. Validate Moneyline price CLV, Spread point CLV, and Total point CLV
-   independently. Evidence from one market family cannot satisfy another.
+1. **Done.** Executed due polls from the selected 2026 Week 1 collection plan
+   through the repository-owned worker and preserved immutable claim and
+   terminal-result receipts for all 34 scheduled polls, confirmed directly on
+   the Raspberry Pi. Pulling that evidence onto this dev workspace (new
+   `gridiron ops pull-collector-evidence` command) made it visible here too;
+   `collection_execution` is `AVAILABLE`.
+2. **Done.** Refreshed cleaned completed-game outcomes after Week 1 games
+   finished and reconciled them to the exact selected weekly product and
+   forecast events; `completed_outcome` is `AVAILABLE`.
+3. **Done.** Closed exact issued candidates against the latest eligible
+   non-live quote observed strictly before kickoff from the same provider,
+   provider event, sportsbook, game, market, and side; `market_closeout` is
+   `AVAILABLE`.
+4. **Done.** Validated Moneyline price CLV, Spread point CLV, and Total point
+   CLV independently; `clv` is `AVAILABLE` for all three market families.
 5. Evaluate realized performance only from uniquely attributed settled-wager
    evidence. No recorded wager is required; absent wager evidence must remain
-   explicitly unavailable rather than zero.
-6. Persist chronological production-chain assessments at explicit UTC
-   timestamps and verify exact replay without reassessing mutable repository
-   state.
-7. Complete a final real-data frontend presentation review after outcome,
+   explicitly unavailable rather than zero. Currently, validly,
+   `UNAVAILABLE` -- no wager has been recorded.
+6. **Done.** Persisted a chronological production-chain assessment at an
+   explicit UTC timestamp (`2026-09-27T23:51:51.131315+00:00`); exact replay
+   verified without reassessing mutable repository state.
+7. Complete a final real-data frontend presentation review now that outcome,
    closeout, and CLV evidence exists. Presentation cleanup must not change
    persisted recommendation semantics.
 
 Market Unit 26 closes only after a real completed week satisfies independent
 Moneyline, Spread, and Total proof or records an explicit evidence-backed
-unavailable state for a component that cannot validly become available.
+unavailable state for a component that cannot validly become available. Every
+component now satisfies that bar for the real 2026 Week 1 rehearsal --
+item 7's frontend review and a deliberate decision to run closeout are what
+remain.
 
 #### Genuine Follow-On Market Capabilities
 

@@ -220,7 +220,7 @@ def test_market_family_requires_its_clv_kind(
         validate_production_chain_preflight(value)
 
 
-def test_closeout_must_precede_kickoff() -> None:
+def test_closeout_requires_provider_sportsbook_and_kickoff_when_available() -> None:
     family = _replace_component(
         _family(ProductionMarketFamily.MONEYLINE),
         ProductionChainComponent(
@@ -228,13 +228,133 @@ def test_closeout_must_precede_kickoff() -> None:
             ProofComponentState.AVAILABLE,
             "Present.",
             timestamps=(NOW,),
-            provider="provider",
+            provider=None,
             sportsbook="book",
             kickoff=NOW,
         ),
     )
-    with pytest.raises(ValueError, match="precede kickoff"):
+    with pytest.raises(ValueError, match="provider, sportsbook, and kickoff"):
         validate_production_chain_preflight(replace(_preflight(), moneyline=family))
+
+
+def _closeout_result(
+    *,
+    reference_id: str,
+    fetched_at: datetime,
+    kickoff: datetime,
+):
+    from gridiron_edge.market.market_closeout import (
+        MarketCloseoutReference,
+        MarketCloseoutReferenceKind,
+        MarketCloseoutResult,
+        MarketCloseoutStatus,
+    )
+
+    reference = MarketCloseoutReference(
+        reference_id=reference_id,
+        reference_kind=MarketCloseoutReferenceKind.CANDIDATE_ISSUANCE,
+        provider="the_odds_api",
+        provider_event_id=f"event-{reference_id}",
+        sportsbook="draftkings",
+        game_id=f"game-{reference_id}",
+        market="moneyline",
+        side="home",
+        reference_fetched_at=fetched_at,
+        reference_sportsbook_updated_at=fetched_at,
+        reference_kickoff=kickoff,
+        reference_is_live=False,
+        reference_american_price=-110,
+        reference_line=None,
+    )
+    return MarketCloseoutResult(
+        reference=reference,
+        status=MarketCloseoutStatus.AVAILABLE,
+        closeout_fetched_at=fetched_at,
+        closeout_sportsbook_updated_at=fetched_at,
+        closeout_kickoff=kickoff,
+        closeout_is_live=False,
+        closeout_american_price=-110,
+        closeout_line=None,
+    )
+
+
+def _empty_moneyline_evaluation():
+    import pandas as pd
+
+    from gridiron_edge.market.candidate_issuance import (
+        CANDIDATE_ISSUANCE_SCHEMA_VERSION,
+        CandidateIssuance,
+        candidate_issuance_id,
+    )
+    from gridiron_edge.market.market_family_evaluation import evaluate_market_families
+
+    issuance_id = candidate_issuance_id(
+        product_id="p", product_run_id="r", season="2026-2027", week=1, evaluated_at=NOW
+    )
+    issuance = CandidateIssuance(
+        CANDIDATE_ISSUANCE_SCHEMA_VERSION, issuance_id, "p", "r", NOW, "2026-2027", 1, NOW, ()
+    )
+    games = pd.DataFrame(columns=["GAME_ID", "AWAY_SCORE", "HOME_SCORE"])
+    return evaluate_market_families(
+        issuance=issuance, closeouts=(), games=games, history_boundaries=()
+    ).moneyline
+
+
+def test_postgame_closeout_allows_staggered_kickoffs_across_games() -> None:
+    """A late game's legitimate pre-kickoff closeout fetch naturally lands
+    after an early game's kickoff. Aggregating every game's closeout
+    timestamps together must not be compared against any single game's
+    kickoff -- each candidate's own fetch time already precedes its own
+    kickoff, which is all that is required."""
+    from gridiron_edge.market.production_chain_preflight import (
+        _postgame_family_from_evidence,
+    )
+
+    early_kickoff = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
+    late_kickoff = datetime(2026, 9, 14, 0, 20, tzinfo=UTC)
+    closeouts = (
+        _closeout_result(
+            reference_id="a" * 64,
+            fetched_at=early_kickoff - timedelta(minutes=5),
+            kickoff=early_kickoff,
+        ),
+        _closeout_result(
+            reference_id="b" * 64,
+            fetched_at=late_kickoff - timedelta(minutes=5),
+            kickoff=late_kickoff,
+        ),
+    )
+
+    evidence = _postgame_family_from_evidence(
+        market=ProductionMarketFamily.MONEYLINE,
+        evaluation=_empty_moneyline_evaluation(),
+        closeouts=closeouts,
+        completed_outcome_count=2,
+        scheduled_game_count=2,
+    )
+
+    assert evidence.market_closeout.state is ProofComponentState.AVAILABLE
+    # The late game's fetch time is after the early game's kickoff -- exactly
+    # the aggregate comparison that must not be treated as a violation.
+    assert evidence.market_closeout.timestamps[-1] > early_kickoff
+
+
+def test_postgame_closeout_rejects_observation_at_or_after_its_own_kickoff() -> None:
+    from gridiron_edge.market.production_chain_preflight import (
+        _postgame_family_from_evidence,
+    )
+
+    kickoff = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
+    closeouts = (_closeout_result(reference_id="c" * 64, fetched_at=kickoff, kickoff=kickoff),)
+
+    with pytest.raises(ValueError, match="does not precede its own kickoff"):
+        _postgame_family_from_evidence(
+            market=ProductionMarketFamily.MONEYLINE,
+            evaluation=_empty_moneyline_evaluation(),
+            closeouts=closeouts,
+            completed_outcome_count=1,
+            scheduled_game_count=1,
+        )
 
 
 def test_inputs_are_not_mutated() -> None:

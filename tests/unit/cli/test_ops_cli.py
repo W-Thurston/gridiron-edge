@@ -1,0 +1,166 @@
+# tests/unit/cli/test_ops_cli.py
+"""Tests for the ops CLI: cross-machine collector-evidence pull."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from gridiron_edge.cli.main import app
+from gridiron_edge.core.settings import Settings
+
+runner = CliRunner()
+
+
+def _settings(repo_root: Path) -> Settings:
+    return Settings(
+        repo_root=repo_root,
+        owm_api_key=None,
+        odds_api_key=None,
+        data_raw=repo_root / "data" / "raw",
+        data_cleaned=repo_root / "data" / "cleaned",
+        data_modeling=repo_root / "data" / "modeling",
+        data_output=repo_root / "data" / "output",
+    )
+
+
+def test_pull_collector_evidence_requires_host(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("GRIDIRON_COLLECTOR_HOST", raising=False)
+
+    result = runner.invoke(app, ["ops", "pull-collector-evidence"])
+
+    assert result.exit_code == 2
+    assert "GRIDIRON_COLLECTOR_HOST" in result.stderr
+
+
+def test_pull_collector_evidence_uses_host_env_var_and_reports_files(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GRIDIRON_COLLECTOR_HOST", "10.0.0.49")
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+    observed: dict[str, object] = {}
+
+    def fake_pull(target, *, local_repo, dry_run=False):
+        observed["target"] = target
+        observed["local_repo"] = local_repo
+        observed["dry_run"] = dry_run
+        import subprocess
+
+        return subprocess.CompletedProcess(
+            (),
+            0,
+            stdout="week=03/observations.parquet\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
+        fake_pull,
+    )
+
+    result = runner.invoke(app, ["ops", "pull-collector-evidence"])
+
+    assert result.exit_code == 0
+    assert observed["local_repo"] == tmp_path
+    assert observed["dry_run"] is False
+    target = observed["target"]
+    assert target.host == "10.0.0.49"
+    assert target.user == "thursty"
+    assert target.remote_repository == "/home/thursty/apps/gridiron-edge"
+    assert "week=03/observations.parquet" in result.stdout
+    assert "pulled 1 file(s)" in result.stdout
+
+
+def test_pull_collector_evidence_reports_up_to_date_when_nothing_transferred(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GRIDIRON_COLLECTOR_HOST", "10.0.0.49")
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+
+    def fake_pull(target, *, local_repo, dry_run=False):
+        import subprocess
+
+        return subprocess.CompletedProcess((), 0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
+        fake_pull,
+    )
+
+    result = runner.invoke(app, ["ops", "pull-collector-evidence"])
+
+    assert result.exit_code == 0
+    assert "up to date" in result.stdout
+
+
+def test_pull_collector_evidence_surfaces_sync_error(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("GRIDIRON_COLLECTOR_HOST", "10.0.0.49")
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+
+    def fake_pull(target, *, local_repo, dry_run=False):
+        from gridiron_edge.deployment.collector_sync import CollectorSyncError
+
+        raise CollectorSyncError("rsync exited 255: connection timed out")
+
+    monkeypatch.setattr(
+        "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
+        fake_pull,
+    )
+
+    result = runner.invoke(app, ["ops", "pull-collector-evidence"])
+
+    assert result.exit_code == 2
+    assert "connection timed out" in result.stderr
+
+
+def test_pull_collector_evidence_overrides_user_and_repository_and_identity(
+    monkeypatch, tmp_path: Path
+) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_pull(target, *, local_repo, dry_run=False):
+        observed["target"] = target
+        import subprocess
+
+        return subprocess.CompletedProcess((), 0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
+        fake_pull,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "ops",
+            "pull-collector-evidence",
+            "--host",
+            "10.0.0.49",
+            "--user",
+            "someone",
+            "--remote-repository",
+            "/srv/gridiron-edge",
+            "--identity",
+            "/home/thursty/.ssh/id_ed25519",
+        ],
+    )
+
+    assert result.exit_code == 0
+    target = observed["target"]
+    assert target.user == "someone"
+    assert target.remote_repository == "/srv/gridiron-edge"
+    assert target.identity_file == "/home/thursty/.ssh/id_ed25519"

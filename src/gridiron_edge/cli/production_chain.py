@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 # pyrefly: ignore [missing-import]
@@ -392,6 +393,13 @@ def evaluate_recommendations_cmd(
         )
         _render_recommendation_evaluation(evaluation)
         if write:
+            conflict = _other_recommendation_evaluation_for_issuance(
+                settings.repo_root,
+                issuance_id=issuance_id,
+                evaluation_id=evaluation.evaluation_id,
+            )
+            if conflict is not None:
+                raise ValueError(conflict)
             path = write_recommended_bet_evaluation(
                 evaluation,
                 repo=settings.repo_root,
@@ -399,6 +407,37 @@ def evaluate_recommendations_cmd(
             typer.echo(f"stored              {path}")
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _other_recommendation_evaluation_for_issuance(
+    repo: Path,
+    *,
+    issuance_id: str,
+    evaluation_id: str,
+) -> str | None:
+    """Return a conflict message if another evaluation already covers this issuance."""
+    from gridiron_edge.market.recommended_bet_result_store import (
+        read_recommended_bet_evaluation,
+        recommended_bet_result_root,
+    )
+
+    root = recommended_bet_result_root(repo)
+    if not root.is_dir():
+        return None
+    for path in sorted(root.glob("schema=*/evaluations/*.json")):
+        try:
+            existing = read_recommended_bet_evaluation(path)
+        except (OSError, ValueError):
+            continue
+        if existing.issuance_id == issuance_id and existing.evaluation_id != evaluation_id:
+            return (
+                "An immutable recommendation evaluation already exists for this "
+                f"exact candidate issuance: {existing.evaluation_id} "
+                f"(policy {existing.policy_id}). Recommendation evaluation is "
+                "single-shot per issuance; read the existing evaluation instead of "
+                "creating another one."
+            )
+    return None
 
 
 @production_chain_app.command("issue-candidates")
@@ -472,10 +511,54 @@ def issue_candidates_cmd(
 
         _render_candidate_issuance(issuance)
         if write:
+            conflict = _other_candidate_issuance_for_product(
+                settings.repo_root,
+                product_id=product_ids[0],
+                product_run_id=run_ids[0],
+                issuance_id=issuance.issuance_id,
+            )
+            if conflict is not None:
+                raise ValueError(conflict)
             path = write_candidate_issuance(issuance, repo=settings.repo_root)
             typer.echo(f"stored              {path}")
     except (FileNotFoundError, ValueError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _other_candidate_issuance_for_product(
+    repo: Path,
+    *,
+    product_id: str,
+    product_run_id: str,
+    issuance_id: str,
+) -> str | None:
+    """Return a conflict message if another issuance already covers this product."""
+    from gridiron_edge.market.candidate_issuance_store import (
+        candidate_issuance_root,
+        read_candidate_issuance,
+    )
+
+    directory = candidate_issuance_root(repo) / "issuances"
+    if not directory.is_dir():
+        return None
+    for path in sorted(directory.glob("*.json")):
+        try:
+            existing = read_candidate_issuance(path)
+        except (OSError, ValueError):
+            continue
+        if (
+            existing.product_id == product_id
+            and existing.product_run_id == product_run_id
+            and existing.issuance_id != issuance_id
+        ):
+            return (
+                "An immutable candidate issuance already exists for this exact "
+                f"product scope: {existing.issuance_id} "
+                f"(evaluated at {existing.evaluated_at.isoformat()}). Candidate "
+                "issuance is single-shot per product; read the existing issuance "
+                "instead of creating another one."
+            )
+    return None
 
 
 @production_chain_app.command("verify")

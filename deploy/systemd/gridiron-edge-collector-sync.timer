@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically pull Gridiron Edge collector evidence
+
+[Timer]
+OnStartupSec=1min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Persistent=true
+Unit=gridiron-edge-collector-sync.service
+
+[Install]
+WantedBy=timers.target

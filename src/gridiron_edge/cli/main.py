@@ -26,6 +26,7 @@ from gridiron_edge.cli.features import features_app
 from gridiron_edge.cli.full_retrain import full_retrain_cmd
 from gridiron_edge.cli.ingest import ingest_app
 from gridiron_edge.cli.models import models_app
+from gridiron_edge.cli.ops import ops_app
 from gridiron_edge.cli.output import output_app
 from gridiron_edge.cli.post_week import post_week_cmd
 from gridiron_edge.cli.production_chain import production_chain_app
@@ -87,6 +88,7 @@ app.add_typer(props_app, name="props")
 app.add_typer(production_chain_app, name="production-chain")
 app.add_typer(teams_app, name="teams")
 app.add_typer(stadiums_app, name="stadiums")
+app.add_typer(ops_app, name="ops")
 app.command("weekly-predict")(weekly_predict_cmd)
 app.command("generate-development-forecast")(generate_development_forecast_cmd)
 app.command("regenerate-development-week")(regenerate_development_week_cmd)
