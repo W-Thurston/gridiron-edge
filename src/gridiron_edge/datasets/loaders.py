@@ -6,6 +6,8 @@ from typing import Any
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.ingest.nflverse import pbp as ingest_pbp
+
 from .registry import DatasetKey, dataset_path
 
 
@@ -87,6 +89,21 @@ def load_epa_by_game(repo_root: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     return pd.read_parquet(path)
+
+
+def load_pbp(
+    repo_root: Path,
+    *,
+    seasons: list[int] | None = None,
+    columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """Load cached raw play-by-play data.
+
+    Unlike the other loaders here, PBP is large enough (~540MB for the
+    full cached history) that callers should pass ``seasons``/``columns``
+    when they only need a slice - see ``ingest.nflverse.pbp.load_pbp``.
+    """
+    return ingest_pbp.load_pbp(seasons=seasons, repo=repo_root, columns=columns)
 
 
 def load_parquet_if_exists(path: Path) -> pd.DataFrame | None:

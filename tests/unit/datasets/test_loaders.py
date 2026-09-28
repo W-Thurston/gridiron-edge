@@ -21,6 +21,7 @@ from gridiron_edge.datasets.loaders import (
     load_epa_by_game,
     load_games,
     load_parquet_if_exists,
+    load_pbp,
     load_schedule_upcoming_rich,
     load_stadiums,
     load_weekly_product,
@@ -78,6 +79,24 @@ class TestLoadParquetIfExists:
         result: DataFrame | None = load_parquet_if_exists(path)
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 3
+
+
+class TestLoadPbp:
+    """load_pbp is a thin delegator to ingest.nflverse.pbp.load_pbp."""
+
+    def test_delegates_with_defaults(self, tmp_path: Path) -> None:
+        expected = pd.DataFrame({"game_id": ["g1"], "posteam": ["KC"]})
+        with patch("gridiron_edge.ingest.nflverse.pbp.load_pbp", return_value=expected) as mock:
+            result: DataFrame = load_pbp(tmp_path)
+            mock.assert_called_once_with(seasons=None, repo=tmp_path, columns=None)
+            pd.testing.assert_frame_equal(result, expected)
+
+    def test_forwards_seasons_and_columns(self, tmp_path: Path) -> None:
+        expected = pd.DataFrame({"game_id": ["g1"]})
+        with patch("gridiron_edge.ingest.nflverse.pbp.load_pbp", return_value=expected) as mock:
+            result: DataFrame = load_pbp(tmp_path, seasons=[2024], columns=["game_id"])
+            mock.assert_called_once_with(seasons=[2024], repo=tmp_path, columns=["game_id"])
+            pd.testing.assert_frame_equal(result, expected)
 
 
 class TestLoadEpaByGame:

@@ -8,6 +8,134 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D64 - Any feature reading raw PBP directly must map short team codes to canonical long names before joining
+
+**Date:** 2026-09-28
+
+**Context:** Implementing Unit 2's opponent-adjusted EPA feature
+(`features/team/opponent_adjusted_epa.py`) surfaced a correctness gap that
+no existing feature had hit before: raw PBP identifies teams with
+nflverse's short codes (`"KC"`), while the canonical modeling frame's
+`AWAY_TEAM`/`HOME_TEAM` columns use long names (`"Kansas City Chiefs"`).
+Every prior EPA-adjacent feature reads `epa_by_game.parquet`, which
+`transform/clean/epa.py`'s `aggregate_epa` already maps to long names
+before writing (`result["team"] = result["team"].map(map_short_to_long)`)
+— so this mismatch was invisible until a feature needed play-level PBP
+directly. Without the mapping, the merge onto `AWAY_TEAM`/`HOME_TEAM`
+would silently match nothing and produce all-`NaN` output for every game,
+with no error raised.
+
+**Decision:** Map `posteam`/`defteam` (or whichever raw PBP team columns a
+future feature uses) through the existing
+`transform.clean._nflverse_common.map_short_to_long` before joining
+against any canonical Away/Home identity, rather than duplicating the
+mapping table in a second location. This is a deliberate, commented
+`features/` → `transform/` import — the only one in the codebase today —
+justified because the alternative (a second copy of the short-to-long
+table) risks silent drift between the two if the mapping is ever updated.
+
+**Implications:**
+- `features/team/opponent_adjusted_epa.py` is the first feature module to
+  read raw PBP directly and therefore the first to need this; it is
+  documented inline there for the next feature that does the same
+  (Phase B's play-level features will very likely need it too).
+- Verified by a dedicated test
+  (`test_maps_short_team_codes_to_long_names`) that asserts real,
+  non-null output — a test that would have caught the all-`NaN` failure
+  mode directly, rather than passing vacuously.
+
+**Revisit triggers:**
+- If a third module needs this mapping, consider relocating it to a
+  neutral shared location rather than accumulating `features/` →
+  `transform/` imports one at a time.
+
+---
+
+## D63 - Opponent-adjusted EPA is recomputed fresh per as-of cutoff from play-level PBP, not persisted as an Elo-style ledger
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP Tier 5 #16 Unit 2 (batch A2) requires opponent-adjusted
+offensive and defensive EPA/play (pass + rush), described in `FEATURES.md`
+Domain 1/2 and Part II.1 as "ridge or mixed-effects regression on
+play-level EPA with an offense term and a defense term, shrunk toward
+average when samples are small" -- a DIY stand-in for DVOA. Unlike every
+existing team-level feature (a per-team rolling average of that team's own
+history), this requires solving for every team's offensive and defensive
+strength *simultaneously* across the whole league: a team's adjusted
+rating depends on the quality of the opponents it faced, which in turn
+depends on the quality of the opponents *they* faced, and so on. A
+single-pass average (subtract what opponents "usually allow") cannot
+untangle this; only a joint solve (regression, or an equivalent iterative
+method) does. No such joint-regression machinery, and no play-level
+(as opposed to game-aggregate) feature-construction path, exists anywhere
+in the codebase today. Two implementation shapes were considered: (1)
+recompute the regression fresh from play-level PBP every time an as-of
+value is needed, fitting once per distinct (season, week) cutoff rather
+than per team; or (2) persist the fitted per-team coefficients as a
+standalone, Elo-style incremental ledger with its own lineage sidecar
+(content-digest fingerprint, schema version, a
+`verify_current_*_lineage`-style gate), per ROADMAP program rule 5 ("any
+persisted rating system needs lineage treatment equivalent to Elo's").
+
+**Decision:** Recompute fresh (option 1), with performance as the explicit
+condition for revisiting:
+
+- The regression is fit on-demand from play-level PBP (`posteam`,
+  `defteam`, `pass`, `rush`, `epa`), not from the already-aggregated
+  `epa_by_game.parquet` (which has no per-play resolution left to regress
+  on). One ridge fit serves the *entire league* for a given (season, week)
+  cutoff -- it is not refit per team, so the cost scales with the number of
+  distinct cutoffs requested, not the number of team-games.
+- The sample for each fit is **season-to-date only**: every scrimmage play
+  from the start of the current season through the week strictly before
+  the target (mirroring the existing "no lookahead" cutoff convention in
+  `_build_target_rolling_epa`), with no cross-season carryover. Week 1 of
+  a season has no prior plays and therefore produces `NaN`, exactly like
+  every other existing rolling EPA feature at week 1 -- an accepted,
+  already-tested pattern, not a new gap. Ridge's shrinkage handles the
+  thin-sample problem for weeks 2-3 rather than needing a bounded trailing
+  window the way per-team rolling EPA does.
+- No new persisted artifact and no new lineage subsystem are built for
+  this unit. Because the regression is a pure, deterministic function of
+  inputs that are already reproducible from cached PBP (unlike Elo, which
+  is a path-dependent incremental ledger that must be replayed exactly),
+  ROADMAP rule 5's "persisted rating system" lineage requirement does not
+  bind here -- there is no separate mutable state whose lineage could
+  drift from its source.
+- **Revisit trigger, made explicit:** if fitting the regression fresh
+  turns out to be too slow in practice -- for live weekly prediction
+  latency, or across the many (season, week) cutoffs a full historical
+  walk-forward backfill needs -- migrate to the Elo-style persisted ledger
+  (option 2) instead. That migration is a separate, larger follow-up unit,
+  not a quick patch, since it requires the same lineage treatment Elo has.
+
+**Implications:**
+- New feature-construction code reads raw PBP directly (like
+  `transform/clean/epa.py`'s `aggregate_epa` does), not just
+  `epa_by_game.parquet` -- the first team-level feature to need play-level
+  resolution rather than the game-aggregate.
+- The four new metrics (adjusted offensive/defensive EPA, pass/rush split)
+  are *already-final* per-team-per-week values, not raw per-game stats
+  needing a further rolling average -- they do not fit `EPA_COLS`'
+  semantics and are wired in following the existing `AWAY_ELO`/`HOME_ELO`/
+  `ELO_DIFF` pattern in `_columns.py` instead (manually added to
+  `_RAW_FEATURES`/`_DIFF_FEATURES`, outside the `EPA_COLS`-derived
+  `_EPA_SUFFIXES` mechanism), so they reach both `combined` and `expanded`
+  `FeatureSet`s the same way Elo does.
+- Backfill/walk-forward evaluation across many historical seasons is the
+  main performance risk to watch, since it calls this repeatedly across
+  many distinct (season, week) cutoffs.
+
+**Revisit triggers:**
+- Performance, as stated above.
+- If a later batch (for example Unit 5's QB Elo/Glicko/Keener/Colley/
+  Massey ratings) needs the same joint-solve treatment, evaluate whether
+  to reuse this stateless approach or whether that rating specifically
+  needs Elo-equivalent persistence and lineage from the start.
+
+---
+
 ## D62 - Phase A batches decouple wiring from promotion; a consolidated incremental sweep (Unit 7) makes the adopt/reject call
 
 **Date:** 2026-09-28

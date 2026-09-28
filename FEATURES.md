@@ -61,7 +61,7 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | CPOE | Completion % over expected. Per-play `cpoe` was already aggregated per game (NaN-aware mean over valid attempts) but excluded from `EPA_COLS`; now rolled into the canonical Win/Total feature set as `off_cpoe`/`def_cpoe`, with an indicator-plus-fill policy for the pre-2007 era gap (`DECISIONS.md` D60) rather than an early-season prior, which remains unbuilt and pipeline-wide (Part II.7) | Game, Props | 🔴 High | Low | ✅ Done |
 | Air yards / attempt | Depth of target proxy (`air_yards` is in PBP) | Props | 🟡 Med | Low | ❌ |
 | YAC / completion | Yards after catch - scheme/personnel signal (`yards_after_catch` is in PBP) | Props | 🟡 Med | Low | ❌ |
-| 🆕 Opponent-adjusted EPA/play (pass, rush) | Each offense's EPA with the strength of the defenses it faced removed: ridge or mixed-effects regression on play-level EPA with offense and defense terms. The DIY stand-in for DVOA (Part II.1) | Game, Props | 🔴 High | Med | ❌ |
+| 🆕 Opponent-adjusted EPA/play (pass, rush) | Each offense's EPA with the strength of the defenses it faced removed: ridge regression on play-level EPA with offense and defense terms, fit fresh per (season, week) as-of cutoff from season-to-date play-level PBP (`DECISIONS.md` D63), not persisted like Elo. The DIY stand-in for DVOA (Part II.1) | Game, Props | 🔴 High | Med | ✅ Done |
 
 ---
 
@@ -87,7 +87,7 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | Def DVOA (if sourced) | Opponent-adjusted efficiency, now published by FTN (Football Outsiders closed in 2023); paywalled. The DIY opponent-adjusted row below covers most of the idea | Game | 🔴 High | High | ❌ |
 | Points allowed / game | Simple but noisy | Game | 🟢 Low | Low | ❌ |
 | Opponent QB rating | Passer rating allowed | Props | 🟡 Med | Med | ❌ |
-| 🆕 Opponent-adjusted def EPA/play (pass, rush) | Defensive mirror of the Domain 1 row, fit in the same regression | Game, Props | 🔴 High | Med | ❌ |
+| 🆕 Opponent-adjusted def EPA/play (pass, rush) | Defensive mirror of the Domain 1 row, fit in the same regression | Game, Props | 🔴 High | Med | ✅ Done |
 
 ---
 
@@ -369,8 +369,8 @@ Step 5 - Edge Re-Calculation:
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
 | 🆕 Pass rush vs pass protection | Defense's pressure rate generated × offense's pressure rate allowed (depends on Pressure rate, Domain 2) | Game, Props | 🟡 Med | Med | ❌ |
-| 🆕 Unit efficiency differentials | Offense pass EPA vs opposing defense pass EPA allowed (same for rush), ideally on opponent-adjusted EPA | Game | 🟡 Med | Low | ❌ |
-| 🆕 Projected total plays | Both teams' pace combined, adjusted for expected game script from the spread. The volume driver behind totals and every counting-stat prop | Game, Props | 🔴 High | Low | ❌ |
+| 🆕 Unit efficiency differentials | Offense pass EPA vs opposing defense pass EPA allowed (same for rush), on opponent-adjusted EPA. Built as four one-sided raw matchup columns plus two home-minus-away diffs, not diff-only, so Total retains the "both sides face weak defenses" level signal a diff alone would lose | Game | 🟡 Med | Low | ✅ Done |
+| 🆕 Projected total plays | Both teams' pace combined. The market-blind variant ships here as a plain sum of each side's rolling plays/game; the game-script-from-the-spread adjustment needs market data and is Unit 6's separate market-aware model identity. The volume driver behind totals and every counting-stat prop | Game, Props | 🔴 High | Low | ✅ Done (market-blind only) |
 
 ---
 
@@ -595,7 +595,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 **A1 Construction fixes — wired, promotion deferred to Unit 7:** CPOE (D1, now ✅ Done via `off_cpoe`/`def_cpoe` in `EPA_COLS` with a D60 indicator-plus-fill era-gap policy, not an early-season prior); Fumble rate, off (D3, now ✅ Done as `off_fumble_rate`); INT rate, def (D3, now ✅ Done — was already built as `def_int_rate`, a stale catalog status corrected by this batch). Schema/data version bumped to 6/3, `FeatureSet` names now derive from the schema version (D61), and `data/cleaned/epa_by_game.parquet`/the modeling file have been regenerated and verified. Wiring and promotion are now decoupled program-wide (D62): the gated `gridiron models train` comparison that decides adoption runs later, via Unit 7's consolidated incremental sweep across however many Phase A units have accumulated by then — see `ROADMAP.md`'s Phase A unit sequence and `PLAN.md`.
 
-**A2 Opponent-adjusted EPA and unit interactions:** Opponent-adjusted EPA/play, pass+rush (D1 🆕); Opponent-adjusted def EPA/play, pass+rush (D2 🆕); Unit efficiency differentials (D13 🆕); Projected total plays, market-blind variant (D13 🆕).
+**A2 Opponent-adjusted EPA and unit interactions — wired, promotion deferred to Unit 7:** Opponent-adjusted EPA/play, pass+rush (D1 🆕, now ✅ Done); Opponent-adjusted def EPA/play, pass+rush (D2 🆕, now ✅ Done); Unit efficiency differentials (D13 🆕, now ✅ Done); Projected total plays, market-blind variant (D13 🆕, now ✅ Done — market-blind only, per this batch's scope). Schema bumped to 9/6 across three sub-steps (`DECISIONS.md` D63/D64). Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep across accumulated Phase A units — see `ROADMAP.md` and `PLAN.md`.
 
 **A3 QB and coach sidecar:** QB EPA/play, career (D4); QB EPA/play, rolling L4–L6 (D4); CPOE, rolling (D4); QB change flag (D4); QB experience (D4); Head coach win %, career (D10); HC tenure (D10); New coaching staff flag (D10).
 
@@ -647,15 +647,15 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ## Summary Statistics
 
-*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
+*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1) and Unit 2 (batch A2) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
 
 | Metric | Count |
 |--------|-------|
 | Catalog rows | 179 (178 unique; "Implied team total" is cross-listed in Domains 7 and 8) |
 | Domains | 14 (11 original + 3 new) |
-| ✅ Done | 60 |
+| ✅ Done | 64 |
 | ⚠️ Partial | 2 (Season week number; Indoor override) |
-| ❌ Missing | 116 |
+| ❌ Missing | 112 |
 | 🔴 High signal | 49 |
 | ❓ Unknown signal | 4 |
 | Low cost | 115 |
@@ -667,8 +667,8 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Domain | Rows | Done | 🆕 New |
 |--------|------|------|--------|
-| 1. Team Offensive Efficiency | 19 | 12 | 1 |
-| 2. Team Defensive Efficiency | 17 | 9 | 1 |
+| 1. Team Offensive Efficiency | 19 | 13 | 1 |
+| 2. Team Defensive Efficiency | 17 | 10 | 1 |
 | 3. Turnover & Discipline | 9 | 5 | 1 |
 | 4. Quarterback Quality | 16 | 0 | 3 |
 | 5. Schedule & Situational Context | 20 | 13 | 4 |
@@ -679,7 +679,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 | 10. Coaching & Scheme | 8 | 0 | 0 |
 | 11. Historical Trends | 13 | 4 | 2 |
 | 12. Special Teams & Field Position | 5 | 0 | 5 |
-| 13. Unit Matchups & Interactions | 3 | 0 | 3 |
+| 13. Unit Matchups & Interactions | 3 | 2 | 3 |
 | 14. Rating-System Outputs | 6 | 2 | 4 |
 
 ---
@@ -758,6 +758,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Implemented Game-Model Build Queue Unit 2 (batch A2): marked Opponent-adjusted EPA/play and Opponent-adjusted def EPA/play (Domain 1/2) ✅ Done — a ridge regression on play-level PBP with offense and defense terms, fit fresh per (season, week) as-of cutoff from season-to-date data rather than persisted like Elo (`DECISIONS.md` D63); Unit efficiency differentials (Domain 13) ✅ Done as four one-sided raw matchup columns plus two home-minus-away diffs, not diff-only, so Total keeps the "both sides face weak defenses" level signal; and Projected total plays (Domain 13) ✅ Done for its market-blind variant only (a plain sum of each side's rolling pace — the spread-adjusted version is Unit 6's separate market-aware model). Surfaced and fixed a real correctness gap along the way: raw PBP's short team codes don't match the canonical frame's long team names, which would have silently produced all-`NaN` output (`DECISIONS.md` D64). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` grew across three schema bumps to reach 96/48/16 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 144/186). Retrain deferred to Unit 7 per the same-day D62 wiring/promotion split. |
 | 2026-09-28 | Decoupled Phase A wiring from promotion (`DECISIONS.md` D62): Units 1–6 each wire and test one batch with its own schema bump but no longer individually retrain; a new Unit 7 runs one consolidated incremental walk-forward sweep across accumulated units and makes the adopt/reject call, so batch attribution is preserved without a full gated retrain after every small unit. Regenerated `data/cleaned/epa_by_game.parquet` and the modeling file for Unit 1 (batch A1) under the new schema and verified the result; the gated retrain itself is now Unit 7's scope, not Unit 1's. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 1 (batch A1): marked CPOE (Domain 1) ✅ Done (⚠️ Partial → ✅; `off_cpoe`/`def_cpoe` now in `EPA_COLS` with a D60 indicator-plus-fill era-gap policy, not the early-season prior originally proposed, which remains unbuilt), Fumble rate/off (Domain 3) ✅ Done (❌ → ✅; per-play denominator, not per-touch, D60), and corrected INT rate/def (Domain 3) ❌ → ✅ Done (it was already built as `def_int_rate` since 2026-06-04; this row was simply never updated). `EPA_COLS` 36→41; `_RAW_FEATURES`/`_DIFF_FEATURES`/`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` grew to 84/42/126/167; `FeatureSet` names now derive from the schema version rather than a hand-counted total (D61). Retrain and live-availability replay not yet run — see `PLAN.md`. |
 | 2026-09-25 | Adopted the game-model rows of Priority Matrix v2 into a "Game-Model Build Queue," mapped to ROADMAP.md Tier 5 #16 (game models only; prop rows stay proposed). Corrected 2 Status values from ❌ to ⚠️ Partial (Season week number, Indoor override — both already partially built) and closed the duplicate "Pace tendency" row (D10) against D1's "Plays per game / pace." Corrected the expanded feature-set count from "149" (never accurate) to `expanded_152`, the current registered name. Recorded that the Part II.5 chronological-splits prerequisite is already satisfied. No other Status, Signal, Cost, or Model Target values changed. |

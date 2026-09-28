@@ -60,6 +60,23 @@ class DatasetAccessor:
         """
         return loaders.load_epa_by_game(self.repo)
 
+    def pbp(
+        self,
+        *,
+        seasons: list[int] | None = None,
+        columns: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Load cached raw play-by-play data.
+
+        Unlike the other accessors, PBP is large enough (~540MB for the
+        full cached history) that callers needing only a slice should pass
+        ``seasons``/``columns`` rather than loading everything.
+
+        Returns:
+            Combined PBP DataFrame. Empty DataFrame if no cached files exist.
+        """
+        return loaders.load_pbp(self.repo, seasons=seasons, columns=columns)
+
     def weather_enriched(self) -> pd.DataFrame:
         """Load the weather-enriched game dataset.
 

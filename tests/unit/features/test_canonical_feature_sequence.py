@@ -25,6 +25,9 @@ from gridiron_edge.features.registry import (
 _EXPECTED_CANONICAL_FEATURES = [
     "home_away_elo",
     "home_away_epa",
+    "home_away_opponent_adjusted_epa",
+    "unit_efficiency_differentials",
+    "projected_total_plays",
     "home_away_rest",
     "home_away_record",
     "home_away_schedule_strength",

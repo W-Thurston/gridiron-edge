@@ -1,5 +1,78 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Unit 2 (batch A2) wired: opponent-adjusted EPA, unit efficiency differentials, projected total plays
+
+#### Added
+
+- `off_pass_epa_adj`/`off_rush_epa_adj`/`def_pass_epa_adj`/`def_rush_epa_adj`
+  (`features/team/opponent_adjusted_epa.py`): a ridge regression on
+  play-level PBP with an offense term and a defense term per team, solving
+  every team's offensive and defensive strength jointly rather than
+  averaging a single opponent number. Recomputed fresh per (season, week)
+  as-of cutoff from season-to-date plays, not persisted like Elo
+  (`DECISIONS.md` D63).
+- `AWAY_/HOME_PASS_MATCHUP_EPA`, `AWAY_/HOME_RUSH_MATCHUP_EPA`
+  (`features/team/unit_efficiency.py`): each side's opponent-adjusted
+  offense against the specific opposing defense faced this game — a
+  matchup-level feature built from both teams at once, depending on
+  opponent-adjusted EPA having already run.
+- `PROJECTED_TOTAL_PLAYS` (`features/team/projected_total_plays.py`): the
+  market-blind variant — both teams' own rolling pace, summed. The
+  game-script-from-the-spread adjustment needs market data and is Unit 6's
+  separate market-aware model identity.
+- `DatasetAccessor.pbp()` / `loaders.load_pbp()`: the first accessor
+  method with optional `seasons`/`columns` filtering, since PBP is ~540MB
+  cached — the first canonical feature to read play-level PBP directly
+  rather than an already-aggregated intermediate.
+- New test coverage: `test_opponent_adjusted_epa.py` (23 tests),
+  `test_unit_efficiency.py` (7 tests), `test_projected_total_plays.py` (6
+  tests), plus `pbp()` delegation tests in the existing loader/accessor
+  suites.
+
+#### Changed
+
+- `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` grew across three
+  schema bumps (7, 8, 9) to reach 96/48/16 (`_COMBINED_FEATURES`/
+  `_EXPANDED_FEATURES` 144/186). The new opponent-adjusted-EPA and
+  unit-efficiency metrics follow `AWAY_ELO`/`HOME_ELO`/`ELO_DIFF`'s manual
+  suffix-list pattern, not `EPA_COLS`', since they are already-final
+  values rather than raw per-game stats needing a further rolling average.
+- `_make_diff_features` (`models/game_prediction/_features.py`) now loops
+  over the opponent-adjusted-EPA and unit-efficiency suffixes too — a real
+  gap the existing `test_game_feature_sets.py` suite caught immediately
+  the first time (it declared the new `*_DIFF` columns without computing
+  them) and that this unit's own code proactively avoided repeating the
+  second time.
+- `FEATURES.md`: Opponent-adjusted EPA/play, Opponent-adjusted def
+  EPA/play (Domain 1/2), Unit efficiency differentials, and Projected
+  total plays (Domain 13, market-blind variant) all marked Done.
+- `data/modeling/modeling_file.csv` regenerated under the new schema
+  (`gridiron features model-inputs --all-years`); row count unchanged
+  (7,308), 148 columns.
+
+#### Fixed
+
+- `UnitEfficiencyDifferentialsFeature` originally computed and persisted
+  its two `_DIFF` columns directly into the base modeling file, unlike
+  every sibling feature (Elo, opponent-adjusted EPA), where `_DIFF`
+  columns are always derived later by `_make_diff_features` and never
+  stored in the base file. Caught by inspecting the regenerated modeling
+  file directly (150 columns instead of the expected 148) rather than
+  relying on green tests alone; the dead columns were redundant, not
+  incorrect (`_make_diff_features` recomputed the same values from the raw
+  columns regardless), but inconsistent. Fixed before this unit closed.
+- The short-team-code-to-long-name mapping gap that would have silently
+  produced all-`NaN` opponent-adjusted EPA output for every game
+  (`DECISIONS.md` D64).
+
+#### Verified
+
+- Live-availability replay (program rule 3): the real 2026-2027 upcoming
+  schedule (weeks 3-18, 226 scheduled games) produces zero NaNs across all
+  thirteen new columns for every scheduled game.
+- Full non-slow unit suite (4,276 tests), Ruff, and Pyrefly pass against
+  the regenerated data.
+
 ### 2026-09-28 - Game-model feature program opened; Unit 1 (batch A1) wired: CPOE, fumble rate, INT-rate correction
 
 #### Added

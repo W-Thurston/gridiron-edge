@@ -31,6 +31,24 @@ from gridiron_edge.features.manifest import CURRENT_SCHEMA_VERSION as _CURRENT
 # EPA metric names - single source of truth in features.team.epa.
 from gridiron_edge.features.team.epa import EPA_COLS as _EPA_COLS_RAW
 
+# Opponent-adjusted EPA metric names - single source of truth in
+# features.team.opponent_adjusted_epa.
+from gridiron_edge.features.team.opponent_adjusted_epa import (
+    ADJUSTED_EPA_METRICS as _ADJUSTED_EPA_METRICS_RAW,
+)
+
+# Projected-total-plays column name - single source of truth in
+# features.team.projected_total_plays.
+from gridiron_edge.features.team.projected_total_plays import (
+    PROJECTED_TOTAL_PLAYS as _PROJECTED_TOTAL_PLAYS_RAW,
+)
+
+# Unit-matchup efficiency suffixes - single source of truth in
+# features.team.unit_efficiency.
+from gridiron_edge.features.team.unit_efficiency import (
+    UNIT_EFFICIENCY_SUFFIXES as _UNIT_EFFICIENCY_SUFFIXES_RAW,
+)
+
 # ---------------------------------------------------------------------------
 # Schema version
 # ---------------------------------------------------------------------------
@@ -45,15 +63,37 @@ _SCHEMA_VERSION: Final[int] = _CURRENT
 # canonical list so additions to EPA_COLS propagate here automatically.
 _EPA_SUFFIXES: Final[list[str]] = [c.upper() for c in _EPA_COLS_RAW]
 
+# Opponent-adjusted EPA suffixes. These are already-final per-team values
+# (not raw per-game stats needing a further rolling average), so they
+# follow AWAY_ELO/HOME_ELO/ELO_DIFF's manual-list pattern below rather
+# than EPA_COLS' suffix-derivation mechanism - see DECISIONS.md D63.
+_OPPONENT_ADJUSTED_EPA_SUFFIXES: Final[list[str]] = [
+    metric.upper() for metric in _ADJUSTED_EPA_METRICS_RAW
+]
+
+# Unit-matchup efficiency suffixes. Like opponent-adjusted EPA, these are
+# already-final values (here, a cross-team combination) rather than raw
+# per-game stats, so they follow the same manual-list pattern.
+_UNIT_EFFICIENCY_SUFFIXES: Final[list[str]] = list(_UNIT_EFFICIENCY_SUFFIXES_RAW)
+
 # Raw Away/Home feature columns.
 _RAW_FEATURES: Final[list[str]] = (
     ["AWAY_ELO", "HOME_ELO"]
     + [f"AWAY_{suffix}" for suffix in _EPA_SUFFIXES]
     + [f"HOME_{suffix}" for suffix in _EPA_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
 )
 
 # Differential feature names. Every differential is HOME - AWAY.
-_DIFF_FEATURES: Final[list[str]] = ["ELO_DIFF"] + [f"{suffix}_DIFF" for suffix in _EPA_SUFFIXES]
+_DIFF_FEATURES: Final[list[str]] = (
+    ["ELO_DIFF"]
+    + [f"{suffix}_DIFF" for suffix in _EPA_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _UNIT_EFFICIENCY_SUFFIXES]
+)
 
 # Differential features followed by direct Away/Home values.
 _COMBINED_FEATURES: Final[list[str]] = [
@@ -78,6 +118,7 @@ _GAME_FEATURES: Final[list[str]] = [
     "GAME_SITE_ALTITUDE",
     "IS_PRIMETIME",
     "WEEK_NUM",
+    _PROJECTED_TOTAL_PLAYS_RAW,
 ]
 
 # Team-state features produced directly by the canonical feature pipeline.

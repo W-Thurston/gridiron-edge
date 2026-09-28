@@ -59,6 +59,22 @@ class TestDatasetAccessorDelegation:
             mock.assert_called_once_with(tmp_path)
             pd.testing.assert_frame_equal(result, expected)
 
+    def test_pbp_delegates(self, tmp_path: Path) -> None:
+        expected = pd.DataFrame({"game_id": ["g1"], "posteam": ["KC"]})
+        with patch("gridiron_edge.datasets.loaders.load_pbp", return_value=expected) as mock:
+            acc = DatasetAccessor(repo=tmp_path)
+            result: DataFrame = acc.pbp()
+            mock.assert_called_once_with(tmp_path, seasons=None, columns=None)
+            pd.testing.assert_frame_equal(result, expected)
+
+    def test_pbp_forwards_seasons_and_columns(self, tmp_path: Path) -> None:
+        expected = pd.DataFrame({"game_id": ["g1"]})
+        with patch("gridiron_edge.datasets.loaders.load_pbp", return_value=expected) as mock:
+            acc = DatasetAccessor(repo=tmp_path)
+            result: DataFrame = acc.pbp(seasons=[2024], columns=["game_id"])
+            mock.assert_called_once_with(tmp_path, seasons=[2024], columns=["game_id"])
+            pd.testing.assert_frame_equal(result, expected)
+
     def test_weather_enriched_delegates(self, tmp_path: Path) -> None:
         expected = pd.DataFrame({"GAME_ID": ["g1"], "TEMP_F": [72.0]})
         with patch("gridiron_edge.datasets.loaders.load_csv", return_value=expected) as mock:

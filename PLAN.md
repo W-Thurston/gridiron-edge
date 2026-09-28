@@ -110,10 +110,125 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-No unit is currently active. Unit 1 (batch A1) closed below. Unit 2 (batch
-A2, opponent-adjusted EPA and unit interactions) is queued next in
-`ROADMAP.md`'s Phase A unit sequence and must be deliberately scoped into
-this file before work begins.
+No unit is currently active. Units 1 and 2 (batches A1, A2) closed below.
+Unit 3 (batch A3, QB-and-coach sidecar) is queued next in `ROADMAP.md`'s
+Phase A unit sequence and must be deliberately scoped into this file
+before work begins.
+
+### Unit 2 — Phase A Batch A2: Opponent-Adjusted EPA and Unit Interactions [Completed September 28, 2026]
+
+#### Completed
+
+Wired opponent-adjusted offensive and defensive EPA/play (pass + rush
+split) into the canonical Win/Total feature set via a ridge regression on
+play-level PBP — the first canonical feature to read play-level data
+directly rather than an already-aggregated intermediate — plus two
+features built on top of it: unit efficiency differentials (a
+matchup-level pass/rush edge) and the market-blind variant of projected
+total plays. Verified against regenerated real data and a full replay of
+the current upcoming schedule. Promotion is deferred to Unit 7, per the
+same wiring/promotion split as Unit 1 (D62).
+
+#### Goal
+
+Close four open Phase A2 catalog rows (Domain 1/2 opponent-adjusted
+EPA/play, Domain 13 unit efficiency differentials and projected total
+plays), establishing the first play-level (not game-aggregate) feature and
+the first cross-team matchup feature in the canonical pipeline.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/features/team/opponent_adjusted_epa.py` - Ridge
+  regression on play-level PBP (offense + defense terms per team, season-
+  to-date, fit fresh per as-of cutoff) and the registered
+  `HomeAwayOpponentAdjustedEpaFeature`.
+- `src/gridiron_edge/features/team/unit_efficiency.py` - Matchup-level
+  feature: each side's opponent-adjusted offense against the specific
+  defense it faces this game.
+- `src/gridiron_edge/features/team/projected_total_plays.py` - Market-
+  blind combinator: both teams' own rolling pace, summed.
+- `tests/unit/features/test_opponent_adjusted_epa.py` (23 tests),
+  `test_unit_efficiency.py` (7 tests), `test_projected_total_plays.py` (6
+  tests) - Coverage for the three new features above.
+
+Changed:
+- `src/gridiron_edge/datasets/loaders.py` / `accessor.py` - Added
+  `pbp()`/`load_pbp()` with optional `seasons`/`columns` filtering (PBP is
+  ~540MB, unlike every other zero-arg accessor).
+- `src/gridiron_edge/models/game_prediction/_columns.py` - Added the new
+  metrics to `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` via
+  `_OPPONENT_ADJUSTED_EPA_SUFFIXES`/`_UNIT_EFFICIENCY_SUFFIXES`/
+  `PROJECTED_TOTAL_PLAYS` (Elo-pattern, not `EPA_COLS`, since these are
+  already-final values, not raw per-game stats).
+- `src/gridiron_edge/models/game_prediction/_features.py` - Fixed
+  `_make_diff_features` to loop over the two new suffix lists too (it
+  declared the new `*_DIFF` columns without computing them — a real gap
+  the existing test suite caught immediately).
+- `src/gridiron_edge/features/pipeline.py` - Registered
+  `home_away_opponent_adjusted_epa`, `unit_efficiency_differentials`, and
+  `projected_total_plays` in `CANONICAL_FEATURES`.
+- `src/gridiron_edge/features/manifest.py` - `CURRENT_SCHEMA_VERSION`
+  6→9, `CURRENT_DATA_VERSION` 3→6 across three sub-batch bumps.
+- `tests/unit/datasets/test_accessor.py` / `test_loaders.py` - Delegation
+  tests for the new `pbp()` accessor/loader.
+- `tests/unit/features/test_canonical_feature_sequence.py` - Updated the
+  hardcoded `CANONICAL_FEATURES` sequence.
+- `tests/unit/models/test_game_feature_sets.py` - Updated hardcoded
+  feature counts and the `_canonical_frame()` fixture.
+- `FEATURES.md` - Domain 1/2/13 status corrections; Game-Model Build
+  Queue and Summary Statistics updates; changelog entries.
+- `ROADMAP.md` - Unit 2 marked closed in the Phase A unit sequence.
+- `DECISIONS.md` - Added D63 (recompute-vs-persist methodology) and D64
+  (short-to-long team-code mapping).
+- `CHANGELOG.md` - This unit's entry.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/modeling/modeling_file.csv` and its manifest via
+  `gridiron features model-inputs --all-years` (`epa_by_game.parquet` was
+  untouched by this unit).
+
+#### Tests
+
+Validation passed:
+- 36 new focused tests across the three new features, plus 4 new
+  `pbp()` delegation tests;
+- repository-wide Ruff and Pyrefly;
+- the full non-slow unit suite (4,276 tests).
+
+Real-data validation:
+- The modeling file regenerated in full: `schema_version: 9`,
+  `data_version: 6`, 148 columns, row count unchanged (7,308).
+- Live-availability replay (program rule 3) against the real 2026-2027
+  upcoming schedule (weeks 3-18, 226 scheduled games): zero NaNs across
+  all thirteen new columns for every scheduled game — the season-to-date
+  regression design already has enough data by week 3 for every team.
+
+Two real defects surfaced and were fixed before this unit closed, both
+caught by inspection rather than assumed correctness:
+- A short-team-code-to-long-name mapping gap (`DECISIONS.md` D64) that
+  would have silently produced all-`NaN` output for every game.
+- `UnitEfficiencyDifferentialsFeature` originally persisted its two
+  `_DIFF` columns directly into the base modeling file, unlike every
+  sibling feature (Elo, opponent-adjusted EPA), where `_DIFF` columns are
+  always derived later by `_make_diff_features` and never stored in the
+  base file. Caught by inspecting the regenerated manifest directly (150
+  columns instead of the expected 148), not by a failing test.
+
+#### Acceptance
+
+Opponent-adjusted EPA, unit efficiency differentials, and projected total
+plays are correctly computed, leakage-safe, and available in the canonical
+Win/Total feature set, consistent with every sibling feature's wiring
+convention after the mid-implementation correction. Regenerated data and
+the live-availability replay confirm the new columns are guaranteed
+pre-kickoff values for every currently scheduled game. Promotion (the
+gated Brier/MAE comparison against the current champion) remains
+explicitly deferred to Unit 7 per D62 and is not part of this unit's
+acceptance bar.
 
 ### Unit 1 — Phase A Batch A1: Construction Fixes [Completed September 28, 2026]
 

@@ -37,9 +37,11 @@ from gridiron_edge.models.game_prediction._columns import (
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
+    _OPPONENT_ADJUSTED_EPA_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
     _TEAM_FEATURES,
+    _UNIT_EFFICIENCY_SUFFIXES,
     FeatureSet,
 )
 from gridiron_edge.models.game_prediction.game_schema import (
@@ -76,7 +78,11 @@ def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
     """Engineer canonical HOME - AWAY differential features."""
     out = pd.DataFrame(index=df.index)
     out["ELO_DIFF"] = df["HOME_ELO"] - df["AWAY_ELO"]
-    for suffix in _EPA_SUFFIXES:
+    for suffix in (
+        *_EPA_SUFFIXES,
+        *_OPPONENT_ADJUSTED_EPA_SUFFIXES,
+        *_UNIT_EFFICIENCY_SUFFIXES,
+    ):
         out[f"{suffix}_DIFF"] = df[f"HOME_{suffix}"] - df[f"AWAY_{suffix}"]
     return out.loc[:, _DIFF_FEATURES]
 
