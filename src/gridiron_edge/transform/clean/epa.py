@@ -25,6 +25,7 @@ Output schema (``epa_by_game.parquet``)::
     off_third_down_pct      float   3rd-down conversion rate
     off_redzone_td_pct      float   TD rate on red zone plays (yardline <= 20)
     off_turnover_rate       float   Interceptions + fumbles lost per play
+    off_fumble_rate         float   Fumbles lost per offensive play
     off_sack_rate           float   Sacks per dropback
     def_epa_per_play    float   Defensive EPA/play allowed
     def_pass_epa        float   Defensive passing EPA/play allowed
@@ -39,6 +40,9 @@ Output schema (``epa_by_game.parquet``)::
     def_third_down_pct      float   Opponent 3rd-down conversion rate allowed
     def_redzone_td_pct      float   Opponent red zone TD rate allowed
     def_turnover_rate       float   Opponent turnovers forced per play
+    def_fumble_rate         float   Opponent fumbles lost per offensive play
+                                     faced (not adopted as a model feature;
+                                     see DECISIONS.md D60)
     def_sack_rate           float   Sacks generated per opponent dropback
 
 Note on EPA reliability: nflfastR EPA model is reliable from 2006 onward.
@@ -157,6 +161,11 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
         .rename(f"{prefix}_turnover_rate")
     )
 
+    # -- Fumble rate (fumbles lost per offensive play). Same per-play
+    # denominator as turnover_rate, not a "touches" (rush + reception)
+    # denominator - see DECISIONS.md D60.
+    fumble_rate: Series = grouped["fumble_lost"].mean().rename(f"{prefix}_fumble_rate")
+
     # -- Sack rate (sacks per dropback) --
     sack_rate: Series = (
         df[pass_mask].groupby(group_keys)["sack"].mean().rename(f"{prefix}_sack_rate")
@@ -208,6 +217,7 @@ def _agg_side(df: pd.DataFrame, *, is_offense: bool) -> pd.DataFrame:
                 third_down_pct,
                 redzone_td_pct,
                 turnover_rate,
+                fumble_rate,
                 sack_rate,
                 n_plays,
                 cpoe_avg,

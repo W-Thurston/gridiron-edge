@@ -58,7 +58,7 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 | Pass rate (neutral script) | Pass-heavy when game is close? Build as pass rate over expected (PROE): nflfastR PBP already carries `xpass` and `pass_oe`, so no new model is needed | Props | 🟡 Med | Low | ❌ |
 | Pass rate (overall) | Raw pass/run ratio | Props | 🟢 Low | Low | ❌ |
 | Yards per play | Simpler efficiency proxy | Game | 🟢 Low | Low | ✅ Done |
-| CPOE | Completion % over expected. Per-play `cpoe` is already in PBP; the NaN exclusion is usually fixed with a NaN-aware mean over valid attempts plus an early-season prior (Part II.7) | Game, Props | 🔴 High | Low | ⚠️ Partial |
+| CPOE | Completion % over expected. Per-play `cpoe` was already aggregated per game (NaN-aware mean over valid attempts) but excluded from `EPA_COLS`; now rolled into the canonical Win/Total feature set as `off_cpoe`/`def_cpoe`, with an indicator-plus-fill policy for the pre-2007 era gap (`DECISIONS.md` D60) rather than an early-season prior, which remains unbuilt and pipeline-wide (Part II.7) | Game, Props | 🔴 High | Low | ✅ Done |
 | Air yards / attempt | Depth of target proxy (`air_yards` is in PBP) | Props | 🟡 Med | Low | ❌ |
 | YAC / completion | Yards after catch - scheme/personnel signal (`yards_after_catch` is in PBP) | Props | 🟡 Med | Low | ❌ |
 | 🆕 Opponent-adjusted EPA/play (pass, rush) | Each offense's EPA with the strength of the defenses it faced removed: ridge or mixed-effects regression on play-level EPA with offense and defense terms. The DIY stand-in for DVOA (Part II.1) | Game, Props | 🔴 High | Med | ❌ |
@@ -99,8 +99,8 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 |---------|-------------|-------------|--------|------|--------|
 | Turnover differential / game | Net turnovers - high variance but some signal | Game | 🟡 Med | Low | ✅ Done |
 | INT rate (off) | Interceptions thrown per attempt | Game | 🟡 Med | Low | ✅ Done |
-| Fumble rate (off) | Fumbles per touch | Game | 🟢 Low | Low | ❌ |
-| INT rate (def) | Interceptions forced per opponent attempt | Game | 🟡 Med | Low | ❌ |
+| Fumble rate (off) | Fumbles lost per offensive play, not per touch — matches the existing `off_turnover_rate`/`off_int_rate` per-play convention rather than a rush-attempts-plus-receptions denominator (`DECISIONS.md` D60) | Game | 🟢 Low | Low | ✅ Done |
+| INT rate (def) | Interceptions forced per opponent attempt. **Status correction:** already built as `def_int_rate` by the existing symmetric `_agg_side` aggregation and already flowing into `combined`/`expanded` via `EPA_COLS` since the 2026-06-04 revision; this row was never updated to match | Game | 🟡 Med | Low | ✅ Done |
 | Penalty rate | Penalties per game | Game | 🟢 Low | Low | ✅ Done |
 | Penalty yards / game | Yardage impact of penalties | Game | 🟢 Low | Low | ❌ |
 | False start rate | Offensive discipline proxy | Game | 🟢 Low | Low | ❌ |
@@ -593,7 +593,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ### Phase A — free, data already on disk
 
-**A1 Construction fixes:** CPOE (D1, ⚠️ Partial — NaN-aware mean plus early-season prior); Fumble rate, off (D3); INT rate, def (D3).
+**A1 Construction fixes — wired, promotion deferred to Unit 7:** CPOE (D1, now ✅ Done via `off_cpoe`/`def_cpoe` in `EPA_COLS` with a D60 indicator-plus-fill era-gap policy, not an early-season prior); Fumble rate, off (D3, now ✅ Done as `off_fumble_rate`); INT rate, def (D3, now ✅ Done — was already built as `def_int_rate`, a stale catalog status corrected by this batch). Schema/data version bumped to 6/3, `FeatureSet` names now derive from the schema version (D61), and `data/cleaned/epa_by_game.parquet`/the modeling file have been regenerated and verified. Wiring and promotion are now decoupled program-wide (D62): the gated `gridiron models train` comparison that decides adoption runs later, via Unit 7's consolidated incremental sweep across however many Phase A units have accumulated by then — see `ROADMAP.md`'s Phase A unit sequence and `PLAN.md`.
 
 **A2 Opponent-adjusted EPA and unit interactions:** Opponent-adjusted EPA/play, pass+rush (D1 🆕); Opponent-adjusted def EPA/play, pass+rush (D2 🆕); Unit efficiency differentials (D13 🆕); Projected total plays, market-blind variant (D13 🆕).
 
@@ -647,15 +647,15 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ## Summary Statistics
 
-*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values).*
+*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1 (batch A1) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
 
 | Metric | Count |
 |--------|-------|
 | Catalog rows | 179 (178 unique; "Implied team total" is cross-listed in Domains 7 and 8) |
 | Domains | 14 (11 original + 3 new) |
-| ✅ Done | 57 |
-| ⚠️ Partial | 3 (CPOE; Season week number; Indoor override) |
-| ❌ Missing | 119 |
+| ✅ Done | 60 |
+| ⚠️ Partial | 2 (Season week number; Indoor override) |
+| ❌ Missing | 116 |
 | 🔴 High signal | 49 |
 | ❓ Unknown signal | 4 |
 | Low cost | 115 |
@@ -667,9 +667,9 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Domain | Rows | Done | 🆕 New |
 |--------|------|------|--------|
-| 1. Team Offensive Efficiency | 19 | 11 | 1 |
+| 1. Team Offensive Efficiency | 19 | 12 | 1 |
 | 2. Team Defensive Efficiency | 17 | 9 | 1 |
-| 3. Turnover & Discipline | 9 | 3 | 1 |
+| 3. Turnover & Discipline | 9 | 5 | 1 |
 | 4. Quarterback Quality | 16 | 0 | 3 |
 | 5. Schedule & Situational Context | 20 | 13 | 4 |
 | 6. Weather & Environment | 9 | 4 | 0 |
@@ -758,6 +758,8 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Decoupled Phase A wiring from promotion (`DECISIONS.md` D62): Units 1–6 each wire and test one batch with its own schema bump but no longer individually retrain; a new Unit 7 runs one consolidated incremental walk-forward sweep across accumulated units and makes the adopt/reject call, so batch attribution is preserved without a full gated retrain after every small unit. Regenerated `data/cleaned/epa_by_game.parquet` and the modeling file for Unit 1 (batch A1) under the new schema and verified the result; the gated retrain itself is now Unit 7's scope, not Unit 1's. |
+| 2026-09-28 | Implemented Game-Model Build Queue Unit 1 (batch A1): marked CPOE (Domain 1) ✅ Done (⚠️ Partial → ✅; `off_cpoe`/`def_cpoe` now in `EPA_COLS` with a D60 indicator-plus-fill era-gap policy, not the early-season prior originally proposed, which remains unbuilt), Fumble rate/off (Domain 3) ✅ Done (❌ → ✅; per-play denominator, not per-touch, D60), and corrected INT rate/def (Domain 3) ❌ → ✅ Done (it was already built as `def_int_rate` since 2026-06-04; this row was simply never updated). `EPA_COLS` 36→41; `_RAW_FEATURES`/`_DIFF_FEATURES`/`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` grew to 84/42/126/167; `FeatureSet` names now derive from the schema version rather than a hand-counted total (D61). Retrain and live-availability replay not yet run — see `PLAN.md`. |
 | 2026-09-25 | Adopted the game-model rows of Priority Matrix v2 into a "Game-Model Build Queue," mapped to ROADMAP.md Tier 5 #16 (game models only; prop rows stay proposed). Corrected 2 Status values from ❌ to ⚠️ Partial (Season week number, Indoor override — both already partially built) and closed the duplicate "Pace tendency" row (D10) against D1's "Plays per game / pace." Corrected the expanded feature-set count from "149" (never accurate) to `expanded_152`, the current registered name. Recorded that the Part II.5 chronological-splits prerequisite is already satisfied. No other Status, Signal, Cost, or Model Target values changed. |
 | 2026-09-24 | Merged the modeling reference into this file (Part II: methods, rating systems, validation, construction rules, data sources) and retitled it Feature Catalog & Modeling Reference. Added Domains 12–14 and 32 🆕 proposed features across the catalog; added 5 ↺ rows for built features that had no row (touch share, avg_score_diff, close_game_pct, team Elo, SOS via opponent Elo). Corrected 16 Cost ratings and updated 33 descriptions (itemized below). No Status, Signal, or Model Target values changed. Priority Matrix v1 kept for history; v2 proposed. Exact counts replace the earlier approximate summary: the 2026-06-10 catalog had 143 rows (52 done, 1 partial, 90 missing). |
 | 2026-06-10 | W4 player features built. Marked ~15 Domain 8 features as Done: rolling stats (L3+L6 mean/std), usage shares (target/carry/touch), matchup ranks, game context (spread, total, dome, home, rest, implied team total). Priority Matrix items 8–10, 12 complete. Snap % deferred (nflreadpy doesn't expose snap counts). |

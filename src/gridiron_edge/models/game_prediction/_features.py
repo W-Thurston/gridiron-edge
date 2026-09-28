@@ -38,6 +38,7 @@ from gridiron_edge.models.game_prediction._columns import (
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
     _RAW_FEATURES,
+    _SCHEMA_VERSION,
     _TEAM_FEATURES,
     FeatureSet,
 )
@@ -108,24 +109,32 @@ def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 
 # Populated here because FEATURE_SETS must reference the functions above.
 # Callers import FEATURE_SETS["combined"] rather than the raw constants.
+#
+# Each name is tied to the modeling schema version rather than a hand-counted
+# column total: the total drifts every time a feature batch changes EPA_COLS,
+# and re-deriving it from len(...) here would still require a manual name
+# bump per batch. Keying off _SCHEMA_VERSION means a schema bump (already
+# required by every adopted batch) mints a new name automatically, so a
+# persisted model's feature_set_name can never silently point at a
+# composition that has since changed underneath it.
 FEATURE_SETS: dict[str, FeatureSet] = {
     "diff": FeatureSet(
-        name="diff_37",
+        name=f"diff_v{_SCHEMA_VERSION}",
         feature_fn=_make_diff_features,
         feature_names=_DIFF_FEATURES,
     ),
     "raw": FeatureSet(
-        name="raw_74",
+        name=f"raw_v{_SCHEMA_VERSION}",
         feature_fn=_make_raw_features,
         feature_names=list(_RAW_FEATURES),
     ),
     "combined": FeatureSet(
-        name="combined_111",
+        name=f"combined_v{_SCHEMA_VERSION}",
         feature_fn=_make_combined_features,
         feature_names=_COMBINED_FEATURES,
     ),
     "expanded": FeatureSet(
-        name="expanded_152",
+        name=f"expanded_v{_SCHEMA_VERSION}",
         feature_fn=_make_expanded_features,
         feature_names=_EXPANDED_FEATURES,
     ),

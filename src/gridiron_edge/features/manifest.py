@@ -58,7 +58,7 @@ logger: Logger = logging.getLogger(__name__)
 # Bump this whenever the feature set or feature output columns change.
 # Models trained on a previous version will detect the mismatch and
 # surface a clear error rather than silently producing wrong predictions.
-CURRENT_SCHEMA_VERSION: int = 5
+CURRENT_SCHEMA_VERSION: int = 6
 
 # Bump this whenever the IMPLEMENTATION of any feature changes such that
 # existing values on disk would differ from a fresh rebuild. This is the
@@ -73,7 +73,7 @@ CURRENT_SCHEMA_VERSION: int = 5
 #
 # When this is bumped, the next incremental build will detect the mismatch
 # and force a full rebuild instead of preserving stale rows.
-CURRENT_DATA_VERSION: int = 2
+CURRENT_DATA_VERSION: int = 3
 
 _MANIFEST_FILENAME: str = "modeling_file_manifest.json"
 

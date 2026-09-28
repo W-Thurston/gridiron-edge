@@ -8,6 +8,225 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D62 - Phase A batches decouple wiring from promotion; a consolidated incremental sweep (Unit 7) makes the adopt/reject call
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP's Tier 5 #16 program rule 2 originally required one
+retrain through the gated `gridiron models train` comparison immediately
+after each batch's `EPA_COLS`/schema wiring. Earlier the same day, rule 1
+was clarified to treat that gate itself as the out-of-band screen rule 1
+otherwise requires, with a rejected batch reverted via `git` so the net
+cost stayed zero (no separate screening harness existed to do this more
+formally). That approach works for one isolated batch, but Phase A has six
+wiring units (A1–A6) queued, most small and independent of each other;
+running a full walk-forward retrain-and-compare after every one would be
+slow and would interrupt building out feature availability across them,
+and a `git`-revert-on-rejection approach stops making sense once more than
+one batch has been wired since the last evaluation — reverting batch N
+would also require re-deriving whatever schema version batches N+1..6
+had bumped to in the meantime.
+
+**Decision:** Decouple wiring from promotion.
+
+- **Wiring** (adding columns to `EPA_COLS`/`CANONICAL_FEATURES`, bumping
+  `features/manifest.py`'s schema/data version, and passing the live-
+  availability replay) happens per unit, immediately, as soon as a batch is
+  built and tested — exactly as Unit 1 already did. A wiring unit's own
+  closeout does not require a retrain.
+- **Promotion** (the gated `compare_classification_models`/
+  `compare_regression_models` comparison that decides adoption) is deferred
+  to a new Unit 7 ("Phase A screening and promotion"), which runs one
+  incremental walk-forward sweep across however many units have
+  accumulated: baseline, baseline+A1, baseline+A1+A2, and so on in wiring
+  order. Each batch's own attributable Brier/MAE delta is measured against
+  the batch immediately before it in this sequence, preserving the
+  acceptance criteria's "baseline rebuilt without the batch" methodology
+  without paying the full walk-forward cost once per unit.
+- A batch the sweep rejects is removed by a **subsequent forward schema
+  bump** — never a rewind of an already-published schema version — matching
+  this codebase's general "immutable artifacts, no backward edits"
+  convention (ROADMAP Ways of Working rule 11's spirit applied to schema
+  history specifically).
+
+**Implications:**
+- Units 1–6 in the Phase A unit sequence (`ROADMAP.md`) close on "wired,
+  tested, live-availability replay passed," not on "promoted." Unit 1
+  already meets this bar (schema v6, D60/D61) and needs no further retrain
+  work of its own before closing.
+- `FEATURES.md` Part I's ✅ Done column reflects that a batch's features
+  are correctly implemented and available in the canonical feature set —
+  unchanged by promotion timing, consistent with how every pre-existing
+  `EPA_COLS` feature was marked Done when built, not when separately proven
+  to improve holdout Brier. The Game-Model Build Queue (Part III) is the
+  place that tracks adoption/promotion status separately, and stays "wired,
+  promotion pending" for a batch until Unit 7 records an adopt or reject
+  decision for it.
+- Between now and whenever Unit 7 runs, the currently-persisted Win/Total
+  champions' own `feature_set_name` will not match the live, schema-bumped
+  `FeatureSet` composition (D61), so the existing strict metadata-preflight
+  boundary correctly marks them unavailable for live serving. This window
+  may now span multiple wiring units rather than just one, which is an
+  accepted tradeoff given Gridiron Edge has never been live in production
+  (ROADMAP's compatibility policy).
+- The rule-1 clarification recorded earlier today (git-revert-on-rejection
+  for a standalone batch) is superseded by this entry for Phase A's
+  remaining units, but remains valid guidance for a future program with
+  only one isolated batch and no accumulation.
+
+**Revisit triggers:**
+- If Unit 7's sweep finds that two batches' features interact (one's
+  contribution depends on another being present), the strict
+  cumulative-order sweep may under- or over-credit an individual batch;
+  revisit with a pairwise or leave-one-out design if that is suspected.
+- If Phase A grows past Unit 6 before Unit 7 runs (for example if Phase B
+  work starts early), Unit 7's scope should absorb the additional units
+  rather than spawning a second, separately-numbered sweep.
+
+---
+
+## D61 - `FeatureSet` names derive from the modeling schema version, not a hand-counted column total
+
+**Date:** 2026-09-28
+
+**Context:** Implementing Unit 1 (batch A1) added five columns to `EPA_COLS`,
+growing `combined`/`expanded` from 111/152 to 126/167 columns. `_features.py`'s
+`FEATURE_SETS` dict had hardcoded each name as a literal string baked in at a
+point-in-time column count (`"combined_111"`, `"expanded_152"`, `"raw_74"`,
+`"diff_37"`) with no mechanism forcing it to be updated when the underlying
+composition changed. ROADMAP's Tier 5 #16 program rule 2 requires "one new
+`FeatureSet` name" per adopted batch; the hand-counted convention only
+enforced that by relying on someone remembering to re-count and edit the
+string on every batch, forever.
+
+**Decision:** `FeatureSet.name` is now derived from `CURRENT_SCHEMA_VERSION`
+(`features/manifest.py`) rather than a manually maintained column count:
+`f"{key}_v{schema_version}"` (for example `"combined_v6"`, `"expanded_v6"`).
+Every batch that changes `EPA_COLS`/`CANONICAL_FEATURES` composition is
+already required to bump `schema_version` (rule 2), so the name now changes
+automatically and atomically with the composition — there is no longer a
+separate manual step to forget.
+
+**Implications:**
+- `FEATURE_SETS["combined"].name`, `["expanded"].name`, `["raw"].name`, and
+  `["diff"].name` are now `"combined_v6"`, `"expanded_v6"`, `"raw_v6"`, and
+  `"diff_v6"` (previously `"combined_111"`, `"expanded_152"`, `"raw_74"`,
+  `"diff_37"`).
+- Every call site that consults `feature_set_name` (availability,
+  prediction, the comparable-games corpus, Logistic explanation evidence)
+  treats it as an opaque string compared for exact equality — none parses a
+  numeric suffix — so this rename is safe. Confirmed by inspecting every
+  `feature_set_name` reference in `src/`.
+- Existing persisted-evidence test fixtures that hardcode
+  `feature_set_name="combined_111"` as mock historical data are untouched
+  and remain valid: they are independent fixture literals, not derived from
+  the live `FEATURE_SETS` dict.
+- The currently-persisted Logistic Win champion's own metadata still
+  records whatever `feature_set_name` it was actually trained under; it
+  will not match the newly-computed `"combined_v6"`, so the existing strict
+  metadata-preflight boundary correctly marks it unavailable until it is
+  retrained and repromoted under the new composition and name -- the same
+  fail-closed behavior that boundary was built for, not a new failure mode.
+
+**Revisit triggers:**
+- If two different feature compositions ever need to share one schema
+  version (rule 2's "one schema bump per batch" convention should prevent
+  this), the naming scheme needs a second axis beyond version alone.
+
+---
+
+## D60 - CPOE's pre-2007 era gap gets an indicator-plus-fill policy; team fumble rate is defined per offensive play, not per touch
+
+**Date:** 2026-09-28
+
+**Context:** Adding team-level CPOE (`off_cpoe`/`def_cpoe`, already aggregated
+per game in `transform/clean/epa.py` from PBP's `cpoe` column) to the
+canonical Win/Total feature set (ROADMAP Tier 5 #16 Phase A, Unit 1 / batch
+A1) is blocked by a real data gap: reading
+`data/cleaned/epa_by_game.parquet` directly shows `off_cpoe`/`def_cpoe` are
+100% null for 1999-2005, 2.06% null in 2006 (the transition season), and 0%
+null from 2007 onward — nflverse's completion-probability model doesn't
+cover the earlier era. This is exactly the case ROADMAP's Tier 5 #16
+program rule 4 names: an era-gapped feature needs a recorded
+training-window or indicator-plus-fill policy before adoption. The existing
+training-row filter (`_prepare_data` in
+`models/game_prediction/_features.py`) drops any row missing a required
+feature, so adding CPOE unmodified would silently drop 1999-2006 from every
+future Win/Total training run, not just this batch.
+
+Separately, this batch also adds a "fumble rate, offense" feature
+(`FEATURES.md` Domain 3). The catalog describes it as "fumbles per touch,"
+but no existing team-level feature in `transform/clean/epa.py` uses a
+touches denominator (rush attempts + receptions) — the existing
+turnover-rate and interception-rate features (`off_turnover_rate`,
+`off_int_rate`) are defined per offensive play and per dropback
+respectively. A true touches denominator would need tracking receptions
+separately from every other offensive play, a new aggregation shape none of
+the sibling metrics use.
+
+**Decision:**
+
+1. **CPOE: indicator-plus-fill, not a training-window exclusion.** At the
+   point `features/team/epa.py` reads `epa_by_game`, before rolling, any
+   null `off_cpoe`/`def_cpoe` is filled with `0.0` — CPOE's own
+   zero-centered scale, where 0 already means "completed passes at the rate
+   expectation predicted," so the fill reads as neutral rather than a
+   fabricated skill signal. A paired per-side availability column,
+   `off_cpoe_available`/`def_cpoe_available` (1 when the source aggregate
+   was non-null, 0 when filled), is computed in the same step and added to
+   `EPA_COLS` alongside `off_cpoe`/`def_cpoe`, so it rolls through the same
+   rolling-window and canonical-join machinery as every other metric — no
+   second, bespoke indicator path. The fill happens only in the feature
+   layer, not in `transform/clean/epa.py`'s aggregation, so other consumers
+   of `epa_by_game.parquet` (props, evaluation) keep seeing the true null
+   rather than inheriting a game-model-specific imputation choice.
+2. **Fumble rate, offense: per offensive scrimmage play, not per touch.**
+   `off_fumble_rate` (fumbles lost per offensive play, computed in
+   `_agg_side`) uses the same denominator already used by
+   `off_turnover_rate`. This departs from the catalog's literal "per touch"
+   wording; "touch" is not otherwise defined anywhere in this codebase's
+   team-level features, and matching the existing per-play convention keeps
+   every turnover-adjacent metric on one consistent scale rather than
+   introducing a second denominator convention for a single feature.
+   `_agg_side` computes both sides generically, so `def_fumble_rate` exists
+   in `epa_by_game.parquet` as a byproduct; it is not added to `EPA_COLS`
+   because it is not a requested catalog row for this batch.
+
+**Implications:**
+- `EPA_COLS` in `features/team/epa.py` grows from 36 to 41 entries
+  (`off_cpoe`, `def_cpoe`, `off_cpoe_available`, `def_cpoe_available`,
+  `off_fumble_rate`), which via `_EPA_SUFFIXES` in
+  `models/game_prediction/_columns.py` automatically expands
+  `_RAW_FEATURES`, `_DIFF_FEATURES`, `_COMBINED_FEATURES`, and
+  `_EXPANDED_FEATURES` by 15 columns (5 new metrics × away/home/diff).
+- `features/manifest.py`'s `CURRENT_SCHEMA_VERSION` and
+  `CURRENT_DATA_VERSION` both bump: new columns change the schema, and the
+  CPOE fill changes on-disk values for any row it touches (1999-2006)
+  relative to what an unfilled rebuild would have produced.
+- No 1999-2006 training row is dropped by this batch. Every model trained
+  on `combined_111`/`expanded_152` going forward carries the two
+  availability columns.
+- `off_cpoe_available`/`def_cpoe_available` roll to a value strictly
+  between 0 and 1 only during the 2006 transition season and for any team
+  whose rolling window straddles it; every other season — including all
+  three current holdout seasons, 2023-2026 — rolls to a constant 1.0 and is
+  inert for present-day prediction and evaluation.
+- `def_fumble_rate` exists on disk but is not modeled; a future batch could
+  adopt it later with no transform-layer change required.
+
+**Revisit triggers:**
+- If a future Phase A/B/C batch touches another era-gapped source
+  (moneylines before 2007, Next Gen Stats from 2016, PFR advanced stats
+  from 2018 — all named by program rule 4), reuse this indicator-plus-fill
+  shape rather than inventing a third pattern, unless that source's
+  missingness structure doesn't fit it (for example, a feature missing
+  going forward rather than only in the past).
+- If a later batch needs `def_fumble_rate` (or fumbles-per-touch
+  specifically), add it deliberately rather than assuming this entry
+  already covers it.
+
+---
+
 ## D59 - Candidate issuance rejects non-live and late-generated forecasts (resolves D8)
 
 **Date:** 2026-09-27

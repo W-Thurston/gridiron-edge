@@ -11,6 +11,7 @@ from tests.fixtures.dataframes import make_epa_by_game
 from gridiron_edge.features.team.epa import (
     DEFAULT_ROLLING_WINDOW,
     EPA_COLS,
+    _apply_cpoe_availability_policy,
     _build_rolling_epa,
     _build_target_rolling_epa,
 )
@@ -20,8 +21,8 @@ class TestEpaConstants:
     def test_default_rolling_window_is_4(self) -> None:
         assert DEFAULT_ROLLING_WINDOW == 4
 
-    def test_epa_cols_has_36_metrics(self) -> None:
-        assert len(EPA_COLS) == 36
+    def test_epa_cols_has_41_metrics(self) -> None:
+        assert len(EPA_COLS) == 41
 
     def test_epa_cols_contains_expected_metrics(self) -> None:
         expected: set[str] = {
@@ -35,8 +36,11 @@ class TestEpaConstants:
             "off_third_down_pct",
             "off_redzone_td_pct",
             "off_turnover_rate",
+            "off_fumble_rate",
             "off_sack_rate",
             "off_plays",
+            "off_cpoe",
+            "off_cpoe_available",
             "off_yards_per_play",
             "off_redzone_attempts",
             "off_int_rate",
@@ -55,6 +59,8 @@ class TestEpaConstants:
             "def_turnover_rate",
             "def_sack_rate",
             "def_plays",
+            "def_cpoe",
+            "def_cpoe_available",
             "def_yards_per_play",
             "def_redzone_attempts",
             "def_int_rate",
@@ -63,6 +69,48 @@ class TestEpaConstants:
             "def_close_game_pct",
         }
         assert set(EPA_COLS) == expected
+        assert "def_fumble_rate" not in EPA_COLS
+
+
+class TestApplyCpoeAvailabilityPolicy:
+    """DECISIONS.md D60: fill missing CPOE with a paired availability flag."""
+
+    def _epa_raw(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "game_id": ["1999_01_a", "2024_01_a"],
+                "season": [1999, 2024],
+                "week": [1, 1],
+                "team": ["KC", "KC"],
+                "off_cpoe": [float("nan"), 3.5],
+                "def_cpoe": [float("nan"), -1.2],
+            }
+        )
+
+    def test_fills_missing_cpoe_with_zero(self) -> None:
+        result = _apply_cpoe_availability_policy(self._epa_raw())
+        assert result["off_cpoe"].tolist() == [0.0, 3.5]
+        assert result["def_cpoe"].tolist() == [0.0, -1.2]
+
+    def test_marks_filled_rows_unavailable(self) -> None:
+        result = _apply_cpoe_availability_policy(self._epa_raw())
+        assert result["off_cpoe_available"].tolist() == [0, 1]
+        assert result["def_cpoe_available"].tolist() == [0, 1]
+
+    def test_does_not_mutate_input(self) -> None:
+        source = self._epa_raw()
+        _apply_cpoe_availability_policy(source)
+        assert source["off_cpoe"].isna().iloc[0]
+        assert "off_cpoe_available" not in source.columns
+
+    def test_tolerates_missing_cpoe_columns(self) -> None:
+        """A source lacking off_cpoe/def_cpoe (e.g. a stale on-disk parquet
+        from before D60) is passed through rather than raising.
+        """
+        source = pd.DataFrame({"game_id": ["1999_01_a"], "team": ["KC"]})
+        result = _apply_cpoe_availability_policy(source)
+        assert "off_cpoe_available" not in result.columns
+        assert "def_cpoe_available" not in result.columns
 
 
 class TestBuildRollingEpa:
@@ -86,6 +134,36 @@ class TestBuildRollingEpa:
         result: DataFrame = _build_rolling_epa(epa, window=4)
         week6 = result.loc[(result["season"] == 2024) & (result["week"] == 6), :]
         assert not week6["rolling_off_epa_per_play"].isna().any()
+
+
+class TestNewMetricsUseExistingRollingBoundary:
+    """The D60/D61 batch's new columns ride the same generic rolling
+    machinery as every other EPA_COLS entry -- confirm no separate,
+    newly-introduced leakage surface for them specifically."""
+
+    def _epa_with_new_metrics(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "game_id": [f"2024_{week:02d}_KC" for week in range(1, 5)],
+                "season": [2024] * 4,
+                "week": [1, 2, 3, 4],
+                "team": ["KC"] * 4,
+                "off_cpoe": [1.0, 2.0, 3.0, 4.0],
+                "off_fumble_rate": [0.10, 0.20, 0.30, 0.40],
+            }
+        )
+
+    def test_week_one_has_no_self_inclusion(self) -> None:
+        rolled = _build_rolling_epa(self._epa_with_new_metrics(), window=4)
+        week1 = rolled.loc[rolled["week"] == 1, :]
+        assert week1["rolling_off_cpoe"].isna().all()
+        assert week1["rolling_off_fumble_rate"].isna().all()
+
+    def test_later_week_uses_strictly_prior_games_only(self) -> None:
+        rolled = _build_rolling_epa(self._epa_with_new_metrics(), window=4)
+        week4 = rolled.loc[rolled["week"] == 4, :]
+        assert week4["rolling_off_cpoe"].iloc[0] == pytest.approx((1.0 + 2.0 + 3.0) / 3)
+        assert week4["rolling_off_fumble_rate"].iloc[0] == pytest.approx((0.10 + 0.20 + 0.30) / 3)
 
 
 class TestBuildRollingEpaExcludePlayoffs:

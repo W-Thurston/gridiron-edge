@@ -14,6 +14,7 @@ from gridiron_edge.models.game_prediction._columns import (
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
     _RAW_FEATURES,
+    _SCHEMA_VERSION,
     _TEAM_FEATURES,
 )
 from gridiron_edge.models.game_prediction._features import (
@@ -43,12 +44,12 @@ def _canonical_frame() -> DataFrame:
 
 def test_feature_declaration_counts_and_uniqueness() -> None:
     expected = {
-        "raw": (_RAW_FEATURES, 74),
-        "diff": (_DIFF_FEATURES, 37),
-        "combined": (_COMBINED_FEATURES, 111),
+        "raw": (_RAW_FEATURES, 84),
+        "diff": (_DIFF_FEATURES, 42),
+        "combined": (_COMBINED_FEATURES, 126),
         "game": (_GAME_FEATURES, 15),
         "team": (_TEAM_FEATURES, 26),
-        "expanded": (_EXPANDED_FEATURES, 152),
+        "expanded": (_EXPANDED_FEATURES, 167),
     }
 
     for columns, count in expected.values():
@@ -122,11 +123,13 @@ def test_expanded_features_tolerate_unavailable_extended_columns() -> None:
 
 
 def test_feature_set_keys_and_metadata_names_are_stable() -> None:
+    """Names are tied to the modeling schema version, not a hand-counted
+    column total, so a schema bump mints a new name automatically."""
     assert list(FEATURE_SETS) == ["diff", "raw", "combined", "expanded"]
-    assert FEATURE_SETS["diff"].name == "diff_37"
-    assert FEATURE_SETS["raw"].name == "raw_74"
-    assert FEATURE_SETS["combined"].name == "combined_111"
-    assert FEATURE_SETS["expanded"].name == "expanded_152"
+    assert FEATURE_SETS["diff"].name == f"diff_v{_SCHEMA_VERSION}"
+    assert FEATURE_SETS["raw"].name == f"raw_v{_SCHEMA_VERSION}"
+    assert FEATURE_SETS["combined"].name == f"combined_v{_SCHEMA_VERSION}"
+    assert FEATURE_SETS["expanded"].name == f"expanded_v{_SCHEMA_VERSION}"
 
 
 def test_feature_set_names_match_declarations() -> None:

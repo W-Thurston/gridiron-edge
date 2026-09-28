@@ -1,5 +1,54 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Game-model feature program opened; Unit 1 (batch A1) wired: CPOE, fumble rate, INT-rate correction
+
+#### Added
+
+- `off_cpoe`/`def_cpoe`, `off_cpoe_available`/`def_cpoe_available`, and
+  `off_fumble_rate` in `EPA_COLS`, now rolling into the canonical Win/Total
+  feature set (`combined`/`expanded` `FeatureSet`s). CPOE's pre-2007 era
+  gap is handled by an indicator-plus-fill policy rather than dropping
+  affected training rows (`DECISIONS.md` D60).
+- `off_fumble_rate`/`def_fumble_rate` in `epa_by_game.parquet`
+  (`transform/clean/epa.py`); only the offensive rate is adopted into
+  `EPA_COLS` (D60).
+- `tests/unit/transform/clean/test_epa.py` — this transform module had no
+  test coverage before this unit.
+
+#### Changed
+
+- `EPA_COLS` grew 36→41; `_RAW_FEATURES`/`_DIFF_FEATURES`/
+  `_COMBINED_FEATURES`/`_EXPANDED_FEATURES` grew to 84/42/126/167.
+  `features/manifest.py`'s `CURRENT_SCHEMA_VERSION` 5→6 and
+  `CURRENT_DATA_VERSION` 2→3.
+- `FeatureSet.name` (`combined`, `expanded`, `raw`, `diff`) now derives from
+  the modeling schema version (`combined_v6`, etc.) instead of a
+  hand-maintained column count, so a schema bump can never leave a stale
+  name in place (`DECISIONS.md` D61).
+- `FEATURES.md`: CPOE (Domain 1) and Fumble rate/off (Domain 3) marked
+  Done; INT rate/def (Domain 3) corrected from a stale ❌ to ✅ — it was
+  already built as `def_int_rate` since the 2026-06-04 revision and the
+  catalog was never updated.
+- `data/cleaned/epa_by_game.parquet` and the modeling file regenerated
+  under the new schema (`gridiron transform aggregate-epa`,
+  `gridiron features model-inputs --all-years`); row counts unchanged, new
+  columns fully populated.
+- ROADMAP Tier 5 #16's program rules 1 and 2 revised to decouple feature
+  wiring from promotion: a batch is wired (schema bump, `EPA_COLS`) as soon
+  as it is built and tested, while the gated retrain that actually promotes
+  or rejects it runs later through a consolidated incremental sweep (new
+  Unit 7), preserving per-batch attribution without a full walk-forward
+  retrain after every small unit (`DECISIONS.md` D62). The Phase A unit
+  sequence grew from 6 to 7 units accordingly.
+
+#### Verified
+
+- Live-availability replay (program rule 3): the real 2026-2027 upcoming
+  schedule (weeks 3-18, 226 scheduled games) produces zero NaNs across all
+  five new columns for every scheduled game.
+- Full non-slow unit suite (4,234 tests), Ruff, and Pyrefly pass against
+  the regenerated data.
+
 ### 2026-09-27 - Market Unit 26 closed: real Week 1 production-chain proof, collector sync, D8 fixed
 
 #### Added

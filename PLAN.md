@@ -108,6 +108,111 @@ should read this section before planning or modifying the repository.
 
 ## Planned Implementation Status
 
+### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
+
+No unit is currently active. Unit 1 (batch A1) closed below. Unit 2 (batch
+A2, opponent-adjusted EPA and unit interactions) is queued next in
+`ROADMAP.md`'s Phase A unit sequence and must be deliberately scoped into
+this file before work begins.
+
+### Unit 1 — Phase A Batch A1: Construction Fixes [Completed September 28, 2026]
+
+#### Completed
+
+Wired CPOE (`off_cpoe`/`def_cpoe`), a paired pre-2007 era-gap availability
+indicator for it, and a new offensive fumble-rate feature into the
+canonical Win/Total feature set, and corrected a stale catalog status for
+an already-built defensive interception-rate feature. Verified against
+regenerated real data and a full replay of the current upcoming schedule.
+Promotion — the gated retrain that decides whether these features are
+adopted into a champion — is deferred to a new consolidated-sweep unit
+(Unit 7), per a same-day revision to the program's wiring/promotion rules
+(`DECISIONS.md` D62).
+
+#### Goal
+
+Close two genuinely open Phase A1 catalog rows (CPOE, offensive fumble
+rate) and correct one stale row (defensive interception rate), establishing
+the wiring half of the "wire now, promote later" pattern the rest of
+Phase A's units will follow.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `tests/unit/transform/clean/test_epa.py` - Fumble-rate aggregation
+  coverage; this transform module had no prior test coverage.
+
+Changed:
+- `src/gridiron_edge/transform/clean/epa.py` - Added `off_fumble_rate`/
+  `def_fumble_rate` to `_agg_side` (fumbles lost per offensive scrimmage
+  play); updated the output-schema docstring.
+- `src/gridiron_edge/features/team/epa.py` - Added `off_cpoe`, `def_cpoe`,
+  `off_cpoe_available`, `def_cpoe_available`, `off_fumble_rate` to
+  `EPA_COLS` (36→41); added `_apply_cpoe_availability_policy` (D60's
+  fill-plus-indicator era-gap handling) wired into
+  `HomeAwayEpaFeature.compute()`.
+- `src/gridiron_edge/features/manifest.py` - Bumped `CURRENT_SCHEMA_VERSION`
+  5→6 and `CURRENT_DATA_VERSION` 2→3.
+- `src/gridiron_edge/models/game_prediction/_features.py` - `FEATURE_SETS`
+  names now derive from the schema version (D61) instead of a hand-counted
+  column total.
+- `tests/unit/features/test_epa.py` - Updated `EPA_COLS` count/membership;
+  added CPOE-availability-policy coverage and an explicit no-new-leakage
+  test for the new columns.
+- `tests/unit/models/test_epa_window.py` - Added the new columns to the
+  realistic `synthetic_epa_by_game` fixture.
+- `tests/unit/models/test_game_feature_sets.py` - Updated hardcoded feature
+  counts (84/42/126/167) and `FeatureSet` name assertions.
+- `FEATURES.md` - Status corrections (CPOE, Fumble rate/off, INT rate/def
+  in Part I); Game-Model Build Queue and Summary Statistics updates (Part
+  III); changelog entries.
+- `ROADMAP.md` - Program rules 1/2 revised to decouple wiring from
+  promotion; Phase A unit sequence expanded from 6 to 7 units.
+- `DECISIONS.md` - Added D60 (CPOE era-gap policy + fumble-rate
+  denominator), D61 (`FeatureSet` naming), D62 (wiring/promotion
+  decoupling).
+- `CHANGELOG.md` - This unit's entry.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/cleaned/epa_by_game.parquet` via `gridiron transform aggregate-epa`.
+- `data/modeling/modeling_file.csv` and its manifest via
+  `gridiron features model-inputs --all-years`.
+
+#### Tests
+
+Validation passed:
+- focused fumble-rate, CPOE-availability-policy, feature-count, and
+  new-column leakage-boundary tests;
+- repository-wide Ruff and Pyrefly;
+- the full non-slow unit suite (4,236 tests).
+
+Real-data validation:
+- `data/cleaned/epa_by_game.parquet` regenerated from cached PBP: same
+  14,610 rows; `off_fumble_rate`/`def_fumble_rate` 0% null with a realistic
+  ~0.7-0.8% per-play rate; `off_cpoe` pre-2006 nullity unchanged.
+- The modeling file regenerated in full: manifest shows `schema_version: 6`,
+  `data_version: 3`, 135 columns including the new CPOE and fumble-rate
+  fields.
+- Live-availability replay (program rule 3) against the real 2026-2027
+  upcoming schedule (weeks 3-18, 226 scheduled games): zero NaNs across all
+  five new columns for every scheduled game. Read-only — no file under
+  `data/` was modified by the replay itself.
+
+#### Acceptance
+
+CPOE and offensive fumble rate are correctly computed, era-gap-aware (D60),
+and available in the canonical Win/Total feature set with no new leakage
+surface; the defensive interception-rate catalog status now matches the
+actual, already-built aggregation. Regenerated data and the live-
+availability replay confirm the new columns are guaranteed pre-kickoff
+values for every currently scheduled game. Promotion (the gated Brier/MAE
+comparison against the current champion) is explicitly deferred to Unit 7
+per the revised program rules (D62) and is not part of this unit's
+acceptance bar.
+
 ### Completed Program: Weekly Prediction Input Integrity and Reproducibility [Closed September 25, 2026]
 
 Units 1 through 5 completed history-preserving weekly refresh, deterministic complete-history Elo reconstruction, exact persisted Elo-lineage enforcement, external disposition of the affected immutable 2026 Week 2 forecast evidence, and immutable prediction-input evidence for newly generated live weekly forecasts.

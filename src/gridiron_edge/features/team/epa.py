@@ -48,8 +48,11 @@ EPA_COLS: Final[list[str]] = [
     "off_third_down_pct",
     "off_redzone_td_pct",
     "off_turnover_rate",
+    "off_fumble_rate",
     "off_sack_rate",
     "off_plays",
+    "off_cpoe",
+    "off_cpoe_available",
     "off_yards_per_play",
     "off_redzone_attempts",
     "off_int_rate",
@@ -69,6 +72,8 @@ EPA_COLS: Final[list[str]] = [
     "def_turnover_rate",
     "def_sack_rate",
     "def_plays",
+    "def_cpoe",
+    "def_cpoe_available",
     "def_yards_per_play",
     "def_redzone_attempts",
     "def_int_rate",
@@ -345,6 +350,29 @@ def _season_numbers(
         raise ValueError("YEAR must begin with a numeric season.") from exc
 
 
+_CPOE_COLUMNS: Final[tuple[str, str]] = ("off_cpoe", "def_cpoe")
+
+
+def _apply_cpoe_availability_policy(epa_raw: DataFrame) -> DataFrame:
+    """Fill missing per-game CPOE with a paired availability indicator.
+
+    CPOE is null before nflverse's completion-probability model existed
+    (100% missing 1999-2005, transitioning through 2006). Filling with
+    ``0.0`` -- CPOE's own zero-centered "at expectation" value -- keeps
+    those rows in training instead of dropping them via the "any
+    unavailable feature" filter, while the paired ``*_available`` column
+    tells the model which rows were filled rather than observed. See
+    ``DECISIONS.md`` D60.
+    """
+    result = epa_raw.copy()
+    for column in _CPOE_COLUMNS:
+        if column not in result.columns:
+            continue
+        result[f"{column}_available"] = result[column].notna().astype(int)
+        result[column] = result[column].fillna(0.0)
+    return result
+
+
 @FeatureRegistry.register("home_away_epa")
 class HomeAwayEpaFeature:
     """Join pregame rolling EPA for canonical Away and Home teams."""
@@ -412,6 +440,7 @@ class HomeAwayEpaFeature:
             label="EPA source",
         )
         _validate_home_away_epa_identity(epa_raw)
+        epa_raw = _apply_cpoe_availability_policy(epa_raw)
 
         source["season"] = _season_numbers(source)
         away_targets = source.loc[
