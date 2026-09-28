@@ -319,6 +319,8 @@ class TestEnsureDataFreshStage:
                 "fetch-upcoming",
                 "clean-upcoming",
                 "clean-qb-coach-sidecar",
+                "fetch-player-stats",
+                "clean-player-stats",
                 "build-epa",
                 "build-elo",
                 "build-features",

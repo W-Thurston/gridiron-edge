@@ -62,6 +62,26 @@ def clean_qb_coach_sidecar() -> None:
     console.summary()
 
 
+@transform_app.command("clean-player-stats")
+def clean_player_stats_command() -> None:
+    """Build the cleaned player game logs from cached raw player stats.
+
+    Reads every cached season in data/raw/player_stats/ and writes
+    data/cleaned/player_game_logs.parquet. Attaching game identities looks up
+    nflverse schedules, so this step needs network access.
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.transform.clean.player_stats import clean_player_stats
+
+    console.header("transform clean-player-stats")
+
+    with step("Clean player stats") as s:
+        path = clean_player_stats()
+        s.set_detail(str(path))
+
+    console.summary()
+
+
 @transform_app.command("aggregate-epa")
 def transform_aggregate_epa(
     *,

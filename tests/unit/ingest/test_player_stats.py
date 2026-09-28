@@ -114,6 +114,63 @@ class TestFetchPlayerStats:
         assert len(paths) == 0
 
 
+class TestFetchPlayerStatsRefresh:
+    @staticmethod
+    def _frame_mock(mock_nfl: MagicMock, frame: DataFrame) -> None:
+        mock_nfl.load_player_stats.return_value = MagicMock(to_pandas=MagicMock(return_value=frame))
+
+    @patch("gridiron_edge.ingest.nflverse.player_stats.nfl")
+    def test_cached_season_is_skipped_without_force(
+        self, mock_nfl: MagicMock, tmp_path: Path
+    ) -> None:
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=4, season=2026))
+        fetch_player_stats(seasons=[2026], repo=tmp_path)
+        mock_nfl.load_player_stats.reset_mock()
+
+        paths = fetch_player_stats(seasons=[2026], repo=tmp_path)
+
+        assert len(paths) == 1
+        mock_nfl.load_player_stats.assert_not_called()
+
+    @patch("gridiron_edge.ingest.nflverse.player_stats.nfl")
+    def test_force_overwrites_cached_season(self, mock_nfl: MagicMock, tmp_path: Path) -> None:
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=4, season=2026))
+        fetch_player_stats(seasons=[2026], repo=tmp_path)
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=9, season=2026))
+
+        paths = fetch_player_stats(seasons=[2026], force=True, repo=tmp_path)
+
+        assert len(pd.read_parquet(paths[0])) == 9
+
+    @patch("gridiron_edge.ingest.nflverse.player_stats.nfl")
+    def test_empty_fetch_never_replaces_cached_file(
+        self, mock_nfl: MagicMock, tmp_path: Path
+    ) -> None:
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=4, season=2026))
+        cached = fetch_player_stats(seasons=[2026], repo=tmp_path)[0]
+        before = cached.read_bytes()
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=4, season=2026).iloc[0:0])
+
+        paths = fetch_player_stats(seasons=[2026], force=True, repo=tmp_path)
+
+        assert paths == []
+        assert cached.read_bytes() == before
+
+    @patch("gridiron_edge.ingest.nflverse.player_stats.nfl")
+    def test_failed_fetch_never_replaces_cached_file(
+        self, mock_nfl: MagicMock, tmp_path: Path
+    ) -> None:
+        self._frame_mock(mock_nfl, _make_raw_player_stats(n=4, season=2026))
+        cached = fetch_player_stats(seasons=[2026], repo=tmp_path)[0]
+        before = cached.read_bytes()
+        mock_nfl.load_player_stats.side_effect = Exception("network down")
+
+        paths = fetch_player_stats(seasons=[2026], force=True, repo=tmp_path)
+
+        assert paths == []
+        assert cached.read_bytes() == before
+
+
 class TestLoadPlayerStats:
     def test_raises_when_no_files(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="No player stats found"):

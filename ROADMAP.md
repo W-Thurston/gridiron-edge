@@ -497,21 +497,6 @@ deliberately evaluates offsets at each game's date and does not inherit it.
 Fixing the older feature changes existing values, so it needs its own small
 unit with a data-version bump.
 
-### Player game logs have no refresh path in the pipeline
-
-`player_game_logs.parquet` feeds the batch A3 QB features (`QB_EPA_PLAY_*`,
-`QB_CPOE_ROLLING`, `QB_EXPERIENCE`) and the prop features, but nothing in
-`run-data-pipeline` or `post-week` refreshes it. `fetch_player_stats` has no
-CLI command, the `fetch-player-stats`/`clean-player-stats` stages named in its
-error messages do not exist, and the fetcher skips any season already cached,
-so the current season never updates. The logs had stopped at 2025 week 22, so
-every 2026 QB feature ignored all 2026 starts while training rows saw the prior
-week. They were refreshed once by hand on 2026-09-28 (2026 weeks 1-3;
-pre-2026 rows verified identical) and will lag again each week until a
-fetch-and-clean stage that refreshes the current season is added to the
-pipeline and `post-week`. The batch A5 `QB_ELO`/`QB_ELO_STARTS` columns are
-fed by games plus sidecar and never had this lag.
-
 ### Rating-ensemble lookahead is frozen, not simulated
 
 Glicko-2, the QB rating, and Massey/Colley/Keener give a game beyond the next

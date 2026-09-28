@@ -28,6 +28,8 @@ class TestPipelineContract:
             "fetch-upcoming",
             "clean-upcoming",
             "clean-qb-coach-sidecar",
+            "fetch-player-stats",
+            "clean-player-stats",
             "fetch-weather",
             "build-epa",
             "build-elo",
@@ -168,6 +170,77 @@ class TestFetchGamesStage:
 
         refresh_games.assert_called_once_with(season=None)
         fetch_games.assert_not_called()
+
+
+class TestPlayerStatsStages:
+    @staticmethod
+    def _run(active: set[str], *, all_years: bool = False, resolved_season: int = 2026) -> None:
+        _run_pipeline_stages(
+            active=active,
+            all_years=all_years,
+            resolved_season=resolved_season,
+            upcoming_target=resolved_season,
+            season=None,
+            season_year=None,
+            owm_api_key=None,
+        )
+
+    def test_player_stats_stages_precede_feature_build(self) -> None:
+        order = {stage: index for index, stage in enumerate(ALL_STAGES)}
+        assert order["fetch-player-stats"] < order["clean-player-stats"] < order["build-features"]
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch("gridiron_edge.ingest.nflverse.player_stats.fetch_player_stats")
+    def test_weekly_fetch_force_refreshes_resolved_season(
+        self, fetch: MagicMock, _check: MagicMock, tmp_path: Path
+    ) -> None:
+        fetch.return_value = [tmp_path / "player_stats_2026.parquet"]
+
+        self._run({"fetch-player-stats"})
+
+        fetch.assert_called_once_with(seasons=[2026], force=True)
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch("gridiron_edge.ingest.nflverse.player_stats.fetch_player_stats")
+    def test_all_years_fetches_full_history(
+        self, fetch: MagicMock, _check: MagicMock, tmp_path: Path
+    ) -> None:
+        fetch.return_value = [tmp_path / "player_stats_1999.parquet"]
+
+        self._run({"fetch-player-stats"}, all_years=True)
+
+        fetch.assert_called_once_with(all_years=True)
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch("gridiron_edge.ingest.nflverse.player_stats.fetch_player_stats")
+    def test_empty_fetch_does_not_raise(self, fetch: MagicMock, _check: MagicMock) -> None:
+        fetch.return_value = []
+
+        self._run({"fetch-player-stats"})
+
+        fetch.assert_called_once()
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch("gridiron_edge.transform.clean.player_stats.clean_player_stats")
+    def test_clean_stage_rebuilds_logs(
+        self, clean: MagicMock, _check: MagicMock, tmp_path: Path
+    ) -> None:
+        clean.return_value = tmp_path / "player_game_logs.parquet"
+
+        self._run({"clean-player-stats"})
+
+        clean.assert_called_once_with()
+
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    @patch("gridiron_edge.transform.clean.player_stats.clean_player_stats")
+    @patch("gridiron_edge.ingest.nflverse.player_stats.fetch_player_stats")
+    def test_unselected_stages_do_not_run(
+        self, fetch: MagicMock, clean: MagicMock, _check: MagicMock
+    ) -> None:
+        self._run(set())
+
+        fetch.assert_not_called()
+        clean.assert_not_called()
 
 
 class TestStageStalenessCheck:

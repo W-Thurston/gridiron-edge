@@ -45,13 +45,15 @@ def _stage_refresh_results(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_refresh_next_week_state(ctx: dict[str, Any]) -> StageResult:
-    """Refresh upcoming schedule, EPA, Elo, and model inputs."""
+    """Refresh upcoming schedule, player stats, EPA, Elo, and model inputs."""
     _run_pipeline(
         ctx,
         active={
             "fetch-upcoming",
             "clean-upcoming",
             "clean-qb-coach-sidecar",
+            "fetch-player-stats",
+            "clean-player-stats",
             "build-epa",
             "build-elo",
             "build-features",

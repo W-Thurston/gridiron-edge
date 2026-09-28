@@ -88,6 +88,8 @@ clean-games
 fetch-upcoming
 clean-upcoming
 clean-qb-coach-sidecar
+fetch-player-stats
+clean-player-stats
 fetch-weather
 build-epa
 build-elo
@@ -103,6 +105,8 @@ uv run gridiron run-data-pipeline --only build-features
 uv run gridiron run-data-pipeline --skip fetch-weather
 uv run gridiron run-data-pipeline --all-years --upcoming-season 2026
 ```
+
+`fetch-player-stats` re-fetches the resolved season's nflverse player stats on every run (all seasons under `--all-years`), because the current season's file grows through the year. A fetch that fails or returns no rows leaves the cached file untouched and the stage reports that no data was returned; it does not fail, since a new season has no data before its first game. `clean-player-stats` rebuilds `data/cleaned/player_game_logs.parquet` from every cached season and looks up nflverse schedules to attach game identities, so it needs network access. Both stages run before `build-features`, and `post-week`'s `refresh-next-week-state` and `weekly-predict` include them. `gridiron ingest player-stats` and `gridiron transform clean-player-stats` run them individually.
 
 Pipeline staleness checks resolve canonical input and output paths through the dataset registry. When a registered input is newer than an existing output, the command emits a nonfatal warning that the active stage will rebuild the stale output.
 
@@ -1202,7 +1206,7 @@ refresh-next-week-state
 close-live-forecasts
 ```
 
-The command refreshes outcomes, refreshes next-week schedule and feature state, and evaluates the exact Win and Total events referenced by the selected weekly product, whatever forecast role (`live` or `development`) that product carries; closeout reports the exact role closed rather than assuming `live`. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
+The command refreshes outcomes, refreshes next-week schedule, player-stats, and feature state, and evaluates the exact Win and Total events referenced by the selected weekly product, whatever forecast role (`live` or `development`) that product carries; closeout reports the exact role closed rather than assuming `live`. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
 
 `post-week` does not run historical forecast backfill.
 

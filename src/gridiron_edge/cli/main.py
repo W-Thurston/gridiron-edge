@@ -111,6 +111,8 @@ ALL_STAGES: list[str] = [
     "fetch-upcoming",
     "clean-upcoming",
     "clean-qb-coach-sidecar",
+    "fetch-player-stats",
+    "clean-player-stats",
     "fetch-weather",
     "build-epa",
     "build-elo",
@@ -259,6 +261,26 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
             from gridiron_edge.transform.clean import build_qb_coach_sidecar
 
             path = build_qb_coach_sidecar()
+            s.set_detail(path.name)
+
+    with step("Fetch player stats", skip=not runs("fetch-player-stats")) as s:
+        if runs("fetch-player-stats"):
+            from gridiron_edge.ingest.nflverse.player_stats import fetch_player_stats
+
+            if all_years:
+                refreshed = fetch_player_stats(all_years=True)
+            else:
+                refreshed = fetch_player_stats(seasons=[resolved_season], force=True)
+            if refreshed:
+                s.set_detail(f"{len(refreshed)} season file(s) refreshed")
+            else:
+                s.set_detail("no data returned; cached player stats unchanged")
+
+    with step("Clean player stats", skip=not runs("clean-player-stats")) as s:
+        if runs("clean-player-stats"):
+            from gridiron_edge.transform.clean.player_stats import clean_player_stats
+
+            path = clean_player_stats()
             s.set_detail(path.name)
 
     with step("Fetch weather", skip=not runs("fetch-weather")) as s:

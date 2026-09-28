@@ -108,18 +108,27 @@ def fetch_player_stats(
     *,
     all_years: bool = False,
     seasons: list[int] | None = None,
+    force: bool = False,
     repo: Path | None = None,
 ) -> list[Path]:
     """Fetch weekly player stats and write per-season Parquet files.
+
+    A cached season is skipped unless ``all_years`` or ``force`` is set. A
+    fetch that fails or returns no rows never replaces a cached file, so a
+    refresh cannot degrade the cache; that season is simply absent from the
+    result.
 
     Args:
         all_years: If ``True``, fetch all seasons from 1999 to present.
             If ``False``, fetch only the current season.
         seasons: Explicit list of seasons to fetch. Overrides ``all_years``.
+        force: Re-fetch and overwrite cached seasons. Use for the current
+            season, whose file grows through the year.
         repo: Repository root. Defaults to settings.
 
     Returns:
-        List of paths to written Parquet files.
+        Paths of seasons that were written or, without ``force``, already
+        cached.
     """
     resolved_repo: Path = repo or get_settings().repo_root
 
@@ -139,7 +148,7 @@ def fetch_player_stats(
     for season in target_seasons:
         path: Path = _player_stats_path(resolved_repo, season)
 
-        if path.exists() and not all_years:
+        if path.exists() and not (all_years or force):
             logger.info("Player stats %d already cached at %s", season, path)
             written.append(path)
             continue
@@ -148,6 +157,10 @@ def fetch_player_stats(
             df: DataFrame = nfl.load_player_stats([season]).to_pandas()
         except Exception:  # nflreadpy may raise varied errors (network, parse, schema)
             logger.warning("Failed to fetch player stats for season %d", season)
+            continue
+
+        if df.empty:
+            logger.warning("Player stats for season %d returned no rows; cache unchanged", season)
             continue
 
         # Retain only columns that exist in this season's data

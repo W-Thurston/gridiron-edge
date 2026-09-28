@@ -1,5 +1,23 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Player game logs now refresh with the weekly data update
+
+#### Added
+
+- `fetch-player-stats` and `clean-player-stats` pipeline stages in
+  `run-data-pipeline`, `post-week` (`refresh-next-week-state`), and
+  `weekly-predict`, ahead of `build-features`. Before this the logs had no
+  refresh path: the fetcher had no command and skipped any cached season, so
+  they lagged the games file by every week since the last manual run.
+- `gridiron ingest player-stats` (`--season`, `--all-years`, `--force`) and
+  `gridiron transform clean-player-stats`.
+
+#### Changed
+
+- `fetch_player_stats` gains `force`. A fetch that fails or returns no rows
+  never replaces a cached season file.
+- Removed the corresponding `ROADMAP.md` known limitation.
+
 ### 2026-09-28 - Unit 5 (batch A5) wired: rating ensemble inputs
 
 #### Added

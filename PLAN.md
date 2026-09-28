@@ -110,7 +110,82 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-No unit is currently active. Units 1–5 (batches A1–A5) closed below.
+No unit is currently active. Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit closed below.
+
+### Pipeline Unit: Player Game Log Refresh Stages [Completed September 28, 2026]
+
+#### Completed
+
+`data/cleaned/player_game_logs.parquet` now refreshes with the weekly data
+update. Two new pipeline stages, `fetch-player-stats` and `clean-player-stats`,
+run ahead of `build-features` in `run-data-pipeline`, `post-week`'s
+`refresh-next-week-state`, and `weekly-predict`. The weekly fetch re-fetches
+the resolved season on every run, since its file grows through the year, and a
+fetch that fails or returns no rows can no longer replace a cached season
+file; the stage reports that outcome instead of failing, because a new season
+has no data before its first game. `gridiron ingest player-stats` and
+`gridiron transform clean-player-stats` run the steps individually. The
+cleaning step is unchanged and still needs network access for its schedule
+lookup.
+
+#### Goal
+
+Remove the gap that left the logs, and every feature built from them, lagging
+the games file by every week since the last manual run: the fetcher had no
+command or stage and skipped any cached season, so the current season could
+never refresh.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `tests/unit/cli/test_player_stats_commands.py` - coverage for the two new
+  commands.
+
+Changed:
+- `src/gridiron_edge/ingest/nflverse/player_stats.py` - `force` option; a
+  failed or empty fetch never replaces a cached season file.
+- `src/gridiron_edge/cli/main.py` - the two stages in `ALL_STAGES` and
+  `_run_pipeline_stages`, with a visible detail when no data is returned.
+- `src/gridiron_edge/cli/post_week.py` - the next-week-state refresh runs both
+  stages.
+- `src/gridiron_edge/cli/ingest.py`, `transform.py` - `ingest player-stats`
+  and `transform clean-player-stats`.
+- `tests/unit/ingest/test_player_stats.py` - force, skip-when-cached, and
+  never-degrade-the-cache coverage.
+- `tests/unit/cli/test_main.py`, `test_post_week.py`, `test_weekly_predict.py`
+  - stage order and set assertions, and stage execution.
+- `HANDOFF.md` - stage list, refresh semantics, and the network note.
+- `ROADMAP.md` - removed the resolved known limitation.
+- `CHANGELOG.md` - this unit's entry.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/raw/player_stats/player_stats_2026.parquet` and
+  `data/cleaned/player_game_logs.parquet`.
+
+#### Tests
+
+Validation passed:
+- 12 new tests plus updated stage-set assertions; ruff, pyrefly, and the full
+  non-slow unit suite (4,479 tests).
+
+Real-data validation:
+- Ran `gridiron run-data-pipeline --only fetch-player-stats --only
+  clean-player-stats` against nflverse: both stages completed in 2.3 s. The raw
+  2026 file (3,274 rows, weeks 1-3) and cleaned logs (137,307 rows) were
+  rewritten with contents identical to the earlier manual refresh, since no
+  game has finished since; all 136,384 pre-2026 rows are identical, columns
+  are unchanged, and there are no duplicate (player, game) rows.
+
+#### Acceptance
+
+The weekly, post-week, and predict entry points refresh player logs before
+building features, a failed or empty fetch cannot degrade the cache, the stages
+and commands are documented, the known limitation is removed, and the Python
+gate passes.
 
 ### Unit 5 — Phase A Batch A5: Rating Ensemble Inputs [Completed September 28, 2026]
 
@@ -209,7 +284,7 @@ Real-data validation:
 - Findings for Unit 7: `GLICKO2_RATING`'s differential correlates 0.976 with
   `ELO_DIFF` and `GLICKO2_RD` correlates -0.96 with `WEEK_NUM`. Batch A3's QB
   features excluded all 2026 starts because `player_game_logs` ended at 2025
-  (recorded in ROADMAP). Player logs were then refreshed by hand (2026
+  (recorded in ROADMAP, since resolved by the player-log refresh unit above). Player logs were then refreshed by hand (2026
   weeks 1-3, pre-2026 rows identical) and the modeling file regenerated: only
   the eight A3 QB EPA/CPOE/experience columns changed, on the 16 games of 2026
   week 2, and the 226-game replay still shows zero NaNs beyond the known

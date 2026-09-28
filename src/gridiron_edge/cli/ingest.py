@@ -308,6 +308,63 @@ def ingest_pbp(
     console.summary()
 
 
+@ingest_app.command("player-stats")
+def ingest_player_stats(
+    *,
+    season: list[int] = typer.Option(  # noqa: B008
+        [],
+        help="Specific season year(s) to fetch. Repeatable: --season 2024 --season 2025.",
+    ),
+    all_years: bool = typer.Option(
+        False,
+        "--all-years/--no-all-years",
+        help="Fetch full history from 1999 to present.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force/--no-force",
+        help="Re-fetch and overwrite cached seasons.",
+    ),
+) -> None:
+    r"""Fetch weekly player stats from nflverse (stored in data/raw/player_stats/).
+
+    With no options the current season is refreshed, because its file grows
+    through the year. Completed seasons stay cached unless --force is set. A
+    fetch that fails or returns no rows never replaces a cached file. Run
+    'gridiron transform clean-player-stats' afterwards to rebuild the cleaned
+    player game logs.
+
+    \b
+    Examples:
+      gridiron ingest player-stats                   # refresh current season
+      gridiron ingest player-stats --season 2025     # specific season (cached unless --force)
+      gridiron ingest player-stats --all-years       # full history
+    """
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import current_nfl_season
+    from gridiron_edge.ingest.nflverse.player_stats import fetch_player_stats
+
+    if all_years:
+        label: str = "Fetch player stats (1999-present)"
+    elif season:
+        label = f"Fetch player stats (season(s): {', '.join(str(s) for s in season)})"
+    else:
+        label = f"Fetch player stats (season {current_nfl_season()}, refresh)"
+
+    console.header("ingest player-stats", subtitle=label)
+
+    with step(label) as s:
+        if all_years:
+            paths: list[Path] = fetch_player_stats(all_years=True)
+        elif season:
+            paths = fetch_player_stats(seasons=list(season), force=force)
+        else:
+            paths = fetch_player_stats(seasons=[current_nfl_season()], force=True)
+        s.set_detail(f"{len(paths)} file(s) available")
+
+    console.summary()
+
+
 @ingest_app.command("plan-odds")
 def plan_odds(
     *,
