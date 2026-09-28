@@ -115,7 +115,7 @@ Rows without a marker carry over from the 2026-06-10 revision. Any description o
 
 | Feature | Description | Model Target | Signal | Cost | Status |
 |---------|-------------|-------------|--------|------|--------|
-| QB Elo / QB-specific rating | Separate Elo track for the starting QB. Glicko-2 or OpenSkill (Part II.3) are alternatives that add an uncertainty estimate; see Domain 14 | Game | 🔴 High | High | ❌ |
+| QB Elo / QB-specific rating | Separate Elo track for the starting QB. Glicko-2 or OpenSkill (Part II.3) are alternatives that add an uncertainty estimate; see Domain 14 | Game | 🔴 High | High | ✅ |
 | QB EPA/play (career) | Baseline quality signal. Built from `player_game_logs` (per-QB `passing_epa`/`attempts`), not raw PBP (which does not carry passer identity); resolved starter uses the carry-forward policy for unplayed games (D65) | Game, Props | 🔴 High | Low | ✅ Done |
 | QB EPA/play (rolling L4–L6) | Recent form | Game, Props | 🔴 High | Low | ✅ Done |
 | Passer rating (rolling) | Traditional metric, still informative | Props | 🟡 Med | Low | ❌ |
@@ -382,10 +382,10 @@ Step 5 - Edge Re-Calculation:
 |---------|-------------|-------------|--------|------|--------|
 | ↺ Team Elo rating | Existing Elo engine (v1–v3): baseline team strength and the input to strength of schedule | Game | 🔴 High | Low | ✅ Done |
 | ↺ Strength of schedule (opponent Elo) | Average opponent Elo. In the feature set but had no row | Game | 🟡 Med | Low | ✅ Done |
-| 🆕 Team Glicko-2 rating (+ RD, volatility) | Elo plus an uncertainty estimate and a volatility term. Natural fit for the team layer, since games are always two sides | Game | ❓ Unknown | Med | ❌ |
-| 🆕 Keener / Colley / Massey ratings | Linear-algebra rankings with no probability model underneath. Useful as ensemble inputs because their assumptions differ from everything else | Game | 🟢 Low | Low | ❌ |
+| 🆕 Team Glicko-2 rating (+ RD, volatility) | Elo plus an uncertainty estimate and a volatility term. Natural fit for the team layer, since games are always two sides | Game | ❓ Unknown | Med | ✅ |
+| 🆕 Keener / Colley / Massey ratings | Linear-algebra rankings with no probability model underneath. Useful as ensemble inputs because their assumptions differ from everything else | Game | 🟢 Low | Low | ✅ |
 | 🆕 Player skill rating (OpenSkill μ/σ) | Per-player rating fed by per-play performance scores (EPA, CPOE, RYOE, pressure), updated free-for-all within position group. Unproven in football (Part II.3) | What-If, Props, Game | ❓ Unknown | High | ❌ |
-| 🆕 Rating uncertainty as a feature | σ or RD passed to the model directly, so it can learn to trust ratings less early in the season or after a QB change | Game, Props | ❓ Unknown | Low | ❌ |
+| 🆕 Rating uncertainty as a feature | σ or RD passed to the model directly, so it can learn to trust ratings less early in the season or after a QB change | Game, Props | ❓ Unknown | Low | ✅ |
 
 ---
 
@@ -601,7 +601,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 **A4 Situational context — wired, promotion deferred to Unit 7:** Season week number (D5, now ✅ Done — already `WEEK_NUM`, in `expanded_v11` but not Logistic's `combined`); Back-to-back road games (D5, now ✅ Done); Body-clock kickoff time (D5, now ✅ Done); Field surface (D5, now ✅ Done); League scoring environment & rule era (D5, now ✅ Done as a continuous season-to-date signal); Wind speed bins (D6, now ✅ Done); Indoor override (D6, now ✅ Done — a train/serve skew for 755 retractable-stadium games was fixed, D67; the observed-roof-state refinement is declined); Season week performance (D11, now ✅ Done as a form trend, D68); Pythagorean win % / luck gap (D11, now ✅ Done); One-score game record (D11, now ✅ Done); Special teams EPA/play (D12, now ✅ Done, kickoffs excluded, D66); Punt & return efficiency (D12, now ✅ Done). Schema bumped to 11/8 (`DECISIONS.md` D66-D68). Wiring and promotion are decoupled program-wide (D62): the gated `gridiron models train` comparison runs later, via Unit 7's consolidated sweep — see `ROADMAP.md` and `PLAN.md`.
 
-**A5 Rating ensemble inputs:** QB Elo / QB-specific rating (D4, via Glicko-2/OpenSkill; needs the same lineage treatment as team Elo); Team Glicko-2 rating + RD + volatility (D14 🆕); Keener / Colley / Massey ratings (D14 🆕); Rating uncertainty as a feature (D14 🆕).
+**A5 Rating ensemble inputs — wired, promotion deferred to Unit 7:** QB Elo / QB-specific rating (D4, now ✅ Done as `QB_ELO` and `QB_ELO_STARTS`, an additive team + QB Elo replay); Team Glicko-2 rating + RD + volatility (D14 🆕, now ✅ Done for rating and RD as `GLICKO2_RATING`/`GLICKO2_RD`; **volatility declined**: cross-snapshot std 0.00003 against a pre-declared 0.002 gate, so it is a constant); Keener / Colley / Massey ratings (D14 🆕, now ✅ Done); Rating uncertainty as a feature (D14 🆕, now ✅ Done via `GLICKO2_RD` and `QB_ELO_STARTS`). All four families are recomputed in memory from complete game history, not persisted (`DECISIONS.md` D69), so no new dataset, sidecar, or lineage artifact exists; constants were fit on 1999-2022 only (D70). A lookahead beyond the last completed game carries the last state forward, so nothing is null at any horizon. Two caveats for Unit 7's ablation: `GLICKO2_RATING`'s differential correlates 0.976 with `ELO_DIFF`, and `GLICKO2_RD` correlates -0.96 with `WEEK_NUM` (it mostly encodes week of season); the QB rating (0.77 with `ELO_DIFF`) and Massey/Keener (0.85-0.89) carry more independent information. Schema bumped to 12/9. Wiring and promotion are decoupled program-wide (D62) — see `ROADMAP.md` and `PLAN.md`.
 
 **A6 Market-aware variant** (separate model identity from the market-blind champion; needs the `DECISIONS.md` entries in ROADMAP Tier 5 #16 rule 4): Consensus closing spread (D7); Consensus closing total (D7); Market win probability, no-vig (D7); Historical closing line as a prior (D7); ATS record, season (D11); Over/Under record, season (D11); Performance as favorite/underdog (D11).
 
@@ -647,15 +647,15 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 ## Summary Statistics
 
-*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1-4 (batches A1-A4) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
+*Exact counts of Part I catalog rows as of 2026-09-25 (recounted by script after closing the duplicate D10 "Pace tendency" row and correcting 2 Status values). Top-line Done/Partial/Missing updated 2026-09-28 for the Unit 1-5 (batches A1-A5) status corrections below; the signal/cost cross-tabs (High signal Low cost still missing, 🔴/❓/Low cost totals) are not re-derived here and may be stale by a few rows until the next full recount.*
 
 | Metric | Count |
 |--------|-------|
 | Catalog rows | 179 (178 unique; "Implied team total" is cross-listed in Domains 7 and 8) |
 | Domains | 14 (11 original + 3 new) |
-| ✅ Done | 84 |
+| ✅ Done | 88 |
 | ⚠️ Partial | 0 |
-| ❌ Missing | 94 |
+| ❌ Missing | 90 |
 | 🔴 High signal | 49 |
 | ❓ Unknown signal | 4 |
 | Low cost | 115 |
@@ -670,7 +670,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 | 1. Team Offensive Efficiency | 19 | 13 | 1 |
 | 2. Team Defensive Efficiency | 17 | 10 | 1 |
 | 3. Turnover & Discipline | 9 | 5 | 1 |
-| 4. Quarterback Quality | 16 | 5 | 3 |
+| 4. Quarterback Quality | 16 | 6 | 3 |
 | 5. Schedule & Situational Context | 20 | 18 | 4 |
 | 6. Weather & Environment | 9 | 6 | 0 |
 | 7. Market-Derived Features | 11 | 1 | 2 |
@@ -680,7 +680,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 | 11. Historical Trends | 13 | 7 | 2 |
 | 12. Special Teams & Field Position | 5 | 2 | 5 |
 | 13. Unit Matchups & Interactions | 3 | 2 | 3 |
-| 14. Rating-System Outputs | 6 | 2 | 4 |
+| 14. Rating-System Outputs | 6 | 5 | 4 |
 
 ---
 
@@ -758,6 +758,7 @@ Items 8–13 are W4 player data (start once player game logs are ingested).
 
 | Date | Change |
 |------|--------|
+| 2026-09-28 | Implemented Game-Model Build Queue Unit 5 (batch A5): marked QB Elo / QB-specific rating (Domain 4), Team Glicko-2 rating, Keener / Colley / Massey ratings, and Rating uncertainty as a feature (Domain 14) all ✅ Done; Glicko-2 volatility declined on a pre-declared gate (std 0.00003 vs 0.002). Glicko-2, the QB rating, and Massey/Colley/Keener are recomputed in memory from complete history rather than persisted (`DECISIONS.md` D69), with constants fit on 1999-2022 only (D70). `_RAW_FEATURES`/`_DIFF_FEATURES` grew to 138/69/34 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 207/260); schema bumped to 12/9. Verified on real data: zero nulls at every horizon across the 226-game upcoming replay, truncation and score-mutation leakage checks exact. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 4 (batch A4): marked all twelve A4 rows ✅ Done — Season week number and Indoor override (status corrections; the latter also fixed a real train/serve skew for 755 retractable-stadium games, `DECISIONS.md` D67), Back-to-back road games, Body-clock kickoff time, Field surface, League scoring environment & rule era (continuous, no era flags), Wind speed bins, Season week performance (interpreted as a form trend), Pythagorean win % / luck gap, One-score game record (Domains 5, 6, 11), and Special teams EPA/play and Punt & return efficiency (Domain 12; kickoffs excluded on structural-break evidence, D66). No PBP re-download and no new sidecar were needed. `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES`/`_TEAM_FEATURES` grew to 124/62/19/34 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 186/239); schema bumped to 11/8. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 3 (batch A3): marked QB EPA/play career and rolling, CPOE rolling, QB change flag, QB experience (Domain 4), and Head coach win % career, HC tenure, New coaching staff flag (Domain 10) all ✅ Done. Built a new `data/cleaned/NFL_qb_coach_sidecar.parquet` sidecar (program rule 5) carrying starting-QB and head-coach identity that the existing `games`/`schedule_upcoming_rich` clean steps intentionally drop; QB EPA/CPOE are sourced from `player_game_logs` (per-QB `passing_epa`/`passing_cpoe`/`attempts`), not raw PBP, which does not carry passer identity. Starting-QB identity for unplayed games uses a carry-forward-most-recent-known-starter policy (`DECISIONS.md` D65), verified against the real 226-game current upcoming schedule at 100% coverage; head-coach identity needed no such fallback (known before every season starts). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_TEAM_FEATURES` grew to 110/55/30 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 165/211); schema bumped to 10/7. Retrain deferred to Unit 7 per D62. |
 | 2026-09-28 | Implemented Game-Model Build Queue Unit 2 (batch A2): marked Opponent-adjusted EPA/play and Opponent-adjusted def EPA/play (Domain 1/2) ✅ Done — a ridge regression on play-level PBP with offense and defense terms, fit fresh per (season, week) as-of cutoff from season-to-date data rather than persisted like Elo (`DECISIONS.md` D63); Unit efficiency differentials (Domain 13) ✅ Done as four one-sided raw matchup columns plus two home-minus-away diffs, not diff-only, so Total keeps the "both sides face weak defenses" level signal; and Projected total plays (Domain 13) ✅ Done for its market-blind variant only (a plain sum of each side's rolling pace — the spread-adjusted version is Unit 6's separate market-aware model). Surfaced and fixed a real correctness gap along the way: raw PBP's short team codes don't match the canonical frame's long team names, which would have silently produced all-`NaN` output (`DECISIONS.md` D64). `_RAW_FEATURES`/`_DIFF_FEATURES`/`_GAME_FEATURES` grew across three schema bumps to reach 96/48/16 (`_COMBINED_FEATURES`/`_EXPANDED_FEATURES` 144/186). Retrain deferred to Unit 7 per the same-day D62 wiring/promotion split. |

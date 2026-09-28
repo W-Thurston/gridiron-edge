@@ -17,7 +17,7 @@ from gridiron_edge.features.team.qb_profile import (
     _build_target_qb_profile,
     _qb_game_log_history,
     _qb_profile_entering,
-    _resolve_starting_qb_history,
+    resolve_starting_qb_history,
 )
 
 
@@ -110,7 +110,7 @@ class TestResolveStartingQbHistory:
             ]
         )
 
-        history = _resolve_starting_qb_history(sidecar)
+        history = resolve_starting_qb_history(sidecar)
 
         away_row = history.loc[(history["TEAM"] == "A") & (history["SIDE"] == "AWAY")].iloc[0]
         assert away_row["RESOLVED_QB_ID"] == "QB1"
@@ -139,7 +139,7 @@ class TestResolveStartingQbHistory:
             ]
         )
 
-        history = _resolve_starting_qb_history(sidecar)
+        history = resolve_starting_qb_history(sidecar)
 
         week2_away = history.loc[
             (history["TEAM"] == "A") & (history["SIDE"] == "AWAY") & (history["WEEK_NUM"] == 2)
@@ -170,7 +170,7 @@ class TestResolveStartingQbHistory:
             ]
         )
 
-        history = _resolve_starting_qb_history(sidecar)
+        history = resolve_starting_qb_history(sidecar)
 
         week2_away = history.loc[
             (history["TEAM"] == "A") & (history["SIDE"] == "AWAY") & (history["WEEK_NUM"] == 2)
@@ -192,7 +192,7 @@ class TestResolveStartingQbHistory:
             ]
         )
 
-        history = _resolve_starting_qb_history(sidecar)
+        history = resolve_starting_qb_history(sidecar)
 
         row = history.loc[(history["TEAM"] == "A") & (history["SIDE"] == "AWAY")].iloc[0]
         assert row["QB_CHANGE_FLAG"] == 0
@@ -221,7 +221,7 @@ class TestResolveStartingQbHistory:
             ]
         )
 
-        history = _resolve_starting_qb_history(sidecar)
+        history = resolve_starting_qb_history(sidecar)
 
         week2_away = history.loc[
             (history["TEAM"] == "A") & (history["SIDE"] == "AWAY") & (history["WEEK_NUM"] == 2)

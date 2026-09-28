@@ -1,5 +1,44 @@
 # Gridiron Edge - Changelog
 
+### 2026-09-28 - Unit 5 (batch A5) wired: rating ensemble inputs
+
+#### Added
+
+- `AWAY_/HOME_GLICKO2_RATING` and `_GLICKO2_RD` (`ratings/glicko2.py`,
+  `features/team/rating_ensemble.py`): team Glicko-2 on weekly rating periods,
+  offseason regression and RD widening, expansion at 1300. Volatility is
+  computed by the algorithm but not emitted (constant; `DECISIONS.md` D70).
+- `AWAY_/HOME_MASSEY_RATING`, `_COLLEY_RATING`, `_KEENER_RATING`
+  (`ratings/linear_ratings.py`): solved per (season, week) cutoff over the
+  current season plus the prior season at weight 0.25; a team with no games
+  gets a neutral value, never null.
+- `AWAY_/HOME_QB_ELO` and `_QB_ELO_STARTS` (`ratings/qb_elo.py`): additive team
+  + QB Elo replay using actual starters, looked up for the D65 resolved starter.
+- `ratings/history.py`: shared chronology and complete-history validation.
+- `DECISIONS.md` D69 (recompute in memory instead of persisting, with the
+  complete-history guard as the lineage-equivalent) and D70 (specifications and
+  constants fit on 1999-2022 only).
+- Test coverage: `test_glicko2.py` (Glickman's published example),
+  `test_linear_ratings.py`, `test_qb_elo.py`, `test_rating_ensemble.py`, and
+  the shared `tests/fixtures/rating_history.py`.
+
+#### Changed
+
+- Schema 11 to 12, data 8 to 9. The modeling file has 201 columns (+14); every
+  pre-existing column is unchanged and the new columns have no nulls.
+- `resolve_starting_qb_history` in `qb_profile.py` is public; no behavior
+  change.
+- Real-data verification: zero nulls at every horizon across the 226-game
+  upcoming replay; truncating history at a cutoff, or scrambling every later
+  score, leaves all features through the cutoff exactly equal; weekly build
+  cost about 0.6 s.
+- Refreshed `player_game_logs` by hand (fetched 2026 player stats, re-ran the
+  clean step): pre-2026 rows are identical; 923 rows added for 2026 weeks 1-3.
+  Regenerating the modeling file changed only the eight A3 QB EPA/CPOE/
+  experience columns, on the 16 games of 2026 week 2. The pipeline still has no
+  stage that refreshes player logs (see `ROADMAP.md`).
+- Promotion is deferred to Unit 7 (`DECISIONS.md` D62).
+
 ### 2026-09-28 - Unit 4 (batch A4) wired: situational context
 
 #### Added

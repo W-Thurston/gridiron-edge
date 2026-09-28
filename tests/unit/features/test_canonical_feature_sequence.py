@@ -42,6 +42,9 @@ _EXPECTED_CANONICAL_FEATURES = [
     "league_environment",
     "home_away_road_trips",
     "home_away_body_clock",
+    "home_away_glicko2",
+    "home_away_linear_ratings",
+    "home_away_qb_elo",
 ]
 
 

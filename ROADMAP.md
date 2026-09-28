@@ -63,7 +63,7 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–4 (batches A1–A4) are wired (schema v11) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 5 (batch A5, rating ensemble inputs) is next and must be deliberately scoped into `PLAN.md` before work begins.
+**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 6 (batch A6, market-aware variant) is next and must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
@@ -319,7 +319,7 @@ Units 1–6 each wire one batch into `EPA_COLS`/`CANONICAL_FEATURES` with its ow
 - **Unit 2 — A2, opponent-adjusted EPA and unit interactions.** Opponent-adjusted offensive and defensive EPA/play (pass + rush), unit efficiency differentials built on it, and the market-blind variant of projected total plays. **Closed: wired, tested, live-availability replay passed (schema v9, `DECISIONS.md` D63/D64) — promotion deferred to Unit 7.**
 - **Unit 3 — A3, QB-and-coach sidecar.** QB EPA (career + rolling), CPOE rolling, QB change flag, QB experience, head-coach win % and tenure, new-coaching-staff flag. **Closed: wired, tested, live-availability replay passed (schema v10, `DECISIONS.md` D65) — promotion deferred to Unit 7.**
 - **Unit 4 — A4, situational context.** Season week number and indoor-override status corrections, back-to-back road games, body-clock kickoff, field surface, league scoring environment/rule era, wind speed bins, season week performance, Pythagorean luck gap, one-score game record, special-teams and punt/return EPA. **Closed: wired, tested, live-availability replay passed (schema v11, `DECISIONS.md` D66–D68) — promotion deferred to Unit 7.** Also fixed a train/serve roof-classification skew (D67).
-- **Unit 5 — A5, rating ensemble inputs.** QB Elo/rating (needs the same lineage treatment as team Elo, per program rule 5), team Glicko-2 (rating + RD + volatility), Keener/Colley/Massey ratings, rating uncertainty as a feature.
+- **Unit 5 — A5, rating ensemble inputs.** QB Elo/rating, team Glicko-2 (rating + RD + volatility), Keener/Colley/Massey ratings, rating uncertainty as a feature. **Closed: wired, tested, live-availability replay passed (schema v12, `DECISIONS.md` D69/D70) — promotion deferred to Unit 7.** All four families are recomputed from complete history rather than persisted; Glicko-2 volatility was declined on a pre-declared variance gate.
 - **Unit 6 — A6, market-aware variant.** Consensus closing spread/total, no-vig market win probability, historical closing line as a prior, season ATS/O-U record, performance as favorite/underdog — as a separate model identity from the market-blind champion, not a drop-in feature set. Needs its own `DECISIONS.md` entries per program rule 4 before adoption.
 - **Unit 7 — Phase A screening and promotion.** Builds a one-off incremental walk-forward sweep — baseline, then baseline+A1, baseline+A1+A2, and so on in wiring order — reusing the existing chronological holdout split and `compare_classification_models`/`compare_regression_models` gates, so each batch's own attributable Brier/MAE delta is measured against the batch immediately before it, not just against the pre-Phase-A baseline (preserving the "baseline rebuilt without the batch" acceptance methodology while amortizing the walk-forward cost across every wired batch at once). Produces one consolidated report; promotes whichever batches clear the acceptance bar (recorded in `FEATURES.md`) and forward-removes (a new schema bump, never a rewind) any that don't. Runs whenever enough units have accumulated to be worth evaluating together, not necessarily only after Unit 6.
 - **A7 is not sequenced as a mainline unit.** Playoff/elimination context and seeding-locked risk affect too few holdout games (~48) to reliably clear the acceptance bar; assess later only if enough holdout data accumulates, mirroring the Tier 3 #9 precedent of recording a documented non-build decision rather than building on thin evidence.
@@ -496,6 +496,30 @@ reproducibility defect. The body-clock feature (Unit 4, `DECISIONS.md` D68)
 deliberately evaluates offsets at each game's date and does not inherit it.
 Fixing the older feature changes existing values, so it needs its own small
 unit with a data-version bump.
+
+### Player game logs have no refresh path in the pipeline
+
+`player_game_logs.parquet` feeds the batch A3 QB features (`QB_EPA_PLAY_*`,
+`QB_CPOE_ROLLING`, `QB_EXPERIENCE`) and the prop features, but nothing in
+`run-data-pipeline` or `post-week` refreshes it. `fetch_player_stats` has no
+CLI command, the `fetch-player-stats`/`clean-player-stats` stages named in its
+error messages do not exist, and the fetcher skips any season already cached,
+so the current season never updates. The logs had stopped at 2025 week 22, so
+every 2026 QB feature ignored all 2026 starts while training rows saw the prior
+week. They were refreshed once by hand on 2026-09-28 (2026 weeks 1-3;
+pre-2026 rows verified identical) and will lag again each week until a
+fetch-and-clean stage that refreshes the current season is added to the
+pipeline and `post-week`. The batch A5 `QB_ELO`/`QB_ELO_STARTS` columns are
+fed by games plus sidecar and never had this lag.
+
+### Rating-ensemble lookahead is frozen, not simulated
+
+Glicko-2, the QB rating, and Massey/Colley/Keener give a game beyond the next
+week the state after the last completed game (`DECISIONS.md` D69). That is
+unbiased in expectation and never null, but it understates how far ratings
+will move over a long horizon. The same carry-forward approach could remove
+Elo's next-week-only limitation below; that would be its own unit, since it
+changes the Elo artifact contract.
 
 ### Elo, strength of victory, and rest are next-week only
 

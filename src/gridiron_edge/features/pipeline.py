@@ -33,6 +33,7 @@ import gridiron_edge.features.team.opponent_adjusted_epa
 import gridiron_edge.features.team.primetime
 import gridiron_edge.features.team.projected_total_plays
 import gridiron_edge.features.team.qb_profile
+import gridiron_edge.features.team.rating_ensemble
 import gridiron_edge.features.team.record
 import gridiron_edge.features.team.rest
 import gridiron_edge.features.team.road_trips
@@ -70,6 +71,9 @@ CANONICAL_FEATURES: Final[list[str]] = [
     "league_environment",
     "home_away_road_trips",
     "home_away_body_clock",
+    "home_away_glicko2",
+    "home_away_linear_ratings",
+    "home_away_qb_elo",
 ]
 
 # Validate that the ordering above satisfies all depends_on constraints.

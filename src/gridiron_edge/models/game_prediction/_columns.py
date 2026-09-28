@@ -51,6 +51,9 @@ from gridiron_edge.features.team.projected_total_plays import (
 
 # QB profile metric names - single source of truth in features.team.qb_profile.
 from gridiron_edge.features.team.qb_profile import QB_PROFILE_METRICS as _QB_PROFILE_METRICS_RAW
+from gridiron_edge.features.team.rating_ensemble import (
+    RATING_ENSEMBLE_METRICS as _RATING_ENSEMBLE_METRICS_RAW,
+)
 
 # Same-season performance metric names (form trend, Pythagorean, one-score
 # record) - single source of truth in features.team.record.
@@ -106,6 +109,12 @@ _SEASON_PERFORMANCE_SUFFIXES: Final[list[str]] = [
     metric.upper() for metric in _SEASON_PERFORMANCE_METRICS_RAW
 ]
 
+# Rating-ensemble suffixes (Glicko-2, Massey/Colley/Keener, QB rating). Already-final
+# per-team values, so they follow the same manual-list pattern - see DECISIONS.md D69.
+_RATING_ENSEMBLE_SUFFIXES: Final[list[str]] = [
+    metric.upper() for metric in _RATING_ENSEMBLE_METRICS_RAW
+]
+
 # Raw Away/Home feature columns.
 _RAW_FEATURES: Final[list[str]] = (
     ["AWAY_ELO", "HOME_ELO"]
@@ -121,6 +130,8 @@ _RAW_FEATURES: Final[list[str]] = (
     + [f"HOME_{suffix}" for suffix in _COACH_PROFILE_SUFFIXES]
     + [f"AWAY_{suffix}" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
     + [f"HOME_{suffix}" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
+    + [f"AWAY_{suffix}" for suffix in _RATING_ENSEMBLE_SUFFIXES]
+    + [f"HOME_{suffix}" for suffix in _RATING_ENSEMBLE_SUFFIXES]
 )
 
 # Differential feature names. Every differential is HOME - AWAY.
@@ -132,6 +143,7 @@ _DIFF_FEATURES: Final[list[str]] = (
     + [f"{suffix}_DIFF" for suffix in _QB_PROFILE_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _COACH_PROFILE_SUFFIXES]
     + [f"{suffix}_DIFF" for suffix in _SEASON_PERFORMANCE_SUFFIXES]
+    + [f"{suffix}_DIFF" for suffix in _RATING_ENSEMBLE_SUFFIXES]
 )
 
 # Differential features followed by direct Away/Home values.

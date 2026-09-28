@@ -8,6 +8,131 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D70 - Rating-ensemble specifications and the constants fit on 1999-2022
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP Tier 5 #16 Unit 5 (batch A5) builds four rating
+families (D69). Each has constants the code cannot justify by itself.
+
+**Decision:** Every constant below was chosen on 1999-2022 games only, scoring
+2003-2022 (1999-2002 is burn-in; 2023-2026 is holdout and was never scored),
+using small fixed grids. Nothing was fit on the holdout window.
+
+1. **Team Glicko-2.** Weekly rating periods, win/tie/loss 1/0.5/0, no
+   home-field term (matches team Elo), initial 1500/350/0.06, offseason
+   regression 1/3 (Elo's), expansion 1300 with RD 350. The offseason widens RD
+   as `N` empty periods, capped at 350. Fit `N` by away-win log loss: 0 gives
+   0.6492, 17 gives 0.6462, **35 gives 0.6455**, 52 gives 0.6459, 78 gives
+   0.6471, 156 gives 0.6530 (interior optimum). `tau` is not identifiable:
+   0.3, 0.5, 0.8, 1.2 differ by under 0.00002 log loss, so the conventional
+   **0.5** is kept. For reference the persisted team Elo scores 0.6539 on the
+   same games.
+2. **Volatility is not wired.** Pre-declared gate: wire only if the 2010+
+   cross-snapshot std of volatility is at least 0.002. Measured 0.00001 at
+   `tau` 0.3, 0.00003 at 0.5, 0.00016 at 1.2. One game per weekly period does
+   not identify volatility, so it is a constant, not a feature. It is still
+   computed because the algorithm requires it.
+3. **QB rating.** Additive team + QB Elo (D69), win/tie/loss, divisor 480,
+   team component regressing 1/3 per offseason with expansion at 1300. The
+   fair baseline is a team-only replay with the same tuning freedom: it scores
+   0.6539 at K 20 but **0.6450 at K 50**, so most of a naive QB gain is just a
+   higher effective learning rate. Joint grid over team K {10, 20, 30}, debut
+   QB K {40, 80}, floor QB K {10, 20}, QB offseason regression {1/6, 1/3}:
+   best **`k_team` 30, debut 40, floor 20, regression 1/6 at 0.6418** (about
+   0.003 better than the fair baseline). QB K decays from debut to floor with
+   half-life 8 prior starts (fixed, not fit). The top six cells span only
+   0.0007, so the surface is flat and the exact cell is not load-bearing.
+4. **Massey, Colley, Keener.** Window is the target season's completed games
+   before the target week at weight 1 plus the prior season at weight
+   `w_prev`; earlier seasons are ignored. Scored by pooled logistic
+   home-win log loss on the rating difference. `w_prev` 0, 0.25, 0.5, 1 give
+   Massey 0.6404, 0.6291, 0.6337, 0.6416 (Colley and Keener also best at 0.25);
+   refinement at 0.15/0.25/0.35 is flat, so **0.25**. Massey margin cap and
+   ridge over {10, 14, 21, 28, none} x {0.25, 1, 4, 8}: **cap 21, ridge 4**
+   (0.6282; ridge 4 and 8 tie, so the smaller is kept). Keener floor 1e-3 is
+   fixed, not fit; it only guarantees irreducibility.
+5. **Neutral values.** A team with no game in a window gets Massey 0, Colley
+   0.5, Keener 1.0, so a season's first week and an expansion team are never
+   null and need no fill policy.
+
+**Implications:**
+- Glicko-2 beating persisted Elo on log loss is partly the same effective
+  learning-rate effect as in the QB baseline. It is an input, not evidence of
+  adoption; Unit 7 decides that.
+- Team RD ranges over only a few points after burn-in and largely tracks week
+  of season.
+
+**Revisit triggers:**
+- Refit only if the holdout window is formally re-defined.
+- Wire volatility only if a different rating-period definition makes it vary.
+
+**References:**
+- `src/gridiron_edge/ratings/glicko2.py`
+- `src/gridiron_edge/ratings/qb_elo.py`
+- `src/gridiron_edge/ratings/linear_ratings.py`
+
+---
+
+## D69 - Path-dependent ratings are recomputed from complete history, not persisted with lineage
+
+**Date:** 2026-09-28
+
+**Context:** ROADMAP program rule 5 requires any persisted rating system to
+have lineage equivalent to team Elo's. Unit 5 adds team Glicko-2 and a QB
+rating (both path-dependent from 1999) and Massey/Colley/Keener (pure
+functions of a game window). Team Elo is persisted because it is path-dependent,
+has several consumers (Elo model, simulators, viz, features), and its snapshot
+table extends only to the next week, which is the origin of the "Elo NaN
+beyond next week" limitation.
+
+**Decision:**
+1. **Recompute in memory; persist nothing.** Glicko-2 and the QB rating are
+   replayed from the complete games history on every feature build, emitting
+   pre-week snapshots. A full replay costs about 0.4 s. Massey, Colley and
+   Keener are solved per distinct (season, week) cutoff, as in D63.
+2. **The lineage-equivalent guard is complete-history validation.** What makes
+   Elo's lineage load-bearing is that a truncated or stale games file silently
+   changes every rating. Recomputed path-dependent ratings reject that state
+   by reusing `validate_complete_elo_history` (contiguous seasons from 1999,
+   no duplicates, completed games only) and raising. The games CSV is already
+   digest-pinned by Elo lineage and inventoried in the prediction-input
+   sources, and the QB sidecar is inventoried; no new dataset is added.
+3. **As-of and lookahead.** A (season, week) sees only completed games with a
+   strictly earlier key, excluding same-week games. Beyond the last completed
+   game the value is the last state carried forward. A calibrated update has
+   zero expected change, so this is the unbiased forecast of the future
+   pre-game rating and it is never NaN, unlike Elo. It loses only variance.
+   Crossing into a new season applies the offseason transition once; a gap of
+   more than one season raises.
+4. **QB rating is self-contained.** It runs its own team component beside the
+   QB component, so it neither reads the persisted Elo nor needs its lineage.
+   Updates use each completed game's actual starter from the sidecar; lookups
+   use the D65 resolved starter. A completed game with no recorded starter
+   raises; a missing or empty sidecar yields NaN, as `qb_profile` does.
+
+**Implications:**
+- Elo is unchanged: files, lineage, `home_away_elo`, and its next-week-only
+  coverage.
+- The QB rating counts prior starts inside the same replay, so it includes
+  the current season's games. `QB_EXPERIENCE` reads `player_game_logs`, which
+  ends at 2025 week 22, and therefore excludes every 2026 start.
+
+**Revisit triggers:**
+- Replay latency above about 2 s in the prediction path, or a second consumer
+  of these ratings (sims, viz, API): migrate to a persisted ledger with
+  Elo-equivalent lineage.
+- If Elo's next-week-only coverage is addressed, the same carry-forward
+  approach applies to it.
+
+**References:**
+- `src/gridiron_edge/ratings/history.py`
+- `src/gridiron_edge/ratings/glicko2.py`
+- `src/gridiron_edge/ratings/qb_elo.py`
+- `src/gridiron_edge/ratings/linear_ratings.py`
+
+---
+
 ## D68 - Situational-context feature definitions that cannot be re-derived from the code
 
 **Date:** 2026-09-28

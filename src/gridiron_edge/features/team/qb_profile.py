@@ -137,7 +137,7 @@ def _season_numbers(year_text: Series) -> Series:
         raise ValueError("YEAR must begin with a numeric season.") from exc
 
 
-def _resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
+def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
     """Build one carried-forward starter per (team, season, week).
 
     Every sidecar row already carries the actual starter for played games
@@ -361,7 +361,7 @@ class HomeAwayQbProfileFeature:
             result = source.assign(**_empty_metric_values())
             return result.drop(columns=["_QB_PROFILE_ORDER", "SEASON"]).reset_index(drop=True)
 
-        starter_history = _resolve_starting_qb_history(sidecar)
+        starter_history = resolve_starting_qb_history(sidecar)
 
         away_starters = (
             starter_history.loc[starter_history["SIDE"] == "AWAY", :]

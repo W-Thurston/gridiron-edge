@@ -110,7 +110,120 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-No unit is currently active. Units 1–4 (batches A1–A4) closed below.
+No unit is currently active. Units 1–5 (batches A1–A5) closed below.
+
+### Unit 5 — Phase A Batch A5: Rating Ensemble Inputs [Completed September 28, 2026]
+
+#### Completed
+
+Wired seven rating-ensemble suffixes (14 raw and 7 differential columns) into
+the canonical Win/Total feature set: team Glicko-2 rating and RD, Massey,
+Colley and Keener ratings, and a starting-QB rating with its prior start
+count. Every family is recomputed in memory from complete game history rather
+than persisted (`DECISIONS.md` D69): the games CSV is already digest-pinned,
+and a truncated history raises instead of silently changing ratings, which is
+the lineage-equivalent guard for path-dependent ratings. Constants were fit on
+1999-2022 only (D70). A game beyond the last completed game receives the last
+state carried forward, so no value is null at any horizon, including a
+season's first week. Glicko-2 volatility was declined on a pre-declared gate
+(cross-snapshot std 0.00003 against 0.002). Verified against regenerated real
+data and a full replay of the upcoming schedule. Promotion is deferred to
+Unit 7, per D62.
+
+#### Goal
+
+Close the four A5 rows of the Game-Model Build Queue (`FEATURES.md`), and
+settle program rule 5 for each rating family: which are persisted with Elo-
+equivalent lineage and which are deterministic recomputations, with
+leakage-safe, live-available values.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/ratings/history.py` - shared chronology helpers and
+  complete-history validation for recomputed ratings.
+- `src/gridiron_edge/ratings/glicko2.py` - Glicko-2 step and full-history
+  replay with as-of lookup and frozen lookahead.
+- `src/gridiron_edge/ratings/qb_elo.py` - additive team + QB Elo replay with
+  as-of QB lookup.
+- `src/gridiron_edge/ratings/linear_ratings.py` - weighted Massey, Colley, and
+  Keener solvers over a per-cutoff game window.
+- `src/gridiron_edge/features/team/rating_ensemble.py` - registers
+  `home_away_glicko2`, `home_away_linear_ratings`, and `home_away_qb_elo`.
+- `tests/fixtures/rating_history.py` - compact complete-history builder for
+  rating tests.
+- `tests/unit/ratings/test_glicko2.py`, `test_linear_ratings.py`,
+  `test_qb_elo.py`, `tests/unit/features/test_rating_ensemble.py` - algorithm,
+  leakage, lookahead, and fail-closed coverage.
+
+Changed:
+- `src/gridiron_edge/features/team/qb_profile.py` - resolved-starter helper is
+  public; no behavior change.
+- `src/gridiron_edge/features/pipeline.py` - registers the three features at
+  the end of `CANONICAL_FEATURES`.
+- `src/gridiron_edge/features/manifest.py` - schema 11 to 12, data 8 to 9.
+- `src/gridiron_edge/models/game_prediction/_columns.py`, `_features.py` -
+  rating-ensemble suffix list; the diff builder loops it.
+- `tests/unit/features/test_canonical_feature_sequence.py`,
+  `tests/unit/features/test_qb_profile.py`,
+  `tests/unit/models/test_game_feature_sets.py` - updated sequence, rename,
+  and counts (raw 138, diff 69, combined 207, expanded 260).
+- `FEATURES.md` - four rows marked Done, A5 summary, counts, changelog.
+- `ROADMAP.md` - Unit 5 closed; two known limitations recorded.
+- `DECISIONS.md` - D69, D70.
+- `CHANGELOG.md` - this unit's entry.
+
+Removed:
+- None.
+
+Regenerated (not committed; `data/` is gitignored):
+- `data/modeling/modeling_file.parquet` and manifest via
+  `gridiron features model-inputs --all-years`.
+
+#### Tests
+
+Validation passed:
+- 45 algorithm tests (Glicko-2 reproduces Glickman's published example) and
+  19 feature tests, plus updated count tests; ruff, pyrefly, and the full
+  non-slow unit suite (4,465 tests). One real bug was found and fixed by a
+  test: Keener's power iteration oscillated for two teams (a zero-diagonal
+  matrix has eigenvalues plus and minus lambda); an identity shift fixed it.
+
+Real-data validation:
+- Modeling file: `schema_version 12`, `data_version 9`, 201 columns (+14),
+  7,308 rows with identical `GAME_ID`s, every pre-existing column identical,
+  zero nulls in the new columns in every season and week.
+- Sanity: 2007 Patriots top the Glicko-2 ranking; Spearman against Elo 0.89
+  to 0.99 across sample seasons.
+- Leakage on real data at cutoffs 2010 week 5, 2024 week 10, and 2026 week 2:
+  truncating history at the cutoff, and scrambling every later score, leave
+  all rows through the cutoff (including the cutoff week) exactly equal.
+  Stored columns equal a fresh recompute and repeated runs are identical.
+- Live-availability replay (program rule 3): all 226 upcoming games (weeks
+  3-18) through the full `CANONICAL_FEATURES` pipeline: zero NaNs in all 14
+  new columns at every horizon, and each team's ratings are identical across
+  horizons. Week 3 has zero NaNs across all 260 expanded features; Elo and
+  strength of victory remain NaN beyond next week (pre-existing, recorded in
+  ROADMAP).
+- Cost: about 0.6 s per weekly build, 3.5 s for all 7,308 rows.
+- Findings for Unit 7: `GLICKO2_RATING`'s differential correlates 0.976 with
+  `ELO_DIFF` and `GLICKO2_RD` correlates -0.96 with `WEEK_NUM`. Batch A3's QB
+  features excluded all 2026 starts because `player_game_logs` ended at 2025
+  (recorded in ROADMAP). Player logs were then refreshed by hand (2026
+  weeks 1-3, pre-2026 rows identical) and the modeling file regenerated: only
+  the eight A3 QB EPA/CPOE/experience columns changed, on the 16 games of 2026
+  week 2, and the 226-game replay still shows zero NaNs beyond the known
+  Elo/strength-of-victory limitation. No pipeline stage refreshes the logs.
+
+#### Acceptance
+
+All four A5 rows are wired with leakage-safe, live-available values, except
+Glicko-2 volatility, which is declined with a recorded measurement. Each
+family's persist-or-recompute choice and its lineage-equivalent guard are
+recorded in D69, the fitted constants in D70 with no holdout data, and the
+modeling file is regenerated at schema 12. No Elo artifact, lineage file, or
+existing column changed. The replay shows zero NaNs at every horizon and the
+Python gate passes. Promotion remains Unit 7's (D62).
 
 ### Unit 4 — Phase A Batch A4: Situational Context [Completed September 28, 2026]
 
