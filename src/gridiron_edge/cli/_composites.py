@@ -100,6 +100,8 @@ class CompositeSummary:
             These do not abort the composite.
         failed: Stage names that failed without ``soft_fail=True``.
             The composite aborts at the first hard failure.
+        failure_details: Reported reason for each hard-failed stage, keyed
+            by stage name.
         artifacts: All paths written across stages.
         warnings: All warnings raised across stages.
     """
@@ -109,6 +111,7 @@ class CompositeSummary:
     skipped: list[str] = field(default_factory=list)
     soft_failed: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    failure_details: dict[str, str] = field(default_factory=dict)
     artifacts: list[Path] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -253,9 +256,12 @@ def run_composite(
                 if soft_fail:
                     summary.warnings.append(f"{stage.name}: {result.detail}")
                     summary.soft_failed.append(stage.name)
+                    s.ok = False
                     s.set_detail(f"soft-failed: {result.detail}")
                     continue
                 summary.failed.append(stage.name)
+                summary.failure_details[stage.name] = result.detail or "failed"
+                s.ok = False
                 s.set_detail(result.detail or "failed")
                 return summary
 
@@ -303,6 +309,11 @@ def render_composite_summary(summary: CompositeSummary) -> None:
     if n_failed:
         fail_names = ", ".join(summary.failed)
         parts.append(f"  ✗ {n_failed} failed ({fail_names})")
+        parts.extend(
+            f"      {stage}: {summary.failure_details[stage]}"
+            for stage in summary.failed
+            if stage in summary.failure_details
+        )
     for part in parts:
         typer.echo(part)
 

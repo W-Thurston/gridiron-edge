@@ -179,6 +179,18 @@ _SKIP_HELP = f"Stage(s) to skip. Repeatable. Valid: {_STAGES_STR}."
 _ONLY_HELP = f"Run only these stage(s). Repeatable. Valid: {_STAGES_STR}."
 
 
+def _next_week_steps(season: str, week: int) -> str:
+    """Describe the explicit steps that publish the next week's forecast."""
+    next_week = week + 1
+    return (
+        f"  Next: week {next_week} has no forecast until weekly-predict runs.\n"
+        f"    uv run gridiron weekly-predict --season {season} --week {next_week}\n"
+        f"    uv run gridiron ingest odds --season {season} --week {next_week}\n"
+        f"    uv run gridiron edges report --season {season} --week {next_week}\n"
+        "  weekly-predict needs a clean tracked worktree."
+    )
+
+
 def post_week_cmd(
     *,
     week: int = typer.Option(..., help="NFL week number that just completed."),
@@ -190,7 +202,8 @@ def post_week_cmd(
 
     The default workflow refreshes completed results, rebuilds next-week model
     state, regenerates season and weekly Elo projections, and evaluates the exact
-    live forecasts issued before kickoff.
+    live forecasts issued before kickoff. It does not publish the next week's
+    forecast; run weekly-predict for that, as the closing hint states.
 
     Examples:
     gridiron post-week --week 1 --season 2026-2027
@@ -226,3 +239,6 @@ def post_week_cmd(
     render_composite_summary(summary)
     if not summary.overall_success:
         raise typer.Exit(code=1)
+    if not only:
+        typer.echo(_next_week_steps(season, week))
+        typer.echo("")

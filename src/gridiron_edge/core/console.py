@@ -256,7 +256,6 @@ def step(name: str, *, skip: bool = False) -> Generator[StepResult]:
     t0: float = time.perf_counter()
     try:
         yield result
-        result.ok = True
     except Exception:
         result.ok = False
         result.elapsed = time.perf_counter() - t0

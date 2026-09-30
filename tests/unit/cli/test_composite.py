@@ -171,6 +171,18 @@ class TestRunComposite:
         assert "b" not in summary.succeeded
         assert not summary.overall_success
 
+    def test_hard_failure_records_reason_and_marks_step_failed(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        stages = [CompositeStage(name="a", description="Stage A", func=_always_fail)]
+        summary = run_composite(name="test", stages=stages, active={"a"})
+
+        assert summary.failure_details == {"a": "failure"}
+        out = capsys.readouterr().out
+        stage_line = next(line for line in out.splitlines() if "Stage A" in line)
+        assert "✗" in stage_line
+        assert "✓" not in stage_line
+
     def test_continues_on_soft_failure(self) -> None:
         stages = [
             CompositeStage(
@@ -333,6 +345,15 @@ class TestRenderCompositeSummary:
         captured = capsys.readouterr()
         assert "1 failed (b)" in captured.out
         assert not summary.overall_success
+
+    def test_renders_failure_reason(self, capsys: pytest.CaptureFixture) -> None:
+        summary = CompositeSummary(
+            name="test",
+            failed=["b"],
+            failure_details={"b": "tracked worktree is dirty"},
+        )
+        render_composite_summary(summary)
+        assert "b: tracked worktree is dirty" in capsys.readouterr().out
 
 
 class TestResolveWinProbModelType:

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from gridiron_edge.cli._composites import StageResult
 from gridiron_edge.cli.post_week import (
     _build_stages,
+    _next_week_steps,
     _stage_close_live_forecasts,
     _stage_refresh_next_week_state,
     _stage_refresh_results,
@@ -190,3 +191,11 @@ class TestCommandInvocation:
             success=True,
             detail="ok",
         )
+
+
+def test_next_week_steps_name_the_following_week() -> None:
+    text = _next_week_steps("2026-2027", 3)
+
+    assert "weekly-predict --season 2026-2027 --week 4" in text
+    assert "ingest odds --season 2026-2027 --week 4" in text
+    assert "edges report --season 2026-2027 --week 4" in text

@@ -1203,12 +1203,15 @@ Stages:
 ```text
 refresh-results
 refresh-next-week-state
+refresh-season-projections
 close-live-forecasts
 ```
 
 The command refreshes outcomes, refreshes next-week schedule, player-stats, and feature state, and evaluates the exact Win and Total events referenced by the selected weekly product, whatever forecast role (`live` or `development`) that product carries; closeout reports the exact role closed rather than assuming `live`. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
 
 `post-week` does not run historical forecast backfill.
+
+`post-week` also does not forecast the next week. No weekly product exists for week N+1 until `weekly-predict` runs, so the API and frontend report weekly predictions and edges as unavailable and `edges report` reports no selected product. After a successful full run, `post-week` prints the next steps: `weekly-predict`, `ingest odds`, then `edges report` for week N+1. `weekly-predict` requires a clean tracked worktree; a dirty tree fails `predict-week`, and the composite summary prints that reason.
 
 ## Historical Backfills and Evaluation
 
