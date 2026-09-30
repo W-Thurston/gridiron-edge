@@ -1512,3 +1512,95 @@ def evaluate_feature_selection(
             f"placebo kept {r.final.placebo_selected}/{r.final.placebo_candidates}"
         )
     console.summary()
+
+
+@evaluate_app.command("feature-attribution")
+def evaluate_feature_attribution(
+    *,
+    checkpoint_dir: Path = typer.Option(  # noqa: B008
+        ...,
+        help="Sweep checkpoint directory from `evaluate feature-sweep` (stage 3 results are "
+        "stored in its stage3/ subdirectory; rerun with the same directory to resume).",
+    ),
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report.",
+    ),
+    report_only: bool = typer.Option(
+        False,
+        "--report-only",
+        help="Skip refits; build the report from existing stage 3 results.",
+    ),
+) -> None:
+    r"""Attribute the wired feature batches one at a time on the wide window.
+
+    Requires a completed `evaluate feature-sweep`. Scores each batch against the
+    step before it walk-forward over 2013-2025 with each step's frozen sweep
+    hyperparameters (refits only), applies the pre-declared wide-window
+    criterion, and writes one Markdown report. Read-only with respect to data/,
+    models, champions, and predictions. Limit CPU externally (for example with
+    `taskset -c 0-3 nice -n 19`).
+
+    \b
+    Examples:
+      gridiron evaluate feature-attribution --checkpoint-dir /tmp/sweep
+      gridiron evaluate feature-attribution --checkpoint-dir /tmp/sweep --report-only
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_modeling_file
+    from gridiron_edge.evaluation.feature_sweep_driver import TARGET_COLUMNS, load_runs
+    from gridiron_edge.evaluation.feature_sweep_report import batch_live_complete
+    from gridiron_edge.evaluation.feature_sweep_rows import build_matched_rows
+    from gridiron_edge.evaluation.feature_sweep_stage3 import (
+        build_stage3_report,
+        decide_stage3,
+        load_stage3,
+        run_stage3,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate feature-attribution")
+    runs = load_runs(checkpoint_dir)
+    if not runs:
+        raise typer.BadParameter(f"No sweep checkpoints found in {checkpoint_dir}")
+    frame = load_modeling_file(repo)
+
+    if report_only:
+        results = load_stage3(checkpoint_dir)
+        if not results:
+            raise typer.BadParameter(f"No stage 3 results found in {checkpoint_dir}")
+    else:
+        matched = {
+            target: build_matched_rows(frame, TARGET_COLUMNS[target])
+            for target in {run.spec.target for run in runs.values()}
+        }
+        with step("Attribute batches on the wide window (resumes from checkpoints)") as s:
+            results = run_stage3(
+                runs,
+                matched,
+                repo,
+                checkpoint_dir,
+                on_family=lambda family, secs: typer.echo(f"  done {family} ({secs / 60:.1f} min)"),
+            )
+            s.set_detail(f"{len(results)} families")
+
+    live = {name: v["rows_with_nan"] for name, v in batch_live_complete(frame).items()}
+    decisions, adjusted = decide_stage3(results, live)
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / "phase-a-feature-attribution.md"
+        path.write_text(
+            build_stage3_report(
+                results, decisions, adjusted, live, generated_on=datetime.now(UTC).date()
+            ),
+            encoding="utf-8",
+        )
+        s.set_detail(str(path))
+
+    typer.echo("")
+    for name, decision in decisions.items():
+        typer.echo(f"{name}: {decision.status} - {decision.reason}")
+    console.summary()

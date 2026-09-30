@@ -369,7 +369,60 @@ matched holdout and the wide walk-forward; the noise-survival rate is
 reported; the non-inferiority call is recorded; no champion or prediction
 artifact changes; the Python gate passes.
 
-#### Conditional follow-on - Week 1 and incomplete-value fill (not started)
+#### Stage 2 results and Stage 3 - per-batch attribution on the wide window (pre-declared 2026-09-30, before it ran)
+
+Stage 2 ran on 2026-09-30 (`docs/reports/phase-a-feature-selection.md`). The
+selected subsets kept 5-24 columns with zero placebo survivors in the final
+selections, but none passed non-inferiority to the full set, and three of five
+families were significantly worse on the wide window (2013-2025, about 3,300
+games). The same window showed the full A1-A5 set beating baseline: Total
+Random Forest +0.046 MAE [+0.006, +0.082], Total XGBoost +0.049
+[+0.001, +0.095], Win XGBoost +0.0033 Brier [+0.0011, +0.0054], Win Random
+Forest +0.0018 [-0.0001, +0.0036], Win Logistic +0.0017 [-0.0006, +0.0038].
+Pruning is therefore not pursued; the question becomes which batches carry the
+gain.
+
+Stage 3 scores each batch against the step before it on the wide window using
+each step's own frozen hyperparameters from the sweep (no new searches, refits
+only). The original holdout bars were sized for about 800 games and their
+effect floors cannot be met even by the whole bundle on Total (0.046 against
+0.09), so the criterion is revised here, before results, and the revision is
+recorded as such. A batch is adopted when all hold for at least one family:
+
+- point improvement is at least half the original floor: 0.001 Brier (Win) or
+  0.045 MAE (Total);
+- the Benjamini-Hochberg adjusted one-sided p-value, across all 25
+  batch-by-family comparisons, is at most 0.10;
+- the batch improves at least 60% of the wide-window seasons.
+
+It is rejected when no family passes, or when any family is significantly
+harmed (the whole 90% interval worse than 0.001 Brier or 0.05 MAE). A batch
+that would be adopted but leaves scheduled games without a value is "adopt only
+if fixed". The placebo and seed checks are not repeated on the wide window; the
+BH correction and the 60% season rule are the noise guards. Unlike the holdout
+bars this is a data-informed revision, motivated by power, not by any batch's
+result, and the report states so.
+
+#### Stage 3 results and decision (2026-09-30, `DECISIONS.md` D72)
+
+Stage 3 ran (`docs/reports/phase-a-feature-attribution.md`). Under the criterion
+recorded above: A3 (QB and coach) **adopt only if fixed** (improves all five
+families; passes Total Random Forest and Win XGBoost); A1, A2, A4 **reject**;
+A5 **reject (near miss)**. The composition becomes baseline plus A3.
+
+Remaining work for this unit, in order:
+1. Design and build the fill for A3's incomplete cells (the conditional
+   follow-on below becomes required, scoped to A3 only).
+2. One forward schema bump removing A1, A2, A4, A5 from the canonical set
+   (code retained, unregistered), with regenerated modeling inputs and a live
+   replay that includes a season opener.
+3. Confirm baseline plus A3 against baseline directly (search and wide-window
+   plus holdout refits), since A3 was measured with A1 and A2 present.
+4. Retrain and promote champions under the final schema (approval required;
+   this also unblocks `weekly-predict`).
+5. `HANDOFF.md` entry, full non-slow gate, closeout.
+
+#### Follow-on - incomplete-value fill for A3 (required; not started)
 
 Only for columns that survive stage 2 (or are otherwise kept) and leave
 scheduled games without a value. Design constraint: fill `NaN` cells only, so

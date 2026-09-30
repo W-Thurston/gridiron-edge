@@ -166,8 +166,8 @@ def compare_non_inferiority(
     mask = rows.matched & _season_start(rows).isin(window)
     y = rows.y[mask].to_numpy(dtype=float)
     loss = brier_losses if spec.target == "win" else absolute_losses
-    a = loss(predictions[arm][mask].to_numpy(dtype=float), y)
-    r = loss(predictions[reference][mask].to_numpy(dtype=float), y)
+    a = loss(predictions[arm].reindex(rows.frame.index)[mask].to_numpy(dtype=float), y)
+    r = loss(predictions[reference].reindex(rows.frame.index)[mask].to_numpy(dtype=float), y)
     if np.isnan(a).any() or np.isnan(r).any():
         msg = "Wide-window predictions contain NaN"
         raise ValueError(msg)

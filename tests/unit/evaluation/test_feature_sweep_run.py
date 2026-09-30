@@ -324,3 +324,30 @@ def test_ablation_scores_on_the_screening_window_and_flags_dead_weight() -> None
     # ACTUAL_TOTAL is driven by AWAY_OFF_EPA_PER_PLAY: dropping it must hurt more.
     assert out["signal_group"].harm > out["noise_group"].harm
     assert not out["signal_group"].removable
+
+
+@pytest.mark.unit
+def test_checkpointed_predictions_survive_rows_appended_to_the_frame() -> None:
+    """A data refresh appends new rows; older checkpoints must still score."""
+    from gridiron_edge.evaluation.feature_sweep_run import _arrays
+
+    rows = _rows("total")
+    spec = _spec("total", GameModelType.XGBOOST)
+    cols = list(build_sweep_steps("expanded")[0].columns)
+    outcome = search_hyperparameters(spec, lambda _w: rows.features, cols, rows.y, rows.train_mask)
+    starts = rows.frame["YEAR"].str[:4].astype(int)
+    preds = expanding_holdout_predictions(
+        spec,
+        outcome,
+        x_all=rows.features.loc[:, cols],
+        y=rows.y,
+        season_start=starts,
+        matched=rows.matched,
+        holdout_seasons=[2023, 2024, 2025],
+    )
+    full_p, _ = _arrays(rows, preds)
+    # Trim only rows after the last holdout row so no holdout prediction is lost.
+    last_holdout = int(np.flatnonzero(rows.holdout_mask.to_numpy())[-1])
+    trimmed = preds.iloc[: last_holdout + 1]
+    trimmed_p, _ = _arrays(rows, trimmed)
+    assert np.allclose(full_p, trimmed_p)

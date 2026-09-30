@@ -18,6 +18,7 @@ BootstrapDelta                  improvement with interval and one-sided p
 paired_bootstrap_improvement    two per-game loss vectors -> BootstrapDelta
 season_improvements             per-season mean improvement
 holm_adjust                     Holm-adjusted p-values
+bh_adjust                       Benjamini-Hochberg adjusted p-values (FDR)
 """
 
 from __future__ import annotations
@@ -206,4 +207,17 @@ def holm_adjust(p_values: dict[str, float]) -> dict[str, float]:
     for rank, (key, p) in enumerate(ordered):
         running = max(running, min(1.0, (m - rank) * p))
         adjusted[key] = running
+    return {key: adjusted[key] for key in p_values}
+
+
+def bh_adjust(p_values: dict[str, float]) -> dict[str, float]:
+    """Benjamini-Hochberg adjusted p-values (monotone, capped at 1)."""
+    ordered = sorted(p_values.items(), key=lambda kv: kv[1])
+    m = len(ordered)
+    adjusted: dict[str, float] = {}
+    running = 1.0
+    for rank in range(m - 1, -1, -1):
+        key, p = ordered[rank]
+        running = min(running, p * m / (rank + 1))
+        adjusted[key] = min(1.0, running)
     return {key: adjusted[key] for key in p_values}

@@ -8,6 +8,74 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D72 - Wide-window attribution supersedes the holdout bars: only the QB-and-coach batch is kept, conditional on a fill
+
+**Date:** 2026-09-30
+
+**Context:** D71's holdout bars (about 800 games) rejected every batch but could
+not resolve effects of this size. Stage 2 (model-driven selection,
+`docs/reports/phase-a-feature-selection.md`) scored subsets selected before the
+2013 season on 2013-2025 (about 3,300 games never seen by that selection).
+Selection kept 5-24 columns with zero placebo survivors in the final
+selections, but no subset was non-inferior to the full set and three of five
+families were significantly worse, so pruning is not pursued. The same window
+showed the full A1-A5 set beating baseline: Total Random Forest +0.046 MAE
+[+0.006, +0.082], Total XGBoost +0.049 [+0.001, +0.095], Win XGBoost +0.0033
+Brier [+0.0011, +0.0054]; Win Random Forest (+0.0018) and Logistic (+0.0017)
+were positive with intervals including zero.
+
+**Decision:** Per-batch attribution (stage 3,
+`docs/reports/phase-a-feature-attribution.md`) scores each batch against the
+step before it over 2013-2025 with each step's frozen sweep hyperparameters.
+The criterion was recorded in `PLAN.md` before it ran: improvement at least
+half the original floor (0.001 Brier, 0.045 MAE), Benjamini-Hochberg adjusted
+one-sided p at most 0.10 across all 25 batch-by-family comparisons, at least
+60% of seasons improved; rejected when nothing passes or any family is
+significantly harmed. This replaces D71's holdout bars as the adoption
+criterion. It is a data-informed revision motivated by power, not by any batch's
+result, and is recorded as such.
+
+| Batch | Call |
+|---|---|
+| A1 construction fixes | reject |
+| A2 opponent-adjusted EPA | reject |
+| A3 QB and coach | adopt only if fixed |
+| A4 situational context | reject |
+| A5 rating ensemble | reject (near miss) |
+
+A3 improves all five families (Total RF +0.057 MAE, BH p 0.038; Total XGBoost
++0.038; Win XGBoost +0.0026 Brier, BH p 0.081; Win Random Forest +0.0017;
+Win Logistic +0.0014) and passes in Total Random Forest and Win XGBoost. It
+leaves 27 scheduled games without a value from the holdout onward (18 in Week
+1), so it is kept only together with a fix that fills missing cells. A5's
+gains were small and uncorrected-significant in two families (raw p 0.056 Win
+XGBoost, 0.090 Win Logistic) but fail the multiple-comparison correction.
+
+**Implications:**
+- The feature set becomes baseline plus A3 (expanded 177 columns, combined
+  132), via one forward schema bump that removes A1, A2, A4 and A5 from the
+  canonical set. Their code and tests are retained, unregistered.
+- The call was measured with A1 and A2 present (cumulative order, D62). The
+  final composition must be confirmed against baseline directly before
+  promotion.
+- The fill changes only `NaN` cells (D60-style indicator plus fill), so the
+  attribution above still applies to every value that already existed.
+- Win XGBoost's BH p of 0.081 sits close to the 0.10 line; treat A3's Win gain
+  as supported but not certain.
+
+**Revisit triggers:**
+- The confirmation run of baseline plus A3 contradicts the attribution.
+- The fill policy, once designed, changes the measured effect.
+- More seasons accumulate and A5 or another near miss clears the corrected
+  bar.
+
+**References:**
+- `docs/reports/phase-a-feature-selection.md`
+- `docs/reports/phase-a-feature-attribution.md`
+- `src/gridiron_edge/evaluation/feature_sweep_stage3.py`
+
+---
+
 ## D71 - Phase A screening protocol, acceptance bars, and first results
 
 **Date:** 2026-09-29

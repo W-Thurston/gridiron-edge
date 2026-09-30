@@ -326,7 +326,10 @@ def predictions_payload(
             "game_ids": rows.frame.loc[mask, "GAME_ID"].tolist(),
             "actual": [round(v, 4) for v in rows.y[mask].tolist()],
             "steps": {
-                sf.step: [round(v, 5) for v in sf.predictions[mask].tolist()] for sf in run.steps
+                sf.step: [
+                    round(v, 5) for v in sf.predictions.reindex(rows.frame.index)[mask].tolist()
+                ]
+                for sf in run.steps
             },
         }
     return payload

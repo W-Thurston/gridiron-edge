@@ -346,7 +346,8 @@ class FamilyEvaluation:
 
 def _arrays(rows: MatchedRows, preds: Series) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     mask = rows.holdout_mask
-    p = preds[mask].to_numpy(dtype=float)
+    # Checkpointed predictions may predate rows appended to the frame since.
+    p = preds.reindex(rows.frame.index)[mask].to_numpy(dtype=float)
     if np.isnan(p).any():
         msg = "Holdout predictions contain NaN"
         raise ValueError(msg)
