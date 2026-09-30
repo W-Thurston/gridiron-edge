@@ -60,7 +60,9 @@ corrected by D71; the feature is now unregistered.
   against the new step list; the committed reports are the record.
 - The final composition (baseline plus the kept batch) is confirmed against
   baseline directly before promotion, since it was measured with A1 and A2
-  present.
+  present. Confirmed 2026-09-30 (`docs/reports/phase-a-final-confirmation.md`):
+  all five families improve on the wide window with intervals excluding zero,
+  including on Week 1 games in four of five.
 
 **Revisit triggers:**
 - The confirmation run contradicts the attribution.

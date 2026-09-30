@@ -149,6 +149,7 @@ def compare_non_inferiority(
     *,
     starts: list[int] | None = None,
     margin: float | None = None,
+    subset: Series | None = None,
 ) -> WideComparison:
     """Score ``arm`` against ``reference`` on the wide window's matched games.
 
@@ -161,9 +162,13 @@ def compare_non_inferiority(
         starts: Season start years scored; defaults to the wide window.
         margin: Non-inferiority margin; defaults to the ablation harm limit
             for the target (0.001 Brier, 0.045 MAE).
+        subset: Optional extra row mask (for example Week 1 games) applied on
+            top of the season window.
     """
     window = eval_starts() if starts is None else starts
     mask = rows.matched & _season_start(rows).isin(window)
+    if subset is not None:
+        mask = mask & subset
     y = rows.y[mask].to_numpy(dtype=float)
     loss = brier_losses if spec.target == "win" else absolute_losses
     a = loss(predictions[arm].reindex(rows.frame.index)[mask].to_numpy(dtype=float), y)

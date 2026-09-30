@@ -238,4 +238,4 @@ def build_stage3_report(
                 f"[{d.lower:+.5f}, {d.upper:+.5f}] | {b.seasons_improved}/{b.seasons_total} | "
                 f"{d.p_no_improvement:.4f} | {adjusted[f'{label}|{b.batch}']:.4f} |"
             )
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"

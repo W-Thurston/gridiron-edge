@@ -432,6 +432,32 @@ Remaining work for this unit, in order:
    this also unblocks `weekly-predict`).
 5. `HANDOFF.md` entry, full non-slow gate, closeout.
 
+#### Stage 4 - confirmation of the final composition (pre-declared 2026-09-30, before it ran)
+
+A3 was attributed with A1 and A2 present, so the final composition (baseline
+plus A3, schema 13) is checked against baseline directly before promotion. To
+stay cheap it reuses the sweep's frozen hyperparameters (the baseline step's
+for the baseline arm; the old A3 step's for the final arm) and does refits
+only, on the regenerated matched games, which now include season openers
+because the fill removes their missing values. It reports the wide window
+(2013-2025), the holdout (2023-2025) and a Week 1 slice. **Confirmed** when no
+family is significantly worse than baseline on either window (the whole 90%
+interval worse than 0.001 Brier or 0.05 MAE) and at least 4 of 5 wide-window
+point improvements are positive. A failure reopens the composition before any
+retrain; a pass releases the game-models-only retrain
+(`full-retrain --skip-prop-backfill --skip refresh-all-data`, props are not
+touched by the schema).
+
+**Stage 4 result (2026-09-30, `docs/reports/phase-a-final-confirmation.md`):
+CONFIRMED.** Baseline plus the QB-and-coach batch beats baseline in all five
+families on the wide window (3,550-3,562 matched games, now including season
+openers), with every 90% interval excluding zero: Total Random Forest +0.055
+MAE, Total XGBoost +0.040, Win Logistic +0.0015 Brier, Win Random Forest
++0.0021, Win XGBoost +0.0027. Holdout point improvements are all positive with
+intervals including zero (expected at about 850 games). Week 1 games: positive
+in four of five families (Win Logistic -0.0007, not significant, 204 games).
+The game-models-only retrain is released.
+
 #### Follow-on - incomplete-value fill for A3 (built; see D73)
 
 Only for columns that survive stage 2 (or are otherwise kept) and leave

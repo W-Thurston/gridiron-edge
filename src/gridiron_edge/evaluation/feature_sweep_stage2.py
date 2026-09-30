@@ -299,4 +299,4 @@ def build_stage2_report(results: dict[str, FamilyStage2], *, generated_on: date)
         stable = sorted(r.final.stability.items(), key=lambda kv: -kv[1])
         lines.append(", ".join(f"{c} ({v:.2f})" for c, v in stable if c in set(r.final.selected)))
         lines.append("")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"

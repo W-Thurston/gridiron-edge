@@ -1604,3 +1604,69 @@ def evaluate_feature_attribution(
     for name, decision in decisions.items():
         typer.echo(f"{name}: {decision.status} - {decision.reason}")
     console.summary()
+
+
+@evaluate_app.command("feature-confirmation")
+def evaluate_feature_confirmation(
+    *,
+    checkpoint_dir: Path = typer.Option(  # noqa: B008
+        ...,
+        help="Sweep checkpoint directory from `evaluate feature-sweep` (supplies the frozen "
+        "hyperparameters).",
+    ),
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report.",
+    ),
+) -> None:
+    r"""Confirm the final feature composition against baseline on the wide window.
+
+    Requires the sweep checkpoints that supply frozen hyperparameters. Scores
+    baseline versus baseline plus the kept QB-and-coach batch (refits only) on
+    the wide window, the holdout, and Week 1 games, applies the criterion
+    recorded before it ran, and writes one Markdown report. Read-only with
+    respect to data/, models, champions, and predictions. Limit CPU externally
+    (for example `taskset -c 0-3 nice -n 19`).
+
+    \b
+    Examples:
+      gridiron evaluate feature-confirmation --checkpoint-dir /tmp/sweep
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_modeling_file
+    from gridiron_edge.evaluation.feature_sweep_confirm import (
+        build_confirmation_report,
+        judge_confirmation,
+        run_confirmation,
+    )
+    from gridiron_edge.evaluation.feature_sweep_driver import TARGET_COLUMNS, load_runs
+    from gridiron_edge.evaluation.feature_sweep_rows import build_matched_rows
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate feature-confirmation")
+    runs = load_runs(checkpoint_dir)
+    if not runs:
+        raise typer.BadParameter(f"No sweep checkpoints found in {checkpoint_dir}")
+    frame = load_modeling_file(repo)
+    matched = {
+        target: build_matched_rows(frame, TARGET_COLUMNS[target])
+        for target in {run.spec.target for run in runs.values()}
+    }
+    with step("Score final composition against baseline") as s:
+        results = run_confirmation(runs, matched, repo)
+        s.set_detail(f"{len(results)} families")
+    verdict = judge_confirmation(results)
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / "phase-a-final-confirmation.md"
+        path.write_text(
+            build_confirmation_report(results, verdict, generated_on=datetime.now(UTC).date()),
+            encoding="utf-8",
+        )
+        s.set_detail(str(path))
+    typer.echo("")
+    typer.echo(f"{'CONFIRMED' if verdict.confirmed else 'NOT CONFIRMED'}: {verdict.reason}")
+    console.summary()

@@ -311,7 +311,7 @@ def build_report(
         lines += _family_section(ev, runs[label], runs[label].spec.target)
     if column_level is not None:
         lines += _column_level_section(column_level)
-    return "\n".join(lines) + "\n", decisions
+    return "\n".join(lines).rstrip("\n") + "\n", decisions
 
 
 def predictions_payload(

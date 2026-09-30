@@ -1264,7 +1264,7 @@ across all six families. See `DECISIONS.md` D46/D47.
 
 ## Feature Screening Commands
 
-Three read-only commands screen wired feature batches. They write no `data/`,
+Four read-only commands screen wired feature batches. They write no `data/`,
 model, champion, or prediction artifact; slow, training-heavy, and resumable.
 Limit CPU externally (for example `taskset -c 0-3 nice -n 19`).
 
@@ -1282,6 +1282,11 @@ Limit CPU externally (for example `taskset -c 0-3 nice -n 19`).
   scores each batch against the step before it on the wide window (2013-2025,
   frozen hyperparameters, refits only) under the criterion in `DECISIONS.md`
   D72 and writes `phase-a-feature-attribution.md`.
+
+- `gridiron evaluate feature-confirmation --checkpoint-dir DIR` scores the final
+  feature composition against baseline directly (frozen sweep hyperparameters,
+  refits only) on the wide window, the holdout and Week 1 games, and writes
+  `phase-a-final-confirmation.md`.
 
 These commands depend on a sweep run against the feature declarations in force
 when it ran. After a schema change that removes batches (schema 13 kept only
