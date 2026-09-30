@@ -13,6 +13,7 @@ import pytest
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.features.registry import FeatureRegistry
 from gridiron_edge.features.team.coach_profile import (
+    DEBUT_HC_WIN_PCT,
     HomeAwayCoachProfileFeature,
     _build_coach_result_history,
     _hc_win_pct_entering,
@@ -320,10 +321,48 @@ class TestHomeAwayCoachProfileFeature:
         assert row["AWAY_HC_WIN_PCT_CAREER"] == pytest.approx(0.5)
         assert row["AWAY_HC_TENURE"] == 2
         assert row["AWAY_NEW_COACHING_STAFF_FLAG"] == 0
-        assert pd.isna(row["HOME_HC_WIN_PCT_CAREER"])
+        # A known first-time coach gets the debut prior; tenure 1 and the
+        # new-staff flag already mark the row.
+        assert row["HOME_HC_WIN_PCT_CAREER"] == pytest.approx(DEBUT_HC_WIN_PCT)
         assert row["HOME_HC_TENURE"] == 1
         assert row["HOME_NEW_COACHING_STAFF_FLAG"] == 1
         assert row["MARKER"] == "preserved"
+
+    def test_unresolved_coach_stays_missing(self) -> None:
+        # An unresolved identity is a data gap, not a first-time coach: it must
+        # not be filled, so the family still fails closed.
+        sidecar = DataFrame(
+            [
+                _sidecar_row(
+                    game_id="g1",
+                    year="2024-2025",
+                    week=1,
+                    away_team="Away Team",
+                    home_team="Home Team",
+                    away_coach="Coach A",
+                    home_coach="Coach B",
+                ),
+                _sidecar_row(
+                    game_id="target-week-4",
+                    year="2025-2026",
+                    week=4,
+                    away_team="Away Team",
+                    home_team="Home Team",
+                    away_coach=None,
+                    home_coach="Coach Z",
+                ),
+            ]
+        )
+        games = DataFrame(
+            [_completed_game(game_id="g1", year="2024-2025", week=1, away_score=30, home_score=10)]
+        )
+        row = (
+            HomeAwayCoachProfileFeature()
+            .compute(df=_game_frame(), datasets=_datasets(sidecar=sidecar, games=games))
+            .iloc[0]
+        )
+        assert pd.isna(row["AWAY_HC_WIN_PCT_CAREER"])
+        assert row["HOME_HC_WIN_PCT_CAREER"] == pytest.approx(DEBUT_HC_WIN_PCT)
 
     def test_preserves_row_order(self) -> None:
         sidecar = DataFrame(

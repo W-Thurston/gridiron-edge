@@ -68,7 +68,7 @@ def test_stage3_scores_every_batch_checkpoints_and_reports(tmp_path: Path) -> No
         on_family=lambda label, _s: seen.append(label),
     )
     fam = results["total/xgboost"]
-    assert [b.batch for b in fam.batches] == [b.name for b in FEATURE_BATCHES]
+    assert [b.batch for b in fam.batches] == ["qb_and_coach"]
     for b in fam.batches:
         assert b.seasons_total == 4
         assert 0 <= b.seasons_improved <= 4
@@ -80,10 +80,11 @@ def test_stage3_scores_every_batch_checkpoints_and_reports(tmp_path: Path) -> No
     assert seen == ["total/xgboost"] and set(again) == set(load_stage3(tmp_path))
 
     live = {b.name: 0 for b in FEATURE_BATCHES}
-    live["opponent_adjusted_epa"] = 5
+    live["qb_and_coach"] = 5
     decisions, adjusted = decide_stage3(results, live)
-    assert set(decisions) == {b.name for b in FEATURE_BATCHES}
-    assert len(adjusted) == len(FEATURE_BATCHES)
+    assert set(decisions) == {"qb_and_coach"}
+    assert len(adjusted) == 1
+    assert decisions["qb_and_coach"].status != "adopt"  # 5 rows with a NaN
     assert all(0.0 <= v <= 1.0 for v in adjusted.values())
     text = build_stage3_report(results, decisions, adjusted, live, generated_on=date(2026, 9, 30))
     assert text.startswith("# Phase A per-batch attribution (wide window) - 2026-09-30")

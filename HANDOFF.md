@@ -1262,6 +1262,38 @@ the current champion pair; this one is model-quality-focused (calibration,
 sharpness, season stability, error, interval coverage, environment slices)
 across all six families. See `DECISIONS.md` D46/D47.
 
+## Feature Screening Commands
+
+Three read-only commands screen wired feature batches. They write no `data/`,
+model, champion, or prediction artifact; slow, training-heavy, and resumable.
+Limit CPU externally (for example `taskset -c 0-3 nice -n 19`).
+
+- `gridiron evaluate feature-sweep --checkpoint-dir DIR [--report-dir docs/reports]
+  [--report-only]` runs the incremental sweep (baseline, then each batch
+  cumulatively) for Win (Logistic, Random Forest, XGBoost) and Total (Random
+  Forest, XGBoost) on identical matched holdout games, checkpointing every
+  step in `DIR` and writing `phase-a-feature-sweep.md` plus a per-game
+  prediction JSON. Keep `DIR` outside `data/`.
+- `gridiron evaluate feature-selection --checkpoint-dir DIR [--threads N]
+  [--report-only]` runs model-driven selection on a completed sweep's column
+  pool with a placebo-column control, validates it walk-forward on 2013 onward,
+  and writes `phase-a-feature-selection.md` and a subsets JSON.
+- `gridiron evaluate feature-attribution --checkpoint-dir DIR [--report-only]`
+  scores each batch against the step before it on the wide window (2013-2025,
+  frozen hyperparameters, refits only) under the criterion in `DECISIONS.md`
+  D72 and writes `phase-a-feature-attribution.md`.
+
+These commands depend on a sweep run against the feature declarations in force
+when it ran. After a schema change that removes batches (schema 13 kept only
+the QB-and-coach batch, D73), saved sweep checkpoints cannot be re-scored
+against the new step list; the committed reports are the record. The harness
+skips retired batches (`RETIRED_BATCHES`) and still screens any batch that is
+declared.
+
+The QB-and-coach features fill a missing value only for a known starter or
+coach with no history (debut priors, D73); an unresolved identity stays missing
+and disables the family for the week.
+
 ## Full Retrain Workflow
 
 Run:

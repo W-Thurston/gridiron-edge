@@ -55,8 +55,8 @@ def test_stage2_selects_evaluates_checkpoints_and_reports(tmp_path: Path) -> Non
     )
     r = results["total/xgboost"]
     assert done == ["total/xgboost"]
-    assert r.n_baseline == 152 and r.n_full == 260
-    assert r.early.n_pool == r.final.n_pool == 260
+    assert r.n_baseline == 152 and r.n_full == 177
+    assert r.early.n_pool == r.final.n_pool == 177
     assert r.early.placebo_candidates == r.final.placebo_candidates == 4
     assert set(r.holdout) >= {"full_vs_baseline"}
     assert r.holdout["full_vs_baseline"].n_games == rows.n_holdout

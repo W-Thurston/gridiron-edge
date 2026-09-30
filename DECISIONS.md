@@ -8,6 +8,71 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D73 - Debut prior for known starters and coaches with no history; schema 13 keeps only the QB-and-coach batch
+
+**Date:** 2026-09-30
+
+**Context:** D72 keeps the QB-and-coach batch only together with a fill for the
+27 scheduled games (from the holdout onward) where it leaves a value missing.
+Program rule 4 requires a recorded missingness policy. The missing cells are
+career and rolling QB EPA per attempt for a starter with no prior pass-attempt
+game, and career head-coach win % for a coach with no prior games as a head
+coach. The metric is nearly always missing for exactly one population: debuts.
+
+**Decision:**
+1. A *known* starter with no history gets a debut prior; a *known* first-time
+   head coach gets a debut prior. An *unresolved* identity stays missing, so a
+   real data gap still disables the family (D65 fail-closed).
+2. The priors are debut means over training seasons only (2000-2022; 1999
+   first appearances are left-censored and 2023+ is holdout): QB EPA per
+   attempt **-0.1293** (attempt-weighted, 143 debut games with at least 10
+   attempts; all 289 debuts give -0.1495) and head-coach win share **0.4055**
+   (127 first-time coaches' debut games). The league means I first considered
+   (+0.0288 QB EPA per attempt, 0.5 win share) would overstate a debut by about
+   0.16 and 0.09, so they are not used.
+3. No new columns. `QB_EXPERIENCE == 0`, the existing CPOE availability flag,
+   `HC_TENURE` and the new-staff flag already mark these rows.
+4. The fill changes only cells that were missing, so D72's attribution applies
+   unchanged to every cell that already had a value.
+
+**Schema 13, data 10:** one forward bump removes the rejected batches (D72).
+`EPA_COLS` loses `off_fumble_rate`, `off_cpoe(_available)`,
+`def_cpoe(_available)`, `st_epa_per_play` and `punt_epa_per_play`; the
+canonical feature list drops opponent-adjusted EPA, unit efficiency, projected
+total plays, surface, league environment, road trips, body clock, Glicko-2,
+linear ratings and QB Elo; and the declared model columns shrink to baseline
+plus the QB-and-coach batch (expanded 260 to 177, combined 207 to 132, the
+composition and order verified against schema 12). Code and tests for the
+removed features are retained, unregistered. Outputs computed inside retained
+features (season-performance stats in `home_away_record`, `WIND_SPEED_BIN` in
+`home_away_weather`) stay computed but are not model inputs. A4's roof fix
+(D67) is a correction of existing columns and stays. The D63 premise that a
+Week 1 `NaN` is "exactly like every other existing rolling EPA feature" is
+corrected by D71; the feature is now unregistered.
+
+**Implications:**
+- The modeling file must be regenerated (`gridiron features model-inputs
+  --all-years`) before anything loads it; schema 13 is otherwise rejected.
+- A live replay including a season opener must show no missing value in the
+  kept columns.
+- The sweep harness keeps working: retired batches are skipped
+  (`RETIRED_BATCHES`). Checkpoints from the schema-12 sweep cannot be re-scored
+  against the new step list; the committed reports are the record.
+- The final composition (baseline plus the kept batch) is confirmed against
+  baseline directly before promotion, since it was measured with A1 and A2
+  present.
+
+**Revisit triggers:**
+- The confirmation run contradicts the attribution.
+- More seasons shift the debut means materially (refit on a formally re-defined
+  training window only).
+
+**References:**
+- `src/gridiron_edge/features/team/qb_profile.py` (`DEBUT_QB_EPA_PER_ATTEMPT`)
+- `src/gridiron_edge/features/team/coach_profile.py` (`DEBUT_HC_WIN_PCT`)
+
+---
+
 ## D72 - Wide-window attribution supersedes the holdout bars: only the QB-and-coach batch is kept, conditional on a fill
 
 **Date:** 2026-09-30

@@ -14,14 +14,10 @@ from gridiron_edge.models.game_prediction._columns import (
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
-    _OPPONENT_ADJUSTED_EPA_SUFFIXES,
     _QB_PROFILE_SUFFIXES,
-    _RATING_ENSEMBLE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
-    _SEASON_PERFORMANCE_SUFFIXES,
     _TEAM_FEATURES,
-    _UNIT_EFFICIENCY_SUFFIXES,
 )
 from gridiron_edge.models.game_prediction._features import (
     FEATURE_SETS,
@@ -42,27 +38,11 @@ def _canonical_frame() -> DataFrame:
         values[f"AWAY_{suffix}"] = [float(index)]
         values[f"HOME_{suffix}"] = [float(index + 100)]
 
-    for index, suffix in enumerate(_OPPONENT_ADJUSTED_EPA_SUFFIXES, start=1):
-        values[f"AWAY_{suffix}"] = [float(index)]
-        values[f"HOME_{suffix}"] = [float(index + 100)]
-
-    for index, suffix in enumerate(_UNIT_EFFICIENCY_SUFFIXES, start=1):
-        values[f"AWAY_{suffix}"] = [float(index)]
-        values[f"HOME_{suffix}"] = [float(index + 100)]
-
     for index, suffix in enumerate(_QB_PROFILE_SUFFIXES, start=1):
         values[f"AWAY_{suffix}"] = [float(index)]
         values[f"HOME_{suffix}"] = [float(index + 100)]
 
     for index, suffix in enumerate(_COACH_PROFILE_SUFFIXES, start=1):
-        values[f"AWAY_{suffix}"] = [float(index)]
-        values[f"HOME_{suffix}"] = [float(index + 100)]
-
-    for index, suffix in enumerate(_SEASON_PERFORMANCE_SUFFIXES, start=1):
-        values[f"AWAY_{suffix}"] = [float(index)]
-        values[f"HOME_{suffix}"] = [float(index + 100)]
-
-    for index, suffix in enumerate(_RATING_ENSEMBLE_SUFFIXES, start=1):
         values[f"AWAY_{suffix}"] = [float(index)]
         values[f"HOME_{suffix}"] = [float(index + 100)]
 
@@ -74,12 +54,12 @@ def _canonical_frame() -> DataFrame:
 
 def test_feature_declaration_counts_and_uniqueness() -> None:
     expected = {
-        "raw": (_RAW_FEATURES, 138),
-        "diff": (_DIFF_FEATURES, 69),
-        "combined": (_COMBINED_FEATURES, 207),
-        "game": (_GAME_FEATURES, 19),
-        "team": (_TEAM_FEATURES, 34),
-        "expanded": (_EXPANDED_FEATURES, 260),
+        "raw": (_RAW_FEATURES, 88),
+        "diff": (_DIFF_FEATURES, 44),
+        "combined": (_COMBINED_FEATURES, 132),
+        "game": (_GAME_FEATURES, 15),
+        "team": (_TEAM_FEATURES, 30),
+        "expanded": (_EXPANDED_FEATURES, 177),
     }
 
     for columns, count in expected.values():
@@ -115,17 +95,9 @@ def test_diff_features_use_home_minus_away() -> None:
     assert result.iloc[0]["ELO_DIFF"] == 200.0
     for suffix in _EPA_SUFFIXES:
         assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
-    for suffix in _OPPONENT_ADJUSTED_EPA_SUFFIXES:
-        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
-    for suffix in _UNIT_EFFICIENCY_SUFFIXES:
-        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
     for suffix in _QB_PROFILE_SUFFIXES:
         assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
     for suffix in _COACH_PROFILE_SUFFIXES:
-        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
-    for suffix in _SEASON_PERFORMANCE_SUFFIXES:
-        assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
-    for suffix in _RATING_ENSEMBLE_SUFFIXES:
         assert result.iloc[0][f"{suffix}_DIFF"] == 100.0
 
 

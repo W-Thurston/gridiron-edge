@@ -33,12 +33,12 @@ def test_batch_live_complete_counts_nan_rows_from_the_holdout_onward() -> None:
 
     recent_week1 = df.index[(df["YEAR"] == "2024-2025") & (df["WEEK_NUM"] == 2)][0]
     old = df.index[df["YEAR"] == "2021-2022"][0]
-    df.loc[recent_week1, "HOME_OFF_PASS_EPA_ADJ"] = np.nan
-    df.loc[old, "HOME_QB_EPA_PLAY_CAREER"] = np.nan  # before the holdout: ignored
+    df.loc[recent_week1, "HOME_QB_EPA_PLAY_CAREER"] = np.nan
+    df.loc[old, "HOME_HC_TENURE"] = np.nan  # before the holdout: ignored
     out = batch_live_complete(df)
-    assert out["opponent_adjusted_epa"]["rows_with_nan"] == 1
-    assert out["opponent_adjusted_epa"]["week1_rows_with_nan"] == 0
-    assert out["qb_and_coach"]["rows_with_nan"] == 0
+    assert out["qb_and_coach"]["rows_with_nan"] == 1
+    assert out["qb_and_coach"]["week1_rows_with_nan"] == 0
+    assert out["rating_ensemble"]["rows_with_nan"] == 0  # retired: no columns
 
 
 @pytest.mark.unit
@@ -57,10 +57,10 @@ def test_report_and_payload_cover_every_batch_and_holdout_game() -> None:
         {spec.label: run}, {"total": rows}, df, generated_on=date(2026, 9, 28)
     )
     assert text.startswith("# Phase A feature sweep - 2026-09-28")
-    for batch in FEATURE_BATCHES:
-        assert batch.name in text
-        assert batch.name in decisions
-        assert decisions[batch.name].status in {"adopt", "reject", "adopt_only_if_fixed"}
+    # Only the kept batch has a step after the schema bump.
+    assert set(decisions) == {"qb_and_coach"}
+    assert "qb_and_coach" in text
+    assert decisions["qb_and_coach"].status in {"adopt", "reject", "adopt_only_if_fixed"}
     for heading in ("## Protocol", "## Batch decisions", "## Multiple-comparison view"):
         assert heading in text
     assert "### total/xgboost" in text
@@ -89,16 +89,10 @@ def test_column_level_stage_feeds_the_report() -> None:
         placebo_draws=1,
     )
     cl = run_column_level({spec.label: run}, {"total": rows}, Path("."))
-    assert set(cl.ablations["total/xgboost"]) == {
-        "form_trend",
-        "glicko2_rd",
-        "glicko2_rating",
-        "linear_ratings",
-        "qb_elo",
-        "qb_history",
-    }
+    # Suspect groups from retired batches have no columns left to drop.
+    assert set(cl.ablations["total/xgboost"]) == {"qb_history"}
     assert set(cl.leakage) == set(cl.drift) == set(cl.correlations) == {"total"}
-    assert "GLICKO2_RD_DIFF" in cl.correlations["total"]
+    assert cl.correlations["total"] == {}
     text, _ = build_report(
         {spec.label: run},
         {"total": rows},

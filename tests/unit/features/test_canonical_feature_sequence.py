@@ -25,9 +25,6 @@ from gridiron_edge.features.registry import (
 _EXPECTED_CANONICAL_FEATURES = [
     "home_away_elo",
     "home_away_epa",
-    "home_away_opponent_adjusted_epa",
-    "unit_efficiency_differentials",
-    "projected_total_plays",
     "home_away_qb_profile",
     "home_away_coach_profile",
     "home_away_rest",
@@ -38,13 +35,6 @@ _EXPECTED_CANONICAL_FEATURES = [
     "home_away_divisional",
     "home_away_primetime",
     "home_away_weather",
-    "home_away_surface",
-    "league_environment",
-    "home_away_road_trips",
-    "home_away_body_clock",
-    "home_away_glicko2",
-    "home_away_linear_ratings",
-    "home_away_qb_elo",
 ]
 
 

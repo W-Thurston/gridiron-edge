@@ -32,6 +32,18 @@ from gridiron_edge.models.game_prediction._columns import (
 
 BASELINE_STEP_NAME: Final[str] = "baseline"
 
+#: Batches the sweep rejected and a forward schema bump removed from the
+#: declared set (``DECISIONS.md`` D72). They contribute no current columns, so
+#: ``build_sweep_steps`` skips them instead of treating them as stale.
+RETIRED_BATCHES: Final[frozenset[str]] = frozenset(
+    {
+        "construction_fixes",
+        "opponent_adjusted_epa",
+        "situational_context",
+        "rating_ensemble",
+    }
+)
+
 
 @dataclass(frozen=True)
 class FeatureBatch:
@@ -181,6 +193,8 @@ def build_sweep_steps(feature_set_key: str) -> list[FeatureStep]:
     seen: set[str] = set()
     for batch in FEATURE_BATCHES:
         cols: list[str] = batch_columns(batch, declared)
+        if not cols and batch.name in RETIRED_BATCHES:
+            continue
         if not cols:
             msg = f"Batch {batch.name!r} contributes no columns to {feature_set_key!r}"
             raise ValueError(msg)
@@ -200,6 +214,8 @@ def build_sweep_steps(feature_set_key: str) -> list[FeatureStep]:
     included: set[str] = set()
     included_names: list[str] = []
     for batch in FEATURE_BATCHES:
+        if batch.name not in owned:
+            continue
         included |= owned[batch.name]
         included_names.append(batch.name)
         columns = tuple(c for c in declared if c in included or c in set(baseline_cols))

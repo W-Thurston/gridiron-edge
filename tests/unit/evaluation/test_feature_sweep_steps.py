@@ -11,6 +11,7 @@ import pytest
 from gridiron_edge.evaluation.feature_sweep_steps import (
     BASELINE_STEP_NAME,
     FEATURE_BATCHES,
+    RETIRED_BATCHES,
     FeatureBatch,
     batch_columns,
     build_sweep_steps,
@@ -20,8 +21,10 @@ from gridiron_edge.models.game_prediction._columns import (
     _EXPANDED_FEATURES,
 )
 
-EXPANDED_COUNTS = [152, 167, 186, 211, 239, 260]
-COMBINED_COUNTS = [111, 126, 144, 165, 186, 207]
+# Baseline plus the one kept batch (DECISIONS.md D72); the rejected batches are retired.
+EXPANDED_COUNTS = [152, 177]
+COMBINED_COUNTS = [111, 132]
+ACTIVE = [b.name for b in FEATURE_BATCHES if b.name not in RETIRED_BATCHES]
 
 
 @pytest.mark.unit
@@ -29,7 +32,7 @@ def test_expanded_step_counts_match_wired_compositions() -> None:
     steps = build_sweep_steps("expanded")
     assert [len(s.columns) for s in steps] == EXPANDED_COUNTS
     assert steps[0].name == BASELINE_STEP_NAME
-    assert [s.name for s in steps[1:]] == [b.name for b in FEATURE_BATCHES]
+    assert [s.name for s in steps[1:]] == ACTIVE == ["qb_and_coach"]
 
 
 @pytest.mark.unit
@@ -57,7 +60,7 @@ def test_steps_are_nested_ordered_and_end_at_current_declaration(
 @pytest.mark.unit
 def test_batches_are_disjoint_and_named_cumulatively() -> None:
     steps = build_sweep_steps("expanded")
-    assert steps[-1].batches == tuple(b.name for b in FEATURE_BATCHES)
+    assert steps[-1].batches == tuple(ACTIVE)
     owned = [set(batch_columns(b, list(_EXPANDED_FEATURES))) for b in FEATURE_BATCHES]
     for i, a in enumerate(owned):
         for b in owned[i + 1 :]:
@@ -78,9 +81,9 @@ def test_baseline_excludes_every_batch_column() -> None:
 
 @pytest.mark.unit
 def test_batch_columns_expands_diff_and_sides() -> None:
-    batch = FeatureBatch("x", metrics=("GLICKO2_RD",), single_columns=("WEEK_NUM",))
+    batch = FeatureBatch("x", metrics=("HC_TENURE",), single_columns=("WEEK_NUM",))
     cols = batch_columns(batch, list(_EXPANDED_FEATURES))
-    assert set(cols) == {"GLICKO2_RD_DIFF", "AWAY_GLICKO2_RD", "HOME_GLICKO2_RD", "WEEK_NUM"}
+    assert set(cols) == {"HC_TENURE_DIFF", "AWAY_HC_TENURE", "HOME_HC_TENURE", "WEEK_NUM"}
 
 
 @pytest.mark.unit
@@ -100,8 +103,8 @@ def test_overlapping_batches_raise(monkeypatch: pytest.MonkeyPatch) -> None:
         mod,
         "FEATURE_BATCHES",
         [
-            FeatureBatch("a", metrics=("GLICKO2_RD",)),
-            FeatureBatch("b", metrics=("GLICKO2_RD",)),
+            FeatureBatch("a", metrics=("HC_TENURE",)),
+            FeatureBatch("b", metrics=("HC_TENURE",)),
         ],
     )
     with pytest.raises(ValueError, match="overlaps"):
@@ -112,3 +115,20 @@ def test_overlapping_batches_raise(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unsupported_feature_set_raises() -> None:
     with pytest.raises(ValueError, match="Unsupported"):
         build_sweep_steps("raw")
+
+
+@pytest.mark.unit
+def test_retired_batches_are_skipped_not_treated_as_stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    from gridiron_edge.evaluation import feature_sweep_steps as mod
+
+    monkeypatch.setattr(
+        mod,
+        "FEATURE_BATCHES",
+        [
+            FeatureBatch("rating_ensemble", metrics=("GLICKO2_RATING",)),
+            FeatureBatch("qb_and_coach", metrics=("HC_TENURE",)),
+        ],
+    )
+    steps = mod.build_sweep_steps("expanded")
+    assert [s.name for s in steps] == ["baseline", "qb_and_coach"]
+    assert "rating_ensemble" in mod.RETIRED_BATCHES

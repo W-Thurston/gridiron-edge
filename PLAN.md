@@ -411,18 +411,28 @@ families; passes Total Random Forest and Win XGBoost); A1, A2, A4 **reject**;
 A5 **reject (near miss)**. The composition becomes baseline plus A3.
 
 Remaining work for this unit, in order:
-1. Design and build the fill for A3's incomplete cells (the conditional
-   follow-on below becomes required, scoped to A3 only).
-2. One forward schema bump removing A1, A2, A4, A5 from the canonical set
-   (code retained, unregistered), with regenerated modeling inputs and a live
-   replay that includes a season opener.
+1. **[Built 2026-09-30, `DECISIONS.md` D73]** The fill for A3's incomplete cells:
+   debut priors for known starters and coaches with no history (QB EPA per
+   attempt -0.1293, coach win share 0.4055, fit on 2000-2022), unresolved
+   identities stay missing.
+2. **[Code done 2026-09-30; schema 13 / data 10]** One forward bump removing A1,
+   A2, A4, A5 from the canonical set (expanded 177 columns, combined 132; code
+   retained, unregistered); unit suite 4,561 passed. Modeling inputs regenerated
+   2026-09-30 (`gridiron features model-inputs --all-years`, 191 s): 7,324 rows
+   in the same order, 201 to 154 columns, only previously-missing cells changed
+   in the six filled columns (one value differs by 3e-17), and zero missing
+   values in the 177 declared features from 2023 onward, including every Week
+   1. Live replay of the upcoming schedule: week 4 has no missing value in any
+   feature; weeks 5-18 are missing only `ELO_DIFF`, `AWAY_ELO`, `HOME_ELO` and
+   strength of victory (the known next-week-only limitation), none in the kept
+   columns.
 3. Confirm baseline plus A3 against baseline directly (search and wide-window
    plus holdout refits), since A3 was measured with A1 and A2 present.
 4. Retrain and promote champions under the final schema (approval required;
    this also unblocks `weekly-predict`).
 5. `HANDOFF.md` entry, full non-slow gate, closeout.
 
-#### Follow-on - incomplete-value fill for A3 (required; not started)
+#### Follow-on - incomplete-value fill for A3 (built; see D73)
 
 Only for columns that survive stage 2 (or are otherwise kept) and leave
 scheduled games without a value. Design constraint: fill `NaN` cells only, so

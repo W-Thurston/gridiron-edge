@@ -21,8 +21,8 @@ class TestEpaConstants:
     def test_default_rolling_window_is_4(self) -> None:
         assert DEFAULT_ROLLING_WINDOW == 4
 
-    def test_epa_cols_has_43_metrics(self) -> None:
-        assert len(EPA_COLS) == 43
+    def test_epa_cols_has_36_metrics(self) -> None:
+        assert len(EPA_COLS) == 36
 
     def test_epa_cols_contains_expected_metrics(self) -> None:
         expected: set[str] = {
@@ -36,19 +36,14 @@ class TestEpaConstants:
             "off_third_down_pct",
             "off_redzone_td_pct",
             "off_turnover_rate",
-            "off_fumble_rate",
             "off_sack_rate",
             "off_plays",
-            "off_cpoe",
-            "off_cpoe_available",
             "off_yards_per_play",
             "off_redzone_attempts",
             "off_int_rate",
             "off_penalty_rate",
             "off_avg_score_diff",
             "off_close_game_pct",
-            "st_epa_per_play",
-            "punt_epa_per_play",
             "def_epa_per_play",
             "def_pass_epa",
             "def_rush_epa",
@@ -61,8 +56,6 @@ class TestEpaConstants:
             "def_turnover_rate",
             "def_sack_rate",
             "def_plays",
-            "def_cpoe",
-            "def_cpoe_available",
             "def_yards_per_play",
             "def_redzone_attempts",
             "def_int_rate",
@@ -71,6 +64,17 @@ class TestEpaConstants:
             "def_close_game_pct",
         }
         assert set(EPA_COLS) == expected
+        # Columns screened and removed from the canonical set (DECISIONS.md D72).
+        removed = {
+            "off_fumble_rate",
+            "off_cpoe",
+            "off_cpoe_available",
+            "def_cpoe",
+            "def_cpoe_available",
+            "st_epa_per_play",
+            "punt_epa_per_play",
+        }
+        assert removed.isdisjoint(EPA_COLS)
         assert "def_fumble_rate" not in EPA_COLS
 
 
@@ -138,10 +142,9 @@ class TestBuildRollingEpa:
         assert not week6["rolling_off_epa_per_play"].isna().any()
 
 
-class TestNewMetricsUseExistingRollingBoundary:
-    """The D60/D61 batch's new columns ride the same generic rolling
-    machinery as every other EPA_COLS entry -- confirm no separate,
-    newly-introduced leakage surface for them specifically."""
+class TestLaterColumnsUseExistingRollingBoundary:
+    """Later-added EPA_COLS entries ride the same generic rolling machinery as
+    every other entry -- confirm no separate leakage surface for them."""
 
     def _epa_with_new_metrics(self) -> pd.DataFrame:
         return pd.DataFrame(
@@ -150,22 +153,22 @@ class TestNewMetricsUseExistingRollingBoundary:
                 "season": [2024] * 4,
                 "week": [1, 2, 3, 4],
                 "team": ["KC"] * 4,
-                "off_cpoe": [1.0, 2.0, 3.0, 4.0],
-                "off_fumble_rate": [0.10, 0.20, 0.30, 0.40],
+                "off_yards_per_play": [1.0, 2.0, 3.0, 4.0],
+                "off_sack_rate": [0.10, 0.20, 0.30, 0.40],
             }
         )
 
     def test_week_one_has_no_self_inclusion(self) -> None:
         rolled = _build_rolling_epa(self._epa_with_new_metrics(), window=4)
         week1 = rolled.loc[rolled["week"] == 1, :]
-        assert week1["rolling_off_cpoe"].isna().all()
-        assert week1["rolling_off_fumble_rate"].isna().all()
+        assert week1["rolling_off_yards_per_play"].isna().all()
+        assert week1["rolling_off_sack_rate"].isna().all()
 
     def test_later_week_uses_strictly_prior_games_only(self) -> None:
         rolled = _build_rolling_epa(self._epa_with_new_metrics(), window=4)
         week4 = rolled.loc[rolled["week"] == 4, :]
-        assert week4["rolling_off_cpoe"].iloc[0] == pytest.approx((1.0 + 2.0 + 3.0) / 3)
-        assert week4["rolling_off_fumble_rate"].iloc[0] == pytest.approx((0.10 + 0.20 + 0.30) / 3)
+        assert week4["rolling_off_yards_per_play"].iloc[0] == pytest.approx((1.0 + 2.0 + 3.0) / 3)
+        assert week4["rolling_off_sack_rate"].iloc[0] == pytest.approx((0.10 + 0.20 + 0.30) / 3)
 
 
 class TestBuildRollingEpaExcludePlayoffs:

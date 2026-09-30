@@ -301,7 +301,7 @@ def test_ablation_scores_on_the_screening_window_and_flags_dead_weight() -> None
     cols = list(build_sweep_steps("expanded")[-1].columns)
     outcome = search_hyperparameters(spec, lambda _w: rows.features, cols, rows.y, rows.train_mask)
     groups = (
-        AblationGroup("noise_group", ("GLICKO2_RD",)),
+        AblationGroup("noise_group", ("HC_TENURE",)),
         AblationGroup("signal_group", ("OFF_EPA_PER_PLAY",)),
         AblationGroup("absent_group", ("NOT_A_METRIC",)),
     )

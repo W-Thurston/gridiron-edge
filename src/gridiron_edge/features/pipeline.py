@@ -54,9 +54,6 @@ from gridiron_edge.models.game_prediction.game_schema import (
 CANONICAL_FEATURES: Final[list[str]] = [
     "home_away_elo",
     "home_away_epa",
-    "home_away_opponent_adjusted_epa",
-    "unit_efficiency_differentials",
-    "projected_total_plays",
     "home_away_qb_profile",
     "home_away_coach_profile",
     "home_away_rest",
@@ -67,13 +64,6 @@ CANONICAL_FEATURES: Final[list[str]] = [
     "home_away_divisional",
     "home_away_primetime",
     "home_away_weather",
-    "home_away_surface",
-    "league_environment",
-    "home_away_road_trips",
-    "home_away_body_clock",
-    "home_away_glicko2",
-    "home_away_linear_ratings",
-    "home_away_qb_elo",
 ]
 
 # Validate that the ordering above satisfies all depends_on constraints.

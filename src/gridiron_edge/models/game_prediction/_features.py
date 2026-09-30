@@ -38,14 +38,10 @@ from gridiron_edge.models.game_prediction._columns import (
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
-    _OPPONENT_ADJUSTED_EPA_SUFFIXES,
     _QB_PROFILE_SUFFIXES,
-    _RATING_ENSEMBLE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
-    _SEASON_PERFORMANCE_SUFFIXES,
     _TEAM_FEATURES,
-    _UNIT_EFFICIENCY_SUFFIXES,
     FeatureSet,
 )
 from gridiron_edge.models.game_prediction.game_schema import (
@@ -84,12 +80,8 @@ def _make_diff_features(df: pd.DataFrame) -> pd.DataFrame:
     out["ELO_DIFF"] = df["HOME_ELO"] - df["AWAY_ELO"]
     for suffix in (
         *_EPA_SUFFIXES,
-        *_OPPONENT_ADJUSTED_EPA_SUFFIXES,
-        *_UNIT_EFFICIENCY_SUFFIXES,
         *_QB_PROFILE_SUFFIXES,
         *_COACH_PROFILE_SUFFIXES,
-        *_SEASON_PERFORMANCE_SUFFIXES,
-        *_RATING_ENSEMBLE_SUFFIXES,
     ):
         out[f"{suffix}_DIFF"] = df[f"HOME_{suffix}"] - df[f"AWAY_{suffix}"]
     return out.loc[:, _DIFF_FEATURES]

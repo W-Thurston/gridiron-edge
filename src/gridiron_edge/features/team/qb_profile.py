@@ -96,6 +96,13 @@ _HOME_METRIC_COLS: Final[list[str]] = [
 _AWAY_CHANGE_FLAG: Final[str] = away_feature_name("QB_CHANGE_FLAG")
 _HOME_CHANGE_FLAG: Final[str] = home_feature_name("QB_CHANGE_FLAG")
 
+# Prior for a known starter with no prior pass-attempt history (a debut).
+# Attempt-weighted EPA per attempt of QB debut games with at least 10 attempts,
+# seasons 2000-2022 only (1999 debuts are left-censored, 2023+ is holdout):
+# -0.1293 over 143 debuts. The all-QB mean (+0.0288) would overstate a debut
+# starter by about 0.16, so the debut mean is used. See DECISIONS.md D73.
+DEBUT_QB_EPA_PER_ATTEMPT: Final[float] = -0.1293
+
 # Metrics that are zero-filled (not NaN) when entirely unavailable: an
 # availability indicator and a count both mean "none" as 0, not "unknown".
 _ZERO_FILL_METRICS: Final[tuple[str, ...]] = ("QB_CPOE_ROLLING_AVAILABLE", "QB_EXPERIENCE")
@@ -299,6 +306,20 @@ def _build_target_qb_profile(
     )
 
 
+def _apply_debut_epa_prior(frame: DataFrame, columns: list[tuple[str, list[str]]]) -> None:
+    """Fill missing career/rolling QB EPA for a known debut starter, in place.
+
+    Only a starter whose identity is resolved but who has no prior history
+    receives the debut prior; an unresolved starter stays missing so a real
+    identity gap still fails closed (``DECISIONS.md`` D65, D73). The paired
+    ``QB_EXPERIENCE`` value (0) already marks these rows.
+    """
+    for id_col, value_cols in columns:
+        known = frame[id_col].notna()
+        for value_col in value_cols:
+            frame.loc[known & frame[value_col].isna(), value_col] = DEBUT_QB_EPA_PER_ATTEMPT
+
+
 def _apply_cpoe_availability_policy(frame: DataFrame, columns: list[tuple[str, str]]) -> None:
     """Fill missing rolling QB CPOE with a paired availability indicator, in place.
 
@@ -484,6 +505,25 @@ class HomeAwayQbProfileFeature:
         result[home_feature_name("QB_EXPERIENCE")] = result["qb_experience"].fillna(0).astype(int)
         result = result.drop(columns=["qb_experience"])
 
+        _apply_debut_epa_prior(
+            result,
+            [
+                (
+                    "AWAY_QB_ID_RESOLVED",
+                    [
+                        away_feature_name("QB_EPA_PLAY_CAREER"),
+                        away_feature_name("QB_EPA_PLAY_ROLLING"),
+                    ],
+                ),
+                (
+                    "HOME_QB_ID_RESOLVED",
+                    [
+                        home_feature_name("QB_EPA_PLAY_CAREER"),
+                        home_feature_name("QB_EPA_PLAY_ROLLING"),
+                    ],
+                ),
+            ],
+        )
         _apply_cpoe_availability_policy(
             result,
             [

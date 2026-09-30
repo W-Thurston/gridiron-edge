@@ -36,6 +36,12 @@ from gridiron_edge.models.game_prediction.game_schema import (
 if TYPE_CHECKING:
     from gridiron_edge.datasets.accessor import DatasetAccessor
 
+# Prior for a known head coach with no prior games as a head coach in the data
+# (a first-time coach). Win share of first-time coaches' debut games, seasons
+# 2000-2022 only (1999 debuts are left-censored, 2023+ is holdout): 0.4055
+# over 127 debuts. See DECISIONS.md D73.
+DEBUT_HC_WIN_PCT: Final[float] = 0.4055
+
 COACH_PROFILE_METRICS: Final[tuple[str, ...]] = (
     "hc_win_pct_career",
     "hc_tenure",
@@ -329,6 +335,16 @@ class HomeAwayCoachProfileFeature:
             sort=False,
             validate="many_to_one",
         )
+
+        for side_coach, side_col in (
+            ("AWAY_COACH", away_feature_name("HC_WIN_PCT_CAREER")),
+            ("HOME_COACH", home_feature_name("HC_WIN_PCT_CAREER")),
+        ):
+            # A known coach with no prior games gets the debut prior; an
+            # unresolved coach stays missing so an identity gap fails closed.
+            result.loc[result[side_coach].notna() & result[side_col].isna(), side_col] = (
+                DEBUT_HC_WIN_PCT
+            )
 
         known_triples = _known_team_coach_seasons(sidecar)
         result[away_feature_name("HC_TENURE")] = [

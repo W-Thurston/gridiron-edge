@@ -13,6 +13,7 @@ import pytest
 from gridiron_edge.datasets.accessor import DatasetAccessor
 from gridiron_edge.features.registry import FeatureRegistry
 from gridiron_edge.features.team.qb_profile import (
+    DEBUT_QB_EPA_PER_ATTEMPT,
     HomeAwayQbProfileFeature,
     _build_target_qb_profile,
     _qb_game_log_history,
@@ -495,8 +496,49 @@ class TestHomeAwayQbProfileFeature:
         assert row["AWAY_QB_CPOE_ROLLING_AVAILABLE"] == 1
         assert row["AWAY_QB_EXPERIENCE"] == 2
         assert row["AWAY_QB_CHANGE_FLAG"] == 0
-        assert pd.isna(row["HOME_QB_EPA_PLAY_CAREER"])
+        # A known starter with no prior history gets the debut prior; the
+        # zero experience already marks the row.
+        assert row["HOME_QB_EPA_PLAY_CAREER"] == pytest.approx(DEBUT_QB_EPA_PER_ATTEMPT)
+        assert row["HOME_QB_EPA_PLAY_ROLLING"] == pytest.approx(DEBUT_QB_EPA_PER_ATTEMPT)
+        assert row["HOME_QB_EXPERIENCE"] == 0
         assert row["MARKER"] == "preserved"
+
+    def test_unresolved_starter_stays_missing(self) -> None:
+        # An unresolved identity is a data gap, not a debut: it must not be
+        # filled, so the family still fails closed.
+        sidecar = DataFrame(
+            [
+                _sidecar_row(
+                    game_id="target-week-4",
+                    year="2025-2026",
+                    week=4,
+                    away_team="Away Team",
+                    home_team="Home Team",
+                    away_qb_id=None,
+                    home_qb_id="QB2",
+                ),
+            ]
+        )
+        logs = DataFrame(
+            [
+                _qb_log(
+                    player_id="QB2",
+                    season=2025,
+                    week=1,
+                    attempts=20,
+                    passing_epa=4.0,
+                    passing_cpoe=2.0,
+                ),
+            ]
+        )
+        row = (
+            HomeAwayQbProfileFeature()
+            .compute(df=_game_frame(), datasets=_datasets(sidecar=sidecar, logs=logs))
+            .iloc[0]
+        )
+        assert pd.isna(row["AWAY_QB_EPA_PLAY_CAREER"])
+        assert pd.isna(row["AWAY_QB_EPA_PLAY_ROLLING"])
+        assert row["HOME_QB_EPA_PLAY_CAREER"] == pytest.approx(4.0 / 20)
 
     def test_carry_forward_resolves_starter_for_unplayed_game(self) -> None:
         sidecar = DataFrame(

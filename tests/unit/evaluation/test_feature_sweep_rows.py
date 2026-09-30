@@ -45,13 +45,13 @@ def _frame(rows_per_season: int = 20) -> DataFrame:
 def test_matched_rows_drop_rows_missing_a_late_batch_feature() -> None:
     df = _frame()
     week1 = df["WEEK_NUM"] == 1
-    df.loc[week1, "HOME_OFF_PASS_EPA_ADJ"] = np.nan  # opponent-adjusted batch column
+    df.loc[week1, "HOME_QB_EPA_PLAY_CAREER"] = np.nan  # a column of the kept batch
     out = build_matched_rows(df, "HOME_WIN")
     frame = out.frame
     assert not frame.loc[out.matched, "WEEK_NUM"].eq(1).any()
     steps = {c.step: c for c in out.own_pool}
-    assert steps["baseline"].n_holdout > steps["opponent_adjusted_epa"].n_holdout
-    assert out.n_holdout == steps["rating_ensemble"].n_holdout
+    assert steps["baseline"].n_holdout > steps["qb_and_coach"].n_holdout
+    assert out.n_holdout == steps["qb_and_coach"].n_holdout
 
 
 @pytest.mark.unit
