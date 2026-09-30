@@ -8,6 +8,97 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D71 - Phase A screening protocol, acceptance bars, and first results
+
+**Date:** 2026-09-29
+
+**Context:** D62 deferred the adopt/reject call for batches A1-A5 to one
+consolidated incremental sweep. Building it exposed gaps in the program's
+stated method and in what earlier decisions assumed: the ROADMAP Total bar
+pointed at "thresholds set by Tier 2 #7's reassessment" that were never set
+(that unit promoted a Total model on any MAE improvement); the existing
+`compare_*` gates have no bootstrap, per-season or log-loss check; the trainer
+recalibrates XGBoost from *holdout* ECE; and walk-forward backfill reuses the
+schema-5 champion hyperparameters. None of these could serve a fair,
+holdout-clean comparison as they stood.
+
+**Decision:** The sweep (`gridiron evaluate feature-sweep`, read-only,
+checkpointed) follows this protocol, locked before any result existed.
+
+1. **Steps and rows.** Baseline (schema 5 composition), then each batch
+   cumulatively in wiring order; each batch is scored against the step before
+   it. Every step and family is scored on identical *matched* games: rows
+   complete on the widest feature set (Win 797 of 854 holdout games, Total 798
+   of 855; 5,583 / 5,594 training rows). Season openers drop out, so the sweep
+   cannot speak to Week 1.
+2. **No holdout selection.** Each step runs its own training-only search
+   (production grids, budgets and seeded combinations), frozen, then refits
+   expanding through each holdout season. XGBoost's isotonic wrap follows
+   production's 0.025 ECE threshold measured on out-of-fold *training*
+   predictions. Very short EPA windows (1, 2) leave some rates undefined; those
+   columns are imputed with training medians so matched games stay identical.
+3. **Bars.** Win (from ROADMAP): Brier improves by at least 0.002, paired
+   game-bootstrap 90% lower bound above zero, at least 2 of 3 holdout seasons
+   improved, ECE worsens by at most 0.01, log loss not worse. Total (set here):
+   MAE improves by at least 0.09 (about 0.9% of MAE, the relative size of 0.002
+   Brier), bootstrap lower bound above zero, 2 of 3 seasons, RMSE not worse,
+   absolute bias shift at most 0.25. "90% lower bound" is the 5th percentile of
+   the two-sided 90% interval.
+4. **Noise floor.** A pass must also exceed the larger of the biggest placebo
+   improvement (five random-noise column sets as wide as the batch) and the
+   seed range of the batch's improvement (trees, seeds 42/7/123).
+5. **Cross-family attribution.** Columns are shared, so a batch is kept if it
+   clears the bar for at least one family and none is significantly harmed
+   (the whole 90% interval worse than 0.001 Brier or 0.05 MAE). A batch that
+   would be kept but leaves scheduled games without a value is
+   "adopt only if fixed".
+6. **Evidence beyond the bars.** Naive references (constant home-win rate,
+   `ELO_DIFF`-only logistic, constant league mean), an early-season slice, a
+   fixed-hyperparameter reading, Holm-adjusted p-values across all 25
+   batch-by-family comparisons, a leakage smell test, train-versus-holdout PSI,
+   Logistic collinearity, and drop-one-group ablations decided on a
+   pre-holdout window (2019-2022), never the holdout.
+
+**First results (2026-09-29, `docs/reports/phase-a-feature-sweep.md`):** no
+batch clears the bar in any family. Win Brier improvements per batch are at
+most +0.0021 (Logistic and XGBoost, intervals including zero); Total MAE
+improvements at most +0.074 (Random Forest, below the 0.09 bar). Baseline to
+the full set: Win Brier +0.0006 (Logistic), +0.0026 (Random Forest), +0.0020
+(XGBoost); Total MAE +0.040 (Random Forest), +0.039 (XGBoost); no Holm-adjusted
+p-value below 0.51. The intervals (about +/-0.003 Brier, +/-0.07 MAE on ~800
+games) are as wide as the bars, so this is "not demonstrated", not "shown
+harmful". The baseline step reproduces the schema-5 champions closely.
+
+**Corrections this recorded:**
+- D63 stated that a Week 1 `NaN` for opponent-adjusted EPA is "exactly like
+  every other existing rolling EPA feature". It is not: baseline EPA columns
+  are never `NaN` in the holdout, while adjusted EPA is `NaN` for every Week 1
+  game (64 of 887 rows from the holdout onward). Under program rule 3 that
+  would disable Win and Total for every season opener. A3's career QB/coach
+  features leave 27 rows incomplete (18 in Week 1). The earlier
+  live-availability replay covered only Weeks 3-18 and could not see this.
+- The Total bar in ROADMAP now points at item 3 above.
+
+**Implications:**
+- The adopt/reject removal (a forward schema bump, D62) is a separate step
+  that awaits a decision; nothing was removed, no champion or prediction
+  artifact changed (hash-verified before and after).
+- Any Week 1 fix is designed to fill only `NaN` cells, changing no existing
+  value, so these results remain valid for the columns it repairs.
+
+**Revisit triggers:**
+- If a wider walk-forward (D48, 2003-2025) or a model-driven feature-selection
+  stage changes a batch's standing, record it here or in a successor entry
+  rather than editing these results.
+- If the Total bar is found miscalibrated against real MAE noise, supersede
+  item 3 with a new entry.
+
+**References:**
+- `src/gridiron_edge/evaluation/feature_sweep_*.py`
+- `docs/reports/phase-a-feature-sweep.md`
+
+---
+
 ## D70 - Rating-ensemble specifications and the constants fit on 1999-2022
 
 **Date:** 2026-09-28

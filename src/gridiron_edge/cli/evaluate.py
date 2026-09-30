@@ -1294,3 +1294,221 @@ def evaluate_report(
     )
 
     console.summary()
+
+
+@evaluate_app.command("feature-sweep")
+def evaluate_feature_sweep(
+    *,
+    checkpoint_dir: Path = typer.Option(  # noqa: B008
+        ...,
+        help="Directory for per-family sweep checkpoints (created if missing). Rerun with the "
+        "same directory to resume; keep it outside data/.",
+    ),
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report and per-game prediction JSON.",
+    ),
+    report_only: bool = typer.Option(
+        False,
+        "--report-only",
+        help="Skip training; build the report from existing checkpoints.",
+    ),
+) -> None:
+    r"""Run the consolidated incremental feature sweep and write its report.
+
+    Evaluates the baseline feature set and each wired feature batch
+    cumulatively for Win (Logistic, Random Forest, XGBoost) and Total (Random
+    Forest, XGBoost) on identical matched holdout games, then writes one
+    Markdown report and a per-game prediction JSON. Slow and training-heavy
+    (hours). Read-only with respect to data/, models, champions, and
+    predictions; nothing it writes is an input to any pipeline.
+
+    \b
+    Examples:
+      gridiron evaluate feature-sweep --checkpoint-dir /tmp/sweep
+      gridiron evaluate feature-sweep --checkpoint-dir /tmp/sweep --report-only
+    """
+    from datetime import UTC, datetime
+    import json
+
+    import pandas as pd
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_modeling_file
+    from gridiron_edge.evaluation.feature_sweep_columns import run_column_level
+    from gridiron_edge.evaluation.feature_sweep_driver import (
+        ALL_FAMILIES,
+        TARGET_COLUMNS,
+        load_runs,
+        run_sweep,
+    )
+    from gridiron_edge.evaluation.feature_sweep_report import build_report, predictions_payload
+    from gridiron_edge.evaluation.feature_sweep_rows import build_matched_rows
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate feature-sweep")
+    frame: pd.DataFrame = load_modeling_file(repo)
+
+    if report_only:
+        with step("Load sweep checkpoints") as s:
+            runs = load_runs(checkpoint_dir)
+            if not runs:
+                raise typer.BadParameter(f"No checkpoints found in {checkpoint_dir}")
+            matched = {
+                target: build_matched_rows(frame, TARGET_COLUMNS[target])
+                for target in {run.spec.target for run in runs.values()}
+            }
+            s.set_detail(f"{len(runs)} families")
+    else:
+        with step("Run feature sweep (resumes from checkpoints)") as s:
+            runs, matched = run_sweep(
+                frame,
+                repo,
+                checkpoint_dir,
+                families=ALL_FAMILIES,
+                on_step=lambda family, name, secs: typer.echo(
+                    f"  done {family} {name} ({secs / 60:.1f} min)"
+                ),
+            )
+            s.set_detail(f"{len(runs)} families")
+
+    with step("Column-level ablations and diagnostics") as s:
+        column_level = run_column_level(runs, matched, repo)
+        s.set_detail(f"{len(column_level.ablations)} families")
+
+    generated_on = datetime.now(UTC).date()
+    with step("Write report") as s:
+        text, decisions = build_report(
+            runs, matched, frame, generated_on=generated_on, column_level=column_level
+        )
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = report_dir / "phase-a-feature-sweep.md"
+        predictions_path = report_dir / "phase-a-feature-sweep-predictions.json"
+        report_path.write_text(text, encoding="utf-8")
+        predictions_path.write_text(
+            json.dumps(predictions_payload(runs, matched), separators=(",", ":")),
+            encoding="utf-8",
+        )
+        s.set_detail(str(report_path))
+
+    typer.echo("")
+    for name, decision in decisions.items():
+        typer.echo(f"{name}: {decision.status} - {decision.reason}")
+    console.summary()
+
+
+@evaluate_app.command("feature-selection")
+def evaluate_feature_selection(
+    *,
+    checkpoint_dir: Path = typer.Option(  # noqa: B008
+        ...,
+        help="Sweep checkpoint directory from `evaluate feature-sweep` (stage 2 results are "
+        "stored in its stage2/ subdirectory; rerun with the same directory to resume).",
+    ),
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report and the selected-subsets JSON.",
+    ),
+    threads: int | None = typer.Option(
+        None,
+        help="Estimator threads per fit during selection (default: all cores). Lower it to "
+        "keep the machine usable.",
+    ),
+    report_only: bool = typer.Option(
+        False,
+        "--report-only",
+        help="Skip selection; build the report from existing stage 2 results.",
+    ),
+) -> None:
+    r"""Run model-driven feature selection on the sweep's full column pool.
+
+    Requires a completed `evaluate feature-sweep`. Each family selects columns
+    on training rows only (with a placebo-column control), validates the
+    procedure walk-forward on 2013 onward, and confirms the deployable subset
+    once on the holdout. Slow and training-heavy. Read-only with respect to
+    data/, models, champions, and predictions.
+
+    \b
+    Examples:
+      gridiron evaluate feature-selection --checkpoint-dir /tmp/sweep --threads 4
+      gridiron evaluate feature-selection --checkpoint-dir /tmp/sweep --report-only
+    """
+    from datetime import UTC, datetime
+    import json
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_modeling_file
+    from gridiron_edge.evaluation.feature_sweep_driver import (
+        TARGET_COLUMNS,
+        load_runs,
+    )
+    from gridiron_edge.evaluation.feature_sweep_rows import build_matched_rows
+    from gridiron_edge.evaluation.feature_sweep_stage2 import (
+        build_stage2_report,
+        load_stage2,
+        run_stage2,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate feature-selection")
+
+    runs = load_runs(checkpoint_dir)
+    if not runs:
+        raise typer.BadParameter(f"No sweep checkpoints found in {checkpoint_dir}")
+
+    if report_only:
+        with step("Load stage 2 results") as s:
+            results = load_stage2(checkpoint_dir)
+            if not results:
+                raise typer.BadParameter(f"No stage 2 results found in {checkpoint_dir}")
+            s.set_detail(f"{len(results)} families")
+    else:
+        frame = load_modeling_file(repo)
+        matched = {
+            target: build_matched_rows(frame, TARGET_COLUMNS[target])
+            for target in {run.spec.target for run in runs.values()}
+        }
+        with step("Select features (resumes from checkpoints)") as s:
+            results = run_stage2(
+                runs,
+                matched,
+                repo,
+                checkpoint_dir,
+                threads=threads,
+                on_family=lambda family, secs: typer.echo(f"  done {family} ({secs / 60:.1f} min)"),
+            )
+            s.set_detail(f"{len(results)} families")
+
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = report_dir / "phase-a-feature-selection.md"
+        subsets_path = report_dir / "phase-a-feature-selection-subsets.json"
+        report_path.write_text(
+            build_stage2_report(results, generated_on=datetime.now(UTC).date()),
+            encoding="utf-8",
+        )
+        subsets_path.write_text(
+            json.dumps(
+                {
+                    label: {
+                        "early_selected": list(r.early.selected),
+                        "final_selected": list(r.final.selected),
+                        "final_stability": r.final.stability,
+                    }
+                    for label, r in results.items()
+                },
+                indent=1,
+            ),
+            encoding="utf-8",
+        )
+        s.set_detail(str(report_path))
+
+    typer.echo("")
+    for label, r in results.items():
+        typer.echo(
+            f"{label}: final kept {len(r.final.selected)}/{r.final.n_pool}, "
+            f"placebo kept {r.final.placebo_selected}/{r.final.placebo_candidates}"
+        )
+    console.summary()
