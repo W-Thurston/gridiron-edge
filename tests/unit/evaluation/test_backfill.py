@@ -598,3 +598,36 @@ class TestCurrentModelSeasonBounds:
 
         exported = build_forecast_events_mock.call_args.args[0]
         assert exported["season"].tolist() == ["2000-2001", "2001-2002", "2002-2003"]
+
+
+class TestResolveSeasonRangeDefaultEnd:
+    """The default end season excludes the in-progress season (DECISIONS.md D4)."""
+
+    @staticmethod
+    def _frame(seasons: list[str]) -> pd.DataFrame:
+        import pandas as pd
+
+        return pd.DataFrame({"YEAR": seasons})
+
+    def test_default_end_stops_at_the_last_holdout_season(self) -> None:
+        from gridiron_edge.core.constants import HOLDOUT_SEASONS
+        from gridiron_edge.evaluation.backfill import _resolve_season_range
+
+        seasons = [f"{y}-{y + 1}" for y in range(1999, 2027)]
+        _, targets = _resolve_season_range(self._frame(seasons), None, None)
+        assert targets[-1] == max(HOLDOUT_SEASONS) == "2025-2026"
+        assert "2026-2027" not in targets
+
+    def test_explicit_end_season_is_respected(self) -> None:
+        from gridiron_edge.evaluation.backfill import _resolve_season_range
+
+        seasons = [f"{y}-{y + 1}" for y in range(1999, 2027)]
+        _, targets = _resolve_season_range(self._frame(seasons), "2010-2011", "2012-2013")
+        assert targets == ["2010-2011", "2011-2012", "2012-2013"]
+
+    def test_data_ending_before_the_holdout_keeps_its_last_season(self) -> None:
+        from gridiron_edge.evaluation.backfill import _resolve_season_range
+
+        seasons = [f"{y}-{y + 1}" for y in range(1999, 2010)]
+        _, targets = _resolve_season_range(self._frame(seasons), None, None)
+        assert targets[-1] == seasons[-1]

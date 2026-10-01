@@ -50,6 +50,7 @@ from pathlib import Path
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.core.constants import HOLDOUT_SEASONS
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.datasets import loaders
 from gridiron_edge.datasets.loaders import load_modeling_file
@@ -391,7 +392,12 @@ def _resolve_season_range(
         start_season = seasons[floor_idx] if len(seasons) > floor_idx else seasons[-1]
 
     if end_season is None:
-        end_season = seasons[-1]
+        # The newest season in the modeling file may be in progress. Walk-forward
+        # never predicts it (DECISIONS.md D4): it belongs to neither the training
+        # nor the holdout pool, so its holdout slice is empty. The default end is
+        # the last season inside the chronological pools.
+        completed = [s for s in seasons if s <= max(HOLDOUT_SEASONS)]
+        end_season = completed[-1] if completed else seasons[-1]
 
     seasons_to_predict = [s for s in seasons if start_season <= s <= end_season]
     return seasons, seasons_to_predict
