@@ -1,5 +1,31 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-01 - Unit 7 closed: Phase A screening, schema 13, retrained game champions
+
+#### Added
+
+- `gridiron evaluate feature-sweep`, `feature-selection`, `feature-attribution`
+  and `feature-confirmation`: read-only walk-forward screening with paired
+  bootstrap intervals; they write no `data/`, model or prediction artifact.
+  Reports are in `docs/reports/phase-a-*.md`.
+- Debut priors for known starters and first-time head coaches with no history
+  (`DECISIONS.md` D73); unresolved identities stay missing.
+- `DECISIONS.md` D71 (holdout sweep result), D72 (wide-window attribution keeps
+  only the QB-and-coach batch), D73.
+
+#### Changed
+
+- Modeling schema 13 / data 10: batches A1, A2, A4 and A5 are no longer
+  registered (combined 132, expanded 177 columns). The QB-and-coach batch is kept.
+- Game champions retrained and promoted: Win Logistic Brier 0.2196 (was 0.2211),
+  Total XGBoost MAE 10.364 (was Random Forest 10.403).
+- The default walk-forward backfill stops at the last holdout season.
+
+#### Known issue
+
+- The Logistic Win model applies its home-field intercept at neutral-site games,
+  inflating win and spread edges there (`ROADMAP.md` Tier 5 #15a).
+
 ### 2026-09-28 - Player game logs now refresh with the weekly data update
 
 #### Added

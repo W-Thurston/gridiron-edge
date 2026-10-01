@@ -110,379 +110,87 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: Unit 7 (screening and promotion), below. Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Next: the neutral-site fix for the Win models (ROADMAP Tier 5 #15a), to be scoped as its own unit. Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
-### Unit 7 — Phase A Screening and Promotion [Active, scoped September 28, 2026]
+### Unit 7 — Phase A Screening and Promotion [Completed October 1, 2026]
+
+#### Completed
+
+Batches A1–A5 were screened with a read-only harness and only the QB-and-coach
+batch (A3) was kept, conditional on a fill. `gridiron evaluate feature-sweep`,
+`feature-selection`, `feature-attribution` and `feature-confirmation` score
+feature changes walk-forward with paired-bootstrap intervals and persist nothing
+under `data/`. The 2026-09-28 holdout sweep (about 800 games) could not resolve
+effects of this size and rejected every batch (D71). Model-driven selection
+(stage 2) kept 5-24 columns with no placebo survivors but was inferior to the
+full set, so pruning was dropped. Per-batch attribution on the wide window
+(2013-2025, about 3,300 games, criterion pre-declared before it ran) adopted A3
+only if fixed and rejected A1, A2, A4 and A5 (D72). The fill gives a known
+starter or first-time head coach with no history a debut prior; an unresolved
+identity stays missing and still disables the family (D73). Schema 13 / data 10
+forward-removed the rejected batches (combined 132, expanded 177 columns).
+Final-composition confirmation beat baseline in all five families on the wide
+window with every 90% interval excluding zero. Game champions were retrained and
+promoted 2026-10-01 (Win Logistic Brier 0.2196, was 0.2211; Total XGBoost MAE
+10.364, was 10.403) and `weekly-predict` for week 4 ran. The default walk-forward
+backfill now stops at the last holdout season. Retrain surfaced a pre-existing
+neutral-site defect in the Logistic Win model (ROADMAP Tier 5 #15a).
 
 #### Goal
 
-Make the adopt/reject call for batches A1–A5 (`DECISIONS.md` D62) with one
-consolidated incremental sweep: baseline (schema 5 composition), +A1,
-+A1+A2, … +A1..A5, in wiring order. Each batch's attributable delta is
-measured against the step immediately before it. Win covers Logistic, Random
-Forest and XGBoost (Elo is a constant reference row); Total covers Random
-Forest and XGBoost. Rejected batches and dead-weight columns are removed by
-one forward schema bump at the end. Results and reasons go in `FEATURES.md`.
+Make the adopt/reject call for the Phase A batches on honest out-of-sample
+evidence, keep only what survives, and leave the canonical feature set, champions
+and live availability consistent under one forward schema.
 
-#### Verified current state (September 28, 2026)
+#### Files Added/Removed/Changed
 
-- Modeling file: schema 12, data 9, 7,308 rows, 201 columns. Data is current
-  through 2026 Week 2; 2026 rows are outside both training (seasons before
-  2023) and the holdout (`HOLDOUT_SEASONS`, 2023-24 to 2025-26), so freshness
-  does not affect the sweep.
-- Feature counts by step (combined for Logistic / expanded for RF, XGBoost,
-  Total): baseline 111/152, A1 126/167, A2 144/186, A3 165/211, A4 186/239,
-  A5 207/260. Baseline counts match the on-disk champion metadata.
-- Hyperparameter search: `TimeSeriesSplit` 5 folds, seed 42, sampled combos
-  RF Win 50, XGBoost Win 75, RF/XGBoost Total 50 each; Logistic searches the
-  six EPA windows with an inner `LogisticRegressionCV`. Sampled combos depend
-  only on grid and seed, so every step draws the same ones.
-- Every persisted champion artifact is schema 5 (`combined_111`,
-  `expanded_152`) and already fails the metadata preflight (D62). The
-  manifest champions are Logistic (Win) and Random Forest (Total).
-- Existing gates: `compare_classification_models` (Brier >= 0.002, ECE
-  <= +0.01, AUC <= -0.01) has no bootstrap, per-season or log-loss check;
-  `compare_regression_models` needs R² > 0 and any MAE improvement. No Total
-  MAE/RMSE/bias threshold exists anywhere (Tier 2 reassessment set none).
-- Row loss by step on the expanded set (holdout games of 854 Win / 855
-  Total): baseline 854/855, A2 806/807, A3 797/798, A4 and A5 unchanged. A2's
-  adjusted EPA is NaN for every Week 1 game (441 of 448 NaN rows; all 48
-  holdout Week 1 games) because D63 uses season-to-date only, while baseline
-  EPA is never NaN in the holdout. A3's career QB EPA and coach win % are NaN
-  on 24 holdout games (15 in Week 1). Program rule 3's replay covered only
-  Weeks 3-18, so it never exercised a season opener.
-- A4 changed pre-existing values (D67: `IS_DOME` and weather for 755
-  retractable-roof games), so a column-masked baseline still carries that fix.
-- The trainer recalibrates XGBoost from holdout ECE (`base.py`), and walk-
-  forward backfill reuses the schema-5 champion hyperparameters. The sweep
-  can use neither.
+Added:
+- `src/gridiron_edge/evaluation/feature_sweep_steps.py`, `_rows.py`, `_metrics.py`, `_gates.py`, `_fit.py`, `_run.py`, `_driver.py`, `_report.py`, `_diagnostics.py`, `_ablation.py`, `_columns.py` - sweep harness: step compositions, matched rows, metrics and bootstrap, adopt/reject gates, search and expanding refits, references, diagnostics, ablations, reporting.
+- `src/gridiron_edge/evaluation/feature_sweep_selection.py`, `_stage2.py`, `_wide.py` - model-driven selection with placebo control and the wide-window non-inferiority evaluator.
+- `src/gridiron_edge/evaluation/feature_sweep_stage3.py` - per-batch attribution on the wide window under the pre-declared criterion.
+- `src/gridiron_edge/evaluation/feature_sweep_confirm.py` - confirmation of the final composition against baseline.
+- `tests/unit/evaluation/test_feature_sweep_*.py` (steps, rows, metrics, gates, run, driver, report, diagnostics, selection, stage2, stage3, wide, confirm) and `tests/unit/cli/test_evaluate_feature_sweep.py` - harness, leakage-guard and CLI coverage.
+- `docs/reports/phase-a-feature-sweep.md`, `phase-a-feature-sweep-predictions.json`, `phase-a-feature-selection.md`, `phase-a-feature-selection-subsets.json`, `phase-a-feature-attribution.md`, `phase-a-final-confirmation.md` - dated screening records (not pipeline inputs).
 
-#### Design decisions
+Changed:
+- `src/gridiron_edge/cli/evaluate.py` - the four feature-screening commands.
+- `src/gridiron_edge/features/manifest.py`, `features/pipeline.py`, `features/team/epa.py`, `features/team/qb_profile.py`, `features/team/coach_profile.py` - schema 13 / data 10: rejected batches unregistered, debut-prior fill for the QB-and-coach columns.
+- `src/gridiron_edge/models/game_prediction/_columns.py`, `_features.py` - canonical column lists and `FeatureSet` composition for schema 13.
+- `src/gridiron_edge/evaluation/backfill.py` - default walk-forward end season is the last holdout season.
+- `tests/unit/features/test_canonical_feature_sequence.py`, `test_epa.py`, `test_qb_profile.py`, `test_coach_profile.py`, `tests/unit/models/test_game_feature_sets.py`, `tests/unit/evaluation/test_backfill.py` - schema 13 composition, fill and backfill coverage.
+- `DECISIONS.md` - D71 (sweep bars and result), D72 (wide-window attribution supersedes the holdout bars), D73 (debut prior; schema 13).
+- `FEATURES.md` - recorded batch outcomes and reasons.
+- `HANDOFF.md` - "Feature Screening Commands" and the schema 13 fill contract.
+- `CHANGELOG.md` - Unit 7 entry (added in the closeout commit).
+- `ROADMAP.md` - Unit 7 closed, Tier 5 #15a and the neutral-site Known Limitation (closeout commit).
+- `PLAN.md` - this record.
 
-1. **Harness:** a reusable, read-only `gridiron evaluate feature-sweep`
-   command over a new `evaluation/feature_sweep.py`, built on the lower-level
-   search and fit helpers, never `GamesTrainer.train` with persistence. It
-   never calls `ArtifactStore.save`, never writes `data/models`, champions or
-   any prediction artifact, and writes nothing under `data/`.
-2. **Artifacts:** one consolidated Markdown report at
-   `docs/reports/phase-a-feature-sweep.md` plus a per-game holdout prediction
-   JSON beside it. The report is a dated record, not an input to any pipeline.
-3. **Steps and columns:** each step's columns are the exact schema-5..12
-   compositions reconstructed from the wiring commits, selected by name from
-   the current modeling file. D67 is treated as a bug fix present in every
-   step, including baseline, and recorded as a caveat.
-4. **Primary comparison is row-matched:** the training pool and holdout are
-   the intersection of rows valid at all six steps (expected 797 Win / 798
-   Total holdout games), identical for every step and model. A secondary
-   as-shipped reading refits with the tuned hyperparameters on each step's own
-   pool to record training-row loss.
-5. **Hyperparameters and seeds:** each step runs its own search on training
-   data only, with identical seeded combos and unchanged budgets. A
-   fixed-hyperparameter sensitivity reading uses the baseline's tuned values.
-6. **Holdout scoring:** hyperparameters are frozen after the pre-2023 search;
-   models then retrain expanding through each holdout season (D48-style)
-   to produce per-season predictions. Nothing is selected on the holdout.
-7. **Calibration:** Random Forest is always isotonic-wrapped (D53). XGBoost
-   gets production's isotonic wrap when its out-of-fold *training* ECE
-   exceeds production's 0.025 threshold, decided once per step from the
-   pre-holdout search and frozen; never from holdout ECE. The Elo reference
-   is an `ELO_DIFF`-only logistic fit on the same rows (the simulated Elo
-   model is not re-run, since Elo inputs are identical at every step).
-8. **Metrics:** Win: Brier, log loss, ECE, AUC, calibration slope/intercept,
-   per-season Brier. Total: MAE, RMSE, bias, median absolute error, per-season
-   MAE. Deltas use a paired game-bootstrap (fixed seed, 90% interval).
-9. **Win bar (from ROADMAP):** Brier improves >= 0.002, bootstrap 90% lower
-   bound above zero, holding in 2 of 3 seasons; ECE worsens <= 0.01; log loss
-   not worse.
-10. **Total bar (locked here, before any result exists):** MAE improves
-    >= 0.09 (about 0.9% of MAE, the relative size of 0.002 Brier), bootstrap
-    90% bound clear of zero, in 2 of 3 seasons; RMSE not worse; bias shifts
-    by no more than 0.25.
-11. **Cross-family attribution:** columns are shared, so a batch is kept if it
-    clears the bar for at least one family and no family shows significant
-    harm (bootstrap 90% bound worse than +0.001 Brier or +0.05 MAE). Per-model
-    feature sets are out of scope.
-12. **Week-1 missingness (A2, A3):** the sweep runs as-is on the matched
-    games. A batch that clears the bar but leaves Week 1 NaN is "adopt only if
-    fixed": it is recorded, and the fix (prior-season carry-in or fill, a new
-    D-entry, its own schema bump and replay including a season opener) is a
-    separate follow-on unit, not done here. Such a batch stays wired until
-    that unit decides.
-13. **Column-level suspects** (FORM_TREND, GLICKO2_RD, GLICKO2_RATING diff,
-    collinear rating diffs in Logistic's set, QB features): drop-one-group
-    ablations from the full A1-A5 model, decided on a pre-holdout
-    walk-forward window (2019-2022). The holdout figure is printed for
-    confirmation only and cannot change a decision. Glicko-2 volatility
-    stays declined (D70).
-14. **Multiple comparisons:** the holdout was used before for champion
-    selection, and the bar is tested across several families and steps. The
-    report states the number of comparisons and flags any pass that misses
-    the pre-holdout window's direction.
-15. **Champions and schema:** the sweep overwrites no champion. One forward
-    schema bump removes rejected batches and columns at the end, with the
-    full non-slow gate. Retraining and promoting champions under the final
-    schema is a separate follow-on unit, since retraining earlier would bake
-    the rejected `feature_set_name` into new artifacts.
-16. **Leakage:** no hyperparameter, calibration or column decision reads
-    holdout data; tests assert the harness's decision inputs exclude it.
-17. **Noise-floor evidence:** (a) a placebo batch at each step (random-noise
-    columns as wide as the real batch, fixed seed) run through the same
-    pipeline; a real batch must clearly exceed the placebo delta spread to be
-    credited. (b) Tree models rerun with 3 seeds; the report gives each
-    delta's seed spread. Either can veto a marginal pass; neither can rescue a
-    fail.
-18. **Reference models:** Win: constant home-win rate and an `ELO_DIFF`-only
-    logistic, fit on the same training rows; Total: constant league-mean
-    predictor. Reported on the matched holdout in every step's table, with the
-    same metrics and bootstrap.
-19. **Additional diagnostics:** an early-season slice (Weeks 1-3 versus the
-    rest) for every step; a leakage smell test flagging new columns with
-    implausibly high univariate AUC/correlation on training data; a per-column
-    train-versus-holdout drift check (PSI); Logistic condition number, VIF and
-    coefficient stability across the expanding refits; Holm correction beside
-    the raw bootstrap bounds. Evidence only; none changes a bar.
-20. **Frontend comparison is out of scope here:** showing the reference and
-    Elo comparisons in the frontend needs a persisted immutable evidence
-    product, an API contract change and generated-contract regeneration
-    (`ROADMAP.md`, frontend enhancements). This unit's reference outputs are
-    shaped so that product can reuse them, but persists nothing under `data/`.
-
-#### Implementation plan
-
-1. Sub-step 1: step definitions and matched-row builder, with tests for
-   composition per step and identical holdout games across steps.
-2. Sub-step 2: metrics and paired-bootstrap deltas, per-season splits, and
-   the adopt/reject evaluator for both bars, with unit tests on synthetic
-   data.
-3. Sub-step 3: search, expanding holdout refit and calibration rule; the
-   reference models, placebo columns and seed reruns; a timed single-step
-   pilot on the baseline, reported to the user with a runtime estimate before
-   the full run.
-4. Sub-step 4: report writer and CLI; then, after the user approves, the
-   full sweep and the column-level ablations.
-5. Sub-step 5: record decisions in `FEATURES.md` (and a D-entry for the bars
-   and attribution rules), one forward schema bump for removals, gate, and
-   closeout.
+Removed:
+- None.
 
 #### Tests
 
-- Unit: step compositions, matched-row invariants, metric and bootstrap
-  correctness, gate evaluator edge cases, no-holdout-in-decisions, no writes
-  outside the report path, CLI wiring.
-- Real-data verification: inspect actual holdout counts, paired-bootstrap
-  intervals, ECE, log loss and per-season numbers in the report; reproduce
-  the baseline reading against the schema-5 champion metrics as a sanity
-  check; confirm no champion or prediction artifact changed (hashes before
-  and after).
-- Python gate after the schema bump.
-
-#### Progress and first results (2026-09-29)
-
-Sub-steps 1-4 are built and the full sweep ran (5.5 hours, five families, six
-steps each; champion artifacts hash-identical before and after; nothing
-written under `data/`).
-
-Added (uncommitted): `evaluation/feature_sweep_steps.py`, `_rows.py`,
-`_metrics.py`, `_gates.py`, `_fit.py`, `_run.py`, `_driver.py`, `_report.py`,
-`_diagnostics.py`, `_ablation.py`, `_columns.py`; the `gridiron evaluate
-feature-sweep` command in `cli/evaluate.py`; and tests
-`tests/unit/evaluation/test_feature_sweep_*.py`. Outputs (untracked):
-`docs/reports/phase-a-feature-sweep.md` and
-`docs/reports/phase-a-feature-sweep-predictions.json`.
-
-Result (`DECISIONS.md` D71, `FEATURES.md`): no batch clears the bar in any
-family; every 90% interval is as wide as the bars, so the reading is "not
-demonstrated", not "harmful". Baseline to the full set: Win Brier +0.0006
-(Logistic), +0.0026 (Random Forest), +0.0020 (XGBoost); Total MAE +0.040
-(Random Forest), +0.039 (XGBoost); no Holm-adjusted p below 0.51. A2 and A3
-also leave scheduled games without a value (64 and 27 rows from the holdout
-onward, mostly Week 1). No leakage flags; `LEAGUE_PPG_TO_DATE` and the CPOE
-columns drift (PSI above 0.25); Logistic's combined set is rank-deficient.
-
-Deviations and caveats recorded: the Elo reference is an `ELO_DIFF`-only
-logistic; very short EPA windows impute undefined rates with training medians;
-Logistic's saga solver hit `max_iter` repeatedly at production settings; RF's
-isotonic wrap yields 0/1 probabilities that spike RF log loss on two steps, so
-"log loss not worse" is noisy for RF.
-
-Open: the adopt/reject call and any forward schema bump are on hold pending
-the user's decision and stage 2 below. Records done: D71, `FEATURES.md`.
-Remaining: `HANDOFF.md` entry for the command, the removal bump (once, at the
-end, with the full non-slow gate), closeout.
-
-#### Stage 2 - model-driven feature selection (scoped, awaiting review)
-
-Goal: test whether letting each model select its own columns from the wired
-pool yields a leaner model at equal accuracy, and, if so, name that subset as
-the model's feature set. Motivation: models already regularize, so the upside
-of pruning is bounded near the sweep's effect sizes (about 0.002 Brier); the
-value is a smaller, live-safer feature set, judged against the champions.
-
-Design decisions:
-
-21. **Selection inside training only.** On the matched pre-2023 rows, with
-    time-ordered CV. Logistic: columns with non-zero L1/elastic-net
-    coefficients that are stable across folds. Trees: columns with stable
-    permutation importance on the CV validation folds. Frozen per model type;
-    the holdout never informs a choice.
-22. **Placebo control.** Inject random-noise columns into the pool and report
-    how many survive selection; a procedure that keeps noise is not credited.
-23. **Pool.** All wired columns (schema 12), unchanged, so the pool matches what
-    the sweep measured. Survivors are flagged for Week 1 `NaN` risk; the fix is
-    the conditional follow-on below.
-24. **Gate.** Non-inferiority to both the full set and the baseline, plus
-    fewer columns, with the same bootstrap and season checks. A Brier or MAE
-    improvement bar is reported but not required; requiring it reruns the
-    power problem.
-25. **More power, without contaminating it.** The 3-season holdout has too few
-    games to resolve effects this small, so the *procedure* is also validated
-    on a wider walk-forward window. A subset selected on pre-2023 data cannot
-    be scored on 2003-2022, because its selection has seen those seasons.
-    Two cutoffs keep it clean: (a) an early selection using only seasons before
-    2013 is scored walk-forward on 2013-2025 (about 3,400 matched games) with
-    fixed hyperparameters, against the full set and the baseline; (b) the
-    deployable subset is selected on all pre-2023 matched rows and confirmed
-    once on the 2023-2025 holdout. Non-inferiority means the paired-bootstrap
-    lower bound of the improvement is above minus the harm margin (0.001 Brier,
-    0.045 MAE). Hyperparameters are frozen from the full-set search and shared
-    by all arms; that favors no arm, but is noted.
-26. **Schema.** Selected subsets are per-model `FeatureSet`s. The modeling file
-    stays at schema 12 until the final subsets are known; the single forward
-    bump comes after, with names that record the selection.
-
-Implementation plan: (6) selection procedures with an in-procedure placebo
-control and unit tests on synthetic data **[built 2026-09-29: L1 stability
-selection with the one-standard-error rule for Logistic; shadow-feature
-permutation selection for trees]**; (7) wide walk-forward evaluator with
-non-inferiority, unit-tested **[built 2026-09-29]**; (7b) stage driver and
-report joining both to the sweep checkpoints; (8) a timed pilot on one family,
-reported before the full run; (9) the overnight run (user approval required),
-report, decisions in `FEATURES.md` and a D-entry.
-
-Tests: leakage guards (selection never reads holdout labels; assertion on
-decision inputs), placebo survival counts, stability across folds, wide
-walk-forward alignment with the matched games, and real-data spot checks of the
-selected subsets, counts and row loss.
-
-Acceptance: each model type has a frozen, named subset evaluated on the
-matched holdout and the wide walk-forward; the noise-survival rate is
-reported; the non-inferiority call is recorded; no champion or prediction
-artifact changes; the Python gate passes.
-
-#### Stage 2 results and Stage 3 - per-batch attribution on the wide window (pre-declared 2026-09-30, before it ran)
-
-Stage 2 ran on 2026-09-30 (`docs/reports/phase-a-feature-selection.md`). The
-selected subsets kept 5-24 columns with zero placebo survivors in the final
-selections, but none passed non-inferiority to the full set, and three of five
-families were significantly worse on the wide window (2013-2025, about 3,300
-games). The same window showed the full A1-A5 set beating baseline: Total
-Random Forest +0.046 MAE [+0.006, +0.082], Total XGBoost +0.049
-[+0.001, +0.095], Win XGBoost +0.0033 Brier [+0.0011, +0.0054], Win Random
-Forest +0.0018 [-0.0001, +0.0036], Win Logistic +0.0017 [-0.0006, +0.0038].
-Pruning is therefore not pursued; the question becomes which batches carry the
-gain.
-
-Stage 3 scores each batch against the step before it on the wide window using
-each step's own frozen hyperparameters from the sweep (no new searches, refits
-only). The original holdout bars were sized for about 800 games and their
-effect floors cannot be met even by the whole bundle on Total (0.046 against
-0.09), so the criterion is revised here, before results, and the revision is
-recorded as such. A batch is adopted when all hold for at least one family:
-
-- point improvement is at least half the original floor: 0.001 Brier (Win) or
-  0.045 MAE (Total);
-- the Benjamini-Hochberg adjusted one-sided p-value, across all 25
-  batch-by-family comparisons, is at most 0.10;
-- the batch improves at least 60% of the wide-window seasons.
-
-It is rejected when no family passes, or when any family is significantly
-harmed (the whole 90% interval worse than 0.001 Brier or 0.05 MAE). A batch
-that would be adopted but leaves scheduled games without a value is "adopt only
-if fixed". The placebo and seed checks are not repeated on the wide window; the
-BH correction and the 60% season rule are the noise guards. Unlike the holdout
-bars this is a data-informed revision, motivated by power, not by any batch's
-result, and the report states so.
-
-#### Stage 3 results and decision (2026-09-30, `DECISIONS.md` D72)
-
-Stage 3 ran (`docs/reports/phase-a-feature-attribution.md`). Under the criterion
-recorded above: A3 (QB and coach) **adopt only if fixed** (improves all five
-families; passes Total Random Forest and Win XGBoost); A1, A2, A4 **reject**;
-A5 **reject (near miss)**. The composition becomes baseline plus A3.
-
-Remaining work for this unit, in order:
-1. **[Built 2026-09-30, `DECISIONS.md` D73]** The fill for A3's incomplete cells:
-   debut priors for known starters and coaches with no history (QB EPA per
-   attempt -0.1293, coach win share 0.4055, fit on 2000-2022), unresolved
-   identities stay missing.
-2. **[Code done 2026-09-30; schema 13 / data 10]** One forward bump removing A1,
-   A2, A4, A5 from the canonical set (expanded 177 columns, combined 132; code
-   retained, unregistered); unit suite 4,561 passed. Modeling inputs regenerated
-   2026-09-30 (`gridiron features model-inputs --all-years`, 191 s): 7,324 rows
-   in the same order, 201 to 154 columns, only previously-missing cells changed
-   in the six filled columns (one value differs by 3e-17), and zero missing
-   values in the 177 declared features from 2023 onward, including every Week
-   1. Live replay of the upcoming schedule: week 4 has no missing value in any
-   feature; weeks 5-18 are missing only `ELO_DIFF`, `AWAY_ELO`, `HOME_ELO` and
-   strength of victory (the known next-week-only limitation), none in the kept
-   columns.
-3. Confirm baseline plus A3 against baseline directly (search and wide-window
-   plus holdout refits), since A3 was measured with A1 and A2 present.
-4. Retrain and promote champions under the final schema (approval required;
-   this also unblocks `weekly-predict`).
-5. `HANDOFF.md` entry, full non-slow gate, closeout.
-
-#### Stage 4 - confirmation of the final composition (pre-declared 2026-09-30, before it ran)
-
-A3 was attributed with A1 and A2 present, so the final composition (baseline
-plus A3, schema 13) is checked against baseline directly before promotion. To
-stay cheap it reuses the sweep's frozen hyperparameters (the baseline step's
-for the baseline arm; the old A3 step's for the final arm) and does refits
-only, on the regenerated matched games, which now include season openers
-because the fill removes their missing values. It reports the wide window
-(2013-2025), the holdout (2023-2025) and a Week 1 slice. **Confirmed** when no
-family is significantly worse than baseline on either window (the whole 90%
-interval worse than 0.001 Brier or 0.05 MAE) and at least 4 of 5 wide-window
-point improvements are positive. A failure reopens the composition before any
-retrain; a pass releases the game-models-only retrain
-(`full-retrain --skip-prop-backfill --skip refresh-all-data`, props are not
-touched by the schema).
-
-**Stage 4 result (2026-09-30, `docs/reports/phase-a-final-confirmation.md`):
-CONFIRMED.** Baseline plus the QB-and-coach batch beats baseline in all five
-families on the wide window (3,550-3,562 matched games, now including season
-openers), with every 90% interval excluding zero: Total Random Forest +0.055
-MAE, Total XGBoost +0.040, Win Logistic +0.0015 Brier, Win Random Forest
-+0.0021, Win XGBoost +0.0027. Holdout point improvements are all positive with
-intervals including zero (expected at about 850 games). Week 1 games: positive
-in four of five families (Win Logistic -0.0007, not significant, 204 games).
-The game-models-only retrain is released.
-
-#### Follow-on - incomplete-value fill for A3 (built; see D73)
-
-Only for columns that survive stage 2 (or are otherwise kept) and leave
-scheduled games without a value. Design constraint: fill `NaN` cells only, so
-every existing non-`NaN` value is unchanged and the sweep and stage 2 results
-still apply. Adjusted EPA: a prior-season carry-in shrunk toward zero for a
-season's first week. Career QB EPA/CPOE and head-coach win %: an indicator plus
-fill, per the D60 policy. Requires a missingness `DECISIONS.md` entry (program
-rule 4), a correction note to D63, regenerated modeling inputs (a `data/`
-write, approval required), and a live replay that includes a season opener.
-This is its own bounded unit and starts only after this one closes.
-
-#### Approvals required from the user
-
-The full sweep ran on approval (option A). Still required: stage 2's overnight
-run; any external-source call (the week 3 nflverse refresh is separate); any
-write to `data/`; the removal bump; commit.
+Unit suite for the harness (composition per step, identical matched games,
+metric and bootstrap correctness, gate edge cases, no holdout in decision
+inputs, no writes outside report paths, CLI wiring); schema 13 composition and
+fill tests; Python gate green at each commit (unit suite 4,561 passed after the
+schema bump). Real-data checks: the full holdout sweep (5.5 hours) left champion
+artifacts hash-identical and wrote nothing under `data/`; modeling inputs
+regenerated (7,324 rows, 201 to 154 columns, only previously-missing cells
+changed, zero missing values in the 177 declared features from 2023 onward);
+live replay of the upcoming schedule had no missing value in week 4 features;
+final confirmation on 3,550-3,562 matched wide-window games; retrain,
+backfill, calibration and promotion ran at 4 cores and the week 4 product
+validated.
 
 #### Acceptance
 
-The sweep reports every step on identical matched games with the bars above;
-each of A1-A5 has a recorded adopt, reject or adopt-only-if-fixed call with
-reasons in `FEATURES.md`; column-level suspects have recorded outcomes;
-rejected batches and columns are removed by one forward schema bump; no
-champion or prediction artifact changed; the Python gate passes.
+Each of A1–A5 has a recorded adopt, reject or adopt-only-if-fixed call with
+reasons (D71, D72, `FEATURES.md`). The kept batch is wired with its fill under
+one forward schema bump (D73), confirmed against baseline, and promoted through
+the retrained champions. No batch decision read holdout data. Documentation is
+current. The neutral-site defect found at the end is tracked separately as
+Tier 5 #15a and is not part of this unit's contract.
 
 ### Pipeline Unit: Player Game Log Refresh Stages [Completed September 28, 2026]
 
