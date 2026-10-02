@@ -63,7 +63,7 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a) is next; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
+**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) is built and champions are retrained; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
@@ -290,9 +290,9 @@ forecast
 
 Evaluate Brier-weighted averaging, constrained blending, time-ordered Logistic stacking, and simple probability averaging against corrected champions. Require honest out-of-sample gains, preserved calibration, deployable metadata, complete feature coverage, and no API-time computation.
 
-#### 15a. Fix neutral-site handling in the Win models [Found 2026-10-01; time-sensitive]
+#### 15a. Fix neutral-site handling in the Win models [Found 2026-10-01; code fixed 2026-10-01 (Unit 8, `DECISIONS.md` D74); week 4 regeneration pending]
 
-The Logistic Win champion's `combined` feature set has no `IS_NEUTRAL_SITE` or `HOME_FRANCHISE_HFA` column (only the `expanded` set the trees use does), so its intercept (+0.299 log-odds, about +7 points) is applied as home-field advantage to every game, including neutral-site games. Week 4's Indianapolis @ Washington (London, 2026-10-04) came out at 59.4% for Washington against a market of 36.9% (Elo 1468 vs 1463), and the edge report listed Washington's moneyline at about +58% EV. The week 4 forecast was backed out from the persisted probability and intercept. History agrees the intercept is wrong there: the nominal home side wins 43.2% of the 95 neutral-site games with outcomes against 56.6% of other games. About 4 to 8 neutral games occur per season; the 2026 schedule has six (weeks 4, 6, 7, 9, 10, 11). Audit 2026-10-01: Elo has no home-field term at all (`elo_win_probability` is a rating difference), so it is neutral for every game, not only at neutral sites; the four tree models give `IS_NEUTRAL_SITE` exactly zero importance, though out-of-sample the XGBoost neutral mean (0.495) is near the realized 47.8% (69 games, 2013-2025); `HOME_FRANCHISE_HFA` is zero at neutral sites by construction and does not help; the spread is derived from the win probability, so spread edges are affected too. Removing the intercept at neutral sites moves week 4 Washington from 59.4% to about 52%, still far from the market's 36.9%, so the remaining gap is not a neutral-site effect. A learned neutral feature overshoots (95 neutral rows); a structural removal of the home-field term fits best. This predates the schema 13 retrain. Required: a design that removes the phantom home advantage in training and serving (a feature or interaction in the Logistic set, with the choice evaluated on the neutral slice and on non-neutral games), a check that the other Win families and the Total models behave, a decision on gating or flagging neutral-site edges meanwhile, and a decision on whether the already-generated week 4 product is regenerated through the explicit reselection path. Weekly products are immutable.
+The Logistic Win model applied its home-field intercept at neutral-site games (week 4 London game: 59.4% for the nominal Home side against a 36.9% market). Fixed structurally in schema 14 (neutral coefficient pinned to the negative intercept) and the game champions were retrained. The trees and Total were audited and left unchanged (D74). Remaining: regenerate and reselect the already-generated, immutable week 4 product through the explicit path (needs approval); revisit the structural choice when more neutral games accumulate (the 21-game 2023-2025 neutral holdout slice scored worse, interval includes zero). Even with the fix, week 4 Washington is about 52% against a 37% market, so a large gap there is not a neutral-site effect.
 
 #### 16. Game-model feature program
 
@@ -474,9 +474,9 @@ Research results do not become operational behavior without time-ordered evaluat
 
 ## Known Limitations
 
-### Logistic Win applies home-field advantage at neutral sites
+### Week 4 product predates the neutral-site fix
 
-The Logistic Win champion has no neutral-site feature, so its intercept acts as home-field advantage in neutral-site games, producing spurious large edges (Washington moneyline about +58% EV in week 4's London game). Win edges on neutral-site games are not reliable until Tier 5 #15a is resolved. Large model-versus-market gaps in other games may reflect injury or quarterback news the system does not ingest (Tier 6 #18).
+The week 4 product generated 2026-10-01 still carries the old Logistic Win probabilities and win- and spread-derived edges for the neutral-site IND-WAS game (Washington moneyline about +58% EV). The model is fixed (`DECISIONS.md` D74; Tier 5 #15a); the immutable product is replaced only by explicit regeneration. Large model-versus-market gaps elsewhere may reflect injury or quarterback news the system does not ingest (Tier 6 #18).
 
 ### Canonical Week 2 state: replaced (U6, closed)
 

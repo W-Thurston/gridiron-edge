@@ -1,5 +1,32 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-01 - Logistic Win no longer applies home-field advantage at neutral sites
+
+#### Changed
+
+- `IS_NEUTRAL_SITE` joins the Logistic Win `combined` set (133 columns). The
+  trainer fits on non-neutral games only and pins the neutral coefficient to the
+  negative intercept, removing the phantom home-field term at neutral sites
+  (`DECISIONS.md` D74). Non-neutral predictions are unchanged in method.
+- Modeling schema 14 / data 11 (`combined_v14`, `expanded_v14`); game models
+  need the retrain before `weekly-predict` accepts them.
+- The tree `expanded` set no longer duplicates the neutral flag.
+
+- Game champions retrained under schema 14 (run `20261001_133022`): Win Logistic
+  stays champion (holdout Brier 0.2203, was 0.2196; ECE 0.0287, was 0.0335), Total
+  XGBoost unchanged (MAE 10.364). Comparable-games corpus rebuilt. On the 21 neutral
+  holdout games the Home side won 66.7%, so the structural fix scores worse there
+  (-0.021 Brier, interval includes zero); non-neutral is flat (`DECISIONS.md` D74).
+
+#### Added
+
+- `tests/unit/models/test_logistic_neutral_site.py`.
+
+#### Known issue
+
+- The week 4 product generated 2026-10-01 predates the fix and still carries the
+  old probabilities; it is immutable and is replaced only by explicit regeneration.
+
 ### 2026-10-01 - Unit 7 closed: Phase A screening, schema 13, retrained game champions
 
 #### Added

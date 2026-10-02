@@ -8,6 +8,71 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D74 - The Logistic Win model removes its home-field term at neutral sites; trees are left alone; schema 14
+
+**Date:** 2026-10-01
+
+**Context:** The Logistic Win `combined` set had no neutral-site column, so its
+intercept (+0.299 log-odds) acted as home-field advantage in every game. Week
+4's neutral-site IND-WAS came out at 0.594 for the nominal Home side against a
+market of 0.369; with the intercept removed the same forecast is about 0.520.
+The spread, derived from the win probability, inherited the error. History
+agrees: the nominal Home side won 43.2% of 95 neutral games (bootstrap 34%-54%)
+against 56.6% of others, and 47.8% of 69 in the 2013-2025 walk-forward window.
+Neutral rows are 1.3% of training rows.
+
+**Decision:**
+1. `IS_NEUTRAL_SITE` joins the Logistic `combined` set (133 columns, last).
+   The tree `expanded` set keeps 177 columns, with the flag no longer
+   duplicated; its column order may change.
+2. The Logistic trainer fits on non-neutral games only, so the column is
+   constant zero in the fit (scaler mean 0, scale 1, coefficient 0) and the
+   intercept is an unbiased home-field estimate. After the final fit the
+   neutral coefficient is set to the negative intercept, and the fit fails if
+   the column was not constant zero. Neutral games stay in the holdout and in
+   every metric. The pinned coefficient is part of the persisted model, so the
+   D50 log-odds reconstruction and `/explain` contributions stay exact.
+3. The effect is structural, not learned. In the 2013-2025 walk-forward (the
+   champion's L1 penalty, C=0.046; 69 neutral games) a learned neutral column
+   predicted 0.38-0.43 for the Home side against 0.478 actual and did not
+   improve the neutral Brier (-0.004 [-0.029, +0.022]; unpenalized -0.010
+   [-0.045, +0.026]); structural removal predicted 0.468 (+0.0026 [-0.012,
+   +0.018]) and leaves non-neutral predictions identical. No interval excludes
+   zero, so the choice rests on the prior that a neutral site carries no
+   home-field advantage, which the evidence is consistent with.
+4. Random Forest and XGBoost (Win and Total) are unchanged in behavior. They
+   give the flag exactly zero importance, but out-of-sample the approximate
+   XGBoost neutral mean (0.495) is already near the realized rate, and a
+   blanket offset overshoots it (0.429). `HOME_FRANCHISE_HFA` is zero at neutral
+   sites by construction and does not help. Elo has no home-field term at all.
+5. No serving-time rule, API change or report suppression. The fix is a
+   property of the persisted model, and prediction paths are unchanged.
+
+**Retrain result (2026-10-01, run `20261001_133022`):** the pinned artifact has
+neutral coefficient -0.3091 = -intercept (0.3091), scaler mean 0 and scale 1,
+46 nonzero coefficients, EPA window 6. Win Logistic stays champion (holdout
+Brier 0.2203, was 0.2196; ECE 0.0287, was 0.0335; AUC 0.6958); Total XGBoost is
+unchanged (MAE 10.364). Against the schema-13 Logistic on the 2023-2025
+holdout: all 854 games -0.0008 Brier [-0.0016, +0.0001]; the 21 neutral games
+-0.0211 [-0.0472, +0.0066], where the nominal Home side won 66.7%, the opposite
+of history; the 833 non-neutral games -0.0002 [-0.0007, +0.0002] (not identical:
+72 fewer training rows moved the intercept from 0.299 to 0.309). Over 2013-2025
+(69 neutral games, in-sample for both fits) the neutral mean moves from 0.535 to
+0.467 against 0.478 actual with a Brier change of -0.0014 [-0.017, +0.014]. None
+of this separates the structural fix from the old behavior statistically; the
+decision rests on the prior stated above, and the holdout neutral slice is too
+small (21 games) to overturn it. Revisit when more neutral games have accumulated.
+
+**Schema 14 / data 11** (D61 names `combined_v14`, `expanded_v14`). Values in
+the modeling file do not change; the regeneration restamps its manifest.
+
+**Not fixed here:** even without the intercept, week 4 Washington is about 52%
+against a 37% market, so a large model-versus-market gap there is not a
+neutral-site effect (the system ingests no injury or quarterback news, Tier 6
+#18).
+
+---
+
 ## D73 - Debut prior for known starters and coaches with no history; schema 13 keeps only the QB-and-coach batch
 
 **Date:** 2026-09-30

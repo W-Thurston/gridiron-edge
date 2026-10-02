@@ -236,6 +236,15 @@ It is written by promotion workflows such as `full-retrain` and consumed as a st
 
 `gridiron evaluate prune-champions` removes any manifest entry whose `(model_name, model_type)` has no trained artifact under `data/models/`, preserving every other entry byte-for-byte through the same write path.
 
+### Neutral-site handling in the Logistic Win model
+
+The Logistic `combined` set carries `IS_NEUTRAL_SITE`. The trainer fits it on
+non-neutral games only and, after the final fit, pins the neutral coefficient to
+the negative intercept, so a neutral-site game has no home-field term
+(`DECISIONS.md` D74). The pinned model is persisted as ordinary coefficients, so
+log-odds reconstruction and explanations need no special case. The tree models
+and Total are unchanged. Neutral games stay in the holdout and in every metric.
+
 ## Model Availability and Weekly Policy
 
 Weekly availability is model-specific and truthful.

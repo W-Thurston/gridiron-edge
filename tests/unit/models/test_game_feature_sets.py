@@ -56,7 +56,7 @@ def test_feature_declaration_counts_and_uniqueness() -> None:
     expected = {
         "raw": (_RAW_FEATURES, 88),
         "diff": (_DIFF_FEATURES, 44),
-        "combined": (_COMBINED_FEATURES, 132),
+        "combined": (_COMBINED_FEATURES, 133),
         "game": (_GAME_FEATURES, 15),
         "team": (_TEAM_FEATURES, 30),
         "expanded": (_EXPANDED_FEATURES, 177),

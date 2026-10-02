@@ -11,7 +11,7 @@ Public API
 FEATURE_SETS        dict[str, FeatureSet]   - registry of named feature sets
 _make_diff_features         DataFrame -> DataFrame (24 cols)
 _make_raw_features          DataFrame -> DataFrame (47 cols)
-_make_combined_features     DataFrame -> DataFrame (70 cols)
+_make_combined_features     DataFrame -> DataFrame
 _make_expanded_features     DataFrame -> DataFrame (107 cols)
 _prepare_data               DataFrame -> train/holdout split tuple
 _is_trained                 str, str, Path | None -> bool
@@ -38,6 +38,7 @@ from gridiron_edge.models.game_prediction._columns import (
     _EPA_SUFFIXES,
     _EXPANDED_FEATURES,
     _GAME_FEATURES,
+    _NEUTRAL_SITE_FEATURE,
     _QB_PROFILE_SUFFIXES,
     _RAW_FEATURES,
     _SCHEMA_VERSION,
@@ -93,17 +94,20 @@ def _make_raw_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _make_combined_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine canonical differentials and direct Away/Home values."""
+    """Combine canonical differentials, direct Away/Home values and the neutral-site flag."""
     diff: DataFrame = _make_diff_features(df)
     raw: DataFrame = _make_raw_features(df)
-    return pd.concat([diff, raw], axis=1).loc[:, _COMBINED_FEATURES]
+    neutral: DataFrame = df.loc[:, [_NEUTRAL_SITE_FEATURE]]
+    return pd.concat([diff, raw, neutral], axis=1).loc[:, _COMBINED_FEATURES]
 
 
 def _make_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add available canonical game and team-state features."""
     base: DataFrame = _make_combined_features(df)
     extended_columns: list[str] = [
-        column for column in [*_GAME_FEATURES, *_TEAM_FEATURES] if column in df.columns
+        column
+        for column in [*_GAME_FEATURES, *_TEAM_FEATURES]
+        if column in df.columns and column not in base.columns
     ]
     extended = df.loc[:, extended_columns].copy()
     return pd.concat([base, extended], axis=1)

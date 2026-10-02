@@ -82,10 +82,15 @@ _DIFF_FEATURES: Final[list[str]] = (
     + [f"{suffix}_DIFF" for suffix in _COACH_PROFILE_SUFFIXES]
 )
 
-# Differential features followed by direct Away/Home values.
+# Neutral-site flag. The Logistic Win model removes its home-field term at
+# neutral sites through this column (D74).
+_NEUTRAL_SITE_FEATURE: Final[str] = "IS_NEUTRAL_SITE"
+
+# Differential features, direct Away/Home values, then the neutral-site flag.
 _COMBINED_FEATURES: Final[list[str]] = [
     *_DIFF_FEATURES,
     *_RAW_FEATURES,
+    _NEUTRAL_SITE_FEATURE,
 ]
 
 # Matchup-level features with one value per game.
@@ -143,7 +148,7 @@ _TEAM_FEATURES: Final[list[str]] = [
 
 _EXPANDED_FEATURES: Final[list[str]] = [
     *_COMBINED_FEATURES,
-    *_GAME_FEATURES,
+    *[column for column in _GAME_FEATURES if column not in _COMBINED_FEATURES],
     *_TEAM_FEATURES,
 ]
 

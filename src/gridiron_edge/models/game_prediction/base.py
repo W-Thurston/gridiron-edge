@@ -372,6 +372,70 @@ class _SearchResult:
     hold_seasons: list[str]
 
 
+def _fit_rows_for_model(
+    model_type: GameModelType,
+    x_train: pd.DataFrame,
+    y_train: Series,
+) -> tuple[pd.DataFrame, Series]:
+    """Return the rows a model is fit on.
+
+    The Logistic Win model is fit on non-neutral games only (D74): a neutral
+    game's nominal Home side has no home-field advantage, so its label would
+    bias the intercept that serves as the home-field term. The neutral-site
+    column is then constant zero in the fit and is pinned by
+    :func:`_pin_neutral_site_term`. Other models fit on every row.
+    """
+    from gridiron_edge.models.game_prediction._columns import _NEUTRAL_SITE_FEATURE
+
+    if model_type != GameModelType.LOGISTIC or _NEUTRAL_SITE_FEATURE not in x_train.columns:
+        return x_train, y_train
+    non_neutral = x_train[_NEUTRAL_SITE_FEATURE] == 0
+    return x_train.loc[non_neutral], y_train.loc[non_neutral]
+
+
+def _pin_neutral_site_term(
+    model_type: GameModelType,
+    model: Any,  # noqa: ANN401
+    scaler: Any,  # noqa: ANN401
+    columns: list[str],
+) -> None:
+    """Remove the home-field term at neutral sites from a fitted Logistic model.
+
+    Sets the neutral-site coefficient to the negative intercept (D74), so a
+    neutral game's log-odds are the model's log-odds without its home-field
+    intercept. The column must have been constant zero in the fit, which
+    leaves the scaler at mean 0 and scale 1 and the fitted coefficient at 0.
+
+    Raises:
+        ValueError: If the column was not constant zero in the fit.
+    """
+    from gridiron_edge.models.game_prediction._columns import _NEUTRAL_SITE_FEATURE
+
+    if model_type != GameModelType.LOGISTIC or _NEUTRAL_SITE_FEATURE not in columns:
+        return
+    index = columns.index(_NEUTRAL_SITE_FEATURE)
+    if scaler.mean_[index] != 0.0 or scaler.scale_[index] != 1.0 or model.coef_[0, index] != 0.0:
+        msg = f"{_NEUTRAL_SITE_FEATURE} must be constant zero in the Logistic fit."
+        raise ValueError(msg)
+    model.coef_[0, index] = -model.intercept_[0]
+
+
+def _fit_final_model(
+    model_type: GameModelType,
+    task: str,
+    params: dict[str, Any],
+    x_train: pd.DataFrame,
+    y_train: Series,
+) -> tuple[Any, Any]:
+    """Fit the deployable model on the rows it trains on and pin the neutral term."""
+    model, scaler = _create_model(model_type, task)
+    _apply_params(model, params)
+    x_arr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
+    model.fit(x_arr, y_train)
+    _pin_neutral_site_term(model_type, model, scaler, list(x_train.columns))
+    return model, scaler
+
+
 def _apply_params(model: BaseEstimator, params: dict[str, Any]) -> None:
     """Apply hyperparameters to a model, handling CalibratedClassifierCV wrapping.
 
@@ -674,10 +738,8 @@ class GamesTrainer(ABC):
             train_through_season=train_through_season,
         )
 
-        model, scaler = _create_model(model_type, spec.task)
-        _apply_params(model, params)
-        x_train_arr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
-        model.fit(x_train_arr, y_train)
+        x_train, y_train = _fit_rows_for_model(model_type, x_train, y_train)
+        model, scaler = _fit_final_model(model_type, spec.task, params, x_train, y_train)
 
         x_hold_arr = scaler.transform(x_hold) if scaler is not None else x_hold.values
         score: float
@@ -782,6 +844,7 @@ class GamesTrainer(ABC):
                 repo=repo,
                 train_through_season=train_through_season,
             )
+            x_train, y_train = _fit_rows_for_model(model_type, x_train, y_train)
             last_train_pool_size = len(x_train)
 
             effective_min = _resolve_cv_min_train_rows(
@@ -804,10 +867,7 @@ class GamesTrainer(ABC):
             if score < best_score:
                 best_score = score
                 best_params = {**sampled, "epa_window": window}
-                model, scaler = _create_model(model_type, spec.task)
-                _apply_params(model, sampled)
-                x_tr_arr = scaler.fit_transform(x_train) if scaler is not None else x_train.values
-                model.fit(x_tr_arr, y_train)
+                model, scaler = _fit_final_model(model_type, spec.task, sampled, x_train, y_train)
                 best_model = model
                 best_scaler = scaler
                 best_x_train, best_y_train = x_train, y_train

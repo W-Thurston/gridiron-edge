@@ -23,7 +23,8 @@ from gridiron_edge.models.game_prediction._columns import (
 
 # Baseline plus the one kept batch (DECISIONS.md D72); the rejected batches are retired.
 EXPANDED_COUNTS = [152, 177]
-COMBINED_COUNTS = [111, 132]
+# The Logistic set also carries the neutral-site flag in every step (DECISIONS.md D74).
+COMBINED_COUNTS = [112, 133]
 ACTIVE = [b.name for b in FEATURE_BATCHES if b.name not in RETIRED_BATCHES]
 
 

@@ -110,7 +110,72 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Next: the neutral-site fix for the Win models (ROADMAP Tier 5 #15a), to be scoped as its own unit. Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+
+### Unit 8 — Neutral-Site Handling in the Logistic Win Model [Completed October 1, 2026]
+
+#### Completed
+
+The Logistic Win model no longer applies home-field advantage at neutral-site
+games. `IS_NEUTRAL_SITE` is the last column of the Logistic `combined` set (133
+columns; the tree `expanded` set keeps 177 without a duplicate). The Logistic
+trainer fits on non-neutral games only, so the column is constant zero in the
+fit, then pins the neutral coefficient to the negative intercept and fails if the
+column was not constant zero. Neutral games stay in the holdout and every metric.
+The pinned coefficient is persisted, so log-odds reconstruction and `/explain`
+contributions are unchanged in method. Random Forest, XGBoost and Total are
+unchanged in behavior (audit evidence in D74). Schema 14 / data 11; modeling
+inputs regenerated, game champions retrained and promoted (run
+`20261001_133022`: Win Logistic stays champion, holdout Brier 0.2203 against
+0.2196; Total XGBoost unchanged), comparable-games corpus rebuilt. The structural
+choice rests on the prior that a neutral site carries no home-field advantage:
+walk-forward intervals include zero and the 21-game neutral holdout slice scored
+worse (-0.021 Brier, interval includes zero; D74). The week 4 product generated
+before the fix is immutable and unchanged; regenerating it is a separate approved
+operational step.
+
+#### Goal
+
+Remove the phantom home-field term the Logistic Win model applied at neutral
+sites (ROADMAP Tier 5 #15a), in training and serving, without changing the method
+for non-neutral games.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `tests/unit/models/test_logistic_neutral_site.py` - neutral-excluded fit, coefficient pin, reconstruction, fail-closed and tree no-op coverage.
+
+Changed:
+- `src/gridiron_edge/models/game_prediction/_columns.py`, `_features.py` - neutral flag in the Logistic `combined` set; de-duplicated tree `expanded` set.
+- `src/gridiron_edge/models/game_prediction/base.py` - non-neutral-only Logistic fit and the post-fit neutral coefficient pin in both final-fit paths.
+- `src/gridiron_edge/features/manifest.py` - schema 14 / data 11.
+- `tests/unit/models/test_game_feature_sets.py`, `tests/unit/evaluation/test_feature_sweep_steps.py` - updated column counts.
+- `DECISIONS.md` - D74.
+- `HANDOFF.md` - neutral-site handling in the Logistic Win model.
+- `CHANGELOG.md` - shipped behavior and retrain result.
+- `ROADMAP.md` - #15a status and the neutral-site Known Limitation.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+Nine unit tests for the trainer and feature sets; full Python gate (ruff, pyrefly
+apart from the known untracked-work `gcp/bq.py` error, 4,577 unit tests passed).
+Real-data checks: the persisted Logistic artifact has neutral coefficient
+-0.3091 equal to the negative intercept, scaler mean 0 and scale 1; holdout
+comparison against the schema-13 Logistic by neutral and non-neutral slice;
+modeling file at schema 14 / data 11 with unchanged shape (7,324 x 154); corpus
+rebuilt over 7,287 games.
+
+#### Acceptance
+
+Neutral-site games get no home-field term in the Logistic Win model; non-neutral
+predictions are unchanged in method with a holdout Brier change of -0.0002;
+reconstruction and explanation stay exact; schema 14 champions are promoted and
+the corpus rebuilt; documentation is current. The week 4 product still carries
+pre-fix probabilities until it is regenerated and reselected with approval.
 
 ### Unit 7 — Phase A Screening and Promotion [Completed October 1, 2026]
 
