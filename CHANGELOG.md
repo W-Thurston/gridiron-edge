@@ -22,10 +22,12 @@
 
 - `tests/unit/models/test_logistic_neutral_site.py`.
 
-#### Known issue
+#### Operations
 
-- The week 4 product generated 2026-10-01 predates the fix and still carries the
-  old probabilities; it is immutable and is replaced only by explicit regeneration.
+- Week 4 regenerated and reselected through `weekly-predict` (product
+  `weekly_2026_2027_wk04_37997002-d189-40d3-979f-8bd619829fc6`; the earlier
+  products stay on disk for audit). Neutral-site IND-WAS: Washington 0.594 to 0.518,
+  model spread -2.95 to -0.57; the other 15 games moved by at most 0.014.
 
 ### 2026-10-01 - Unit 7 closed: Phase A screening, schema 13, retrained game champions
 

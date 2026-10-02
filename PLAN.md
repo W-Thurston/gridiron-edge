@@ -130,9 +130,9 @@ inputs regenerated, game champions retrained and promoted (run
 0.2196; Total XGBoost unchanged), comparable-games corpus rebuilt. The structural
 choice rests on the prior that a neutral site carries no home-field advantage:
 walk-forward intervals include zero and the 21-game neutral holdout slice scored
-worse (-0.021 Brier, interval includes zero; D74). The week 4 product generated
-before the fix is immutable and unchanged; regenerating it is a separate approved
-operational step.
+worse (-0.021 Brier, interval includes zero; D74). The week 4 product was
+regenerated and reselected after the retrain (IND-WAS 0.594 to 0.518); the earlier
+products stay on disk.
 
 #### Goal
 
@@ -174,8 +174,8 @@ rebuilt over 7,287 games.
 Neutral-site games get no home-field term in the Logistic Win model; non-neutral
 predictions are unchanged in method with a holdout Brier change of -0.0002;
 reconstruction and explanation stay exact; schema 14 champions are promoted and
-the corpus rebuilt; documentation is current. The week 4 product still carries
-pre-fix probabilities until it is regenerated and reselected with approval.
+the corpus rebuilt; the week 4 product is regenerated and selected;
+documentation is current.
 
 ### Unit 7 — Phase A Screening and Promotion [Completed October 1, 2026]
 

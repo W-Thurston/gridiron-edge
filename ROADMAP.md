@@ -63,7 +63,7 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) is built and champions are retrained; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
+**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) closed 2026-10-02; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
@@ -290,9 +290,9 @@ forecast
 
 Evaluate Brier-weighted averaging, constrained blending, time-ordered Logistic stacking, and simple probability averaging against corrected champions. Require honest out-of-sample gains, preserved calibration, deployable metadata, complete feature coverage, and no API-time computation.
 
-#### 15a. Fix neutral-site handling in the Win models [Found 2026-10-01; code fixed 2026-10-01 (Unit 8, `DECISIONS.md` D74); week 4 regeneration pending]
+#### 15a. Fix neutral-site handling in the Win models [Closed 2026-10-02: Unit 8, `DECISIONS.md` D74]
 
-The Logistic Win model applied its home-field intercept at neutral-site games (week 4 London game: 59.4% for the nominal Home side against a 36.9% market). Fixed structurally in schema 14 (neutral coefficient pinned to the negative intercept) and the game champions were retrained. The trees and Total were audited and left unchanged (D74). Remaining: regenerate and reselect the already-generated, immutable week 4 product through the explicit path (needs approval); revisit the structural choice when more neutral games accumulate (the 21-game 2023-2025 neutral holdout slice scored worse, interval includes zero). Even with the fix, week 4 Washington is about 52% against a 37% market, so a large gap there is not a neutral-site effect.
+The Logistic Win model applied its home-field intercept at neutral-site games (week 4 London game: 59.4% for the nominal Home side against a 36.9% market). Fixed structurally in schema 14 (neutral coefficient pinned to the negative intercept), the game champions were retrained, and the week 4 product was regenerated and reselected (IND-WAS 51.8%, spread -0.57). The trees and Total were audited and left unchanged (D74). Remaining watch item: revisit the structural choice when more neutral games accumulate (the 21-game 2023-2025 neutral holdout slice scored worse, interval includes zero). Even with the fix, week 4 Washington is about 52% against a 37% market, so a large gap there is not a neutral-site effect.
 
 #### 16. Game-model feature program
 
@@ -473,10 +473,6 @@ Candidate research areas:
 Research results do not become operational behavior without time-ordered evaluation, deployment contracts, availability handling, persisted provenance, and explicit acceptance criteria.
 
 ## Known Limitations
-
-### Week 4 product predates the neutral-site fix
-
-The week 4 product generated 2026-10-01 still carries the old Logistic Win probabilities and win- and spread-derived edges for the neutral-site IND-WAS game (Washington moneyline about +58% EV). The model is fixed (`DECISIONS.md` D74; Tier 5 #15a); the immutable product is replaced only by explicit regeneration. Large model-versus-market gaps elsewhere may reflect injury or quarterback news the system does not ingest (Tier 6 #18).
 
 ### Canonical Week 2 state: replaced (U6, closed)
 
