@@ -31,10 +31,15 @@
   `tests/unit/transform/clean/test_qb_coach_sidecar_projection.py`, and parity tests in
   `tests/unit/features/test_qb_profile.py`.
 
-#### Known limits
+#### Operations
 
-- The week 4 product was generated before this change and is unchanged until it is
-  regenerated through `weekly-predict`.
+- Week 4 regenerated through `weekly-predict` on 2026-10-03 (selected product
+  `weekly_2026_2027_wk04_25c6e844…`, 15 games; Thursday's PIT @ CLE had been played). Three
+  teams' starters changed: Washington (Jayden Daniels, reported Out, to Marcus Mariota),
+  Chicago (Case Keenum to Tyson Bagent), Seattle (Drew Lock to Sam Darnold). Home win
+  probability moved for IND @ WAS 0.518 to 0.529 and NYJ @ CHI 0.669 to 0.686; the other 13
+  games were unchanged (Seattle's total fell 42.3 to 41.6). The projections came from the
+  2026-10-03T12:27Z depth chart snapshot.
 
 ### 2026-10-03 - Unit 9 closed: projected starting-QB backtest, depth chart and injury caches
 
