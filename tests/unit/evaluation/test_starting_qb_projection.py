@@ -14,8 +14,6 @@ from gridiron_edge.evaluation.starting_qb_projection import (
     CARRY_FORWARD,
     DEPTH_QB1,
     PRIMARY,
-    UNAVAILABLE_PRIMARY,
-    UNAVAILABLE_VARIANT,
     VARIANT,
     RuleEvaluation,
     bar_verdict,
@@ -24,55 +22,12 @@ from gridiron_edge.evaluation.starting_qb_projection import (
     error_breakdown,
     evaluate_rules,
     leakage_gap,
-    ordered_candidates,
-    project_starter,
     score_rules,
     snapshot_timing,
 )
 from gridiron_edge.evaluation.starting_qb_projection_report import build_report
 
 pytestmark = pytest.mark.unit
-
-
-def _starter(chart: list[tuple[int, str]], statuses: dict[str, str | None]) -> str | None:
-    return project_starter(ordered_candidates(chart, statuses, UNAVAILABLE_PRIMARY))
-
-
-def test_takes_the_top_chart_quarterback_when_everyone_is_available() -> None:
-    assert _starter([(2, "B"), (1, "A"), (3, "C")], {}) == "A"
-
-
-def test_skips_out_and_doubtful_but_not_questionable() -> None:
-    chart = [(1, "A"), (2, "B"), (3, "C")]
-
-    assert _starter(chart, {"A": "Out"}) == "B"
-    assert _starter(chart, {"A": "Doubtful", "B": "Out"}) == "C"
-    assert _starter(chart, {"A": "Questionable"}) == "A"
-    skipped = ordered_candidates(chart, {"A": "Questionable"}, UNAVAILABLE_VARIANT)
-    assert project_starter(skipped) == "B"
-
-
-def test_names_the_top_of_the_chart_when_everyone_is_unavailable() -> None:
-    assert _starter([(1, "A"), (2, "B")], {"A": "Out", "B": "Out"}) == "A"
-
-
-def test_empty_chart_has_no_starter() -> None:
-    assert _starter([], {}) is None
-
-
-def test_candidates_record_the_inputs_and_drop_repeated_players() -> None:
-    candidates = ordered_candidates(
-        [(1, "A"), (1, "A"), (2, "B")], {"A": "Out"}, UNAVAILABLE_PRIMARY
-    )
-
-    assert [(c.gsis_id, c.chart_rank, c.status, c.available) for c in candidates] == [
-        ("A", 1, "Out", False),
-        ("B", 2, None, True),
-    ]
-
-
-def test_tied_rank_one_keeps_input_order() -> None:
-    assert _starter([(1, "A"), (1, "B")], {}) == "A"
 
 
 def _games() -> DataFrame:

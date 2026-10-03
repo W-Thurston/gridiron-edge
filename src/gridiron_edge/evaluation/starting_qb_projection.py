@@ -6,15 +6,12 @@
 This module scores a rules-based alternative built from the depth chart and the
 weekly availability status against the quarterback who actually started.
 
-The resolver is a pure function that returns the ordered candidate list with the
-inputs it used, so later work (hot-swapping a quarterback, a scenario engine)
-can reuse the list. Nothing here reads or writes anything but its arguments.
+The resolver itself lives in ``features/team/projected_starter.py`` so serving
+can use it; this module scores it. Nothing here reads or writes anything but its
+arguments.
 
 Public API
 ----------
-Candidate                 dataclass  - one chart quarterback with its status
-ordered_candidates        chart + statuses -> candidate list
-project_starter           candidate list -> projected starter id
 build_team_games          sources -> one row per team-game
 score_rules               team-game frame -> per-rule correctness
 evaluate_rules            correctness -> accuracies, intervals, bar verdict
@@ -31,16 +28,20 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
+from gridiron_edge.features.team.projected_starter import (
+    UNAVAILABLE_PRIMARY,
+    UNAVAILABLE_VARIANT,
+    latest_snapshot_chart,
+    ordered_candidates,
+    prepare_snapshots,
+    project_starter,
+)
+
 CARRY_FORWARD: Final[str] = "carry_forward"
 DEPTH_QB1: Final[str] = "depth_qb1"
 PRIMARY: Final[str] = "primary"
 VARIANT: Final[str] = "variant"
 RULES: Final[tuple[str, ...]] = (CARRY_FORWARD, DEPTH_QB1, PRIMARY, VARIANT)
-
-#: Statuses that remove a quarterback from consideration in the primary rule.
-UNAVAILABLE_PRIMARY: Final[frozenset[str]] = frozenset({"Out", "Doubtful"})
-#: The variant also skips Questionable; reported for information only.
-UNAVAILABLE_VARIANT: Final[frozenset[str]] = UNAVAILABLE_PRIMARY | {"Questionable"}
 
 #: Bar a rule must clear against carry-forward to justify a feature unit.
 MIN_GAIN: Final[float] = 0.02
@@ -54,58 +55,6 @@ LAST_OLD_FORMAT_SEASON: Final[int] = 2024
 LEAKAGE_GAP: Final[float] = 0.05
 
 _CHART_WINDOW: Final[int] = 3
-
-
-@dataclass(frozen=True)
-class Candidate:
-    """One chart quarterback with the inputs the resolver used.
-
-    Attributes:
-        gsis_id: Player identifier.
-        chart_rank: Depth chart rank (1 is the top quarterback).
-        status: Reported game status, or ``None`` when not on the report.
-        available: Whether the status leaves the player eligible.
-    """
-
-    gsis_id: str
-    chart_rank: int
-    status: str | None
-    available: bool
-
-
-def ordered_candidates(
-    chart: Sequence[tuple[int, str]],
-    statuses: Mapping[str, str | None],
-    unavailable: frozenset[str],
-) -> list[Candidate]:
-    """Order chart quarterbacks by rank and attach their availability.
-
-    Args:
-        chart: ``(chart_rank, gsis_id)`` pairs for one team and week.
-        statuses: Reported game status by player id.
-        unavailable: Statuses that make a player ineligible.
-
-    Returns:
-        Candidates by ascending rank; a repeated player keeps its best rank and
-        ties keep their input order.
-    """
-    seen: set[str] = set()
-    candidates: list[Candidate] = []
-    for rank, player_id in sorted(chart, key=lambda item: item[0]):
-        if player_id in seen:
-            continue
-        seen.add(player_id)
-        status: str | None = statuses.get(player_id)
-        candidates.append(Candidate(player_id, rank, status, status not in unavailable))
-    return candidates
-
-
-def project_starter(candidates: Sequence[Candidate]) -> str | None:
-    """Return the first available candidate, else the top of the chart, else ``None``."""
-    for candidate in candidates:
-        if candidate.available:
-            return candidate.gsis_id
-    return candidates[0].gsis_id if candidates else None
 
 
 def _chart_lookup(depth_charts: Mapping[int, DataFrame]) -> dict[tuple[int, str, int], list]:
@@ -387,13 +336,11 @@ def snapshot_timing(
         .dt.tz_localize("America/New_York", ambiguous="NaT", nonexistent="NaT")
         .dt.tz_convert("UTC")
     )
-    qbs = snapshots[snapshots["pos_abb"] == "QB"].copy()
-    qbs["when"] = pd.to_datetime(qbs["dt"], utc=True)
+    by_team = prepare_snapshots(snapshots)
     reports = injuries[injuries["game_type"] == "REG"].copy()
     time_limited = "date_modified" in reports.columns
     if time_limited:
         reports["when"] = pd.to_datetime(reports["date_modified"], utc=True)
-    by_team = dict(iter(qbs.groupby("team")))
 
     rows: list[dict[str, float | bool]] = []
     for hours in lead_hours:
@@ -408,17 +355,10 @@ def snapshot_timing(
                 if not isinstance(actual, str) or team not in by_team:
                     continue
                 total += 1
-                frame = by_team[team]
-                visible = frame[frame["when"] <= cutoff]
-                if visible.empty:
+                chart, as_of = latest_snapshot_chart(by_team[team], cutoff=cutoff)
+                if as_of is None:
                     missing += 1
                     continue
-                latest = visible[visible["when"] == visible["when"].max()]
-                chart = [
-                    (int(rank), player)
-                    for rank, player in zip(latest["pos_rank"], latest["gsis_id"], strict=True)
-                    if isinstance(player, str)
-                ]
                 seen = reports[
                     (reports["team"] == team) & (reports["week"].astype(int) == int(game["week"]))
                 ]

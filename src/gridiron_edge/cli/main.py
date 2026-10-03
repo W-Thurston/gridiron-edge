@@ -110,6 +110,8 @@ ALL_STAGES: list[str] = [
     "clean-games",
     "fetch-upcoming",
     "clean-upcoming",
+    "fetch-depth-charts",
+    "fetch-injuries",
     "clean-qb-coach-sidecar",
     "fetch-player-stats",
     "clean-player-stats",
@@ -251,6 +253,32 @@ def _run_pipeline_stages(  # noqa: PLR0912, PLR0915
 
             path = clean_nflverse_upcoming()
             s.set_detail(path.name)
+
+    with step("Fetch depth charts", skip=not runs("fetch-depth-charts")) as s:
+        if runs("fetch-depth-charts"):
+            from gridiron_edge.ingest.nflverse.weekly_availability import fetch_depth_charts
+
+            if all_years:
+                refreshed = fetch_depth_charts(all_years=True)
+            else:
+                refreshed = fetch_depth_charts(seasons=[resolved_season], force=True)
+            if refreshed:
+                s.set_detail(f"{len(refreshed)} season file(s) refreshed")
+            else:
+                s.set_detail("no data returned; cached depth charts unchanged")
+
+    with step("Fetch injury reports", skip=not runs("fetch-injuries")) as s:
+        if runs("fetch-injuries"):
+            from gridiron_edge.ingest.nflverse.weekly_availability import fetch_injuries
+
+            if all_years:
+                refreshed = fetch_injuries(all_years=True)
+            else:
+                refreshed = fetch_injuries(seasons=[resolved_season], force=True)
+            if refreshed:
+                s.set_detail(f"{len(refreshed)} season file(s) refreshed")
+            else:
+                s.set_detail("no data returned; cached injury reports unchanged")
 
     with step(
         "Build QB/coach sidecar",

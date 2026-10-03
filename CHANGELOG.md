@@ -1,5 +1,32 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Unit 10: the live QB features use a projected starting QB
+
+#### Changed
+
+- The QB/coach sidecar gains `AWAY_/HOME_QB_ID_PROJECTED`, `_QB_PROJECTION_SOURCE` and
+  `_QB_PROJECTION_AS_OF`. For unplayed games in the earliest unplayed week that has a
+  published injury report, the projected starter (depth chart top quarterback, skipping Out
+  and Doubtful) replaces the nflverse or carried-forward starter in the live QB features.
+  Every other game, and every training row, is unchanged; missing inputs fall back to
+  today's behavior (`DECISIONS.md` D76).
+- `fetch-depth-charts` and `fetch-injuries` stages refresh both caches ahead of the
+  sidecar build in `run-data-pipeline`, `post-week` and `weekly-predict`. A failed fetch is
+  reported, not fatal.
+- The pure resolver moved to `features/team/projected_starter.py`; the Unit 9 backtest imports
+  it and reproduces its report exactly.
+
+#### Added
+
+- `tests/unit/features/test_projected_starter.py`,
+  `tests/unit/transform/clean/test_qb_coach_sidecar_projection.py`, and parity tests in
+  `tests/unit/features/test_qb_profile.py`.
+
+#### Known limits
+
+- The week 4 product was generated before this change and is unchanged until it is
+  regenerated through `weekly-predict`.
+
 ### 2026-10-03 - Unit 9 closed: projected starting-QB backtest, depth chart and injury caches
 
 #### Added

@@ -110,7 +110,80 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Next: integrating the projected starting QB into the live QB features (`DECISIONS.md` D75), to be scoped. Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+
+### Unit 10 — Projected Starting QB in Live Serving [Completed October 3, 2026]
+
+#### Completed
+
+The live QB features now use a projected starting QB. The sidecar build
+(`transform/clean/qb_coach_sidecar.py`) projects each unplayed game's starter from the
+cached depth chart and injury reports (the Unit 9 resolver: top quarterback, skipping anyone
+reported Out or Doubtful) for the earliest unplayed week that has a published injury report,
+and records `AWAY_/HOME_QB_ID_PROJECTED`, `_QB_PROJECTION_SOURCE` and `_QB_PROJECTION_AS_OF`
+(the chart snapshot time). `resolve_starting_qb_history` uses a projected id for that game's own
+row, keeps later weeks anchored to the last known starter, and derives the change flag from the
+resolved ids; played games and training rows are unchanged. Missing caches, no report or no
+chart fall back to today's behavior. The `fetch-depth-charts` and `fetch-injuries` stages refresh
+both caches ahead of the sidecar build in `run-data-pipeline`, `post-week` and `weekly-predict`;
+a failed fetch is reported, not fatal. The resolver moved to `features/team/projected_starter.py`
+and the Unit 9 report reproduces exactly. No schema, data-version, model or champion change
+(`DECISIONS.md` D76). On the real data (a temporary copy; nothing applied to the real sidecar),
+16 week 4 games were projected from the 2026-10-03T12:27Z snapshot and three teams' starters
+changed (Chicago, Seattle, Washington). Applying the projection to the live sidecar and
+regenerating the week 4 product are separate approved steps.
+
+#### Goal
+
+Make the live QB features describe the quarterback most likely to play, using the Unit 9 resolver
+for the current week, without changing training rows, the model, or the behavior for any game
+the projection cannot cover.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/features/team/projected_starter.py` - the pure projected-starter resolver (candidate list with its inputs) and the timestamped-chart helpers, shared by serving and the backtest.
+- `tests/unit/features/test_projected_starter.py` - resolver and snapshot-helper coverage (moved with the resolver).
+- `tests/unit/transform/clean/test_qb_coach_sidecar_projection.py` - projection eligibility and fail-open behavior, sidecar build, and `resolve_starting_qb_history` override semantics.
+
+Changed:
+- `src/gridiron_edge/transform/clean/qb_coach_sidecar.py` - projection step and the six projection columns.
+- `src/gridiron_edge/features/team/qb_profile.py` - projected id replaces the resolved id for its own game; later weeks stay anchored.
+- `src/gridiron_edge/evaluation/starting_qb_projection.py` - imports the shared resolver.
+- `src/gridiron_edge/cli/main.py`, `src/gridiron_edge/cli/post_week.py` - `fetch-depth-charts` and `fetch-injuries` stages.
+- `tests/unit/features/test_qb_profile.py` - projected-starter parity and change-flag tests.
+- `tests/unit/evaluation/test_starting_qb_projection.py`, `tests/unit/cli/test_main.py`, `tests/unit/cli/test_post_week.py`, `tests/unit/cli/test_weekly_predict.py` - resolver tests moved out; stage lists and the new stages covered.
+- `DECISIONS.md` - D76.
+- `HANDOFF.md` - the caches, the projection and the new stages.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - integration status.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests: projection only for the earliest unplayed week with a report, none without a
+report, snapshots, injuries or a chart, Out and Doubtful skipped, `AS_OF` recorded; the sidecar
+build writes projections for unplayed games only and leaves them null without caches;
+`resolve_starting_qb_history` uses a projected id for its own row, keeps later weeks anchored,
+leaves played rows and absent-column output identical, and derives the change flag from resolved
+ids; a projected quarterback receives that quarterback's own profile features (parity with the
+history experiment's feature builder); the new pipeline stages run before the sidecar build,
+force-refresh the resolved season, fetch full history under `--all-years`, and tolerate an empty
+fetch. Python gate: ruff, pyrefly 0 errors, 4,629 unit tests passed. Real data: the Unit 9 report
+reproduced byte for byte in its body after the refactor; on a temporary copy of the data the
+rebuilt sidecar's original columns equalled the live sidecar's, 16 week 4 games were projected,
+no played game was, and played-game resolved starters were unchanged.
+
+#### Acceptance
+
+For a week with a published report, the live QB features use the projected starter for every
+eligible team and today's value for the rest; played-game rows and feature columns are unchanged;
+the projection and its snapshot time are in the sidecar; the pipeline refreshes both caches
+without failing on a bad fetch; Unit 9's numbers reproduce; documentation is current; the Python
+gate passes. Applying it to the live sidecar and week 4 remains an approved operational step.
 
 ### Unit 9 — Projected Starting-QB Baseline Backtest [Completed October 3, 2026]
 

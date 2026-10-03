@@ -27,6 +27,8 @@ class TestPipelineContract:
             "clean-games",
             "fetch-upcoming",
             "clean-upcoming",
+            "fetch-depth-charts",
+            "fetch-injuries",
             "clean-qb-coach-sidecar",
             "fetch-player-stats",
             "clean-player-stats",
@@ -332,3 +334,74 @@ class TestStageStalenessCheck:
         _check_stage_staleness(active={"clean-games"})
 
         assert caplog.records == []
+
+
+class TestProjectedStarterSourceStages:
+    @staticmethod
+    def _run(active: set[str], *, all_years: bool = False, resolved_season: int = 2026) -> None:
+        _run_pipeline_stages(
+            active=active,
+            all_years=all_years,
+            resolved_season=resolved_season,
+            upcoming_target=resolved_season,
+            season=None,
+            season_year=None,
+            owm_api_key=None,
+        )
+
+    def test_both_fetches_precede_the_sidecar_build(self) -> None:
+        order = {stage: index for index, stage in enumerate(ALL_STAGES)}
+        assert order["fetch-depth-charts"] < order["clean-qb-coach-sidecar"]
+        assert order["fetch-injuries"] < order["clean-qb-coach-sidecar"]
+        assert order["clean-qb-coach-sidecar"] < order["build-features"]
+
+    @pytest.mark.parametrize(
+        ("stage", "target"),
+        [
+            ("fetch-depth-charts", "fetch_depth_charts"),
+            ("fetch-injuries", "fetch_injuries"),
+        ],
+    )
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    def test_weekly_fetch_force_refreshes_the_resolved_season(
+        self, _check: MagicMock, stage: str, target: str
+    ) -> None:
+        path = f"gridiron_edge.ingest.nflverse.weekly_availability.{target}"
+        with patch(path, return_value=[Path("x.parquet")]) as fetch:
+            self._run({stage})
+
+        fetch.assert_called_once_with(seasons=[2026], force=True)
+
+    @pytest.mark.parametrize(
+        ("stage", "target"),
+        [
+            ("fetch-depth-charts", "fetch_depth_charts"),
+            ("fetch-injuries", "fetch_injuries"),
+        ],
+    )
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    def test_all_years_fetches_full_history(
+        self, _check: MagicMock, stage: str, target: str
+    ) -> None:
+        path = f"gridiron_edge.ingest.nflverse.weekly_availability.{target}"
+        with patch(path, return_value=[Path("x.parquet")]) as fetch:
+            self._run({stage}, all_years=True)
+
+        fetch.assert_called_once_with(all_years=True)
+
+    @pytest.mark.parametrize(
+        ("stage", "target"),
+        [
+            ("fetch-depth-charts", "fetch_depth_charts"),
+            ("fetch-injuries", "fetch_injuries"),
+        ],
+    )
+    @patch("gridiron_edge.cli.main._check_stage_staleness")
+    def test_an_empty_fetch_is_reported_not_fatal(
+        self, _check: MagicMock, stage: str, target: str
+    ) -> None:
+        path = f"gridiron_edge.ingest.nflverse.weekly_availability.{target}"
+        with patch(path, return_value=[]) as fetch:
+            self._run({stage})
+
+        fetch.assert_called_once()

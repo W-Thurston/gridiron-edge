@@ -144,6 +144,13 @@ def _season_numbers(year_text: Series) -> Series:
         raise ValueError("YEAR must begin with a numeric season.") from exc
 
 
+def _projected_ids(sidecar: DataFrame, column: str) -> Series:
+    """Return a side's projected starter ids, null when the sidecar has no projection."""
+    if column in sidecar.columns:
+        return sidecar[column]
+    return Series(pd.NA, index=sidecar.index, dtype="string")
+
+
 def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
     """Build one carried-forward starter per (team, season, week).
 
@@ -151,7 +158,9 @@ def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
     and a null starter for unplayed games. Forward-filling each team's QB
     identity chronologically leaves actual values untouched and replaces
     only the nulls (unplayed games) with the most recent known starter -
-    the carry-forward policy in ``DECISIONS.md``.
+    the carry-forward policy in ``DECISIONS.md`` D65. An unplayed game with a
+    projected starter (``*_QB_ID_PROJECTED``, ``DECISIONS.md`` D75) uses that
+    id for its own row instead; played games never carry a projection.
     """
     _require_columns(sidecar, _SIDECAR_REQUIRED_COLUMNS, label="QB/coach sidecar")
 
@@ -159,11 +168,13 @@ def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
         :,
         ["GAME_ID", "YEAR", "WEEK_NUM", "AWAY_TEAM", "AWAY_QB_ID"],
     ].rename(columns={"AWAY_TEAM": "TEAM", "AWAY_QB_ID": "QB_ID"})
+    away["PROJECTED_QB_ID"] = _projected_ids(sidecar, "AWAY_QB_ID_PROJECTED")
     away["SIDE"] = "AWAY"
     home = sidecar.loc[
         :,
         ["GAME_ID", "YEAR", "WEEK_NUM", "HOME_TEAM", "HOME_QB_ID"],
     ].rename(columns={"HOME_TEAM": "TEAM", "HOME_QB_ID": "QB_ID"})
+    home["PROJECTED_QB_ID"] = _projected_ids(sidecar, "HOME_QB_ID_PROJECTED")
     home["SIDE"] = "HOME"
 
     history = pd.concat([away, home], ignore_index=True)
@@ -174,7 +185,12 @@ def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
         ignore_index=True,
     )
 
-    history["RESOLVED_QB_ID"] = history.groupby("TEAM", sort=False)["QB_ID"].ffill()
+    # The forward-fill base is the raw id, so games after a projected one stay anchored to
+    # the last known starter; a projected id then replaces the resolved id for its own game.
+    carried = history.groupby("TEAM", sort=False)["QB_ID"].ffill()
+    history["RESOLVED_QB_ID"] = history["PROJECTED_QB_ID"].where(
+        history["PROJECTED_QB_ID"].notna(), carried
+    )
     history["PREV_RESOLVED_QB_ID"] = history.groupby("TEAM", sort=False)["RESOLVED_QB_ID"].shift(1)
     history["QB_CHANGE_FLAG"] = (
         history["PREV_RESOLVED_QB_ID"].notna()

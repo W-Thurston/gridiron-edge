@@ -8,6 +8,62 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D76 - Live starting QB: the projected starter is set in the sidecar build for the current week, and fails open
+
+**Date:** 2026-10-03
+
+**Context:** `DECISIONS.md` D65 carries each team's previous starter forward as the
+live starter, with a revisit trigger for a real projected-starter source. D75 showed a
+depth chart plus weekly availability rule beats carry-forward, and that the gain
+survives conversion to Brier (+0.00112 after week 1). The live QB identity enters the
+features through the QB/coach sidecar, which prediction-input evidence already hashes.
+
+**Decision:**
+1. The projection is computed when the sidecar is built
+   (`transform/clean/qb_coach_sidecar.py`) from the cached depth chart and injury
+   reports, never by a fetch inside the build. The sidecar gains six optional columns:
+   `AWAY_/HOME_QB_ID_PROJECTED`, `_QB_PROJECTION_SOURCE` (`depth_chart_report`) and
+   `_QB_PROJECTION_AS_OF` (the chart snapshot time, UTC). The projection and its inputs
+   are therefore reproducible from persisted evidence with no new evidence schema.
+2. Eligibility: unplayed regular-season games in the earliest unplayed week that has at
+   least one injury report row for that season and week, for teams whose latest chart
+   snapshot lists a quarterback. All other games keep today's behavior (the nflverse
+   value, else the carried-forward starter). Statuses exist only for the current week,
+   so applying them to later weeks would be wrong, and the rule is not backtested before a
+   report exists.
+3. `resolve_starting_qb_history` uses a projected id for that game's own row. The
+   forward-fill base stays the raw sidecar id, so later weeks remain anchored to the last
+   known starter. The QB change flag is computed from the resolved ids, which matches its
+   training definition. Played games never carry a projection, so training rows are
+   unchanged.
+4. The resolver is the pure function of D75, moved to
+   `features/team/projected_starter.py` so serving can use it; the evaluation module
+   imports it (a feature module may not depend on evaluation code).
+5. Fail open: missing caches, an old-format chart, no report yet, or no chart for a team
+   produce no projection and today's behavior, never a blocked prediction. The pipeline
+   refresh (`fetch-depth-charts`, `fetch-injuries`, ahead of `clean-qb-coach-sidecar`, in
+   `run-data-pipeline`, `post-week` and so in `weekly-predict` and the full-retrain data
+   refresh) reports a failed or empty fetch and continues, as for player stats.
+6. No schema, data-version, model or champion change. Modeling rows for played games
+   and the feature columns are unchanged.
+
+**Real-data check (a temporary copy of the repository's data; nothing applied to the real
+sidecar):** with the 2026 snapshot of 2026-10-03T12:27Z and injury reports through week 4,
+exactly 16 games were projected (all week 4), no played game was touched, the original
+sidecar columns were identical to the current sidecar, and three teams' resolved starters
+changed: Chicago (Case Keenum to Tyson Bagent), Seattle (Drew Lock to Sam Darnold) and
+Washington (Jayden Daniels, reported Out, to Marcus Mariota). The feature changes are
+mixed, not one-directional: for Washington, career EPA per attempt falls from 0.107 to
+0.035 while rolling EPA per attempt rises from -0.091 to +0.108, so the effect on a
+forecast cannot be read from the identities alone.
+
+**Limits (carried from D75):** the measured gain needs the late-week report; an early-week
+report is partial, and the recorded `AS_OF` time makes the state visible but does not
+correct it. Pre-2025 charts carry no timestamp; nflverse's 2025 and 2026 injury files carry
+no modification time.
+
+---
+
 ## D75 - Projected starting QB: the accuracy bar narrowly missed, the downstream test cleared; feature integration proceeds
 
 **Date:** 2026-10-03

@@ -51,6 +51,8 @@ def _stage_refresh_next_week_state(ctx: dict[str, Any]) -> StageResult:
         active={
             "fetch-upcoming",
             "clean-upcoming",
+            "fetch-depth-charts",
+            "fetch-injuries",
             "clean-qb-coach-sidecar",
             "fetch-player-stats",
             "clean-player-stats",

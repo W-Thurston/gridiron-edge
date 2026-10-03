@@ -318,6 +318,8 @@ class TestEnsureDataFreshStage:
                 "clean-games",
                 "fetch-upcoming",
                 "clean-upcoming",
+                "fetch-depth-charts",
+                "fetch-injuries",
                 "clean-qb-coach-sidecar",
                 "fetch-player-stats",
                 "clean-player-stats",

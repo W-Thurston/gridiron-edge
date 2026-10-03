@@ -87,6 +87,8 @@ fetch-games
 clean-games
 fetch-upcoming
 clean-upcoming
+fetch-depth-charts
+fetch-injuries
 clean-qb-coach-sidecar
 fetch-player-stats
 clean-player-stats
@@ -1308,19 +1310,30 @@ The QB-and-coach features fill a missing value only for a known starter or
 coach with no history (debut priors, D73); an unresolved identity stays missing
 and disables the family for the week.
 
-## Depth Chart and Injury Caches, Starting-QB Backtest
+## Depth Chart and Injury Caches, Projected Starting QB
 
 `gridiron ingest depth-charts` and `gridiron ingest injuries` (`--season`, `--all-years`,
 `--force`; no option refreshes the current season) store nflverse depth charts
 (from 2001) and weekly injury reports (from 2009) as-is, one Parquet per season, at
 `data/raw/depth_charts/depth_charts_{season}.parquet` and
 `data/raw/injuries/injuries_{season}.parquet`. A fetch that fails or returns no rows
-never replaces a cached file. Nothing in `weekly-predict`, `post-week` or
-`run-data-pipeline` reads them. Depth charts before 2025 are weekly with no timestamp;
+never replaces a cached file. The `fetch-depth-charts` and `fetch-injuries` pipeline
+stages (in `run-data-pipeline`, `post-week`'s next-week refresh and so `weekly-predict`)
+force-refresh the resolved season ahead of `clean-qb-coach-sidecar`; a failed or empty fetch
+is reported and the run continues. Depth charts before 2025 are weekly with no timestamp;
 2025 onward are timestamped snapshots in a different format. Injury reports are the last
 report of the week; 2025 onward carry no `date_modified`.
 
-`gridiron evaluate starting-qb-projection [--report-dir DIR]` reads those caches and the
+The sidecar build (`gridiron transform clean-qb-coach-sidecar`) projects each unplayed
+game's starting QB from those caches (`DECISIONS.md` D76): the depth chart's top
+quarterback, skipping anyone reported Out or Doubtful, for the earliest unplayed week
+that has a published injury report. It records `AWAY_/HOME_QB_ID_PROJECTED`,
+`_QB_PROJECTION_SOURCE` and `_QB_PROJECTION_AS_OF` (the chart snapshot time). Any game
+without a projection keeps the nflverse value, else the carried-forward starter (D65), so
+missing caches or a missing report never block a prediction. The measured gain needs the
+late-week report; run `weekly-predict` after the week's injury report is published.
+
+`gridiron evaluate starting-qb-projection [--report-dir DIR]` reads the caches and the
 raw games file and writes `docs/reports/starting-qb-projection.md`. It changes no model,
 schema or `data/` artifact. See `DECISIONS.md` D75 for the result and its limits.
 

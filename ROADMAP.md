@@ -354,7 +354,7 @@ Choose a reliable source and usage policy, preserve fetched-at and effective-at 
 - Vocabulary changes by era: 2009 uses `Probable` (retired later); 2024 has no game status for half of the rows (practice-only entries). Only players on the report appear; healthy players are absent.
 - QB signal is present (2024: 201 quarterback rows, 14 `Out`, 8 `Doubtful`), joinable by `gsis_id` to the existing resolved-starter logic (`DECISIONS.md` D65).
 - Depth charts (nflverse, back to 2001) changed data source after 2024, so the 2025+ format differs; treat as a separate, later source.
-- Follow-up (2026-10-03): nflverse's 2025 and 2026 injury files drop `date_modified`, and 2025+ depth charts are timestamped snapshots (about daily). The starting-QB projection (Unit 9, `DECISIONS.md` D75) uses the depth chart plus the weekly report; its integration into the QB features is the next unit. Injury ingestion beyond availability status, news, and a forward timestamped ledger remain here.
+- Follow-up (2026-10-03): nflverse's 2025 and 2026 injury files drop `date_modified`, and 2025+ depth charts are timestamped snapshots (about daily). The starting-QB projection (Unit 9, `DECISIONS.md` D75) uses the depth chart plus the weekly report; its integration into the live QB features is built (Unit 10, `DECISIONS.md` D76). Injury ingestion beyond availability status, news, and a forward timestamped ledger remain here.
 - Decision pending with the user: whether weekly prediction moves to late week so these features can be used without train/serve skew, or the model trains on a fixed late-week as-of state and serves only then.
 
 #### 19. Add supported historical market backfill

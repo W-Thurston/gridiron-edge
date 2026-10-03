@@ -89,6 +89,8 @@ def test_refresh_next_week_state_is_independent(run_pipeline: MagicMock) -> None
         active={
             "fetch-upcoming",
             "clean-upcoming",
+            "fetch-depth-charts",
+            "fetch-injuries",
             "clean-qb-coach-sidecar",
             "fetch-player-stats",
             "clean-player-stats",

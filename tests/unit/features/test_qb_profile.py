@@ -618,3 +618,106 @@ class TestHomeAwayQbProfileFeature:
 
         result = HomeAwayQbProfileFeature().compute(df=games, datasets=_datasets(sidecar=sidecar))
         assert result["GAME_ID"].tolist() == ["g-week-5", "g-week-4"]
+
+
+class TestProjectedStarterFeatures:
+    """A projected starter (``DECISIONS.md`` D75) gets that quarterback's own profile."""
+
+    @staticmethod
+    def _sidecar(*, projected: object) -> DataFrame:
+        played = _sidecar_row(
+            game_id="g3",
+            year="2025-2026",
+            week=3,
+            away_team="Away Team",
+            home_team="Other",
+            away_qb_id="QB1",
+            home_qb_id="QB9",
+        )
+        target = _sidecar_row(
+            game_id="target-week-4",
+            year="2025-2026",
+            week=4,
+            away_team="Away Team",
+            home_team="Home Team",
+            away_qb_id="QB1",
+            home_qb_id="QB2",
+        )
+        target["AWAY_QB_ID_PROJECTED"] = projected
+        target["HOME_QB_ID_PROJECTED"] = None
+        played["AWAY_QB_ID_PROJECTED"] = None
+        played["HOME_QB_ID_PROJECTED"] = None
+        return DataFrame([played, target]).astype(
+            {"AWAY_QB_ID_PROJECTED": "string", "HOME_QB_ID_PROJECTED": "string"}
+        )
+
+    @staticmethod
+    def _logs() -> DataFrame:
+        return DataFrame(
+            [
+                _qb_log(player_id="QB1", season=2025, week=1, attempts=30, passing_epa=6.0),
+                _qb_log(player_id="QB1", season=2025, week=2, attempts=30, passing_epa=9.0),
+                _qb_log(player_id="QB3", season=2025, week=1, attempts=20, passing_epa=-4.0),
+                _qb_log(player_id="QB3", season=2025, week=2, attempts=20, passing_epa=-2.0),
+            ]
+        )
+
+    def _compute(self, projected: object) -> pd.Series:
+        result = HomeAwayQbProfileFeature().compute(
+            df=_game_frame(),
+            datasets=_datasets(sidecar=self._sidecar(projected=projected), logs=self._logs()),
+        )
+        return result.iloc[0]
+
+    def test_projected_quarterback_is_scored_on_their_own_history(self) -> None:
+        projected = self._compute("QB3")
+        kept = self._compute(None)
+        own = (
+            HomeAwayQbProfileFeature()
+            .compute(
+                df=_game_frame(),
+                datasets=_datasets(
+                    sidecar=DataFrame(
+                        [
+                            _sidecar_row(
+                                game_id="g3",
+                                year="2025-2026",
+                                week=3,
+                                away_team="Away Team",
+                                home_team="Other",
+                                away_qb_id="QB3",
+                                home_qb_id="QB9",
+                            ),
+                            _sidecar_row(
+                                game_id="target-week-4",
+                                year="2025-2026",
+                                week=4,
+                                away_team="Away Team",
+                                home_team="Home Team",
+                                away_qb_id="QB3",
+                                home_qb_id="QB2",
+                            ),
+                        ]
+                    ),
+                    logs=self._logs(),
+                ),
+            )
+            .iloc[0]
+        )
+
+        assert projected["AWAY_QB_EPA_PLAY_CAREER"] == pytest.approx(-6.0 / 40.0)
+        assert projected["AWAY_QB_EXPERIENCE"] == 2
+        assert kept["AWAY_QB_EPA_PLAY_CAREER"] == pytest.approx(15.0 / 60.0)
+        # Same features as a team whose recorded starter is that quarterback.
+        for column in (
+            "AWAY_QB_EPA_PLAY_CAREER",
+            "AWAY_QB_EPA_PLAY_ROLLING",
+            "AWAY_QB_CPOE_ROLLING",
+            "AWAY_QB_CPOE_ROLLING_AVAILABLE",
+            "AWAY_QB_EXPERIENCE",
+        ):
+            assert projected[column] == pytest.approx(own[column], nan_ok=True)
+
+    def test_change_flag_marks_a_projected_change_from_the_previous_game(self) -> None:
+        assert self._compute("QB3")["AWAY_QB_CHANGE_FLAG"] == 1
+        assert self._compute(None)["AWAY_QB_CHANGE_FLAG"] == 0

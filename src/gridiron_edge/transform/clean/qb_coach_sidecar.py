@@ -19,6 +19,7 @@ happens here - run the existing ``gridiron ingest nflverse-games``/
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 import logging
 from logging import Logger
 from pathlib import Path
@@ -30,6 +31,14 @@ from pandas import DataFrame, Series
 from gridiron_edge.core.settings import Settings, get_settings
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.datasets.writers import write_parquet
+from gridiron_edge.features.team.projected_starter import (
+    UNAVAILABLE_PRIMARY,
+    latest_snapshot_chart,
+    ordered_candidates,
+    prepare_snapshots,
+    project_starter,
+)
+from gridiron_edge.ingest.nflverse.weekly_availability import load_depth_charts, load_injuries
 from gridiron_edge.transform.clean._nflverse_common import (
     GAME_TYPE_TO_WEEK,
     map_short_to_long,
@@ -38,7 +47,7 @@ from gridiron_edge.transform.clean._nflverse_common import (
 
 logger: Logger = logging.getLogger(__name__)
 
-SIDECAR_COLUMNS: Final[tuple[str, ...]] = (
+BASE_COLUMNS: Final[tuple[str, ...]] = (
     "GAME_ID",
     "YEAR",
     "WEEK_NUM",
@@ -51,6 +60,21 @@ SIDECAR_COLUMNS: Final[tuple[str, ...]] = (
     "AWAY_COACH",
     "HOME_COACH",
 )
+
+#: Projected starter for an unplayed game (``DECISIONS.md`` D75), with its source and
+#: the depth chart snapshot time it came from. Null for every game without a projection.
+PROJECTION_COLUMNS: Final[tuple[str, ...]] = (
+    "AWAY_QB_ID_PROJECTED",
+    "AWAY_QB_PROJECTION_SOURCE",
+    "AWAY_QB_PROJECTION_AS_OF",
+    "HOME_QB_ID_PROJECTED",
+    "HOME_QB_PROJECTION_SOURCE",
+    "HOME_QB_PROJECTION_AS_OF",
+)
+
+SIDECAR_COLUMNS: Final[tuple[str, ...]] = (*BASE_COLUMNS, *PROJECTION_COLUMNS)
+
+PROJECTION_SOURCE: Final[str] = "depth_chart_report"
 
 _REQUIRED_RAW_COLUMNS: Final[tuple[str, ...]] = (
     "season",
@@ -91,6 +115,7 @@ def _empty_sidecar() -> DataFrame:
             "HOME_QB_NAME": Series(dtype="string"),
             "AWAY_COACH": Series(dtype="string"),
             "HOME_COACH": Series(dtype="string"),
+            **{column: Series(dtype="string") for column in PROJECTION_COLUMNS},
         }
     ).loc[:, list(SIDECAR_COLUMNS)]
 
@@ -120,8 +145,103 @@ def _build_sidecar_rows(raw: DataFrame) -> DataFrame:
             "HOME_QB_NAME": frame["home_qb_name"].astype("string"),
             "AWAY_COACH": frame["away_coach"].astype("string"),
             "HOME_COACH": frame["home_coach"].astype("string"),
+            **{
+                column: Series(pd.NA, index=frame.index, dtype="string")
+                for column in PROJECTION_COLUMNS
+            },
         }
     ).loc[:, list(SIDECAR_COLUMNS)]
+
+
+def project_unplayed_starters(
+    upcoming: DataFrame,
+    snapshots: DataFrame | None,
+    injuries: DataFrame | None,
+) -> DataFrame:
+    """Project the starting QB for the current week's unplayed games.
+
+    Only unplayed regular-season games in the earliest unplayed week are
+    projected, and only when that week already has injury report rows and the
+    team's latest depth chart snapshot lists a quarterback. Everything else is
+    left null so the caller keeps today's behavior (``DECISIONS.md`` D65, D75).
+
+    Args:
+        upcoming: Raw upcoming schedule rows that are unplayed.
+        snapshots: Timestamped depth chart (2025 format) for the season, or ``None``.
+        injuries: Injury reports for the season, or ``None``.
+
+    Returns:
+        One row per ``game_id`` in ``upcoming`` with the projection columns
+        (null when not projected), indexed like ``upcoming``.
+    """
+    cells: dict[str, dict[Hashable, str]] = {column: {} for column in PROJECTION_COLUMNS}
+
+    def finish() -> DataFrame:
+        return DataFrame(
+            {
+                "game_id": upcoming["game_id"].astype("string"),
+                **{
+                    column: Series(cells[column], dtype="string").reindex(upcoming.index)
+                    for column in PROJECTION_COLUMNS
+                },
+            }
+        )
+
+    if snapshots is None or injuries is None or snapshots.empty or injuries.empty:
+        return finish()
+    if "dt" not in snapshots.columns:
+        return finish()
+    regular = upcoming[upcoming["game_type"] == "REG"]
+    if regular.empty:
+        return finish()
+    season = int(regular["season"].min())
+    week = int(regular.loc[regular["season"] == season, "week"].min())
+    reports = injuries[
+        (injuries["season"].astype(int) == season)
+        & (injuries["week"].astype(int) == week)
+        & (injuries["game_type"] == "REG")
+    ]
+    if reports.empty:
+        return finish()
+
+    statuses: dict[str, dict[str, str | None]] = {}
+    for team, player, status in zip(
+        reports["team"], reports["gsis_id"], reports["report_status"], strict=True
+    ):
+        if isinstance(player, str):
+            statuses.setdefault(team, {})[player] = status
+    by_team = prepare_snapshots(snapshots)
+
+    in_week = regular.loc[(regular["season"] == season) & (regular["week"] == week)]
+    for row_index, game in in_week.iterrows():
+        for side in ("away", "home"):
+            team = game[f"{side}_team"]
+            if team not in by_team:
+                continue
+            chart, as_of = latest_snapshot_chart(by_team[team])
+            if as_of is None or not chart:
+                continue
+            pick = project_starter(
+                ordered_candidates(chart, statuses.get(team, {}), UNAVAILABLE_PRIMARY)
+            )
+            if pick is None:
+                continue
+            prefix = side.upper()
+            cells[f"{prefix}_QB_ID_PROJECTED"][row_index] = pick
+            cells[f"{prefix}_QB_PROJECTION_SOURCE"][row_index] = PROJECTION_SOURCE
+            cells[f"{prefix}_QB_PROJECTION_AS_OF"][row_index] = as_of.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return finish()
+
+
+def _load_projection_inputs(repo: Path, season: int) -> tuple[DataFrame | None, DataFrame | None]:
+    """Load the cached depth chart and injury reports for a season, else ``None``."""
+    try:
+        snapshots = load_depth_charts(seasons=[season], repo=repo).get(season)
+        injuries = load_injuries(seasons=[season], repo=repo).get(season)
+    except FileNotFoundError:
+        logger.warning("Depth chart or injury cache missing for %d; no starters projected", season)
+        return None, None
+    return snapshots, injuries
 
 
 def build_qb_coach_sidecar(*, repo: Path | None = None) -> Path:
@@ -168,6 +288,17 @@ def build_qb_coach_sidecar(*, repo: Path | None = None) -> Path:
         upcoming_raw: DataFrame = pd.read_parquet(upcoming_raw_path)
         upcoming = upcoming_raw.loc[upcoming_raw["result"].isna(), :].copy()
         upcoming_rows = _build_sidecar_rows(upcoming)
+        if not upcoming.empty:
+            snapshots, injuries = _load_projection_inputs(
+                resolved_repo, int(upcoming["season"].min())
+            )
+            projection = project_unplayed_starters(upcoming, snapshots, injuries)
+            for column in PROJECTION_COLUMNS:
+                upcoming_rows[column] = projection[column].to_numpy()
+            projected = int(projection["AWAY_QB_ID_PROJECTED"].notna().sum()) + int(
+                projection["HOME_QB_ID_PROJECTED"].notna().sum()
+            )
+            logger.info("Projected %d starting quarterbacks for unplayed games", projected)
     else:
         logger.warning(
             "Raw upcoming nflverse schedule not found at %s - sidecar will contain "
