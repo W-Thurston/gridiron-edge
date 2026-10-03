@@ -65,6 +65,35 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 **Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) closed 2026-10-02; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
 
+### Next Workstreams (added 2026-10-03)
+
+Candidate work identified after Units 8-11 (neutral-site fix, projected starting QB, readiness fix). Sizes are rough (S, M, L). Items W1-W3 are recommended to be scoped together as one program: they close the trust gap in what is published today and complete the starting-QB loop. Each still needs its own `PLAN.md` unit before code (Ways of Working). Items cross-reference the tiers below that own the same scope.
+
+**Trust in what is published now**
+
+- **W1. Market freshness gate [S].** The week 4 edge report (2026-10-03) was computed against a quote snapshot fetched 2026-09-30T12:38Z, three days earlier, and nothing flagged it. `edge_diagnostics` already supports a stale-market blocker (`EdgeDiagnosticBlocker.MARKET_STALE`, driven by optional `as_of` and `max_market_age`), but `weekly-predict`'s edge stage and `verify-week` do not pass them. The Raspberry Pi collector's observation ledger is not on the development machine, so how fresh quotes reach the edge stage is undecided. Scope: choose and implement the path from the Pi's ledger (or an explicit `gridiron ingest odds`) to the current snapshot; require a maximum quote age for edges, readiness and the API field status, with the threshold derived from observed line movement, not intuition (Strategic Principle 8); show "market as of" in the edge report, rendered output and frontend. Decide with the user: sync method and what an over-age snapshot does (blocker versus visible warning). Market readiness stays independent of prediction readiness. Owns the stale-quote part of Tier 4 #11-#13.
+- **W2. Show the assumed starting QB [S-M].** Unit 10 (`DECISIONS.md` D76) sets each side's live starter from a projection recorded only in the QB/coach sidecar, which is rewritten on every build, so the assumed starter is not persisted with the forecast and is not shown anywhere. Scope: capture, at product composition, each side's assumed starter id and name, its source (`depth_chart_report`, the nflverse schedule value, or carry-forward), the depth chart snapshot time, and whether it differs from the carried-forward starter; persist it in the immutable weekly product (a product schema version bump, with the API schema regenerated through `gridiron api export-schema` and `pnpm gen:api`); serve it through the read-only API; show it on the game page with the shared field-status components so a missing projection is never hidden. Audit first how much of this prediction-input evidence already records.
+- **W3. Weekly projection scorecard [S].** After each week's games, score the resolver against nflverse's schedule value and carry-forward on the real starters, with per-team detail for misses, and persist the result. This validates the live behavior, builds the evidence base for later changes (including the early-week behavior D75 could not test), and feeds the Unit 9 backtest. Depends on W2's persisted record of what was assumed at prediction time (the sidecar cannot supply it).
+
+**In-week operation (the longer-term goal: forecasts updated continuously as live data arrives)**
+
+- **W4. Forward-timestamped observation ledger [M].** nflverse's 2025 and later injury files carry no modification time, and earlier seasons carry a placeholder, so no as-of injury state can be reconstructed. Record our own `observed_at` for each depth chart and injury fetch in an append-only, immutable store. This cannot be recovered afterwards, and it is what allows early-week projections to be evaluated honestly. Related: Tier 6 #18.
+- **W5. QB override command [S-M].** An immutable, timestamped manual observation (team, week, quarterback, reason, observer) that the sidecar build consumes ahead of the projection, for evidence no source carries (a coach's hint, who took first-team reps). Writes only through a CLI command, never an API route (`POST /portfolio/bets` stays the only write route). Must keep the resolver pure and record the override as the projection source.
+- **W6. Versioned in-week forecasts [L].** Each `weekly-predict` rerun now creates another immutable product (week 4 has four). Needs an explicit "as of" contract: what a forecast version is, how the current one is selected without inferring by recency, how the API serves it, and how products, evidence and edges relate. The scenario engine (Tier 7) reuses it.
+
+**Model improvement**
+
+- **W7. Market-aware variant [L].** Tier 5 #16 Unit 6. Closing lines are on disk back to 1999 (moneylines from about 2009); opening lines and movement need The Odds API historical endpoint (paid, from 2020). Display idea: first-observed and current odds per market, from the existing quote ledger, labeled "first observed", not "opening". Its value is anchoring (it reduces false edges); it does not find independent edges.
+- **W8. Other positions' availability [L].** The Unit 9 backtest method extends to other positions, but the effect size and a replacement-value model are unproven beyond quarterback. Tier 6 #18.
+- **W9. Phase B features [L].** Tier 5 #16 Phase B; needs an nflverse play-by-play re-download (ask first).
+- **W10. Ensembles [M].** Tier 5 #15; expect gains near 0.002 Brier.
+
+**Watch items and hygiene**
+
+- **W11. Neutral-site choice:** revisit `DECISIONS.md` D74 after weeks 6, 7, 9, 10 and 11 add five more neutral games (the 21-game 2023-2025 neutral holdout slice scored worse, interval including zero).
+- **W12. Recommendation-policy maturation:** Tier 4 #13; accumulates weekly.
+- **W13. Test environment fragility [S]:** eight CLI help and message tests fail when `FORCE_COLOR` is set in the environment; make them independent of terminal color settings (Tier 10 #27).
+
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 
 **Goal:** resolve the correctness defects and state drift found while reconciling this roadmap against the repository, establish one corrected evaluation and champion-selection foundation, and complete calendar-driven market proof — all before the next feature or evaluation program (Tier 5 #16) begins.
