@@ -10,6 +10,7 @@ from gridiron_edge.api.schemas.games import (
     GameSummary,
     ProjectedScoreBlock,
     SpreadPredictionBlock,
+    StartingQbBlock,
     TotalPredictionBlock,
     WinPredictionBlock,
 )
@@ -21,6 +22,7 @@ def _blocks():
         "spread": SpreadPredictionBlock(status="win_unavailable"),
         "total": TotalPredictionBlock(status="forecast_missing"),
         "projected_score": ProjectedScoreBlock(status="spread_and_total_unavailable"),
+        "starting_qb": StartingQbBlock(status="not_recorded"),
     }
 
 
@@ -59,6 +61,7 @@ def test_win_and_total_provenance_are_independent() -> None:
             model_type="random_forest",
         ),
         projected_score=ProjectedScoreBlock(status="available", home=25.0, away=22.5),
+        starting_qb=StartingQbBlock(status="not_recorded"),
     )
 
     assert summary.win.event_id == "win-event"

@@ -209,3 +209,65 @@ def test_unavailable_family_skips_candidate_resolution(tmp_path: Path) -> None:
         )
 
     resolve_candidates.assert_not_called()
+
+
+def _evidence_with_sidecar(digest: str | None):
+    from types import SimpleNamespace
+
+    from gridiron_edge.evaluation.prediction_input_evidence import PredictionSourceState
+
+    reference = SimpleNamespace(
+        relative_path="data/cleaned/NFL_qb_coach_sidecar.parquet",
+        state=PredictionSourceState.PRESENT if digest else PredictionSourceState.ABSENT,
+        content_digest=digest,
+    )
+    return (SimpleNamespace(source_artifacts=(reference,)),)
+
+
+def _write_sidecar(repo: Path) -> str:
+    from hashlib import sha256
+
+    import pandas as pd
+
+    path = repo / "data" / "cleaned" / "NFL_qb_coach_sidecar.parquet"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame({"GAME_ID": ["g"]}).to_parquet(path)
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def test_bound_sidecar_loads_only_when_its_digest_matches_the_evidence(tmp_path: Path) -> None:
+    from gridiron_edge.cli._weekly_product_composition import _bound_sidecar
+
+    digest = _write_sidecar(tmp_path)
+    target = "gridiron_edge.cli._weekly_product_composition.list_prediction_input_evidence_by_run"
+
+    with patch(target, return_value=_evidence_with_sidecar(digest)):
+        assert _bound_sidecar("run", repo=tmp_path) is not None
+    with (
+        patch(target, return_value=_evidence_with_sidecar("0" * 64)),
+        pytest.raises(ValueError, match="sidecar changed after the forecast run"),
+    ):
+        _bound_sidecar("run", repo=tmp_path)
+
+
+def test_bound_sidecar_is_absent_without_evidence_for_it(tmp_path: Path) -> None:
+    from gridiron_edge.cli._weekly_product_composition import _bound_sidecar
+
+    _write_sidecar(tmp_path)
+    target = "gridiron_edge.cli._weekly_product_composition.list_prediction_input_evidence_by_run"
+
+    with patch(target, return_value=()):
+        assert _bound_sidecar("run", repo=tmp_path) is None
+    with patch(target, return_value=_evidence_with_sidecar(None)):
+        assert _bound_sidecar("run", repo=tmp_path) is None
+
+
+def test_bound_sidecar_rejects_evidence_that_disagrees(tmp_path: Path) -> None:
+    from gridiron_edge.cli._weekly_product_composition import _bound_sidecar
+
+    _write_sidecar(tmp_path)
+    target = "gridiron_edge.cli._weekly_product_composition.list_prediction_input_evidence_by_run"
+    evidence = _evidence_with_sidecar("a" * 64) + _evidence_with_sidecar("b" * 64)
+
+    with patch(target, return_value=evidence), pytest.raises(ValueError, match="disagrees"):
+        _bound_sidecar("run", repo=tmp_path)

@@ -8,6 +8,45 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D77 - The weekly product records each side's assumed starting QB, bound to the sidecar the forecast used
+
+**Date:** 2026-10-03
+
+**Context:** `DECISIONS.md` D76 feeds a projected starting QB into the live QB features through
+the QB/coach sidecar, which is rewritten on every build. Nothing persisted with the forecast
+said who was assumed: the product had no quarterback column, the prediction-input evidence held
+only the sidecar's SHA-256 (not recoverable once the file changed), and the API had no field.
+The nflverse upcoming schedule also now publishes a starter for the nearest weeks, a third
+source that D65 recorded as absent and that no artifact kept.
+
+**Decision:**
+1. Product composition records, per game and side: the assumed id and name, the source
+   (`depth_chart_report`, `nflverse_schedule` or `carried_forward`), the depth chart snapshot
+   time (only for `depth_chart_report`), the nflverse schedule's own value at composition, the
+   team's most recent earlier known starter (the carry-forward baseline), and whether the
+   assumed starter differs from it, plus a per-game `starting_qb_status` (`available`,
+   `starter_unresolved`, `sidecar_unavailable`).
+2. The record comes from `resolve_starting_qb_provenance`, the same computation that feeds the
+   QB features (`resolve_starting_qb_history` is a view of it), so the two cannot diverge. A
+   projected id carries the source `depth_chart_report` even when nflverse agrees; the nflverse
+   value is recorded alongside so agreement is visible.
+3. The sidecar is used only if its SHA-256 matches the run's prediction-input evidence;
+   composition fails on a mismatch instead of recording starters the forecast did not use.
+   Evidence that never recorded the sidecar yields `sidecar_unavailable`, not a guess.
+4. Product schema 2 carries the record. Version 1 products stay loadable (the recorded Week 1
+   chain depends on them) and the API reports their starters as `not_recorded`. The store
+   stamps version 2 when the record is present and version 1 otherwise; every composition path
+   records, so only direct writers can produce version 1. A version and its columns must agree.
+5. The API serves a required `starting_qb` block on game summary and detail from persisted
+   columns only; the game page shows it with explicit text for every non-available state.
+
+**Not done:** the depth chart and injury caches are not digest-bound in the evidence (separate
+unit if the projection inputs ever need replay). Nothing is regenerated: the selected week 4
+product is version 1 and reads `not_recorded`. A copy of the sidecar its evidence names is kept
+at `data/output/qb_sidecar_captures/` (digest-verified) so its starters remain recoverable.
+
+---
+
 ## D76 - Live starting QB: the projected starter is set in the sidecar build for the current week, and fails open
 
 **Date:** 2026-10-03

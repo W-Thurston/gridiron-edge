@@ -134,3 +134,59 @@ def test_derive_day_of_week_handles_missing_and_invalid_values() -> None:
     assert _derive_day_of_week(None) is None
     assert _derive_day_of_week(np.nan) is None
     assert _derive_day_of_week("invalid") is None
+
+
+def _recorded(row: dict[str, object]) -> dict[str, object]:
+    return {
+        **row,
+        "starting_qb_status": "available",
+        "away_qb_id": "00-0001",
+        "away_qb_name": "Ann Away",
+        "away_qb_source": "depth_chart_report",
+        "away_qb_projection_as_of": "2026-10-03T12:27:18Z",
+        "away_qb_nflverse_id": pd.NA,
+        "away_qb_carried_forward_id": "00-0009",
+        "away_qb_differs_from_carry_forward": True,
+        "home_qb_id": "00-0002",
+        "home_qb_name": pd.NA,
+        "home_qb_source": "carried_forward",
+        "home_qb_projection_as_of": pd.NA,
+        "home_qb_nflverse_id": pd.NA,
+        "home_qb_carried_forward_id": "00-0002",
+        "home_qb_differs_from_carry_forward": False,
+    }
+
+
+def test_product_without_a_starting_qb_record_is_reported_not_recorded() -> None:
+    block = serialize_game_summary(_row()).starting_qb
+
+    assert block.status == "not_recorded"
+    assert block.away is None
+    assert block.home is None
+
+
+def test_persisted_starting_qbs_are_serialized_with_provenance() -> None:
+    detail = serialize_game_detail(_recorded(_row()))
+
+    assert detail.starting_qb.status == "available"
+    away = detail.starting_qb.away
+    assert away is not None
+    assert away.name == "Ann Away"
+    assert away.source == "depth_chart_report"
+    assert away.projection_as_of == "2026-10-03T12:27:18Z"
+    assert away.nflverse_player_id is None
+    assert away.differs_from_carry_forward is True
+    home = detail.starting_qb.home
+    assert home is not None
+    assert home.name is None
+    assert home.differs_from_carry_forward is False
+
+
+def test_unrecorded_side_is_absent_and_status_is_preserved() -> None:
+    row = {**_recorded(_row()), "starting_qb_status": "starter_unresolved", "home_qb_id": pd.NA}
+
+    block = serialize_game_summary(row).starting_qb
+
+    assert block.status == "starter_unresolved"
+    assert block.away is not None
+    assert block.home is None

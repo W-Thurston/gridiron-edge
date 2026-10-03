@@ -181,7 +181,10 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     policy = attach_total.call_args.kwargs["policy"]
     assert policy.win.model_type == "logistic"
     assert policy.total.model_type == "random_forest"
-    build_product.assert_called_once_with(total_product)
+    build_product.assert_called_once()
+    composed_input = build_product.call_args.args[0]
+    assert composed_input[list(total_product.columns)].equals(total_product)
+    assert composed_input["starting_qb_status"].tolist() == ["sidecar_unavailable"]
 
     written_identity = write_product.call_args.kwargs["identity"]
     assert written_identity.run_id == RUN_ID

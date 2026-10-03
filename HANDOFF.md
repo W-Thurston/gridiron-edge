@@ -507,6 +507,8 @@ current.json                    explicit season-and-week selections
 
 A product contains schedule-complete rows with independent Win, Spread, Total, and projected-score components plus their statuses and provenance.
 
+A product also records each side's assumed starting QB (`DECISIONS.md` D77): id, name, source (`depth_chart_report`, `nflverse_schedule`, `carried_forward`), the depth chart snapshot time, the nflverse schedule's own value, the carry-forward baseline, whether the assumed starter differs from it, and a per-game `starting_qb_status`. It is built at composition by the same resolver as the QB features, from a sidecar that must match the run's evidence digest (composition fails if it changed). Schema 2 products carry it; schema 1 products load without it and the API serves `starting_qb.status = not_recorded`. The sidecar is rewritten on every build, so the product record is the durable one.
+
 Writing a product does not select it. `select_current_weekly_product()` explicitly selects an indexed product for one season and week. `load_current_weekly_product()` loads only that selection. Missing selection is an explicit error; consumers must not infer current state from file order or timestamps.
 
 Spread derives from the exact selected Win event and its persisted calibration. Total values and uncertainty use the independently selected Total event and exact artifact metadata. Projected scores exist only when required Spread and Total point estimates are usable.

@@ -51,3 +51,28 @@ export function isWeeklyComponentUsable(
   }
   return status === "available";
 }
+
+const STARTING_QB_STATUS_MESSAGES: Record<string, string> = {
+  available: "Starting quarterbacks recorded",
+  starter_unresolved:
+    "Starting quarterback unresolved for at least one team",
+  sidecar_unavailable:
+    "Starting quarterbacks unavailable: no quarterback inputs were recorded for this forecast",
+  not_recorded:
+    "Starting quarterbacks were not recorded for this forecast",
+};
+
+export function startingQbStatusMessage(status: string): string {
+  return STARTING_QB_STATUS_MESSAGES[status] ??
+    `Starting quarterback status: ${status}`;
+}
+
+const STARTING_QB_SOURCE_LABELS: Record<string, string> = {
+  depth_chart_report: "Depth chart and injury report",
+  nflverse_schedule: "nflverse schedule",
+  carried_forward: "Carried forward from the last known starter",
+};
+
+export function startingQbSourceLabel(source: string): string {
+  return STARTING_QB_SOURCE_LABELS[source] ?? source;
+}

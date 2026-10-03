@@ -1,5 +1,22 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Unit 12: the weekly product records and shows the assumed starting QB
+
+#### Added
+
+- Weekly product schema 2 records each side's assumed starting QB (id, name, source, depth chart
+  snapshot time, the nflverse schedule value, the carry-forward baseline, whether they differ)
+  and a per-game status. The record is built by the same resolver as the QB features and only
+  from a sidecar whose digest matches the run's prediction-input evidence (`DECISIONS.md` D77).
+- The API serves a `starting_qb` block on `/games` and `/games/{game_id}`; the game page shows it,
+  with explicit text for unresolved and not-recorded states.
+
+#### Changed
+
+- Version 1 weekly products still load; their starters read `not_recorded`.
+- `resolve_starting_qb_history` is now a view of `resolve_starting_qb_provenance`; feature
+  output is unchanged.
+
 ### 2026-10-03 - Readiness no longer fails after a game of the week has been played
 
 #### Fixed

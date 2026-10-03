@@ -13,6 +13,7 @@ import {
 } from "../components/field-status/weeklyComponentStatus";
 import { ComingSoonCard } from "../components/primitives/ComingSoonCard";
 import { ConfidenceTierPill } from "../components/games/ConfidenceTierPill";
+import { StartingQuarterbacksCard } from "../components/games/StartingQuarterbacksCard";
 import { Pill } from "../components/primitives/Pill";
 import { TeamHero } from "../components/primitives/TeamHero";
 import { TeamMark } from "../components/primitives/TeamMark";
@@ -154,6 +155,11 @@ export function GameDetail() {
             win={data.win}
             spread={data.spread}
             projectedScore={data.projected_score}
+            awayTeam={data.away_team}
+            homeTeam={data.home_team}
+          />
+          <StartingQuarterbacksCard
+            startingQb={data.starting_qb}
             awayTeam={data.away_team}
             homeTeam={data.home_team}
           />

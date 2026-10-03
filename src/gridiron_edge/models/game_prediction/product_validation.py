@@ -18,6 +18,7 @@ from gridiron_edge.models.game_prediction.weekly_game_product import (
     ProjectedScoreStatus,
 )
 from gridiron_edge.models.game_prediction.weekly_spread_product import WeeklySpreadStatus
+from gridiron_edge.models.game_prediction.weekly_starting_qb import validate_starting_qb_record
 from gridiron_edge.models.game_prediction.weekly_total_product import WeeklyTotalStatus
 from gridiron_edge.models.game_prediction.weekly_win_product import WeeklyWinStatus
 
@@ -359,5 +360,6 @@ def validate_weekly_game_product(product: DataFrame) -> DataFrame:
         _validate_projected_scores(row)
 
     _validate_selected_role_coherence(normalized)
+    validate_starting_qb_record(normalized)
 
     return normalized

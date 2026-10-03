@@ -20,8 +20,15 @@ from gridiron_edge.evaluation.forecast_contracts import WeeklyProductIdentity
 from gridiron_edge.models.game_prediction.product_validation import (
     validate_weekly_game_product,
 )
+from gridiron_edge.models.game_prediction.weekly_starting_qb import has_starting_qb_columns
 
-WEEKLY_PRODUCT_SCHEMA_VERSION: Final[int] = 1
+WEEKLY_PRODUCT_SCHEMA_VERSION: Final[int] = 2
+# Version 1 products predate the recorded starting quarterbacks (``DECISIONS.md`` D77) and
+# stay loadable because the recorded Week 1 chain depends on them; the API reports their
+# starters as not recorded.
+SUPPORTED_WEEKLY_PRODUCT_SCHEMA_VERSIONS: Final[frozenset[int]] = frozenset({1, 2})
+_UNRECORDED_STARTING_QB_SCHEMA_VERSION: Final[int] = 1
+_INDEX_SCHEMA_VERSION: Final[int] = 1
 _INDEX_FILENAME: Final[str] = "index.json"
 _PRODUCTS_DIRECTORY: Final[str] = "products"
 _CURRENT_FILENAME: Final[str] = "current.json"
@@ -123,7 +130,7 @@ def _index_path(repo: Path | None = None) -> Path:
 
 def _empty_index() -> dict[str, object]:
     return {
-        "schema_version": WEEKLY_PRODUCT_SCHEMA_VERSION,
+        "schema_version": _INDEX_SCHEMA_VERSION,
         "products": {},
     }
 
@@ -138,10 +145,10 @@ def _read_index(repo: Path | None = None) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("Weekly product index must contain a JSON object.")
     schema_version = raw.get("schema_version")
-    if schema_version != WEEKLY_PRODUCT_SCHEMA_VERSION:
+    if schema_version != _INDEX_SCHEMA_VERSION:
         raise ValueError(
             "Unsupported weekly product index schema version: "
-            f"{schema_version!r}; expected {WEEKLY_PRODUCT_SCHEMA_VERSION}."
+            f"{schema_version!r}; expected {_INDEX_SCHEMA_VERSION}."
         )
     products = raw.get("products")
     if not isinstance(products, dict):
@@ -323,7 +330,12 @@ def _stamp_product(
     stamped.insert(0, "product_generated_at", generated_at)
     stamped.insert(0, "product_run_id", identity.run_id)
     stamped.insert(0, "product_id", identity.product_id)
-    stamped.insert(0, "product_schema_version", WEEKLY_PRODUCT_SCHEMA_VERSION)
+    schema_version = (
+        WEEKLY_PRODUCT_SCHEMA_VERSION
+        if has_starting_qb_columns(validated)
+        else _UNRECORDED_STARTING_QB_SCHEMA_VERSION
+    )
+    stamped.insert(0, "product_schema_version", schema_version)
     return stamped
 
 
@@ -349,8 +361,13 @@ def _load_indexed_artifact(
         )
 
     versions = set(stored["product_schema_version"].tolist())
-    if versions != {WEEKLY_PRODUCT_SCHEMA_VERSION}:
+    if len(versions) != 1 or not versions <= SUPPORTED_WEEKLY_PRODUCT_SCHEMA_VERSIONS:
         raise ValueError(f"Weekly product artifact schema mismatch for {record.product_id!r}.")
+    if (versions == {WEEKLY_PRODUCT_SCHEMA_VERSION}) != has_starting_qb_columns(stored):
+        raise ValueError(
+            f"Weekly product artifact starting-QB record disagrees with its schema version "
+            f"for {record.product_id!r}."
+        )
     if set(stored["product_id"].astype(str)) != {record.product_id}:
         raise ValueError(f"Weekly product artifact product_id mismatch for {record.product_id!r}.")
     if set(stored["product_run_id"].astype(str)) != {record.run_id}:

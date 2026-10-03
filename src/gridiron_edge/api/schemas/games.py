@@ -86,6 +86,43 @@ class ProjectedScoreBlock(BaseModel):
     away: float | None = None
 
 
+class StartingQbSide(BaseModel):
+    """One side's assumed starting quarterback, as persisted with the forecast."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    player_id: str
+    name: str | None = None
+    source: str = Field(
+        description="depth_chart_report, nflverse_schedule or carried_forward.",
+    )
+    projection_as_of: str | None = Field(
+        default=None,
+        description="Depth chart snapshot time (UTC); only for a depth_chart_report source.",
+    )
+    nflverse_player_id: str | None = Field(
+        default=None,
+        description="The nflverse schedule's own value when the forecast was composed.",
+    )
+    carried_forward_player_id: str | None = None
+    differs_from_carry_forward: bool | None = None
+
+
+class StartingQbBlock(BaseModel):
+    """The quarterbacks the forecast assumed, or why they were not recorded."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: str = Field(
+        description=(
+            "available, starter_unresolved or sidecar_unavailable as recorded with the "
+            "product; not_recorded for a product composed before starters were recorded."
+        ),
+    )
+    away: StartingQbSide | None = None
+    home: StartingQbSide | None = None
+
+
 class GameSummary(BaseModel):
     """One scheduled row in the /games list response."""
 
@@ -101,6 +138,7 @@ class GameSummary(BaseModel):
     spread: SpreadPredictionBlock
     total: TotalPredictionBlock
     projected_score: ProjectedScoreBlock
+    starting_qb: StartingQbBlock
 
 
 class GameList(BaseListResponse[GameSummary]):
@@ -126,6 +164,7 @@ class GameDetail(BaseResponse):
     spread: SpreadPredictionBlock
     total: TotalPredictionBlock
     projected_score: ProjectedScoreBlock
+    starting_qb: StartingQbBlock
     weather: WeatherBlock | None = None
     team_comparison: dict | None = None
     swing_factors: list[dict] | None = None

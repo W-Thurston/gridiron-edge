@@ -110,7 +110,278 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. A three-unit program (Units 12-14, ROADMAP W1-W3) is proposed below and awaits review. Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+
+### Proposed Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3) [Awaiting review, scoped October 3, 2026]
+
+Active unit: none. Unit 12 is complete; Units 13 and 14 remain proposed. The program is three bounded units, run one
+at a time in this order: **Unit 12 (W2)**, **Unit 13 (W1)**, **Unit 14 (W3)**. Evidence for every
+statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
+were not.
+
+**Why this order.** W2 first because every `weekly-predict` run before it ships writes a product
+that cannot record its assumed starters, and W3 cannot score a week that has no record (the next
+live run is week 5). W1 is independent and could swap with W2; it is second because it needs the
+Pi decision and the Pi evidence. W3 last because it needs W2's persisted record and a finished
+week to score.
+
+#### Verified state that drives the design
+
+- **Selected week 4 product is `weekly_2026_2027_wk04_81248588-b472-4ccd-9748-5f5525c6e844`**
+  (`current.json`, generated 2026-10-03T16:41Z). Five week-4 products are on disk (not four), and
+  none is named `25c6e844`; the request's id does not match this checkout.
+- **Stale market (W1).** `odds_current.parquet` has one `fetched_at`, 2026-09-30T12:38:29Z, from
+  `ingest odds` (3.2 days before the selected product). `evaluate_edge_diagnostics` supports
+  `as_of` and `max_market_age`, but all four callers (`weekly-predict` edge stage, `verify-week`,
+  `gridiron edges`, the API loader) call `build_weekly_edge_result` without them, so the blocker
+  can never fire. `verify-week` prints "Market fetched at 2026-09-30T12:38:29" next to "Ready, No
+  blockers"; the frontend Line Shopping screen shows the timestamp with no age or flag; the API
+  edge field carries `market_fetched_at` but no age. The week 4 edge result on that snapshot was 337 positive-EV rows
+  of 403 eligible, top IND @ WAS moneyline at +40.7% EV (see the fresh-quote result below).
+- **Why the Pi evidence is missing here.** `GRIDIRON_COLLECTOR_HOST` is unset, no
+  `gridiron-edge-collector-sync` user timer is installed, and the newest local collection receipt
+  is 2026-09-14T22:20Z. Local ledger weeks 2, 3 and 4 hold exactly one manual `ingest odds`
+  snapshot each; only week 1 has collector data (34 snapshots, 16 games).
+- **The Pi is running but collecting nothing for week 4** (read from the Pi by the user on
+  2026-10-03, pasted into the session; not independently verified). The collector timer fires every
+  5 minutes and each run reports "completed", but `current.json` still selects week 3 (selected
+  2026-09-28T01:13Z), only plans for weeks 1 and 3 exist (none for week 2 or week 4), and the Pi's
+  newest week 3 receipt is `scheduled_at=2026-09-28T231329Z` (12 runs; week 1 has 34). The Pi's
+  `odds_current.parquet` is from 2026-09-28 17:15 MDT, older than this machine's manual
+  2026-09-30 snapshot. So no weekly rollover was run for week 4 (`gridiron ops
+  rollover-collector-week`), and the runs since 09-28 poll nothing. Consequence for the design:
+  a pull alone cannot make week 4's snapshot fresh, and the freshness gate must be what notices
+  an idle collector. It also means the dense ledger evidence is one week (week 1) plus a short week
+  3, not the several weeks assumed earlier.
+- **Pi rollover and pull, 2026-10-03 (run by the user; outputs pasted into the session).** The
+  week 4 plan was pushed to the Pi and selected there (`current.json` week 4, selected
+  2026-10-03T19:25Z; 28 polls, last 2026-10-05T22:20Z), so the Pi should collect from the next
+  5-minute tick (*unverified*). The first polls of the plan had already passed. The pull then
+  replaced two local files with the Pi's copies: `odds_current.parquet` is now the Pi's week 3
+  snapshot (52 rows, 2026-09-28T23:15Z; no week 4 rows), and
+  `history/.../week=03/observations.parquet` now holds the Pi's 12 snapshots (636 rows). **The
+  local-only 2026-09-22 week 3 manual snapshot (850 rows) is gone and is not recoverable from this
+  checkout.** Cause: `build_rsync_command` uses `rsync -az` with no `--ignore-existing`, so the
+  documented "one-way and additive only" pull overwrites a same-path file whose local content
+  differs (HANDOFF.md says it never deletes; it does not promise to keep local content, but the
+  ledger is documented as append-only evidence). The 2026-09-30 week 4 snapshot survives in
+  `history/.../week=04`. Until the Pi writes week 4 quotes and they are pulled, week 4 edges are
+  blocked as market wrong scope, which is the honest state. Unit 13 includes fixing the pull so
+  it merges append-only ledger files and never replaces local observations.
+- **Fresh-quote result, 2026-10-03 (second pull, after the Pi polled week 4).** The Pi polled week 4
+  at 2026-10-03T19:30:38Z; `odds_current.parquet` now has 810 rows for 15 games at that time, and
+  `verify-week` reads "Market fetched at 2026-10-03T19:30:38" and Ready. **Fresh quotes did not
+  remove the Washington edge: IND @ WAS home moneyline is now +48.2% EV (market 33.1% at FanDuel
+  +180, model 52.9%), up from +40.7%.** LA @ PHI rose from +33.3% to +46.0%; positive-edge rows
+  stayed 337 of 405 eligible. So the stale line was not what produced the Washington edge, and the
+  earlier framing of it as a stale-quote artifact is withdrawn: it is a real model-versus-market
+  disagreement. W1 is still needed (the 3.2-day-old snapshot was served as current with no flag),
+  but the Washington disagreement is a model/input question, and the assumed Washington starter
+  (Mariota in place of Daniels, D76) is the first input to examine, which is what Unit 12's record
+  makes inspectable. This is not evidence the model is wrong or right: no outcome is known.
+  The second pull also replaced the local 2026-09-30 week 4 snapshot file with the Pi's (now one
+  snapshot, 19:30Z); that snapshot, the one the selected product's edges had used, is gone too.
+- **Unpersisted starter (W2).** The product has 62 columns and none mention quarterbacks. The
+  selected product's prediction-input evidence records the QB/coach sidecar's SHA-256 and size
+  (`ee9c8a73...`, 151,937 bytes), which still match the file on disk today, plus raw and
+  transformed feature values, but no ids or sources, and the digest cannot recover a file once the
+  sidecar is rewritten. The depth-chart and injury caches are not in the evidence's nine source
+  artifacts. The API schema has no quarterback field. For week 4 the sidecar projects 15 of 16
+  games (the played Thursday game has none); in 4 of 30 team slots the live starter differs from
+  the last actual starter (WAS, TB, CHI, SEA).
+- **A third source exists and nothing records it.** `NFL_upcoming_schedule_nflverse.parquet` now
+  carries `away_qb_id`/`home_qb_id` for weeks 4 and 5 (15 of 15 each, 0 for week 6 on), and
+  `RESOLVED = projected else forward-fill(raw)` already uses it. `DECISIONS.md` D65 recorded those
+  fields as null for every unplayed game on 2026-09-28; the file was refreshed today and its prior
+  state is gone. The nflverse value and the projection agree in 28 of 30 week 4 team slots
+  (they disagree for SEA and CHI, both home), so the scorecard has a real question to settle. *Unverified*:
+  what nflverse's pre-game value is derived from, and when it began appearing.
+- **Baseline for scoring.** Carry-forward matched the actual starter in 57 of 64 team-games
+  (89.1%) in 2026 weeks 2-3, consistent with D75's 88.4%. A week is 30-32 slots, so one week's
+  accuracy has a standard error of roughly 5 points.
+- **The week 4 assumption record is perishable.** Week 4's projection exists only in the current
+  sidecar, whose digest still matches the selected product's evidence. Any sidecar rebuild after
+  week 4 games are played rewrites it. A hash-verified copy is an approved-write step (see open
+  questions) and bridges until W2 ships.
+- **Product schema is strict.** `_load_indexed_artifact` rejects any artifact whose
+  `product_schema_version` is not the single current value, so a bump makes the 16 existing
+  products (weeks 1-4, including the Week 1 production-chain inputs) unloadable unless the loader
+  accepts both. *Unverified* which consumers of those products would break.
+
+#### Unit 12 - Persist and Show the Assumed Starting QB (W2) [Completed October 3, 2026]
+
+Closed; the completed record is under "Unit 12" below.
+
+#### Unit 13 - Market Freshness (W1) [Proposed, not started]
+
+**Goal.** A quote snapshot older than a maximum age cannot produce edges silently: the age is
+always visible, and over-age blocks edges, not predictions.
+
+**Design.**
+0. Fix `pull-collector-evidence` so a pull can never replace a local observation file with
+   fewer observations (merge or refuse; test with a local-only snapshot), and re-decide whether
+   a pull may replace `odds_current.parquet`.
+1. Sync path (decision taken, see Decisions taken). Preferred: `gridiron ops pull-collector-evidence`
+   mirrors the Pi's ledger and current snapshot (the sync timer is not installed here; the
+   command exists), with `ingest odds` as the manual fallback. No new network code.
+2. `as_of` is the evaluation clock, injected at each boundary (edge stage, `verify-week`,
+   `gridiron edges`, the API dependency) so the pure evaluator stays clock-free. One shared
+   constant for `max_market_age`, owned by one module, with a `DECISIONS.md` entry.
+3. The threshold comes from a reproducible quote-movement report over the ledger (new
+   `docs/reports/quote-movement.md`, same pattern as the starting-QB report). Exploratory read of
+   week 1 (16 games, 34 snapshots, 2026-09-08 to 09-14, overlapping pairs so not independent,
+   not conditioned on time to kickoff): median absolute move in the vig-free home win
+   probability is 0.09/0.13/0.17/0.34/0.97/1.28 points at lags of 3-6h/6-12h/12-24h/24-48h/
+   48-72h/over 72h, and the 90th percentile is 0.82/1.25/0.87/1.60/1.97/2.84 points (consensus
+   spread and total medians almost never move; their 90th percentile is 0.5 points). At even odds
+   EV changes by twice the probability change. **No number is chosen here.** A criterion must be
+   declared before the data that confirms it is read; the dense Pi ledger is week 1 only,
+   plus week 3 (two games, 12 runs, not read), so the confirmation set is thin: later weeks collected
+   after the week 4 rollover are the real confirmation, and the threshold may need to ship as
+   provisional until they exist. If the criterion is set after reading week 1, the
+   `DECISIONS.md` entry says so, as in D75.
+4. Over-age behavior. **Recommended:** `MARKET_STALE` blocks edge rows, recommendation and Kelly
+   output (a +40% EV line is exactly the harm) while market readiness reports
+   `stale_market_data` and prediction readiness is untouched. The edge stage's "success" and
+   `weekly-predict`'s exit code then follow existing blocked-edge behavior (to be confirmed
+   against `weekly_predict.py` in this unit). The alternative, a visible warning with edges kept,
+   is in the open questions.
+5. Display: "Market as of" and age in the edge report, `verify-week` output, rendered output,
+   API edge diagnostics (age and stale flag serialized, computed against an injected clock) and the
+   frontend (Line Shopping, edge tables) via field-status components.
+
+**Tests.** Pure: boundary at the max age, timezone and clock injection, per-game scoping, the
+played-game case. Callers: each boundary passes the clock. Readiness: stale gives
+`market_ready` false and `prediction_ready` unchanged. API and frontend contract tests, then
+generated contracts. Real data: week 4 as it stands (3.2 days old) must block; a fresh pull must
+unblock.
+
+**Acceptance.** No edge, recommendation or Kelly stake is produced from an over-age snapshot;
+age is visible at every surface that shows a quote or an edge; threshold and criterion recorded
+in `DECISIONS.md` with the data it came from and what was chosen after seeing it; gates pass.
+
+#### Unit 14 - Weekly Starter Projection Scorecard (W3) [Proposed, not started; needs Unit 12 and a finished week]
+
+**Goal.** After a week's games, score what the live system assumed against the actual starters,
+and persist the result.
+
+**Design.**
+1. `gridiron evaluate starter-scorecard --season S --week W` reads the selected product's
+   persisted record (Unit 12), the actual starters in `NFL_wk_by_wk_nflverse.parquet`, and scores
+   three predictors per team slot: the assumed starter, the nflverse schedule value recorded at
+   composition, and carry-forward. Refuses a week with unplayed games or a product without a
+   record (`not_recorded`); the Thursday game already played at composition is excluded as "not
+   assumed".
+2. Output: counts (slots scored, correct per predictor), per-team miss rows (team, assumed,
+   nflverse, carry-forward, actual, source, as-of), and a cumulative roll-up across scored weeks.
+   Persisted as an immutable, identity-addressed artifact under `data/output/` through the
+   dataset registry; a rerun for the same product replays or is rejected, never overwritten.
+3. No pass/fail threshold is set now. One week is about 30 slots (standard error roughly 5
+   points) and the early-week behavior D75 could not test is exactly what is being observed; any
+   decision criterion is declared in `DECISIONS.md` before the roll-up passes a declared sample
+   size, and the entry says whether it was set before or after the data.
+
+**Tests.** Synthetic weeks covering each predictor right and wrong, a substitution, unplayed
+refusal, missing record refusal, replay and conflict, per-team detail. Real data: score week 5
+after it is played.
+
+**Acceptance.** The scorecard reproduces by hand for one team-week; a second run is idempotent;
+rows missing a record are named, not dropped; documentation updated.
+
+#### Decisions taken (delegated to the assistant by the user, October 3, 2026)
+
+The user confirmed the Pi collector is running and deferred the design choices. Each is a
+recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its unit lands.
+
+1. **Pi sync:** run the weekly `rollover-collector-week` step (the Pi is idle on week 3) and use
+   `gridiron ops pull-collector-evidence` as the path from the Pi's ledger to the
+   local snapshot; `ingest odds` stays the manual fallback. Needs the Pi's host
+   (`GRIDIRON_COLLECTOR_HOST`) and an approved pull before Unit 13's evidence step. Installing the
+   sync timer is a machine-configuration change and stays the user's call.
+2. **Over-age snapshot:** a blocker for edges, recommendations and Kelly stakes; market readiness
+   reports `stale_market_data`; prediction readiness is untouched.
+3. **Product schema:** version 2, with the loader accepting exactly {1, 2} and the API reporting
+   `not_recorded` for version 1 products.
+4. **Week 4 sidecar copy:** worth doing now as a hash-verified copy, but it writes `data/` and
+   waits for explicit approval.
+5. **Depth-chart and injury cache digests in the evidence:** out of Unit 12's scope. The product
+   record plus the sidecar digest bind the starter to the run; widening the evidence schema is a
+   separate unit if the projection inputs ever need to be replayed.
+6. **Staleness clock:** the server injects the clock at each boundary (including the API
+   dependency) to enforce the blocker; the frontend displays age computed from the served
+   `market_fetched_at`.
+
+### Unit 12 — Persist and Show the Assumed Starting QB [Completed October 3, 2026]
+
+#### Completed
+
+Each weekly product now records, per game and side, the assumed starting QB: id, name, source
+(`depth_chart_report`, `nflverse_schedule`, `carried_forward`), the depth chart snapshot time, the
+nflverse schedule's own value at composition, the carry-forward baseline, whether the assumed
+starter differs from it, and a per-game `starting_qb_status` (`available`, `starter_unresolved`,
+`sidecar_unavailable`). The record is built by `resolve_starting_qb_provenance`, the same
+computation that feeds the QB features, and only from a sidecar whose SHA-256 matches the run's
+prediction-input evidence; composition fails if the sidecar changed. Product schema 2 carries the
+record; schema 1 products still load and the API serves them as `not_recorded`. The store stamps
+version 2 when the record is present and version 1 otherwise, and a version and its columns must
+agree. `/games` and `/games/{game_id}` serve a required `starting_qb` block and the game page
+shows it, with explicit text for unresolved and not-recorded states (`DECISIONS.md` D77). The
+depth chart and injury cache digests stay out of the evidence. No product was regenerated; the
+selected week 4 product is version 1 and reads `not_recorded`.
+
+#### Goal
+
+Make what the forecast assumed about each team's starting quarterback persisted, reproducible and
+visible, so it can be inspected now and scored against actual starters later.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/models/game_prediction/weekly_starting_qb.py` - the product's starting-QB record: columns, statuses, attachment from the resolver, validation.
+- `tests/unit/models/game_prediction/test_weekly_starting_qb.py` - record sources, statuses, validation, schema 1 and 2 storage and mismatch rejection.
+- `frontend/src/components/games/StartingQuarterbacksCard.tsx` - game-page card for the persisted starters and their non-available states.
+- `frontend/src/components/games/StartingQuarterbacksCard.test.tsx` - card coverage for recorded, not-recorded and unresolved states.
+
+Changed:
+- `src/gridiron_edge/features/team/qb_profile.py` - `resolve_starting_qb_provenance` returns source, snapshot time and baselines; `resolve_starting_qb_history` is a view of it.
+- `src/gridiron_edge/models/game_prediction/product_validation.py` - validates the starting-QB record when present.
+- `src/gridiron_edge/models/game_prediction/weekly_product_store.py` - schema 2, supported versions {1, 2}, version stamped by record presence, version and columns must agree, separate index version.
+- `src/gridiron_edge/cli/_weekly_product_composition.py` - evidence-digest-bound sidecar loading, name lookup and record attachment at composition.
+- `src/gridiron_edge/api/schemas/games.py`, `src/gridiron_edge/api/serializers/games.py` - the `starting_qb` block, `not_recorded` for schema 1 products.
+- `api-schema.json` - regenerated by `gridiron api export-schema`.
+- `frontend/src/screens/GameDetail.tsx` - renders the card.
+- `frontend/src/components/field-status/weeklyComponentStatus.ts` - status and source copy for starting QBs.
+- `tests/unit/api/test_schemas_games.py`, `tests/unit/api/test_serializers_games.py` - block schema and serialization, including `not_recorded`.
+- `tests/unit/cli/test_weekly_product_composition.py`, `tests/unit/cli/test_weekly_predict_product_stage.py` - digest binding and the record on the composed product.
+- `tests/unit/models/game_prediction/test_weekly_product_store.py` - round trip of a recorded product.
+- `frontend/src/components/dashboard/FeaturedMatchupsGrid.test.tsx`, `frontend/src/components/games/gameCardData.test.ts`, `frontend/src/screens/GameDetail.test.tsx`, `frontend/src/screens/GamesList.test.tsx` - fixtures carry the required block.
+- `DECISIONS.md` - D77.
+- `HANDOFF.md` - the product record and schema versions.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - W2 status.
+- `PLAN.md` - this record, and the proposed program for Units 13 and 14.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests cover each source (projected, nflverse, carried forward), unresolved and missing-sidecar
+statuses, parity with the feature resolver, validation failures, schema 1 and 2 round trips, version and
+column disagreement and unsupported versions, evidence-digest binding, and the API and frontend states.
+Python gate: ruff, pyrefly 0 errors, 4,647 unit tests passed. Frontend gate: lint, build, 520 tests passed.
+`export-schema` and `gen:api` run. Real data: on the digest-verified copy of the week 4 sidecar all 15
+games resolve with names, the record's ids equal the feature resolver's, and four home slots differ from
+carry-forward (WAS, TB, CHI, SEA); the selected week 4 product reads `not_recorded`. Not verified: a real
+`weekly-predict` composition and the page in a browser.
+
+#### Acceptance
+
+A freshly composed product carries a validated record whose ids equal the features' ids and which cannot
+be built from a changed sidecar; version 1 products load unchanged and are reported as not recorded; the API
+and page show source, snapshot time and difference or an explicit unavailable state; generated contracts
+come from their commands; the gates pass and documentation is current. Regenerating week 4 is a separate
+approved step.
 
 ### Unit 11 — Weekly Readiness Coverage Counts Only Scheduled Games [Completed October 3, 2026]
 

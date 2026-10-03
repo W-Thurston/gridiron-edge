@@ -25,6 +25,9 @@ from gridiron_edge.models.game_prediction.weekly_product_store import (
     weekly_product_root,
     write_weekly_product,
 )
+from gridiron_edge.models.game_prediction.weekly_starting_qb import (
+    attach_starting_qb_assumptions,
+)
 
 
 def _product(
@@ -99,7 +102,7 @@ def _read_index(repo: Path) -> dict[str, object]:
 
 
 def test_product_round_trips_without_schema_loss(tmp_path: Path) -> None:
-    source = _product()
+    source = attach_starting_qb_assumptions(_product(), None)
     identity = _identity()
 
     write_weekly_product(source, identity=identity, repo=tmp_path)

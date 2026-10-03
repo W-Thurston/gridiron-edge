@@ -16,6 +16,8 @@ from gridiron_edge.api.schemas.games import (
     GameSummary,
     ProjectedScoreBlock,
     SpreadPredictionBlock,
+    StartingQbBlock,
+    StartingQbSide,
     TotalPredictionBlock,
     WinPredictionBlock,
 )
@@ -102,6 +104,33 @@ def _build_projected_score_block(row: dict) -> ProjectedScoreBlock:
     )
 
 
+def _build_starting_qb_side(row: dict, side: str) -> StartingQbSide | None:
+    player_id = _text(row, f"{side}_qb_id")
+    if player_id is None:
+        return None
+    differs = _none_if_nan(row.get(f"{side}_qb_differs_from_carry_forward"))
+    return StartingQbSide(
+        player_id=player_id,
+        name=_text(row, f"{side}_qb_name"),
+        source=str(row[f"{side}_qb_source"]),
+        projection_as_of=_text(row, f"{side}_qb_projection_as_of"),
+        nflverse_player_id=_text(row, f"{side}_qb_nflverse_id"),
+        carried_forward_player_id=_text(row, f"{side}_qb_carried_forward_id"),
+        differs_from_carry_forward=None if differs is None else bool(differs),
+    )
+
+
+def _build_starting_qb_block(row: dict) -> StartingQbBlock:
+    """Serialize the persisted starters; a product without the record says so."""
+    if "starting_qb_status" not in row:
+        return StartingQbBlock(status="not_recorded")
+    return StartingQbBlock(
+        status=str(row["starting_qb_status"]),
+        away=_build_starting_qb_side(row, "away"),
+        home=_build_starting_qb_side(row, "home"),
+    )
+
+
 def serialize_game_summary(row: dict) -> GameSummary:
     """Convert one persisted weekly-product row to a list item."""
     return GameSummary(
@@ -115,6 +144,7 @@ def serialize_game_summary(row: dict) -> GameSummary:
         spread=_build_spread_block(row),
         total=_build_total_block(row),
         projected_score=_build_projected_score_block(row),
+        starting_qb=_build_starting_qb_block(row),
     )
 
 
@@ -161,6 +191,7 @@ def serialize_game_detail(
         spread=_build_spread_block(row),
         total=_build_total_block(row),
         projected_score=_build_projected_score_block(row),
+        starting_qb=_build_starting_qb_block(row),
         weather=None,
         team_comparison=team_comparison,
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]

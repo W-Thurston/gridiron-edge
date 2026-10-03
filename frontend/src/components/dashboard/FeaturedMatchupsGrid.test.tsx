@@ -81,6 +81,7 @@ function gameResponse(): GameList {
         spread: { status: "available", model_spread: -2.5 },
         total: { status: "available", model_total: 47.5 },
         projected_score: { status: "available", away: 22.5, home: 25 },
+        starting_qb: { status: "not_recorded" },
       },
     ],
   };

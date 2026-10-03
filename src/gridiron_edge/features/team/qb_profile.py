@@ -67,6 +67,9 @@ _HOME_AWAY_INPUT_COLUMNS: Final[tuple[str, ...]] = (
     "HOME_TEAM",
 )
 
+QB_SOURCE_NFLVERSE_SCHEDULE = "nflverse_schedule"
+QB_SOURCE_CARRIED_FORWARD = "carried_forward"
+
 _SIDECAR_REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
     "GAME_ID",
     "YEAR",
@@ -151,33 +154,44 @@ def _projected_ids(sidecar: DataFrame, column: str) -> Series:
     return Series(pd.NA, index=sidecar.index, dtype="string")
 
 
-def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
-    """Build one carried-forward starter per (team, season, week).
+def _projected_text(sidecar: DataFrame, column: str) -> Series:
+    """Return a projection text column, null when the sidecar does not carry it."""
+    if column in sidecar.columns:
+        return sidecar[column]
+    return Series(pd.NA, index=sidecar.index, dtype="string")
+
+
+def resolve_starting_qb_provenance(sidecar: DataFrame) -> DataFrame:
+    """Resolve one starter per (game, side) with where each id came from.
 
     Every sidecar row already carries the actual starter for played games
-    and a null starter for unplayed games. Forward-filling each team's QB
-    identity chronologically leaves actual values untouched and replaces
-    only the nulls (unplayed games) with the most recent known starter -
-    the carry-forward policy in ``DECISIONS.md`` D65. An unplayed game with a
-    projected starter (``*_QB_ID_PROJECTED``, ``DECISIONS.md`` D75) uses that
-    id for its own row instead; played games never carry a projection.
+    and, for an unplayed game, whatever the nflverse schedule publishes (often
+    null). Forward-filling each team's QB identity chronologically leaves
+    known values untouched and replaces only the nulls with the most recent
+    known starter - the carry-forward policy in ``DECISIONS.md`` D65. An
+    unplayed game with a projected starter (``*_QB_ID_PROJECTED``,
+    ``DECISIONS.md`` D75) uses that id for its own row instead; played games
+    never carry a projection.
+
+    Besides the resolved id and the change flag, the frame records the
+    provenance the weekly product persists (``DECISIONS.md`` D77): the source,
+    the projection snapshot time, the sidecar's own value, and the team's most
+    recent earlier known starter, so what was assumed is reproducible from the
+    same computation that feeds the features.
     """
     _require_columns(sidecar, _SIDECAR_REQUIRED_COLUMNS, label="QB/coach sidecar")
 
-    away = sidecar.loc[
-        :,
-        ["GAME_ID", "YEAR", "WEEK_NUM", "AWAY_TEAM", "AWAY_QB_ID"],
-    ].rename(columns={"AWAY_TEAM": "TEAM", "AWAY_QB_ID": "QB_ID"})
-    away["PROJECTED_QB_ID"] = _projected_ids(sidecar, "AWAY_QB_ID_PROJECTED")
-    away["SIDE"] = "AWAY"
-    home = sidecar.loc[
-        :,
-        ["GAME_ID", "YEAR", "WEEK_NUM", "HOME_TEAM", "HOME_QB_ID"],
-    ].rename(columns={"HOME_TEAM": "TEAM", "HOME_QB_ID": "QB_ID"})
-    home["PROJECTED_QB_ID"] = _projected_ids(sidecar, "HOME_QB_ID_PROJECTED")
-    home["SIDE"] = "HOME"
+    sides = []
+    for side, team_column in (("AWAY", "AWAY_TEAM"), ("HOME", "HOME_TEAM")):
+        frame = sidecar.loc[:, ["GAME_ID", "YEAR", "WEEK_NUM", team_column, f"{side}_QB_ID"]]
+        frame = frame.rename(columns={team_column: "TEAM", f"{side}_QB_ID": "QB_ID"})
+        frame["PROJECTED_QB_ID"] = _projected_text(sidecar, f"{side}_QB_ID_PROJECTED")
+        frame["PROJECTION_SOURCE"] = _projected_text(sidecar, f"{side}_QB_PROJECTION_SOURCE")
+        frame["PROJECTION_AS_OF"] = _projected_text(sidecar, f"{side}_QB_PROJECTION_AS_OF")
+        frame["SIDE"] = side
+        sides.append(frame)
 
-    history = pd.concat([away, home], ignore_index=True)
+    history = pd.concat(sides, ignore_index=True)
     history["SEASON"] = _season_numbers(history["YEAR"])
     history = history.sort_values(
         ["TEAM", "SEASON", "WEEK_NUM", "GAME_ID"],
@@ -188,9 +202,8 @@ def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
     # The forward-fill base is the raw id, so games after a projected one stay anchored to
     # the last known starter; a projected id then replaces the resolved id for its own game.
     carried = history.groupby("TEAM", sort=False)["QB_ID"].ffill()
-    history["RESOLVED_QB_ID"] = history["PROJECTED_QB_ID"].where(
-        history["PROJECTED_QB_ID"].notna(), carried
-    )
+    projected = history["PROJECTED_QB_ID"].notna()
+    history["RESOLVED_QB_ID"] = history["PROJECTED_QB_ID"].where(projected, carried)
     history["PREV_RESOLVED_QB_ID"] = history.groupby("TEAM", sort=False)["RESOLVED_QB_ID"].shift(1)
     history["QB_CHANGE_FLAG"] = (
         history["PREV_RESOLVED_QB_ID"].notna()
@@ -198,7 +211,39 @@ def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
         & history["PREV_RESOLVED_QB_ID"].ne(history["RESOLVED_QB_ID"])
     ).astype(int)
 
+    history["NFLVERSE_QB_ID"] = history["QB_ID"]
+    history["CARRIED_FORWARD_QB_ID"] = carried.groupby(history["TEAM"], sort=False).shift(1)
+    history["QB_SOURCE"] = pd.Series(pd.NA, index=history.index, dtype="string")
+    history.loc[history["QB_ID"].notna(), "QB_SOURCE"] = QB_SOURCE_NFLVERSE_SCHEDULE
+    history.loc[history["QB_ID"].isna() & carried.notna(), "QB_SOURCE"] = QB_SOURCE_CARRIED_FORWARD
+    history.loc[projected, "QB_SOURCE"] = history.loc[projected, "PROJECTION_SOURCE"]
+    history.loc[~projected, "PROJECTION_AS_OF"] = pd.NA
+
     return history.loc[
+        :,
+        [
+            "GAME_ID",
+            "TEAM",
+            "SIDE",
+            "SEASON",
+            "WEEK_NUM",
+            "RESOLVED_QB_ID",
+            "QB_CHANGE_FLAG",
+            "QB_SOURCE",
+            "PROJECTION_AS_OF",
+            "NFLVERSE_QB_ID",
+            "CARRIED_FORWARD_QB_ID",
+        ],
+    ]
+
+
+def resolve_starting_qb_history(sidecar: DataFrame) -> DataFrame:
+    """Build one carried-forward starter per (team, season, week).
+
+    The feature-facing view of :func:`resolve_starting_qb_provenance`: the
+    resolved id and the change flag, nothing else.
+    """
+    return resolve_starting_qb_provenance(sidecar).loc[
         :,
         ["GAME_ID", "TEAM", "SIDE", "SEASON", "WEEK_NUM", "RESOLVED_QB_ID", "QB_CHANGE_FLAG"],
     ]
