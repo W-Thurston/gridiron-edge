@@ -441,8 +441,8 @@ def load_weekly_readiness(
         predictions=predictions,
         markets=markets,
         edges=edge_result.rows,
-        market_game_count=edge_result.diagnostics.market_game_count,
-        prediction_market_match_count=(edge_result.diagnostics.matched_game_count),
+        # Game coverage is derived from the schedule-scoped frames: edge diagnostics count every
+        # game in the snapshot and product, including games already played.
         eligible_market_count=(edge_result.diagnostics.eligible_market_count),
         positive_edge_count=(edge_result.diagnostics.positive_edge_count),
     )

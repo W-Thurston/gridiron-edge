@@ -145,6 +145,81 @@ def test_selected_product_builds_readiness_without_writes(
 @patch("gridiron_edge.cli.verify_week.load_current_odds")
 @patch("gridiron_edge.cli.verify_week.load_current_weekly_product")
 @patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
+def test_games_no_longer_scheduled_do_not_inflate_game_coverage(
+    mock_schedule: MagicMock,
+    mock_product: MagicMock,
+    mock_markets: MagicMock,
+    mock_edges: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """A played game still in the snapshot and product must not break readiness."""
+    generated_at = pd.Timestamp("2026-09-01T12:00:00Z")
+    fetched_at = pd.Timestamp("2026-09-01T13:00:00Z")
+    mock_schedule.return_value = pd.DataFrame(
+        {"season": ["2026-2027"], "week": [1], "game_id": ["game-1"]}
+    )
+    product = {
+        "product_id": ["product-1", "product-1"],
+        "season": ["2026-2027", "2026-2027"],
+        "week": [1, 1],
+        "game_id": ["game-1", "game-played"],
+        "home_win_prob": [0.55, 0.60],
+        "model_spread": [-1.5, -2.5],
+        "model_total": [44.5, 41.5],
+        "projected_home_score": [23.0, 22.0],
+        "projected_away_score": [21.5, 19.5],
+        "win_event_id": ["event-1", "event-2"],
+        "product_run_id": ["run-1", "run-1"],
+        "win_model_name": ["win_prob", "win_prob"],
+        "win_model_type": ["elo", "elo"],
+        "product_generated_at": [generated_at, generated_at],
+    }
+    mock_product.return_value = pd.DataFrame(product)
+    mock_markets.return_value = pd.DataFrame(
+        {
+            "fetched_at": [fetched_at] * 4,
+            "provider": ["the_odds_api"] * 4,
+            "sportsbook": ["draftkings"] * 4,
+            "season": ["2026-2027"] * 4,
+            "week": [1] * 4,
+            "game_id": ["game-1", "game-1", "game-played", "game-played"],
+            "market": ["moneyline"] * 4,
+            "side": ["home", "away", "home", "away"],
+            "odds": [-110.0] * 4,
+            "line": [None] * 4,
+        }
+    )
+    mock_edges.return_value = EdgeResult(
+        rows=pd.DataFrame({"ev": [0.04]}),
+        diagnostics=EdgeDiagnostics(
+            season="2026-2027",
+            week=1,
+            prediction_game_count=2,
+            market_game_count=2,
+            matched_game_count=2,
+            complete_moneyline_count=2,
+            complete_spread_count=0,
+            complete_total_count=0,
+            eligible_market_count=2,
+            calculated_edge_count=1,
+            positive_edge_count=1,
+            filtered_edge_count=1,
+            state=EdgeResultState.POSITIVE_EDGES,
+        ),
+    )
+
+    result = load_weekly_readiness(season="2026-2027", week=1, repo=tmp_path)
+
+    assert result.scheduled_game_count == 1
+    assert result.market_game_count == 1
+    assert result.prediction_market_match_count == 1
+    assert result.ready
+
+
+@patch("gridiron_edge.market.weekly_edge_service.build_weekly_edge_result")
+@patch("gridiron_edge.cli.verify_week.load_current_odds")
+@patch("gridiron_edge.cli.verify_week.load_current_weekly_product")
+@patch("gridiron_edge.cli.verify_week.load_schedule_upcoming_rich")
 def test_missing_selected_product_is_blocked(
     mock_schedule: MagicMock,
     mock_product: MagicMock,

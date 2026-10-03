@@ -1,5 +1,14 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Readiness no longer fails after a game of the week has been played
+
+#### Fixed
+
+- `verify-week` and the `weekly-predict` readiness stage raised `market_game_count must not exceed
+  scheduled_game_count` once any game of the week had been played, because edge diagnostics count
+  every game in the odds snapshot and product, including played ones. Game coverage is now derived
+  from the schedule-scoped frames. Normal weeks are unchanged.
+
 ### 2026-10-03 - Unit 10: the live QB features use a projected starting QB
 
 #### Changed

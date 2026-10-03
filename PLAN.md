@@ -110,7 +110,53 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+
+### Unit 11 — Weekly Readiness Coverage Counts Only Scheduled Games [Completed October 3, 2026]
+
+#### Completed
+
+`load_weekly_readiness` (`cli/verify_week.py`) no longer passes the edge diagnostics' game counts
+(`market_game_count`, `matched_game_count`) into `evaluate_weekly_readiness`, which derives them
+from the schedule-scoped markets and predictions it already receives. Edge diagnostics count every
+game in the odds snapshot and product, including games already played, so once a week's first game
+was played they exceeded the scheduled count and readiness raised `market_game_count must not
+exceed scheduled_game_count`, failing every `weekly-predict` rerun after that point. Normal weeks
+are unchanged (the derived and diagnostic counts are equal when every market game is scheduled);
+`eligible_market_count` and `positive_edge_count` still come from the edge result.
+
+#### Goal
+
+Make verification and `weekly-predict` work for in-week reruns after a game of the week has been
+played.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/cli/verify_week.py` - game coverage counts derived from schedule-scoped frames, not edge diagnostics.
+- `tests/unit/cli/test_verify_week.py` - regression test with a played game still in the snapshot and product.
+- `CHANGELOG.md` - shipped behavior.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+The regression test (schedule of one game, snapshot and product of two, diagnostics reporting two
+of each) fails on the previous code and passes now; the existing readiness, `verify-week` and
+`weekly-predict` tests pass (125). Python gate. Real data: `gridiron verify-week --season 2026-2027
+--week 4` reported Ready with no blockers (15 scheduled, 15 with market data), where the same
+state previously raised.
+
+#### Acceptance
+
+Readiness verification succeeds for a week with a played game still present in the odds snapshot
+and product; normal-week output is unchanged. The week 4 rerun is a separate approved operational
+step.
 
 ### Unit 10 — Projected Starting QB in Live Serving [Completed October 3, 2026]
 
