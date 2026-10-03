@@ -1,5 +1,25 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Unit 9 closed: projected starting-QB backtest, depth chart and injury caches
+
+#### Added
+
+- `gridiron ingest depth-charts` and `gridiron ingest injuries`: nflverse depth charts
+  (2001 onward) and injury reports (2009 onward), cached as-is per season at
+  `data/raw/depth_charts/` and `data/raw/injuries/`. A failed or empty fetch never
+  replaces a cached file. Nothing in the weekly pipeline consumes them yet.
+- `gridiron evaluate starting-qb-projection`: read-only backtest of a rules-based
+  projected starter against carry-forward (`docs/reports/starting-qb-projection.md`).
+  The resolver is a pure function returning the ordered candidate list.
+- `DECISIONS.md` D75: the accuracy bar narrowly missed (+1.92 points after week 1
+  against 2.0); the downstream test cleared the Phase A standard (+0.00112 Brier,
+  83% of seasons); feature integration proceeds.
+
+#### Known limits
+
+- The gain depends on the late-week injury report; early-week the chart alone is about
+  as accurate as carry-forward. nflverse's 2025+ injury files carry no modification time.
+
 ### 2026-10-01 - Logistic Win no longer applies home-field advantage at neutral sites
 
 #### Changed

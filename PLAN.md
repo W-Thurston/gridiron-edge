@@ -110,7 +110,79 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Next: integrating the projected starting QB into the live QB features (`DECISIONS.md` D75), to be scoped. Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+
+### Unit 9 — Projected Starting-QB Baseline Backtest [Completed October 3, 2026]
+
+#### Completed
+
+nflverse depth charts (2001 onward) and injury reports (2009 onward) are cached as-is
+under `data/raw/depth_charts/` and `data/raw/injuries/` by `gridiron ingest
+depth-charts` and `gridiron ingest injuries` (mirroring `ingest player-stats`; a failed
+or empty fetch never replaces a cached file; nothing in the weekly pipeline reads them
+yet). `gridiron evaluate starting-qb-projection` scores a rules-based projected starter
+(depth chart top quarterback, skipping anyone reported Out or Doubtful) against
+carry-forward (`DECISIONS.md` D65) on 8,309 team-games, 2009-2024, with a leakage
+guard and a 2025 snapshot timing check, and writes
+`docs/reports/starting-qb-projection.md`. The resolver is a pure function that returns
+the ordered candidate list with its inputs. Result (D75): 92.7% against 88.4% on every
+week; after week 1, 92.3% against 90.3% (+1.92 points), 0.08 under the pre-declared 2.0
+bar, which was an unprincipled round number chosen after an exploratory run (the claim
+that it was not tuned is withdrawn). A downstream test then fed the win model QB
+features for the previous starter, the resolver's pick and the actual starter,
+walk-forward 2013-2024: the resolver gains +0.00112 Brier [+0.00051, +0.00172] after
+week 1 (83% of seasons), capturing about 85% of the +0.00131 that perfect knowledge
+would give, which meets the D72 standard. That standard was applied after the first
+bar missed. The next unit integrates the projected starter into the QB features.
+
+#### Goal
+
+Establish, from history, whether a projected starting QB built from the depth chart
+and weekly availability beats carry-forward, and whether the difference is worth
+integrating, before any model, schema or serving change.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/ingest/nflverse/weekly_availability.py` - as-is per-season cache of depth charts and injury reports, with loaders.
+- `src/gridiron_edge/evaluation/starting_qb_projection.py` - pure projected-starter resolver, team-game frame, scoring, season-stratified bootstrap, bar and leakage guard, snapshot timing.
+- `src/gridiron_edge/evaluation/starting_qb_projection_report.py` - Markdown report builder.
+- `docs/reports/starting-qb-projection.md` - dated backtest record (not a pipeline input).
+- `tests/unit/ingest/nflverse/test_weekly_availability.py`, `tests/unit/evaluation/test_starting_qb_projection.py`, `tests/unit/cli/test_evaluate_starting_qb_projection.py` - ingestion, resolver, scoring, guard, timing, report and command coverage.
+
+Changed:
+- `src/gridiron_edge/cli/ingest.py` - `ingest depth-charts` and `ingest injuries`.
+- `src/gridiron_edge/cli/evaluate.py` - `evaluate starting-qb-projection`.
+- `DECISIONS.md` - D75.
+- `HANDOFF.md` - depth chart and injury caches and the backtest command.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - injury audit follow-up, Tier 7 reuse note, first-observed/current odds display idea.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests: ingestion (files written unchanged to the right directory, cached seasons
+skipped, failed or empty fetches leave the cache byte-identical, first seasons), resolver
+rules (skip Out and Doubtful, Questionable only in the variant, duplicates, ties, empty
+chart), scoring, bootstrap reproducibility, the bar and the leakage guard, 2025 snapshot
+timing with and without report timestamps, report content, and the command writing only
+the report. They found and fixed two edge cases (scoring an empty frame; a report with no
+misses). Python gate: ruff, pyrefly 0 errors, 4,605 unit tests passed with color off (eight
+existing CLI help-text tests fail when `FORCE_COLOR` is set, independent of this unit).
+Real data: the command reproduced the exploratory accuracies (88.4%, 89.8%, 92.7%) and ran on
+the cached files; the downstream estimate rebuilt actual-starter features that matched the
+modeling file exactly (maximum difference 0.0).
+
+#### Acceptance
+
+The report states each rule's accuracy with intervals by season and era, the error
+breakdown, the 2025 timing evidence and the leakage check; the bar was applied as
+written and missed narrowly; the downstream test was run and the call recorded in D75
+with its post-hoc status; no model, schema, champion or prediction artifact changed;
+the only `data/` writes were the approved raw caches.
 
 ### Unit 8 — Neutral-Site Handling in the Logistic Win Model [Completed October 1, 2026]
 

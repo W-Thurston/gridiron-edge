@@ -1308,6 +1308,22 @@ The QB-and-coach features fill a missing value only for a known starter or
 coach with no history (debut priors, D73); an unresolved identity stays missing
 and disables the family for the week.
 
+## Depth Chart and Injury Caches, Starting-QB Backtest
+
+`gridiron ingest depth-charts` and `gridiron ingest injuries` (`--season`, `--all-years`,
+`--force`; no option refreshes the current season) store nflverse depth charts
+(from 2001) and weekly injury reports (from 2009) as-is, one Parquet per season, at
+`data/raw/depth_charts/depth_charts_{season}.parquet` and
+`data/raw/injuries/injuries_{season}.parquet`. A fetch that fails or returns no rows
+never replaces a cached file. Nothing in `weekly-predict`, `post-week` or
+`run-data-pipeline` reads them. Depth charts before 2025 are weekly with no timestamp;
+2025 onward are timestamped snapshots in a different format. Injury reports are the last
+report of the week; 2025 onward carry no `date_modified`.
+
+`gridiron evaluate starting-qb-projection [--report-dir DIR]` reads those caches and the
+raw games file and writes `docs/reports/starting-qb-projection.md`. It changes no model,
+schema or `data/` artifact. See `DECISIONS.md` D75 for the result and its limits.
+
 ## Full Retrain Workflow
 
 Run:

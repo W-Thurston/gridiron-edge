@@ -6,6 +6,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from gridiron_edge.market.collection_plan import WeeklyQuoteCollectionPlan
 
 from pathlib import Path
@@ -363,6 +365,133 @@ def ingest_player_stats(
         s.set_detail(f"{len(paths)} file(s) available")
 
     console.summary()
+
+
+def _ingest_weekly_availability(
+    *,
+    name: str,
+    label_name: str,
+    first_season: int,
+    fetch: Callable[..., list[Path]],
+    season: list[int],
+    all_years: bool,
+    force: bool,
+) -> None:
+    """Run one cached nflverse availability fetch with the shared flag semantics."""
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import current_nfl_season
+
+    if all_years:
+        label: str = f"Fetch {label_name} ({first_season}-present)"
+    elif season:
+        label = f"Fetch {label_name} (season(s): {', '.join(str(s) for s in season)})"
+    else:
+        label = f"Fetch {label_name} (season {current_nfl_season()}, refresh)"
+
+    console.header(f"ingest {name}", subtitle=label)
+
+    with step(label) as s:
+        if all_years:
+            paths: list[Path] = fetch(all_years=True)
+        elif season:
+            paths = fetch(seasons=list(season), force=force)
+        else:
+            paths = fetch(seasons=[current_nfl_season()], force=True)
+        s.set_detail(f"{len(paths)} file(s) available")
+
+    console.summary()
+
+
+@ingest_app.command("depth-charts")
+def ingest_depth_charts(
+    *,
+    season: list[int] = typer.Option(  # noqa: B008
+        [],
+        help="Specific season year(s) to fetch. Repeatable: --season 2024 --season 2025.",
+    ),
+    all_years: bool = typer.Option(
+        False,
+        "--all-years/--no-all-years",
+        help="Fetch full history from 2001 to present.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force/--no-force",
+        help="Re-fetch and overwrite cached seasons.",
+    ),
+) -> None:
+    r"""Fetch nflverse depth charts (stored as-is in data/raw/depth_charts/).
+
+    With no options the current season is refreshed. Completed seasons stay cached
+    unless --force is set. A fetch that fails or returns no rows never replaces a
+    cached file. Nothing consumes this cache in the weekly pipeline.
+
+    \b
+    Examples:
+      gridiron ingest depth-charts                   # refresh current season
+      gridiron ingest depth-charts --season 2025     # specific season (cached unless --force)
+      gridiron ingest depth-charts --all-years       # full history
+    """
+    from gridiron_edge.ingest.nflverse.weekly_availability import (
+        DEPTH_CHARTS_FIRST_SEASON,
+        fetch_depth_charts,
+    )
+
+    _ingest_weekly_availability(
+        name="depth-charts",
+        label_name="depth charts",
+        first_season=DEPTH_CHARTS_FIRST_SEASON,
+        fetch=fetch_depth_charts,
+        season=season,
+        all_years=all_years,
+        force=force,
+    )
+
+
+@ingest_app.command("injuries")
+def ingest_injuries(
+    *,
+    season: list[int] = typer.Option(  # noqa: B008
+        [],
+        help="Specific season year(s) to fetch. Repeatable: --season 2024 --season 2025.",
+    ),
+    all_years: bool = typer.Option(
+        False,
+        "--all-years/--no-all-years",
+        help="Fetch full history from 2009 to present.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force/--no-force",
+        help="Re-fetch and overwrite cached seasons.",
+    ),
+) -> None:
+    r"""Fetch nflverse injury reports (stored as-is in data/raw/injuries/).
+
+    With no options the current season is refreshed. Completed seasons stay cached
+    unless --force is set. A fetch that fails or returns no rows never replaces a
+    cached file. Nothing consumes this cache in the weekly pipeline.
+
+    \b
+    Examples:
+      gridiron ingest injuries                   # refresh current season
+      gridiron ingest injuries --season 2025     # specific season (cached unless --force)
+      gridiron ingest injuries --all-years       # full history
+    """
+    from gridiron_edge.ingest.nflverse.weekly_availability import (
+        INJURIES_FIRST_SEASON,
+        fetch_injuries,
+    )
+
+    _ingest_weekly_availability(
+        name="injuries",
+        label_name="injury reports",
+        first_season=INJURIES_FIRST_SEASON,
+        fetch=fetch_injuries,
+        season=season,
+        all_years=all_years,
+        force=force,
+    )
 
 
 @ingest_app.command("plan-odds")

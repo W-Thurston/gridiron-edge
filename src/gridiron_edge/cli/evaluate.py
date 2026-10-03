@@ -1670,3 +1670,93 @@ def evaluate_feature_confirmation(
     typer.echo("")
     typer.echo(f"{'CONFIRMED' if verdict.confirmed else 'NOT CONFIRMED'}: {verdict.reason}")
     console.summary()
+
+
+@evaluate_app.command("starting-qb-projection")
+def evaluate_starting_qb_projection(
+    *,
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report.",
+    ),
+) -> None:
+    r"""Backtest a projected starting quarterback against carry-forward.
+
+    Scores a rules-based resolver (depth chart plus weekly availability status)
+    and the previous-starter carry-forward against the quarterback who actually
+    started, 2009 through 2024, then checks the 2025 timestamped depth chart
+    snapshots at fixed lead times. Reads the cached nflverse depth charts and
+    injury reports (`gridiron ingest depth-charts`, `gridiron ingest injuries`)
+    and the raw games file. Writes only the Markdown report; no model, schema or
+    data artifact changes.
+
+    \b
+    Examples:
+      gridiron evaluate starting-qb-projection
+    """
+    from datetime import UTC, datetime
+
+    import pandas as pd
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.registry import dataset_path
+    from gridiron_edge.evaluation.starting_qb_projection import (
+        bar_verdict,
+        build_team_games,
+        score_rules,
+        snapshot_timing,
+    )
+    from gridiron_edge.evaluation.starting_qb_projection_report import build_report
+    from gridiron_edge.ingest.nflverse.weekly_availability import (
+        load_depth_charts,
+        load_injuries,
+    )
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate starting-qb-projection")
+    games = pd.read_parquet(dataset_path(repo, "games_raw_nflverse"))
+    try:
+        depth_charts = load_depth_charts(repo=repo)
+        injuries = load_injuries(repo=repo)
+    except FileNotFoundError as error:
+        raise typer.BadParameter(str(error)) from error
+    with step("Score the resolver against carry-forward") as s:
+        scored = score_rules(build_team_games(games, depth_charts, injuries))
+        if scored.empty:
+            raise typer.BadParameter(
+                "No scorable team-games: the cached depth charts and injury reports must "
+                "cover 2009-2024 (run `gridiron ingest depth-charts --all-years` and "
+                "`gridiron ingest injuries --all-years`)."
+            )
+        verdict = bar_verdict(scored)
+        s.set_detail(f"{len(scored):,} team-games")
+    timing: dict[str, pd.DataFrame] = {}
+    if 2025 in depth_charts and 2025 in injuries:
+        with step("Score 2025 snapshots at fixed lead times") as s:
+            readings = {
+                "All weeks": None,
+                "Week 1": [1],
+                "Weeks after week 1": list(range(2, 19)),
+            }
+            for label, weeks in readings.items():
+                timing[label] = snapshot_timing(
+                    games,
+                    depth_charts[2025],
+                    injuries[2025],
+                    season=2025,
+                    lead_hours=[24, 48, 96],
+                    weeks=weeks,
+                )
+            s.set_detail(f"{len(timing)} readings")
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / "starting-qb-projection.md"
+        path.write_text(
+            build_report(scored, verdict, timing, generated_on=datetime.now(UTC).date()),
+            encoding="utf-8",
+        )
+        s.set_detail(str(path))
+    typer.echo("")
+    typer.echo(f"{'BAR CLEARED' if verdict.passes else 'BAR NOT CLEARED'}")
+    console.summary()
