@@ -110,11 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: Unit 18 (pin the preflight integration test). Units 12-15 and 17 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Units 12-15, 17 and 18 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
 ### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: Unit 18. Units 12-15 and 17 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
+Active unit: none. Units 12-15, 17 and 18 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -229,13 +229,9 @@ Closed; the completed record is under "Unit 15" below.
 
 Closed; the completed record is under "Unit 17" below.
 
-#### Unit 18 - Pin the Week 1 Preflight Integration Test (ROADMAP W17) [Proposed]
+#### Unit 18 - Pin the Week 1 Preflight Integration Test (ROADMAP W17) [Completed October 4, 2026]
 
-`tests/integration/market/test_production_chain_preflight_repository.py::test_historical_week_one_evidence_is_classified_truthfully`
-reads the live repository and asserts the Week 1 `quote_snapshot` from `data/odds/odds_current.parquet`,
-which has held a later week since 2026-09-30 and fails on the untouched `HEAD`. Make it independent of
-operational state (an immutable fixture of the Week 1 evidence, or assess only history) and keep its
-assertions about what the chain classifies as available, incomplete or unavailable.
+Closed; the completed record is under "Unit 18" below.
 
 #### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
@@ -331,6 +327,48 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 18 — Week 1 Preflight Integration Test Independent of Operational State [Completed October 4, 2026]
+
+#### Completed
+
+`test_historical_week_one_evidence_is_classified_truthfully` asserted that the Week 1 `quote_snapshot` held
+18 observations at one timestamp. The component is read from the current quote snapshot, which operations
+replace as the season progresses (it has held a later week since 2026-09-30), so the test failed on the
+untouched `HEAD` and would have blocked `pre-push`. The test now derives its expectation from what the
+current snapshot holds for Week 1 at run time: the component must be available with exactly those rows and
+fetch times when there are any, and unavailable with "No exact market observation exists." when there are
+none. Its assertions about the immutable Week 1 evidence (history, candidate issuance, policy, recommendation
+result) are unchanged. No source change.
+
+#### Goal
+
+Keep the real-repository preflight test about how the chain classifies evidence, not about which week the
+snapshot happens to hold today.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `tests/integration/market/test_production_chain_preflight_repository.py` - the quote-snapshot expectation follows the current snapshot's Week 1 rows instead of a frozen count.
+- `ROADMAP.md` - W17 marked done.
+- `CHANGELOG.md` - the fix.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+The test failed on the untouched `HEAD` before the change and passes after it. The full integration suite and
+the Python gate were run. Not run: e2e.
+
+#### Acceptance
+
+The test passes whichever week the current snapshot holds, and still fails if the preflight misclassifies
+the snapshot (available without matching rows, or unavailable with them).
 
 ### Unit 17 — Weekly Cycle Command [Completed October 4, 2026]
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from gridiron_edge.ingest.odds.store import load_current_odds
 from gridiron_edge.market.production_chain_preflight import (
     ProductionMarketFamily,
     ProofComponentState,
@@ -13,8 +14,30 @@ from gridiron_edge.market.production_chain_preflight import (
 )
 
 
+def _week_one_snapshot(repo_root: Path) -> tuple[int, int]:
+    """Return the Week 1 rows and distinct fetch times the current snapshot holds now."""
+    snapshot = load_current_odds(repo=repo_root)
+    if snapshot is None:
+        return 0, 0
+    week_one = snapshot.loc[(snapshot["season"] == "2026-2027") & (snapshot["week"] == 1)]
+    return len(week_one), int(week_one["fetched_at"].nunique())
+
+
+def _assert_quote_snapshot(component, rows: int, timestamps: int) -> None:
+    """The snapshot is current-relative: available exactly when it holds Week 1 rows now."""
+    if rows:
+        assert component.state is ProofComponentState.AVAILABLE
+        assert component.observation_count == rows
+        assert component.distinct_timestamp_count == timestamps
+    else:
+        assert component.state is ProofComponentState.UNAVAILABLE
+        assert component.reason == "No exact market observation exists."
+        assert component.observation_count == 0
+
+
 def test_historical_week_one_evidence_is_classified_truthfully() -> None:
     repo_root = Path(__file__).resolve().parents[3]
+    week_one_snapshot_rows, week_one_snapshot_timestamps = _week_one_snapshot(repo_root)
 
     result = assess_production_chain_preflight(
         repo=repo_root,
@@ -34,11 +57,13 @@ def test_historical_week_one_evidence_is_classified_truthfully() -> None:
     for family in families:
         assert family.component("selected_product").state is ProofComponentState.AVAILABLE
         assert family.component("forecast_provenance").state is ProofComponentState.AVAILABLE
-        quote_snapshot = family.component("quote_snapshot")
-        assert quote_snapshot.state is ProofComponentState.AVAILABLE
-        assert quote_snapshot.observation_count == 18
-        assert quote_snapshot.distinct_timestamp_count == 1
-        assert len(quote_snapshot.timestamps) == 1
+        # The quote snapshot is read from the *current* snapshot, which operations replace as
+        # the season progresses (it has held a later week since 2026-09-30). The classification
+        # must therefore follow whatever the snapshot holds for Week 1, not a frozen count: it is
+        # available exactly when the snapshot has Week 1 rows, and unavailable otherwise.
+        _assert_quote_snapshot(
+            family.component("quote_snapshot"), week_one_snapshot_rows, week_one_snapshot_timestamps
+        )
         history = family.component("repeated_quote_history")
         assert history.state is ProofComponentState.AVAILABLE
         assert history.distinct_timestamp_count == 34

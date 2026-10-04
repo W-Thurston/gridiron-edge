@@ -1,5 +1,13 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - The Week 1 preflight integration test no longer depends on the live quote snapshot
+
+#### Fixed
+
+- `test_historical_week_one_evidence_is_classified_truthfully` expected the Week 1 `quote_snapshot` to hold
+  18 observations from `odds_current.parquet`, which has held a later week since 2026-09-30, so it failed
+  on a clean checkout. It now derives the expectation from the snapshot's Week 1 rows at run time.
+
 ### 2026-10-04 - Unit 17: `gridiron week-cycle` closes the week and sets up the next in one command
 
 #### Added
