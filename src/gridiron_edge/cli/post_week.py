@@ -182,14 +182,15 @@ _ONLY_HELP = f"Run only these stage(s). Repeatable. Valid: {_STAGES_STR}."
 
 
 def _next_week_steps(season: str, week: int) -> str:
-    """Describe the explicit steps that publish the next week's forecast."""
+    """Describe the explicit step that publishes the next week's forecast."""
     next_week = week + 1
     return (
-        f"  Next: week {next_week} has no forecast until weekly-predict runs.\n"
-        f"    uv run gridiron weekly-predict --season {season} --week {next_week}\n"
-        f"    uv run gridiron ingest odds --season {season} --week {next_week}\n"
-        f"    uv run gridiron edges report --season {season} --week {next_week}\n"
-        "  weekly-predict needs a clean tracked worktree."
+        f"  Next: week {next_week} has no forecast until weekly-predict runs, best after its\n"
+        "  injury report is published (usually Friday). The quote collector rolls to the new\n"
+        "  week by itself and its quotes are pulled automatically.\n"
+        f"    uv run gridiron week-cycle forecast --season {season} --week {next_week}\n"
+        f"  (or weekly-predict --season {season} --week {next_week}). Both need a clean tracked\n"
+        "  worktree."
     )
 
 

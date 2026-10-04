@@ -1278,6 +1278,34 @@ The command refreshes outcomes, refreshes next-week schedule, player-stats, and 
 
 `post-week` also does not forecast the next week. No weekly product exists for week N+1 until `weekly-predict` runs, so the API and frontend report weekly predictions and edges as unavailable and `edges report` reports no selected product. After a successful full run, `post-week` prints the next steps: `weekly-predict`, `ingest odds`, then `edges report` for week N+1. `weekly-predict` requires a clean tracked worktree; a dirty tree fails `predict-week`, and the composite summary prints that reason.
 
+## Weekly Cycle
+
+The weekly rhythm is one command with two phases (`DECISIONS.md` D81), each run on its own day:
+
+```bash
+# Tuesday, after Monday night's game: close the finished week and set up the next one
+uv run gridiron week-cycle close --season 2026-2027 --week 4
+
+# Friday, after the injury report: forecast the next week
+uv run gridiron week-cycle forecast --season 2026-2027 --week 5
+```
+
+`close --week N` (N is the week that just completed) runs `refresh-results`, `verify-week-complete`
+(every scheduled regular-season game of week N has a result; otherwise it stops, or closes anyway with
+`--allow-incomplete`), then the `post-week` stages `refresh-next-week-state`, `refresh-season-projections`
+and `close-live-forecasts`, then a soft `check-collector` (whether the pulled rollover receipts show the
+worker rolled to week N+1, and how recent the collector sync is) and a closing hint. It does not forecast.
+
+`forecast --week M` runs `check-clean-worktree` (`weekly-predict` needs a clean tracked tree),
+`check-injury-report` (refreshes the injury cache from nflverse, then requires published reports for week
+M; absent means stop, or `--allow-early` to forecast on the early picture and say so), the existing
+`weekly-predict` stages, and a soft `report-forecast` that prints the starter sources and the games whose
+assumed starter differs from carry-forward, prediction and market readiness, and the market's age against
+the limit, then the top-edges preview. `--bankroll`, `--skip` and `--only` behave as in `weekly-predict`.
+The week is never inferred. `post-week` and `weekly-predict` still work on their own. A forecast made
+right after the Tuesday closeout (before the injury report) is the reason for two phases: it uses the
+early starter picture, and every rerun adds another immutable product (ROADMAP W6).
+
 ## Historical Backfills and Evaluation
 
 Historical backfills write `backfilled` forecast events using honest time-ordered training cutoffs. They support model evaluation, champion comparison, and baseline reporting.

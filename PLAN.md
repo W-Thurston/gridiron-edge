@@ -110,11 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. Units 12-15 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: Unit 18 (pin the preflight integration test). Units 12-15 and 17 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
 ### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: none. Units 12-15 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
+Active unit: Unit 18. Units 12-15 and 17 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -225,6 +225,18 @@ and is listed there.
 
 Closed; the completed record is under "Unit 15" below.
 
+#### Unit 17 - Weekly Cycle Command [Completed October 4, 2026]
+
+Closed; the completed record is under "Unit 17" below.
+
+#### Unit 18 - Pin the Week 1 Preflight Integration Test (ROADMAP W17) [Proposed]
+
+`tests/integration/market/test_production_chain_preflight_repository.py::test_historical_week_one_evidence_is_classified_truthfully`
+reads the live repository and asserts the Week 1 `quote_snapshot` from `data/odds/odds_current.parquet`,
+which has held a later week since 2026-09-30 and fails on the untouched `HEAD`. Make it independent of
+operational state (an immutable fixture of the Week 1 evidence, or assess only history) and keep its
+assertions about what the chain classifies as available, incomplete or unavailable.
+
 #### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
 The user wants one page for last week's performance covering every projection, not only the starting QB.
@@ -319,6 +331,69 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 17 — Weekly Cycle Command [Completed October 4, 2026]
+
+#### Completed
+
+`gridiron week-cycle` runs the weekly rhythm as one command with two phases (`DECISIONS.md` D81), composed
+from the existing composite stages. `close --season S --week N` (Tuesday) runs `refresh-results`, a new
+`verify-week-complete` gate (every scheduled regular-season game of week N has a result, else it stops or
+closes anyway with `--allow-incomplete`), the `post-week` stages gated on it, a soft `check-collector` (do
+the pulled rollover receipts show the worker rolled to week N+1; how recent is the collector sync) and a
+closing hint. `forecast --season S --week M` (Friday) runs `check-clean-worktree`, `check-injury-report`
+(refreshes the cache and requires week M reports, else it stops or proceeds with `--allow-early`), the
+`weekly-predict` stages and a soft `report-forecast` (starter sources and the games that differ from
+carry-forward, prediction and market readiness, market age), then the top-edges preview. The week is never
+inferred; `--skip`, `--only` and `--bankroll` behave as in the commands it composes. `weekly_predict_context`
+is extracted so both share one stage context, and `post-week`'s hint now points at `week-cycle forecast` and
+no longer names `ingest odds`.
+
+#### Goal
+
+Give the weekly rhythm one entry point per day, with the Friday phase waiting for the injury report the
+projected starters need, instead of two commands and a hint that had gone stale.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/cli/week_cycle.py` - the `week-cycle` sub-app: the completeness, collector, worktree and injury checks, the forecast summary, and the `close` and `forecast` stage assembly.
+- `tests/unit/cli/test_week_cycle.py` - the checks, stage assembly and ordering, and both commands end to end with stubbed stages.
+
+Changed:
+- `src/gridiron_edge/cli/main.py` - registers `week-cycle`.
+- `src/gridiron_edge/cli/weekly_predict.py` - `weekly_predict_context` extracted for reuse.
+- `src/gridiron_edge/cli/post_week.py` - the closing hint.
+- `tests/unit/cli/test_post_week.py` - the new hint.
+- `DECISIONS.md` - D81.
+- `HANDOFF.md` - the weekly cycle section.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - W15 note.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests cover the completeness count (regular season only), the injury-report rule (regular season
+reports of the week), the git worktree check against a real temporary repository, collector receipts and sync
+status in every state, the starter summary with and without the record, `close` and `forecast` stage order,
+dependencies and soft stages, the completeness gate and injury check including their override flags, and both
+commands end to end with stubbed stages (exit codes, flag passing, `--only`, a bad season). Python gate.
+Real data, read-only against this checkout: week 4 reads 1 of 16 games played so `close` would refuse; week 5
+has no published injury report so `forecast` would stop; the collector check reports no week 5 rollover
+receipt yet and a sync 2 minutes old; the worktree check names the uncommitted files. Not run: a live `close`
+or `forecast` (they refresh data from nflverse, write products and select one), which are approved
+operational steps.
+
+#### Acceptance
+
+Tuesday, `week-cycle close` leaves the week closed, next-week state refreshed and a clear statement of
+whether the collector rolled; Friday, `week-cycle forecast` publishes the forecast or stops with the reason
+and prints what was assumed and how fresh the market is. The unit is verified by tests and read-only checks;
+the first real runs are Tuesday 2026-10-06 (`close --week 4`) and the Friday injury report
+(`forecast --week 5`).
 
 ### Unit 15 — Market Freshness [Completed October 4, 2026]
 

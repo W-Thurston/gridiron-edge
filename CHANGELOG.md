@@ -1,5 +1,21 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 17: `gridiron week-cycle` closes the week and sets up the next in one command
+
+#### Added
+
+- `gridiron week-cycle close --season S --week N` (Tuesday): refreshes results, verifies every game of the
+  week has one (or `--allow-incomplete`), runs the `post-week` closeout stages, and reports whether the
+  quote collector has rolled to week N+1 and how current the pull is.
+- `gridiron week-cycle forecast --season S --week M` (Friday): checks the tracked worktree is clean and the
+  week's injury report is published (or `--allow-early`), runs `weekly-predict`, then prints the starter
+  sources and differences, prediction and market readiness, and the market's age (`DECISIONS.md` D81).
+
+#### Changed
+
+- `post-week`'s closing hint points at `week-cycle forecast` and no longer names `ingest odds`.
+- `weekly_predict_context` is extracted from `weekly_predict_cmd` so both commands share it.
+
 ### 2026-10-04 - Unit 15: stale quotes can no longer produce edges
 
 #### Added

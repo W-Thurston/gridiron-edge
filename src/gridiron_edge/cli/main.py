@@ -38,6 +38,7 @@ from gridiron_edge.cli.teams import teams_app
 from gridiron_edge.cli.transform import transform_app
 from gridiron_edge.cli.verify import verify_cmd
 from gridiron_edge.cli.verify_week import verify_week_cmd
+from gridiron_edge.cli.week_cycle import week_cycle_app
 from gridiron_edge.cli.weekly_predict import weekly_predict_cmd
 from gridiron_edge.core.logging import setup_logging
 from gridiron_edge.core.settings import ensure_data_dirs
@@ -78,6 +79,7 @@ app.add_typer(ingest_app, name="ingest")
 app.add_typer(transform_app, name="transform")
 app.add_typer(features_app, name="features")
 app.add_typer(ratings_app, name="ratings")
+app.add_typer(week_cycle_app, name="week-cycle")
 app.add_typer(output_app, name="output")
 app.add_typer(sim_app, name="sim")
 app.add_typer(evaluate_app, name="evaluate")

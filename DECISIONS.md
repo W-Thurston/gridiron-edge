@@ -8,6 +8,38 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D81 - The weekly rhythm is one command in two phases, close on Tuesday and forecast on Friday
+
+**Date:** 2026-10-04
+
+**Context:** The weekly rhythm took `post-week` (close the finished week) and `weekly-predict` (forecast
+the next), with a closing hint that still named `ingest odds`, which the Pi collector (D79) and the pull
+timer (D78) replaced. The projected starting QB needs the weekly injury report, usually published Friday
+(D75, D76); a forecast made right after the Tuesday closeout uses the early, partial picture, and each
+`weekly-predict` rerun adds another immutable weekly product with no in-week versioning yet (ROADMAP W6).
+
+**Decision:**
+1. `gridiron week-cycle` has two subcommands that compose the existing composite stages (reused, not
+   copied) and never infer a week. `close --week N` is `refresh-results`, a new `verify-week-complete`
+   gate, the `post-week` stages gated on it, a soft collector check and a closing hint. `forecast --week M`
+   is a clean-worktree check, an injury-report check, the `weekly-predict` stages, and a soft summary.
+2. The completeness gate refuses to close a week with unplayed regular-season games unless
+   `--allow-incomplete`; closing a partial week would score forecasts against missing results.
+3. The injury-report check refreshes the cache and requires reports for the forecast week; it stops
+   unless `--allow-early`, which proceeds and states that the forecast uses the early picture. This
+   prefers one correct forecast to an early one plus a rerun, until in-week versioning exists.
+4. `weekly_predict_context` is extracted so both commands build the same stage context. `post-week`'s
+   hint now points at `week-cycle forecast` and says the collector rolls and its quotes are pulled by
+   themselves.
+
+**Limits:** the commands run the heavy existing stages and make external calls (nflverse refreshes, the
+injury fetch); they were verified by unit tests with stubbed stages and read-only checks against this
+checkout's data (week 4 reads 1 of 16 played so `close` refuses; week 5 has no injury report yet so
+`forecast` stops), not by a full live run. The collector check reads pulled rollover receipts, not the
+Pi's own plan pointer. `week-cycle` does not schedule itself.
+
+---
+
 ## D80 - Quotes older than 24 hours cannot produce edges; the limit comes from measured drift and is provisional
 
 **Date:** 2026-10-04

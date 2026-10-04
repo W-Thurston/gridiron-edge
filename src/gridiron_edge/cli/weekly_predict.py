@@ -496,6 +496,26 @@ _ONLY_HELP: str = f"Run only these stage(s). Repeatable. Valid: {_STAGES_STR}."
 # ---------------------------------------------------------------------------
 
 
+def weekly_predict_context(*, season: str, week: int, bankroll: float | None) -> dict[str, Any]:
+    """Build the shared stage context for one weekly-predict run."""
+    # Derive integer season for run-data-pipeline downstream.
+    try:
+        season_int = int(season.split("-")[0])
+    except (ValueError, IndexError) as exc:
+        raise typer.BadParameter(
+            f"Could not parse season '{season}'. Expected format: 'YYYY-YYYY+1' (e.g. '2026-2027')."
+        ) from exc
+    return {
+        "week": week,
+        "season": season,
+        "season_int": season_int,
+        "resolved_season_int": season_int,
+        "upcoming_target": season_int,
+        "model_type": "elo",
+        "bankroll": bankroll,
+    }
+
+
 def weekly_predict_cmd(
     *,
     week: int = typer.Option(..., help="NFL week number to predict."),
@@ -535,23 +555,7 @@ def weekly_predict_cmd(
         only=only,
     )
 
-    # Derive integer season for run-data-pipeline downstream.
-    try:
-        season_int = int(season.split("-")[0])
-    except (ValueError, IndexError) as exc:
-        raise typer.BadParameter(
-            f"Could not parse season '{season}'. Expected format: 'YYYY-YYYY+1' (e.g. '2026-2027')."
-        ) from exc
-
-    context: dict[str, Any] = {
-        "week": week,
-        "season": season,
-        "season_int": season_int,
-        "resolved_season_int": season_int,
-        "upcoming_target": season_int,
-        "model_type": "elo",
-        "bankroll": bankroll,
-    }
+    context = weekly_predict_context(season=season, week=week, bankroll=bankroll)
 
     console.header(
         "weekly-predict",
