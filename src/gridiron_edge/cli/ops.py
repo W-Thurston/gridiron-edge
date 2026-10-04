@@ -157,6 +157,62 @@ def collector_key_line_cmd(
     typer.echo(line)
 
 
+@ops_app.command("auto-rollover")
+def auto_rollover_cmd(
+    *,
+    evaluated_at: str | None = typer.Option(
+        None, help="Explicit UTC ISO evaluation time. Defaults to now."
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply/--dry-run",
+        help="Apply the rollover (refresh, build, select). The default only reports.",
+    ),
+) -> None:
+    """Report or apply the automatic weekly collection rollover for this repository.
+
+    The target is the earliest week in the rich upcoming schedule that still has a
+    game kicking off after the evaluation time (`DECISIONS.md` D79). Applying it
+    refreshes the schedule from nflverse when the target differs from the current plan.
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.market.collection_rollover import auto_rollover, nflverse_schedule_refresh
+
+    repo = get_settings().repo_root
+    try:
+        now = (
+            datetime.fromisoformat(evaluated_at.replace("Z", "+00:00")).astimezone(UTC)
+            if evaluated_at
+            else datetime.now(UTC)
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid --evaluated-at: {exc}") from exc
+    receipt = auto_rollover(
+        repo=repo,
+        now=now,
+        refresh=nflverse_schedule_refresh(repo, now) if apply else None,
+        dry_run=not apply,
+    )
+    typer.echo(f"auto-rollover {receipt.outcome}: {receipt.detail}")
+    typer.echo(f"  current  {receipt.current}")
+    typer.echo(f"  target   {receipt.target}")
+    if receipt.planned_polls is not None:
+        typer.echo(
+            f"  plan     {receipt.planned_polls} polls, {receipt.planned_credit_cost} credits"
+        )
+    if receipt.schedule_refreshed is not None:
+        typer.echo(
+            f"  schedule refreshed {receipt.schedule_refreshed}"
+            + (f" ({receipt.schedule_refresh_error})" if receipt.schedule_refresh_error else "")
+        )
+    if receipt.kickoff_groups_changed:
+        typer.echo("  kickoff groups differ from the existing plan for that week")
+    if not apply:
+        typer.echo("dry run -- nothing refreshed or written")
+
+
 @ops_app.command("rollover-collector-week")
 def rollover_collector_week_cmd(
     *,

@@ -1,5 +1,19 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Unit 14: the quote worker rolls its own weekly collection plan
+
+#### Added
+
+- `execute-selected-odds-plan --auto-rollover`: before polling, the worker selects the earliest week
+  that still has a game ahead, refreshing its schedule from nflverse and building that week's plan
+  when the current selection is behind (`DECISIONS.md` D79). It does nothing, and makes no network
+  call, while the selection is current. Failures and a completed season are debounced for an hour,
+  and a rollover error never stops the poll. Each due decision writes an immutable receipt under
+  `data/odds/collection_rollovers/`.
+- `gridiron ops auto-rollover` reports (default) or applies the same decision.
+- The installer-rendered worker wrapper passes `--auto-rollover`; the collector pull treats rollover
+  receipts as immutable evidence.
+
 ### 2026-10-03 - Unit 13: the collector pull is merge-safe and can run unattended
 
 #### Changed

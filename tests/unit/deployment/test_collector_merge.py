@@ -152,6 +152,8 @@ def test_immutable_files_are_copied_only_when_absent_and_conflicts_are_reported(
     tmp_path: Path,
 ) -> None:
     staged, local = _dirs(tmp_path)
+    (staged / "collection_rollovers").mkdir()
+    (staged / "collection_rollovers" / "20261006T120000_rolled.json").write_text("{}")
     for name, text in (("new.json", "{}"), ("same.json", "x"), ("diff.json", "worker")):
         (staged / "collection_runs").mkdir(exist_ok=True)
         (staged / "collection_runs" / name).write_text(text)
@@ -161,7 +163,10 @@ def test_immutable_files_are_copied_only_when_absent_and_conflicts_are_reported(
 
     report = merge_collector_tree(staged, local)
 
-    assert report.copied == ["collection_runs/new.json"]
+    assert report.copied == [
+        "collection_rollovers/20261006T120000_rolled.json",
+        "collection_runs/new.json",
+    ]
     assert report.unchanged == ["collection_runs/same.json"]
     assert report.conflicts == ["collection_runs/diff.json"]
     assert (local / "collection_runs" / "diff.json").read_text() == "local"

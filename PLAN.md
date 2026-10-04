@@ -114,7 +114,7 @@ Active unit: none. A three-unit program (Units 12-14, ROADMAP W1-W3) is proposed
 
 ### Proposed Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3) [Awaiting review, scoped October 3, 2026]
 
-Active unit: none. Units 12 and 13 are complete; Units 14-16 remain proposed. The program is three bounded units, run one
+Active unit: none. Units 12-14 are complete (Unit 14's first live rollover is pending Monday night); Units 15 and 16 remain proposed. The program is three bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -216,47 +216,10 @@ Closed; the completed record is under "Unit 12" below.
 
 Closed; the completed record is under "Unit 13" below.
 
-#### Unit 14 - Automatic Weekly Collector Rollover on the Pi [Proposed, not started; needs the Pi probes below]
+#### Unit 14 - Automatic Weekly Collector Rollover on the Pi [Completed October 3, 2026]
 
-**Goal.** The Pi selects and starts collecting each week's plan itself, with no push from this
-machine.
-
-**Design.**
-1. The week is derived, not typed: the target week is the earliest week in the schedule that still
-   has a game whose kickoff is in the future, evaluated by a daily Pi timer. This is a rule over
-   the schedule file, recorded in the plan, and the collector's existing "never infers a week"
-   guarantee changes only at this one explicit rollover command. A rollover happens at most once
-   per target week (the current plan's week already equals the target: nothing to do).
-2. Inputs. The cheapest path builds the next plan from the rich schedule already on the Pi (it
-   holds every unplayed game of the season). Its weakness is flex scheduling: a moved kickoff
-   would be polled at the wrong time. Options: (a) accept and refresh the Pi's schedule from this
-   machine whenever a push occurs, (b) have the Pi fetch the schedule from nflverse itself (needs
-   its pandas, `nflreadpy` and the cleaning step, which widens the Pi's role beyond the D58
-   scope), (c) rebuild the poll times for a week from the Odds API's own `commence_time` on its
-   first poll. Decision needed after the probes; (a) is the smallest and the plan records the
-   schedule's age so the freshness gate can flag a stale schedule.
-3. A new `ops auto-rollover` command (deployed to the Pi by the same targeted `rsync` D58 uses),
-   a systemd service and daily timer installed by the existing installer, a dry-run mode, and a
-   receipt for every decision (rolled, not due, failed) written under `data/odds`.
-4. Credit budget unchanged (34 polls at 3 credits). The unit reports the plan's projected credits
-   and refuses to roll if the week would exceed the limit already encoded in the policy.
-
-**Tests.** Target-week rule across a normal week, a bye, the last week of the season, a Monday
-game still unplayed, a flexed kickoff; idempotence; a missing or stale schedule fails closed with a
-receipt; installer and verify scripts cover the new units. Real data: a dry run on the Pi against
-its own schedule picks week 5 after week 4's last kickoff and builds the same plan that
-`rollover-collector-week` would.
-
-**Acceptance.** After one week boundary with no manual step, the Pi's `current.json` names the new
-week, its collector polled it, and the pulled ledger shows it.
-
-**Pi probe results (run by the user on the Pi, 2026-10-03, pasted into the session).** Python 3.13.5,
-pandas 2.3.3 and pyarrow import; `import nflreadpy` printed no error (so it imports, *not* run past the
-import); the Pi's rich schedule is the one pushed at 13:25:59 MDT today, weeks 4-18, 223 rows. Still
-unprobed: whether `clean_nflverse_upcoming` runs there (it needs the stadium reference and other cleaned
-inputs), and the Odds API credit balance. Because `nflreadpy` is present, option (b), the Pi fetching the
-schedule itself, is plausible; it remains a wider role than D58, so the recommendation stays option (a)
-unless the schedule's age proves a problem.
+Closed in code; the completed record is under "Unit 14" below. Deploying it to the Pi is a user step
+and is listed there.
 
 #### Unit 15 - Market Freshness (W1) [Proposed, not started]
 
@@ -393,6 +356,68 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 14 — Automatic Weekly Collector Rollover on the Pi [Completed October 3, 2026]
+
+#### Completed
+
+`execute-selected-odds-plan --auto-rollover` runs a rollover decision before the poll
+(`DECISIONS.md` D79). The target week is the earliest (season, week) in the rich schedule with a game
+whose UTC kickoff is still ahead; while the selection equals it nothing happens and there is no network
+call. When it differs the schedule is refreshed from nflverse (a failure keeps the existing schedule and
+is recorded), the target is recomputed, and the week's existing plan is selected or a default-policy plan
+is built from now and selected; a plan that is not `available` is never selected. Failures, invalid
+schedules or plans and a completed season are debounced for an hour, a rollover error never stops the
+poll, and every due decision writes an immutable receipt under `data/odds/collection_rollovers/`, which
+the collector pull merges as immutable evidence. `gridiron ops auto-rollover` reports (default) or applies
+the same decision. The installer-rendered wrapper passes the flag. The code was then deployed to the Pi by the user.
+
+#### Goal
+
+Make the Pi select and start collecting each week's plan itself, so a forgotten manual rollover cannot
+leave the worker polling a finished week.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/market/collection_rollover.py` - the target-week rule, the rollover decision, receipts and debounce.
+- `tests/unit/market/test_collection_rollover.py` - target rule, due and not-due, existing and built plans, refresh failure, season complete, invalid input, debounce, dry run.
+
+Changed:
+- `src/gridiron_edge/cli/ingest.py` - `--auto-rollover` on `execute-selected-odds-plan`; failures never stop the poll.
+- `src/gridiron_edge/cli/ops.py` - `ops auto-rollover` (dry run by default).
+- `src/gridiron_edge/deployment/quote_collection_worker.py` - the rendered wrapper passes `--auto-rollover`.
+- `src/gridiron_edge/deployment/collector_merge.py` - rollover receipts are immutable evidence.
+- `tests/unit/cli/test_collection_execution_cli.py`, `tests/unit/cli/test_ops_cli.py`, `tests/unit/deployment/test_quote_collection_worker.py`, `tests/unit/deployment/test_collector_merge.py` - the flag and its failure isolation, the ops command, the wrapper, receipt merging.
+- `DECISIONS.md` - D79.
+- `HANDOFF.md` - the worker's automatic rollover.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - W14 progress.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests cover the target rule (a Monday game still ahead, season end, a naive clock rejected), a
+not-due tick making no refresh call or receipt, a due rollover that refreshes, builds, selects and writes a
+receipt, idempotence, a missing selection, an existing plan selected without being rebuilt, a refresh
+failure keeping the old schedule, a refresh that changes kickoffs being reported, season complete and a
+missing or invalid schedule debounced for an hour, a dry run writing nothing, the CLI flag with and
+without a rollover failure, the ops command, the wrapper, and receipt merging. Python gate. Real data:
+dry runs against this checkout's schedule chose week 4 until Monday's kickoff, week 5 afterward, week 12
+on 2026-11-24 and season complete on 2027-01-12. Deployed to the Pi and checked there (flag present, dry run, a clean tick). Not verified: a live
+rollover (the next boundary is Monday 2026-10-05 after 20:15 ET).
+
+#### Acceptance
+
+Code, tests and documentation are complete. The code is deployed to the Pi (five files copied by `rsync`,
+wrapper reinstalled and verified ready): the Pi's wrapper carries `--auto-rollover`, its dry run against its
+own schedule returned `not_due` for week 4, and the next five-minute tick completed with no rollover error.
+Still pending, and not verified: the first live rollover after Monday 2026-10-05's last kickoff. Confirm then
+that the Pi's `current.json` names week 5, a receipt exists under `data/odds/collection_rollovers/`, and the
+pulled ledger shows week 5 quotes.
 
 ### Unit 13 — Safe and Automatic Collector Pull [Completed October 3, 2026]
 

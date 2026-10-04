@@ -405,3 +405,46 @@ def test_rollover_refreshes_schedule_before_building_plan(monkeypatch, tmp_path:
     written_plan = observed["written_plan"]
     assert written_plan.season == "2026-2027"
     assert written_plan.week == 3
+
+
+def test_auto_rollover_defaults_to_a_dry_run_that_writes_nothing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from pandas import DataFrame as Frame
+
+    cleaned = tmp_path / "data" / "cleaned"
+    cleaned.mkdir(parents=True)
+    Frame(
+        [
+            {
+                "season": "2026-2027",
+                "week": 5,
+                "game_id": "g",
+                "game_date": "2026-10-11",
+                "game_time": "13:00:00",
+            }
+        ]
+    ).to_parquet(cleaned / "NFL_upcoming_schedule_rich.parquet")
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+
+    result = runner.invoke(app, ["ops", "auto-rollover", "--evaluated-at", "2026-10-06T12:00:00Z"])
+
+    assert result.exit_code == 0, result.output
+    assert "auto-rollover rolled" in result.stdout
+    assert "target   2026-2027 week 5" in result.stdout
+    assert "dry run -- nothing refreshed or written" in result.stdout
+    assert not (tmp_path / "data" / "odds").exists()
+
+
+def test_auto_rollover_rejects_an_invalid_time(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+
+    result = runner.invoke(app, ["ops", "auto-rollover", "--evaluated-at", "not-a-time"])
+
+    assert result.exit_code == 2

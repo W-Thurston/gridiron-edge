@@ -8,8 +8,8 @@ rule (``DECISIONS.md`` D78):
 
 * weekly observation partitions: union of rows, never fewer rows than before;
 * ``odds_current.parquet``: the snapshot with the later ``fetched_at`` wins;
-* collection plans and run receipts: immutable, copied only when absent, a differing
-  existing file is a conflict and is left untouched;
+* collection plans, run and rollover receipts: immutable, copied only when absent, a
+  differing existing file is a conflict and is left untouched;
 * ``collection_plans/current.json``: a pointer owned by each machine, never pulled;
 * anything else in the staged tree is ignored.
 """
@@ -31,7 +31,7 @@ from gridiron_edge.ingest.odds.store import (
 _CURRENT_SNAPSHOT = "odds_current.parquet"
 _OBSERVATIONS = "observations.parquet"
 _POINTER = "collection_plans/current.json"
-_IMMUTABLE_ROOTS = ("collection_plans", "collection_runs")
+_IMMUTABLE_ROOTS = ("collection_plans", "collection_runs", "collection_rollovers")
 
 
 @dataclass(slots=True)

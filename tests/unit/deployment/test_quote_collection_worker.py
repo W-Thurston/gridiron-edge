@@ -159,6 +159,7 @@ def test_rendering_preserves_dynamic_selected_plan_boundary(tmp_path: Path) -> N
 
     rendered = wrapper + service + timer
     assert "execute-selected-odds-plan" in wrapper
+    assert "--auto-rollover" in wrapper
     assert "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" in wrapper
     assert "--season" not in rendered
     assert "--week" not in rendered

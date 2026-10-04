@@ -8,6 +8,47 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D79 - The Pi rolls its own weekly collection plan: the target week is derived from the schedule
+
+**Date:** 2026-10-03
+
+**Context:** `DECISIONS.md` D58 kept the weekly rollover a manual push from this machine, and the
+2026-10-03 incident showed the cost: the week 4 rollover was missed and the worker polled a finished
+plan for five days. The collector otherwise never infers a week. Probes of the Pi showed it can
+import `nflreadpy` and the schedule cleaner, which needs only the raw upcoming schedule it fetches
+(its stadium check is optional), so the Pi can refresh its own schedule with the same two functions
+the manual rollover uses.
+
+**Decision:**
+1. The target week is the earliest (season, week) in the rich upcoming schedule with a game whose
+   UTC kickoff is after the evaluation time. No future game means the season is complete and
+   nothing rolls; the next season stays a manual rollover. This is the one place the collector
+   derives a week, and it derives it from the schedule, not from the calendar or file order.
+2. `execute-selected-odds-plan --auto-rollover` (the five-minute worker tick) runs the decision
+   first. While the current selection equals the target it does nothing and makes no network call.
+   When it differs it refreshes the schedule (a failed refresh keeps the existing schedule and is
+   recorded), recomputes the target, then selects an existing plan for the week or builds one with
+   the default policy (34 polls, 3 credits) from `plan_start` now. A plan whose status is not
+   `available` is never selected. A rollover error is reported and never stops the poll.
+3. Failures and a completed season are debounced for an hour, so a broken source is retried
+   hourly rather than every tick. Every due decision writes an immutable receipt under
+   `data/odds/collection_rollovers/` (rolled, selected existing, failed, season complete) recording
+   the schedule refresh result and whether the week's kickoff groups differ from the stored plan;
+   the pull treats that tree as immutable evidence (D78).
+4. Kickoff drift in an already-built plan (a flexed game after the plan was built) is reported, not
+   acted on: a plan is built once per week.
+
+**Limits:** the plan is built when the week begins (Monday night), so a flex announced after that
+is only reported. The credit reserve in the wrapper (`--minimum-credit-reserve 30`) is unchanged and
+credit balance is not consulted by the rollover.
+
+**Verified:** unit tests across the target rule, due and not-due, existing and built plans, refresh
+failure, completed season, invalid inputs and debounce; real-schedule dry runs choose week 4 until
+Monday's kickoff, week 5 afterward, week 12 on 2026-11-24 and season complete in January 2027. Not
+verified on the Pi: deployment of the code, the reinstalled wrapper, and a live rollover.
+
+---
+
 ## D78 - The collector pull merges instead of mirroring, and runs unattended on a dedicated read-only key
 
 **Date:** 2026-10-03

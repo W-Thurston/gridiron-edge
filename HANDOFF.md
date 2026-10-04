@@ -931,8 +931,18 @@ zero.
 ## Quote Collection Worker Deployment
 
 The supported recurring quote collector is a dedicated Raspberry Pi worker. It
-executes explicitly selected weekly collection plans and does not choose or
-infer a season or week.
+executes the selected weekly collection plan. The worker's wrapper passes
+`--auto-rollover` (`DECISIONS.md` D79): before each poll it selects the earliest week in
+its rich schedule that still has a game ahead, refreshing the schedule from nflverse and
+building that week's default-policy plan when the selection is behind. While the selection
+is current it does nothing and makes no network call. A failed refresh keeps the existing
+schedule; failures and a completed season are retried hourly; an error never stops the
+poll; every due decision leaves an immutable receipt in `data/odds/collection_rollovers/`.
+The next season still needs a manual `rollover-collector-week`, which also remains the way
+to push a schedule or plan by hand. `uv run gridiron ops auto-rollover` reports the decision
+(and `--apply` performs it) on any machine with the schedule; the Pi's wrapper is the
+automated caller. Code reaches the Pi by targeted `rsync` (D58) and the wrapper is
+re-rendered by the installer below.
 
 ### Validated worker
 

@@ -639,6 +639,26 @@ def execute_odds_plan(
     )
 
 
+def _run_auto_rollover(*, evaluated_at: str, repo: Path) -> None:
+    """Run the weekly rollover; any failure is reported and never stops the poll."""
+    from datetime import UTC, datetime
+
+    from gridiron_edge.market.collection_rollover import (
+        OUTCOME_NOT_DUE,
+        auto_rollover,
+        nflverse_schedule_refresh,
+    )
+
+    try:
+        now = datetime.fromisoformat(evaluated_at.replace("Z", "+00:00")).astimezone(UTC)
+        receipt = auto_rollover(repo=repo, now=now, refresh=nflverse_schedule_refresh(repo, now))
+    except Exception as exc:
+        typer.echo(f"auto-rollover failed: {type(exc).__name__}: {exc}", err=True)
+        return
+    if receipt.outcome != OUTCOME_NOT_DUE:
+        typer.echo(f"auto-rollover {receipt.outcome}: {receipt.detail}")
+
+
 @ingest_app.command("execute-selected-odds-plan")
 def execute_selected_odds_plan(
     *,
@@ -651,12 +671,22 @@ def execute_selected_odds_plan(
     ),
     odds_api_key: str | None = typer.Option(None, help="The Odds API key or ODDS_API_KEY."),
     timeout: float = typer.Option(15.0, min=0.1, help="Provider request timeout in seconds."),
+    auto_rollover: bool = typer.Option(
+        False,
+        "--auto-rollover/--no-auto-rollover",
+        help=(
+            "First select the earliest week that still has a game ahead, building its plan "
+            "when needed. A rollover failure is reported and polling continues."
+        ),
+    ),
 ) -> None:
     """Execute at most one due poll from the explicitly selected plan."""
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.market.collection_plan_store import load_current_collection_plan
 
     settings = get_settings()
+    if auto_rollover:
+        _run_auto_rollover(evaluated_at=evaluated_at, repo=settings.repo_root)
     plan = load_current_collection_plan(repo=settings.repo_root)
     _execute_loaded_odds_plan(
         plan,

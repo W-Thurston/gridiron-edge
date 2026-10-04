@@ -135,6 +135,7 @@ cd "$REPO"
 
 exec {uv_path} run gridiron ingest execute-selected-odds-plan \\
   --evaluated-at "$EVALUATED_AT" \\
+  --auto-rollover \\
   --grace-minutes 15 \\
   --minimum-credit-reserve 30 \\
   --timeout 15
