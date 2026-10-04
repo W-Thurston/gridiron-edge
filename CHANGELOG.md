@@ -1,5 +1,15 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 21: market readiness is judged over games that have not started
+
+#### Changed
+
+- `verify-week` no longer reports `partial_market_coverage` for a week in progress just because the
+  collector stopped quoting started games: market coverage is judged over scheduled games that have not
+  kicked off (`DECISIONS.md` D84), and the report prints "N of M not yet started". Quotes for started games
+  do not count as coverage. Prediction coverage is unchanged, and a week whose games have all started is
+  judged over all of them as before. Week 4, mid-week, went from `partial_market_coverage` to ready.
+
 ### 2026-10-04 - Unit 20: a refresh keeps every started or finished game's forecast
 
 #### Changed

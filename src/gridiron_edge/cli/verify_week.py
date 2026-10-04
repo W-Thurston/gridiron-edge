@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Final
@@ -149,10 +149,22 @@ def _load_schedule(
         return upcoming
 
 
+def _has_kicked_off(game_date: object, game_time: object, *, as_of: datetime) -> bool:
+    """Return whether a game's kickoff is at or before ``as_of``; unreadable kickoffs say no."""
+    from gridiron_edge.market.collection_plan import _schedule_kickoff_utc
+
+    try:
+        return _schedule_kickoff_utc(game_date, game_time) <= as_of
+    except ValueError:
+        return False
+
+
 def _schedule_for_readiness(
     rich_schedule: DataFrame,
+    *,
+    as_of: datetime | None = None,
 ) -> DataFrame:
-    """Project rich schedule identity onto the readiness schema."""
+    """Project rich schedule identity, and which games have started, onto the readiness schema."""
     required: set[str] = {
         "season",
         "week",
@@ -164,7 +176,7 @@ def _schedule_for_readiness(
             "Rich upcoming schedule is missing required columns: " + ", ".join(missing)
         )
 
-    return DataFrame(
+    schedule = DataFrame(
         {
             "season": rich_schedule["season"].astype("string"),
             # pyrefly: ignore [missing-attribute]
@@ -175,6 +187,14 @@ def _schedule_for_readiness(
             "game_id": rich_schedule["game_id"].astype("string"),
         }
     )
+    if as_of is not None and {"game_date", "game_time"} <= set(rich_schedule.columns):
+        schedule["started"] = [
+            _has_kicked_off(date, time, as_of=as_of)
+            for date, time in zip(
+                rich_schedule["game_date"], rich_schedule["game_time"], strict=True
+            )
+        ]
+    return schedule
 
 
 def _load_markets(
@@ -398,6 +418,8 @@ def _render_weekly_readiness(
     """Render every weekly readiness count and blocker."""
     typer.echo("Coverage")
     typer.echo(f"  Scheduled games                 {readiness.scheduled_game_count}")
+    if readiness.unstarted_game_count is not None:
+        typer.echo(f"  Not yet started                 {readiness.unstarted_game_count}")
     typer.echo(f"  Selected win predictions        {readiness.selected_win_prediction_count}")
     typer.echo(f"  Spread values                   {readiness.spread_value_count}")
     typer.echo(f"  Total predictions               {readiness.total_prediction_count}")
@@ -406,7 +428,12 @@ def _render_weekly_readiness(
 
     typer.echo("")
     typer.echo("Markets")
-    typer.echo(f"  Games with market data          {readiness.market_game_count}")
+    scope = (
+        ""
+        if readiness.unstarted_game_count in (None, 0)
+        else f" of {readiness.unstarted_game_count} not yet started"
+    )
+    typer.echo(f"  Games with market data          {readiness.market_game_count}{scope}")
     typer.echo(f"  Prediction-market matches       {readiness.prediction_market_match_count}")
     typer.echo(f"  Eligible markets                {readiness.eligible_market_count}")
     typer.echo(f"  Positive edges                  {readiness.positive_edge_count}")
@@ -445,15 +472,20 @@ def load_weekly_readiness(
     season: str,
     week: int,
     repo: Path | None = None,
+    as_of: datetime | None = None,
 ) -> WeeklyReadiness:
-    """Load the selected weekly product and derive read-only readiness."""
+    """Load the selected weekly product and derive read-only readiness.
+
+    ``as_of`` (default now) decides which games have started; the market is judged over the
+    games that have not (``DECISIONS.md`` D84).
+    """
     validate_season_label(season)
     if week < 1 or week > 22:
         raise ValueError("week must be between 1 and 22.")
 
     resolved_repo = repo or get_settings().repo_root
     rich_schedule = _load_schedule(resolved_repo, season=season, week=week)
-    readiness_schedule = _schedule_for_readiness(rich_schedule)
+    readiness_schedule = _schedule_for_readiness(rich_schedule, as_of=as_of or datetime.now(UTC))
     markets = _load_markets(resolved_repo)
 
     selection_blockers: tuple[WeeklyReadinessBlocker, ...] = ()

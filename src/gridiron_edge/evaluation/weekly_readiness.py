@@ -143,8 +143,16 @@ class WeeklyReadiness:
 
     blockers: tuple[WeeklyReadinessBlocker, ...] = ()
 
+    #: Scheduled games that had not kicked off; market coverage is judged over these (``None``
+    #: when the schedule carried no kickoff information, meaning every scheduled game).
+    unstarted_game_count: int | None = None
+
     def __post_init__(self) -> None:
         """Validate weekly readiness invariants."""
+        if self.unstarted_game_count is not None and not (
+            0 <= self.unstarted_game_count <= self.scheduled_game_count
+        ):
+            raise ValueError("unstarted_game_count must be between 0 and scheduled_game_count.")
         if not self.season.strip():
             raise ValueError("season must not be empty.")
 
@@ -684,6 +692,16 @@ def evaluate_weekly_readiness(
     scoped_schedule = _scope_schedule(schedule, season=season, week=week)
     scheduled_game_ids = set(scoped_schedule["game_id"].astype(str))
     scheduled_count = len(scheduled_game_ids)
+    # A started game is no longer quoted, so the market is judged over games that can still be
+    # quoted. When every game has started (a finished week) it is judged over all of them.
+    unstarted_count: int | None = None
+    market_scope_ids = scheduled_game_ids
+    if "started" in scoped_schedule.columns:
+        started = scoped_schedule["started"].fillna(False).astype(bool)
+        unstarted_ids = set(scoped_schedule.loc[~started, "game_id"].astype(str))
+        unstarted_count = len(unstarted_ids)
+        if unstarted_ids:
+            market_scope_ids = unstarted_ids
 
     scoped_predictions = _scope_predictions(
         predictions,
@@ -701,7 +719,8 @@ def evaluate_weekly_readiness(
     )
 
     prediction_game_ids = set(scoped_predictions["game_id"].astype(str))
-    market_game_ids = set(scoped_markets["game_id"].astype(str))
+    market_rows = scoped_markets.loc[scoped_markets["game_id"].astype(str).isin(market_scope_ids)]
+    market_game_ids = set(market_rows["game_id"].astype(str))
 
     selected_win_count = _count_non_null_games(
         scoped_predictions,
@@ -724,7 +743,7 @@ def evaluate_weekly_readiness(
     derived_prediction_market_match_count = len(prediction_game_ids.intersection(market_game_ids))
     derived_eligible_market_count = _count_eligible_markets(
         scoped_predictions,
-        scoped_markets,
+        market_rows,
     )
 
     derived_positive_edge_count = 0
@@ -778,7 +797,7 @@ def evaluate_weekly_readiness(
     )
     blockers.extend(
         _market_coverage_blockers(
-            scheduled_count=scheduled_count,
+            scheduled_count=len(market_scope_ids),
             selected_win_count=selected_win_count,
             market_game_count=resolved_market_game_count,
             prediction_market_match_count=(resolved_prediction_market_match_count),
@@ -813,4 +832,5 @@ def evaluate_weekly_readiness(
         market_providers=market_providers,
         market_sportsbooks=market_sportsbooks,
         blockers=tuple(blockers),
+        unstarted_game_count=unstarted_count,
     )

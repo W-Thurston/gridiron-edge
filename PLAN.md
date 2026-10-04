@@ -241,6 +241,39 @@ Closed in code; the completed record is under "Unit 19" below. Installing the ti
 
 Closed; the completed record is under "Unit 20" below.
 
+#### Unit 21 - Market Readiness Over Games That Have Not Started (ROADMAP W16) [Completed October 4, 2026; `DECISIONS.md` D84]
+
+Closed; the completed record is under "Unit 21" below. The scoping record follows.
+
+**Goal.** Judge market coverage only over games that can still be quoted, so a week in progress is not
+reported as `partial_market_coverage` because the collector stops quoting started games.
+
+**Audit (read from the code).** The blocker is raised in one place, `weekly_readiness._market_coverage_blockers`
+(`market_game_count < scheduled_count`), fed by `evaluate_weekly_readiness`, whose only caller is
+`verify_week.load_weekly_readiness` (also used by `weekly-predict` and `week-cycle` reports). No API route or
+schema carries it. The pure function receives a schedule of `season/week/game_id` only, so it cannot know
+which games started. Prediction coverage must keep counting every scheduled game (a started game keeps its
+carried forecast, `DECISIONS.md` D83). Observed 2026-10-04: week 4 reported 6 of 14 games with market data.
+
+**Design.**
+1. The readiness schedule gains an optional boolean `started` column, set by `verify_week` from each game's
+   kickoff against an `as_of` clock (default now). A game whose kickoff cannot be read counts as not started.
+2. Market coverage (games with market data, prediction-market matches, eligible markets, and the coverage
+   blockers) is judged over the scheduled games that have not started. `WeeklyReadiness` records
+   `unstarted_game_count` so the report can say "6 of 6 not yet started". Quotes for started games are
+   ignored, not counted as coverage.
+3. When every game has started (a finished week, or Monday night), the unchanged behavior applies: coverage is
+   judged over all scheduled games, so an elapsed week with no quotes still reports its missing market.
+4. Prediction coverage and all prediction blockers are unchanged. No API, schema or stored-artifact change.
+
+**Tests.** Pure readiness: all unstarted games quoted passes while started games are unquoted; an unquoted
+unstarted game still reports partial coverage; quotes on started games do not count; all-started falls back to
+all scheduled; no `started` column is the old behavior; counts and invariants. `verify_week` marks started
+games from kickoff and `as_of`. Real data: `verify-week` for week 4 against this checkout (read-only).
+
+**Acceptance.** A week in progress with every unstarted game quoted is market ready; one missing quote still
+blocks; finished weeks behave as before.
+
 #### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
 The user wants one page for last week's performance covering every projection, not only the starting QB.
@@ -335,6 +368,55 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 21 — Market Readiness Over Games That Have Not Started [Completed October 4, 2026]
+
+#### Completed
+
+`verify-week` judges market coverage over the scheduled games that have not kicked off (`DECISIONS.md` D84).
+The readiness schedule carries an optional `started` flag set from each game's kickoff and an `as_of` clock;
+games with market data, prediction-market matches, eligible markets and the coverage blockers use only
+unstarted games, and quotes for started games do not count. Prediction coverage still counts every scheduled
+game. When all games have started the market is judged over all of them. `WeeklyReadiness` gains
+`unstarted_game_count` and the report prints "N of M not yet started". Against this checkout, week 4
+mid-week moved from `partial_market_coverage` (6 of 14) to ready (2 of 2 unstarted games quoted). Not done:
+the edge calculation still includes started games (ROADMAP W18), so the eligible-market and positive-edge
+counts shown still span them.
+
+#### Goal
+
+Report a week in progress honestly: coverage of what can still be quoted, not a permanent partial-coverage
+blocker caused by games that have started.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/evaluation/weekly_readiness.py` - market scope is the unstarted games; `unstarted_game_count`.
+- `src/gridiron_edge/cli/verify_week.py` - marks started games from kickoff and `as_of`; prints the scope.
+- `tests/unit/evaluation/test_weekly_readiness.py` - market readiness over unstarted games, fallbacks and invariant.
+- `tests/unit/cli/test_verify_week.py` - kickoff marking and report wording.
+- `DECISIONS.md` - D84.
+- `HANDOFF.md` - readiness contract.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W16 done; W18 added.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+Unit tests for each case in the design (see Files). Python gate run. Real data, read-only: `verify-week` for
+week 4 at 2026-10-04T20:34Z reported 14 scheduled, 2 not yet started, market data 2 of 2, market ready.
+Not run: integration/e2e suites.
+
+#### Acceptance
+
+A week in progress with every unstarted game quoted is market ready; an unquoted unstarted game still
+blocks; finished weeks behave as before.
 
 ### Unit 20 — A Game Moves From Upcoming to Played Without Losing Its Forecast [Completed October 4, 2026]
 

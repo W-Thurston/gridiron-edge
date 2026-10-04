@@ -976,3 +976,52 @@ def test_collector_sync_line_reports_the_last_outcome(tmp_path: Path) -> None:
 
     status.write_text("not json")
     assert _collector_sync_line(tmp_path) == "Collector sync status unreadable"
+
+
+def test_readiness_schedule_marks_games_that_have_kicked_off() -> None:
+    from datetime import UTC, datetime
+
+    rich = pd.DataFrame(
+        {
+            "season": ["2026-2027"] * 4,
+            "week": [4] * 4,
+            "game_id": ["thu", "sun", "mon", "no-time"],
+            "game_date": ["2026-10-01", "2026-10-04", "2026-10-05", "2026-10-05"],
+            "game_time": ["20:15:00", "13:00:00", "20:15:00", None],
+        }
+    )
+    # Sunday 18:00Z: Thursday night and Sunday 13:00 ET (17:00Z) have started.
+    as_of = datetime(2026, 10, 4, 18, 0, tzinfo=UTC)
+
+    projected = _schedule_for_readiness(rich, as_of=as_of)
+
+    assert projected["started"].tolist() == [True, True, False, False]
+    # Without a clock (or kickoff columns) no game is marked.
+    assert "started" not in _schedule_for_readiness(rich).columns
+    assert "started" not in _schedule_for_readiness(rich.drop(columns=["game_time"]), as_of=as_of)
+
+
+def test_render_says_how_many_games_the_market_is_judged_over(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    readiness = WeeklyReadiness(
+        season="2026-2027",
+        week=4,
+        scheduled_game_count=14,
+        selected_win_prediction_count=14,
+        spread_value_count=14,
+        total_prediction_count=14,
+        projected_score_count=14,
+        complete_provenance_count=14,
+        market_game_count=2,
+        prediction_market_match_count=2,
+        eligible_market_count=54,
+        positive_edge_count=20,
+        unstarted_game_count=2,
+    )
+
+    _render_weekly_readiness(readiness)
+
+    output = capsys.readouterr().out
+    assert "Not yet started                 2" in output
+    assert "Games with market data          2 of 2 not yet started" in output

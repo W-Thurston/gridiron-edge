@@ -8,6 +8,28 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D84 - Market readiness is judged over games that have not started
+
+**Date:** 2026-10-04
+
+**Context:** The collector stops quoting a game once it kicks off, so `verify-week` reported
+`partial_market_coverage` (6 of 14 games) for most of every week, week 4 included.
+
+**Decision:** The readiness schedule marks each game as started from its kickoff and an `as_of` clock
+(default now; an unreadable kickoff counts as not started). Market coverage (games with market data,
+prediction-market matches, eligible markets and the coverage blockers) is judged over the scheduled games
+that have not started; quotes for started games are not coverage. Prediction coverage and its blockers keep
+counting every scheduled game, because a started game keeps its carried forecast (D83). When every game has
+started, the market is judged over all scheduled games, so an elapsed week with no quotes still reports its
+missing market. `WeeklyReadiness.unstarted_game_count` records the scope. No API, schema or stored artifact
+changes.
+
+**Not done:** the edge calculation still produces edges, eligible-market and positive-edge counts for games
+that have started (their quotes are the last pre-kickoff ones). Whether such edges should be withheld is a
+separate decision (ROADMAP W18).
+
+---
+
 ## D83 - A game moves from upcoming to played without losing its forecast: a refresh forecasts only unstarted games and keeps every other row
 
 **Date:** 2026-10-04

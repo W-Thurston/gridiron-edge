@@ -999,3 +999,79 @@ class TestEvaluateWeeklyReadiness:
                     }
                 ),
             )
+
+
+class TestMarketReadinessOverGamesNotStarted:
+    """Market coverage is judged over games that can still be quoted (``DECISIONS.md`` D84)."""
+
+    @staticmethod
+    def _evaluate(
+        *,
+        started: list[bool] | None,
+        quoted: int,
+        count: int = 3,
+        quoted_ids: list[str] | None = None,
+    ):
+        schedule = _schedule(count)
+        if started is not None:
+            schedule["started"] = started
+        markets = _markets(count)
+        if quoted_ids is None:
+            quoted_ids = [f"2026_01_GAME_{index}" for index in range(quoted)]
+        markets = markets.loc[markets["game_id"].isin(quoted_ids)]
+        return evaluate_weekly_readiness(
+            season="2026-2027",
+            week=1,
+            schedule=schedule,
+            predictions=_predictions(count),
+            markets=markets,
+            edges=pd.DataFrame(columns=["ev"]),
+        )
+
+    def test_unstarted_games_all_quoted_is_market_ready_while_started_games_are_not(self) -> None:
+        # Game 0 has started and is no longer quoted; games 1 and 2 are quoted.
+        result = self._evaluate(
+            started=[True, False, False], quoted=0, quoted_ids=["2026_01_GAME_1", "2026_01_GAME_2"]
+        )
+
+        assert result.market_ready
+        assert result.ready
+        assert result.scheduled_game_count == 3
+        assert result.unstarted_game_count == 2
+        assert result.market_game_count == 2
+        assert result.prediction_market_match_count == 2
+        # Prediction coverage still counts every scheduled game, started or not.
+        assert result.selected_win_prediction_count == 3
+
+    def test_an_unstarted_game_without_quotes_still_blocks(self) -> None:
+        result = self._evaluate(
+            started=[True, False, False], quoted=0, quoted_ids=["2026_01_GAME_1"]
+        )
+
+        assert WeeklyReadinessBlocker.PARTIAL_MARKET_COVERAGE in result.blockers
+        assert result.market_game_count == 1
+
+    def test_quotes_for_started_games_do_not_count_as_coverage(self) -> None:
+        # Only the started game still has (stale) quotes; no unstarted game does.
+        result = self._evaluate(
+            started=[True, False, False], quoted=0, quoted_ids=["2026_01_GAME_0"]
+        )
+
+        assert WeeklyReadinessBlocker.MISSING_MARKET_DATA in result.blockers
+        assert result.market_game_count == 0
+
+    def test_when_every_game_has_started_the_market_is_judged_over_all_games(self) -> None:
+        result = self._evaluate(started=[True, True, True], quoted=1)
+
+        assert WeeklyReadinessBlocker.PARTIAL_MARKET_COVERAGE in result.blockers
+        assert result.unstarted_game_count == 0
+
+    def test_a_schedule_without_kickoff_information_is_the_old_behavior(self) -> None:
+        result = self._evaluate(started=None, quoted=2)
+
+        assert WeeklyReadinessBlocker.PARTIAL_MARKET_COVERAGE in result.blockers
+        assert result.unstarted_game_count is None
+
+    def test_unstarted_count_must_fit_the_schedule(self) -> None:
+        with pytest.raises(ValueError, match="unstarted_game_count"):
+            _readiness(unstarted_game_count=17)

@@ -724,7 +724,12 @@ independent (`verify-week` prints both). The API serves a `freshness` block (`ev
 withholds price guidance (`field_status.guidance` blocked as `stale_market_data`). The frontend
 `MarketAsOf` component states the snapshot time, its age and, when stale, what is withheld, on the
 edge tables, the game page and Line Shopping; the age is computed from the served clock. `verify-week`
-also prints the collector sync's last outcome from `data/odds/sync_status.json`. The rendered forecast
+also prints the collector sync's last outcome from `data/odds/sync_status.json`. Market coverage in
+readiness is judged over the scheduled games that have not kicked off (`DECISIONS.md` D84): the collector
+stops quoting a started game, so `verify-week` prints "Games with market data N of M not yet started", and
+started games' quotes do not count as coverage. Prediction coverage still counts every scheduled game. When
+every game has started the market is judged over all of them. The eligible-market and positive-edge counts
+come from the edge calculation, which does not exclude started games (see ROADMAP W18). The rendered forecast
 PNG and HTML show the moneylines persisted in the weekly product, not the live snapshot, and carry no
 market age.
 
