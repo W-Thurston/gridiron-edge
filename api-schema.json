@@ -1118,7 +1118,8 @@
           "market_wrong_scope",
           "market_stale",
           "zero_matched_games",
-          "incomplete_markets"
+          "incomplete_markets",
+          "model_edges_unvalidated"
         ],
         "title": "EdgeDiagnosticBlocker",
         "type": "string"

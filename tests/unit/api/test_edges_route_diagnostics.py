@@ -98,6 +98,7 @@ def _empty_result(
         (EdgeDiagnosticBlocker.MARKET_STALE, "stale_market_data"),
         (EdgeDiagnosticBlocker.ZERO_MATCHED_GAMES, "zero_edge_game_matches"),
         (EdgeDiagnosticBlocker.INCOMPLETE_MARKETS, "incomplete_market_data"),
+        (EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED, "model_edges_unvalidated"),
     ],
 )
 def test_blocker_maps_to_items_field_status(

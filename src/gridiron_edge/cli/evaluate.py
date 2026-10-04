@@ -1730,6 +1730,96 @@ def evaluate_quote_movement(
     typer.echo(movement.limit_reason)
 
 
+@evaluate_app.command("market-agreement")
+def evaluate_market_agreement(
+    *,
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report.",
+    ),
+) -> None:
+    r"""Test whether the models beat the closing market where they disagree with it.
+
+    For each backfilled Win and Total family, compares the model with the closing line
+    (Brier or MAE), fits the calibration slope of the outcome on the model-minus-market
+    gap with its 95% interval, and tabulates realized outcomes by gap bin
+    (`DECISIONS.md` D85). Raw model EV is trustworthy only if the slope's interval excludes
+    0 and includes 1. Reads the backfilled forecast events and the cleaned games file;
+    writes only the Markdown report.
+
+    \b
+    Examples:
+      gridiron evaluate market-agreement
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_games
+    from gridiron_edge.evaluation.forecast_contracts import ForecastRole
+    from gridiron_edge.evaluation.forecast_store import load_forecast_events
+    from gridiron_edge.evaluation.market_agreement import (
+        agreement_tables,
+        build_report,
+        prediction_frame,
+    )
+    from gridiron_edge.evaluation.select import latest_backfilled_run_id
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate market-agreement")
+    specs = (
+        ("Win - Elo", "win", "win_prob", "elo", "home_win_prob"),
+        ("Win - Logistic", "win", "win_prob", "logistic", "home_win_prob"),
+        ("Win - Random Forest", "win", "win_prob", "random_forest", "home_win_prob"),
+        ("Win - XGBoost", "win", "win_prob", "xgboost", "home_win_prob"),
+        ("Total - Random Forest", "total", "total", "random_forest", "model_total"),
+        ("Total - XGBoost", "total", "total", "xgboost", "model_total"),
+    )
+    with step("Load backfilled forecasts") as s:
+        families = {}
+        skipped = []
+        for name, kind, model_name, model_type, column in specs:
+            run_id = latest_backfilled_run_id(model_name, model_type, repo=repo)
+            if run_id is None:
+                skipped.append(name)
+                continue
+            events = load_forecast_events(
+                model_name=model_name,
+                model_type=model_type,
+                role=ForecastRole.BACKFILLED,
+                run_id=run_id,
+                repo=repo,
+            )
+            families[name] = (kind, prediction_frame(events, column))
+        if not families:
+            raise typer.BadParameter(
+                "No backfilled forecasts exist; run `evaluate backfill` first."
+            )
+        s.set_detail(
+            f"{len(families)} families" + (f"; none for {', '.join(skipped)}" if skipped else "")
+        )
+    with step("Compare with the closing market") as s:
+        try:
+            results = agreement_tables(load_games(repo), families)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        s.set_detail(f"{sum(item.games for item in results)} family-games")
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / "market-agreement.md"
+        path.write_text(
+            build_report(results, generated_on=datetime.now(UTC).date()), encoding="utf-8"
+        )
+        s.set_detail(str(path))
+    typer.echo("")
+    for item in results:
+        typer.echo(
+            f"{item.name}: slope {item.slope:.3f} ({item.slope_low:.3f} to {item.slope_high:.3f}), "
+            f"{item.score_label} model {item.model_score:.4f} vs market {item.market_score:.4f}, "
+            f"validated: {'yes' if item.validated else 'no'}"
+        )
+
+
 @evaluate_app.command("starting-qb-projection")
 def evaluate_starting_qb_projection(
     *,

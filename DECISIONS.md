@@ -8,6 +8,39 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D85 - Raw model-versus-market EV is withheld until the model is shown to beat the market
+
+**Date:** 2026-10-04
+
+**Context:** Week 4's edge report showed 149 of 162 markets positive EV (median 9-16%). The arithmetic was
+consistent, but it treats the model's probability or total as the truth. `gridiron evaluate market-agreement`
+tests that on walk-forward backfills (2013 onward, about 3,550 games per family) against the closing lines:
+for every family the model scores worse than the market (win Brier 0.2198-0.2305 against 0.2117-0.2119; total
+MAE 10.76 against 10.51), and the calibration slope of the outcome on the model-minus-market gap is -0.15 to
+0.12 with every 95% interval including 0 (Elo's is significantly negative). Where the model disagreed with
+the market by more than ten points the home team won at the market's rate, not the model's.
+
+**Decision:**
+1. Raw model EV is trustworthy only if a family's slope interval excludes 0 and includes 1. The rule was
+   recorded before it was applied; the gap bins, the reading of `VEGAS_LINE` as the expected home margin and
+   the normal margin (sd 13.5) used to turn it into a probability were chosen after seeing the data.
+2. While no family passes (`market/edge_validation.RAW_MODEL_EDGES_VALIDATED = False`), the edge service
+   returns a blocked result with the diagnostic blocker `model_edges_unvalidated`: no edge rows, no
+   recommendations, no stakes, in the CLI, the weekly-predict stage, the API and the frontend (through the
+   existing blocked-edges presentation). An input blocker (stale market, missing product) takes priority.
+   `gridiron edges report --allow-unvalidated` shows the raw rows for research with a warning; nothing else
+   can. Readiness is unaffected: this is not a data problem, and prediction and market readiness stay
+   independent.
+3. The constant changes only together with a DECISIONS entry and a regenerated report that passes the rule.
+4. Quotes for games that have kicked off (`commence_time` at or before the supplied clock) are ignored by
+   the edge service.
+
+**Not done:** a view of the model-versus-market disagreement without EV, a market-anchored probability that
+could pass the rule (ROADMAP W7), and the `model_key` label (every row carries the Win model's key, so Total
+rows are mislabeled; provenance in the diagnostics is correct).
+
+---
+
 ## D84 - Market readiness is judged over games that have not started
 
 **Date:** 2026-10-04

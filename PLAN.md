@@ -274,6 +274,60 @@ games from kickoff and `as_of`. Real data: `verify-week` for week 4 against this
 **Acceptance.** A week in progress with every unstarted game quoted is market ready; one missing quote still
 blocks; finished weeks behave as before.
 
+#### Unit 22 - Withhold Unvalidated Model Edges and Measure Market Agreement (ROADMAP W18) [Completed October 4, 2026; `DECISIONS.md` D85]
+
+Closed; the completed record is under "Unit 22" below. The scoping record follows.
+
+**Goal.** Stop presenting raw model-versus-market EV as an edge until the model is shown to beat the market,
+keep edges off games that have started, and make the evidence a durable, repeatable command.
+
+**Evidence (2026-10-04, throwaway script, walk-forward backfills 2013-2025 against closing lines).** Win
+(Logistic, 3,550 games): Brier 0.2198 against 0.2117 for the market-implied probability; where the model
+sat more than 10 points above the market the home team won 45% (model 0.62, market 0.47); more than 10
+below, 60% (model 0.46, market 0.61). Total (Random Forest, 3,562 games): MAE 10.76 against 10.51 for the
+line; 4-6 points under the line the over hit 49% (model 0.35). Week 4 showed 149 of 162 markets positive EV
+with a median of 9-16%: the EV is arithmetically consistent and its input is not predictive.
+
+**Audit (read from the code).** Edge rows come from one seam, `weekly_edge_service.build_weekly_edge_result`
+(callers: `edges report`, the `weekly-predict` edge stage, `verify-week`, the API loader). It already returns
+a blocked result with a named diagnostic blocker (`market_stale` is the precedent): rows are empty, the API
+serializes the blocker and the frontend shows it through `EdgeResultStatus`/`edgeResultStatus.ts`. It does
+not exclude games that have started (`commence_time` is carried, never used). Recommendations and Kelly
+stakes only exist on edge rows. `model_key` on every row is the game's Win model key, so Total rows are
+mislabeled (provenance is correct in `diagnostics.provenance`); left for a later change.
+
+**Design.**
+1. `gridiron evaluate market-agreement` (`evaluation/market_agreement.py`): for each backfilled family
+   (latest backfill run), over 2013 onward, compare the model with the closing market (the cleaned games
+   file's `VEGAS_LINE`, the expected home margin, and `OVER_UNDER`): Brier or MAE against the market, the
+   calibration slope of the outcome on the model-minus-market gap with its 95% interval (slope 0: the
+   disagreement carries no information; 1: the model is right), and realized rates by gap bin. Writes
+   `docs/reports/market-agreement.md`; reads local data only. The validation rule is recorded before it is
+   applied: raw model EV is trustworthy only if the slope's 95% interval excludes 0 and includes 1. The
+   thresholds above were chosen after seeing the data.
+2. `market/edge_validation.py` holds one policy constant, `RAW_MODEL_EDGES_VALIDATED = False`, with the
+   reason and the report name. `build_weekly_edge_result` returns a blocked result with a new diagnostic
+   blocker `model_edges_unvalidated` (no rows, no recommendations, no stakes) unless the caller passes
+   `allow_unvalidated=True`. Only `gridiron edges report --allow-unvalidated` does, and it prints a
+   warning; the API loader, the weekly-predict stage and the cycle never do. Flipping the constant needs a
+   DECISIONS entry and a passing report.
+3. Games that have kicked off are excluded: the service drops quote rows whose `commence_time` is at or
+   before `as_of`, so counts, rows and diagnostics cover only games that can still be bet.
+4. API: the new blocker value appears in the generated schema (`export-schema`, `gen:api`); the frontend
+   adds its message to `edgeResultStatus.ts` and its tests. No other contract change.
+5. Not in this unit: a disagreement view without EV, a market-anchored probability (W7), the `model_key`
+   label.
+
+**Tests.** The pure agreement tables (slope, intervals, bins, Brier, MAE) on synthetic data with a known
+answer; the report text; the command refuses missing data. Edge service: blocked by default with the new
+blocker, rows with the override, started games excluded, no change for other blockers. CLI flag and warning.
+API serializer and schema enum; frontend message and tests. Real data: run the command (read-only inputs,
+writes the report), `edges report` blocked, `verify-week` unchanged.
+
+**Acceptance.** No edge, recommendation or stake is shown for a model that has not passed the recorded
+rule, the reason is visible wherever edges would be, started games produce no edges, and the evidence can be
+regenerated with one command.
+
 #### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
 The user wants one page for last week's performance covering every projection, not only the starting QB.
@@ -368,6 +422,71 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 22 — Withhold Unvalidated Model Edges and Measure Market Agreement [Completed October 4, 2026]
+
+#### Completed
+
+`gridiron evaluate market-agreement` tests each backfilled Win and Total family against the closing line
+(model versus market score, the calibration slope of the outcome on the model-minus-market gap with its 95%
+interval, realized outcomes by gap bin) and writes `docs/reports/market-agreement.md`. Run on this checkout:
+no family passes the recorded rule (slopes -0.15 to 0.12, every interval includes 0; Elo's is significantly
+negative; the market scores better in every family). Accordingly `weekly_edge_service.build_weekly_edge_result`
+returns a blocked result with the new diagnostic blocker `model_edges_unvalidated` (no rows,
+recommendations or stakes) wherever edges are produced, controlled by
+`market/edge_validation.RAW_MODEL_EDGES_VALIDATED = False`; an input blocker takes priority, readiness is
+unaffected, and only `edges report --allow-unvalidated` shows the raw rows (with a warning). The service
+also ignores quotes for games that have kicked off. The blocker flows through the API meta/route, the
+regenerated schema and the frontend message. Not done: a no-EV disagreement view, a market-anchored
+probability (ROADMAP W7), and the `model_key` label on Total rows.
+
+#### Goal
+
+Stop presenting model-versus-market EV that the evidence says is noise, keep edges off started games, and
+make the evidence repeatable.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/market_agreement.py` - agreement tables, calibration slope, Markdown report.
+- `src/gridiron_edge/market/edge_validation.py` - the validation switch and its explanation.
+- `tests/unit/evaluation/test_market_agreement.py` - slope, bins, scores and report on synthetic data with known answers.
+- `docs/reports/market-agreement.md` - generated evidence (a dated record, not a pipeline input).
+
+Changed:
+- `src/gridiron_edge/market/weekly_edge_service.py` - started-game quote exclusion and the withholding gate.
+- `src/gridiron_edge/market/edge_diagnostics.py` - `model_edges_unvalidated` blocker.
+- `src/gridiron_edge/cli/evaluate.py` - the `market-agreement` command.
+- `src/gridiron_edge/cli/edges.py` - `--allow-unvalidated`, warning and blocker message.
+- `src/gridiron_edge/cli/verify_week.py` - the new blocker maps to no readiness blocker.
+- `src/gridiron_edge/api/meta.py`, `src/gridiron_edge/api/routes/edges.py` - field-status reason for the blocker.
+- `api-schema.json` - regenerated (blocker enum value).
+- `frontend/src/components/field-status/edgeResultStatus.ts` - message for the blocker.
+- `frontend/src/components/field-status/edgeResultStatus.test.ts`, `frontend/src/components/dashboard/ModelEdgesTable.test.tsx`, `frontend/src/components/betslip/EdgesTable.test.tsx` - blocker coverage.
+- `tests/unit/market/test_weekly_edge_service.py` - gate, override, priority, started-game exclusion.
+- `tests/unit/cli/test_edges.py`, `tests/unit/cli/test_edges_report_service.py` - flag and call signature.
+- `tests/unit/api/test_edges_route_diagnostics.py` - blocker-to-field-status mapping.
+- `tests/integration/api/test_edges_routes.py`, `tests/integration/test_odds_join.py` - edge calculation tests assume validated edges.
+- `DECISIONS.md` - D85.
+- `HANDOFF.md` - the withheld-edges contract.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W18 done, W7 note.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests for each case in the design, including that the validator validates a model that is truly
+informative (so the gate is not hard-wired). Python gate run; frontend gate run (lint, build, 530 tests). The
+edge-related integration tests were run once (452 passed); the full integration and e2e suites were not.
+Real data: the command ran against the local backfills and closing lines and wrote the report.
+
+#### Acceptance
+
+No edge, recommendation or stake is shown while no model family passes the recorded rule, the reason is
+visible wherever edges would be, started games produce no edges, and the evidence regenerates with one command.
 
 ### Unit 21 — Market Readiness Over Games That Have Not Started [Completed October 4, 2026]
 

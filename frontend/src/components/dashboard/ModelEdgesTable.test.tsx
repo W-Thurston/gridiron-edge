@@ -80,6 +80,7 @@ const blockers: EdgeBlocker[] = [
   "market_stale",
   "zero_matched_games",
   "incomplete_markets",
+  "model_edges_unvalidated",
 ];
 
 describe("ModelEdgesTable", () => {

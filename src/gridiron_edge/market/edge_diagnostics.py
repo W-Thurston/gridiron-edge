@@ -24,6 +24,7 @@ class EdgeDiagnosticBlocker(StrEnum):
     MARKET_STALE = "market_stale"
     ZERO_MATCHED_GAMES = "zero_matched_games"
     INCOMPLETE_MARKETS = "incomplete_markets"
+    MODEL_EDGES_UNVALIDATED = "model_edges_unvalidated"
 
 
 class EdgeResultState(StrEnum):

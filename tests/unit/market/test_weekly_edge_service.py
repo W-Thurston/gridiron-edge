@@ -444,3 +444,128 @@ def test_ambiguous_product_dispositions_remain_explicit(
         )
 
     mock_markets.assert_not_called()
+
+
+def _positive_result() -> EdgeResult:
+    diagnostics = EdgeDiagnostics(
+        season=SEASON,
+        week=WEEK,
+        prediction_game_count=1,
+        market_game_count=1,
+        matched_game_count=1,
+        complete_moneyline_count=1,
+        complete_spread_count=1,
+        complete_total_count=1,
+        eligible_market_count=3,
+        calculated_edge_count=3,
+        positive_edge_count=2,
+        filtered_edge_count=2,
+        state=EdgeResultState.POSITIVE_EDGES,
+    )
+    rows = DataFrame({"game_id": [GAME_ID, GAME_ID], "ev": [0.2, 0.1], "kelly_stake": [5.0, 2.0]})
+    return EdgeResult(rows=rows, diagnostics=diagnostics)
+
+
+def _build(tmp_path: Path, result: EdgeResult, **kwargs: object) -> EdgeResult:
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=_product(),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_odds",
+            return_value=_markets(),
+        ),
+        patch("gridiron_edge.market.weekly_edge_service.build_edge_result", return_value=result),
+    ):
+        return build_weekly_edge_result(season=SEASON, week=WEEK, repo=tmp_path, **kwargs)
+
+
+def test_unvalidated_model_edges_are_withheld_by_default(tmp_path: Path) -> None:
+    result = _build(tmp_path, _positive_result())
+
+    assert result.rows.empty
+    assert list(result.rows.columns) == ["game_id", "ev", "kelly_stake"]
+    assert result.diagnostics.state is EdgeResultState.BLOCKED
+    assert result.diagnostics.blockers == (EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED,)
+    assert result.diagnostics.positive_edge_count == 0
+    assert result.diagnostics.calculated_edge_count == 0
+    # The counts of games and markets are kept: the inputs were fine.
+    assert result.diagnostics.matched_game_count == 1
+    assert result.diagnostics.eligible_market_count == 3
+
+
+def test_the_research_override_returns_the_rows(tmp_path: Path) -> None:
+    positive = _positive_result()
+
+    result = _build(tmp_path, positive, allow_unvalidated=True)
+
+    assert result is positive
+
+
+def test_validated_model_edges_pass_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gridiron_edge.market.weekly_edge_service.RAW_MODEL_EDGES_VALIDATED", True)
+    positive = _positive_result()
+
+    assert _build(tmp_path, positive) is positive
+
+
+def test_an_input_blocker_takes_priority_over_the_withheld_notice(tmp_path: Path) -> None:
+    stale = _empty_result(EdgeDiagnosticBlocker.MARKET_STALE)
+
+    result = _build(tmp_path, stale)
+
+    assert result is stale
+    assert result.diagnostics.blockers == (EdgeDiagnosticBlocker.MARKET_STALE,)
+
+
+def test_quotes_for_games_that_have_kicked_off_are_ignored(tmp_path: Path) -> None:
+    markets = _markets()
+    markets["commence_time"] = pd.Timestamp("2026-10-22T17:00:00Z")
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=_product(),
+        ),
+        patch("gridiron_edge.market.weekly_edge_service.load_current_odds", return_value=markets),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.build_edge_result",
+            return_value=_positive_result(),
+        ) as mock_build,
+    ):
+        before = datetime(2026, 10, 22, 16, 0, tzinfo=UTC)
+        after = datetime(2026, 10, 22, 17, 30, tzinfo=UTC)
+        build_weekly_edge_result(season=SEASON, week=WEEK, repo=tmp_path, as_of=before)
+        build_weekly_edge_result(season=SEASON, week=WEEK, repo=tmp_path, as_of=after)
+        no_clock = build_weekly_edge_result(season=SEASON, week=WEEK, repo=tmp_path)
+
+    assert len(mock_build.call_args_list[0].args[1]) == 6
+    assert len(mock_build.call_args_list[1].args[1]) == 0
+    assert no_clock is not None
+    assert len(mock_build.call_args_list[2].args[1]) == 6
+
+
+def test_quotes_without_a_kickoff_time_are_kept(tmp_path: Path) -> None:
+    with (
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_weekly_product",
+            return_value=_product(),
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.load_current_odds", return_value=_markets()
+        ),
+        patch(
+            "gridiron_edge.market.weekly_edge_service.build_edge_result",
+            return_value=_positive_result(),
+        ) as mock_build,
+    ):
+        build_weekly_edge_result(
+            season=SEASON,
+            week=WEEK,
+            repo=tmp_path,
+            as_of=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+
+    assert len(mock_build.call_args.args[1]) == 6

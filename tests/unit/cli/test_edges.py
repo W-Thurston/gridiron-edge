@@ -87,6 +87,7 @@ class TestWeeklyReport:
             min_ev=0.0,
             as_of=ANY,
             max_market_age=MAX_MARKET_AGE,
+            allow_unvalidated=False,
         )
         remove.assert_called_once_with("2026-2027", 1)
         render.assert_called_once_with(result_value.rows)
@@ -210,3 +211,49 @@ class TestWeeklyReport:
 
         assert result.exit_code != 0
         service.assert_not_called()
+
+
+def test_withheld_model_edges_are_explained_and_exit_nonzero() -> None:
+    from typer.testing import CliRunner
+
+    from gridiron_edge.cli.edges import edges_app
+    from gridiron_edge.market.edge_diagnostics import (
+        EdgeDiagnosticBlocker,
+        EdgeDiagnostics,
+        EdgeResultState,
+    )
+    from gridiron_edge.market.edge_report import EdgeResult
+
+    diagnostics = EdgeDiagnostics(
+        season="2026-2027",
+        week=1,
+        prediction_game_count=1,
+        market_game_count=1,
+        matched_game_count=1,
+        complete_moneyline_count=1,
+        complete_spread_count=0,
+        complete_total_count=0,
+        eligible_market_count=1,
+        calculated_edge_count=0,
+        positive_edge_count=0,
+        filtered_edge_count=0,
+        state=EdgeResultState.BLOCKED,
+        blockers=(EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED,),
+    )
+    blocked = EdgeResult(rows=pd.DataFrame(), diagnostics=diagnostics)
+    with (
+        patch("gridiron_edge.market.weekly_edge_service.build_weekly_edge_result") as service,
+        patch("gridiron_edge.cli.edges._remove_edge_csv"),
+    ):
+        service.return_value = blocked
+        result = CliRunner().invoke(edges_app, ["report", "--season", "2026-2027", "--week", "1"])
+        research = CliRunner().invoke(
+            edges_app, ["report", "--season", "2026-2027", "--week", "1", "--allow-unvalidated"]
+        )
+
+    assert result.exit_code == 1
+    assert "Model edges are withheld" in result.output
+    assert "market-agreement.md" in result.output
+    assert service.call_args_list[0].kwargs["allow_unvalidated"] is False
+    assert service.call_args_list[1].kwargs["allow_unvalidated"] is True
+    assert "WARNING: unvalidated research output" in research.output

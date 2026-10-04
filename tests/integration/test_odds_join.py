@@ -10,6 +10,7 @@ from typing import cast
 
 import pandas as pd
 from pandas import DataFrame
+import pytest
 
 from gridiron_edge.datasets.writers import (
     select_current_weekly_product,
@@ -26,6 +27,12 @@ from gridiron_edge.ingest.odds.store import (
 )
 from gridiron_edge.market.edge_diagnostics import EdgeResultState
 from gridiron_edge.market.weekly_edge_service import build_weekly_edge_result
+
+
+@pytest.fixture(autouse=True)
+def _edges_validated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the edge calculation; the withholding gate has its own tests."""
+    monkeypatch.setattr("gridiron_edge.market.weekly_edge_service.RAW_MODEL_EDGES_VALIDATED", True)
 
 
 def _rich_schedule() -> DataFrame:

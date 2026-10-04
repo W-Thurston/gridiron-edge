@@ -49,6 +49,10 @@ const blockerCases: Array<[EdgeBlocker, string]> = [
     "incomplete_markets",
     "One or more games have incomplete market coverage.",
   ],
+  [
+    "model_edges_unvalidated",
+    "Model edges are withheld: where the model disagreed with the closing market, outcomes followed the market, so its expected value is not an edge.",
+  ],
 ];
 
 describe("getEdgeResultPresentation", () => {

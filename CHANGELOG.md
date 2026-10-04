@@ -1,5 +1,22 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 22: unvalidated model edges are withheld and market agreement is measured
+
+#### Added
+
+- `gridiron evaluate market-agreement` compares each backfilled Win and Total family with the closing line
+  (Brier or MAE), fits the calibration slope of the outcome on the model-minus-market gap with its 95%
+  interval, tabulates realized outcomes by gap bin, and writes `docs/reports/market-agreement.md`
+  (`DECISIONS.md` D85). No family passes: slopes are -0.15 to 0.12, every interval includes 0.
+- Diagnostic blocker `model_edges_unvalidated` (API `blocker` value, frontend message).
+- `gridiron edges report --allow-unvalidated` for research output, with a warning.
+
+#### Changed
+
+- Edges, recommendations and stakes are withheld everywhere while raw model EV is unvalidated; an input
+  blocker (stale or missing market) takes priority. Readiness is unaffected.
+- The edge service ignores quotes for games that have kicked off.
+
 ### 2026-10-04 - Unit 21: market readiness is judged over games that have not started
 
 #### Changed

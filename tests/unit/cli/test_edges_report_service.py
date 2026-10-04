@@ -120,6 +120,7 @@ def test_report_calls_service_once_and_omits_bankroll() -> None:
         min_ev=0.0,
         as_of=ANY,
         max_market_age=MAX_MARKET_AGE,
+        allow_unvalidated=False,
     )
     assert "1 edge(s) found" in result.output
     assert "+125" in result.output

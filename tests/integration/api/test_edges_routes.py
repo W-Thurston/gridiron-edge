@@ -27,6 +27,12 @@ WEEK = 1
 GAME_ID = "2026_01_KC_LAC"
 
 
+@pytest.fixture(autouse=True)
+def _edges_validated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the edge calculation; the withholding gate has its own tests."""
+    monkeypatch.setattr("gridiron_edge.market.weekly_edge_service.RAW_MODEL_EDGES_VALIDATED", True)
+
+
 @dataclass
 class _FakeSettings:
     repo_root: Path

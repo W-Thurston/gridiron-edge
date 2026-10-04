@@ -671,6 +671,16 @@ Weekly-product composition and readiness verification (`gridiron verify-week`) b
 
 ## Market Data and Edge Diagnostics
 
+**Model edges are withheld (`DECISIONS.md` D85).** Until a model family passes the rule in
+`gridiron evaluate market-agreement` (`docs/reports/market-agreement.md`: the slope of the outcome on the
+model-minus-closing-market gap must have a 95% interval that excludes 0 and includes 1), every edge boundary
+returns the blocker `model_edges_unvalidated` and no rows, recommendations or stakes: `edges report`,
+the `weekly-predict` edge stage, the API and the frontend (shown as the blocked edges state). Input blockers
+such as a stale market take priority. `gridiron edges report --allow-unvalidated` prints the raw rows with a
+warning for research. The switch is `market/edge_validation.RAW_MODEL_EDGES_VALIDATED`; change it only with
+a DECISIONS entry and a passing report. Quotes for games that have kicked off are ignored. Rerun the command
+as weeks of backfills and forecasts accumulate.
+
 The current snapshot is:
 
 ```text

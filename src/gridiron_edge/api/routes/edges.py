@@ -81,6 +81,7 @@ def list_edges(
         EdgeDiagnosticBlocker.MARKET_STALE: Unavailable.STALE_MARKET_DATA,
         EdgeDiagnosticBlocker.ZERO_MATCHED_GAMES: (Unavailable.ZERO_EDGE_GAME_MATCHES),
         EdgeDiagnosticBlocker.INCOMPLETE_MARKETS: (Unavailable.INCOMPLETE_MARKET_DATA),
+        EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED: Unavailable.MODEL_EDGES_UNVALIDATED,
     }
     meta: ResponseMeta | None = None
     if result.diagnostics.blockers:

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 import math
 from pathlib import Path
@@ -27,6 +28,7 @@ from gridiron_edge.market.edge_diagnostics import (
     EdgeResultState,
 )
 from gridiron_edge.market.edge_report import EdgeResult, build_edge_result
+from gridiron_edge.market.edge_validation import RAW_MODEL_EDGES_VALIDATED
 from gridiron_edge.models.game_prediction.weekly_spread_product import (
     WeeklySpreadStatus,
 )
@@ -195,6 +197,14 @@ def _adapt_weekly_product(product: DataFrame) -> DataFrame:
     return adapted
 
 
+def _not_started(markets: DataFrame, as_of: datetime | None) -> DataFrame:
+    """Drop quotes for games that have kicked off; quotes with no kickoff time are kept."""
+    if as_of is None or markets.empty or "commence_time" not in markets.columns:
+        return markets
+    commence = pd.to_datetime(markets["commence_time"], utc=True, errors="coerce")
+    return markets.loc[commence.isna() | (commence > pd.Timestamp(as_of))]
+
+
 def build_weekly_edge_result(
     *,
     season: str,
@@ -205,8 +215,15 @@ def build_weekly_edge_result(
     repo: Path | None = None,
     as_of: datetime | None = None,
     max_market_age: timedelta | None = None,
+    allow_unvalidated: bool = False,
 ) -> EdgeResult:
-    """Build one edge result from the selected product and market snapshot."""
+    """Build one edge result from the selected product and market snapshot.
+
+    Quotes for games that have kicked off (``commence_time`` at or before ``as_of``) are
+    ignored: they cannot be bet. Unless ``allow_unvalidated`` is set, the result is blocked
+    with ``model_edges_unvalidated`` and carries no rows, because raw model EV has not been
+    shown to beat the market (``DECISIONS.md`` D85). Only the research CLI sets the override.
+    """
     root = repo or get_settings().repo_root
     product = _load_selected_product(
         repo=root,
@@ -224,7 +241,7 @@ def build_weekly_edge_result(
             week=week,
         )
     markets = load_current_odds(repo=root)
-    market_input = _empty_markets() if markets is None else markets
+    market_input = _empty_markets() if markets is None else _not_started(markets, as_of)
 
     margin_std = _finite_unique_uncertainty(
         product,
@@ -241,7 +258,7 @@ def build_weekly_edge_result(
         label="total uncertainty",
     )
 
-    return build_edge_result(
+    result = build_edge_result(
         _adapt_weekly_product(product),
         market_input,
         season=season,
@@ -253,4 +270,20 @@ def build_weekly_edge_result(
         min_ev=min_ev,
         as_of=as_of,
         max_market_age=max_market_age,
+    )
+    if RAW_MODEL_EDGES_VALIDATED or allow_unvalidated:
+        return result
+    diagnostics = result.diagnostics
+    if diagnostics.state is EdgeResultState.BLOCKED:
+        return result  # An input problem is more actionable than the withheld-edges notice.
+    return EdgeResult(
+        rows=DataFrame(columns=result.rows.columns),
+        diagnostics=replace(
+            diagnostics,
+            state=EdgeResultState.BLOCKED,
+            blockers=(*diagnostics.blockers, EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED),
+            calculated_edge_count=0,
+            positive_edge_count=0,
+            filtered_edge_count=0,
+        ),
     )

@@ -371,7 +371,15 @@ def _edge_readiness_blockers(
         EdgeDiagnosticBlocker.INCOMPLETE_MARKETS: (WeeklyReadinessBlocker.INCOMPLETE_MARKETS),
     }
 
-    return tuple(dict.fromkeys(mapping[blocker] for blocker in result.diagnostics.blockers))
+    # Withheld model edges are not a data problem: readiness is about the inputs, so they map to
+    # no readiness blocker (prediction and market readiness stay independent of edge validation).
+    return tuple(
+        dict.fromkeys(
+            mapping[blocker]
+            for blocker in result.diagnostics.blockers
+            if blocker is not EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED
+        )
+    )
 
 
 def _market_age_suffix(fetched_at: datetime | None) -> str:

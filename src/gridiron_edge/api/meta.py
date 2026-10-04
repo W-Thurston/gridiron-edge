@@ -160,6 +160,7 @@ class Unavailable:
         "incomplete_market_data",
         "data",
     )
+    MODEL_EDGES_UNVALIDATED: tuple[str, str] = ("model_edges_unvalidated", "data")
     NO_PRIOR_SNAPSHOT: tuple[str, str] = ("no_prior_snapshot", "data")
     NO_PROJECTIONS_DATA: tuple[str, str] = ("no_projections_data", "data")
     NO_ELO_FORECAST: tuple[str, str] = ("no_elo_forecast", "data")

@@ -21,6 +21,7 @@ from pandas import DataFrame
 import typer
 
 from gridiron_edge.core.settings import Settings
+from gridiron_edge.market.edge_validation import EXPLANATION
 
 if TYPE_CHECKING:
     from gridiron_edge.market.edge_diagnostics import EdgeDiagnostics
@@ -69,6 +70,14 @@ def report(
         "--format",
         help="Output format: 'table' or 'csv'.",
     ),
+    allow_unvalidated: bool = typer.Option(
+        False,
+        "--allow-unvalidated",
+        help=(
+            "Research only: show raw model EV that is otherwise withheld because the model "
+            "has not been shown to beat the market (DECISIONS.md D85)."
+        ),
+    ),
 ) -> None:
     """Generate a weekly betting edge report from the selected product."""
     from gridiron_edge.core.console import console, step
@@ -111,7 +120,10 @@ def report(
             min_ev=min_ev,
             as_of=clock.as_of,
             max_market_age=clock.max_market_age,
+            allow_unvalidated=allow_unvalidated,
         )
+    if allow_unvalidated:
+        typer.echo(f"  WARNING: unvalidated research output. {EXPLANATION}")
 
     _remove_edge_csv(season, week)
     fetched = result.diagnostics.provenance.market_fetched_at
@@ -165,6 +177,7 @@ def _edge_result_message(
         EdgeDiagnosticBlocker.INCOMPLETE_MARKETS: (
             "Matching games exist, but one or more market families are incomplete."
         ),
+        EdgeDiagnosticBlocker.MODEL_EDGES_UNVALIDATED: EXPLANATION,
     }
     if diagnostics.blockers:
         return " ".join(blocker_messages[blocker] for blocker in diagnostics.blockers)
