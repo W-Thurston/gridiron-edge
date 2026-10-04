@@ -92,6 +92,18 @@ def _settings(repo_root: Path) -> Settings:
     )
 
 
+def _pull_result(*, rows_added: int = 0, copied: int = 0, dry_run: bool = False):
+    from gridiron_edge.deployment.collector_merge import MergeReport
+    from gridiron_edge.deployment.collector_sync import PullResult
+
+    report = MergeReport(
+        copied=[f"collection_runs/f{index}" for index in range(copied)],
+        partitions={"history/season=2026-2027/week=04/observations.parquet": (10, 10 + rows_added)},
+        current_snapshot="kept local (not older than the worker's)",
+    )
+    return PullResult(transferred=(), report=report, dry_run=dry_run)
+
+
 def test_pull_collector_evidence_requires_host(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GRIDIRON_COLLECTOR_HOST", raising=False)
 
@@ -115,14 +127,7 @@ def test_pull_collector_evidence_uses_host_env_var_and_reports_files(
         observed["target"] = target
         observed["local_repo"] = local_repo
         observed["dry_run"] = dry_run
-        import subprocess
-
-        return subprocess.CompletedProcess(
-            (),
-            0,
-            stdout="week=03/observations.parquet\n",
-            stderr="",
-        )
+        return _pull_result(rows_added=5, copied=2, dry_run=dry_run)
 
     monkeypatch.setattr(
         "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
@@ -138,13 +143,13 @@ def test_pull_collector_evidence_uses_host_env_var_and_reports_files(
     assert target.host == "10.0.0.49"
     assert target.user == "thursty"
     assert target.remote_repository == "/home/thursty/apps/gridiron-edge"
-    assert "week=03/observations.parquet" in result.stdout
-    assert "pulled 1 file(s)" in result.stdout
+    assert "add 5 observation row(s)" in result.stdout
+    assert "10 -> 15 rows" in result.stdout
+    assert "copy 2 new plan/receipt file(s)" in result.stdout
+    assert result.stdout.rstrip().endswith("merged")
 
 
-def test_pull_collector_evidence_reports_up_to_date_when_nothing_transferred(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_pull_collector_evidence_reports_nothing_to_merge(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GRIDIRON_COLLECTOR_HOST", "10.0.0.49")
     monkeypatch.setattr(
         "gridiron_edge.core.settings.get_settings",
@@ -152,9 +157,7 @@ def test_pull_collector_evidence_reports_up_to_date_when_nothing_transferred(
     )
 
     def fake_pull(target, *, local_repo, dry_run=False):
-        import subprocess
-
-        return subprocess.CompletedProcess((), 0, stdout="", stderr="")
+        return _pull_result()
 
     monkeypatch.setattr(
         "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
@@ -164,7 +167,8 @@ def test_pull_collector_evidence_reports_up_to_date_when_nothing_transferred(
     result = runner.invoke(app, ["ops", "pull-collector-evidence"])
 
     assert result.exit_code == 0
-    assert "up to date" in result.stdout
+    assert "add 0 observation row(s)" in result.stdout
+    assert "->" not in result.stdout
 
 
 def test_pull_collector_evidence_surfaces_sync_error(monkeypatch, tmp_path: Path) -> None:
@@ -197,9 +201,7 @@ def test_pull_collector_evidence_overrides_user_and_repository_and_identity(
 
     def fake_pull(target, *, local_repo, dry_run=False):
         observed["target"] = target
-        import subprocess
-
-        return subprocess.CompletedProcess((), 0, stdout="", stderr="")
+        return _pull_result()
 
     monkeypatch.setattr(
         "gridiron_edge.core.settings.get_settings",
@@ -231,6 +233,83 @@ def test_pull_collector_evidence_overrides_user_and_repository_and_identity(
     assert target.user == "someone"
     assert target.remote_repository == "/srv/gridiron-edge"
     assert target.identity_file == "/home/thursty/.ssh/id_ed25519"
+
+
+def test_unattended_pull_requires_an_identity(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("GRIDIRON_COLLECTOR_HOST", "10.0.0.49")
+    monkeypatch.delenv("GRIDIRON_COLLECTOR_SSH_KEY", raising=False)
+
+    result = runner.invoke(app, ["ops", "pull-collector-evidence", "--unattended"])
+
+    assert result.exit_code == 2
+    assert "identity" in result.stderr
+
+
+def test_unattended_pull_passes_the_flag_and_dry_run_reports_planned_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_pull(target, *, local_repo, dry_run=False):
+        observed["target"] = target
+        return _pull_result(rows_added=3, dry_run=dry_run)
+
+    monkeypatch.setattr(
+        "gridiron_edge.core.settings.get_settings",
+        lambda: _settings(tmp_path),
+    )
+    monkeypatch.setattr(
+        "gridiron_edge.deployment.collector_sync.pull_collector_evidence",
+        fake_pull,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "ops",
+            "pull-collector-evidence",
+            "--host",
+            "10.0.0.49",
+            "--identity",
+            "/home/thursty/.ssh/gridiron_collector_ro",
+            "--unattended",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert observed["target"].unattended is True
+    assert "would add 3 observation row(s)" in result.stdout
+    assert "planned only -- nothing written" in result.stdout
+
+
+def test_collector_key_line_prints_a_restricted_read_only_line(tmp_path: Path) -> None:
+    public_key = tmp_path / "key.pub"
+    public_key.write_text("ssh-ed25519 AAAAC3Nza gridiron-collector-pull-ro\n")
+
+    result = runner.invoke(
+        app,
+        ["ops", "collector-key-line", "--public-key", str(public_key)],
+    )
+
+    assert result.exit_code == 0
+    line = result.stdout.strip()
+    assert line.startswith(
+        'restrict,command="rrsync -ro /home/thursty/apps/gridiron-edge/data/odds"'
+    )
+    assert line.endswith("ssh-ed25519 AAAAC3Nza gridiron-collector-pull-ro")
+
+
+def test_collector_key_line_rejects_a_private_key(tmp_path: Path) -> None:
+    private_key = tmp_path / "key"
+    private_key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n")
+
+    result = runner.invoke(
+        app,
+        ["ops", "collector-key-line", "--public-key", str(private_key)],
+    )
+
+    assert result.exit_code == 2
 
 
 def _invoke_rollover(*extra_args: str, input_text: str | None = None):

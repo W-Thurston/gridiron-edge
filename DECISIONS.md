@@ -8,6 +8,47 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D78 - The collector pull merges instead of mirroring, and runs unattended on a dedicated read-only key
+
+**Date:** 2026-10-03
+
+**Context:** `DECISIONS.md` D58 left `pull-collector-evidence` and the weekly rollover manual,
+with two revisit triggers. The second ("missed weekly rollovers, forgotten syncs") fired on
+2026-10-03: the week 4 rollover was not run, the Pi polled a finished plan from 2026-09-28,
+this machine's current snapshot was 3.2 days old with nothing flagging it, and the first
+manual pull overwrote two local ledger files. `rsync -az` replaces any same-path file whose
+content differs, so the "additive only" pull was not safe for a ledger this machine also
+appends to: the local-only 2026-09-22 week 3 and 2026-09-30 week 4 manual snapshots were lost.
+Both are unrecoverable from this checkout.
+
+**Decision:**
+1. The pull stages the worker tree and merges it (`deployment/collector_merge.py`): observation
+   partitions are unioned and never lose a local row; `odds_current.parquet` takes the snapshot
+   with the later `fetched_at`; plans and run receipts are immutable (copied when absent, a
+   differing file is a reported conflict that fails the pull but never replaces the local file);
+   each machine's `collection_plans/current.json` pointer is never pulled. A conflicting
+   observation (one fetch identity with two values) raises and leaves the local file alone.
+2. Writers of `data/odds` share one exclusive lock (`odds_write_lock`), taken by the pull and by
+   `ingest odds` around its ledger and snapshot writes, so a pull cannot interleave with a fetch.
+3. Unattended operation uses a dedicated passphrase-less ed25519 key, authorized on the worker
+   as `restrict,command="rrsync -ro <repo>/data/odds"`. Its capability is reading the quote
+   tree, data this machine already holds; it has no shell, forwarding or write access, and it is
+   never the key used for the weekly push. This resolves D58's trade-off in favor of a scoped key
+   over a standing unlocked agent, which would hold the main key's full authority.
+4. Every pull records `data/odds/sync_status.json` (last attempt, last success, error) so a later
+   freshness check can say how far behind the sync is.
+
+**Supersedes:** D58's pull paragraph and "remain manually triggered" implication. D58's decision
+that the push (`rollover-collector-week`) and the Pi's code deployment stay manual stands until
+the rollover unit lands.
+
+**Verified:** a real-data idempotence check of the merge (an identical staged copy of the real
+`data/odds` leaves every file byte-identical), then a dry run, a real pull and the installed timer
+against the Pi, all unattended. Not verified: that the key is unable to read outside `data/odds`
+(by design of `rrsync -ro`, not by attempting it).
+
+---
+
 ## D77 - The weekly product records each side's assumed starting QB, bound to the sidecar the forecast used
 
 **Date:** 2026-10-03

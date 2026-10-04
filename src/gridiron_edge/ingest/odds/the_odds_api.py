@@ -16,6 +16,7 @@ import requests
 from gridiron_edge.ingest.odds.store import (
     QUOTE_COLUMNS,
     append_to_odds_ledger,
+    odds_write_lock,
     validate_quote_rows,
     write_current_odds_snapshot,
 )
@@ -380,14 +381,15 @@ def ingest_the_odds_api_current(
             "quote artifacts were not updated."
         )
 
-    ledger_path = append_to_odds_ledger(quotes, repo=repo)
-    try:
-        snapshot_path = write_current_odds_snapshot(quotes, repo=repo)
-    except Exception as exc:
-        raise OddsIngestPartialPersistenceError(
-            "Quote observations were persisted to the historical ledger, "
-            "but the current snapshot was not replaced."
-        ) from exc
+    with odds_write_lock(repo=repo):
+        ledger_path = append_to_odds_ledger(quotes, repo=repo)
+        try:
+            snapshot_path = write_current_odds_snapshot(quotes, repo=repo)
+        except Exception as exc:
+            raise OddsIngestPartialPersistenceError(
+                "Quote observations were persisted to the historical ledger, "
+                "but the current snapshot was not replaced."
+            ) from exc
     return OddsIngestResult(
         quote_count=len(quotes),
         game_count=int(quotes["game_id"].nunique()),

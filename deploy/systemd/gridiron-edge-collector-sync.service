@@ -7,4 +7,5 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/thursty/workspace/github.com/w-thurston/gridiron-edge
 Environment=GRIDIRON_COLLECTOR_HOST=10.0.0.49
-ExecStart=/home/thursty/.local/bin/uv run gridiron ops pull-collector-evidence
+ExecStart=/home/thursty/.local/bin/uv run --no-sync gridiron ops pull-collector-evidence --unattended --identity /home/thursty/.ssh/gridiron_collector_ro
+TimeoutStartSec=5min

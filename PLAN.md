@@ -114,8 +114,8 @@ Active unit: none. A three-unit program (Units 12-14, ROADMAP W1-W3) is proposed
 
 ### Proposed Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3) [Awaiting review, scoped October 3, 2026]
 
-Active unit: none. Unit 12 is complete; Units 13 and 14 remain proposed. The program is three bounded units, run one
-at a time in this order: **Unit 12 (W2)**, **Unit 13 (W1)**, **Unit 14 (W3)**. Evidence for every
+Active unit: none. Units 12 and 13 are complete; Units 14-16 remain proposed. The program is three bounded units, run one
+at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
 
@@ -155,8 +155,8 @@ week to score.
   3, not the several weeks assumed earlier.
 - **Pi rollover and pull, 2026-10-03 (run by the user; outputs pasted into the session).** The
   week 4 plan was pushed to the Pi and selected there (`current.json` week 4, selected
-  2026-10-03T19:25Z; 28 polls, last 2026-10-05T22:20Z), so the Pi should collect from the next
-  5-minute tick (*unverified*). The first polls of the plan had already passed. The pull then
+  2026-10-03T19:25Z; 28 polls, last 2026-10-05T22:20Z), and the second pull below confirms the Pi
+  then collected week 4 (a run receipt scheduled 19:25:59Z and a 19:30:38Z snapshot). The first polls of the plan had already passed. The pull then
   replaced two local files with the Pi's copies: `odds_current.parquet` is now the Pi's week 3
   snapshot (52 rows, 2026-09-28T23:15Z; no week 4 rows), and
   `history/.../week=03/observations.parquet` now holds the Pi's 12 snapshots (636 rows). **The
@@ -166,8 +166,8 @@ week to score.
   differs (HANDOFF.md says it never deletes; it does not promise to keep local content, but the
   ledger is documented as append-only evidence). The 2026-09-30 week 4 snapshot survives in
   `history/.../week=04`. Until the Pi writes week 4 quotes and they are pulled, week 4 edges are
-  blocked as market wrong scope, which is the honest state. Unit 13 includes fixing the pull so
-  it merges append-only ledger files and never replaces local observations.
+  blocked as market wrong scope, which is the honest state. Unit 13 fixes the pull so it merges
+  append-only ledger files and never replaces local observations.
 - **Fresh-quote result, 2026-10-03 (second pull, after the Pi polled week 4).** The Pi polled week 4
   at 2026-10-03T19:30:38Z; `odds_current.parquet` now has 810 rows for 15 games at that time, and
   `verify-week` reads "Market fetched at 2026-10-03T19:30:38" and Ready. **Fresh quotes did not
@@ -212,15 +212,60 @@ week to score.
 
 Closed; the completed record is under "Unit 12" below.
 
-#### Unit 13 - Market Freshness (W1) [Proposed, not started]
+#### Unit 13 - Safe and Automatic Collector Pull [Completed October 3, 2026]
+
+Closed; the completed record is under "Unit 13" below.
+
+#### Unit 14 - Automatic Weekly Collector Rollover on the Pi [Proposed, not started; needs the Pi probes below]
+
+**Goal.** The Pi selects and starts collecting each week's plan itself, with no push from this
+machine.
+
+**Design.**
+1. The week is derived, not typed: the target week is the earliest week in the schedule that still
+   has a game whose kickoff is in the future, evaluated by a daily Pi timer. This is a rule over
+   the schedule file, recorded in the plan, and the collector's existing "never infers a week"
+   guarantee changes only at this one explicit rollover command. A rollover happens at most once
+   per target week (the current plan's week already equals the target: nothing to do).
+2. Inputs. The cheapest path builds the next plan from the rich schedule already on the Pi (it
+   holds every unplayed game of the season). Its weakness is flex scheduling: a moved kickoff
+   would be polled at the wrong time. Options: (a) accept and refresh the Pi's schedule from this
+   machine whenever a push occurs, (b) have the Pi fetch the schedule from nflverse itself (needs
+   its pandas, `nflreadpy` and the cleaning step, which widens the Pi's role beyond the D58
+   scope), (c) rebuild the poll times for a week from the Odds API's own `commence_time` on its
+   first poll. Decision needed after the probes; (a) is the smallest and the plan records the
+   schedule's age so the freshness gate can flag a stale schedule.
+3. A new `ops auto-rollover` command (deployed to the Pi by the same targeted `rsync` D58 uses),
+   a systemd service and daily timer installed by the existing installer, a dry-run mode, and a
+   receipt for every decision (rolled, not due, failed) written under `data/odds`.
+4. Credit budget unchanged (34 polls at 3 credits). The unit reports the plan's projected credits
+   and refuses to roll if the week would exceed the limit already encoded in the policy.
+
+**Tests.** Target-week rule across a normal week, a bye, the last week of the season, a Monday
+game still unplayed, a flexed kickoff; idempotence; a missing or stale schedule fails closed with a
+receipt; installer and verify scripts cover the new units. Real data: a dry run on the Pi against
+its own schedule picks week 5 after week 4's last kickoff and builds the same plan that
+`rollover-collector-week` would.
+
+**Acceptance.** After one week boundary with no manual step, the Pi's `current.json` names the new
+week, its collector polled it, and the pulled ledger shows it.
+
+**Pi probe results (run by the user on the Pi, 2026-10-03, pasted into the session).** Python 3.13.5,
+pandas 2.3.3 and pyarrow import; `import nflreadpy` printed no error (so it imports, *not* run past the
+import); the Pi's rich schedule is the one pushed at 13:25:59 MDT today, weeks 4-18, 223 rows. Still
+unprobed: whether `clean_nflverse_upcoming` runs there (it needs the stadium reference and other cleaned
+inputs), and the Odds API credit balance. Because `nflreadpy` is present, option (b), the Pi fetching the
+schedule itself, is plausible; it remains a wider role than D58, so the recommendation stays option (a)
+unless the schedule's age proves a problem.
+
+#### Unit 15 - Market Freshness (W1) [Proposed, not started]
 
 **Goal.** A quote snapshot older than a maximum age cannot produce edges silently: the age is
 always visible, and over-age blocks edges, not predictions.
 
 **Design.**
-0. Fix `pull-collector-evidence` so a pull can never replace a local observation file with
-   fewer observations (merge or refuse; test with a local-only snapshot), and re-decide whether
-   a pull may replace `odds_current.parquet`.
+0. Collector sync and rollover are Units 13 and 14. This unit starts after them and relies on
+   fresh pulled quotes.
 1. Sync path (decision taken, see Decisions taken). Preferred: `gridiron ops pull-collector-evidence`
    mirrors the Pi's ledger and current snapshot (the sync timer is not installed here; the
    command exists), with `ingest odds` as the manual fallback. No new network code.
@@ -260,7 +305,7 @@ unblock.
 age is visible at every surface that shows a quote or an edge; threshold and criterion recorded
 in `DECISIONS.md` with the data it came from and what was chosen after seeing it; gates pass.
 
-#### Unit 14 - Weekly Starter Projection Scorecard (W3) [Proposed, not started; needs Unit 12 and a finished week]
+#### Unit 16 - Weekly Starter Projection Scorecard (W3) [Proposed, not started; needs Unit 12 and a finished week]
 
 **Goal.** After a week's games, score what the live system assumed against the actual starters,
 and persist the result.
@@ -348,6 +393,66 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 13 — Safe and Automatic Collector Pull [Completed October 3, 2026]
+
+#### Completed
+
+`gridiron ops pull-collector-evidence` no longer mirrors the worker's tree over the local one. It
+stages the worker's `data/odds` and merges it (`DECISIONS.md` D78): weekly observation partitions are
+unioned and never lose a local row, `odds_current.parquet` takes the snapshot with the later
+`fetched_at`, collection plans and run receipts are copied only when absent (a differing one is a
+reported conflict that fails the pull and leaves the local file), and `collection_plans/current.json`
+is never pulled. `ingest odds` and the pull share an exclusive `data/odds` write lock, and each pull
+records `data/odds/sync_status.json`. `--unattended --identity` pulls with a dedicated read-only key
+without prompting; `gridiron ops collector-key-line` prints the worker's restricted `authorized_keys`
+line (`restrict,command="rrsync -ro <repo>/data/odds"`), and the sync service template runs the
+unattended pull. The dedicated key `~/.ssh/gridiron_collector_ro` was generated on this machine.
+
+#### Goal
+
+Keep this machine's copy of the Pi's quote ledger and current snapshot current without anyone
+running a command, and make it impossible for a pull to destroy local evidence.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/deployment/collector_merge.py` - the per-file-family, evidence-preserving merge of a staged worker tree.
+- `tests/unit/deployment/test_collector_merge.py` - merge coverage: unions, never losing rows, snapshots, immutables, pointer, dry run, lock.
+
+Changed:
+- `src/gridiron_edge/deployment/collector_sync.py` - staged pull and merge, unattended targets, restricted key line, sync status.
+- `src/gridiron_edge/ingest/odds/store.py` - the shared write lock and the observation-partition merge.
+- `src/gridiron_edge/ingest/odds/the_odds_api.py` - ingestion writes under the lock.
+- `src/gridiron_edge/cli/ops.py` - `--unattended`, merge reporting, `collector-key-line`.
+- `deploy/systemd/gridiron-edge-collector-sync.service` - runs the unattended pull with the dedicated key.
+- `tests/unit/deployment/test_collector_sync.py`, `tests/unit/cli/test_ops_cli.py` - staged pull, unattended command, key line, status and conflict behavior.
+- `DECISIONS.md` - D78.
+- `HANDOFF.md` - merge rules, unattended key and timer.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - W14 progress.
+- `PLAN.md` - this record and the revised proposed program.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests cover unions with disjoint, overlapping and identical rows, a repeat pull changing
+nothing, a conflicting observation leaving the local file untouched, the later-snapshot rule, immutable
+copy-if-absent and conflict reporting, the unpulled pointer, dry run, the exclusive lock, the staged
+command (default and unattended), key-line validation, and status recording including a failure keeping
+the previous success time. Python gate. Real data: an identical staged copy of the real `data/odds`
+merged into another copy left every file byte-identical (0 rows added, 0 conflicts). Operational: a dry run and a real unattended pull against the Pi, then the installed user timer, all succeeded.
+
+#### Acceptance
+
+The merge never loses local evidence and is idempotent; an unattended pull with the dedicated read-only
+key ran against the Pi without a prompt (a real pull on 2026-10-03 added 1,620 week 4 rows and 4 files, 810
+to 2,430 rows, with every other partition unchanged); the installed user timer fired on its own and
+recorded a success in `data/odds/sync_status.json`; documentation is current and the Python gate passes.
+Not verified: that the key cannot read outside `data/odds` (checked by design of `rrsync -ro`, not by
+attempting it).
 
 ### Unit 12 — Persist and Show the Assumed Starting QB [Completed October 3, 2026]
 

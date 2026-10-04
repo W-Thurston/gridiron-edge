@@ -1,5 +1,23 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - Unit 13: the collector pull is merge-safe and can run unattended
+
+#### Changed
+
+- `gridiron ops pull-collector-evidence` stages the worker's `data/odds` tree and merges it:
+  observation rows are unioned (never fewer rows than before), the later current snapshot wins,
+  immutable plans and receipts are copied only when absent and a differing one is a reported
+  conflict, and the local plan pointer is never pulled. A pull previously replaced any differing
+  file and destroyed local-only snapshots (`DECISIONS.md` D78).
+- `ingest odds` and the pull share an exclusive write lock on `data/odds`.
+- Each pull records `data/odds/sync_status.json`.
+
+#### Added
+
+- `--unattended` (a dedicated read-only key, never prompts) and `gridiron ops collector-key-line`,
+  which prints the restricted `authorized_keys` line for the worker. The sync service template
+  runs the unattended pull.
+
 ### 2026-10-03 - The unit tests no longer depend on terminal color settings
 
 #### Fixed

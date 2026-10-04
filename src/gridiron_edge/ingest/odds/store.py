@@ -8,10 +8,14 @@ provider adapters.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import datetime
+import fcntl
 import logging
 from logging import Logger
 from pathlib import Path
+import time
 from uuid import uuid4
 
 import pandas as pd
@@ -369,6 +373,75 @@ def append_to_odds_ledger(
     _atomic_write_parquet(output, path)
     logger.info("Odds observation partition: %d rows -> %s", len(output), path)
     return path
+
+
+_WRITE_LOCK_FILENAME = ".write.lock"
+_WRITE_LOCK_TIMEOUT_SECONDS = 60.0
+
+
+@contextmanager
+def odds_write_lock(
+    *,
+    repo: Path | None = None,
+    timeout_seconds: float = _WRITE_LOCK_TIMEOUT_SECONDS,
+) -> Iterator[None]:
+    """Hold the one exclusive lock that serializes every writer of ``data/odds``.
+
+    Ingestion and the collector pull both rewrite the same ledger and snapshot
+    files; holding this lock keeps a pull from interleaving with a local fetch.
+    """
+    path = _odds_dir(repo) / _WRITE_LOCK_FILENAME
+    deadline = time.monotonic() + timeout_seconds
+    with path.open("a") as handle:
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Another process has held the odds write lock for {timeout_seconds:.0f}s."
+                    ) from None
+                time.sleep(0.2)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def merge_observation_partition(
+    path: Path,
+    pulled: DataFrame,
+    *,
+    write: bool = True,
+) -> tuple[int, int]:
+    """Union pulled observations into one local partition without losing any row.
+
+    The result contains every local observation and every pulled one; the
+    partition is replaced only when the union is larger than the local file.
+    Conflicting observations (one fetch identity with two different values) raise.
+
+    Returns:
+        ``(local_rows, merged_rows)``.
+    """
+    incoming = validate_quote_rows(pulled)
+    scope = _single_partition_scope(incoming)
+    if path.exists():
+        existing = validate_quote_rows(pd.read_parquet(path))
+        if _single_partition_scope(existing) != scope:
+            raise ValueError("Existing quote partition contains an invalid scope.")
+        combined = pd.concat([existing, incoming], ignore_index=True)
+        local_rows = len(existing)
+    else:
+        combined = incoming
+        local_rows = 0
+    merged = _canonicalize_observations(validate_quote_rows(combined))
+    if len(merged) < local_rows:
+        raise ValueError("Merged quote partition would lose local observations.")
+    if write and len(merged) > local_rows:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_parquet(merged, path)
+    return local_rows, len(merged)
 
 
 def write_current_odds_snapshot(

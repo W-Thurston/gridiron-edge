@@ -40,6 +40,7 @@ def _resolve_collector_target(
     user: str | None,
     remote_repository: str | None,
     identity_file: str | None,
+    unattended: bool = False,
 ) -> CollectorSyncTarget:
     resolved_host = host or os.environ.get("GRIDIRON_COLLECTOR_HOST")
     if not resolved_host:
@@ -55,29 +56,39 @@ def _resolve_collector_target(
             or _DEFAULT_COLLECTOR_REPOSITORY
         ),
         identity_file=identity_file or os.environ.get("GRIDIRON_COLLECTOR_SSH_KEY"),
+        unattended=unattended,
     )
 
 
 @ops_app.command("pull-collector-evidence")
 def pull_collector_evidence_cmd(
+    *,
     host: str | None = typer.Option(None, "--host", help=_HOST_HELP),
     user: str | None = typer.Option(None, "--user", help=_USER_HELP),
     remote_repository: str | None = typer.Option(
         None, "--remote-repository", help=_REPOSITORY_HELP
     ),
     identity_file: str | None = typer.Option(None, "--identity", "-i", help=_IDENTITY_HELP),
+    unattended: bool = typer.Option(
+        False,
+        "--unattended/--interactive",
+        help=(
+            "Use a dedicated read-only key (requires --identity) that never prompts. "
+            "The worker side must restrict it with `ops collector-key-line`."
+        ),
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run/--no-dry-run",
-        help="Show what would be pulled without copying anything.",
+        help="Stage the worker's files and report what the merge would do, writing nothing.",
     ),
 ) -> None:
-    """Pull collector-owned quote history, plans, and run receipts from the worker.
+    """Pull collector-owned quote evidence from the worker and merge it locally.
 
-    One-way and additive only: mirrors the deployed quote-collection worker's
-    ``data/odds`` tree into this repository's own ``data/odds``. Never
-    touches ``data/output`` and never deletes a local file that is missing
-    on the remote side.
+    The worker's ``data/odds`` tree is staged, then merged without losing local
+    evidence: observation rows are unioned, the later current snapshot wins, immutable
+    plans and receipts are copied only when absent, and a differing immutable file is
+    reported as a conflict and left alone. Never touches ``data/output``.
     """
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.deployment.collector_sync import (
@@ -85,9 +96,16 @@ def pull_collector_evidence_cmd(
         pull_collector_evidence,
     )
 
-    target = _resolve_collector_target(
-        host=host, user=user, remote_repository=remote_repository, identity_file=identity_file
-    )
+    try:
+        target = _resolve_collector_target(
+            host=host,
+            user=user,
+            remote_repository=remote_repository,
+            identity_file=identity_file,
+            unattended=unattended,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     settings = get_settings()
     typer.echo(
         f"pull-collector-evidence  "
@@ -102,15 +120,41 @@ def pull_collector_evidence_cmd(
     except CollectorSyncError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    transferred = [line for line in result.stdout.splitlines() if line.strip()]
-    for line in transferred:
-        typer.echo(f"  {line}")
-    if dry_run:
-        typer.echo(f"would pull {len(transferred)} file(s)")
-    elif transferred:
-        typer.echo(f"pulled {len(transferred)} file(s)")
-    else:
-        typer.echo("up to date -- no files needed pulling")
+    report = result.report
+    verb = "would " if dry_run else ""
+    typer.echo(f"  {verb}add {report.rows_added} observation row(s)")
+    for path, (local_rows, merged_rows) in sorted(report.partitions.items()):
+        if merged_rows != local_rows:
+            typer.echo(f"    {path}: {local_rows} -> {merged_rows} rows")
+    typer.echo(f"  {verb}copy {len(report.copied)} new plan/receipt file(s)")
+    typer.echo(f"  current snapshot: {report.current_snapshot}")
+    typer.echo("planned only -- nothing written" if dry_run else "merged")
+
+
+@ops_app.command("collector-key-line")
+def collector_key_line_cmd(
+    public_key: str = typer.Option(
+        ..., "--public-key", help="Path to the dedicated read-only public key (.pub)."
+    ),
+    remote_repository: str | None = typer.Option(
+        None, "--remote-repository", help=_REPOSITORY_HELP
+    ),
+) -> None:
+    """Print the worker ``authorized_keys`` line that limits a key to reading ``data/odds``."""
+    from pathlib import Path
+
+    from gridiron_edge.deployment.collector_sync import authorized_key_line
+
+    try:
+        line = authorized_key_line(
+            Path(public_key).read_text(),
+            remote_repository=remote_repository
+            or os.environ.get("GRIDIRON_COLLECTOR_REPOSITORY")
+            or _DEFAULT_COLLECTOR_REPOSITORY,
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(line)
 
 
 @ops_app.command("rollover-collector-week")

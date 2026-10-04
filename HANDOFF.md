@@ -1162,10 +1162,10 @@ whichever machine is running `production-chain assess` -- without that pull,
 `collection_execution` reads `INCOMPLETE` even after the worker has resolved
 every due poll, because the dev checkout simply cannot see the receipts.
 
-Both the sync/rollover commands below and the Pi's own code deployment stay
-deliberately manual for now -- see DECISIONS.md D58 for why (the Pi's
-`.git` is frozen and out of scope, and passphrase automation is a real
-security trade-off not yet worth making).
+The weekly rollover push and the Pi's own code deployment stay
+deliberately manual for now (the pull can run unattended, `DECISIONS.md` D78) --
+see DECISIONS.md D58 for why (the Pi's `.git` is frozen and out of scope, and
+passphrase automation for the push is still not worth its security trade-off).
 
 Pull manually:
 
@@ -1179,12 +1179,31 @@ recommended so it does not change) set in the environment, or passed as
 defaults (`thursty`, `/home/thursty/apps/gridiron-edge`, and ssh's own
 default identity resolution, respectively). Add `--dry-run` to preview.
 
-The pull is one-way and additive only: it mirrors the worker's `data/odds`
-tree (current and historical quotes, collection plans, collection-run
-receipts) into the local `data/odds`, via `rsync` over `ssh`. It never
-touches `data/output` -- candidate issuance, policy, and recommendation
-artifacts stay exactly as this machine generated them -- and it never
-deletes a local file that is missing from the worker.
+The pull is one-way and merge-safe (`DECISIONS.md` D78). `rsync` stages a copy of the
+worker's `data/odds` tree in a temporary directory, then `collector_merge` applies it to the
+local tree by file family: weekly observation partitions are unioned (the result always
+contains every local row and every pulled row); `odds_current.parquet` becomes whichever
+snapshot has the later `fetched_at`; collection plans and run receipts are immutable and
+copied only when absent, and a differing existing file is reported as a conflict, left
+untouched, and fails the pull after everything else has merged; the local
+`collection_plans/current.json` pointer is never pulled. Anything else in the worker tree is
+ignored. A pull takes the same exclusive lock as `ingest odds`. It never touches
+`data/output`. `--dry-run` stages and reports what the merge would do and writes nothing.
+Every attempt records its outcome in `data/odds/sync_status.json` (`last_attempt_at`,
+`last_success_at`, `error`).
+
+#### Unattended pull
+
+`--unattended --identity <key>` pulls with a dedicated read-only key and never prompts
+(`BatchMode`, `IdentitiesOnly`). Create the key once (`ssh-keygen -t ed25519 -N ""
+-C gridiron-collector-pull-ro -f ~/.ssh/gridiron_collector_ro`), print the worker's
+`authorized_keys` line with `uv run gridiron ops collector-key-line --public-key
+~/.ssh/gridiron_collector_ro.pub`, and append that single line on the worker. The line is
+`restrict,command="rrsync -ro <repo>/data/odds" <key>`: the key can only read the quote tree
+(no shell, forwarding or writes), and `rrsync` (part of the `rsync` package; check
+`command -v rrsync` on the worker) is why an unattended pull asks for the tree root rather
+than an absolute path. The key must never be used for `rollover-collector-week`; that
+push still uses your own key and prompts.
 
 Automate with a `systemd --user` timer (requires `systemd=true` under
 `[boot]` in `/etc/wsl.conf`, confirmed enabled for this dev environment):
@@ -1199,9 +1218,11 @@ systemctl --user enable --now gridiron-edge-collector-sync.timer
 
 The timer fires shortly after the WSL session starts and every 15 minutes
 after, with `Persistent=true` so a missed interval (the machine was off)
-catches up on the next start. The service and timer templates hardcode this
-dev machine's repository path and the Pi's current LAN IP; update both files
-before copying them if either changes.
+catches up on the next start. The service template runs the unattended pull
+with `~/.ssh/gridiron_collector_ro` and hardcodes this dev machine's repository
+path and the Pi's current LAN IP; update it before copying if either changes.
+Check the last outcome with `cat data/odds/sync_status.json` or
+`journalctl --user -u gridiron-edge-collector-sync.service`.
 
 ## Postgame Workflow
 

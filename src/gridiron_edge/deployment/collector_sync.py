@@ -1,15 +1,25 @@
 # src/gridiron_edge/deployment/collector_sync.py
 
-"""One-way pull of collector-owned evidence from the deployed quote worker."""
+"""One-way, merge-safe pull of collector-owned evidence from the deployed quote worker."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
+import json
 from pathlib import Path
+import shutil
 import subprocess
+from uuid import uuid4
+
+from gridiron_edge.deployment.collector_merge import MergeReport, merge_collector_tree
+from gridiron_edge.ingest.odds.store import odds_write_lock
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
+
+SYNC_STATUS_FILENAME = "sync_status.json"
+DEFAULT_RESTRICTED_COMMAND = "rrsync"
 
 
 class CollectorSyncError(RuntimeError):
@@ -18,12 +28,32 @@ class CollectorSyncError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class CollectorSyncTarget:
-    """Explicit connection details for one deployed quote-collection worker."""
+    """Explicit connection details for one deployed quote-collection worker.
+
+    ``unattended`` means the identity is a dedicated read-only key whose server-side
+    forced command (``authorized_key_line``) is rooted at the worker's ``data/odds``
+    directory: the pull then never prompts and asks for the root, not an absolute path.
+    """
 
     host: str
     user: str
     remote_repository: str
     identity_file: str | None = None
+    unattended: bool = False
+
+    def __post_init__(self) -> None:
+        """Require an explicit identity for an unattended pull."""
+        if self.unattended and not self.identity_file:
+            raise ValueError("An unattended pull requires an explicit identity file.")
+
+
+@dataclass(frozen=True, slots=True)
+class PullResult:
+    """The outcome of one pull: what moved and what the merge did."""
+
+    transferred: tuple[str, ...]
+    report: MergeReport
+    dry_run: bool
 
 
 def _run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -35,29 +65,66 @@ def _run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def build_rsync_command(
-    target: CollectorSyncTarget,
-    *,
-    local_repo: Path,
-    dry_run: bool = False,
-) -> tuple[str, ...]:
-    """Build the exact rsync invocation for one collector-evidence pull.
+def _ssh_command(target: CollectorSyncTarget) -> str:
+    if target.identity_file is None:
+        return "ssh"
+    command = f"ssh -i {target.identity_file}"
+    if target.unattended:
+        command += " -o IdentitiesOnly=yes -o BatchMode=yes"
+    return command
 
-    Mirrors only the collector-owned ``data/odds`` tree -- current and
-    historical quotes, collection plans, and collection-run claim/result
-    receipts. Never touches ``data/output`` or any other locally generated
-    evidence, and never deletes a local file that is missing on the remote
-    side: the worker is the source of truth for its own append-only data,
-    this machine's analysis artifacts are untouched by this command.
+
+def build_rsync_command(target: CollectorSyncTarget, *, destination: Path) -> tuple[str, ...]:
+    """Build the exact rsync invocation that stages one copy of the worker's quote tree.
+
+    The copy lands in ``destination`` (a staging directory), never in the live
+    ``data/odds``: ``merge_collector_tree`` decides what reaches the real tree. Nothing
+    is ever deleted, and ``data/output`` is never touched.
     """
-    ssh_command = "ssh" if target.identity_file is None else f"ssh -i {target.identity_file}"
-    source = f"{target.user}@{target.host}:{target.remote_repository.rstrip('/')}/data/odds/"
-    destination = f"{local_repo / 'data' / 'odds'}/"
-    command = ["rsync", "-az", "--out-format=%n", "-e", ssh_command]
-    if dry_run:
-        command.append("--dry-run")
-    command.extend((source, destination))
-    return tuple(command)
+    remote_root = "." if target.unattended else f"{target.remote_repository.rstrip('/')}/data/odds"
+    source = f"{target.user}@{target.host}:{remote_root}/"
+    return (
+        "rsync",
+        "-az",
+        "--out-format=%n",
+        "-e",
+        _ssh_command(target),
+        source,
+        f"{destination}/",
+    )
+
+
+def authorized_key_line(
+    public_key: str,
+    *,
+    remote_repository: str,
+    restricted_command: str = DEFAULT_RESTRICTED_COMMAND,
+) -> str:
+    """Return the ``authorized_keys`` line that limits a key to reading ``data/odds``.
+
+    ``restrict`` disables a pty, forwarding and every other capability; the forced
+    ``rrsync -ro`` command allows only read-only rsync rooted at the worker's quote tree.
+    """
+    key = public_key.strip()
+    if "\n" in key or not key.startswith(("ssh-ed25519 ", "ssh-rsa ", "ecdsa-")):
+        raise ValueError("Expected exactly one SSH public key line.")
+    root = f"{remote_repository.rstrip('/')}/data/odds"
+    return f'restrict,command="{restricted_command} -ro {root}" {key}'
+
+
+def _write_status(local_repo: Path, **fields: object) -> None:
+    path = local_repo / "data" / "odds" / SYNC_STATUS_FILENAME
+    previous: dict[str, object] = {}
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text())
+        except ValueError:
+            previous = {}
+    status = {**previous, **fields}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(json.dumps(status, indent=2, sort_keys=True))
+    temporary.replace(path)
 
 
 def pull_collector_evidence(
@@ -66,18 +133,51 @@ def pull_collector_evidence(
     local_repo: Path,
     dry_run: bool = False,
     runner: CommandRunner = _run,
-) -> subprocess.CompletedProcess[str]:
-    """Pull collector-owned evidence from the deployed worker into ``local_repo``.
+) -> PullResult:
+    """Stage the worker's quote tree, then merge it into ``local_repo`` without losing evidence.
+
+    A dry run stages and plans the merge but writes nothing to ``data/odds``. Every
+    attempt records its outcome in ``data/odds/sync_status.json`` (not for a dry run).
 
     Raises:
-        CollectorSyncError: rsync exited nonzero.
+        CollectorSyncError: rsync failed, or the merge found a conflicting immutable file
+            (everything else is still merged first).
     """
-    command = build_rsync_command(target, local_repo=local_repo, dry_run=dry_run)
-    result = runner(command)
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
-        raise CollectorSyncError(f"rsync exited {result.returncode}: {detail}")
-    return result
+    attempted_at = datetime.now(UTC).isoformat()
+    staging = local_repo / "data" / f".collector_pull_{uuid4().hex}"
+    local_odds = local_repo / "data" / "odds"
+    try:
+        staging.mkdir(parents=True)
+        result = runner(build_rsync_command(target, destination=staging))
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
+            raise CollectorSyncError(f"rsync exited {result.returncode}: {detail}")
+        transferred = tuple(line for line in result.stdout.splitlines() if line.strip())
+        with odds_write_lock(repo=local_repo):
+            report = merge_collector_tree(staging, local_odds, write=not dry_run)
+        if report.conflicts:
+            raise CollectorSyncError(
+                "Worker files differ from immutable local files and were not replaced: "
+                + ", ".join(report.conflicts)
+            )
+    except (CollectorSyncError, OSError, ValueError, TimeoutError) as exc:
+        if not dry_run:
+            _write_status(local_repo, last_attempt_at=attempted_at, error=str(exc))
+        if isinstance(exc, CollectorSyncError):
+            raise
+        raise CollectorSyncError(str(exc)) from exc
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    if not dry_run:
+        _write_status(
+            local_repo,
+            last_attempt_at=attempted_at,
+            last_success_at=attempted_at,
+            error=None,
+            rows_added=report.rows_added,
+            files_copied=len(report.copied),
+        )
+    return PullResult(transferred=transferred, report=report, dry_run=dry_run)
 
 
 def weekly_plan_relative_path(season: str, week: int) -> str:
