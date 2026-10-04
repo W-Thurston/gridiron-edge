@@ -7,11 +7,17 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 import pytest
 
+from gridiron_edge.api.schemas.freshness import MarketFreshness
 from gridiron_edge.api.schemas.lines import (
     LineOffer,
     LineOutcomeGuidance,
     LineShoppingGame,
     LineShoppingList,
+)
+
+_FRESHNESS = MarketFreshness(
+    evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC),
+    max_age_seconds=86400,
 )
 
 
@@ -63,6 +69,7 @@ def test_line_shopping_list_composes_games_and_offers() -> None:
         offers=[offer()],
     )
     response = LineShoppingList(
+        freshness=_FRESHNESS,
         season="2026-2027",
         week=1,
         items=[game],

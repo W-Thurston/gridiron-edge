@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pandas as pd
 import pytest
 from typer.testing import CliRunner
+
+from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
 
 
 class TestWeeklyReport:
@@ -83,6 +85,8 @@ class TestWeeklyReport:
             bankroll=None,
             kelly_multiplier=0.25,
             min_ev=0.0,
+            as_of=ANY,
+            max_market_age=MAX_MARKET_AGE,
         )
         remove.assert_called_once_with("2026-2027", 1)
         render.assert_called_once_with(result_value.rows)

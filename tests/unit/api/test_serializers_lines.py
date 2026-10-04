@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
+from functools import partial
 
 import pandas as pd
 
@@ -11,6 +13,10 @@ from gridiron_edge.api.meta import Unavailable
 from gridiron_edge.api.serializers.lines import serialize_line_shopping_list
 from gridiron_edge.market.line_shopping import (
     evaluate_line_shopping_guidance,
+)
+
+_serialize = partial(
+    serialize_line_shopping_list, evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
 )
 
 
@@ -62,7 +68,7 @@ def product() -> pd.DataFrame:
 
 def test_serializes_grouped_games_and_partial_coverage() -> None:
     evaluated = evaluate_line_shopping_guidance(product(), quotes())
-    result = serialize_line_shopping_list(
+    result = _serialize(
         evaluated.offers,
         season="2026-2027",
         week=1,
@@ -83,7 +89,7 @@ def test_serializes_grouped_games_and_partial_coverage() -> None:
 
 
 def test_serializes_empty_scope_without_fabricated_games() -> None:
-    result = serialize_line_shopping_list(
+    result = _serialize(
         evaluate_line_shopping_guidance(
             product(),
             quotes().head(0),
@@ -133,7 +139,7 @@ def test_sorts_games_by_kickoff_then_team_identity() -> None:
 
     rows = pd.concat([first, second, third], ignore_index=True)
     classified = rows.assign(is_best_line=False, is_best_price=True)
-    result = serialize_line_shopping_list(
+    result = _serialize(
         classified,
         season="2026-2027",
         week=1,
@@ -173,7 +179,7 @@ def _matching_recommendation() -> LoadedRecommendedBetResult:
 def test_attaches_only_exact_persisted_recommendation() -> None:
     evaluated = evaluate_line_shopping_guidance(product(), quotes())
     loaded = _matching_recommendation()
-    result = serialize_line_shopping_list(
+    result = _serialize(
         evaluated.offers,
         season="2026-2027",
         week=1,
@@ -196,7 +202,7 @@ def test_exact_identity_mismatch_leaves_offer_unmatched() -> None:
     changed = LoadedRecommendedBetResult(
         loaded.evaluation_id, replace(loaded.result, american_price=-109)
     )
-    result = serialize_line_shopping_list(
+    result = _serialize(
         evaluated.offers,
         season="2026-2027",
         week=1,

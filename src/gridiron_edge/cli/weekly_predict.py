@@ -346,27 +346,16 @@ def _stage_render_outputs(ctx: dict[str, Any]) -> StageResult:
 
 def _edge_stage_detail(result: EdgeResult, *, min_ev: float) -> str:
     """Return a deterministic composite-stage detail from diagnostics."""
-    from gridiron_edge.market.edge_diagnostics import EdgeResultState
+    from gridiron_edge.market.edge_diagnostics import EdgeDiagnosticBlocker, EdgeResultState
 
     if result.diagnostics.blockers:
         blockers = ", ".join(blocker.value for blocker in result.diagnostics.blockers)
-        return f"edge calculation blocked: {blockers}"
-    if result.diagnostics.state is EdgeResultState.NO_CALCULABLE_EDGES:
-        return "no calculable edges from available inputs"
-    if result.diagnostics.state is EdgeResultState.NO_POSITIVE_EDGES:
-        return "calculated markets contain no positive-EV edges"
-    if result.rows.empty:
-        return f"positive edges exist below min_ev={min_ev:.1%}"
-    return f"{len(result.rows)} edges (top EV {result.rows['ev'].max():.1%})"
-
-
-def _edge_stage_detail(result: EdgeResult, *, min_ev: float) -> str:
-    """Return a deterministic composite-stage detail from diagnostics."""
-    from gridiron_edge.market.edge_diagnostics import EdgeResultState
-
-    if result.diagnostics.blockers:
-        blockers = ", ".join(blocker.value for blocker in result.diagnostics.blockers)
-        return f"edge calculation blocked: {blockers}"
+        detail = f"edge calculation blocked: {blockers}"
+        if EdgeDiagnosticBlocker.MARKET_STALE in result.diagnostics.blockers:
+            fetched = result.diagnostics.provenance.market_fetched_at
+            newest = max(fetched).isoformat() if fetched else "unknown"
+            detail += f" (newest quotes fetched {newest}; refresh them first)"
+        return detail
     if result.diagnostics.state is EdgeResultState.NO_CALCULABLE_EDGES:
         return "no calculable edges from available inputs"
     if result.diagnostics.state is EdgeResultState.NO_POSITIVE_EDGES:
@@ -378,6 +367,7 @@ def _edge_stage_detail(result: EdgeResult, *, min_ev: float) -> str:
 
 def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
     """Generate persisted weekly edges through the unified domain service."""
+    from gridiron_edge.market.market_freshness import freshness_inputs
     from gridiron_edge.market.weekly_edge_service import (
         build_weekly_edge_result,
     )
@@ -393,6 +383,7 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
     min_ev = 0.0
     ctx.pop("top_edges_preview", None)
     out_path = repo / "data" / "output" / "edges" / f"edges_{season}_wk{week:02d}.csv"
+    clock = freshness_inputs()
     result = build_weekly_edge_result(
         season=season,
         week=week,
@@ -400,6 +391,8 @@ def _stage_generate_edges(ctx: dict[str, Any]) -> StageResult:
         kelly_multiplier=kelly_multiplier,
         min_ev=min_ev,
         repo=repo,
+        as_of=clock.as_of,
+        max_market_age=clock.max_market_age,
     )
     detail = _edge_stage_detail(result, min_ev=min_ev)
     if result.diagnostics.blockers:

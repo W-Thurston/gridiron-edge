@@ -290,10 +290,12 @@ def _load_edge_result(
     repo: Path,
 ) -> EdgeResult:
     """Load weekly edge rows and diagnostics without modifying artifacts."""
+    from gridiron_edge.market.market_freshness import freshness_inputs
     from gridiron_edge.market.weekly_edge_service import (
         build_weekly_edge_result,
     )
 
+    clock = freshness_inputs()
     return build_weekly_edge_result(
         season=season,
         week=week,
@@ -301,6 +303,8 @@ def _load_edge_result(
         kelly_multiplier=0.25,
         min_ev=0.0,
         repo=repo,
+        as_of=clock.as_of,
+        max_market_age=clock.max_market_age,
     )
 
 
@@ -350,6 +354,44 @@ def _edge_readiness_blockers(
     return tuple(dict.fromkeys(mapping[blocker] for blocker in result.diagnostics.blockers))
 
 
+def _market_age_suffix(fetched_at: datetime | None) -> str:
+    """Return the snapshot's age against the freshness limit for the readiness report."""
+    from gridiron_edge.market.market_freshness import market_age_label
+
+    return "" if fetched_at is None else f" ({market_age_label(fetched_at)})"
+
+
+def _collector_sync_line(repo: Path | None = None) -> str | None:
+    """Describe the collector pull's last outcome, from ``data/odds/sync_status.json``."""
+    import json
+
+    from gridiron_edge.market.market_freshness import format_age
+
+    path = (repo or get_settings().repo_root) / "data" / "odds" / "sync_status.json"
+    if not path.exists():
+        return None
+    try:
+        status = json.loads(path.read_text())
+        success = status.get("last_success_at")
+        parts = ["Collector sync"]
+        if success:
+            parts.append(
+                "last success "
+                + format_age(
+                    datetime.now(datetime.now().astimezone().tzinfo)
+                    - datetime.fromisoformat(success)
+                )
+                + " ago"
+            )
+        else:
+            parts.append("no successful pull recorded")
+        if status.get("error"):
+            parts.append(f"last attempt failed: {status['error']}")
+    except (ValueError, TypeError, OSError):
+        return "Collector sync status unreadable"
+    return "  " + "; ".join(parts)
+
+
 def _render_weekly_readiness(
     readiness: WeeklyReadiness,
 ) -> None:
@@ -376,12 +418,16 @@ def _render_weekly_readiness(
     )
     typer.echo(
         f"  Market fetched at               {_format_timestamp(readiness.market_fetched_at)}"
+        + _market_age_suffix(readiness.market_fetched_at)
     )
     providers = ", ".join(readiness.market_providers) or "unavailable"
     sportsbooks = ", ".join(readiness.market_sportsbooks) or "unavailable"
     typer.echo(f"  Market provider(s)              {providers}")
     typer.echo(f"  Sportsbook(s)                   {sportsbooks}")
 
+    typer.echo("")
+    typer.echo(f"Prediction ready                  {'yes' if readiness.prediction_ready else 'no'}")
+    typer.echo(f"Market ready                      {'yes' if readiness.market_ready else 'no'}")
     typer.echo("")
 
     if readiness.ready:
@@ -484,6 +530,9 @@ def verify_week_cmd(
     typer.echo("")
 
     _render_weekly_readiness(readiness)
+    sync_line = _collector_sync_line()
+    if sync_line:
+        typer.echo(sync_line)
 
     if not readiness.ready:
         raise typer.Exit(code=1)

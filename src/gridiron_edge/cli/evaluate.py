@@ -1672,6 +1672,64 @@ def evaluate_feature_confirmation(
     console.summary()
 
 
+@evaluate_app.command("quote-movement")
+def evaluate_quote_movement(
+    *,
+    report_dir: Path = typer.Option(  # noqa: B008
+        Path("docs/reports"),
+        help="Directory for the Markdown report.",
+    ),
+) -> None:
+    r"""Measure quote drift by age and derive the market age limit.
+
+    Compares how far the sportsbooks' consensus win probability drifts as quotes age with
+    how far single books disagree at one moment, and reports the age at which drift
+    exceeds the disagreement (`DECISIONS.md` D80), beside the configured limit. Reads
+    the quote ledger; writes only the Markdown report.
+
+    \b
+    Examples:
+      gridiron evaluate quote-movement
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.console import console, step
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.quote_movement import build_report, movement_tables
+    from gridiron_edge.ingest.odds.store import load_odds_ledger
+    from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
+
+    repo: Path = get_settings().repo_root
+    console.header("evaluate quote-movement")
+    with step("Measure quote drift by age") as s:
+        ledger = load_odds_ledger(repo=repo)
+        if ledger.empty:
+            raise typer.BadParameter("The quote ledger is empty; collect or pull quotes first.")
+        try:
+            movement = movement_tables(ledger)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        s.set_detail(f"{movement.games} games")
+    with step("Write report") as s:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        path = report_dir / "quote-movement.md"
+        path.write_text(
+            build_report(
+                movement,
+                configured_hours=MAX_MARKET_AGE.total_seconds() / 3600,
+                generated_on=datetime.now(UTC).date(),
+            ),
+            encoding="utf-8",
+        )
+        s.set_detail(str(path))
+    derived = "none" if movement.max_age_hours is None else f"{movement.max_age_hours:g} h"
+    typer.echo("")
+    typer.echo(
+        f"derived age limit {derived}; configured {MAX_MARKET_AGE.total_seconds() / 3600:g} h"
+    )
+    typer.echo(movement.limit_reason)
+
+
 @evaluate_app.command("starting-qb-projection")
 def evaluate_starting_qb_projection(
     *,

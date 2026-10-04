@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,8 @@ from gridiron_edge.market.edge_diagnostics import (
     EdgeResultState,
 )
 from gridiron_edge.market.edge_report import EdgeResult
+
+_serialize = partial(serialize_edges_list, evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC))
 
 
 def _valid_row() -> dict:
@@ -155,7 +158,7 @@ class TestSerializeDiagnostics:
 
 class TestSerializeEdgesList:
     def test_serializes_complete_result(self) -> None:
-        response: EdgeList = serialize_edges_list(
+        response: EdgeList = _serialize(
             _result(),
             min_ev=0.0,
         )
@@ -167,7 +170,7 @@ class TestSerializeEdgesList:
         assert response.diagnostics.provenance.market_providers == ("nflverse",)
 
     def test_scope_comes_from_service_diagnostics(self) -> None:
-        response = serialize_edges_list(
+        response = _serialize(
             _result(),
             min_ev=None,
         )
@@ -195,7 +198,7 @@ def test_attaches_only_exact_persisted_recommendation() -> None:
         line=None,
     )
     loaded = LoadedRecommendedBetResult(value.evaluation_id, matching)
-    response = serialize_edges_list(_result(), min_ev=0.0, recommendations=(loaded,))
+    response = _serialize(_result(), min_ev=0.0, recommendations=(loaded,))
     attached = response.items[0].recommendation
     assert attached is not None
     assert attached.result_id == matching.result_id
@@ -208,7 +211,7 @@ def test_exact_identity_mismatch_leaves_edge_unmatched() -> None:
 
     value = evaluation()
     changed = replace(value.results[0], american_price=-109)
-    response = serialize_edges_list(
+    response = _serialize(
         _result(),
         min_ev=0.0,
         recommendations=(LoadedRecommendedBetResult(value.evaluation_id, changed),),

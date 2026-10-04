@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { useEdges } from "../../api/hooks";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
+import { MarketAsOf } from "../field-status/MarketAsOf";
 import { TeamMark } from "../primitives/TeamMark";
 import { useBetSlip } from "../../context/BetSlipContext";
 import { useAppState } from "../../context/AppStateContext";
@@ -116,6 +117,13 @@ export function EdgesTable({
         />
       )}
 
+
+      {data && (
+        <MarketAsOf
+          fetchedAt={data.diagnostics.provenance?.market_fetched_at}
+          freshness={data.freshness}
+        />
+      )}
 
       {data && items.length === 0 && (
         <EdgeResultStatus diagnostics={data.diagnostics} />

@@ -8,6 +8,53 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D80 - Quotes older than 24 hours cannot produce edges; the limit comes from measured drift and is provisional
+
+**Date:** 2026-10-04
+
+**Context:** On 2026-10-03 the week 4 edge report was computed from quotes fetched 3.2 days earlier
+and nothing flagged it. `edge_diagnostics` already blocks a stale market (`market_stale`), but all
+four boundaries (`weekly-predict`'s edge stage, `verify-week`, `gridiron edges report`, the API)
+called the edge service without `as_of` or `max_market_age`, so the blocker could never fire. Fresh
+quotes later grew the Washington edge from +40.7% to +48.2% EV, so staleness did not explain it; the
+gap was nonetheless unflagged. Collector sync (D78) and rollover (D79) now keep quotes fresh, so the
+gate matters when something breaks.
+
+**Decision:**
+1. `MAX_MARKET_AGE` (one constant, `market/market_freshness.py`) is 24 hours. Every boundary gets the
+   clock and the limit together from `freshness_inputs()`; the evaluator stays clock-free. The API
+   takes the clock from `clock_dependency`, the seam tests override.
+2. A snapshot over the limit blocks edges, recommendations and Kelly stakes (`market_stale`).
+   Market readiness reports `stale_market_data`; prediction readiness is untouched. `/lines` keeps
+   showing the quotes with their age but withholds price guidance. The frontend states the snapshot
+   time, age and what is withheld; it computes the age from the server's `evaluated_at` and
+   `max_age_seconds`, so the limit lives in one place.
+3. The limit comes from `gridiron evaluate quote-movement` (`evaluation/quote_movement.py`, report
+   `docs/reports/quote-movement.md`). Measure: the de-vigged moneyline home probability. *Disagreement*
+   is the median distance of one book from the cross-book consensus at one moment (0.34 points);
+   *drift* is the median movement of the consensus between two snapshots of a game, by the age between
+   them. Rule: the limit is the lower edge of the first age bin (at least 30 snapshot pairs) whose
+   median drift exceeds the disagreement: a quote older than that has moved by more than the books
+   differ among themselves.
+4. On the ledger as of 2026-10-04 (48 games; week 1 from the original collector, weeks 3 and 4 from the
+   Pi), the rule gives 48 hours: median drift 0.28 points at 12-24 h, 0.34 at 24-48 h (equal to the
+   disagreement to two decimals), 0.97 at 48-72 h. **That result is borderline**, so a borderline rule
+   takes the lower bin edge, 24 hours (a bin whose median is within 0.05 points of the disagreement is
+   too close to call): blocking early only delays an edge, while passing a stale quote can publish a
+   false one. **Both the rule and the 0.05 margin were written after reading the first weeks of data**,
+   so they are post-hoc criteria, not pre-declared ones; an earlier hand computation that measured the
+   disagreement per moment (0.32 points) gave 24 hours directly, and the two differ only by how the
+   noise floor is pooled. The weeks collected from now on are the out-of-sample check; rerun the
+   command as they arrive and change the constant only with a new entry.
+
+**Limits:** one age for every market, derived from moneylines (spreads and totals moved less in the
+first week); the bins are coarse; the pairs of snapshots overlap and are not independent; only three
+weeks of data, one of them dense from the original collector. A snapshot whose games have started
+loses quotes for those games, which readiness reports separately (`partial_market_coverage`). The
+rendered forecast PNG and HTML show the moneylines persisted in the weekly product and are not changed.
+
+---
+
 ## D79 - The Pi rolls its own weekly collection plan: the target week is derived from the schedule
 
 **Date:** 2026-10-03

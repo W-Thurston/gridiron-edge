@@ -9,6 +9,7 @@ import {
 } from "../../utils/sportsbookPreferences";
 import { useNav } from "../../context/NavContext";
 import { EdgeResultStatus } from "../field-status/EdgeResultStatus";
+import { MarketAsOf } from "../field-status/MarketAsOf";
 import { Pill } from "../primitives/Pill";
 import { ExplainTooltip } from "../primitives/ExplainTooltip";
 import { TeamMark } from "../primitives/TeamMark";
@@ -104,6 +105,13 @@ export function ModelEdgesTable() {
           ))}
         </div>
       </div>
+
+      {data && (
+        <MarketAsOf
+          fetchedAt={data.diagnostics.provenance?.market_fetched_at}
+          freshness={data.freshness}
+        />
+      )}
 
       {displayed.length === 0 && data && (
         items.length === 0 ? (

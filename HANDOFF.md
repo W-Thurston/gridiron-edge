@@ -704,6 +704,27 @@ positive edges filtered by min_ev
 returned positive edges
 ```
 
+### Market freshness
+
+A quote snapshot older than `MAX_MARKET_AGE` (`market/market_freshness.py`, currently 24 hours,
+provisional; `DECISIONS.md` D80) is stale. The limit is derived by
+`gridiron evaluate quote-movement`, which compares how far the sportsbooks' consensus win
+probability drifts as quotes age with how far single books disagree at one moment and writes
+`docs/reports/quote-movement.md`; rerun it as more weeks are collected. Every boundary that computes
+edges supplies the clock and the limit through `freshness_inputs()`: the `weekly-predict` edge stage,
+`verify-week`, `gridiron edges report` and the API (`clock_dependency`, the one seam tests override).
+Stale quotes make the edge result `blocked` with `market_stale`, so no edge, recommendation or Kelly
+stake is produced from them, and the `weekly-predict` edge stage reports the newest fetch time and
+soft-fails. Readiness reports `stale_market_data` as a market blocker; prediction readiness is
+independent (`verify-week` prints both). The API serves a `freshness` block (`evaluated_at`,
+`max_age_seconds`) with `/edges` and `/lines`; `/lines` still shows stale quotes with their age but
+withholds price guidance (`field_status.guidance` blocked as `stale_market_data`). The frontend
+`MarketAsOf` component states the snapshot time, its age and, when stale, what is withheld, on the
+edge tables, the game page and Line Shopping; the age is computed from the served clock. `verify-week`
+also prints the collector sync's last outcome from `data/odds/sync_status.json`. The rendered forecast
+PNG and HTML show the moneylines persisted in the weekly product, not the live snapshot, and carry no
+market age.
+
 Missing market data is not “No play.” `No play` is reserved for a completed evaluation with no positive edge. Blocked or analytically empty results remove stale scope-specific edge CSV output.
 
 ## Production Recommendation Chain

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, cast
 
 import pandas as pd
@@ -17,6 +18,7 @@ from gridiron_edge.api.schemas.edges import (
     EdgeProvenanceResponse,
     EdgeRow,
 )
+from gridiron_edge.api.serializers._freshness import market_freshness
 from gridiron_edge.api.serializers.recommendations import (
     serialize_recommendation_result,
 )
@@ -130,6 +132,7 @@ def serialize_edges_list(
     result: EdgeResult,
     *,
     min_ev: float | None,
+    evaluated_at: datetime,
     recommendations: tuple[LoadedRecommendedBetResult, ...] = (),
     response_meta: ResponseMeta | None = None,
 ) -> EdgeList:
@@ -162,5 +165,6 @@ def serialize_edges_list(
         week=diagnostics.week,
         min_ev=min_ev,
         diagnostics=diagnostics,
+        freshness=market_freshness(evaluated_at),
         response_meta=response_meta,  # pyrefly: ignore [unexpected-keyword]
     )

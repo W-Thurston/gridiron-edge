@@ -941,3 +941,38 @@ def test_known_defect_edge_blocker_maps_to_readiness_blocker() -> None:
     assert _edge_readiness_blockers(result) == (
         WeeklyReadinessBlocker.KNOWN_DEFECTIVE_FORECAST_EVIDENCE,
     )
+
+
+def test_market_age_suffix_reports_the_age_against_the_limit() -> None:
+    from datetime import timedelta
+
+    from gridiron_edge.cli.verify_week import _market_age_suffix
+
+    assert _market_age_suffix(None) == ""
+    fresh = _market_age_suffix(datetime.now(UTC) - timedelta(hours=2))
+    stale = _market_age_suffix(datetime.now(UTC) - timedelta(days=3))
+    assert "within the 24 h limit" in fresh
+    assert "over the 24 h limit" in stale
+
+
+def test_collector_sync_line_reports_the_last_outcome(tmp_path: Path) -> None:
+    from datetime import timedelta
+    import json
+
+    from gridiron_edge.cli.verify_week import _collector_sync_line
+
+    assert _collector_sync_line(tmp_path) is None
+    status = tmp_path / "data" / "odds" / "sync_status.json"
+    status.parent.mkdir(parents=True)
+    recent = (datetime.now(UTC) - timedelta(minutes=12)).isoformat()
+    status.write_text(json.dumps({"last_success_at": recent, "error": None}))
+    assert "last success 12 min ago" in (_collector_sync_line(tmp_path) or "")
+
+    status.write_text(json.dumps({"last_success_at": recent, "error": "rsync exited 255"}))
+    assert "last attempt failed: rsync exited 255" in (_collector_sync_line(tmp_path) or "")
+
+    status.write_text(json.dumps({"error": "boom"}))
+    assert "no successful pull recorded" in (_collector_sync_line(tmp_path) or "")
+
+    status.write_text("not json")
+    assert _collector_sync_line(tmp_path) == "Collector sync status unreadable"

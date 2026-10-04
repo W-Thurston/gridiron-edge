@@ -6,6 +6,7 @@ import { ErrorCard } from "../components/error/ErrorCard";
 import type { components } from "../api/schema";
 import type { FieldStatus } from "../components/field-status/types";
 import { EdgeResultStatus } from "../components/field-status/EdgeResultStatus";
+import { MarketAsOf } from "../components/field-status/MarketAsOf";
 import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
 import {
   isWeeklyComponentUsable,
@@ -601,6 +602,12 @@ function ModelLeanCallout({
         >
           Top Analytical Edge
         </div>
+        {data && (
+          <MarketAsOf
+            fetchedAt={data.diagnostics.provenance?.market_fetched_at}
+            freshness={data.freshness}
+          />
+        )}
         {data?.diagnostics && items.length === 0 ? (
           <EdgeResultStatus diagnostics={data.diagnostics} compact />
         ) : (

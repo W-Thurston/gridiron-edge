@@ -9,6 +9,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from gridiron_edge.api.schemas._base import BaseListResponse
+from gridiron_edge.api.schemas.freshness import MarketFreshness
 from gridiron_edge.api.schemas.recommendations import RecommendationPresentation
 from gridiron_edge.market.edge import EdgeStrength
 from gridiron_edge.market.edge_diagnostics import (
@@ -154,3 +155,4 @@ class EdgeList(BaseListResponse[EdgeRow]):
     diagnostics: EdgeDiagnosticsResponse = Field(
         description="Complete diagnostics returned by the unified edge service.",
     )
+    freshness: MarketFreshness

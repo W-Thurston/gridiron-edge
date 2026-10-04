@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+import pandas as pd
 
-from gridiron_edge.api.deps import SettingsDep
+from gridiron_edge.api.deps import NowDep, SettingsDep
 from gridiron_edge.api.loaders import (
     load_games_for_week,
     load_recommended_bet_results_for_week,
@@ -20,6 +21,7 @@ from gridiron_edge.market.line_shopping import (
     classify_line_shopping_offers,
     evaluate_line_shopping_guidance,
 )
+from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
 
 router = APIRouter(prefix="/lines", tags=["lines"])
 
@@ -31,6 +33,7 @@ router = APIRouter(prefix="/lines", tags=["lines"])
 )
 def list_lines(
     settings: SettingsDep,
+    now: NowDep,
     season: Annotated[str | None, Query()] = None,
     week: Annotated[int | None, Query(ge=1)] = None,
     market: Annotated[MarketName | None, Query()] = None,
@@ -45,6 +48,7 @@ def list_lines(
     recommendations = load_recommended_bet_results_for_week(
         settings, season=resolved_season, week=resolved_week
     )
+    evaluated_at = now
 
     snapshot = load_current_odds(repo=settings.repo_root)
     if snapshot is None:
@@ -57,6 +61,7 @@ def list_lines(
             season=resolved_season,
             week=resolved_week,
             market=market,
+            evaluated_at=evaluated_at,
             response_meta=meta,
             recommendations=recommendations,
         )
@@ -78,9 +83,18 @@ def list_lines(
     except FileNotFoundError:
         product = None
 
+    stale = not scoped.empty and (
+        evaluated_at - pd.Timestamp(scoped["fetched_at"].max()).to_pydatetime() > MAX_MARKET_AGE
+    )
+    meta: ResponseMeta | None = None
     if product is None or scoped.empty:
         classified = classify_line_shopping_offers(scoped)
         guidance = None
+    elif stale:
+        # Price guidance compares the model with the quotes; with stale quotes it is withheld.
+        classified = classify_line_shopping_offers(scoped)
+        guidance = None
+        meta = ResponseMeta().with_blocked("guidance", *Unavailable.STALE_MARKET_DATA)
     else:
         evaluated = evaluate_line_shopping_guidance(product, scoped)
         classified = evaluated.offers
@@ -92,6 +106,8 @@ def list_lines(
         week=resolved_week,
         market=market,
         sportsbooks=sportsbooks,
+        evaluated_at=evaluated_at,
         guidance=guidance,
+        response_meta=meta,
         recommendations=recommendations,
     )

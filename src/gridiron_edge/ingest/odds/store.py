@@ -172,7 +172,9 @@ def _normalize_utc_timestamp(
         if timestamp.utcoffset() != datetime.timedelta(0):
             raise ValueError(f"Quote {column} values must use UTC.")
         normalized.append(timestamp.isoformat())
-    rows[column] = pd.to_datetime(normalized, utc=True)
+    # Offsets and fractional seconds vary between rows (collector snapshots have whole
+    # seconds, manual ones microseconds); pandas must not infer one format from the first.
+    rows[column] = pd.to_datetime(normalized, utc=True, format="ISO8601")
 
 
 def _normalize_is_live(rows: DataFrame) -> None:

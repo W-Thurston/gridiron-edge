@@ -1231,6 +1231,9 @@
             "$ref": "#/components/schemas/EdgeDiagnosticsResponse",
             "description": "Complete diagnostics returned by the unified edge service."
           },
+          "freshness": {
+            "$ref": "#/components/schemas/MarketFreshness"
+          },
           "items": {
             "description": "List payload. May be empty when blocked (see `_meta`).",
             "items": {
@@ -1287,7 +1290,8 @@
           }
         },
         "required": [
-          "diagnostics"
+          "diagnostics",
+          "freshness"
         ],
         "title": "EdgeList",
         "type": "object"
@@ -3419,6 +3423,9 @@
             ],
             "description": "Optional metadata describing unpopulated fields (per D14)."
           },
+          "freshness": {
+            "$ref": "#/components/schemas/MarketFreshness"
+          },
           "items": {
             "description": "List payload. May be empty when blocked (see `_meta`).",
             "items": {
@@ -3483,7 +3490,8 @@
         },
         "required": [
           "season",
-          "week"
+          "week",
+          "freshness"
         ],
         "title": "LineShoppingList",
         "type": "object"
@@ -3772,6 +3780,29 @@
           }
         },
         "title": "LiveScore",
+        "type": "object"
+      },
+      "MarketFreshness": {
+        "additionalProperties": false,
+        "description": "The server clock and age limit a client needs to say how old the quotes are.",
+        "properties": {
+          "evaluated_at": {
+            "description": "Server time (UTC) the response was built; the age is measured from it.",
+            "format": "date-time",
+            "title": "Evaluated At",
+            "type": "string"
+          },
+          "max_age_seconds": {
+            "description": "Quotes older than this are stale: edges are withheld.",
+            "title": "Max Age Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluated_at",
+          "max_age_seconds"
+        ],
+        "title": "MarketFreshness",
         "type": "object"
       },
       "ModelPerformance": {

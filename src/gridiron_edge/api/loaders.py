@@ -1106,13 +1106,16 @@ def load_edges_for_week(
     season: str,
     week: int,
     min_ev: float = 0.0,
+    now: datetime | None = None,
 ) -> EdgeResult:
     """Load the unified persisted weekly edge result for one scope."""
     from gridiron_edge.market.edge_report import EdgeResult
+    from gridiron_edge.market.market_freshness import freshness_inputs
     from gridiron_edge.market.weekly_edge_service import (
         build_weekly_edge_result,
     )
 
+    clock = freshness_inputs(now=now)
     result = build_weekly_edge_result(
         season=season,
         week=week,
@@ -1120,6 +1123,8 @@ def load_edges_for_week(
         bankroll=None,
         kelly_multiplier=0.25,
         repo=settings.repo_root,
+        as_of=clock.as_of,
+        max_market_age=clock.max_market_age,
     )
     return EdgeResult(
         rows=result.rows.copy(),

@@ -110,11 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none. A three-unit program (Units 12-14, ROADMAP W1-W3) is proposed below and awaits review. Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none. Units 12-15 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
-### Proposed Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3) [Awaiting review, scoped October 3, 2026]
+### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: none. Units 12-14 are complete (Unit 14's first live rollover is pending Monday night); Units 15 and 16 remain proposed. The program is three bounded units, run one
+Active unit: none. Units 12-15 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -221,54 +221,16 @@ Closed; the completed record is under "Unit 13" below.
 Closed in code; the completed record is under "Unit 14" below. Deploying it to the Pi is a user step
 and is listed there.
 
-#### Unit 15 - Market Freshness (W1) [Proposed, not started]
+#### Unit 15 - Market Freshness (W1) [Completed October 4, 2026]
 
-**Goal.** A quote snapshot older than a maximum age cannot produce edges silently: the age is
-always visible, and over-age blocks edges, not predictions.
+Closed; the completed record is under "Unit 15" below.
 
-**Design.**
-0. Collector sync and rollover are Units 13 and 14. This unit starts after them and relies on
-   fresh pulled quotes.
-1. Sync path (decision taken, see Decisions taken). Preferred: `gridiron ops pull-collector-evidence`
-   mirrors the Pi's ledger and current snapshot (the sync timer is not installed here; the
-   command exists), with `ingest odds` as the manual fallback. No new network code.
-2. `as_of` is the evaluation clock, injected at each boundary (edge stage, `verify-week`,
-   `gridiron edges`, the API dependency) so the pure evaluator stays clock-free. One shared
-   constant for `max_market_age`, owned by one module, with a `DECISIONS.md` entry.
-3. The threshold comes from a reproducible quote-movement report over the ledger (new
-   `docs/reports/quote-movement.md`, same pattern as the starting-QB report). Exploratory read of
-   week 1 (16 games, 34 snapshots, 2026-09-08 to 09-14, overlapping pairs so not independent,
-   not conditioned on time to kickoff): median absolute move in the vig-free home win
-   probability is 0.09/0.13/0.17/0.34/0.97/1.28 points at lags of 3-6h/6-12h/12-24h/24-48h/
-   48-72h/over 72h, and the 90th percentile is 0.82/1.25/0.87/1.60/1.97/2.84 points (consensus
-   spread and total medians almost never move; their 90th percentile is 0.5 points). At even odds
-   EV changes by twice the probability change. **No number is chosen here.** A criterion must be
-   declared before the data that confirms it is read; the dense Pi ledger is week 1 only,
-   plus week 3 (two games, 12 runs, not read), so the confirmation set is thin: later weeks collected
-   after the week 4 rollover are the real confirmation, and the threshold may need to ship as
-   provisional until they exist. If the criterion is set after reading week 1, the
-   `DECISIONS.md` entry says so, as in D75.
-4. Over-age behavior. **Recommended:** `MARKET_STALE` blocks edge rows, recommendation and Kelly
-   output (a +40% EV line is exactly the harm) while market readiness reports
-   `stale_market_data` and prediction readiness is untouched. The edge stage's "success" and
-   `weekly-predict`'s exit code then follow existing blocked-edge behavior (to be confirmed
-   against `weekly_predict.py` in this unit). The alternative, a visible warning with edges kept,
-   is in the open questions.
-5. Display: "Market as of" and age in the edge report, `verify-week` output, rendered output,
-   API edge diagnostics (age and stale flag serialized, computed against an injected clock) and the
-   frontend (Line Shopping, edge tables) via field-status components.
+#### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
-**Tests.** Pure: boundary at the max age, timezone and clock injection, per-game scoping, the
-played-game case. Callers: each boundary passes the clock. Readiness: stale gives
-`market_ready` false and `prediction_ready` unchanged. API and frontend contract tests, then
-generated contracts. Real data: week 4 as it stands (3.2 days old) must block; a fresh pull must
-unblock.
-
-**Acceptance.** No edge, recommendation or Kelly stake is produced from an over-age snapshot;
-age is visible at every surface that shows a quote or an edge; threshold and criterion recorded
-in `DECISIONS.md` with the data it came from and what was chosen after seeing it; gates pass.
-
-#### Unit 16 - Weekly Starter Projection Scorecard (W3) [Proposed, not started; needs Unit 12 and a finished week]
+The user wants one page for last week's performance covering every projection, not only the starting QB.
+The starter scorecard is therefore the quarterback section of that recap and no longer a standalone unit.
+Its design below stands as that section's design; the recap itself is scoped first (audit what outcome and
+evaluation artifacts already exist, then the artifact, API and page) before any of it is built.
 
 **Goal.** After a week's games, score what the live system assumed against the actual starters,
 and persist the result.
@@ -279,7 +241,8 @@ and persist the result.
    three predictors per team slot: the assumed starter, the nflverse schedule value recorded at
    composition, and carry-forward. Refuses a week with unplayed games or a product without a
    record (`not_recorded`); the Thursday game already played at composition is excluded as "not
-   assumed".
+   assumed". Week 4 predates the record but its digest-verified sidecar copy
+   (`data/output/qb_sidecar_captures/`) carries the same three values and could be scored as a one-off.
 2. Output: counts (slots scored, correct per predictor), per-team miss rows (team, assumed,
    nflverse, carry-forward, actual, source, as-of), and a cumulative roll-up across scored weeks.
    Persisted as an immutable, identity-addressed artifact under `data/output/` through the
@@ -356,6 +319,86 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 15 — Market Freshness [Completed October 4, 2026]
+
+#### Completed
+
+Quote snapshots older than `MAX_MARKET_AGE` (24 hours, provisional; `DECISIONS.md` D80) can no longer
+produce edges. Every boundary that computes them (the `weekly-predict` edge stage, `verify-week`,
+`gridiron edges report`, the API) now gets the clock and the limit together from `freshness_inputs()`, so
+the existing `market_stale` blocker fires: edges, recommendations and Kelly stakes are withheld, market
+readiness reports `stale_market_data`, and prediction readiness is untouched (`verify-week` prints both,
+the snapshot's age against the limit, and the collector sync's last outcome). The API serves a `freshness`
+block with `/edges` and `/lines` (the clock comes from `clock_dependency`); `/lines` keeps showing stale
+quotes but withholds price guidance. The game page, edge tables and Line Shopping show a `MarketAsOf`
+note with the snapshot time, its age and what is withheld. The limit comes from the new
+`gridiron evaluate quote-movement` (`docs/reports/quote-movement.md`): the rule gave 48 hours, borderline
+against the 24-48 h bin, so the lower edge was taken; both the rule and the margin were chosen after seeing
+the data and the weeks collected from now on are the out-of-sample check. Also fixed: quote timestamps
+with and without fractional seconds in one ledger could not be loaded or merged together, and a duplicate
+shadowed `_edge_stage_detail` was removed. The rendered forecast PNG and HTML are unchanged.
+
+#### Goal
+
+Make an old market snapshot visible everywhere a quote or an edge appears and impossible to turn into
+an edge, with a limit that comes from measured drift rather than a guess.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/market/market_freshness.py` - the one age limit, the clock-and-limit inputs every edge boundary uses, and age formatting.
+- `src/gridiron_edge/evaluation/quote_movement.py` - quote drift by age, book disagreement, the age-limit rule and its report.
+- `src/gridiron_edge/api/schemas/freshness.py` - the `MarketFreshness` response block.
+- `src/gridiron_edge/api/serializers/_freshness.py` - builds that block from the server clock.
+- `docs/reports/quote-movement.md` - the generated drift report the limit is derived from.
+- `frontend/src/components/field-status/marketAge.ts` - snapshot age against the served limit.
+- `frontend/src/components/field-status/MarketAsOf.tsx` - the shared "market as of" note with the stale state.
+- `frontend/src/components/field-status/MarketAsOf.test.tsx` - age rules and the three displayed states.
+- `tests/unit/market/test_market_freshness.py` - the limit, clock inputs and age labels.
+- `tests/unit/evaluation/test_quote_movement.py` - drift, disagreement, the limit rule, borderline handling and the report.
+- `tests/unit/api/test_market_freshness_routes.py` - the freshness block, a blocked stale result and guidance withheld for stale lines.
+
+Changed:
+- `src/gridiron_edge/cli/weekly_predict.py`, `src/gridiron_edge/cli/verify_week.py`, `src/gridiron_edge/cli/edges.py`, `src/gridiron_edge/api/loaders.py` - supply the clock and limit to the edge service; the edge stage names the newest fetch, `verify-week` and `edges report` show the age, `verify-week` shows both readiness states and the sync status; the shadowed duplicate removed.
+- `src/gridiron_edge/api/deps.py`, `src/gridiron_edge/api/routes/edges.py`, `src/gridiron_edge/api/routes/lines.py` - the clock dependency and the stale handling.
+- `src/gridiron_edge/api/schemas/edges.py`, `src/gridiron_edge/api/schemas/lines.py`, `src/gridiron_edge/api/serializers/edges.py`, `src/gridiron_edge/api/serializers/lines.py` - the `freshness` field.
+- `src/gridiron_edge/cli/evaluate.py` - `evaluate quote-movement`.
+- `src/gridiron_edge/ingest/odds/store.py` - ISO 8601 timestamp parsing.
+- `api-schema.json` - regenerated by `gridiron api export-schema`.
+- `frontend/src/components/betslip/EdgesTable.tsx`, `frontend/src/components/dashboard/ModelEdgesTable.tsx`, `frontend/src/screens/GameDetail.tsx`, `frontend/src/screens/LineShopping.tsx` - show the market age.
+- `frontend/src/components/betslip/EdgesTable.test.tsx`, `frontend/src/components/dashboard/FeaturedMatchupsGrid.test.tsx`, `frontend/src/components/dashboard/ModelEdgesTable.test.tsx`, `frontend/src/screens/GameDetail.test.tsx`, `frontend/src/screens/LineShopping.test.tsx` - fixtures carry the freshness block.
+- `tests/unit/api/test_loaders.py`, `tests/unit/api/test_schemas_edges.py`, `tests/unit/api/test_schemas_lines.py`, `tests/unit/api/test_serializers_edges.py`, `tests/unit/api/test_serializers_lines.py`, `tests/unit/cli/test_edges.py`, `tests/unit/cli/test_edges_report_service.py`, `tests/unit/cli/test_verify_week.py`, `tests/unit/cli/test_weekly_predict.py`, `tests/unit/ingest/test_odds_store.py` - the clock and limit supplied at each boundary, the age and sync output, the stale stage detail, and the timestamp regression.
+- `tests/integration/api/test_edges_routes.py`, `tests/integration/api/test_lines_routes.py` - fixtures pin the API clock an hour after their snapshots.
+- `DECISIONS.md` - D80.
+- `HANDOFF.md` - market freshness.
+- `CHANGELOG.md` - shipped behavior.
+- `ROADMAP.md` - W1 status and the new readiness watch item.
+- `PLAN.md` - this record and the weekly recap reframing of Unit 16.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests cover the limit constant and clock inputs, age labels at the boundary, the drift and
+disagreement measures, pairs after kickoff ignored, the limit rule, borderline handling, no limit with too
+little data, the report, the freshness block and clock passed through the edges route, a stale result
+blocked with its own reason, fresh, stale and boundary line responses, the verify-week age and sync lines,
+the edge report age line, the stale stage detail, the frontend age rules and states, and two regression
+tests that fail without the timestamp fix. Python gate and frontend gate (lint, build, tests);
+`export-schema` and `gen:api` run. Real data: `evaluate quote-movement` on the ledger (48 games, weeks 1,
+3 and 4) reproduced the table above; `verify-week` for week 4 printed the age and sync status. Integration: `tests/integration/api` passed (173) and the other integration suites passed (81, 1 skipped)
+except `test_historical_week_one_evidence_is_classified_truthfully`, which also fails on the untouched `HEAD`:
+it reads the live `odds_current.parquet` and expects Week 1's 18 observations, which it has not held since
+the 2026-09-30 week 4 snapshot (ROADMAP W17). Not run: e2e, and the browser.
+
+#### Acceptance
+
+No edge, recommendation or Kelly stake is produced from a snapshot over the limit at any boundary; the age
+is visible on every surface that shows quotes or edges and a stale state says what is withheld; the limit
+and its post-hoc criterion are recorded with the data; the gates pass and the documentation is current.
+The limit is provisional until the out-of-sample weeks are checked.
 
 ### Unit 14 — Automatic Weekly Collector Rollover on the Pi [Completed October 3, 2026]
 

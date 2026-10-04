@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from pandas import DataFrame
 import pytest
@@ -17,6 +17,7 @@ from gridiron_edge.market.edge_diagnostics import (
     EdgeResultState,
 )
 from gridiron_edge.market.edge_report import EdgeResult
+from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
 
 runner = CliRunner()
 _SERVICE = "gridiron_edge.market.weekly_edge_service.build_weekly_edge_result"
@@ -117,6 +118,8 @@ def test_report_calls_service_once_and_omits_bankroll() -> None:
         bankroll=None,
         kelly_multiplier=0.25,
         min_ev=0.0,
+        as_of=ANY,
+        max_market_age=MAX_MARKET_AGE,
     )
     assert "1 edge(s) found" in result.output
     assert "+125" in result.output
@@ -280,3 +283,24 @@ def test_table_renders_unavailable_stake() -> None:
 
     assert result.exit_code == 0, result.output
     assert "—" in result.output
+
+
+def test_report_states_the_market_age_against_the_limit() -> None:
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from gridiron_edge.market.edge_diagnostics import EdgeProvenance
+
+    stale = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
+    base = _positive_result()
+    result = EdgeResult(
+        rows=base.rows,
+        diagnostics=replace(
+            base.diagnostics, provenance=EdgeProvenance(market_fetched_at=(stale,))
+        ),
+    )
+    with patch(_SERVICE, return_value=result):
+        output = runner.invoke(edges_app, ["report", "--week", "1", "--season", "2026-2027"]).output
+
+    assert "Market as of 2026-09-05T12:00:00+00:00" in output
+    assert "over the 24 h limit" in output

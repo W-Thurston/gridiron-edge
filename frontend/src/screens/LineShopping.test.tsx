@@ -10,6 +10,7 @@ vi.mock("../api/hooks", () => ({ useLines: vi.fn() }));
 
 const response: components["schemas"]["LineShoppingList"] = {
   _meta: null,
+  freshness: { evaluated_at: "2026-10-04T12:00:00Z", max_age_seconds: 86400 },
   season: "2026-2027",
   week: 1,
   market: "spread" as const,

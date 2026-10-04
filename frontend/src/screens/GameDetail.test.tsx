@@ -45,6 +45,7 @@ function detail(overrides: Partial<Detail> = {}): Detail {
 
 function edges(): EdgeList {
   return {
+    freshness: { evaluated_at: "2026-10-04T12:00:00Z", max_age_seconds: 86400 },
     diagnostics: {
       season: "2026-2027",
       week: 1,

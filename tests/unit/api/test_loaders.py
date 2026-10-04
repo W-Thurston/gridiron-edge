@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -22,6 +23,7 @@ from gridiron_edge.api.loaders import (
     resolve_current_week,
 )
 from gridiron_edge.core.settings import Settings
+from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
 
 
 def _make_settings(root: Path) -> Settings:
@@ -647,11 +649,13 @@ class TestLoadEdgesForWeek:
             fake_service,
         )
         settings = self._fake_settings(tmp_path)
+        now = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
         result = load_edges_for_week(
             settings,
             season="2026-2027",
             week=1,
             min_ev=0.03,
+            now=now,
         )
 
         assert result is not expected
@@ -666,6 +670,8 @@ class TestLoadEdgesForWeek:
                 "bankroll": None,
                 "kelly_multiplier": 0.25,
                 "repo": tmp_path,
+                "as_of": now,
+                "max_market_age": MAX_MARKET_AGE,
             }
         ]
 

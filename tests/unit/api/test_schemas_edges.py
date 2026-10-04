@@ -15,9 +15,15 @@ from gridiron_edge.api.schemas.edges import (
     EdgeProvenanceResponse,
     EdgeRow,
 )
+from gridiron_edge.api.schemas.freshness import MarketFreshness
 from gridiron_edge.market.edge_diagnostics import (
     EdgeDiagnosticBlocker,
     EdgeResultState,
+)
+
+_FRESHNESS = MarketFreshness(
+    evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC),
+    max_age_seconds=86400,
 )
 
 
@@ -302,7 +308,7 @@ def _edge_list_diagnostics() -> EdgeDiagnosticsResponse:
 
 class TestEdgeList:
     def test_empty_list(self) -> None:
-        response = EdgeList(diagnostics=_edge_list_diagnostics())
+        response = EdgeList(diagnostics=_edge_list_diagnostics(), freshness=_FRESHNESS)
         assert response.items == []
         assert response.total is None
         assert response.season is None
@@ -313,6 +319,7 @@ class TestEdgeList:
 
     def test_with_edges(self) -> None:
         response = EdgeList(
+            freshness=_FRESHNESS,
             items=[
                 EdgeRow.model_validate(
                     {
@@ -339,6 +346,7 @@ class TestEdgeList:
 
     def test_min_ev_zero_preserved(self) -> None:
         response = EdgeList(
+            freshness=_FRESHNESS,
             items=[],
             min_ev=0.0,
             diagnostics=_edge_list_diagnostics(),

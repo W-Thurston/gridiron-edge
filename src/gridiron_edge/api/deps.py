@@ -11,6 +11,7 @@ to override in tests.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Protocol
@@ -74,3 +75,15 @@ DataPathResolverDep = Annotated[
     DataPathResolver,
     Depends(data_path_resolver_dependency),
 ]
+
+
+def clock_dependency() -> datetime:
+    """FastAPI dependency for the server clock (UTC), the one seam tests override.
+
+    Market age is measured from this clock; the persisted state itself is never
+    recomputed per request (``DECISIONS.md`` D80).
+    """
+    return datetime.now(UTC)
+
+
+NowDep = Annotated[datetime, Depends(clock_dependency)]

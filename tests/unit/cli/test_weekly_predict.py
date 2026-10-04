@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -24,6 +24,7 @@ from gridiron_edge.evaluation.prediction_input_evidence import (
     SourceArtifactReference,
     SourceRevision,
 )
+from gridiron_edge.market.market_freshness import MAX_MARKET_AGE
 
 _COMMIT = "a" * 40
 _SOURCE_DIGEST = "b" * 64
@@ -419,6 +420,8 @@ class TestGenerateEdgesStage:
             kelly_multiplier=0.25,
             min_ev=0.0,
             repo=tmp_path,
+            as_of=ANY,
+            max_market_age=MAX_MARKET_AGE,
         )
         assert result.rows == 1
         assert len(result.artifacts) == 1
@@ -847,3 +850,49 @@ def test_predict_stage_writes_no_events_for_malformed_lineage(
     assert result.detail == ("Unsupported Elo lineage schema_version: 999.")
     write_events.assert_not_called()
     assert "forecast_run_id" not in ctx
+
+
+def test_edge_stage_detail_names_the_newest_quotes_when_the_market_is_stale() -> None:
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from gridiron_edge.cli.weekly_predict import _edge_stage_detail
+    from gridiron_edge.market.edge_diagnostics import (
+        EdgeDiagnosticBlocker,
+        EdgeDiagnostics,
+        EdgeProvenance,
+        EdgeResultState,
+    )
+    from gridiron_edge.market.edge_report import EdgeResult
+
+    diagnostics = EdgeDiagnostics(
+        season="2026-2027",
+        week=4,
+        prediction_game_count=15,
+        market_game_count=15,
+        matched_game_count=15,
+        complete_moneyline_count=15,
+        complete_spread_count=15,
+        complete_total_count=15,
+        eligible_market_count=45,
+        calculated_edge_count=0,
+        positive_edge_count=0,
+        filtered_edge_count=0,
+        state=EdgeResultState.BLOCKED,
+        blockers=(EdgeDiagnosticBlocker.MARKET_STALE,),
+    )
+    diagnostics = replace(
+        diagnostics,
+        provenance=EdgeProvenance(
+            market_fetched_at=(datetime(2026, 9, 30, 12, 38, 29, tzinfo=UTC),)
+        ),
+    )
+
+    detail = _edge_stage_detail(
+        EdgeResult(rows=pd.DataFrame(), diagnostics=diagnostics), min_ev=0.0
+    )
+
+    assert detail == (
+        "edge calculation blocked: market_stale "
+        "(newest quotes fetched 2026-09-30T12:38:29+00:00; refresh them first)"
+    )

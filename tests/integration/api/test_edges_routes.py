@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from gridiron_edge.api.app import create_app
-from gridiron_edge.api.deps import settings_dependency
+from gridiron_edge.api.deps import clock_dependency, settings_dependency
 from gridiron_edge.api.schemas.edges import EdgeDiagnosticsResponse
 from gridiron_edge.datasets.writers import (
     select_current_weekly_product,
@@ -193,6 +193,8 @@ def client(tmp_path: Path) -> TestClient:
     """Return a client whose settings use the temporary repository."""
     app = create_app()
     app.dependency_overrides[settings_dependency] = lambda: _FakeSettings(repo_root=tmp_path)
+    # An hour after the fixture snapshot, so the quotes are fresh under the market age limit.
+    app.dependency_overrides[clock_dependency] = lambda: datetime(2026, 9, 5, 13, 0, tzinfo=UTC)
     return TestClient(app)
 
 

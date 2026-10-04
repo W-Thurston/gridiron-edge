@@ -1,3 +1,4 @@
+import { MarketAsOf } from "../components/field-status/MarketAsOf";
 import { useMemo, useState } from "react";
 import { formatKickoffDateTime } from "../utils/datePresentation";
 import type { components } from "../api/schema";
@@ -143,7 +144,16 @@ export function LineShopping() {
         </span>
         </div>
         <span className="line-shopping-snapshot">
-          {updatedAt ? `Snapshot ${formatTimestamp(updatedAt)}` : "Snapshot time unavailable"}
+          {data ? (
+            <MarketAsOf
+              fetchedAt={data.market_fetched_at}
+              freshness={data.freshness}
+            />
+          ) : updatedAt ? (
+            `Snapshot ${formatTimestamp(updatedAt)}`
+          ) : (
+            "Snapshot time unavailable"
+          )}
         </span>
       </div>
 

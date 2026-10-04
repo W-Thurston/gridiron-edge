@@ -26,6 +26,7 @@ from gridiron_edge.api.schemas.lines import (
     MarketName,
     MarketSide,
 )
+from gridiron_edge.api.serializers._freshness import market_freshness
 from gridiron_edge.api.serializers.recommendations import (
     serialize_recommendation_result,
 )
@@ -202,6 +203,7 @@ def serialize_line_shopping_list(
     week: int,
     market: MarketName | None,
     sportsbooks: tuple[str, ...] | None = None,
+    evaluated_at: datetime,
     guidance: DataFrame | None = None,
     response_meta: ResponseMeta | None = None,
     recommendations: tuple[LoadedRecommendedBetResult, ...] = (),
@@ -298,6 +300,7 @@ def serialize_line_shopping_list(
         total=len(games),
         sportsbooks=response_sportsbooks,
         market_fetched_at=timestamps,
+        freshness=market_freshness(evaluated_at),
         # pyrefly: ignore [unexpected-keyword]
         response_meta=meta if meta.field_status else None,
     )

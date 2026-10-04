@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from gridiron_edge.api.deps import SettingsDep
+from gridiron_edge.api.deps import NowDep, SettingsDep
 from gridiron_edge.api.loaders import (
     load_edges_for_week,
     load_recommended_bet_results_for_week,
@@ -39,6 +39,7 @@ def _resolve_scope(
 @router.get("", response_model=EdgeList)
 def list_edges(
     settings: SettingsDep,
+    now: NowDep,
     *,
     season: str | None = Query(
         default=None,
@@ -56,11 +57,13 @@ def list_edges(
 ) -> EdgeList:
     """Return ranked edges from the selected persisted weekly product."""
     resolved_season, resolved_week = _resolve_scope(settings, season, week)
+    evaluated_at = now
     result = load_edges_for_week(
         settings,
         season=resolved_season,
         week=resolved_week,
         min_ev=min_ev,
+        now=evaluated_at,
     )
     recommendations = load_recommended_bet_results_for_week(
         settings,
@@ -90,6 +93,7 @@ def list_edges(
     return serialize_edges_list(
         result,
         min_ev=min_ev,
+        evaluated_at=evaluated_at,
         recommendations=recommendations,
         response_meta=meta,
     )

@@ -1,5 +1,27 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 15: stale quotes can no longer produce edges
+
+#### Added
+
+- A 24-hour market age limit (`MAX_MARKET_AGE`, provisional, `DECISIONS.md` D80) applied at every edge
+  boundary: the `weekly-predict` edge stage, `verify-week`, `gridiron edges report` and the API.
+  Quotes over the limit block edges, recommendations and Kelly stakes (`market_stale`); market
+  readiness reports `stale_market_data`, prediction readiness is untouched, and the edge stage names
+  the newest fetch time. `verify-week` prints the snapshot age against the limit, prediction and
+  market readiness separately, and the collector sync's last outcome.
+- `gridiron evaluate quote-movement` measures quote drift by age against the disagreement between
+  sportsbooks and writes `docs/reports/quote-movement.md`; the limit is derived from it.
+- The API serves a `freshness` block with `/edges` and `/lines`; `/lines` withholds price guidance for
+  stale quotes. The game page, edge tables and Line Shopping show "market as of" and the age, and say
+  what is withheld when stale. `clock_dependency` is the API's clock seam.
+
+#### Fixed
+
+- Quote observation timestamps with and without fractional seconds in one ledger could not be loaded
+  or merged together (`pd.to_datetime` inferred one format); they are now parsed as ISO 8601.
+- Removed a duplicate, shadowed `_edge_stage_detail` in `cli/weekly_predict.py`.
+
 ### 2026-10-03 - Unit 14: the quote worker rolls its own weekly collection plan
 
 #### Added

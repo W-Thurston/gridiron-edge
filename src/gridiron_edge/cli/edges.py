@@ -73,6 +73,7 @@ def report(
     """Generate a weekly betting edge report from the selected product."""
     from gridiron_edge.core.console import console, step
     from gridiron_edge.market.edge_diagnostics import EdgeResultState
+    from gridiron_edge.market.market_freshness import freshness_inputs, market_age_label
     from gridiron_edge.market.weekly_edge_service import (
         build_weekly_edge_result,
     )
@@ -100,6 +101,7 @@ def report(
 
     console.header(f"Edge Report - {season} Week {week}")
 
+    clock = freshness_inputs()
     with step("Building weekly edge result"):
         result = build_weekly_edge_result(
             season=season,
@@ -107,9 +109,14 @@ def report(
             bankroll=bankroll,
             kelly_multiplier=kelly_multiplier,
             min_ev=min_ev,
+            as_of=clock.as_of,
+            max_market_age=clock.max_market_age,
         )
 
     _remove_edge_csv(season, week)
+    fetched = result.diagnostics.provenance.market_fetched_at
+    if fetched:
+        typer.echo(f"  Market as of {max(fetched).isoformat()} ({market_age_label(max(fetched))})")
 
     if result.rows.empty:
         typer.echo(_edge_result_message(result.diagnostics, min_ev=min_ev))

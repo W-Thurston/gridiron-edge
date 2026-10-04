@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from gridiron_edge.api.schemas._base import BaseListResponse
+from gridiron_edge.api.schemas.freshness import MarketFreshness
 from gridiron_edge.api.schemas.recommendations import RecommendationPresentation
 
 MarketName = Literal["moneyline", "spread", "total"]
@@ -90,3 +91,4 @@ class LineShoppingList(BaseListResponse[LineShoppingGame]):
     market: MarketName | None = None
     sportsbooks: tuple[str, ...] = ()
     market_fetched_at: tuple[datetime, ...] = ()
+    freshness: MarketFreshness

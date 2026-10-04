@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +12,7 @@ import pandas as pd
 import pytest
 
 from gridiron_edge.api.app import create_app
-from gridiron_edge.api.deps import settings_dependency
+from gridiron_edge.api.deps import clock_dependency, settings_dependency
 from gridiron_edge.api.loaders import LoadedRecommendedBetResult
 from gridiron_edge.api.routes import lines as lines_route
 from gridiron_edge.ingest.odds.store import (
@@ -24,6 +25,8 @@ from gridiron_edge.ingest.odds.store import (
 def client(tmp_path: Path) -> TestClient:
     app = create_app()
     app.dependency_overrides[settings_dependency] = lambda: SimpleNamespace(repo_root=tmp_path)
+    # An hour after the fixture snapshot, so the quotes are fresh under the market age limit.
+    app.dependency_overrides[clock_dependency] = lambda: datetime(2026, 8, 5, 23, 0, tzinfo=UTC)
     return TestClient(app)
 
 

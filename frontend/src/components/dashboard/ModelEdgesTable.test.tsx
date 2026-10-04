@@ -40,6 +40,7 @@ function diagnostics(
 function response(overrides: Partial<EdgeList> = {}): EdgeList {
   return {
     diagnostics: diagnostics(),
+    freshness: { evaluated_at: "2026-10-04T12:00:00Z", max_age_seconds: 86400 },
     items: [],
     total: 0,
     ...overrides,

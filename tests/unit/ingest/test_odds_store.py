@@ -317,3 +317,35 @@ def test_current_snapshot_is_separate_from_history(tmp_path: Path) -> None:
     assert history_path.name == "observations.parquet"
     assert snapshot_path.name == "odds_current.parquet"
     assert snapshot_path.parent == tmp_path / "data" / "odds"
+
+
+def test_timestamps_with_and_without_fractional_seconds_validate_together() -> None:
+    # Collector snapshots have whole seconds, manual ones microseconds; pandas must not infer a
+    # single format from the first row and reject the rest.
+    mixed = pd.concat(
+        [
+            _quotes(fetched_at="2026-09-10T12:00:00Z"),
+            _quotes(fetched_at="2026-09-10T13:00:00.979111Z"),
+        ],
+        ignore_index=True,
+    )
+
+    validated = validate_quote_rows(mixed)
+
+    assert sorted(validated["fetched_at"].unique()) == [
+        pd.Timestamp("2026-09-10T12:00:00Z"),
+        pd.Timestamp("2026-09-10T13:00:00.979111Z"),
+    ]
+
+
+def test_ledger_partitions_with_different_timestamp_precision_load_together(
+    tmp_path: Path,
+) -> None:
+    append_to_odds_ledger(_quotes(fetched_at="2026-09-10T12:00:00Z"), repo=tmp_path)
+    second = _quotes(fetched_at="2026-09-17T13:00:00.979111Z").assign(week=2)
+    second["game_id"] = "2026_02_KC_LAC"
+    append_to_odds_ledger(second, repo=tmp_path)
+
+    ledger = load_odds_ledger(repo=tmp_path)
+
+    assert len(ledger) == 4
