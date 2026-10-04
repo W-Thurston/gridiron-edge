@@ -92,7 +92,7 @@ Candidate work identified after Units 8-11 (neutral-site fix, projected starting
 
 - **W11. Neutral-site choice:** revisit `DECISIONS.md` D74 after weeks 6, 7, 9, 10 and 11 add five more neutral games (the 21-game 2023-2025 neutral holdout slice scored worse, interval including zero).
 - **W12. Recommendation-policy maturation:** Tier 4 #13; accumulates weekly.
-- **W13. Test environment fragility [S]:** eight CLI help and message tests fail when `FORCE_COLOR` is set in the environment; make them independent of terminal color settings (Tier 10 #27).
+- **W13. Test environment fragility [S]. [Done: `tests/conftest.py` clears terminal color variables before anything under test is imported.]**
 
 ### Foundation Completion (Tiers 1–4) [Closed 2026-09-27]
 

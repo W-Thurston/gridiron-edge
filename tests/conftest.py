@@ -11,9 +11,17 @@ Tests outside a marker directory are treated as unit tests.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+# Terminal color variables change how Typer and Rich render help and error text (typer reads
+# them when it is first imported), which broke assertions on plain output. Clear them before
+# anything under test is imported so results do not depend on the developer's or CI's shell.
+for _color_variable in ("FORCE_COLOR", "PY_COLORS", "GITHUB_ACTIONS"):
+    os.environ.pop(_color_variable, None)
+os.environ["NO_COLOR"] = "1"
 
 # ---------------------------------------------------------------------------
 # Auto-apply markers by directory

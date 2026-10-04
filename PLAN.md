@@ -311,6 +311,44 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
 
+### Test Environment Independence from Terminal Color Settings [Completed October 3, 2026]
+
+#### Completed
+
+`tests/conftest.py` removes `FORCE_COLOR`, `PY_COLORS` and `GITHUB_ACTIONS` from the environment and
+sets `NO_COLOR=1` before any code under test is imported. Typer reads those variables when
+`typer.rich_utils` is first imported and renders colored, differently wrapped help and errors, which
+broke eight assertions in `tests/unit/cli` whenever one was set. No source change.
+
+#### Goal
+
+Make the unit gate and the commit hooks give the same result whatever the shell's color settings.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `tests/conftest.py` - clears color-forcing variables and sets `NO_COLOR` before imports.
+- `ROADMAP.md` - W13 marked done.
+- `CHANGELOG.md` - shipped behavior.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+The eight failing tests reproduced with `FORCE_COLOR=3`, then passed under `FORCE_COLOR=3`, under
+`FORCE_COLOR=1 GITHUB_ACTIONS=true PY_COLORS=1`, and with none set (`tests/unit/cli`, 432 passed each).
+Python gate; full unit suite run with `FORCE_COLOR=3` set.
+
+#### Acceptance
+
+`uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
+longer need `env -u FORCE_COLOR`.
+
 ### Unit 12 — Persist and Show the Assumed Starting QB [Completed October 3, 2026]
 
 #### Completed

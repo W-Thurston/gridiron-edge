@@ -1,5 +1,15 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-03 - The unit tests no longer depend on terminal color settings
+
+#### Fixed
+
+- Eight CLI help and message tests failed whenever `FORCE_COLOR` (or `PY_COLORS`, or
+  `GITHUB_ACTIONS`) was set, because Typer reads those when it is first imported and then renders
+  colored, differently wrapped help and errors. `tests/conftest.py` now clears them and sets
+  `NO_COLOR` before any code under test is imported. The unit gate and commit hooks no longer need
+  `env -u FORCE_COLOR`.
+
 ### 2026-10-03 - Unit 12: the weekly product records and shows the assumed starting QB
 
 #### Added
