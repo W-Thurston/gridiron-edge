@@ -95,13 +95,23 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
             "game_id": ["2026_01_KC_LAC"],
             "away_team": ["Kansas City Chiefs"],
             "home_team": ["Los Angeles Chargers"],
+            "game_date": ["2026-09-10"],
+            "game_time": ["20:20:00"],
         }
     )
     events = DataFrame({"event_id": ["event-1"]})
     win_product = schedule.assign(win_status="available")
     spread_product = win_product.assign(spread_status="available")
     total_product = spread_product.assign(total_status="policy_unavailable")
-    final_product = total_product.assign(projected_score_status="total_unavailable")
+    final_product = total_product.assign(
+        projected_score_status="total_unavailable",
+        win_run_id=None,
+        total_run_id=None,
+        win_role=None,
+        total_role=None,
+        win_generated_at=None,
+        total_generated_at=None,
+    )
     artifact = tmp_path / "weekly.parquet"
     selected_run = SimpleNamespace(found=True, events=events)
     resolutions = (MagicMock(),)
@@ -113,6 +123,18 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
         patch(
             "gridiron_edge.datasets.loaders.load_schedule_upcoming_rich",
             return_value=schedule,
+        ),
+        patch(
+            "gridiron_edge.datasets.loaders.load_current_weekly_product",
+            side_effect=FileNotFoundError,
+        ),
+        patch(
+            "gridiron_edge.cli.weekly_predict.load_weekly_product",
+            return_value=final_product,
+        ),
+        patch(
+            "gridiron_edge.viz.predictions.build_weekly_product_display_frame",
+            return_value=DataFrame({"GAME_ID": ["2026_01_KC_LAC"]}),
         ),
         patch(
             "gridiron_edge.evaluation.forecast_store.load_forecast_events",
@@ -192,6 +214,7 @@ def test_composes_writes_and_selects_exact_forecast_run(tmp_path: Path) -> None:
     assert written_identity.season == SEASON
     assert written_identity.week == WEEK
     assert context["weekly_product_id"] == written_identity.product_id
+    assert context["predictions_df"]["GAME_ID"].tolist() == ["2026_01_KC_LAC"]
     assert context["weekly_product_path"] == artifact
     select_product.assert_called_once()
     assert select_product.call_args.args[:2] == (

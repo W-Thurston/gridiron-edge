@@ -50,6 +50,7 @@ from gridiron_edge.evaluation.prediction_input_sources import (
     resolve_clean_source_revision,
 )
 from gridiron_edge.models.game_prediction.prediction_policy import PredictionPolicy
+from gridiron_edge.models.game_prediction.weekly_product_store import load_weekly_product
 
 if TYPE_CHECKING:
     from gridiron_edge.market.edge_report import EdgeResult
@@ -105,6 +106,26 @@ def _canonicalize_live_elo_predictions(
     ).reset_index(drop=True)
 
 
+def _unstarted_schedule(schedule: DataFrame, *, season: str, week: int, now: datetime) -> DataFrame:
+    """Drop the target week's games that have kicked off; a started game is never forecast.
+
+    A forecast made once a game is under way is not a forecast of it. Those games keep their
+    last pre-kickoff forecast from the previous product, or stay missing if they never had one.
+    """
+    from gridiron_edge.market.collection_plan import _schedule_kickoff_utc
+
+    if schedule.empty:
+        return schedule
+    in_week = (schedule["season"].astype(str) == season) & (schedule["week"] == week)
+    started = in_week & schedule.apply(
+        lambda row: _schedule_kickoff_utc(row["game_date"], row["game_time"]) <= now, axis=1
+    )
+    remaining = schedule.loc[~started]
+    if not (remaining["season"].astype(str).eq(season) & remaining["week"].eq(week)).any():
+        raise ValueError(f"Every game of week {week} has kicked off; there is nothing to forecast.")
+    return remaining
+
+
 def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     """Execute and publish one evidence-authenticated live forecast run."""
     from gridiron_edge.datasets.loaders import load_schedule_upcoming_rich
@@ -119,9 +140,10 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     try:
         source_revision = resolve_clean_source_revision(repo)
         source_artifacts = capture_prediction_source_artifacts(repo)
-        schedule = load_schedule_upcoming_rich(repo)
+        loaded_schedule = load_schedule_upcoming_rich(repo)
         run_id = new_forecast_run_id()
         generated_at = datetime.now(UTC)
+        schedule = _unstarted_schedule(loaded_schedule, season=season, week=week, now=generated_at)
         execution = execute_weekly_prediction_policy(
             schedule,
             season=season,
@@ -171,6 +193,16 @@ def _stage_predict_week(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+def _current_product_or_none(repo: Path, *, season: str, week: int) -> DataFrame | None:
+    """Return the week's selected product, or ``None`` when the week has none yet."""
+    from gridiron_edge.datasets.loaders import load_current_weekly_product
+
+    try:
+        return load_current_weekly_product(repo, season=season, week=week)
+    except FileNotFoundError:
+        return None
+
+
 def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
     """Compose, persist, and explicitly select the live weekly product."""
     from gridiron_edge.cli._weekly_product_composition import (
@@ -191,6 +223,7 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
         return StageResult(success=False, detail="forecast generation time is unavailable")
 
     schedule = load_schedule_upcoming_rich(repo)
+    previous = _current_product_or_none(repo, season=season, week=week)
 
     events = load_forecast_events(
         season=season,
@@ -216,15 +249,27 @@ def _stage_compose_weekly_product(ctx: dict[str, Any]) -> StageResult:
             season=season,
             week=week,
             repo=repo,
+            previous_product=previous,
         )
     except ValueError as exc:
         return StageResult(success=False, detail=str(exc))
 
     ctx["weekly_product_id"] = composed.product_id
     ctx["weekly_product_path"] = composed.artifact
+    from gridiron_edge.viz.predictions import build_weekly_product_display_frame
+
+    # Render from the persisted product so games carried from the previous forecast stay shown.
+    ctx["predictions_df"] = build_weekly_product_display_frame(
+        load_weekly_product(composed.product_id, repo=repo)
+    )
+    kept = (
+        f", {len(composed.carried_game_ids)} kept from the previous forecast"
+        if (composed.carried_game_ids)
+        else ""
+    )
     return StageResult(
         success=True,
-        detail=f"{composed.row_count} weekly product rows selected",
+        detail=f"{composed.row_count} weekly product rows selected{kept}",
         rows=composed.row_count,
         artifacts=[composed.artifact],
     )

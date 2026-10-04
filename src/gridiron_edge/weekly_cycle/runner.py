@@ -315,10 +315,7 @@ class _Cycle:
             return True
 
         names = ", ".join(f"{item.game_id} {item.side}" for item in changed)
-        if decision.started:
-            results["disposition"] = "refresh_waiting_for_freeze"
-            detail = f"starter changed, refresh waiting ({names})"
-        elif not refresh_allowed(previous, now=now):
+        if not refresh_allowed(previous, now=now):
             results["disposition"] = "refresh_deferred"
             detail = f"starter changed, refresh deferred: one attempt an hour ({names})"
         else:

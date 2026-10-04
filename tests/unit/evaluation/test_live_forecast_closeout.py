@@ -332,3 +332,44 @@ def test_mixed_win_roles_are_rejected() -> None:
             forecast_events=_events(),
             games=_games(),
         )
+
+
+def test_a_refreshed_product_scores_each_game_on_its_own_pre_kickoff_run() -> None:
+    """g1 kept its earlier run's forecast across a mid-week refresh; g2 uses the new run.
+
+    The week holds both runs' events (a refresh issues new events, never rewrites old ones),
+    including a later, different g1 forecast that the product does not cite. Closeout must
+    score g1 on the cited event only.
+    """
+    product = _product()
+    product["product_run_id"] = "run-2"
+    product.loc[1, ["win_event_id", "total_event_id"]] = ["w2-new", "t2-new"]
+    product.loc[1, ["win_run_id", "total_run_id"]] = "run-2"
+    product.loc[1, "spread_source_event_id"] = "w2-new"
+    events = _events()
+    refreshed = []
+    for event_id, game_id, name, kind, kwargs in (
+        ("w2-new", "g2", "win_prob", "logistic", {"home_win_prob": 0.9, "model_spread": 6.0}),
+        ("t2-new", "g2", "total", "random_forest", {"model_total": 50.0}),
+        # A post-kickoff g1 event that exists in the store but is not cited by the product.
+        ("w1-late", "g1", "win_prob", "logistic", {"home_win_prob": 0.1, "model_spread": 9.0}),
+    ):
+        refreshed.append(
+            {
+                **_event(
+                    event_id=event_id, game_id=game_id, model_name=name, model_type=kind, **kwargs
+                ),
+                "run_id": "run-2",
+            }
+        )
+    events = pd.concat([events, pd.DataFrame(refreshed)], ignore_index=True)
+
+    result = close_live_forecasts(product=product, forecast_events=events, games=_games())
+
+    assert result.complete
+    by_game = result.reconciliation.set_index("game_id")
+    assert by_game.loc["g1", "home_win_prob"] == pytest.approx(0.75)  # run-1, pre-kickoff
+    assert by_game.loc["g2", "home_win_prob"] == pytest.approx(0.9)  # run-2
+    assert by_game.loc["g1", "model_total"] == pytest.approx(44.0)
+    assert by_game.loc["g2", "model_total"] == pytest.approx(50.0)
+    assert result.matched_win_event_count == 2

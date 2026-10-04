@@ -110,11 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none (Unit 20 is next). Units 12-15, 17, 18 and 19 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none (no unit is scoped; next candidates are ROADMAP W16 and W15). Units 12-15 and 17-20 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
 ### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: none (Unit 20 is next). Units 12-15, 17, 18 and 19 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
+Active unit: none (no unit is scoped; next candidates are ROADMAP W16 and W15). Units 12-15 and 17-20 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -237,20 +237,9 @@ Closed; the completed record is under "Unit 18" below.
 
 Closed in code; the completed record is under "Unit 19" below. Installing the timer is a user step.
 
-#### Unit 20 - Per-Game Forecast Freeze (first slice of ROADMAP W6) [Proposed after Unit 19; `DECISIONS.md` D82]
+#### Unit 20 - Per-Game Forecast Freeze (first slice of ROADMAP W6) [Completed October 4, 2026; `DECISIONS.md` D83]
 
-**Goal.** Let a mid-week refresh issue forecasts only for games that have not started, keep every started
-game's last pre-kickoff forecast as its record, and score and show that record.
-
-**Design sketch (to be audited first).** A weekly product may reference forecast events from more than one
-run, one run per game, with the product's own identity unchanged; the stamp and loader checks that require
-every available event to match the product's run id become per-row checks that each referenced run exists
-and its evidence authenticates. Composition builds the new product from the previous product's events for
-started games and the new run's events for the rest, and keeps started games in the product instead of
-dropping them. The closeout and the recap select, per game, the last event generated before kickoff
-(never by recency alone). Guard against a `live` event generated after its game's kickoff. Then the Unit 19
-watch refreshes for the whole week. Needs an audit of every consumer of `win_run_id` and `total_run_id`, the
-closeout, the readiness checks and the API loaders before design lock.
+Closed; the completed record is under "Unit 20" below.
 
 #### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
 
@@ -346,6 +335,74 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 20 — A Game Moves From Upcoming to Played Without Losing Its Forecast [Completed October 4, 2026]
+
+#### Completed
+
+A mid-week refresh no longer loses or rewrites a game's forecast (`DECISIONS.md` D83). `weekly-predict`
+forecasts only the target week's games that have not kicked off. Composition takes the week's current
+product and keeps its row, unchanged, for every game that has started or whose result has landed (so
+Thursday's game survives Friday's run), and takes the new run's events for the rest; a started game that
+never had a forecast stays `forecast_missing`. The product's `product_run_id` is the composing run and the
+earlier runs its rows cite are declared as `carried_run_ids` (index record and write identity); storage and
+the production-chain preflight accept only the product run or a declared carried run and reject an unused
+declared one. Composition checks the carried events still exist in the forecast store and rejects a `live`
+row generated after its game's kickoff. The closeout already scored each row by its own event and run, so it
+is unchanged and now covered by a mixed-run test. Rendered outputs come from the persisted product so
+carried games stay shown. The Unit 19 watch refreshes at any point in the week. The product schema version
+is unchanged and weeks 1-4 products load as before. Not done: market coverage in readiness still counts
+started games (ROADMAP W16).
+
+#### Goal
+
+Let a game transition from forecast to played while its last pre-kickoff forecast is preserved, scored and
+shown, however late in the week the pipeline runs.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/evaluation/forecast_contracts.py` - `WeeklyProductIdentity.carried_run_ids` with validation.
+- `src/gridiron_edge/models/game_prediction/weekly_product_store.py` - carried runs in the index record; rows must cite the product run or a declared carried run; `cited_run_ids`.
+- `src/gridiron_edge/models/game_prediction/weekly_starting_qb.py` - `unrecorded_starting_qb_record` for carried schema-1 rows.
+- `src/gridiron_edge/cli/_weekly_product_composition.py` - carry rule (`carried_game_ids`), row carrying, carried-event check, pregame guard, carried runs on the identity.
+- `src/gridiron_edge/cli/weekly_predict.py` - forecasts only unstarted games, passes the previous product to composition, renders from the persisted product.
+- `src/gridiron_edge/market/production_chain_preflight.py` - forecast provenance accepts declared carried runs.
+- `src/gridiron_edge/weekly_cycle/runner.py` - the watch refreshes at any point in the week.
+- `tests/unit/models/game_prediction/test_weekly_product_store.py` - carried-run storage coverage.
+- `tests/unit/market/test_production_chain_preflight.py` - carried-run provenance coverage.
+- `tests/unit/cli/test_weekly_product_composition.py` - carry rule, pregame guard, refresh composition coverage.
+- `tests/unit/cli/test_weekly_predict.py`, `tests/unit/cli/test_weekly_predict_publication.py`, `tests/unit/cli/test_weekly_predict_product_stage.py` - unstarted-schedule filter and fixtures with kickoff times.
+- `tests/unit/evaluation/test_live_forecast_closeout.py` - a refreshed product scores each game on its own run.
+- `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` - refresh after the first kickoff.
+- `DECISIONS.md` - D83.
+- `HANDOFF.md` - weekly-predict and Weekly Cycle contracts.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W6 first slice done.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+New unit tests for the carry rule (started, finished and upcoming games), the pregame guard, carried-row
+shaping, composition of a refresh with real validation of carried events, storage and preflight acceptance
+and rejection of carried runs, the unstarted-schedule filter, closeout over a mixed-run product, and the
+watch refreshing after a kickoff. Python gate run. Real data, read-only: all 16 persisted products load
+under the new check; week 4's selected product has every live forecast before its game's kickoff; a refresh
+at 2026-10-04 22:00Z would keep 13 of its 15 rows. A subset-schedule execution of the real prediction
+policy returned the same probabilities as the full-week run for the shared games (home win probability
+difference 0.0). Not run: a real `weekly-predict` refresh, integration/e2e suites, frontend gate (no API
+contract change).
+
+#### Acceptance
+
+After a refresh, every started or finished game keeps its last pre-kickoff forecast, scored and shown;
+unstarted games take the new forecast; no live forecast is generated after its game's kickoff.
 
 ### Unit 19 — Weekly Cycle State Machine and Hourly Timer [Completed October 4, 2026]
 

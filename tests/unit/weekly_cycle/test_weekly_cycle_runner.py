@@ -333,17 +333,18 @@ def test_a_changed_starter_before_the_first_kickoff_refreshes_the_forecast(tmp_p
     assert watch.results["changed"][0]["recorded_id"] == "a1"
 
 
-def test_a_changed_starter_after_the_first_kickoff_only_waits(tmp_path: Path) -> None:
-    fake = Fake("2026-10-09T06:00:00", products={5})
+def test_a_changed_starter_after_the_first_kickoff_still_refreshes_the_rest_of_the_week(
+    tmp_path: Path,
+) -> None:
+    fake = Fake("2026-10-09T06:00:00", products={5})  # Thursday's game has started
     fake.changed = True
 
     fake.run(tmp_path)
 
-    assert "forecast" not in fake.calls
-    assert _receipts(tmp_path, 5) == [("watch", "changed")]
+    assert "forecast" in fake.calls
+    assert _receipts(tmp_path, 5) == [("watch", "changed"), ("refresh", "done")]
     receipt = read_receipts(tmp_path, season=SEASON, week=5)[0]
-    assert receipt.results["disposition"] == "refresh_waiting_for_freeze"
-    assert "starter changed, refresh waiting" in receipt.detail
+    assert receipt.results["disposition"] == "refresh"
     assert receipt.inputs["game_started"] is True
 
 

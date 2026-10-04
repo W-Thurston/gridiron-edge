@@ -53,6 +53,7 @@ class WeeklyProductRecord:
     row_count: int
     columns: tuple[str, ...]
     artifact: str
+    carried_run_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate indexed product metadata."""
@@ -263,7 +264,16 @@ def _record_from_payload(product_id: str, payload: object) -> WeeklyProductRecor
         row_count=int(payload["row_count"]),
         columns=tuple(columns),
         artifact=str(payload["artifact"]),
+        carried_run_ids=_carried_run_ids_from_payload(product_id, payload),
     )
+
+
+def _carried_run_ids_from_payload(product_id: str, payload: dict) -> tuple[str, ...]:
+    """Parse the optional list of other runs a product draws rows from."""
+    carried = payload.get("carried_run_ids", [])
+    if not isinstance(carried, list) or not all(isinstance(value, str) for value in carried):
+        raise ValueError(f"Weekly product index entry {product_id!r} has invalid carried_run_ids.")
+    return tuple(carried)
 
 
 def _record_payload(record: WeeklyProductRecord) -> dict[str, object]:
@@ -276,6 +286,7 @@ def _record_payload(record: WeeklyProductRecord) -> dict[str, object]:
         "row_count": record.row_count,
         "columns": list(record.columns),
         "artifact": record.artifact,
+        "carried_run_ids": list(record.carried_run_ids),
     }
 
 
@@ -294,6 +305,36 @@ def _artifact_from_record(
             f"Weekly product artifact escapes storage root: {record.artifact!r}."
         ) from exc
     return artifact
+
+
+def cited_run_ids(product: DataFrame) -> set[str]:
+    """Return every run id an available Win or Total row of the product cites."""
+    win_available = product["win_status"].astype(str) == "available"
+    total_available = (
+        product["total_status"].astype(str).isin({"available", "uncertainty_unavailable"})
+    )
+    return {
+        *product.loc[win_available, "win_run_id"].astype(str),
+        *product.loc[total_available, "total_run_id"].astype(str),
+    }
+
+
+def _require_row_runs(product: DataFrame, run_id: str, carried_run_ids: tuple[str, ...]) -> None:
+    """Require rows to cite the product run or a declared carried run, and every carried run used.
+
+    A mid-week refresh keeps the last pre-kickoff forecast of games that started or finished,
+    so a product may draw rows from earlier runs; those runs must be declared, not implied.
+    """
+    cited = cited_run_ids(product)
+    undeclared = cited - {run_id, *carried_run_ids}
+    if undeclared:
+        raise ValueError(
+            "Available Win and Total run_ids must match the product run_id or a carried run: "
+            + ", ".join(sorted(undeclared))
+        )
+    unused = set(carried_run_ids) - cited
+    if unused:
+        raise ValueError("Carried run_ids are not cited by any row: " + ", ".join(sorted(unused)))
 
 
 def _stamp_product(
@@ -315,15 +356,7 @@ def _stamp_product(
     if not (validated["week"].astype(int) == identity.week).all():
         raise ValueError("Weekly product rows must match identity week.")
 
-    win_available = validated["win_status"].astype(str) == "available"
-    if not (validated.loc[win_available, "win_run_id"].astype(str) == identity.run_id).all():
-        raise ValueError("Available Win run_id must match product run_id.")
-
-    total_available = (
-        validated["total_status"].astype(str).isin({"available", "uncertainty_unavailable"})
-    )
-    if not (validated.loc[total_available, "total_run_id"].astype(str) == identity.run_id).all():
-        raise ValueError("Available Total run_id must match product run_id.")
+    _require_row_runs(validated, identity.run_id, identity.carried_run_ids)
 
     generated_at = pd.Timestamp(identity.generated_at)
     stamped = validated.copy()
@@ -394,6 +427,7 @@ def _load_indexed_artifact(
 
     domain = stored.drop(columns=list(_STORAGE_IDENTITY_COLUMNS))
     validate_weekly_game_product(domain)
+    _require_row_runs(domain, record.run_id, record.carried_run_ids)
     return stored
 
 
@@ -445,6 +479,7 @@ def write_weekly_product(
         row_count=len(normalized),
         columns=tuple(normalized.columns),
         artifact=relative_artifact,
+        carried_run_ids=identity.carried_run_ids,
     )
 
     temporary.replace(artifact)

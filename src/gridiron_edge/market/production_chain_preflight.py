@@ -110,6 +110,7 @@ class ProductionClvKind(StrEnum):
 class _SelectedProductEvidence(TypedDict):
     product_id: str
     run_id: str
+    carried_run_ids: tuple[str, ...]
     generated_at: datetime
     selected_at: datetime
     frame: DataFrame
@@ -759,6 +760,7 @@ def _selected_product(
     return {
         "product_id": product_id,
         "run_id": str(metadata["run_id"]),
+        "carried_run_ids": tuple(str(value) for value in metadata.get("carried_run_ids", [])),
         "generated_at": generated_at,
         "selected_at": selected_at,
         "frame": frame,
@@ -771,7 +773,9 @@ def _forecast_component(
 ) -> ProductionChainComponent:
     frame = selected["frame"]
     assert isinstance(frame, DataFrame)
-    run_id = selected["run_id"]
+    # A mid-week refresh keeps the last pre-kickoff forecast of started games, so rows may cite
+    # the product's run or one of its declared carried runs.
+    run_ids = {selected["run_id"], *selected["carried_run_ids"]}
     if market is ProductionMarketFamily.MONEYLINE:
         valid = (
             frame["win_status"].eq("available").all()
@@ -779,7 +783,7 @@ def _forecast_component(
             and frame["win_role"].eq("live").all()
             and frame["win_event_id"].notna().all()
             and frame["win_event_id"].is_unique
-            and frame["win_run_id"].eq(run_id).all()
+            and frame["win_run_id"].isin(run_ids).all()
         )
         ids = tuple(sorted(frame["win_event_id"].astype(str)))
         times = _column_timestamps(frame, "win_generated_at")
@@ -803,7 +807,7 @@ def _forecast_component(
             and frame["total_role"].eq("live").all()
             and frame["total_event_id"].notna().all()
             and frame["total_event_id"].is_unique
-            and frame["total_run_id"].eq(run_id).all()
+            and frame["total_run_id"].isin(run_ids).all()
         )
         ids = tuple(sorted(frame["total_event_id"].astype(str)))
         times = _column_timestamps(frame, "total_generated_at")

@@ -138,6 +138,7 @@ class WeeklyProductIdentity:
     season: str
     week: int
     generated_at: datetime
+    carried_run_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate weekly product identity invariants."""
@@ -148,6 +149,13 @@ class WeeklyProductIdentity:
         ):
             if not value.strip():
                 raise ValueError(f"{field_name} must not be empty.")
+
+        if list(self.carried_run_ids) != sorted(set(self.carried_run_ids)):
+            raise ValueError("carried_run_ids must be sorted and unique.")
+        if any(not value.strip() for value in self.carried_run_ids):
+            raise ValueError("carried_run_ids must not contain empty values.")
+        if self.run_id in self.carried_run_ids:
+            raise ValueError("carried_run_ids must not include the product run_id.")
 
         if self.week < 1:
             raise ValueError("week must be at least 1.")

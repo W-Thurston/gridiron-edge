@@ -375,6 +375,7 @@ def test_candidate_component_requires_exact_selected_scope(tmp_path) -> None:
     selected = _SelectedProductEvidence(
         product_id="selected-product",
         run_id="selected-run",
+        carried_run_ids=(),
         generated_at=NOW,
         selected_at=NOW,
         frame=pd.DataFrame({"season": ["2026-2027"], "week": [1]}),
@@ -403,6 +404,7 @@ def test_candidate_component_marks_malformed_artifact_invalid(tmp_path) -> None:
     selected = _SelectedProductEvidence(
         product_id="selected-product",
         run_id="selected-run",
+        carried_run_ids=(),
         generated_at=NOW,
         selected_at=NOW,
         frame=pd.DataFrame({"season": ["2026-2027"], "week": [1]}),
@@ -533,6 +535,7 @@ def test_postgame_assembly_short_circuits_before_kickoff(tmp_path) -> None:
     selected = _SelectedProductEvidence(
         product_id="product",
         run_id="run",
+        carried_run_ids=(),
         generated_at=NOW,
         selected_at=NOW,
         frame=pd.DataFrame({"season": ["2026-2027"], "week": [1]}),
@@ -571,6 +574,7 @@ def test_development_forecast_provenance_is_not_production_ready(
     selected = _SelectedProductEvidence(
         product_id="product",
         run_id="run",
+        carried_run_ids=(),
         generated_at=NOW,
         selected_at=NOW,
         frame=_selected_product_frame(
@@ -607,6 +611,7 @@ def test_live_forecast_provenance_remains_production_ready(
     selected = _SelectedProductEvidence(
         product_id="product",
         run_id="run",
+        carried_run_ids=(),
         generated_at=NOW,
         selected_at=NOW,
         frame=_selected_product_frame(
@@ -621,3 +626,41 @@ def test_live_forecast_provenance_remains_production_ready(
 
     assert component.component_id == "forecast_provenance"
     assert component.state is ProofComponentState.AVAILABLE
+
+
+def _moneyline_frame(run_ids: list[str]):
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "win_status": ["available"] * len(run_ids),
+            "win_selection_status": ["selected"] * len(run_ids),
+            "win_role": ["live"] * len(run_ids),
+            "win_event_id": [f"event-{index}" for index in range(len(run_ids))],
+            "win_run_id": run_ids,
+            "win_generated_at": [NOW] * len(run_ids),
+        }
+    )
+
+
+def test_forecast_provenance_accepts_declared_carried_runs_only() -> None:
+    from gridiron_edge.market.production_chain_preflight import (
+        _forecast_component,
+        _SelectedProductEvidence,
+    )
+
+    def component(carried: tuple[str, ...]):
+        return _forecast_component(
+            ProductionMarketFamily.MONEYLINE,
+            _SelectedProductEvidence(
+                product_id="selected-product",
+                run_id="new-run",
+                carried_run_ids=carried,
+                generated_at=NOW,
+                selected_at=NOW,
+                frame=_moneyline_frame(["old-run", "new-run"]),
+            ),
+        )
+
+    assert component(("old-run",)).state is ProofComponentState.AVAILABLE
+    assert component(()).state is ProofComponentState.INCOMPLETE

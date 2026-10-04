@@ -64,6 +64,15 @@ def _empty_record(index: pd.Index, status: StartingQbStatus) -> DataFrame:
     return frame
 
 
+def unrecorded_starting_qb_record(index: pd.Index) -> DataFrame:
+    """Return the starting-QB columns for rows whose starters were never recorded.
+
+    Used when a game's row comes from a product that predates the record; it is marked
+    ``sidecar_unavailable``, the status for "no sidecar record exists for this row".
+    """
+    return _empty_record(index, StartingQbStatus.SIDECAR_UNAVAILABLE)
+
+
 def attach_starting_qb_assumptions(
     product: DataFrame,
     sidecar: DataFrame | None,

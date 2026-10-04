@@ -36,7 +36,14 @@ def _context() -> dict[str, object]:
 
 
 def _schedule() -> pd.DataFrame:
-    return pd.DataFrame({"season": [SEASON], "week": [WEEK]})
+    return pd.DataFrame(
+        {
+            "season": [SEASON],
+            "week": [WEEK],
+            "game_date": ["2099-09-13"],
+            "game_time": ["13:00:00"],
+        }
+    )
 
 
 def _execution() -> SimpleNamespace:

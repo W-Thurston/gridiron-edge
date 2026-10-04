@@ -224,7 +224,14 @@ class TestPredictWeekStage:
         from gridiron_edge.cli.weekly_predict import _stage_predict_week
 
         generated_at = datetime(2026, 9, 1, 12, tzinfo=UTC)
-        schedule = pd.DataFrame({"season": ["2026-2027"], "week": [1]})
+        schedule = pd.DataFrame(
+            {
+                "season": ["2026-2027"],
+                "week": [1],
+                "game_date": ["2099-09-13"],
+                "game_time": ["13:00:00"],
+            }
+        )
         events = pd.DataFrame({"event_id": ["e1", "e2"]})
         display = pd.DataFrame({"GAME_ID": ["g1"]})
         policy = MagicMock()
@@ -754,7 +761,7 @@ def test_predict_stage_writes_no_events_when_lineage_blocks_execution(
             "week": [2],
             "game_id": ["2026_02_A_B"],
             "game_day_of_week": ["Sunday"],
-            "game_date": ["2026-09-17"],
+            "game_date": ["2099-09-17"],
             "game_time": ["20:15"],
             "away_team": ["Away Team"],
             "home_team": ["Home Team"],
@@ -811,7 +818,7 @@ def test_predict_stage_writes_no_events_for_malformed_lineage(
             "week": [2],
             "game_id": ["2026_02_A_B"],
             "game_day_of_week": ["Sunday"],
-            "game_date": ["2026-09-17"],
+            "game_date": ["2099-09-17"],
             "game_time": ["20:15"],
             "away_team": ["Away Team"],
             "home_team": ["Home Team"],
@@ -896,3 +903,28 @@ def test_edge_stage_detail_names_the_newest_quotes_when_the_market_is_stale() ->
         "edge calculation blocked: market_stale "
         "(newest quotes fetched 2026-09-30T12:38:29+00:00; refresh them first)"
     )
+
+
+def test_a_game_that_has_kicked_off_is_never_forecast() -> None:
+    from datetime import UTC, datetime
+
+    from gridiron_edge.cli.weekly_predict import _unstarted_schedule
+
+    schedule = pd.DataFrame(
+        {
+            "season": ["2026-2027"] * 4,
+            "week": [4, 4, 4, 5],
+            "game_id": ["thu", "sun", "mon", "next-week"],
+            "game_date": ["2026-10-01", "2026-10-04", "2026-10-05", "2026-10-08"],
+            "game_time": ["20:15:00", "13:00:00", "20:15:00", "20:15:00"],
+        }
+    )
+    # Sunday 22:00Z: Thursday and Sunday 13:00 ET have started, Monday night has not.
+    now = datetime(2026, 10, 4, 22, 0, tzinfo=UTC)
+
+    remaining = _unstarted_schedule(schedule, season="2026-2027", week=4, now=now)
+
+    assert remaining["game_id"].tolist() == ["mon", "next-week"]
+    all_started = datetime(2026, 10, 6, 6, 0, tzinfo=UTC)
+    with pytest.raises(ValueError, match="nothing to forecast"):
+        _unstarted_schedule(schedule.iloc[:3], season="2026-2027", week=4, now=all_started)

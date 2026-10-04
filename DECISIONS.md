@@ -8,6 +8,40 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D83 - A game moves from upcoming to played without losing its forecast: a refresh forecasts only unstarted games and keeps every other row
+
+**Date:** 2026-10-04
+
+**Context:** D82 required a forecast to freeze at kickoff. A weekly product was one run's output over the
+upcoming schedule, which drops a game once its result lands, so a mid-week refresh would have shrunk the
+product, lost the Thursday game's forecast when Friday's run updated the weekend, and (because every run
+forecast every scheduled game) issued `live` forecasts for games already in progress.
+
+**Decision:**
+1. A run forecasts only the target week's games whose kickoff is after the run's `generated_at`
+   (`weekly-predict` filters the schedule it executes). A started game is never forecast.
+2. Composition takes the week's current product. A game that has kicked off, or has left the upcoming
+   schedule because its result landed, keeps its previous row unchanged: its own run, event ids,
+   `generated_at` and probabilities. Unstarted games take the new run's events. Started games stay in the
+   product. A started game that never had a forecast stays `forecast_missing`.
+3. A product's `product_run_id` is the run that composed it. Rows may also cite earlier runs, which the
+   product declares as `carried_run_ids` (in the index record and the write identity). Storage and the
+   production-chain preflight accept a row's run id only if it is the product run or a declared carried run,
+   and reject a declared carried run no row cites. Composition checks that every carried row's forecast
+   events are still in the forecast store.
+4. Composition rejects any `live` row generated after its game's kickoff.
+5. The closeout needed no change: it already matches each row to its event by event id and run id, so each
+   game is scored on its own pre-kickoff forecast. Rendered outputs are built from the persisted product so
+   carried games stay shown.
+6. The weekly-cycle watch therefore refreshes for the whole week (the D82 interim "refresh waiting" rule
+   is removed).
+
+**Not done:** readiness still judges market coverage over every scheduled game, including started ones
+(ROADMAP W16). The product schema version is unchanged: a carried row is an ordinary row, and schema 1 and 2
+products (weeks 1-4) load as before.
+
+---
+
 ## D82 - The weekly cycle is one idempotent, state-driven command run hourly; the starter watch follows time to kickoff and freezes at kickoff
 
 **Date:** 2026-10-04

@@ -83,6 +83,7 @@ def _identity(
     *,
     run_id: str = "run-1",
     generated_at: datetime | None = None,
+    carried_run_ids: tuple[str, ...] = (),
 ) -> WeeklyProductIdentity:
     return WeeklyProductIdentity(
         product_id=product_id,
@@ -90,6 +91,7 @@ def _identity(
         season="2026-2027",
         week=8,
         generated_at=generated_at or datetime(2026, 10, 20, 12, tzinfo=UTC),
+        carried_run_ids=carried_run_ids,
     )
 
 
@@ -195,7 +197,7 @@ def test_win_run_mismatch_fails_before_store_write(tmp_path: Path) -> None:
     product = _product()
     product.loc[0, "win_run_id"] = "different-run"
 
-    with pytest.raises(ValueError, match="Win run_id must match"):
+    with pytest.raises(ValueError, match="must match the product run_id or a carried run"):
         write_weekly_product(product, identity=_identity(), repo=tmp_path)
 
     assert not weekly_product_artifact_path("product-1", repo=tmp_path).exists()
@@ -206,7 +208,7 @@ def test_total_run_mismatch_fails_before_store_write(tmp_path: Path) -> None:
     product = _product()
     product.loc[0, "total_run_id"] = "different-run"
 
-    with pytest.raises(ValueError, match="Total run_id must match"):
+    with pytest.raises(ValueError, match="must match the product run_id or a carried run"):
         write_weekly_product(product, identity=_identity(), repo=tmp_path)
 
     assert not weekly_product_artifact_path("product-1", repo=tmp_path).exists()
@@ -606,3 +608,61 @@ def test_selection_enumeration_requires_loadable_artifact(tmp_path: Path) -> Non
 
     with pytest.raises(FileNotFoundError, match="artifact is missing"):
         list_current_weekly_product_selections(repo=tmp_path)
+
+
+def _mixed_product() -> DataFrame:
+    """Game 1 keeps its forecast from an earlier run; game 2 is forecast by the new run."""
+    product = _product(run_id="old-run")
+    for column in product.columns:
+        if column not in {"game_id", "away_team", "home_team", "neutral_site"}:
+            product.loc[1, column] = product.loc[0, column]
+    product.loc[1, ["win_event_id", "spread_source_event_id"]] = "win-2"
+    product.loc[1, "total_event_id"] = "total-2"
+    product.loc[1, ["win_run_id", "total_run_id"]] = "new-run"
+    return product
+
+
+def test_a_product_may_draw_rows_from_declared_carried_runs(tmp_path: Path) -> None:
+    identity = _identity(run_id="new-run", carried_run_ids=("old-run",))
+
+    write_weekly_product(_mixed_product(), identity=identity, repo=tmp_path)
+    loaded = load_weekly_product(identity.product_id, repo=tmp_path)
+
+    assert set(loaded["win_run_id"]) == {"old-run", "new-run"}
+    assert set(loaded["product_run_id"]) == {"new-run"}
+    record = list_weekly_products(repo=tmp_path)[0]
+    assert record.carried_run_ids == ("old-run",)
+    entry = _read_index(tmp_path)["products"]["product-1"]
+    assert entry["carried_run_ids"] == ["old-run"]
+
+
+def test_a_row_run_that_is_not_declared_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="old-run"):
+        write_weekly_product(_mixed_product(), identity=_identity(run_id="new-run"), repo=tmp_path)
+
+    assert not _index_path(tmp_path).exists()
+
+
+def test_a_declared_carried_run_that_no_row_cites_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not cited by any row"):
+        write_weekly_product(
+            _product(), identity=_identity(carried_run_ids=("ghost-run",)), repo=tmp_path
+        )
+
+
+def test_carried_runs_must_be_sorted_unique_and_exclude_the_product_run() -> None:
+    with pytest.raises(ValueError, match="sorted and unique"):
+        _identity(carried_run_ids=("b", "a"))
+    with pytest.raises(ValueError, match="must not include the product run_id"):
+        _identity(carried_run_ids=("run-1",))
+
+
+def test_an_index_entry_without_carried_runs_loads_as_none(tmp_path: Path) -> None:
+    identity = _identity()
+    write_weekly_product(_product(), identity=identity, repo=tmp_path)
+    index = _read_index(tmp_path)
+    del index["products"][identity.product_id]["carried_run_ids"]
+    _index_path(tmp_path).write_text(json.dumps(index))
+
+    assert list_weekly_products(repo=tmp_path)[0].carried_run_ids == ()
+    load_weekly_product(identity.product_id, repo=tmp_path)

@@ -602,7 +602,10 @@ The command:
 - persists and authenticates immutable binary snapshots;
 - persists, strictly reloads, and re-authenticates family evidence;
 - persists immutable forecast events only after evidence succeeds;
-- composes and explicitly selects a schedule-complete weekly product;
+- forecasts only the week's games that have not kicked off, then composes and explicitly selects a weekly
+  product that keeps the previous product's row for every game that has started or finished (its last
+  pre-kickoff forecast, with its own run and event ids; the product lists those earlier runs as
+  `carried_run_ids`), so no information is lost when the pipeline runs after a game is played;
 - verifies selected-product prediction readiness;
 - publishes PNG and HTML forecast outputs;
 - evaluates edges against the existing source-neutral market snapshot.
@@ -1308,8 +1311,8 @@ It derives the target week M (the earliest week with a game still ahead; the lin
    games with the product's recorded starters. Cadence by hours to the next unstarted kickoff: over 72 h
    every 24 h; 48-72 h 12 h; 24-48 h 6 h; 6-24 h 3 h; under 6 h hourly (`weekly_cycle/cadence.py`;
    chosen before evidence, to be tuned from the receipts). A change refreshes the forecast at most once an
-   hour and only while no game of M has started; afterwards the receipt says "starter changed, refresh
-   waiting" (per-game freeze is ROADMAP W6). A schema-1 product (no starter record) is observed only.
+   hour, at any point in the week: the refresh forecasts only games that have not kicked off and keeps
+   every other game's row (`DECISIONS.md` D83). A schema-1 product (no starter record) is observed only.
 
 Failed, blocked and waiting attempts retry after an hour; failures exit 1. After the steps, the edge CSV
 is rebuilt when the product or the newest quote fetch time differs from the last recorded edge inputs

@@ -1,5 +1,20 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 20: a refresh keeps every started or finished game's forecast
+
+#### Changed
+
+- `weekly-predict` forecasts only games that have not kicked off (`DECISIONS.md` D83). Composition keeps
+  the previous product's row, unchanged, for a game that has started or whose result has landed (it leaves
+  the upcoming schedule), so Friday's run no longer loses Thursday's game; a started game that never had a
+  forecast stays `forecast_missing`. Composition rejects a `live` forecast generated after kickoff.
+- A weekly product declares the earlier runs its rows cite as `carried_run_ids`; storage and the
+  production-chain preflight accept those runs and reject undeclared or unused ones. Products of weeks 1-4
+  load unchanged.
+- Rendered prediction outputs are built from the persisted product, so carried games stay shown.
+- The weekly-cycle watch refreshes the forecast at any point in the week (it no longer waits after the first
+  kickoff).
+
 ### 2026-10-04 - Unit 19: `gridiron week-cycle` prepares each week by itself and watches the starting QB
 
 #### Added
