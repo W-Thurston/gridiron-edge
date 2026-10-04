@@ -8,6 +8,58 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D82 - The weekly cycle is one idempotent, state-driven command run hourly; the starter watch follows time to kickoff and freezes at kickoff
+
+**Date:** 2026-10-04
+
+**Context:** D81's `close` and `forecast` phases only renamed the two commands they composed, and a Friday
+cut-off was arbitrary: injury news arrives all week and the report nearest kickoff is the most accurate. The
+goal is for the week to prepare itself, with the user free to run the same command by hand while the
+automation is built.
+
+**What changes during a week (checked against the code):** results change once a week (nflverse updates
+after Monday night, generally in the morning); the starting QB (depth charts and injury reports) changes all
+week; odds change constantly but do not require a re-forecast, because edges are computed on every read from
+the persisted forecast and the latest quote snapshot (`build_weekly_edge_result` reads `odds_current` per
+call), the Pi collects on its own plan (D79) and the pull brings quotes in every 15 minutes (D78). Elo moves
+only with results and live weather is climatology (D49), so the forecast needs re-running only when a starter
+changes.
+
+**Decision:**
+1. `gridiron week-cycle` is a single idempotent command that works out the target week from the schedule (the
+   earliest week with a game still ahead, the rule of D79) and does whichever step is due: (a) a finished week
+   that has not been closed: close it, trying hourly from 06:00 local until all its results have landed;
+   (b) a target week with no current forecast: forecast it; (c) otherwise the starter watch. A timer runs it
+   hourly; all scheduling lives in the command's state, so a missed tick is harmless and a tick with nothing
+   due reads local files only and makes no network call.
+2. The first forecast of a week (made after closeout, before that week has injury rows) uses nflverse's
+   published starter or carry-forward (D76 applies the depth-chart projection only once injury rows exist).
+3. The starter watch refreshes depth charts and injuries and compares the resolver's projection for every
+   game that has not kicked off with the starters recorded in the current weekly product (D77). It runs at a
+   cadence set by hours to the next unstarted kickoff: over 72 h every 24 h; 48-72 h every 12 h; 24-48 h every
+   6 h; 6-24 h every 3 h; under 6 h hourly. A change refreshes the forecast (debounced to once an hour).
+   These tiers mirror the odds collector's policy and are a starting point: every check writes an immutable
+   receipt that records whether the upstream files changed, which both starts the forward-timestamped
+   observation ledger (ROADMAP W4) and lets the cadence be set from evidence after a few weeks. How often
+   nflverse refreshes these files intraday is not known.
+4. **A forecast must freeze at kickoff.** A refresh makes events for every game without a result, which
+   includes games in progress, and they keep the `live` role although they were generated after kickoff;
+   nothing today checks that a live forecast preceded its game's kickoff or says which forecast to score. The
+   rule is: a started game keeps its last pre-kickoff forecast, and a refresh issues new forecasts only for
+   games that have not started. The weekly product requires every available forecast to come from its own
+   run and drops games once results land, so honoring the rule needs the product contract to allow
+   per-game runs (ROADMAP W6, first slice).
+5. Sequence: Unit 19 builds the command, receipts and timer, with the watch refreshing only while no game of
+   the week has started and otherwise recording "starter changed, refresh waiting"; Unit 20 builds the
+   per-game freeze and then enables refreshes for the whole week.
+6. Safety: a refresh needs a clean tracked worktree (evidence binds the source revision). A dirty tree
+   records the observation and a waiting alert and skips the heavy step; failures are debounced for an hour.
+   The first unattended runs are watched by the user.
+
+**Supersedes:** D81's command shape (`week-cycle close` / `forecast`); its checks and stage assembly are reused.
+
+---
+
 ## D81 - The weekly rhythm is one command in two phases, close on Tuesday and forecast on Friday
 
 **Date:** 2026-10-04
@@ -31,6 +83,9 @@ timer (D78) replaced. The projected starting QB needs the weekly injury report, 
 4. `weekly_predict_context` is extracted so both commands build the same stage context. `post-week`'s
    hint now points at `week-cycle forecast` and says the collector rolls and its quotes are pulled by
    themselves.
+
+**Superseded by D82** (2026-10-04): two manual phases only renamed the two commands they composed. The
+stage building blocks and checks stay; the command shape and schedule change.
 
 **Limits:** the commands run the heavy existing stages and make external calls (nflverse refreshes, the
 injury fetch); they were verified by unit tests with stubbed stages and read-only checks against this
