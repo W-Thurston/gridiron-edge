@@ -1,6 +1,6 @@
 # tests/unit/cli/test_week_cycle.py
 
-"""Tests for the weekly cycle command (``DECISIONS.md`` D81)."""
+"""Tests for the weekly cycle command (``DECISIONS.md`` D81, D82)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pandas as pd
 from pandas import DataFrame
@@ -17,7 +16,6 @@ import pytest
 from typer.testing import CliRunner
 
 from gridiron_edge.cli import week_cycle
-from gridiron_edge.cli._composites import CompositeStage, StageResult
 from gridiron_edge.cli.main import app
 from gridiron_edge.cli.week_cycle import (
     build_close_stages,
@@ -28,10 +26,13 @@ from gridiron_edge.cli.week_cycle import (
     starter_lines,
     week_completion,
 )
+from gridiron_edge.weekly_cycle.receipts import CycleReceipt, write_receipt
+from gridiron_edge.weekly_cycle.runner import CyclePorts, StageRun
 
 pytestmark = pytest.mark.unit
 
 runner = CliRunner()
+
 NOW = datetime(2026, 10, 6, 14, 0, tzinfo=UTC)
 
 
@@ -184,35 +185,32 @@ def test_close_stages_gate_the_closeout_on_a_complete_week() -> None:
         "refresh-results",
         "verify-week-complete",
         "refresh-next-week-state",
+        "verify-week-data-current",
         "refresh-season-projections",
         "close-live-forecasts",
         "check-collector",
-        "next-step",
     ]
-    for name in ("refresh-next-week-state", "refresh-season-projections", "close-live-forecasts"):
-        assert stages[name].depends_on == ("verify-week-complete",)
+    assert stages["refresh-next-week-state"].depends_on == ("verify-week-complete",)
+    assert stages["verify-week-data-current"].depends_on == ("refresh-next-week-state",)
+    for name in ("refresh-season-projections", "close-live-forecasts"):
+        assert stages[name].depends_on == ("verify-week-data-current",)
     assert stages["verify-week-complete"].depends_on == ("refresh-results",)
     assert stages["check-collector"].soft_fail is True
 
 
-def test_forecast_stages_check_first_then_reuse_weekly_predict() -> None:
+def test_forecast_stages_reuse_weekly_predict_then_summarize() -> None:
     names = [stage.name for stage in build_forecast_stages()]
 
-    assert names[:2] == ["check-clean-worktree", "check-injury-report"]
-    assert names[2:-1] == [
+    assert names == [
         "ensure-data-fresh",
         "predict-week",
         "compose-weekly-product",
         "verify-weekly-readiness",
         "render-outputs",
         "generate-edges",
+        "report-forecast",
     ]
-    assert names[-1] == "report-forecast"
     stages = {stage.name: stage for stage in build_forecast_stages()}
-    assert stages["ensure-data-fresh"].depends_on == (
-        "check-clean-worktree",
-        "check-injury-report",
-    )
     assert stages["report-forecast"].soft_fail is True
 
 
@@ -247,132 +245,205 @@ def test_the_complete_check_passes_a_finished_week_and_rejects_an_empty_one(
     assert not week_cycle._stage_verify_week_complete({"season_int": 2026, "week": 12}).success
 
 
-def test_the_injury_check_requires_the_report_unless_early_is_allowed(
+def test_the_timer_runs_the_cycle_hourly_and_catches_up_after_downtime() -> None:
+    service = Path("deploy/systemd/gridiron-edge-week-cycle.service").read_text()
+    timer = Path("deploy/systemd/gridiron-edge-week-cycle.timer").read_text()
+
+    assert "gridiron week-cycle\n" in service
+    assert "Type=oneshot" in service
+    assert "OnCalendar=hourly" in timer
+    assert "Persistent=true" in timer
+    assert "Unit=gridiron-edge-week-cycle.service" in timer
+
+
+def _ports_with(**overrides: object) -> CyclePorts:
+    def unavailable(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a dry run must not touch this effect")
+
+    schedule = DataFrame(
+        {
+            "season": ["2026-2027"],
+            "week": [5],
+            "game_id": ["g"],
+            "game_date": ["2099-10-11"],
+            "game_time": ["13:00:00"],
+        }
+    )
+    fields: dict[str, object] = {
+        "clock": lambda: NOW,
+        "load_schedule": lambda: schedule,
+        "product_id": lambda season, week: None,
+        "load_product": unavailable,
+        "dirty_files": unavailable,
+        "run_closeout": unavailable,
+        "run_forecast": unavailable,
+        "run_edges": unavailable,
+        "refresh_availability": unavailable,
+        "digests": unavailable,
+        "observe": unavailable,
+        "edge_inputs": unavailable,
+    }
+    fields.update(overrides)
+    return CyclePorts(**fields)  # type: ignore[arg-type]
+
+
+def test_dry_run_and_status_report_the_due_step_without_acting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _use_repo(monkeypatch, tmp_path)
-    present = DataFrame({"week": [5], "game_type": ["REG"]})
-    absent = DataFrame({"week": [4], "game_type": ["REG"]})
-    module = "gridiron_edge.ingest.nflverse.weekly_availability"
-    context = {"season_int": 2026, "week": 5}
+    monkeypatch.setattr(week_cycle, "build_ports", _ports_with)
 
-    with (
-        patch(f"{module}.fetch_injuries") as fetch,
-        patch(f"{module}.load_injuries", return_value={2026: present}),
-    ):
-        ok = week_cycle._stage_check_injury_report(context)
-    with (
-        patch(f"{module}.fetch_injuries"),
-        patch(f"{module}.load_injuries", return_value={2026: absent}),
-    ):
-        blocked = week_cycle._stage_check_injury_report(context)
-        early = week_cycle._stage_check_injury_report({**context, "allow_early": True})
+    dry = runner.invoke(app, ["week-cycle", "--dry-run"])
+    status = runner.invoke(app, ["week-cycle", "status"])
 
-    fetch.assert_called_once()
-    assert ok.success
-    assert blocked.success is False
-    assert "--allow-early" in blocked.detail
-    assert early.success is True
-    assert early.warnings and "early picture" in early.warnings[0]
+    assert dry.exit_code == 0, dry.output
+    assert "target 2026-2027 week 5: forecast" in dry.output
+    assert status.exit_code == 0, status.output
+    assert "forecast" in status.output
+    assert "No receipts yet." in status.output
+    assert not (tmp_path / "data" / "output" / "week_cycle" / "season=2026-2027").exists()
 
 
-def test_the_worktree_check_names_dirty_files(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_status_lists_the_latest_receipts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_repo(monkeypatch, tmp_path)
-    with patch("gridiron_edge.cli.week_cycle.dirty_tracked_files", return_value=["a.py", "b.py"]):
-        result = week_cycle._stage_check_clean_worktree({})
-    with patch("gridiron_edge.cli.week_cycle.dirty_tracked_files", return_value=[]):
-        clean = week_cycle._stage_check_clean_worktree({})
-
-    assert result.success is False
-    assert "uncommitted: a.py, b.py" in result.detail
-    assert clean.success is True
-
-
-def _stub(name: str, *, ok: bool = True, report: str | None = None):
-    def run(ctx: dict) -> StageResult:
-        if report:
-            ctx.setdefault("cycle_report", []).append(report)
-        return StageResult(success=ok, detail=name)
-
-    return run
-
-
-def test_close_runs_end_to_end_with_stubbed_stages_and_prints_the_hint() -> None:
-    stages = [
-        CompositeStage(name="refresh-results", description="r", func=_stub("r")),
-        CompositeStage(
-            name="next-step",
-            description="n",
-            func=_stub("n", report="Friday: uv run gridiron week-cycle forecast --week 5"),
+    monkeypatch.setattr(week_cycle, "build_ports", _ports_with)
+    write_receipt(
+        tmp_path,
+        CycleReceipt(
+            decided_at=NOW.isoformat(),
+            season="2026-2027",
+            week=5,
+            attempted="watch",
+            outcome="unchanged",
+            detail="30 starters compared, none changed",
         ),
-    ]
-    with patch("gridiron_edge.cli.week_cycle.build_close_stages", return_value=stages):
-        result = runner.invoke(app, ["week-cycle", "close", "--season", "2026-2027", "--week", "4"])
+    )
 
-    assert result.exit_code == 0, result.output
-    assert "Friday: uv run gridiron week-cycle forecast --week 5" in result.output
+    result = runner.invoke(app, ["week-cycle", "status"])
+
+    assert "week 5  watch: unchanged - 30 starters compared, none changed" in result.output
 
 
-def test_close_exits_nonzero_when_a_stage_fails() -> None:
-    stages = [CompositeStage(name="refresh-results", description="r", func=_stub("r", ok=False))]
-    with patch("gridiron_edge.cli.week_cycle.build_close_stages", return_value=stages):
-        result = runner.invoke(app, ["week-cycle", "close", "--season", "2026-2027", "--week", "4"])
+def test_a_run_does_what_is_due_and_exits_nonzero_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    failing = StageRun(success=False, detail="predict-week: boom", failed_stage="predict-week")
+    monkeypatch.setattr(
+        week_cycle,
+        "build_ports",
+        lambda: _ports_with(dirty_files=lambda: [], run_forecast=lambda season, week: failing),
+    )
+
+    result = runner.invoke(app, ["week-cycle"])
 
     assert result.exit_code == 1
+    assert "forecast: failed - predict-week: boom" in result.output
 
 
-def test_forecast_passes_flags_into_the_context_and_prints_the_summary() -> None:
-    seen: dict[str, object] = {}
+def test_a_second_run_is_refused_while_one_holds_the_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    monkeypatch.setattr(week_cycle, "build_ports", _ports_with)
 
-    def capture(ctx: dict) -> StageResult:
-        seen.update(allow_early=ctx["allow_early"], bankroll=ctx["bankroll"], week=ctx["week"])
-        ctx.setdefault("cycle_report", []).append("prediction ready: yes")
-        return StageResult(success=True, detail="ok")
+    with week_cycle._single_run(tmp_path) as first:
+        assert first is True
+        result = runner.invoke(app, ["week-cycle"])
+        with week_cycle._single_run(tmp_path) as second:
+            assert second is False
 
-    stages = [CompositeStage(name="check-injury-report", description="i", func=capture)]
-    with patch("gridiron_edge.cli.week_cycle.build_forecast_stages", return_value=stages):
-        result = runner.invoke(
-            app,
-            [
-                "week-cycle",
-                "forecast",
-                "--season",
-                "2026-2027",
-                "--week",
-                "5",
-                "--allow-early",
-                "--bankroll",
-                "1000",
-            ],
-        )
-
-    assert result.exit_code == 0, result.output
-    assert seen == {"allow_early": True, "bankroll": 1000.0, "week": 5}
-    assert "prediction ready: yes" in result.output
+    assert result.exit_code == 0
+    assert "Another week-cycle run is in progress" in result.output
 
 
-def test_forecast_supports_only_and_rejects_a_bad_season() -> None:
-    stages = [
-        CompositeStage(name="check-injury-report", description="i", func=_stub("i")),
-        CompositeStage(name="check-clean-worktree", description="w", func=_stub("w", ok=False)),
-    ]
-    with patch("gridiron_edge.cli.week_cycle.build_forecast_stages", return_value=stages):
-        only = runner.invoke(
-            app,
-            [
-                "week-cycle",
-                "forecast",
-                "--season",
-                "2026-2027",
-                "--week",
-                "5",
-                "--only",
-                "check-injury-report",
-            ],
-        )
-    bad = runner.invoke(app, ["week-cycle", "close", "--season", "nonsense", "--week", "4"])
+def test_season_and_week_overrides_must_be_given_together(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    monkeypatch.setattr(week_cycle, "build_ports", _ports_with)
 
-    assert only.exit_code == 0, only.output
+    half = runner.invoke(app, ["week-cycle", "--dry-run", "--week", "5"])
+    bad = runner.invoke(app, ["week-cycle", "--dry-run", "--season", "nonsense", "--week", "5"])
+    both = runner.invoke(app, ["week-cycle", "--dry-run", "--season", "2026-2027", "--week", "5"])
+
+    assert half.exit_code == 2
     assert bad.exit_code == 2
+    assert both.exit_code == 0, both.output
+    assert "target 2026-2027 week 5" in both.output
+
+
+def test_completed_games_are_the_regular_season_games_with_a_result() -> None:
+    games = DataFrame(
+        {
+            "season": [2026, 2026, 2026, 2026],
+            "week": [4, 4, 4, 5],
+            "game_type": ["REG", "REG", "POST", "REG"],
+            "game_id": ["a", "b", "c", "d"],
+            "result": [3.0, None, 1.0, 2.0],
+        }
+    )
+
+    assert week_cycle.completed_game_ids(games, season_int=2026, week=4) == {"a"}
+
+
+def test_coverage_gaps_name_what_each_artifact_lacks() -> None:
+    gaps = week_cycle.coverage_gaps(
+        {"a", "b", "c"},
+        {"complete": {"a", "b", "c", "x"}, "partial": {"a"}, "absent": None},
+    )
+
+    assert gaps == {"partial": ["b", "c"], "absent": ["a", "b", "c"]}
+
+
+def _data_current_repo(tmp_path: Path, *, stats: list[str]) -> Path:
+    raw = tmp_path / "data" / "raw"
+    (raw / "player_stats").mkdir(parents=True)
+    (raw / "pbp").mkdir()
+    cleaned = tmp_path / "data" / "cleaned"
+    cleaned.mkdir(parents=True)
+    modeling = tmp_path / "data" / "modeling"
+    modeling.mkdir()
+    DataFrame(
+        {
+            "season": [2026, 2026],
+            "week": [4, 4],
+            "game_type": ["REG", "REG"],
+            "game_id": ["a", "b"],
+            "result": [3.0, 7.0],
+        }
+    ).to_parquet(raw / "NFL_wk_by_wk_nflverse.parquet")
+    both = DataFrame({"game_id": ["a", "b"]})
+    DataFrame({"game_id": stats}).to_parquet(raw / "player_stats" / "player_stats_2026.parquet")
+    both.to_parquet(raw / "pbp" / "play_by_play_2026.parquet")
+    both.to_parquet(cleaned / "epa_by_game.parquet")
+    both.to_parquet(cleaned / "player_game_logs.parquet")
+    DataFrame({"GAME_ID": ["a", "b"]}).to_parquet(modeling / "modeling_file.parquet")
+    return tmp_path
+
+
+def test_data_current_gate_waits_for_a_lagging_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, _data_current_repo(tmp_path, stats=["a"]))
+    context: dict = {"season_int": 2026, "week": 4}
+
+    result = week_cycle._stage_verify_week_data_current(context)
+    allowed = week_cycle._stage_verify_week_data_current({**context, "allow_incomplete": True})
+
+    assert result.success is False
+    assert "player stats missing 1" in result.detail
+    assert "retrying hourly" in result.detail
+    assert "player stats: 1 of 2 week 4 games" in context["cycle_report"]
+    assert "play-by-play: 2 of 2 week 4 games" in context["cycle_report"]
+    assert allowed.success is True and allowed.warnings
+
+
+def test_data_current_gate_passes_when_every_artifact_holds_the_week(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, _data_current_repo(tmp_path, stats=["a", "b"]))
+
+    result = week_cycle._stage_verify_week_data_current({"season_int": 2026, "week": 4})
+
+    assert result.success is True

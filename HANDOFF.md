@@ -1280,31 +1280,56 @@ The command refreshes outcomes, refreshes next-week schedule, player-stats, and 
 
 ## Weekly Cycle
 
-The weekly rhythm is one command with two phases (`DECISIONS.md` D81), each run on its own day:
+`gridiron week-cycle` is one idempotent command (`DECISIONS.md` D82). Run it by hand at any time or hourly
+from a timer; it reads local state first and does only what is due:
 
 ```bash
-# Tuesday, after Monday night's game: close the finished week and set up the next one
-uv run gridiron week-cycle close --season 2026-2027 --week 4
-
-# Friday, after the injury report: forecast the next week
-uv run gridiron week-cycle forecast --season 2026-2027 --week 5
+uv run gridiron week-cycle --dry-run   # what is due, nothing done or recorded
+uv run gridiron week-cycle status      # the same plus the latest receipts
+uv run gridiron week-cycle             # do what is due
 ```
 
-`close --week N` (N is the week that just completed) runs `refresh-results`, `verify-week-complete`
-(every scheduled regular-season game of week N has a result; otherwise it stops, or closes anyway with
-`--allow-incomplete`), then the `post-week` stages `refresh-next-week-state`, `refresh-season-projections`
-and `close-live-forecasts`, then a soft `check-collector` (whether the pulled rollover receipts show the
-worker rolled to week N+1, and how recent the collector sync is) and a closing hint. It does not forecast.
+It derives the target week M (the earliest week with a game still ahead; the line it prints names it;
+`--season`/`--week` override together) and the finished week N = M - 1, then does the first of:
 
-`forecast --week M` runs `check-clean-worktree` (`weekly-predict` needs a clean tracked tree),
-`check-injury-report` (refreshes the injury cache from nflverse, then requires published reports for week
-M; absent means stop, or `--allow-early` to forecast on the early picture and say so), the existing
-`weekly-predict` stages, and a soft `report-forecast` that prints the starter sources and the games whose
-assumed starter differs from carry-forward, prediction and market readiness, and the market's age against
-the limit, then the top-edges preview. `--bankroll`, `--skip` and `--only` behave as in `weekly-predict`.
-The week is never inferred. `post-week` and `weekly-predict` still work on their own. A forecast made
-right after the Tuesday closeout (before the injury report) is the reason for two phases: it uses the
-early starter picture, and every rerun adds another immutable product (ROADMAP W6).
+1. **Close N** when N has no closeout receipt, M has no current product, and the window is open (the
+   first 06:00 local at least 4 h after N's last kickoff). Stages: `refresh-results`,
+   `verify-week-complete` (a failure here is a quiet "waiting" receipt retried hourly; `--allow-incomplete`
+   closes anyway), `refresh-next-week-state`, `verify-week-data-current` (player stats, play-by-play, EPA, player game
+   logs and the modeling file must each hold every completed game of N; a lag is the same quiet hourly
+   "waiting", and the counts per artifact are in the receipt's report), `refresh-season-projections`,
+   `close-live-forecasts`, soft `check-collector`. Each hourly retry reruns the pulls and rebuilds. A week closed by hand with `post-week` leaves no receipt; if M has no forecast the
+   cycle closes it once more.
+2. **Forecast M** when it has no current weekly product: the `weekly-predict` stages plus `report-forecast`
+   (starter sources and differences, whether the injury report was available, readiness, market age).
+   Needs a clean tracked worktree; otherwise a `blocked` receipt (exit 0, shown by `status`). Before the
+   injury report exists the starters are nflverse's published or carried-forward quarterback.
+3. **Watch** otherwise: refresh depth charts and injuries, resolve starters in memory, compare unstarted
+   games with the product's recorded starters. Cadence by hours to the next unstarted kickoff: over 72 h
+   every 24 h; 48-72 h 12 h; 24-48 h 6 h; 6-24 h 3 h; under 6 h hourly (`weekly_cycle/cadence.py`;
+   chosen before evidence, to be tuned from the receipts). A change refreshes the forecast at most once an
+   hour and only while no game of M has started; afterwards the receipt says "starter changed, refresh
+   waiting" (per-game freeze is ROADMAP W6). A schema-1 product (no starter record) is observed only.
+
+Failed, blocked and waiting attempts retry after an hour; failures exit 1. After the steps, the edge CSV
+is rebuilt when the product or the newest quote fetch time differs from the last recorded edge inputs
+(a stale market blocks it, recorded once per snapshot). Every attempt writes an immutable JSON receipt in
+`data/output/week_cycle/season=S/week=WW/` (closeout under the finished week); watch receipts hold the
+per-team chart and report status, per-side comparisons, and content digests of the upstream files and
+whether they changed since the previous check. The schedule is refreshed at closeout and each forecast
+refresh, not by the watch. `post-week` and `weekly-predict` still work on their own.
+
+Install the hourly timer (a user step; watch the first runs with `journalctl --user -u
+gridiron-edge-week-cycle.service`; the service hardcodes this machine's repository and uv paths):
+
+```bash
+cp deploy/systemd/gridiron-edge-week-cycle.service deploy/systemd/gridiron-edge-week-cycle.timer \
+  ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now gridiron-edge-week-cycle.timer
+```
+
+The unattended run uses the main checkout: a dirty tracked tree blocks the forecast step and records it.
 
 ## Historical Backfills and Evaluation
 

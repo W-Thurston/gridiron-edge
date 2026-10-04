@@ -56,6 +56,21 @@ changes.
    records the observation and a waiting alert and skips the heavy step; failures are debounced for an hour.
    The first unattended runs are watched by the user.
 
+**Implementation notes (Unit 19):** the rules are pure functions of the schedule, the clock and the receipts
+(`weekly_cycle/decision.py`); effects run through injectable ports. "Closed" means a closeout receipt, and
+a closeout is not attempted when the target week already has a current product (so weeks closed by hand are
+not re-closed). The closeout window opens at the first 06:00 local at least four hours after the finished
+week's last kickoff. A step is due five minutes before its nominal interval so timer jitter does not skip a
+tick. Failed, blocked and waiting attempts retry after an hour; a blocked (dirty tree) run exits 0 and shows
+in `week-cycle status`, a failure exits 1. The watch rebuilds starter resolution in memory from the cached
+inputs and compares it with the product's record; a product without the record (schema 1) is observed but
+never refreshed. The edge report is rebuilt on a tick when the product or the newest quote fetch time
+differs from the last recorded edge inputs.
+
+The closeout also waits (same hourly retry, not a failure) until the rebuilt player stats, play-by-play, EPA,
+player game logs and modeling file each hold every completed game of the finished week, because nflverse can
+publish results before those files catch up and a premature pull would leave next week's features a week short.
+
 **Supersedes:** D81's command shape (`week-cycle close` / `forecast`); its checks and stage assembly are reused.
 
 ---

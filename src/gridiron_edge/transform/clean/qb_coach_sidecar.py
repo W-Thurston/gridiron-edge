@@ -247,10 +247,7 @@ def _load_projection_inputs(repo: Path, season: int) -> tuple[DataFrame | None, 
 def build_qb_coach_sidecar(*, repo: Path | None = None) -> Path:
     """Build the canonical QB-and-coach identity sidecar Parquet.
 
-    Combines completed, non-preseason games from the raw historical
-    nflverse schedule cache with unplayed games from the raw upcoming
-    nflverse schedule cache (mirroring each source's own existing filter
-    in ``games_nflverse.py``/``schedule_nflverse.py`` respectively).
+    See :func:`build_qb_coach_sidecar_frame` for how the rows are combined.
 
     Args:
         repo: Absolute path to the repository root. Defaults to the value
@@ -263,6 +260,23 @@ def build_qb_coach_sidecar(*, repo: Path | None = None) -> Path:
         FileNotFoundError: If the historical raw schedule cache is
             missing. The upcoming raw cache is optional (offseason).
         ValueError: If the combined sidecar contains duplicate game IDs.
+    """
+    resolved_repo: Path = repo or get_settings().repo_root
+    combined = build_qb_coach_sidecar_frame(repo=resolved_repo)
+    out_path: Path = write_parquet(resolved_repo, "qb_coach_sidecar", combined)
+    logger.info("Wrote %d QB/coach sidecar rows to %s", len(combined), out_path)
+    return out_path
+
+
+def build_qb_coach_sidecar_frame(*, repo: Path | None = None) -> DataFrame:
+    """Combine the raw nflverse caches and the cached starter inputs into sidecar rows.
+
+    Combines completed, non-preseason games from the raw historical
+    nflverse schedule cache with unplayed games from the raw upcoming
+    nflverse schedule cache (mirroring each source's own existing filter
+    in ``games_nflverse.py``/``schedule_nflverse.py`` respectively), and
+    projects starters for the unplayed games from the cached depth charts
+    and injury reports. Nothing is written.
     """
     settings: Settings = get_settings()
     resolved_repo: Path = repo or settings.repo_root
@@ -324,7 +338,4 @@ def build_qb_coach_sidecar(*, repo: Path | None = None) -> Path:
         kind="stable",
         ignore_index=True,
     ).loc[:, list(SIDECAR_COLUMNS)]
-
-    out_path: Path = write_parquet(resolved_repo, "qb_coach_sidecar", combined)
-    logger.info("Wrote %d QB/coach sidecar rows to %s", len(combined), out_path)
-    return out_path
+    return combined

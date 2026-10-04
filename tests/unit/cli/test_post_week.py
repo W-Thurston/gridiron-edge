@@ -198,7 +198,7 @@ class TestCommandInvocation:
 def test_next_week_steps_name_the_following_week() -> None:
     text = _next_week_steps("2026-2027", 3)
 
-    assert "week-cycle forecast --season 2026-2027 --week 4" in text
+    assert "uv run gridiron week-cycle" in text
     assert "weekly-predict --season 2026-2027 --week 4" in text
     # The collector rolls and its quotes are pulled automatically; there is no manual odds step.
     assert "ingest odds" not in text

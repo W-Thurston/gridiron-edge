@@ -1,5 +1,33 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 19: `gridiron week-cycle` prepares each week by itself and watches the starting QB
+
+#### Added
+
+- `gridiron week-cycle` (idempotent, run by hand or hourly): derives the target week and closes the
+  finished week (from 06:00 local once every result is in), forecasts the target week when it has no
+  current product, or runs the starter watch (`DECISIONS.md` D82). `--dry-run` and `status` report what
+  is due and the latest receipts from local state; a lock prevents overlapping runs.
+- The starter watch refreshes depth charts and injuries and compares the resolved starters of unstarted
+  games with those the current weekly product recorded, at a cadence of 24/12/6/3/1 h by hours to the
+  next kickoff. A change refreshes the forecast (at most hourly) while no game of the week has started;
+  later it records "starter changed, refresh waiting".
+- Immutable receipts under `data/output/week_cycle/` for every attempt, with content digests of the
+  upstream files (the start of the observation ledger). Edge reports are rebuilt when a newer quote
+  snapshot arrives.
+- `deploy/systemd/gridiron-edge-week-cycle.{service,timer}` (hourly, persistent).
+- A `verify-week-data-current` closeout gate: after the rebuild, player stats, play-by-play, EPA, player
+  game logs and the modeling file must hold every completed game of the finished week, else the closeout
+  waits and retries hourly (nflverse can publish results before those files catch up). The per-artifact
+  counts are recorded in the closeout receipt.
+
+#### Changed
+
+- `week-cycle close` and `week-cycle forecast` are removed; the first forecast of a week no longer
+  requires the injury report. `post-week`'s hint points at `week-cycle`.
+- `build_qb_coach_sidecar_frame` is split from `build_qb_coach_sidecar` so starters can be resolved
+  without writing the sidecar.
+
 ### 2026-10-04 - The Week 1 preflight integration test no longer depends on the live quote snapshot
 
 #### Fixed

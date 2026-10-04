@@ -110,11 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
-Active unit: none (Unit 19 is next). Units 12-15, 17 and 18 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+Active unit: none (Unit 20 is next). Units 12-15, 17, 18 and 19 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
 ### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: none (Unit 19 is next). Units 12-15, 17 and 18 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
+Active unit: none (Unit 20 is next). Units 12-15, 17, 18 and 19 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -233,53 +233,9 @@ Closed; the completed record is under "Unit 17" below.
 
 Closed; the completed record is under "Unit 18" below.
 
-#### Unit 19 - Weekly Cycle State Machine and Hourly Timer [Next, scoped October 4, 2026; `DECISIONS.md` D82]
+#### Unit 19 - Weekly Cycle State Machine and Hourly Timer [Completed October 4, 2026; `DECISIONS.md` D82]
 
-**Goal.** One command that prepares each week by itself and watches the starting QB, run hourly by a timer
-and by hand, replacing D81's two manual phases.
-
-**Design.**
-1. `gridiron week-cycle` (no subcommand needed; `--season` and `--week` optional overrides, never silently
-   inferred: the command prints the week it derived). Target week M = earliest (season, week) with a game
-   still ahead (reuse `select_target_week`); N = M - 1 is the finished week. `gridiron week-cycle status`
-   reports what is due and when the next check is, reading local state only; `--dry-run` reports without acting.
-2. Decision order each run, from local state: (a) close N when N has no closeout receipt, the clock is at or
-   past 06:00 local, and no attempt failed within the hour; the existing `verify-week-complete` gate decides,
-   and "not complete yet" is a normal, quiet outcome; (b) forecast M when N is closed (or M is week 1) and no
-   current product exists for M; (c) watch when a product for M exists and the cadence tier says a check is due.
-   Closeout and forecast reuse the Unit 17 stage lists (`build_close_stages` minus the closing hint,
-   `weekly-predict` stages); `week_cycle`'s `close` and `forecast` subcommands are removed.
-3. Receipts: immutable, append-only JSON under `data/output/week_cycle/season=S/week=M/` (closeout, forecast,
-   watch, refresh, blocked, failed), each with `decided_at`, the action, the inputs it looked at and, for a
-   watch, per team the chart quarterbacks and their injury status, the projected starter, whether it differs
-   from the product's recorded starter, whether the upstream depth-chart and injury files changed since the
-   previous check (digest), and the product ids before and after. The receipts are the state store.
-4. Watch cadence from hours to the next unstarted kickoff: over 72 h every 24 h; 48-72 h every 12 h; 24-48 h
-   every 6 h; 6-24 h every 3 h; under 6 h hourly (constants in one module, `DECISIONS.md` D82). A check
-   refreshes depth charts and injuries (`fetch_depth_charts`, `fetch_injuries`), runs the existing pure
-   `project_unplayed_starters` on the current upcoming schedule, and compares per game and side with the
-   selected product's recorded starters (Unit 12). Games that have kicked off are excluded.
-5. Refresh while no game of the week has started: run the `weekly-predict` stages (debounced to once an
-   hour), which composes and selects a new product. After the first kickoff of M the watch only records
-   "starter changed, refresh waiting" (Unit 20 lifts this). A dirty tracked worktree records "blocked" and
-   skips the heavy step.
-6. A tick also refreshes `data/output/edges/edges_S_wkMM.csv` through the existing edge stage when a newer
-   quote snapshot has arrived since it was written (no forecast needed: edges derive from the persisted
-   forecast and the latest quotes). The recommendation chain stays explicit.
-7. Timer: user systemd service and hourly timer templates (`Persistent=true`, same pattern as the collector
-   sync), a documented install, a HANDOFF section. The first unattended runs are watched; installing the
-   timer is the user's step.
-8. `post-week` and `weekly-predict` remain usable on their own.
-
-**Tests.** The state machine over a stubbed clock and receipts: not due, closeout waiting for results, closeout
-done, forecast due, watch cadence at each tier boundary, watch with no change, watch with a change before and
-after the first kickoff, dirty worktree blocked, debounce after a failure, week-1 and season-complete edges,
-status and dry-run output, receipt immutability and schema, edge refresh only on a newer snapshot, timer
-templates. Real data: `status` and `--dry-run` against this checkout for several evaluation times.
-
-**Acceptance.** Running `week-cycle` by hand at any time does the right next thing or says why not; the
-Tuesday closeout and forecast and the watch happen by themselves under the timer; every check leaves a
-receipt; nothing rewrites a started game's forecast (the watch is alert-only after the first kickoff).
+Closed in code; the completed record is under "Unit 19" below. Installing the timer is a user step.
 
 #### Unit 20 - Per-Game Forecast Freeze (first slice of ROADMAP W6) [Proposed after Unit 19; `DECISIONS.md` D82]
 
@@ -390,6 +346,80 @@ Python gate; full unit suite run with `FORCE_COLOR=3` set.
 
 `uv run pytest -m "unit and not slow"` passes with and without the color variables set, so commits no
 longer need `env -u FORCE_COLOR`.
+
+### Unit 19 — Weekly Cycle State Machine and Hourly Timer [Completed October 4, 2026]
+
+#### Completed
+
+`gridiron week-cycle` is one idempotent, state-driven command (`DECISIONS.md` D82) that replaces the
+`close` and `forecast` subcommands. It derives the target week (`select_target_week`) and does the first step
+that is due: close the finished week (from the first 06:00 local after its last game is over, retried hourly
+until every result is in and the rebuilt player stats, play-by-play, EPA, game logs and modeling file hold the week's games), forecast the target week when it has no current product, else the starter watch.
+The watch refreshes the depth charts and injuries, rebuilds the starter resolution in memory from the cached
+inputs, and compares each unstarted game's side with the starters recorded in the current weekly product, at
+a cadence set by hours to the next unstarted kickoff (24/12/6/3/1 h). A change refreshes the forecast only
+while no game of the week has started and at most once an hour; afterwards it records "starter changed,
+refresh waiting". A dirty tracked tree records a blocked receipt and skips the heavy step. Every attempt
+writes an immutable receipt under `data/output/week_cycle/season=S/week=WW/` (the receipts are the state
+store, and start the forward-timestamped observation ledger with content digests of the upstream files). A
+tick also rebuilds the edge report when a newer quote snapshot or product has arrived. `status` and
+`--dry-run` read local state only; a lock stops overlapping runs; a user systemd hourly timer template is
+provided. The first forecast of a week uses nflverse's published starter or carry-forward when no injury rows
+exist yet (no injury-report gate). Limits: the schedule is refreshed at closeout and at each forecast
+refresh, not by the watch; a week closed by hand with `post-week` has no closeout receipt, so the cycle
+closes it once more when the next week has no forecast; the cadence tiers were chosen before any evidence
+about how often nflverse refreshes these files.
+
+#### Goal
+
+Make the weekly workflow run by itself while staying runnable by hand, with every decision recorded.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/weekly_cycle/__init__.py` - package marker.
+- `src/gridiron_edge/weekly_cycle/cadence.py` - watch tiers, retry and tick-slack rules, closeout window.
+- `src/gridiron_edge/weekly_cycle/receipts.py` - immutable cycle receipts: schema, no-overwrite write, read, lookup.
+- `src/gridiron_edge/weekly_cycle/decision.py` - pure decision of which step is due from schedule and receipts.
+- `src/gridiron_edge/weekly_cycle/starter_watch.py` - starter comparison, per-team chart evidence, upstream digests.
+- `src/gridiron_edge/weekly_cycle/runner.py` - runs the due steps through injectable ports and writes receipts.
+- `deploy/systemd/gridiron-edge-week-cycle.service` - one-shot service running `gridiron week-cycle`.
+- `deploy/systemd/gridiron-edge-week-cycle.timer` - hourly, persistent timer.
+- `tests/unit/weekly_cycle/test_weekly_cycle_decision.py` - cadence and decision coverage.
+- `tests/unit/weekly_cycle/test_weekly_cycle_receipts_and_watch.py` - receipt and starter-comparison coverage.
+- `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` - state machine against stubbed effects.
+
+Changed:
+- `src/gridiron_edge/cli/week_cycle.py` - `close`/`forecast` replaced by `week-cycle`, `--dry-run` and `status`; new `verify-week-data-current` closeout gate; real ports, lock, stage lists reused (injury gate, worktree stage and next-step stage removed).
+- `src/gridiron_edge/cli/post_week.py` - closing hint points at `week-cycle`.
+- `src/gridiron_edge/transform/clean/qb_coach_sidecar.py` - `build_qb_coach_sidecar_frame` split out so the watch resolves starters without writing.
+- `tests/unit/cli/test_week_cycle.py` - stage lists, command, status, lock, override and timer-template coverage.
+- `tests/unit/cli/test_post_week.py` - hint expectation.
+- `HANDOFF.md` - Weekly Cycle section rewritten, timer install documented.
+- `DECISIONS.md` - D82 implementation notes.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W4 started, Unit 20 sequencing.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+64 new unit tests plus the reworked CLI tests: tier boundaries, slack, closeout window, each decision branch,
+receipt immutability, starter comparison, and the runner for waiting/failed/blocked closeout and forecast,
+watch with and without change before and after kickoff, dirty tree, debounce, schema-1 product, fetch failure,
+edge refresh, the data-current gate and its coverage helpers. Python gate run (ruff, format, pyrefly, unit suite). Real data, read-only: `status` and
+simulated clocks against this checkout (target week, closeout window, season end); the watch observation
+against the live caches; the data-current gate against the live artifacts (week 3: 16 of 16 games in all five artifacts, no gaps); a synthetic week 5 product recorded from the stored sidecar compared 30 sides with
+0 changes, confirming the in-memory resolution equals the persisted one. Not run: any real `week-cycle`
+execution, integration/e2e suites, timer installation.
+
+#### Acceptance
+
+Running `week-cycle` by hand does the right next thing or says why not; closeout, forecast and watch are
+state-driven from receipts; every check leaves an immutable receipt; no forecast is rewritten after the
+week's first kickoff. Installing and watching the timer is the next user step.
 
 ### Unit 18 — Week 1 Preflight Integration Test Independent of Operational State [Completed October 4, 2026]
 
