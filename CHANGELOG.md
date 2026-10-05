@@ -1,5 +1,14 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-05 - The git-status test can no longer rewrite the enclosing repository
+
+#### Fixed
+
+- `test_dirty_tracked_files_reads_git_status` removes every `GIT_*` variable before it runs git in its temporary
+  repository. Run from a git hook (which exports `GIT_DIR` and `GIT_INDEX_FILE`), its `git init` and `git config`
+  had re-initialized the enclosing repository instead: `core.bare` and `core.filemode` flipped and a test identity
+  was written to `.git/config`. No source change.
+
 ### 2026-10-05 - Unit 26: the closeout builds the weekly recap
 
 #### Added

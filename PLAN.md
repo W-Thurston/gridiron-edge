@@ -895,6 +895,44 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
 
+### Git-Status Test Isolation from Hook Environment [Completed October 5, 2026]
+
+#### Completed
+
+`test_dirty_tracked_files_reads_git_status` deletes every `GIT_*` variable (through `monkeypatch`) before it
+runs `git init`, `git config`, `git add` and `git commit` in `tmp_path` and calls `dirty_tracked_files`. A git
+hook exports `GIT_DIR` and `GIT_INDEX_FILE`; inherited, they pointed those commands at the enclosing repository.
+A commit from a worktree on 2026-10-05 re-initialized the real repository through it (`core.bare = true`,
+`core.filemode = true`, `user = t`), which had to be repaired by hand. No source change.
+
+#### Goal
+
+The unit suite never writes to the repository it runs from, whatever git environment the hooks export.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `tests/unit/cli/test_week_cycle.py` - the git-status test clears the inherited git environment.
+- `CHANGELOG.md` - the fix.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+Reproduced against a throwaway repository: with `GIT_DIR` pointing at it, the test passed and rewrote its
+`core.filemode` and `[user]`. After the fix, with `GIT_DIR` and `GIT_INDEX_FILE` pointing at it, the test passes
+and the repository's config is byte for byte unchanged and no index is written. Python gate.
+
+#### Acceptance
+
+The only unit test that runs git for real is isolated from hook-exported git variables, so commit hooks
+can no longer rewrite `.git/config`.
+
 ### Unit 26 — Build the Recap at Closeout [Completed October 5, 2026]
 
 #### Completed

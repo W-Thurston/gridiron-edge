@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -74,7 +75,13 @@ def test_injury_report_is_present_only_for_regular_season_reports_of_the_week(
     assert injury_report_present(None, week=5) is False
 
 
-def test_dirty_tracked_files_reads_git_status(tmp_path: Path) -> None:
+def test_dirty_tracked_files_reads_git_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A git hook exports GIT_DIR and GIT_INDEX_FILE; inherited, they would point these
+    # commands at the enclosing repository instead of the temporary one.
+    for name in [name for name in os.environ if name.startswith("GIT_")]:
+        monkeypatch.delenv(name)
     for command in (
         ["git", "init", "-q"],
         ["git", "config", "user.email", "t@example.com"],
