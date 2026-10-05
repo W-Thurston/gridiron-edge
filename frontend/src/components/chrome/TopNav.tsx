@@ -6,6 +6,7 @@ import { useBetSlip } from "../../context/BetSlipContext";
 const NAV_ITEMS = [
   { label: "Today", path: "/today", activePaths: ["/today"] },
   { label: "Games", path: "/games", activePaths: ["/games"] },
+  { label: "Last Week", path: "/recap", activePaths: ["/recap"] },
   {
     label: "Teams",
     path: "/teams",

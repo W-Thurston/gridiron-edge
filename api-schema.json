@@ -589,6 +589,25 @@
         "title": "BlockedStatus",
         "type": "object"
       },
+      "Closer": {
+        "description": "Which side's forecast landed closer to the result.",
+        "enum": [
+          "model",
+          "market",
+          "tie"
+        ],
+        "title": "Closer",
+        "type": "string"
+      },
+      "ClosingLineStatus": {
+        "description": "Whether the cleaned games file holds a closing line.",
+        "enum": [
+          "available",
+          "closing_line_missing"
+        ],
+        "title": "ClosingLineStatus",
+        "type": "string"
+      },
       "ComparableFactor": {
         "additionalProperties": false,
         "description": "One feature's contribution to the squared distance between two games.",
@@ -1796,6 +1815,37 @@
         },
         "title": "ExplainFactor",
         "type": "object"
+      },
+      "ForecastMarketStatus": {
+        "description": "Whether the product recorded the market lines it was composed against.",
+        "enum": [
+          "available",
+          "not_recorded",
+          "not_in_product"
+        ],
+        "title": "ForecastMarketStatus",
+        "type": "string"
+      },
+      "ForecastRole": {
+        "description": "Operational role of a forecast event.",
+        "enum": [
+          "live",
+          "development",
+          "backfilled"
+        ],
+        "title": "ForecastRole",
+        "type": "string"
+      },
+      "ForecastStatus": {
+        "description": "Whether one forecast family can be scored for a game.",
+        "enum": [
+          "available",
+          "forecast_missing",
+          "not_in_product",
+          "outcome_tie"
+        ],
+        "title": "ForecastStatus",
+        "type": "string"
       },
       "GameComparables": {
         "additionalProperties": false,
@@ -4692,6 +4742,15 @@
         "title": "PortfolioSummary",
         "type": "object"
       },
+      "ProductRowStatus": {
+        "description": "Whether the selected product holds a row for a scheduled game.",
+        "enum": [
+          "in_product",
+          "not_in_product"
+        ],
+        "title": "ProductRowStatus",
+        "type": "string"
+      },
       "ProjectedScoreBlock": {
         "additionalProperties": false,
         "description": "Persisted projected-score availability and score values.",
@@ -5665,6 +5724,799 @@
           }
         },
         "title": "ReasoningEntry",
+        "type": "object"
+      },
+      "RecapCloserCounts": {
+        "additionalProperties": false,
+        "description": "How often each side landed closer, over games both sides forecast.",
+        "properties": {
+          "market": {
+            "title": "Market",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "integer"
+          },
+          "tie": {
+            "title": "Tie",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "market",
+          "tie"
+        ],
+        "title": "RecapCloserCounts",
+        "type": "object"
+      },
+      "RecapClosingMarket": {
+        "additionalProperties": false,
+        "description": "The closing lines (``VEGAS_LINE`` as home margin, ``OVER_UNDER``) and what they imply.",
+        "properties": {
+          "home_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Margin"
+          },
+          "home_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win Prob"
+          },
+          "implied_away_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implied Away Score"
+          },
+          "implied_home_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implied Home Score"
+          },
+          "spread_status": {
+            "$ref": "#/components/schemas/ClosingLineStatus"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_status": {
+            "$ref": "#/components/schemas/ClosingLineStatus"
+          }
+        },
+        "required": [
+          "spread_status",
+          "home_margin",
+          "home_win_prob",
+          "total_status",
+          "total",
+          "implied_away_score",
+          "implied_home_score"
+        ],
+        "title": "RecapClosingMarket",
+        "type": "object"
+      },
+      "RecapConventionsResponse": {
+        "additionalProperties": false,
+        "description": "The conventions every value in the recap is stated in.",
+        "properties": {
+          "closing_market": {
+            "title": "Closing Market",
+            "type": "string"
+          },
+          "margin_std": {
+            "title": "Margin Std",
+            "type": "number"
+          },
+          "market_at_forecast": {
+            "title": "Market At Forecast",
+            "type": "string"
+          },
+          "market_win_probability": {
+            "title": "Market Win Probability",
+            "type": "string"
+          },
+          "orientation": {
+            "title": "Orientation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orientation",
+          "closing_market",
+          "market_at_forecast",
+          "market_win_probability",
+          "margin_std"
+        ],
+        "title": "RecapConventionsResponse",
+        "type": "object"
+      },
+      "RecapCountsResponse": {
+        "additionalProperties": false,
+        "description": "Row counts of the recap's game frame.",
+        "properties": {
+          "carried_rows": {
+            "title": "Carried Rows",
+            "type": "integer"
+          },
+          "in_product": {
+            "title": "In Product",
+            "type": "integer"
+          },
+          "not_in_product": {
+            "title": "Not In Product",
+            "type": "integer"
+          },
+          "outcome_ties": {
+            "title": "Outcome Ties",
+            "type": "integer"
+          },
+          "scheduled_games": {
+            "title": "Scheduled Games",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scheduled_games",
+          "in_product",
+          "not_in_product",
+          "carried_rows",
+          "outcome_ties"
+        ],
+        "title": "RecapCountsResponse",
+        "type": "object"
+      },
+      "RecapErrorMetrics": {
+        "additionalProperties": false,
+        "description": "Point-forecast errors (prediction minus result) over ``count`` values.",
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bias"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rmse"
+          }
+        },
+        "required": [
+          "count",
+          "mae",
+          "rmse",
+          "bias"
+        ],
+        "title": "RecapErrorMetrics",
+        "type": "object"
+      },
+      "RecapFamilyAvailability": {
+        "additionalProperties": false,
+        "description": "How many scheduled games carry an available forecast, family by family.",
+        "properties": {
+          "projected_score": {
+            "title": "Projected Score",
+            "type": "integer"
+          },
+          "spread": {
+            "title": "Spread",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "win": {
+            "title": "Win",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "win",
+          "spread",
+          "total",
+          "projected_score"
+        ],
+        "title": "RecapFamilyAvailability",
+        "type": "object"
+      },
+      "RecapGame": {
+        "additionalProperties": false,
+        "description": "One scheduled game of the week, whether or not the product holds it.",
+        "properties": {
+          "away_team": {
+            "title": "Away Team",
+            "type": "string"
+          },
+          "closing_market": {
+            "$ref": "#/components/schemas/RecapClosingMarket"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/RecapGameForecast"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "home_team": {
+            "title": "Home Team",
+            "type": "string"
+          },
+          "kickoff": {
+            "format": "date-time",
+            "title": "Kickoff",
+            "type": "string"
+          },
+          "market_at_forecast": {
+            "$ref": "#/components/schemas/RecapMarketAtForecast"
+          },
+          "product_row_status": {
+            "$ref": "#/components/schemas/ProductRowStatus"
+          },
+          "projected_score": {
+            "$ref": "#/components/schemas/RecapProjectedScoreForecast"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RecapGameResult"
+          },
+          "spread": {
+            "$ref": "#/components/schemas/RecapPointForecast"
+          },
+          "total": {
+            "$ref": "#/components/schemas/RecapPointForecast"
+          },
+          "win": {
+            "$ref": "#/components/schemas/RecapWinForecast"
+          }
+        },
+        "required": [
+          "game_id",
+          "away_team",
+          "home_team",
+          "kickoff",
+          "product_row_status",
+          "forecast",
+          "result",
+          "market_at_forecast",
+          "closing_market",
+          "win",
+          "spread",
+          "total",
+          "projected_score"
+        ],
+        "title": "RecapGame",
+        "type": "object"
+      },
+      "RecapGameForecast": {
+        "additionalProperties": false,
+        "description": "The product row's forecast provenance; null fields when the game is not in the product.",
+        "properties": {
+          "carried": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the row was carried from an earlier run than the product's.",
+            "title": "Carried"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForecastRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "role",
+          "run_id",
+          "generated_at",
+          "carried"
+        ],
+        "title": "RecapGameForecast",
+        "type": "object"
+      },
+      "RecapGameResult": {
+        "additionalProperties": false,
+        "description": "The final score; ``home_win`` is null on a tie.",
+        "properties": {
+          "away_score": {
+            "title": "Away Score",
+            "type": "number"
+          },
+          "home_margin": {
+            "title": "Home Margin",
+            "type": "number"
+          },
+          "home_score": {
+            "title": "Home Score",
+            "type": "number"
+          },
+          "home_win": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "away_score",
+          "home_score",
+          "home_margin",
+          "total",
+          "home_win"
+        ],
+        "title": "RecapGameResult",
+        "type": "object"
+      },
+      "RecapMarketAtForecast": {
+        "additionalProperties": false,
+        "description": "The market lines the product was composed against.",
+        "properties": {
+          "home_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Margin"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ForecastMarketStatus"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "status",
+          "home_margin",
+          "total",
+          "ingested_at"
+        ],
+        "title": "RecapMarketAtForecast",
+        "type": "object"
+      },
+      "RecapPointComparison": {
+        "additionalProperties": false,
+        "description": "Model against closing-market point forecast.",
+        "properties": {
+          "closer": {
+            "$ref": "#/components/schemas/RecapCloserCounts"
+          },
+          "market": {
+            "$ref": "#/components/schemas/RecapErrorMetrics"
+          },
+          "model": {
+            "$ref": "#/components/schemas/RecapErrorMetrics"
+          }
+        },
+        "required": [
+          "model",
+          "market",
+          "closer"
+        ],
+        "title": "RecapPointComparison",
+        "type": "object"
+      },
+      "RecapPointForecast": {
+        "additionalProperties": false,
+        "description": "A point forecast (home margin or total) against the result and the closing market.",
+        "properties": {
+          "closer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Closer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "market_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Closing line minus the result.",
+            "title": "Market Error"
+          },
+          "model_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model forecast minus the result.",
+            "title": "Model Error"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ForecastStatus"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "status",
+          "value",
+          "model_error",
+          "market_error",
+          "closer"
+        ],
+        "title": "RecapPointForecast",
+        "type": "object"
+      },
+      "RecapProbabilityMetrics": {
+        "additionalProperties": false,
+        "description": "Win-probability scores over ``count`` decided games.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "log_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Loss"
+          }
+        },
+        "required": [
+          "count",
+          "brier",
+          "log_loss",
+          "accuracy"
+        ],
+        "title": "RecapProbabilityMetrics",
+        "type": "object"
+      },
+      "RecapProjectedScoreForecast": {
+        "additionalProperties": false,
+        "description": "Projected team scores against the result and the market-implied team scores.",
+        "properties": {
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "closer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Closer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "market_abs_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean absolute error per team score.",
+            "title": "Market Abs Error"
+          },
+          "model_abs_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean absolute error per team score.",
+            "title": "Model Abs Error"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ForecastStatus"
+          }
+        },
+        "required": [
+          "status",
+          "away_score",
+          "home_score",
+          "model_abs_error",
+          "market_abs_error",
+          "closer"
+        ],
+        "title": "RecapProjectedScoreForecast",
+        "type": "object"
+      },
+      "RecapWeekMetrics": {
+        "additionalProperties": false,
+        "description": "The week's model and market metrics; projected-score errors are per team score.",
+        "properties": {
+          "projected_score": {
+            "$ref": "#/components/schemas/RecapPointComparison"
+          },
+          "spread": {
+            "$ref": "#/components/schemas/RecapPointComparison"
+          },
+          "total": {
+            "$ref": "#/components/schemas/RecapPointComparison"
+          },
+          "win": {
+            "$ref": "#/components/schemas/RecapWinComparison"
+          }
+        },
+        "required": [
+          "win",
+          "spread",
+          "total",
+          "projected_score"
+        ],
+        "title": "RecapWeekMetrics",
+        "type": "object"
+      },
+      "RecapWinComparison": {
+        "additionalProperties": false,
+        "description": "Model against closing-market win probability.",
+        "properties": {
+          "closer": {
+            "$ref": "#/components/schemas/RecapCloserCounts"
+          },
+          "market": {
+            "$ref": "#/components/schemas/RecapProbabilityMetrics"
+          },
+          "model": {
+            "$ref": "#/components/schemas/RecapProbabilityMetrics"
+          }
+        },
+        "required": [
+          "model",
+          "market",
+          "closer"
+        ],
+        "title": "RecapWinComparison",
+        "type": "object"
+      },
+      "RecapWinForecast": {
+        "additionalProperties": false,
+        "description": "The home-win probability against the result and the closing market.",
+        "properties": {
+          "closer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Closer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "home_win_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Win Prob"
+          },
+          "market_brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Brier"
+          },
+          "model_brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Brier"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ForecastStatus"
+          }
+        },
+        "required": [
+          "status",
+          "home_win_prob",
+          "model_brier",
+          "market_brier",
+          "closer"
+        ],
+        "title": "RecapWinForecast",
         "type": "object"
       },
       "RecentResult": {
@@ -8344,6 +9196,240 @@
         "title": "WeatherBlock",
         "type": "object"
       },
+      "WeeklyRecapList": {
+        "additionalProperties": false,
+        "description": "Every selected weekly recap, ordered by season and week (never by build time).",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "items": {
+            "description": "List payload. May be empty when blocked (see `_meta`).",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyRecapSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total count when applicable. None implies the response contains all items; an integer implies a subset of a larger collection.",
+            "title": "Total"
+          }
+        },
+        "title": "WeeklyRecapList",
+        "type": "object"
+      },
+      "WeeklyRecapResponse": {
+        "additionalProperties": false,
+        "description": "The selected recap of one week.\n\n``starting_qbs``, ``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in\n``_meta.field_status`` until the recap carries those sections.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "carried_run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Carried Run Ids",
+            "type": "array"
+          },
+          "conventions": {
+            "$ref": "#/components/schemas/RecapConventionsResponse"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/RecapCountsResponse"
+          },
+          "edges": {
+            "title": "Edges",
+            "type": "null"
+          },
+          "forecast_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForecastRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/RecapGame"
+            },
+            "title": "Games",
+            "type": "array"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/RecapWeekMetrics"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_run_id": {
+            "title": "Product Run Id",
+            "type": "string"
+          },
+          "product_schema_version": {
+            "title": "Product Schema Version",
+            "type": "integer"
+          },
+          "recap_id": {
+            "title": "Recap Id",
+            "type": "string"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "season_to_date": {
+            "title": "Season To Date",
+            "type": "null"
+          },
+          "selected_at": {
+            "format": "date-time",
+            "title": "Selected At",
+            "type": "string"
+          },
+          "starting_qbs": {
+            "title": "Starting Qbs",
+            "type": "null"
+          },
+          "wagers": {
+            "title": "Wagers",
+            "type": "null"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season",
+          "week",
+          "recap_id",
+          "built_at",
+          "selected_at",
+          "product_id",
+          "product_run_id",
+          "carried_run_ids",
+          "product_schema_version",
+          "forecast_role",
+          "conventions",
+          "counts",
+          "metrics",
+          "games"
+        ],
+        "title": "WeeklyRecapResponse",
+        "type": "object"
+      },
+      "WeeklyRecapSummary": {
+        "additionalProperties": false,
+        "description": "One selected weekly recap, as listed by ``GET /recaps``.",
+        "properties": {
+          "available": {
+            "$ref": "#/components/schemas/RecapFamilyAvailability"
+          },
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "forecast_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForecastRole"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The selected product's forecast role."
+          },
+          "in_product": {
+            "title": "In Product",
+            "type": "integer"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "recap_id": {
+            "title": "Recap Id",
+            "type": "string"
+          },
+          "row_forecast_roles": {
+            "description": "Every distinct forecast role among the product's rows, sorted.",
+            "items": {
+              "$ref": "#/components/schemas/ForecastRole"
+            },
+            "title": "Row Forecast Roles",
+            "type": "array"
+          },
+          "scheduled_games": {
+            "title": "Scheduled Games",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "selected_at": {
+            "format": "date-time",
+            "title": "Selected At",
+            "type": "string"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season",
+          "week",
+          "recap_id",
+          "built_at",
+          "selected_at",
+          "product_id",
+          "forecast_role",
+          "row_forecast_roles",
+          "scheduled_games",
+          "in_product",
+          "available"
+        ],
+        "title": "WeeklyRecapSummary",
+        "type": "object"
+      },
       "WinPredictionBlock": {
         "additionalProperties": false,
         "description": "Persisted Win component and its independent forecast provenance.",
@@ -10041,6 +11127,86 @@
         ]
       }
     },
+    "/recaps": {
+      "get": {
+        "description": "Return every selected weekly recap, ordered by season and week.",
+        "operationId": "list_weekly_recaps_recaps_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyRecapList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Weekly Recaps",
+        "tags": [
+          "recaps"
+        ]
+      }
+    },
+    "/recaps/{season}/{week}": {
+      "get": {
+        "description": "Return the selected recap of one week.",
+        "operationId": "get_weekly_recap_recaps__season___week__get",
+        "parameters": [
+          {
+            "description": "Season, e.g. '2026-2027'.",
+            "in": "path",
+            "name": "season",
+            "required": true,
+            "schema": {
+              "description": "Season, e.g. '2026-2027'.",
+              "minLength": 1,
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Week number, 1 or later.",
+            "in": "path",
+            "name": "week",
+            "required": true,
+            "schema": {
+              "description": "Week number, 1 or later.",
+              "minimum": 1,
+              "title": "Week",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyRecapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Weekly Recap",
+        "tags": [
+          "recaps"
+        ]
+      }
+    },
     "/teams": {
       "get": {
         "description": "Return power rankings for all teams in the given season.",
@@ -10215,6 +11381,10 @@
     {
       "description": "Model performance metrics.",
       "name": "model"
+    },
+    {
+      "description": "Selected weekly recaps of finished weeks.",
+      "name": "recaps"
     },
     {
       "description": "Current NFL season and week.",

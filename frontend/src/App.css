@@ -524,3 +524,9 @@
   background: var(--bg-1);
   color: var(--ink-2);
 }
+
+.recap-table { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 11px; }
+.recap-table th, .recap-table td { padding: 9px 10px; border-bottom: 1px solid var(--line-soft); text-align: right; vertical-align: top; white-space: nowrap; }
+.recap-table thead th { color: var(--ink-3); font-size: 9.5px; font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+.recap-table th:first-child, .recap-table td:nth-child(2), .recap-table td:nth-child(3) { text-align: left; }
+.recap-game-link { background: transparent; border: none; padding: 0; color: var(--ink); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }

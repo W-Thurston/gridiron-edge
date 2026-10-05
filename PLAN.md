@@ -110,7 +110,7 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Unit 23 completed October 4, 2026 (`CHANGELOG.md`); next: Unit 24 - Weekly recap API and page, not yet
+**Units 23 and 24 completed October 4, 2026 (`CHANGELOG.md`); next: Unit 25 - Starting-QB section, not yet
 active.** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
@@ -371,7 +371,9 @@ status; metrics match the closeout and a hand check; a rerun replays; HANDOFF (a
 and the registry list), DECISIONS D86 (identity, schedule scope, closing-market convention, every role
 included), CHANGELOG and this record are updated.
 
-#### Unit 24 - Weekly Recap API and Page [Scoped October 4, 2026; not active]
+#### Unit 24 - Weekly Recap API and Page [Completed October 4, 2026]
+
+Closed; the completed record is under "Unit 24" below. The scoping record follows.
 
 **Goal.** Serve the selected weekly recaps read-only and show them on one page that answers "how did we do
 last week?" for the game forecasts, with every unavailable value explicit.
@@ -409,8 +411,9 @@ Workflow"; DECISIONS D14, D16-D18, D21.
 4. Regenerate contracts: `uv run gridiron api export-schema`, `cd frontend && pnpm gen:api`, then the
    frontend gate.
 
-**Decide at start.** The nav label and position; whether the dashboard gets a "last week" card (recommended:
-not in this unit).
+**Decided at start (2026-10-04, with the user).**
+1. The nav item reads "Last Week" and sits right after "Games"; the route stays `/recap`.
+2. No dashboard "last week" card in this unit.
 
 **Tests.** Routes: selected, missing (404), verification failure (500), schema enums, pending meta;
 serializer status and null handling; the route registry test. Frontend: the screen renders a recap-shaped
@@ -874,6 +877,76 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 24 — Weekly Recap API and Page [Completed October 4, 2026]
+
+#### Completed
+
+`GET /recaps` lists every selected weekly recap ordered by season and week (recap id, `built_at`, `selected_at`,
+product, forecast role, distinct row roles, scheduled and in-product counts, available count per family);
+`GET /recaps/{season}/{week}` serves the manifest summary, conventions, counts, week metrics (model and market with
+counts and closer tallies) and one row per scheduled game, grouped into forecast provenance, result, market at
+forecast, closing market and the four families. Both read only through `weekly_recap_store` (identity and frame
+digest verified): an unselected week is a 404 naming the build command, a missing or tampered selected recap a 500,
+a week below 1 a 422. The recap's status enums and `ForecastRole` are schema enums. `starting_qbs`, `edges`,
+`wagers` and `season_to_date` (renamed from the scoped `season`, which would collide with the season string) are
+null and `pending` in `_meta.field_status`. The frontend "Last Week" nav item (after "Games") opens `/recap`: a
+week picker defaulting to the highest selected (season, week), a header with a role badge that names
+`development` explicitly and the closing-line convention, one model-against-market card per family, and a
+per-game table with a family toggle (Win, Spread, Total, Projected score) that keeps the table readable; every
+non-available value is explicit text, each matchup links to its game page, and the unbuilt sections render as
+pending cards. No dashboard card (decided at start).
+
+#### Goal
+
+Serve the selected weekly recaps read-only and show "how did we do last week?" for the game forecasts on one page,
+with every unavailable value explicit.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/api/routes/recaps.py` - the two read-only recap routes and their 404/500 mapping.
+- `src/gridiron_edge/api/schemas/recaps.py` - the recap list and week response schemas, with status enums.
+- `src/gridiron_edge/api/serializers/recaps.py` - hand-written serialization of the stored manifest and game frame, pending sections.
+- `tests/unit/api/test_routes_recaps.py` - list, detail, 404, 422, 500 on tampering and missing files, row statuses, pending meta, schema enums.
+- `frontend/src/screens/WeeklyRecap.tsx` - the "Last Week" page.
+- `frontend/src/screens/WeeklyRecap.test.tsx` - default week, role badge, metric cards, every status message, week switching, game links, pending sections, empty state.
+- `frontend/src/components/field-status/recapStatus.ts` - recap status and role messages.
+
+Changed:
+- `src/gridiron_edge/evaluation/weekly_recap_store.py` - `list_current_weekly_recap_selections`; each selection checked against its key.
+- `src/gridiron_edge/api/app.py` - the `recaps` router and OpenAPI tag.
+- `tests/unit/evaluation/test_weekly_recap_store.py` - listing order, empty listing, a mis-keyed selection.
+- `tests/unit/api/test_app.py` - the `recaps` tag.
+- `api-schema.json` - regenerated (additive: two paths, recap schemas and enums).
+- `frontend/src/api/hooks.ts` - `useRecaps`, `useWeeklyRecap`.
+- `frontend/src/Router.tsx` - the `/recap` route.
+- `frontend/src/components/chrome/TopNav.tsx` - the "Last Week" nav item.
+- `frontend/src/App.css` - recap table styles.
+- `HANDOFF.md` - serving and page paragraph in "Weekly Recap".
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress.
+- `PLAN.md` - this record and the decisions taken at start.
+
+Removed:
+- None.
+
+#### Tests
+
+Python gate: ruff, pyrefly, `pytest -m "unit and not slow"` (4,898 passed; the one failure, the checked-in schema
+check, ran before the schema export and passes after it). Frontend gate: lint, build, `test:run` (539 passed).
+Real data against the running API: `/recaps` lists weeks 1-3 (week 2 `development`, 16 of 16 available per
+family); `/recaps/2026-2027/3` metrics equal the stored manifest exactly (spread MAE 9.18, win Brier 0.2458) and
+all 16 games match the stored frame on every family value checked (0 mismatches); week 2 rows read
+`not_recorded` for the market at forecast time; week 4 is a 404 naming the command. The page, driven in headless
+Chromium against the dev server: "Last Week" active, weeks 1-3 switch, the week 2 development badge, all four family
+tables, a game link to `#/games?gameId=2026_01_NE_SEA`, no console errors.
+
+#### Acceptance
+
+Both routes serialize only the persisted, verified recap; the page shows every scheduled game and every metric
+beside the market with explicit statuses; contracts were regenerated, not hand-edited; gates pass; HANDOFF and
+CHANGELOG are updated. Week 4 appears once its recap is built after Tuesday's results.
 
 ### Unit 23 — Weekly Recap Artifact and Game-Forecast Section [Completed October 4, 2026]
 

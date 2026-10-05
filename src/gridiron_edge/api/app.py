@@ -23,6 +23,7 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "portfolio", "description": "Bankroll, bets, performance."},
     {"name": "compare", "description": "Team vs team and player vs defense."},
     {"name": "model", "description": "Model performance metrics."},
+    {"name": "recaps", "description": "Selected weekly recaps of finished weeks."},
     {"name": "weeks", "description": "Current NFL season and week."},
     {"name": "portfolio", "description": "Bankroll, bets, curve, transactions, splits."},
     # Endpoints blocked on upstream gaps; tags exist now so /docs groups
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
         prop_reasoning,
         prop_shop,
         props,
+        recaps,
         swing_factors,
         teams,
         weeks,
@@ -134,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(prop_reasoning.router)
     app.include_router(prop_shop.router)
     app.include_router(props.router)
+    app.include_router(recaps.router)
     app.include_router(swing_factors.router)
     app.include_router(teams.router)
     app.include_router(weeks.router)

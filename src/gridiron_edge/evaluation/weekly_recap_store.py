@@ -145,21 +145,23 @@ def get_current_weekly_recap_selection(
     repo: Path | None = None,
 ) -> WeeklyRecapSelection | None:
     """Return the selection of one season and week, or ``None`` when nothing is selected."""
-    payload = _read_current(repo)["selections"].get(_selection_key(season, week))
+    key = _selection_key(season, week)
+    payload = _read_current(repo)["selections"].get(key)
     if payload is None:
         return None
-    if not isinstance(payload, dict) or set(payload) != {
-        "season",
-        "week",
-        "recap_id",
-        "selected_at",
-    }:
-        raise ValueError("Weekly recap selection does not match the schema.")
-    if payload["season"] != season or payload["week"] != week:
-        raise ValueError("Weekly recap selection is stored under another season or week.")
-    selected_at = datetime.fromisoformat(str(payload["selected_at"]))
-    _utc(selected_at)
-    return WeeklyRecapSelection(season, week, _digest(str(payload["recap_id"])), selected_at)
+    return _selection_from_payload(key, payload)
+
+
+def list_current_weekly_recap_selections(
+    *,
+    repo: Path | None = None,
+) -> tuple[WeeklyRecapSelection, ...]:
+    """Return every explicit selection, ordered by season and week (never by build time)."""
+    selections = [
+        _selection_from_payload(key, payload)
+        for key, payload in _read_current(repo)["selections"].items()
+    ]
+    return tuple(sorted(selections, key=lambda selection: (selection.season, selection.week)))
 
 
 def load_current_weekly_recap(
@@ -245,6 +247,24 @@ def _read_current(repo: Path | None = None) -> dict[str, Any]:
     if not isinstance(raw.get("selections"), dict):
         raise ValueError("Weekly recap current 'selections' must be an object.")
     return raw
+
+
+def _selection_from_payload(key: str, payload: object) -> WeeklyRecapSelection:
+    if not isinstance(payload, dict) or set(payload) != {
+        "season",
+        "week",
+        "recap_id",
+        "selected_at",
+    }:
+        raise ValueError("Weekly recap selection does not match the schema.")
+    season, week = payload["season"], payload["week"]
+    if not isinstance(season, str) or not isinstance(week, int) or isinstance(week, bool):
+        raise ValueError("Weekly recap selection needs a string season and an integer week.")
+    if _selection_key(season, week) != key:
+        raise ValueError("Weekly recap selection is stored under another season or week.")
+    selected_at = datetime.fromisoformat(str(payload["selected_at"]))
+    _utc(selected_at)
+    return WeeklyRecapSelection(season, week, _digest(str(payload["recap_id"])), selected_at)
 
 
 def _selection_key(season: str, week: int) -> str:

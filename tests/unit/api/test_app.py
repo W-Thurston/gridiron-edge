@@ -57,6 +57,7 @@ class TestOpenApiTags:
             "portfolio",
             "compare",
             "model",
+            "recaps",
         } <= names
         # Blocked route domains.
         assert {

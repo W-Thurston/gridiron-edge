@@ -1,5 +1,23 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 24: the weekly recap is served and shown on a "Last Week" page
+
+#### Added
+
+- `GET /recaps` lists the selected weekly recaps by season and week (product, forecast role, row roles, available
+  count per family); `GET /recaps/{season}/{week}` serves one week's metrics, model beside market, and every
+  scheduled game, with the recap's statuses as schema enums. Both only read and verify the persisted recap; an
+  unselected week is a 404 naming `gridiron evaluate weekly-recap`, a failed verification a 500. Starting QBs,
+  edges, wagers and season-to-date are null and marked pending.
+- A "Last Week" nav item and page (`/recap`): week picker defaulting to the latest recapped week, a role badge that
+  names a `development` forecast, one model-against-market card per family, and a per-game table (Win, Spread,
+  Total, Projected score) with explicit text for every missing value and links to each game.
+
+#### Changed
+
+- `weekly_recap_store.list_current_weekly_recap_selections` lists every selection; selection entries are checked
+  against their key.
+
 ### 2026-10-04 - Unit 23: an immutable weekly recap of every game forecast
 
 #### Added

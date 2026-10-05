@@ -545,3 +545,33 @@ export function useHistoricalModelPerformanceSeries() {
     },
   });
 }
+
+/** Fetches every selected weekly recap, ordered by season and week. */
+export function useRecaps() {
+  return useQuery({
+    queryKey: ["recaps"],
+    queryFn: async () => {
+      const { data, error } = await apiClient.GET("/recaps");
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+  });
+}
+
+/** Fetches the selected recap of one week. */
+export function useWeeklyRecap(season: string | null, week: number | null) {
+  return useQuery({
+    queryKey: ["recap", season, week],
+    queryFn: async () => {
+      if (season === null || week === null) {
+        throw new Error("season and week required");
+      }
+      const { data, error } = await apiClient.GET("/recaps/{season}/{week}", {
+        params: { path: { season, week } },
+      });
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+    enabled: season !== null && week !== null,
+  });
+}

@@ -16,6 +16,7 @@ from gridiron_edge.evaluation.weekly_recap import BuiltWeeklyRecap, build_weekly
 from gridiron_edge.evaluation.weekly_recap_store import (
     RecapWriteOutcome,
     get_current_weekly_recap_selection,
+    list_current_weekly_recap_selections,
     load_current_weekly_recap,
     load_weekly_recap,
     select_current_weekly_recap,
@@ -161,3 +162,54 @@ def test_selection_requires_utc(tmp_path: Path) -> None:
         select_current_weekly_recap(
             built.recap.recap_id, selected_at=datetime(2026, 10, 7), repo=tmp_path
         )
+
+
+def _write_current(tmp_path: Path, selections: dict[str, dict[str, object]]) -> None:
+    path = weekly_recap_root(tmp_path) / "current.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema_version": 1, "selections": selections}))
+
+
+def _selection_payload(season: str, week: int, selected_at: datetime) -> dict[str, object]:
+    return {
+        "season": season,
+        "week": week,
+        "recap_id": f"{week:064x}",
+        "selected_at": selected_at.isoformat(),
+    }
+
+
+def test_no_selections_list_as_empty(tmp_path: Path) -> None:
+    assert list_current_weekly_recap_selections(repo=tmp_path) == ()
+
+
+def test_selections_list_by_season_and_week_not_by_selection_time(tmp_path: Path) -> None:
+    _write_current(
+        tmp_path,
+        {
+            "2026-2027_week_10": _selection_payload("2026-2027", 10, SELECTED_AT),
+            "2025-2026_week_18": _selection_payload(
+                "2025-2026", 18, SELECTED_AT + timedelta(days=3)
+            ),
+            "2026-2027_week_02": _selection_payload(
+                "2026-2027", 2, SELECTED_AT + timedelta(days=1)
+            ),
+        },
+    )
+
+    listed = list_current_weekly_recap_selections(repo=tmp_path)
+
+    assert [(selection.season, selection.week) for selection in listed] == [
+        ("2025-2026", 18),
+        ("2026-2027", 2),
+        ("2026-2027", 10),
+    ]
+    assert listed[1].recap_id == f"{2:064x}"
+    assert listed[1].selected_at == SELECTED_AT + timedelta(days=1)
+
+
+def test_a_selection_stored_under_another_week_key_is_rejected(tmp_path: Path) -> None:
+    _write_current(tmp_path, {"2026-2027_week_03": _selection_payload("2026-2027", 4, SELECTED_AT)})
+
+    with pytest.raises(ValueError, match="another season or week"):
+        list_current_weekly_recap_selections(repo=tmp_path)

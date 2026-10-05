@@ -1318,6 +1318,8 @@ The recap (`DECISIONS.md` D86) is built from persisted state only: the week's re
 
 Week 2's product is a `development` regeneration that predates the market columns, so its rows read `not_recorded` for the market at forecast time.
 
+**Serving.** `GET /recaps` lists every selected recap ordered by season and week (never by build time), with its product, forecast role, the distinct row roles and the available count per family. `GET /recaps/{season}/{week}` returns the manifest summary, the week metrics (model and market with counts and closer tallies) and one row per scheduled game, grouped per family with the recap's own status enums (exported as schema enums). Both routes read only through `weekly_recap_store`, which verifies identity and frame digest: an unselected week is a 404 naming the build command; a selected recap whose files are missing or fail verification is a 500. `starting_qbs`, `edges`, `wagers` and `season_to_date` are null and marked `pending` in `_meta.field_status` until the recap carries those sections. The frontend page is "Last Week" in the top nav (`/recap`, optional `season` and `week` params; the default is the highest selected season and week). It shows the role badge (naming `development` explicitly), the closing-line convention, one model-against-market card per family and the per-game table with a family toggle, every non-available value as explicit text; each matchup links to its game page.
+
 ## Weekly Cycle
 
 `gridiron week-cycle` is one idempotent command (`DECISIONS.md` D82). Run it by hand at any time or hourly

@@ -17,6 +17,7 @@ import { PlayoffProjections } from "./screens/PlayoffProjections";
 import { Settings } from "./screens/Settings";
 import { TeamsScreen } from "./screens/TeamsScreen";
 import { Tools } from "./screens/Tools";
+import { WeeklyRecap } from "./screens/WeeklyRecap";
 
 export function Router() {
   const { route } = useNav();
@@ -33,6 +34,8 @@ export function Router() {
       return <Dashboard />;
     case "/games":
       return <GamesList />;
+    case "/recap":
+      return <WeeklyRecap />;
     case "/teams":
       return <TeamsScreen />;
     case "/projections":
