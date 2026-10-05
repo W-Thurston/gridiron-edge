@@ -63,7 +63,10 @@ Prioritize work by value density, evidence quality, and architectural fit:
 
 ## Active Next Program
 
-**Selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) closed 2026-10-02; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
+**Active since 2026-10-04: the Weekly Recap (W15), `PLAN.md` Units 23-28.** The paragraph below records
+the feature program's state, which is paused, not closed.
+
+**Previously selected: Tier 5 #16, the game-model feature program, Phase A.** Foundation Completion (below) closed 2026-09-27 with every acceptance criterion met and lifted the gate on Tier 5 #16. Phase A is now sequenced into units below (Tier 5 #16, "Phase A unit sequence"); Units 1–5 (batches A1–A5) are wired (schema v12) with promotion deferred to Unit 7, per the revised wiring/promotion split (`DECISIONS.md` D62). Unit 7 closed 2026-10-01 (only the QB-and-coach batch kept, schema 13, D72/D73). The neutral-site fix (Tier 5 #15a, Unit 8) closed 2026-10-02; Unit 6 (batch A6, market-aware variant) must be deliberately scoped into `PLAN.md` before work begins.
 
 ### Next Workstreams (added 2026-10-03)
 
@@ -77,7 +80,48 @@ Candidate work identified after Units 8-11 (neutral-site fix, projected starting
 
 **Weekly recap**
 
-- **W15. Weekly recap page [L].** (The `week-cycle` closeout step is where a recap build would hook in.) One page that answers "how did we do last week?" for every projection, not only the starting QB: each game's win probability, spread, total and projected score against the result; the assumed starting QBs against who played (W3); the edges and recommendations the system published, with their outcomes and how they compared with the closing lines; and recorded wagers' realized performance where any exist. Aggregates across weeks (calibration, error, running totals) sit beside the per-game table, and unavailable pieces are shown, never hidden. Shape: an immutable weekly recap artifact built by a CLI command after the week's results are in (the postgame workflow already refreshes outcomes and closes the Win and Total events), served read-only through the API, shown on one frontend page using the shared field-status components. Audit first what already exists (`post-week` closeout, model-performance routes and evaluation artifacts, `recommended_bet_results`, the production recommendation chain) so the recap reuses it instead of recomputing; no scoring happens at request time. Needs W2's persisted starter record (done) and a finished week with a recorded product (week 5 is the first). Sequenced after W1; W3 is its first section.
+- **W15. Weekly recap page [L]. [Scoped 2026-10-04 as the active program, `PLAN.md` Units 23-28: artifact and game forecasts, API and page, starting QBs, cycle hook, season roll-up, edges and wagers. The audit there found three finished weeks to verify against (1-3, week 2 `development`), that the closeout is pure but unpersisted, and that published edges have no immutable record.]** (The `week-cycle` closeout step is where a recap build would hook in.) One page that answers "how did we do last week?" for every projection, not only the starting QB: each game's win probability, spread, total and projected score against the result; the assumed starting QBs against who played (W3); the edges and recommendations the system published, with their outcomes and how they compared with the closing lines; and recorded wagers' realized performance where any exist. Aggregates across weeks (calibration, error, running totals) sit beside the per-game table, and unavailable pieces are shown, never hidden. Shape: an immutable weekly recap artifact built by a CLI command after the week's results are in (the postgame workflow already refreshes outcomes and closes the Win and Total events), served read-only through the API, shown on one frontend page using the shared field-status components. Audit first what already exists (`post-week` closeout, model-performance routes and evaluation artifacts, `recommended_bet_results`, the production recommendation chain) so the recap reuses it instead of recomputing; no scoring happens at request time. Needs W2's persisted starter record (done) and a finished week with a recorded product (week 5 is the first). Sequenced after W1; W3 is its first section.
+
+**Analysis, not only betting (added 2026-10-04)**
+
+- **W22. Analysis surfaces [L].** The user wants the frontend to be about analysis as well as betting. The
+  recap audit (2026-10-04) found evidence that is computed or persisted but not shown, or shown stale. Ranked
+  by value against cost; each needs its own audit and `PLAN.md` unit, and every view serializes persisted
+  artifacts only (no request-time scoring):
+  1. *Fresh, served model-quality evaluation [M].* The six-family `GameModelEvaluationReport`
+     (calibration slope and intercept, ECE, sharpness, AUC, season stability, total interval coverage,
+     environment slices) is served nowhere. The `/performance` page shows the historical backtest selected
+     2026-08-18, framed as betting (net wins, units, ROI) and absent from the top nav. Both reports predate the
+     2026-10-01 backfills and champions. Regenerate them through their owning commands (local compute; ask
+     first), serve the quality report, reframe the page around model quality with the naive references of
+     Tier 8 #24, and move `/model/performance`'s request-time `summarise` to a persisted artifact (Tier 8 #22).
+  2. *Model against market [M].* The market-agreement report (D85: gap bins, slopes, Brier and MAE
+     against the closing line) exists only as markdown. Serving its tables answers "where does the model
+     disagree with the market, and who was right". It pairs with W19's per-game disagreement view.
+  3. *In-week forecast history [M].* Week 4 has six products. How each game's forecast moved over the
+     week, and why (a starter change, a refresh), is recorded but not viewable. W6 owns the "as of" contract.
+  4. *Starter-watch timeline [S-M].* The cycle's immutable watch receipts record every depth-chart and
+     injury check per team with content digests. A built read model would show what changed each week.
+  5. *Team efficiency trends [M].* `epa_by_game.parquet` (offense and defense EPA per game) is not served
+     by any route. Elo history is served only as current state and deltas (*unverified* in detail).
+  6. *Line movement [M].* The quote ledger supports first-observed, current and closing views (Tier 8
+     #24, W7's display idea). It is dense only for week 1 and week 4 so far, so it waits for a few weeks of
+     the Pi collector.
+  7. *Prop model accuracy [M].* Prop projections are logged (`prop_predictions_log.parquet`) and prop
+     backfills are evaluated (`evaluation/prop_metrics.py`), but no route serves their accuracy.
+  8. *Research evidence pages [S-M].* Feature attribution, the starter-projection backtest and quote
+     movement exist as markdown reports. Showing them needs structured artifacts, not markdown parsing.
+
+- **W23. Findings from the recap audit [S].** (1) The closeout (`close_live_forecasts`) counts product
+  rows, not scheduled games: week 4 reads 15 games and misses PIT @ CLE, which is in no product from
+  `81248588` on. Making it count the schedule would fail that week's closeout, so decide how a closeout
+  treats a scheduled game with no selected forecast (an explicit `not_in_product` count that does not fail
+  the close is the likely answer). (2) Rows carried from a schema-1 run read
+  `starting_qb_status = sidecar_unavailable`; the true state is "not recorded". (3) The weekly edge CSV is
+  overwritten and deleted when blocked, so the edges published during a week leave no immutable record.
+  Persist them if raw edges are ever re-enabled (D85). (4) The full-retrain report's "Delta vs Previous"
+  table shows each full value as its delta when no previous report exists. (5) One week 2 wager is still
+  `open` after its game finished (a ledger settlement, the user's step).
 
 **In-week operation (the longer-term goal: forecasts updated continuously as live data arrives)**
 

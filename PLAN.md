@@ -108,13 +108,488 @@ should read this section before planning or modifying the repository.
 
 ## Planned Implementation Status
 
-### Active Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
+### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-Active unit: none (no unit is scoped; next candidates are ROADMAP W16 and W15). Units 12-15 and 17-20 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
+**Active unit: Unit 23 - Weekly recap artifact and the game-forecast section.** Sequence:
+Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
+Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
+wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
+only the active one may change code. Evidence below was read from this checkout on 2026-10-04
+(read-only; one throwaway probe script, not kept). Items marked *unverified* were not checked.
+
+**Picking up a unit in a new thread.**
+1. Read CLAUDE.md, "Ways of Working" above, this program section (goal, audit, decisions, shared
+   contracts) and the unit's own section. The unit's "Start here" list names the files to read first.
+2. Confirm the previous unit is committed (`git log`; CHANGELOG.md) and that the unit's "Depends on" holds.
+3. Re-check the audit facts the unit relies on: data changes weekly (a new week closes every Tuesday), so
+   counts quoted here are as of 2026-10-04.
+4. Settle the unit's "Decide at start" items with the user before writing code, and record the answers in
+   the unit section.
+5. Mark the unit `[Active]` here and the previous one `[Completed]` (with a pointer to CHANGELOG), and
+   follow /closeout at the end. Ask before any `data/` write, any commit, and anything in CLAUDE.md's
+   "Ask before running" list.
+
+**Goal.** One page that answers "how did we do last week?" for every projection: each game's win
+probability, spread, total and projected score against the result and against the closing market; the
+assumed starting QBs against who played; the edges and recommendations published, with their outcomes
+and closing-line comparison; and recorded wagers. Season aggregates sit beside the per-game table.
+Unavailable pieces are shown with an explicit status, never hidden. The recap is an immutable artifact
+built by a CLI command from persisted state, served read-only, and shown on one page. Nothing is scored
+at request time.
+
+#### Audit: what exists and what the recap can reuse
+
+- **Finished weeks with a selected product: 1, 2 and 3, not zero.** Each has a selected product and
+  16 of 16 outcomes in the cleaned games file. Week 1 (`a57bb984`) and week 3 (`f2150cb7`) are `live`;
+  week 2 (`deb7ebd3`) is `development` (regenerated after the fact, not issued before kickoff). All three
+  are product schema 1, so none carries a starter record. Week 4 is in progress (2 of 16 scored on
+  2026-10-04; closes from Tuesday 2026-10-06 06:00 local). Week 5 is the first week whose every row will
+  carry a starter record.
+- **The selected week 4 product is schema 2 with mixed rows.** `8bd40f8d` (the cycle refresh of
+  2026-10-04T19:36Z) carries 9 rows from run `81248588` (a schema-1 run; those rows read
+  `starting_qb_status = sidecar_unavailable`, although the run simply predates the record) and 6 rows
+  of its own with a full starter record. It has 15 rows: **PIT @ CLE (Thursday 2026-10-01, final 24-27)
+  is in no product from `81248588` on.** Its last pre-kickoff forecast is in non-selected product
+  `94803328` (2026-10-01T12:39Z); product `37997002` was generated 2026-10-02T03:48Z, after kickoff, and
+  is labeled `live` (the defect `DECISIONS.md` D83 fixed for later weeks). The recap must show this game
+  as not in the selected product, and must not reach into a non-selected product to fill it.
+- **The closeout is reusable as is, but it is not persisted and it counts product rows, not scheduled
+  games.** `evaluation/live_forecast_closeout.close_live_forecasts` is pure: it matches each row to its
+  own event and run (carried rows included, D83) and returns a per-game reconciliation frame (win
+  probability, projected home margin, model total, scores, actual margin and total, tie handling,
+  evaluable flags) plus Brier, log loss, accuracy, MAE, RMSE and bias. `post-week` and the cycle only
+  print it. Run read-only on 2026-10-04 it reconciles weeks 1-3 completely (win Brier 0.237, 0.228,
+  0.246; spread MAE 11.87, 12.14, 9.18; total MAE 12.70, 11.93, 11.81) and reports week 4 as 15
+  scheduled games, missing PIT @ CLE.
+- **Schedule and outcome sources.** The full schedule (including unplayed games) is the raw nflverse
+  games file (`games_raw_nflverse`); the pure helpers `week_completion` and `completed_game_ids` that
+  read it live in `cli/week_cycle.py`. The cleaned games file holds only completed games, with the
+  closeout's canonical scores and the closing lines `VEGAS_LINE` (expected home margin) and `OVER_UNDER`.
+  For all 50 completed 2026 games these equal nflverse's post-game `spread_line` and `total_line`.
+- **Closing market convention.** `evaluation/market_agreement.py` (D85) turns `VEGAS_LINE` into a home
+  win probability with a normal margin (`MARGIN_STD = 13.5`) and compares totals with `OVER_UNDER`. The
+  recap uses the same convention so a week reads on the same scale as the market-agreement report. Probe
+  (ad hoc moneyline de-vig, not the D85 convention; for orientation only): model against market win
+  Brier 0.237/0.214, 0.228/0.231, 0.246/0.254; total MAE 12.70/11.69, 11.93/10.69, 11.81/10.94.
+- **Market at forecast time is already in the product.** Each row carries nflverse's lines at
+  composition (`spread_line`, `total_line`, moneylines, `source`, `ingested_at`), so the movement from
+  forecast to close needs no new data.
+- **The quote ledger is too patchy to be the closing source.** Week 1: 34 snapshots, 16 games; week 2:
+  1 snapshot; week 3: 12 snapshots but 1 game (the local manual snapshot was lost, D78); week 4: 17
+  snapshots, 15 games. It stays the source for candidate and wager CLV (`market/market_closeout.py`),
+  not for the per-game market comparison.
+- **Published edges have no immutable record.** `weekly-predict`'s edge stage overwrites
+  `data/output/edges/edges_{season}_wk{WW}.csv` and deletes it when blocked (the directory is empty now).
+  The only immutable edge evidence is the production chain, run once, for week 1: candidate issuance
+  `e945987f` (698 candidates), recommendation evaluation `100a70a8` (698 `unavailable` results) and
+  preflight `cf860776`. The cycle's week 4 edge receipts record counts only ("45 edges (top EV 27.1%)" at
+  21:00Z; `model_edges_unvalidated` from 22:00Z). So weeks 2-4 read "not recorded", and later weeks read
+  "withheld" (D85).
+- **Recorded wagers exist.** `bet_ledger.parquet` holds 40 imported DraftKings wagers ($1 stakes):
+  week 1, 17 settled; week 2, 15 settled and 1 still `open` after the week finished; 7 without a
+  `game_id`. None is linked to a recommendation and none has CLV. `betting/performance.py` (`record`,
+  `roi`, `clv_summary`) and `market_closeout.close_recorded_wagers` are the owners to reuse.
+- **Starter evidence.** Actual starters are in the raw nflverse games file (`away_qb_id`, `home_qb_id`;
+  16 of 16 for weeks 1-4). The digest-verified sidecar copy
+  (`data/output/qb_sidecar_captures/sidecar_sha256_ee9c8a73...parquet`, 16 week 4 rows with projected id,
+  source and as-of) covers the 9 carried week 4 rows.
+- **Evaluation artifacts and the performance page are stale and mostly not served.** `/performance`
+  (not in the top nav; reached from the dashboard rail) shows the historical backtest report selected
+  2026-08-18 and is framed as betting (net wins, units, ROI). The six-family `GameModelEvaluationReport`
+  (2026-09-26: calibration slope and intercept, ECE, sharpness, AUC, season stability, total interval
+  coverage, environment slices) is served nowhere. Both predate the 2026-10-01 backfills and champions.
+  `/model/performance` runs `summarise` at request time (ROADMAP Tier 8 #22). These belong to the new
+  analysis workstream (ROADMAP W22), not to the recap.
+- **Storage pattern.** Immutable stores define their own roots (for example
+  `evaluation/game_model_evaluation_report_store.py`: JSON manifest plus Parquet frames, frame digests,
+  atomic write, replay accepted, a reused identity with different content rejected) and an explicit
+  `current.json` selection. Identity either includes the build time (the model report: a rerun is always
+  new) or excludes it (recommendation governance: a rerun is an exact replay). The dataset registry
+  (`datasets/registry.py`) lists datasets and output directories.
+- **Frontend.** Weekly components already carry explicit per-family statuses rendered by
+  `field-status/WeeklyComponentValue`; `_meta.field_status` (`pending` or a registered blocker, D14,
+  D18) covers fields not built yet. The recap reuses both.
+
+#### Program decisions (taken with the user, 2026-10-04)
+
+1. The game-forecast section comes first, not the starter scorecard: it can be verified now against
+   three complete weeks, while the starter section has 6 recorded rows until week 5 finishes.
+2. Every week with a selected product gets a recap, whatever its forecast role. The role is recorded per
+   week and per row, aggregates include every week, and a live-only subtotal is always available. Nothing
+   is dropped; everything is reproducible from the recorded identities.
+3. The broader analysis direction is recorded as ROADMAP W22 (ranked candidates with evidence) and is
+   not scoped into units here.
+
+#### Shared contracts (every unit of this program)
+
+1. **Persisted state only.** The recap is built by a CLI command; the API only reads and serializes the
+   selected artifact (verifying its digests); nothing is scored, recomputed or generated at request time.
+   The builder reads only the week's *selected* product, never a non-selected one, and never chooses by
+   recency.
+2. **Orientation.** One row per game, Away/Home; win means `HOME_WIN`; every differential is home minus
+   away.
+3. **Closing market (D85's convention).** The closing lines are the cleaned games file's `VEGAS_LINE`
+   (expected home margin) and `OVER_UNDER`; the market home win probability is Φ(`VEGAS_LINE` /
+   `MARGIN_STD`), importing `MARGIN_STD` from `evaluation/market_agreement.py` rather than copying it.
+   The product's own `spread_line`/`total_line` are the market *at forecast time*. Every model metric is
+   shown beside the market's.
+4. **Identity and replay.** Each artifact's id is the SHA-256 of its canonical content excluding
+   `built_at` (the recommendation-governance pattern). Unchanged inputs replay to the same id and the
+   stored files are kept byte for byte; a reused id with different content is rejected; changed inputs
+   (a stat correction, a newly selected product, a ledger settlement, a builder change) give a new id, and
+   old artifacts stay. `current.json` holds one explicit selection per season and week (and, from Unit
+   27, per season); the build command selects what it built.
+5. **One weekly artifact, growing by section.** A section unit (25, 28) adds its section to the recap,
+   bumps the recap schema version, and rebuilds and reselects every finished week (local and
+   deterministic, but it writes `data/`, so ask first). The loader accepts only the current schema; no
+   compatibility shims (Ways of Working 11).
+6. **Explicit status for every value.** Each family, section and side carries a status from a Python
+   `StrEnum` that the API exports as a schema enum; the frontend renders every non-available status with
+   explicit text through the shared field-status components. A missing piece is a row with a status,
+   never a dropped row.
+7. **Every week, every role.** A week with a selected product is recapped whatever its forecast role; the
+   role is recorded per week and per row; aggregates cover every week and always offer a live-only
+   subtotal.
+8. **No thresholds without a record.** No pass or fail criterion is introduced unless a DECISIONS entry
+   declares it and says whether it was set before or after seeing the data.
+9. **Naming.** Code, tests and artifacts use domain names and cite DECISIONS D-numbers, never unit or
+   ROADMAP numbers. Unit 23 records the recap's contract as D86; later units add an entry only for a new
+   durable decision.
+
+#### Unit sequence
+
+| Unit | Scope | Depends on | Verifiable on |
+|---|---|---|---|
+| 23 | Artifact, command, game-forecast section | none | weeks 1-3 now |
+| 24 | API routes and the `/recap` page | 23 | weeks 1-3 |
+| 25 | Starting-QB section | 24 | week 4 after Tuesday 2026-10-06; week 5 after about 2026-10-13 |
+| 26 | Weekly-cycle and `post-week` hook | 23 (ideally 25) | dry run; week 5's unattended closeout |
+| 27 | Season roll-up | 24 | weeks 1-4 |
+| 28 | Edges, recommendations and wagers | 24 (27 for season wager totals) | weeks 1, 2 and 4 |
+
+Unit 26 must land before week 5's closeout window opens (the first 06:00 local at least 4 h after week 5's
+last kickoff, about Tuesday 2026-10-13) for week 5 to be recapped by the cycle; otherwise build it by hand.
+
+#### Unit 23 - Weekly Recap Artifact and Game-Forecast Section [Active, scoped October 4, 2026]
+
+**Goal.** After a week's results are in, one command builds an immutable recap of every scheduled game's
+forecast against the result and against the closing market, from persisted state only, and selects it.
+A rerun on unchanged inputs is an exact replay.
+
+**Depends on.** Nothing. Weeks 1-3 are complete and selected.
+
+**Start here.** `evaluation/live_forecast_closeout.py` (the reconciliation this reuses);
+`evaluation/game_model_evaluation_report_store.py` and `_selection.py` (store and `current.json`
+pattern); `market/recommendation_governance.py` (`recommendation_governance_id`: identity excluding the
+creation time); `evaluation/market_agreement.py` (`MARGIN_STD`, `_joined`); `cli/week_cycle.py`
+(`week_completion`, `completed_game_ids`, tested in `tests/unit/cli/test_week_cycle.py`);
+`datasets/registry.py` and `datasets/loaders.py` (`load_games`, `load_current_weekly_product`);
+`evaluation/forecast_store.load_forecast_events`; `cli/evaluate.py` (`model-report` and
+`market-agreement` for command shape); HANDOFF "Immutable Weekly Products", "Postgame Workflow",
+"Dataset and Artifact Registry"; DECISIONS D24, D77, D83, D85.
+
+**Files.**
+- `evaluation/week_schedule.py` (new): `week_completion` and `completed_game_ids` moved from
+  `cli/week_cycle.py`, plus the scoped regular-season schedule frame; the CLI imports them; their tests
+  move to `tests/unit/evaluation/test_week_schedule.py`.
+- `evaluation/weekly_recap.py` (new, pure): the status enums, the manifest and metric dataclasses,
+  `build_weekly_recap(...)` returning the manifest and game frame, the identity function and validation.
+- `evaluation/weekly_recap_store.py` (new): write, verify and load; `select_current_weekly_recap`,
+  `load_current_weekly_recap(season, week)`; root from the registry key `weekly_recaps`.
+- `cli/evaluate.py`: the `weekly-recap` command (thin: load inputs, build, write, select, print).
+- `datasets/registry.py`: `weekly_recaps` -> `data/output/weekly_recaps`.
+- Tests: `tests/unit/evaluation/test_weekly_recap.py`, `test_weekly_recap_store.py`,
+  `tests/unit/cli/test_evaluate.py` (command).
+
+**Design.**
+1. **Command.** `gridiron evaluate weekly-recap --season S --week W [--dry-run]`. It refuses, naming
+   the reason: a week with any unplayed regular-season game (listing them); no selected product; a game
+   whose scores differ between the raw and cleaned games files. `--dry-run` builds and prints without
+   writing. Output: the week's metrics, model beside market, the not-in-product games, and the previous
+   and new selection (new, replayed, or reselected).
+2. **Scope is the schedule, not the product.** Rows are the week's regular-season games from the raw
+   nflverse file. A scheduled game missing from the selected product is a row with status
+   `not_in_product`.
+3. **Reuse, do not recompute.** Event matching, outcomes, ties and the forecast values come from
+   `close_live_forecasts`' reconciliation frame; the recap joins the schedule, the product's
+   market-at-forecast columns and the closing lines onto it. The recap's model metrics over in-product
+   games equal the closeout's (asserted in tests). The closeout itself is not changed (see
+   "Not in this unit").
+4. **Game row** (one per game): identity and kickoff; `product_row_status`; the row's forecast role, run
+   id, `generated_at` and whether it is carried (run differs from the product run); per family (win,
+   spread, total, projected score) the forecast value and a status (`available`, `forecast_missing`,
+   `not_in_product`, and `outcome_tie` for win); market at forecast time (the product's `spread_line` as
+   home margin, `total_line`, `ingested_at`); the closing home margin and total and the closing home win
+   probability, with `closing_line_missing` when absent; the market-implied team scores ((total ± margin)
+   / 2); the outcome (scores, margin, total, home win, null on a tie); and per family the model and market
+   errors and which was closer (`model`, `market`, `tie`).
+5. **Week metrics**, each with its count, model and market side by side: win Brier, log loss and accuracy;
+   spread MAE, RMSE and bias against the closing margin; total MAE, RMSE and bias against the closing total;
+   projected team score MAE against the market-implied team scores; and the "closer to the result" counts.
+   No pass or fail threshold: a week is 16 games.
+6. **Artifact.** `data/output/weekly_recaps/schema=1/recaps/{recap_id}.json` (manifest: season, week,
+   product id, run, carried runs, product schema version, roles, digests of the scoped schedule and
+   outcome rows, the conventions used, counts, week metrics, the game-frame reference with row count,
+   columns and content digest, `built_at`) and `schema=1/games/{recap_id}.parquet`. Identity, replay and
+   selection follow shared contract 4.
+
+**Tests.** Pure builder on synthetic weeks: every family available; a scheduled game not in the product;
+`forecast_missing`; a tie; a missing closing line; a carried row; the sign conventions against a hand case
+(model spread to home margin, `VEGAS_LINE` as home margin, implied team scores); metrics against hand values;
+the market probability. Identity excludes `built_at`; store replay keeps the file byte for byte; a conflict
+is rejected; selection round trip. Command refusals (unplayed game, no product, score conflict) and the
+dry run, with stubbed loaders. The moved helpers keep their tests.
+
+**Real-data verification (writes `data/output/weekly_recaps/` through the command; ask first).** Build
+weeks 1-3; hand-check one game per week (each family, both markets); confirm the model metrics equal the
+closeout's (week 1 win Brier 0.2372, week 3 spread MAE 9.18, as read on 2026-10-04); rerun and confirm the
+same identity with files unchanged; week 2 shows its `development` role; week 4 is refused while games are
+unplayed. After Tuesday's closeout, week 4 builds with PIT @ CLE `not_in_product` and 9 carried rows.
+
+**Not in this unit.** The API and page (Unit 24); starters, edges, wagers and season aggregates (Units
+25, 27, 28); the cycle hook (Unit 26). The closeout keeps counting product rows: making it count scheduled
+games would fail Tuesday's week 4 closeout (PIT @ CLE) and retry hourly, so it is recorded in ROADMAP W23
+instead and the recap reports the gap.
+
+**Acceptance.** Weeks 1-3 build from persisted state; every scheduled game appears with an explicit
+status; metrics match the closeout and a hand check; a rerun replays; HANDOFF (a "Weekly Recap" section
+and the registry list), DECISIONS D86 (identity, schedule scope, closing-market convention, every role
+included), CHANGELOG and this record are updated.
+
+#### Unit 24 - Weekly Recap API and Page [Scoped October 4, 2026; not active]
+
+**Goal.** Serve the selected weekly recaps read-only and show them on one page that answers "how did we do
+last week?" for the game forecasts, with every unavailable value explicit.
+
+**Depends on.** Unit 23 committed; recaps for weeks 1-3 selected.
+
+**Start here.** `api/routes/model.py` (`/historical-performance`: a verified persisted report, 404 and 500
+mapping) and `api/routes/edges.py`; `api/loaders.py` (`load_current_model_performance_report`);
+`api/schemas/_base.py`, `api/meta.py` (`ResponseMeta`, `with_pending`, `Unavailable`), a hand-written
+serializer such as `api/serializers/games.py`; `api/app.py` (router registration) and
+`tests/unit/api/test_app_routes.py`; `frontend/src/api/hooks.ts`, `frontend/src/Router.tsx`,
+`components/chrome/TopNav.tsx`, `context/NavContext.tsx` (route params), `screens/ModelPerformance.tsx`
+(a persisted-report screen), `components/field-status/WeeklyComponentValue.tsx` and `PendingField.tsx`,
+`frontend/src/design-decisions.md`; HANDOFF "API Serialization Boundary" and "Frontend Contract
+Workflow"; DECISIONS D14, D16-D18, D21.
+
+**Design.**
+1. `api/routes/recaps.py`: `GET /recaps` lists the selected recaps (season, week, recap id, `built_at`,
+   product id, roles, scheduled count, available count per family), verifying each manifest;
+   `GET /recaps/{season}/{week}` returns the manifest summary, week metrics (model and market with
+   counts) and the game rows. Both read only through `weekly_recap_store`. No selection for the week is a
+   404 whose message names the command; a verification failure is a 500 (the `model.py` pattern).
+2. `api/schemas/recaps.py` and `api/serializers/recaps.py` (hand-written, D17). Status enums from the
+   recap module become schema enums. The response carries `starting_qbs`, `edges`, `wagers` and `season`
+   as null fields marked `pending` in `_meta.field_status` (D14) until their units fill them.
+3. Frontend: `screens/WeeklyRecap.tsx` at `/recap` (with `season` and `week` params), a "Recap" nav item,
+   hooks `useRecaps` and `useWeeklyRecap`. The default week is the highest (season, week) among the
+   selected recaps, which is ordered by week, not by build time. Layout: a header (week, product id, a role
+   badge that names `development` explicitly, `built_at`, and a one-line statement of the closing-line
+   convention); one model-against-market card per family with counts and the "closer" tally; the per-game
+   table (matchup, kickoff, result, then per family the model value, market at forecast, closing market,
+   errors and which was closer), each non-available value through `WeeklyComponentValue` with explicit
+   text (`not_in_product`: "No forecast in the selected product"); each game links to its game page; the
+   pending sections render as pending cards. No charts (Unit 27).
+4. Regenerate contracts: `uv run gridiron api export-schema`, `cd frontend && pnpm gen:api`, then the
+   frontend gate.
+
+**Decide at start.** The nav label and position; whether the dashboard gets a "last week" card (recommended:
+not in this unit).
+
+**Tests.** Routes: selected, missing (404), verification failure (500), schema enums, pending meta;
+serializer status and null handling; the route registry test. Frontend: the screen renders a recap-shaped
+fixture, every status message, the `development` badge, week switching, and the empty state.
+
+**Real-data verification.** `uv run gridiron api serve`; read `/recaps` and `/recaps/2026-2027/3` and
+compare three values per family with the artifact; run the frontend (`pnpm dev`, or the run skill) and look
+at weeks 1-3 (and week 4 once built), including the `development` badge and any not-in-product row.
+
+**Acceptance.** Both routes serialize only the persisted recap; the page shows every scheduled game and
+every metric beside the market with explicit statuses; contracts regenerated, not hand-edited; gates pass;
+HANDOFF and CHANGELOG updated.
+
+#### Unit 25 - Starting-QB Section [Scoped October 4, 2026; not active]
+
+**Goal.** Score what the forecast assumed about each starting quarterback against who started, beside
+nflverse's pre-game value and carry-forward, inside the recap. This is the former Unit 16 (its design below
+is the starting point).
+
+**Depends on.** Unit 24 committed (this unit extends the API and page together); week 4 complete (after
+Tuesday 2026-10-06) for the first recorded rows.
+
+**Start here.** The Unit 16 section below; DECISIONS D65, D75, D76, D77; the product's starter columns
+(`starting_qb_status`, and per side `qb_id`, `qb_name`, `qb_source`, `qb_projection_as_of`,
+`qb_nflverse_id`, `qb_carried_forward_id`, `qb_differs_from_carry_forward`); the raw nflverse games file's
+`away_qb_id`/`home_qb_id` for completed games (the source of D75's baseline); `features/team/qb_profile.py`
+(`resolve_starting_qb_provenance`); `evaluation/starting_qb_projection.py` (backtest scoring and the
+carry-forward baseline); the game API's `starting_qb` block and
+`frontend/src/components/games/StartingQuarterbacksCard.tsx` (status texts to reuse);
+`data/output/qb_sidecar_captures/` and the prediction-input evidence store (sidecar digest).
+
+**Design.**
+1. Per game and side: the assumed id, name, source and as-of; nflverse's id at composition; the
+   carry-forward id; the actual starter's id and name; and whether each of the three predictors was right.
+   Per-side status: `available`, `not_recorded` (the row carries no record: a schema-1 product, or a row
+   whose `starting_qb_status` is `sidecar_unavailable`), `starter_unresolved`, `not_in_product`,
+   `actual_missing`.
+2. Week counts: slots scored, correct per predictor, and the misses (team, assumed, nflverse,
+   carry-forward, actual, source, as-of). Rows without a record are counted and named, not dropped.
+3. Recap schema bump and rebuild (shared contract 5); API section replaces the pending field; the page
+   gets a starters section with the week's counts and a misses table.
+4. No threshold (the Unit 16 design, point 3). The cumulative roll-up is Unit 27's.
+
+**Decide at start.** (a) Week 4's 9 carried rows: score them from the digest-verified sidecar copy, labeled
+`sidecar_capture` (recommended: its digest `ee9c8a73...` is the one run `81248588`'s prediction-input
+evidence names, so it is the projection that forecast used, and the copy is refused on a mismatch), or
+leave them `not_recorded`. (b) Confirm the raw nflverse `*_qb_id` of a completed game as "who started"
+(recommended: it is D75's baseline source; spot-check weeks 1-4 against player game logs first).
+
+**Tests.** Synthetic weeks with each predictor right and wrong, a mid-week change, `not_recorded` and
+`not_in_product` rows named, a capture digest mismatch refused, the counts.
+
+**Real-data verification.** Weeks 1-3 read `not_recorded` throughout; week 4 has 6 recorded games (plus the
+9 carried per decision a) and PIT @ CLE `not_in_product`; reproduce one team-week by hand; rerun replays.
+Week 5 (about 2026-10-13) is the first full week; record that check in CHANGELOG when it is done.
+
+**Acceptance.** Starter accuracy for each predictor per week, every slot with a status, misses listed;
+gates pass; HANDOFF, CHANGELOG, and DECISIONS if decision (a) adopts the capture.
+
+#### Unit 26 - Build the Recap at Closeout [Scoped October 4, 2026; not active]
+
+**Goal.** The weekly cycle's closeout (and `post-week`) builds and selects the finished week's recap, so no
+week depends on someone remembering to run the command.
+
+**Depends on.** Unit 23 committed (ideally Unit 25, so the recap the cycle builds is complete). Due before
+week 5's closeout window (about Tuesday 2026-10-13).
+
+**Start here.** `cli/post_week.py` (`_build_stages`), `cli/week_cycle.py` (`build_close_stages`),
+`cli/_composites.py` (`soft_fail` semantics, the summary), `weekly_cycle/runner.py` (`closeout`: the receipt's
+`stages`, `warnings`, `report`), `weekly_cycle/decision.py` (a week is closed by a `done` closeout receipt);
+tests in `tests/unit/cli/test_post_week.py`, `tests/unit/cli/test_week_cycle.py` and
+`tests/unit/weekly_cycle/`; HANDOFF "Weekly Cycle" and "Postgame Workflow"; DECISIONS D82; ROADMAP W20 and
+W21.
+
+**Design.**
+1. A `build-weekly-recap` stage after `close-live-forecasts` in `post-week`'s stages (and so in the
+   cycle's close stages), depending on it, calling the same build-write-select function as the command.
+2. `soft_fail=True`: a recap failure (including its own refusal of an incomplete week closed with
+   `--allow-incomplete`) shows in the stage results, warnings and summary, but the closeout still counts
+   as closed and the next week's forecast proceeds.
+3. The stage adds "weekly recap <id> (new | replayed)" to the cycle report, so the receipt records which
+   recap the closeout selected. `post-week --only build-weekly-recap` rebuilds by hand.
+4. Once Unit 27 exists, that unit adds the season roll-up rebuild to the same stage.
+
+**Decide at start.** Soft versus hard failure (recommended: soft, for the reason above); check how
+`week-cycle status` shows a soft-failed stage, so a failure is visible (an alert channel is W20, out of
+scope).
+
+**Tests.** Stage order and dependency; a soft failure leaves the closeout `done`; the report line; `--only`;
+the runner's receipt carries it (stubbed ports).
+
+**Real-data verification.** `uv run gridiron week-cycle --dry-run`; `post-week --only build-weekly-recap
+--week 4 --season 2026-2027` (writes; ask first) replays the recap built by hand (same id). The live check is
+week 5's unattended closeout: read its receipt and the selection afterwards.
+
+**Acceptance.** A closeout builds and selects the recap, the receipt names it, a failure is visible without
+blocking the cycle; gates pass; HANDOFF "Weekly Cycle" and "Postgame Workflow", CHANGELOG updated.
+
+#### Unit 27 - Season Roll-Up [Scoped October 4, 2026; not active]
+
+**Goal.** Aggregates across weeks beside the per-game table: how the model and the market have done week by
+week and season to date, and how well calibrated each is.
+
+**Depends on.** Unit 24 committed; recaps for weeks 1-4 selected. Uses Unit 25's section if present.
+
+**Start here.** Unit 23's `weekly_recap.py` and store; `evaluation/metrics.py` and `evaluation/diagnostics.py`
+(existing calibration and ECE helpers: reuse, do not reimplement; grep `calibration`, `ece`);
+`evaluation/game_model_evaluation_report.py` (metric names); `evaluation/market_agreement.py`;
+`frontend/src/components/model-performance/PerformanceChart.tsx`; load the dataviz skill before any chart.
+
+**Design.**
+1. A season artifact under `weekly_recaps/schema=N/seasons/` (manifest plus a per-week frame and a
+   calibration frame), built only from the selected weekly recaps' game frames, never from products. Its
+   identity covers the season and the exact weekly recap ids it read (shared contract 4); `current.json`
+   selects one per season. `gridiron evaluate weekly-recap` rebuilds it after each weekly build, and a
+   `--season S --season-only` form rebuilds it alone.
+2. Contents: per week the role, counts, model and market metrics and closer counts; season-to-date values
+   after each week; season totals with a live-only subtotal; the per-game paired model-minus-market
+   difference (Brier, absolute error) with its mean and standard error; model and market reliability over
+   fixed probability bins with counts and ECE; finished weeks with no selected recap listed as `not_built`;
+   starter accuracy to date when Unit 25's section exists.
+3. API `GET /recaps/{season}/summary`; the page's season panel replaces the pending field: per-week model and
+   market series (Brier, spread and total MAE), season to date, the reliability plot with bin counts, and a
+   live-only toggle.
+
+**Decide at start.** The bins (recommended: ten equal-width probability bins, declared in the unit record
+before the data are read); whether to show the standard error as an interval; chart forms (from the dataviz
+skill).
+
+**Tests.** Synthetic weeks with hand values for the per-week, cumulative and paired metrics; calibration
+counts; the live-only subtotal; identity tracks the weekly recap ids; `not_built` weeks; API and page.
+
+**Real-data verification.** Weeks 1-4: each week's row equals its weekly recap; season to date by hand for
+one metric; the live-only subtotal excludes week 2; rerun replays.
+
+**Acceptance.** Season aggregates built from the weekly recaps only, beside the market, with counts; gates
+pass; HANDOFF, CHANGELOG, and DECISIONS for the bins if they become a lasting convention.
+
+#### Unit 28 - Edges, Recommendations and Wagers [Scoped October 4, 2026; not active]
+
+**Goal.** Say, for each week, what the system published as edges and recommendations and how they compared
+with the closing line and the result, and how the recorded wagers did, without recomputing any edge.
+
+**Depends on.** Unit 24 committed (Unit 27 for season wager totals).
+
+**Start here.** HANDOFF "Production Recommendation Chain" (including "Postgame reassessment") and "Bet Slip
+and Betting Ledger Boundaries"; `market/production_chain_preflight.py` (finds the week's issuance by the
+selected product id, around line 546, and its evaluations, around lines 1165-1233);
+`market/candidate_issuance_store.py`, `market/recommended_bet_result_store.py`,
+`api/loaders.load_recommended_bet_results_for_week` (the latest unambiguous evaluation rule);
+`market/market_closeout.py` (`close_candidate_issuance`, `close_recorded_wagers`),
+`market/candidate_outcome.py`, `market/history_boundaries.py`, `ingest/odds/store.load_odds_ledger`;
+`betting/ledger.load_bets`, `betting/performance.py` (`record`, `roi`, `clv_summary`);
+`market/edge_validation.py` (D85) and `weekly_cycle/receipts.py` (edge receipts); DECISIONS D27, D59, D85;
+ROADMAP W23 items 3 and 5.
+
+**Design.**
+1. Edge evidence per week, one status: `production_chain` (an issuance exists for the week's selected
+   product), `withheld_unvalidated` (the week's cycle edge receipts record `model_edges_unvalidated`), or
+   `not_recorded` (otherwise: the edge CSV is mutable, W23). No edge is recomputed.
+2. For a chain week: the issuance, policy and evaluation ids; candidate and not-candidate counts;
+   recommendation states by the latest unambiguous evaluation; candidate closeout through
+   `close_candidate_issuance` on the week's ledger, giving CLV by family (median and share positive) and
+   candidate outcomes (won, lost, push).
+3. Wagers: the week's bets by `game_id`: count, staked, P&L, ROI and record (through `betting/performance`);
+   an `open` bet on a finished game is `unsettled`; CLV through `close_recorded_wagers` where its reference
+   matches, otherwise `clv_unavailable` (the imports carry no reference); the linked recommendation when
+   present. Bets without a `game_id` go to the season roll-up as an unattributed count. The scoped ledger
+   rows are digested, so a later settlement gives a new recap identity on rebuild.
+4. Recap schema bump and rebuild; API sections and page sections replace the pending fields.
+
+**Decide at start.** (a) Whether candidates (which were never recommendations) get a hypothetical result
+(recommended: CLV and outcome counts only, no hypothetical P&L). (b) How a week with both published and
+withheld edge receipts reads (week 4: "45 edges" at 20:00Z and 21:00Z, withheld from 22:00Z; recommended:
+the status of the latest receipt before the week's last kickoff, with the receipt outcomes listed).
+(c) Whether the Bankroll screen should link to the recap.
+
+**Tests.** Each edge status; chain counts and closeout on a synthetic issuance and ledger; wager record,
+`unsettled`, `clv_unavailable`, unattributed; identity changes when a bet settles.
+
+**Real-data verification.** Week 1: the chain (698 candidates, all `unavailable` recommendations), candidate
+CLV from the 34-snapshot ledger, 17 settled wagers. Week 2: 15 settled and 1 `unsettled`; edges
+`not_recorded`. Week 4: edge status per decision (b). Hand-check one candidate's CLV and one week's P&L.
+
+**Acceptance.** Every week states what was published (or that it was withheld or not recorded) and how
+recorded wagers did, with nothing recomputed; gates pass; HANDOFF, CHANGELOG updated.
+
+### Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
+
+Active unit: none (the active program is the Weekly Recap, above). Units 12-15 and 17-20 are complete (the program below); Unit 16 is reframed as part of the weekly recap (ROADMAP W15). Unit 11 (weekly readiness coverage counts only scheduled games), Unit 10 (projected starting QB in live serving, `DECISIONS.md` D76), Unit 9 (projected starting-QB backtest), Unit 8 (neutral-site handling in the Logistic Win model, ROADMAP Tier 5 #15a), Unit 7 (screening and promotion), Units 1–5 (batches A1–A5) and the player-log refresh pipeline unit are closed below. Unit 6 (market-aware variant) is deliberately not built.
 
 ### Program: Trust in Published Forecasts and Edges (ROADMAP Next Workstreams W1-W3, W14) [In progress, scoped October 3, 2026]
 
-Active unit: none (no unit is scoped; next candidates are ROADMAP W16 and W15). Units 12-15 and 17-20 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
+Active unit: none (W16 is done as Unit 21; W15 is the active Weekly Recap program above). Units 12-15 and 17-22 are complete (Unit 14's first live rollover is pending Monday night). The program is a sequence of bounded units, run one
 at a time in this order: **Unit 12 (W2, done)**, **Unit 13 (collector pull)**, **Unit 14 (collector rollover)**, **Unit 15 (W1)**, **Unit 16 (W3)**. Evidence for every
 statement below was read from the persisted artifacts on 2026-10-03; items marked *unverified*
 were not.
@@ -328,12 +803,12 @@ writes the report), `edges report` blocked, `verify-week` unchanged.
 rule, the reason is visible wherever edges would be, started games produce no edges, and the evidence can be
 regenerated with one command.
 
-#### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes part of the weekly recap, ROADMAP W15]
+#### Unit 16 - Weekly Starter Projection Scorecard (W3) [Reframed October 4, 2026; becomes Unit 25 of the Weekly Recap program, ROADMAP W15]
 
 The user wants one page for last week's performance covering every projection, not only the starting QB.
 The starter scorecard is therefore the quarterback section of that recap and no longer a standalone unit.
-Its design below stands as that section's design; the recap itself is scoped first (audit what outcome and
-evaluation artifacts already exist, then the artifact, API and page) before any of it is built.
+Its design below is the starting point for Unit 25. It will be adapted to the recap artifact there: a
+section of the weekly recap rather than its own artifact, and the cumulative roll-up moves to Unit 27.
 
 **Goal.** After a week's games, score what the live system assumed against the actual starters,
 and persist the result.
