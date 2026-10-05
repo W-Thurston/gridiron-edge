@@ -121,7 +121,12 @@ Candidate work identified after Units 8-11 (neutral-site fix, projected starting
   overwritten and deleted when blocked, so the edges published during a week leave no immutable record.
   Persist them if raw edges are ever re-enabled (D85). (4) The full-retrain report's "Delta vs Previous"
   table shows each full value as its delta when no previous report exists. (5) One week 2 wager is still
-  `open` after its game finished (a ledger settlement, the user's step).
+  `open` after its game finished (a ledger settlement, the user's step). (6) Found 2026-10-05 (Unit 28's
+  audit): 342 of week 1's 698 candidates close as `kickoff_conflict` and get no CLV. In 9 of 16 games a
+  snapshot fetched just after the scheduled kickoff (17:01Z) carries the provider's corrected kickoff
+  (17:05Z), so the identity has two kickoff values and `close_market_reference` refuses to choose. Decide how
+  closeout treats a provider-corrected kickoff (for example, ignore observations fetched after the earliest
+  kickoff) with a DECISIONS entry; it changes the production-chain postgame evidence too.
 
 **In-week operation (the longer-term goal: forecasts updated continuously as live data arrives)**
 

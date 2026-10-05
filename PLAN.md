@@ -669,6 +669,56 @@ withheld edge receipts reads (week 4: "45 edges" at 20:00Z and 21:00Z, withheld 
 the status of the latest receipt before the week's last kickoff, with the receipt outcomes listed).
 (c) Whether the Bankroll screen should link to the recap.
 
+**Decided at start (2026-10-05, with the user).** Settled before week 4's closeout; the unit becomes active
+once that closeout has selected week 4's recap and rolled the season recap up over weeks 1-4 (checked by
+`week-cycle status` and the season `--season-only --dry-run`).
+0. **Settle the ledger before the schema-3 rebuild (the user's step).** The user settles every open bet through
+   week 4 after the Monday 2026-10-05 game (the week 2 NYG @ LA moneyline, and any week 3-4 bets added by
+   then), so every bet through week 4 is closed. Before the rebuild, re-read the ledger (counts per week and
+   status, no `open` row through week 4, unattributed count) and update the real-data expectations below; a
+   later settlement would only give a week a new recap identity on its next rebuild.
+1. **(a) Candidates: CLV and outcomes, no dollars.** Per family: candidate count, the distinct
+   game/market/sides they cover (week 1: 698 rows cover 45 sides, the same side at up to 9 books in 2
+   snapshots, so rows are correlated), closeout status counts, median CLV and share positive over closed
+   rows (in the family's own CLV unit), and win/loss/push per candidate row (`grade_candidate_outcome`). No
+   hypothetical P&L or ROI: dollars appear only for recorded wagers.
+2. **(b) Mixed receipts read as the latest receipt, with the timeline.** A week with an issuance for its
+   selected product is `production_chain` regardless of receipts. Otherwise the status is the outcome of the
+   latest edge receipt decided at or before the week's last kickoff (`done` would read as published but not
+   recorded, since the CSV is mutable; `model_edges_unvalidated` reads `withheld_unvalidated`), and every edge
+   receipt in that window is listed (decided at, outcome, detail, product, market fetch time). Week 4: 149
+   edges at 2026-10-04T20:00Z and 45 at 21:00Z, then withheld hourly from 22:00Z; it reads
+   `withheld_unvalidated` and the page says the earlier runs' rows were not kept. Weeks 2-3 have no receipts
+   and read `not_recorded`.
+3. **(c) Bankroll links to the recap.** One "Results by week" text link on the Bankroll record card, opening
+   `/recap` (the latest selected week).
+4. **Provider-corrected kickoffs are reported, not fixed.** 342 of week 1's 698 candidates close as
+   `kickoff_conflict` (ROADMAP W23 item 6). The recap shows the owner's closeout status counts as returned;
+   the market closeout rule is not changed here.
+5. **Charts (dataviz skill loaded): none new.** Each week is a handful of headline numbers: a KPI row for
+   recorded wagers (bets, staked, P&L, ROI, record) and small tables (candidate CLV and outcomes by family,
+   the edge-receipt timeline, season wager totals per week). Two weeks of wagers do not earn a P&L line.
+6. **Implementation choices (the assistant's, told to the user).**
+   - The latest-unambiguous evaluation rule moves from `api/loaders.load_recommended_bet_results_for_week`
+     into the market layer (`recommended_bet_result_store`, taking a repo path); the API loader calls it, so
+     the recap does not import the API.
+   - `production_chain_preflight._exact_candidate_issuance` (the week's issuance by selected product and run
+     id) becomes a public reader in `candidate_issuance_store`, and preflight calls it.
+   - Candidate closeout runs on candidate rows only, each against its own game's ledger rows, through a
+     public helper beside `close_candidate_issuance`. Matching is unchanged; closing all 1,680 rows against
+     the whole ledger took minutes, while candidates by game take about 50 s.
+   - Wagers are every ledger row whose `game_id` is in the week (`load_bets(week=)`), split by market type
+     (week 1's 17 include one `special` bet); `record` and `roi` from `betting/performance`; CLV through
+     `close_recorded_wagers`, which reads `clv_unavailable` for every import (no reference).
+   - The recap's identity covers digests of the week's scoped ledger rows and of the week's quote-ledger
+     partition (candidate CLV reads it). The season recap gains season wager totals and the unattributed
+     count (bets without a `game_id`: 7, $2.50 staked, all lost, one bonus-funded), so its schema bumps
+     with the weekly recap's (2 to 3).
+
+**Audit re-checked 2026-10-05.** As above except: the week 4 receipts read 149 edges at 20:00Z (not 45) and
+45 at 21:00Z; week 1's ledger holds 18,956 observations in 34 snapshots; week 1 wagers are 11-6, $16.10
+staked, -$0.34; week 2 settled 11-4, $16.00 staked, +$2.29, plus the open NYG @ LA moneyline (-355).
+
 **Tests.** Each edge status; chain counts and closeout on a synthetic issuance and ledger; wager record,
 `unsettled`, `clv_unavailable`, unattributed; identity changes when a bet settles.
 
