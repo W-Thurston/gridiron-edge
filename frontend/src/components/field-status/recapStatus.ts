@@ -80,3 +80,57 @@ export function recapRoleLabel(role: ForecastRole | null): string {
       return "Forecast role not recorded";
   }
 }
+
+type StarterStatus = components["schemas"]["StarterStatus"];
+type ActualStarterSource = components["schemas"]["ActualStarterSource"];
+type StarterRecordSource = components["schemas"]["StarterRecordSource"];
+
+/** Full sentence for why a starter slot is or is not scored. */
+export function recapStarterStatusMessage(status: StarterStatus): string {
+  switch (status) {
+    case "available":
+      return "Starter assumptions scored";
+    case "not_recorded":
+      return "Starting quarterbacks were not recorded for this forecast";
+    case "starter_unresolved":
+      return "The forecast resolved no starter for this side";
+    case "not_in_product":
+      return "No forecast in the selected product";
+    case "actual_missing":
+      return "No pass attempt for the team in the game logs, so the actual starter is unknown";
+  }
+}
+
+/** Short label for the same status, used where teams are grouped by status. */
+export function recapStarterStatusShort(status: StarterStatus): string {
+  switch (status) {
+    case "available":
+      return "Scored";
+    case "not_recorded":
+      return "Not recorded";
+    case "starter_unresolved":
+      return "Starter unresolved";
+    case "not_in_product":
+      return "Not in product";
+    case "actual_missing":
+      return "Actual starter unknown";
+  }
+}
+
+export function recapActualSourceLabel(source: ActualStarterSource): string {
+  switch (source) {
+    case "nflverse_schedule":
+      return "nflverse";
+    case "game_log_top_passer":
+      return "top passer (nflverse value had no attempt)";
+  }
+}
+
+export function recapRecordSourceLabel(source: StarterRecordSource): string {
+  switch (source) {
+    case "product_record":
+      return "recorded in the product";
+    case "sidecar_capture":
+      return "from the captured sidecar of its run";
+  }
+}

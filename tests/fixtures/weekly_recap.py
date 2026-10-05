@@ -8,6 +8,18 @@ Four scheduled games, chosen so every status appears once:
 * ``B`` - carried from an earlier run, the game ended tied 20-20.
 * ``C`` - scheduled but not in the product.
 * ``D`` - total forecast missing (so no projected score), closing lines missing.
+
+Starting QBs (actual starter: nflverse's id when he threw a pass for the team, else the top passer):
+
+* ``A`` - recorded in the product. Away: a mid-week change the assumption caught (assumed and
+  nflverse right, carry-forward wrong); the starter left mid-game, so nflverse's id stands
+  although a backup threw more. Home: the assumption was wrong, nflverse and carry-forward right.
+* ``B`` - carried, no record; scored from the capture of its run's sidecar. Away: nflverse kept
+  a stale id (no attempt), so the top passer is the actual starter; only the assumption was
+  right. Home: all three right.
+* ``C`` - not in the product (actual starters still known).
+* ``D`` - recorded with an unresolved home starter; the away team has no game log
+  (``actual_missing``).
 """
 
 from __future__ import annotations
@@ -17,6 +29,8 @@ from datetime import UTC, datetime
 
 import pandas as pd
 from pandas import DataFrame
+
+from gridiron_edge.evaluation.weekly_recap_starters import SidecarCapture
 
 SEASON = "2026-2027"
 WEEK = 4
@@ -33,15 +47,44 @@ _GAMES: dict[str, tuple[str, str, str, str, float, float, float | None, float | 
 }
 GAME_A, GAME_B, GAME_C, GAME_D = _GAMES
 
+CAPTURE_DIGEST = "c" * 64
+PROJECTED_AS_OF = "2026-10-03T12:00:00Z"
+# nflverse's *_qb_id per game after the game: (away, home); B's away id is stale.
+_NFLVERSE_STARTERS: dict[str, tuple[str, str]] = {
+    GAME_A: ("qa1", "qb1"),
+    GAME_B: ("qc0", "qd1"),
+    GAME_C: ("qe1", "qf1"),
+    GAME_D: ("qg1", "qh1"),
+}
+# (team, player, name, attempts) for the week; GGG has no log.
+_PASSERS: tuple[tuple[str, str, str, float], ...] = (
+    ("AAA", "qa1", "Away Starter", 6.0),
+    ("AAA", "qa9", "Away Backup", 25.0),
+    ("BBB", "qb1", "Home Veteran", 30.0),
+    ("CCC", "qc1", "Carried Projected", 28.0),
+    ("DDD", "qd1", "Carried Home", 20.0),
+    ("EEE", "qe1", "Unforecast Away", 31.0),
+    ("FFF", "qf1", "Unforecast Home", 22.0),
+    ("HHH", "qh1", "Unresolved Home", 18.0),
+)
+# The product's own record of games A and D, per side: (id, name, source, as_of, nflverse, carried).
+_RECORDS: dict[tuple[str, str], tuple[str, str | None, str, str | None, str, str]] = {
+    (GAME_A, "away"): ("qa1", "Away Starter", "depth_chart_report", PROJECTED_AS_OF, "qa1", "qa0"),
+    (GAME_A, "home"): ("qb2", "Home Rookie", "depth_chart_report", PROJECTED_AS_OF, "qb1", "qb1"),
+    (GAME_D, "away"): ("qg1", "Unrecorded Away", "nflverse_schedule", None, "qg1", "qg1"),
+}
+
 
 @dataclass(frozen=True)
 class RecapWeek:
-    """The four inputs of one recap build."""
+    """The inputs of one recap build."""
 
     schedule: DataFrame
     product: DataFrame
     events: DataFrame
     games: DataFrame
+    logs: DataFrame
+    captures: dict[str, SidecarCapture]
 
 
 def schedule() -> DataFrame:
@@ -60,6 +103,8 @@ def schedule() -> DataFrame:
                 "away_score": away_score,
                 "home_score": home_score,
                 "result": home_score - away_score,
+                "away_qb_id": _NFLVERSE_STARTERS[game_id][0],
+                "home_qb_id": _NFLVERSE_STARTERS[game_id][1],
             }
             for game_id, (away, home, day, time, away_score, home_score, _, _) in _GAMES.items()
         ]
@@ -148,7 +193,34 @@ def _product_row(
         "projected_score_status": "available" if total_available else "total_unavailable",
         "projected_home_score": projected_home,
         "projected_away_score": projected_away,
-    }
+    } | _starter_record(game_id, carried=run_id == CARRIED_RUN)
+
+
+def _starter_record(game_id: str, *, carried: bool) -> dict[str, object]:
+    """Return the product's starting-QB columns: B (carried) has none, D has no home starter."""
+    record: dict[str, object] = {}
+    resolved = 0
+    for side in ("away", "home"):
+        values = None if carried else _RECORDS.get((game_id, side))
+        resolved += values is not None
+        qb_id, name, source, as_of, nflverse, carried_id = values or (None,) * 6
+        record |= {
+            f"{side}_qb_id": qb_id,
+            f"{side}_qb_name": name,
+            f"{side}_qb_source": source,
+            f"{side}_qb_projection_as_of": as_of,
+            f"{side}_qb_nflverse_id": nflverse,
+            f"{side}_qb_carried_forward_id": carried_id,
+            f"{side}_qb_differs_from_carry_forward": (
+                None if qb_id is None else qb_id != carried_id
+            ),
+        }
+    status = (
+        "sidecar_unavailable"
+        if carried
+        else ("available" if resolved == 2 else "starter_unresolved")
+    )
+    return {"starting_qb_status": status} | record
 
 
 def product() -> DataFrame:
@@ -221,7 +293,77 @@ def events(product_frame: DataFrame) -> DataFrame:
     return DataFrame(rows)
 
 
+def player_game_logs() -> DataFrame:
+    """Return the week's passers, an earlier week's line (a name) and a preseason line."""
+    rows = [
+        {
+            "player_id": player,
+            "player_display_name": name,
+            "team": team,
+            "season": 2026,
+            "season_type": "REG",
+            "week": WEEK,
+            "attempts": attempts,
+        }
+        for team, player, name, attempts in _PASSERS
+    ]
+    rows.append(rows[0] | {"player_id": "qa0", "player_display_name": "Away Veteran", "week": 3})
+    rows.append(rows[0] | {"player_id": "qa7", "season_type": "PRE", "attempts": 40.0})
+    rows.append(rows[0] | {"player_id": "qa8", "player_display_name": "Away Runner", "attempts": 0})
+    return DataFrame(rows)
+
+
+def capture_sidecar() -> DataFrame:
+    """Return the sidecar the carried run was bound to: week 3 history, then game B projected."""
+    base = {"YEAR": SEASON, "AWAY_COACH": None, "HOME_COACH": None}
+    none = {
+        "AWAY_QB_ID_PROJECTED": None,
+        "AWAY_QB_PROJECTION_SOURCE": None,
+        "AWAY_QB_PROJECTION_AS_OF": None,
+        "HOME_QB_ID_PROJECTED": None,
+        "HOME_QB_PROJECTION_SOURCE": None,
+        "HOME_QB_PROJECTION_AS_OF": None,
+    }
+    rows = [
+        base
+        | none
+        | {
+            "GAME_ID": "2026_03_CCC_DDD",
+            "WEEK_NUM": 3,
+            "AWAY_TEAM": "CCC",
+            "HOME_TEAM": "DDD",
+            "AWAY_QB_ID": "qc0",
+            "AWAY_QB_NAME": "Carried Veteran",
+            "HOME_QB_ID": "qd1",
+            "HOME_QB_NAME": "Carried Home",
+        },
+        base
+        | none
+        | {
+            "GAME_ID": GAME_B,
+            "WEEK_NUM": WEEK,
+            "AWAY_TEAM": "CCC",
+            "HOME_TEAM": "DDD",
+            "AWAY_QB_ID": "qc0",
+            "AWAY_QB_NAME": "Carried Veteran",
+            "HOME_QB_ID": "qd1",
+            "HOME_QB_NAME": "Carried Home",
+            "AWAY_QB_ID_PROJECTED": "qc1",
+            "AWAY_QB_PROJECTION_SOURCE": "depth_chart_report",
+            "AWAY_QB_PROJECTION_AS_OF": PROJECTED_AS_OF,
+        },
+    ]
+    return DataFrame(rows)
+
+
 def recap_week() -> RecapWeek:
-    """Return the four inputs of the synthetic week."""
+    """Return the inputs of the synthetic week."""
     selected = product()
-    return RecapWeek(schedule(), selected, events(selected), cleaned_games())
+    return RecapWeek(
+        schedule(),
+        selected,
+        events(selected),
+        cleaned_games(),
+        player_game_logs(),
+        {CARRIED_RUN: SidecarCapture(CAPTURE_DIGEST, capture_sidecar())},
+    )

@@ -21,6 +21,11 @@ from gridiron_edge.evaluation.weekly_recap import (
     ForecastStatus,
     ProductRowStatus,
 )
+from gridiron_edge.evaluation.weekly_recap_starters import (
+    ActualStarterSource,
+    StarterRecordSource,
+    StarterStatus,
+)
 
 
 class _Frozen(BaseModel):
@@ -68,6 +73,7 @@ class RecapConventionsResponse(_Frozen):
     market_at_forecast: str
     market_win_probability: str
     margin_std: float
+    actual_starter: str
 
 
 class RecapCountsResponse(_Frozen):
@@ -204,6 +210,40 @@ class RecapProjectedScoreForecast(_Frozen):
     closer: Closer | None
 
 
+class RecapStarterSide(_Frozen):
+    """One side's assumed, nflverse and carried-forward starter against who started.
+
+    The ``*_correct`` flags are null unless ``status`` is ``available`` and the predictor made a
+    pick. The actual starter is shown whenever it is known, whatever the status.
+    """
+
+    status: StarterStatus
+    record_source: StarterRecordSource | None = Field(
+        description="The product's own record, or the capture of the sidecar its run used.",
+    )
+    assumed_id: str | None
+    assumed_name: str | None
+    assumed_source: str | None = Field(description="How the assumed starter was resolved.")
+    assumed_as_of: str | None = Field(description="The projection snapshot time, if projected.")
+    nflverse_id: str | None = Field(description="nflverse's schedule value at composition.")
+    nflverse_name: str | None
+    carried_forward_id: str | None
+    carried_forward_name: str | None
+    actual_id: str | None
+    actual_name: str | None
+    actual_source: ActualStarterSource | None
+    assumed_correct: bool | None
+    nflverse_correct: bool | None
+    carry_forward_correct: bool | None
+
+
+class RecapGameStarters(_Frozen):
+    """Both sides' starters."""
+
+    away: RecapStarterSide
+    home: RecapStarterSide
+
+
 class RecapGame(_Frozen):
     """One scheduled game of the week, whether or not the product holds it."""
 
@@ -220,12 +260,40 @@ class RecapGame(_Frozen):
     spread: RecapPointForecast
     total: RecapPointForecast
     projected_score: RecapProjectedScoreForecast
+    starting_qbs: RecapGameStarters
+
+
+class RecapPredictorAccuracy(_Frozen):
+    """How often one predictor named the actual starter, over the slots it made a pick for."""
+
+    count: int
+    correct: int
+    accuracy: float | None
+
+
+class RecapStartingQbs(_Frozen):
+    """The week's starter slots (two per game) by status, and each predictor's accuracy."""
+
+    slots: int
+    scored: int
+    from_capture: int = Field(description="Scored slots whose record came from a sidecar capture.")
+    not_recorded: int
+    starter_unresolved: int
+    not_in_product: int
+    actual_missing: int
+    actual_from_game_logs: int = Field(
+        description="Slots whose actual starter is the top passer, not nflverse's value.",
+    )
+    assumed: RecapPredictorAccuracy
+    nflverse: RecapPredictorAccuracy
+    carry_forward: RecapPredictorAccuracy
+    capture_digests: list[str] = Field(description="The sidecar captures the section read.")
 
 
 class WeeklyRecapResponse(BaseResponse):
     """The selected recap of one week.
 
-    ``starting_qbs``, ``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in
+    ``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in
     ``_meta.field_status`` until the recap carries those sections.
     """
 
@@ -243,7 +311,7 @@ class WeeklyRecapResponse(BaseResponse):
     counts: RecapCountsResponse
     metrics: RecapWeekMetrics
     games: list[RecapGame]
-    starting_qbs: None = None
+    starting_qbs: RecapStartingQbs
     edges: None = None
     wagers: None = None
     season_to_date: None = None

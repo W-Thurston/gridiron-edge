@@ -13,13 +13,17 @@ away. The closing market is ``VEGAS_LINE`` (expected home margin) and ``OVER_UND
 market's home win probability is Phi(``VEGAS_LINE`` / ``MARGIN_STD``), as in ``DECISIONS.md``
 D85. The product's own ``spread_line`` and ``total_line`` are the market at forecast time.
 
+The starting-QB section (:mod:`gridiron_edge.evaluation.weekly_recap_starters`) adds, per game
+and side, the assumed starter, nflverse's value and the carried-forward starter against who
+started.
+
 A scheduled game missing from the product is a row with status ``not_in_product``; a missing
 value always carries a status. The recap's identity is the SHA-256 of its content excluding
 ``built_at``, so unchanged inputs replay to the same identity.
 
 Public API
 ----------
-build_weekly_recap      schedule, product, events, games -> BuiltWeeklyRecap
+build_weekly_recap      schedule, product, events, games, game logs, captures -> BuiltWeeklyRecap
 unplayed_game_ids       scoped schedule -> games without a result
 weekly_recap_id         recap -> content identity excluding built_at
 validate_weekly_recap   recap -> raises on an invalid manifest
@@ -28,6 +32,7 @@ weekly_recap_from_payload / weekly_recap_payload   JSON round trip
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -46,10 +51,21 @@ from gridiron_edge.evaluation.game_model_evaluation_report import (
 )
 from gridiron_edge.evaluation.live_forecast_closeout import close_live_forecasts
 from gridiron_edge.evaluation.market_agreement import MARGIN_STD
+from gridiron_edge.evaluation.weekly_recap_starters import (
+    ACTUAL_STARTER_CONVENTION,
+    STARTER_BOOLEAN_COLUMNS,
+    STARTER_STRING_COLUMNS,
+    SidecarCapture,
+    StarterSummary,
+    player_names,
+    starter_columns,
+    starter_summary,
+    week_passers,
+)
 from gridiron_edge.market.collection_plan import _schedule_kickoff_utc
 from gridiron_edge.models.game_prediction.weekly_product_store import cited_run_ids
 
-WEEKLY_RECAP_SCHEMA_VERSION: Final[int] = 1
+WEEKLY_RECAP_SCHEMA_VERSION: Final[int] = 2
 # Two errors closer than this are a tie.
 _CLOSER_TOLERANCE: Final[float] = 1e-9
 _PROBABILITY_CLIP: Final[float] = 1e-7
@@ -62,6 +78,8 @@ _SCHEDULE_COLUMNS: Final[tuple[str, ...]] = (
     "away_score",
     "home_score",
     "result",
+    "away_qb_id",
+    "home_qb_id",
 )
 _OUTCOME_COLUMNS: Final[tuple[str, ...]] = (
     "GAME_ID",
@@ -197,6 +215,7 @@ class RecapConventions:
     market_at_forecast: str
     market_win_probability: str
     margin_std: float
+    actual_starter: str
 
 
 RECAP_CONVENTIONS: Final[RecapConventions] = RecapConventions(
@@ -205,6 +224,7 @@ RECAP_CONVENTIONS: Final[RecapConventions] = RecapConventions(
     market_at_forecast="weekly product spread_line (expected home margin) and total_line",
     market_win_probability="Phi(VEGAS_LINE / margin_std)",
     margin_std=MARGIN_STD,
+    actual_starter=ACTUAL_STARTER_CONVENTION,
 )
 
 
@@ -224,9 +244,12 @@ class WeeklyRecap:
     forecast_role: str | None
     schedule_digest: str
     outcome_digest: str
+    passer_digest: str
+    starter_capture_digests: tuple[str, ...]
     conventions: RecapConventions
     counts: RecapCounts
     metrics: WeekMetrics
+    starters: StarterSummary
     games: EvaluationFrameReference
 
 
@@ -509,13 +532,14 @@ _STRING_COLUMNS: Final[tuple[str, ...]] = (
     "total_closer",
     "projected_score_status",
     "projected_score_closer",
+    *STARTER_STRING_COLUMNS,
 )
 _TIMESTAMP_COLUMNS: Final[tuple[str, ...]] = (
     "kickoff",
     "forecast_generated_at",
     "forecast_market_ingested_at",
 )
-_BOOLEAN_COLUMNS: Final[tuple[str, ...]] = ("carried", "actual_home_win")
+_BOOLEAN_COLUMNS: Final[tuple[str, ...]] = ("carried", "actual_home_win", *STARTER_BOOLEAN_COLUMNS)
 
 
 def _typed_frame(records: list[dict[str, object]]) -> DataFrame:
@@ -643,14 +667,18 @@ def build_weekly_recap(
     product: DataFrame,
     forecast_events: DataFrame,
     games: DataFrame,
+    player_game_logs: DataFrame,
+    sidecar_captures: Mapping[str, SidecarCapture],
     built_at: datetime,
 ) -> BuiltWeeklyRecap:
     """Build one week's recap from the scoped schedule and the selected product, without I/O.
 
     ``schedule`` is the week's regular-season rows of the raw games file; ``product`` is the
-    week's selected product; ``games`` is the cleaned games file. Refuses a week with an
-    unplayed game, a product row for an unscheduled game, a selected component whose forecast
-    event does not match, and a score the raw and cleaned files disagree on.
+    week's selected product; ``games`` is the cleaned games file; ``player_game_logs`` names who
+    passed for each team; ``sidecar_captures`` maps a run id to the verified capture of the
+    sidecar that run was bound to (the starter record of rows that carry none). Refuses a week
+    with an unplayed game, a product row for an unscheduled game, a selected component whose
+    forecast event does not match, and a score the raw and cleaned files disagree on.
     """
     _utc(built_at, "built_at")
     _require_columns(schedule, _SCHEDULE_COLUMNS, label="Schedule")
@@ -700,6 +728,15 @@ def build_weekly_recap(
             for day, time in zip(schedule["gameday"], schedule["gametime"], strict=True)
         ]
     ).sort_values(["_kickoff", "game_id"])
+    season_int = int(_single(schedule, "season"))
+    passers = week_passers(player_game_logs, season_int=season_int, week=week)
+    starters = starter_columns(
+        ordered,
+        product,
+        captures=sidecar_captures,
+        passers=passers,
+        names=player_names(player_game_logs, season_int=season_int, week=week),
+    )
     records = [
         _game_row(
             game,
@@ -711,6 +748,7 @@ def build_weekly_recap(
             product_run_id=product_run_id,
             market_recorded=market_recorded,
         )
+        | starters[str(game["game_id"])]
         for _, game in ordered.iterrows()
     ]
     frame = _typed_frame(records)
@@ -735,6 +773,10 @@ def build_weekly_recap(
         outcome_digest=frame_content_digest(
             _canonical_rows(outcomes.reset_index(), _OUTCOME_COLUMNS, key="GAME_ID")
         ),
+        passer_digest=frame_content_digest(passers.astype(object)),
+        starter_capture_digests=tuple(
+            sorted({capture.digest for capture in sidecar_captures.values()})
+        ),
         conventions=RECAP_CONVENTIONS,
         counts=RecapCounts(
             scheduled_games=len(frame),
@@ -744,6 +786,7 @@ def build_weekly_recap(
             outcome_ties=int(frame["actual_home_win"].isna().sum()),
         ),
         metrics=_week_metrics(frame),
+        starters=starter_summary(frame),
         games=EvaluationFrameReference(
             artifact=f"schema={WEEKLY_RECAP_SCHEMA_VERSION}/games/{frame_digest}.parquet",
             row_count=len(frame),

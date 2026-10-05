@@ -228,6 +228,9 @@ class TestBuildWeeklyRecap:
         raw = tmp_path / "data/raw/NFL_wk_by_wk_nflverse.parquet"
         raw.parent.mkdir(parents=True)
         week.schedule.to_parquet(raw, index=False)
+        logs = tmp_path / "data/cleaned/player_game_logs.parquet"
+        logs.parent.mkdir(parents=True)
+        week.logs.to_parquet(logs, index=False)
         settings = SimpleNamespace(repo_root=tmp_path)
         monkeypatch.setattr("gridiron_edge.core.settings.get_settings", lambda: settings)
         monkeypatch.setattr(

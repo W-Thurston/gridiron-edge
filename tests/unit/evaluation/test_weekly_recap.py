@@ -53,6 +53,8 @@ def _build(inputs: RecapWeek | None = None, **overrides: object) -> BuiltWeeklyR
         "product": inputs.product,
         "forecast_events": inputs.events,
         "games": inputs.games,
+        "player_game_logs": inputs.logs,
+        "sidecar_captures": inputs.captures,
         "built_at": BUILT_AT,
     }
     return build_weekly_recap(**(arguments | overrides))  # type: ignore[arg-type]

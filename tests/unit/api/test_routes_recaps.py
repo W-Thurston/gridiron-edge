@@ -53,6 +53,8 @@ def _selected(tmp_path: Path) -> BuiltWeeklyRecap:
         product=week.product,
         forecast_events=week.events,
         games=week.games,
+        player_game_logs=week.logs,
+        sidecar_captures=week.captures,
         built_at=BUILT_AT,
     )
     write_weekly_recap(built, repo=tmp_path)
@@ -180,9 +182,55 @@ class TestDetail:
 
         body = client.get(f"/recaps/{SEASON}/{WEEK}").json()
 
-        for section in ("starting_qbs", "edges", "wagers", "season_to_date"):
+        for section in ("edges", "wagers", "season_to_date"):
             assert body[section] is None
             assert body["_meta"]["field_status"][section] == "pending"
+        assert "starting_qbs" not in body["_meta"]["field_status"]
+
+    def test_serves_the_starter_summary_and_every_side(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        built = _selected(tmp_path)
+
+        body = client.get(f"/recaps/{SEASON}/{WEEK}").json()
+
+        starters = body["starting_qbs"]
+        assert starters["slots"] == built.recap.starters.slots == 8
+        assert starters["scored"] == 4
+        assert starters["assumed"] == {"count": 4, "correct": 3, "accuracy": 0.75}
+        assert starters["carry_forward"] == {"count": 4, "correct": 2, "accuracy": 0.5}
+        assert starters["capture_digests"] == list(built.recap.starter_capture_digests)
+        assert body["conventions"]["actual_starter"].startswith("nflverse *_qb_id")
+        carried = _game(body, GAME_B)["starting_qbs"]["away"]
+        assert carried["status"] == "available"
+        assert carried["record_source"] == "sidecar_capture"
+        assert (carried["assumed_id"], carried["actual_id"]) == ("qc1", "qc1")
+        assert carried["actual_source"] == "game_log_top_passer"
+        assert (carried["assumed_correct"], carried["nflverse_correct"]) == (True, False)
+        not_in_product = _game(body, GAME_C)["starting_qbs"]["home"]
+        assert not_in_product["status"] == "not_in_product"
+        assert not_in_product["assumed_id"] is None
+        assert not_in_product["actual_name"] == "Unforecast Home"
+        assert not_in_product["assumed_correct"] is None
+        unresolved = _game(body, GAME_D)["starting_qbs"]
+        assert unresolved["home"]["status"] == "starter_unresolved"
+        assert unresolved["away"]["status"] == "actual_missing"
+
+    def test_starter_statuses_are_schema_enums(self, client: TestClient) -> None:
+        schemas = client.get("/openapi.json").json()["components"]["schemas"]
+
+        assert set(schemas["StarterStatus"]["enum"]) == {
+            "available",
+            "not_recorded",
+            "starter_unresolved",
+            "not_in_product",
+            "actual_missing",
+        }
+        assert set(schemas["StarterRecordSource"]["enum"]) == {"product_record", "sidecar_capture"}
+        assert set(schemas["ActualStarterSource"]["enum"]) == {
+            "nflverse_schedule",
+            "game_log_top_passer",
+        }
 
     def test_game_statuses_explain_every_missing_value(
         self, client: TestClient, tmp_path: Path

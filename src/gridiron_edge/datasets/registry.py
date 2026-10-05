@@ -30,6 +30,7 @@ DatasetKey = Literal[
     "elo_rankings_csv",
     "weekly_products",
     "weekly_recaps",
+    "qb_sidecar_captures",
 ]
 
 
@@ -75,6 +76,8 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "elo_rankings_csv": DatasetSpec("data/output/rankings"),
     "weekly_products": DatasetSpec("data/output/weekly_products"),
     "weekly_recaps": DatasetSpec("data/output/weekly_recaps"),
+    # Digest-named copies of the QB/coach sidecar a forecast run was bound to.
+    "qb_sidecar_captures": DatasetSpec("data/output/qb_sidecar_captures"),
 }
 
 

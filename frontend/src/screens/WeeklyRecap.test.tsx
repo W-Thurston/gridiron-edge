@@ -13,6 +13,7 @@ import { useRecaps, useWeeklyRecap } from "../api/hooks";
 type Recap = components["schemas"]["WeeklyRecapResponse"];
 type RecapGame = components["schemas"]["RecapGame"];
 type Summary = components["schemas"]["WeeklyRecapSummary"];
+type StarterSide = components["schemas"]["RecapStarterSide"];
 
 const SEASON = "2026-2027";
 
@@ -23,6 +24,24 @@ function summary(week: number, role: Summary["forecast_role"], builtAt: string):
     scheduled_games: 4, in_product: 3, available: { win: 2, spread: 3, total: 2, projected_score: 2 },
   };
 }
+
+function starter(overrides: Partial<StarterSide> = {}): StarterSide {
+  return {
+    status: "available", record_source: "product_record",
+    assumed_id: "q1", assumed_name: "Right Starter", assumed_source: "depth_chart_report",
+    assumed_as_of: "2026-10-03T12:00:00Z", nflverse_id: "q1", nflverse_name: "Right Starter",
+    carried_forward_id: "q1", carried_forward_name: "Right Starter",
+    actual_id: "q1", actual_name: "Right Starter", actual_source: "nflverse_schedule",
+    assumed_correct: true, nflverse_correct: true, carry_forward_correct: true,
+    ...overrides,
+  };
+}
+
+const UNSCORED = {
+  record_source: null, assumed_id: null, assumed_name: null, assumed_source: null, assumed_as_of: null,
+  nflverse_id: null, nflverse_name: null, carried_forward_id: null, carried_forward_name: null,
+  assumed_correct: null, nflverse_correct: null, carry_forward_correct: null,
+} as const;
 
 function game(id: string, overrides: Partial<RecapGame> = {}): RecapGame {
   return {
@@ -42,6 +61,13 @@ function game(id: string, overrides: Partial<RecapGame> = {}): RecapGame {
       status: "available", away_score: 20.4, home_score: 23.8, model_abs_error: 1.8,
       market_abs_error: 2.25, closer: "model",
     },
+    starting_qbs: {
+      away: starter(),
+      home: starter({
+        assumed_id: "q9", assumed_name: "Wrong Rookie", assumed_correct: false,
+        actual_name: "Home Veteran", nflverse_name: "Home Veteran", carried_forward_name: "Home Veteran",
+      }),
+    },
     ...overrides,
   };
 }
@@ -57,6 +83,10 @@ const notInProduct = game("2026_02_EEE_FFF", {
     status: "not_in_product", away_score: null, home_score: null, model_abs_error: null,
     market_abs_error: 3.5, closer: null,
   },
+  starting_qbs: {
+    away: starter({ ...UNSCORED, status: "not_in_product" }),
+    home: starter({ ...UNSCORED, status: "not_in_product" }),
+  },
 });
 
 const tied = game("2026_02_CCC_DDD", {
@@ -64,6 +94,15 @@ const tied = game("2026_02_CCC_DDD", {
   forecast: { role: "development", run_id: "earlier", generated_at: "2026-09-30T12:00:00Z", carried: true },
   result: { away_score: 20, home_score: 20, home_margin: 0, total: 40, home_win: null },
   win: { status: "outcome_tie", home_win_prob: 0.55, model_brier: null, market_brier: null, closer: null },
+  starting_qbs: {
+    away: starter({
+      record_source: "sidecar_capture", assumed_name: "Projected Starter", nflverse_id: "q0",
+      nflverse_name: "Stale Listing", nflverse_correct: false, carried_forward_id: "q0",
+      carried_forward_name: "Stale Listing", carry_forward_correct: false,
+      actual_name: "Projected Starter", actual_source: "game_log_top_passer",
+    }),
+    home: starter({ record_source: "sidecar_capture" }),
+  },
 });
 
 const totalMissing = game("2026_02_GGG_HHH", {
@@ -79,6 +118,10 @@ const totalMissing = game("2026_02_GGG_HHH", {
     status: "forecast_missing", away_score: null, home_score: null, model_abs_error: null,
     market_abs_error: null, closer: null,
   },
+  starting_qbs: {
+    away: starter({ ...UNSCORED, status: "not_recorded" }),
+    home: starter({ ...UNSCORED, status: "not_recorded" }),
+  },
 });
 
 function recap(week: number): Recap {
@@ -91,7 +134,7 @@ function recap(week: number): Recap {
     conventions: {
       orientation: "Away/Home", closing_market: "VEGAS_LINE and OVER_UNDER",
       market_at_forecast: "spread_line and total_line", market_win_probability: "Phi(VEGAS_LINE / margin_std)",
-      margin_std: 13.5,
+      margin_std: 13.5, actual_starter: "nflverse id when he threw a pass, else the top passer",
     },
     counts: { scheduled_games: 4, in_product: 3, not_in_product: 1, carried_rows: 1, outcome_ties: 1 },
     metrics: {
@@ -101,9 +144,17 @@ function recap(week: number): Recap {
       projected_score: { model: { ...errors, count: 4 }, market: errors, closer: { model: 1, market: 1, tie: 0 } },
     },
     games: [game("2026_02_AAA_BBB"), tied, notInProduct, totalMissing],
-    starting_qbs: null, edges: null, wagers: null, season_to_date: null,
+    starting_qbs: {
+      slots: 8, scored: 4, from_capture: 2, not_recorded: 2, starter_unresolved: 0, not_in_product: 2,
+      actual_missing: 0, actual_from_game_logs: 1,
+      assumed: { count: 4, correct: 3, accuracy: 0.75 },
+      nflverse: { count: 4, correct: 3, accuracy: 0.75 },
+      carry_forward: { count: 4, correct: 3, accuracy: 0.75 },
+      capture_digests: ["c".repeat(64)],
+    },
+    edges: null, wagers: null, season_to_date: null,
     _meta: {
-      field_status: { starting_qbs: "pending", edges: "pending", wagers: "pending", season_to_date: "pending" },
+      field_status: { edges: "pending", wagers: "pending", season_to_date: "pending" },
     },
   };
 }
@@ -204,10 +255,40 @@ describe("WeeklyRecap", () => {
   it("renders the sections the recap does not carry yet as pending", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
-    for (const key of ["starting_qbs", "edges", "wagers", "season_to_date"]) {
+    for (const key of ["edges", "wagers", "season_to_date"]) {
       const card = document.querySelector(`[data-recap-section="${key}"]`) as HTMLElement;
       expect(within(card).getByTitle("Coming soon")).toBeInTheDocument();
     }
+  });
+
+  it("scores the starting quarterbacks and names every miss and unscored slot", () => {
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    renderScreen();
+    const section = document.querySelector('[data-recap-section="starting_qbs"]') as HTMLElement;
+    expect(within(section).queryByTitle("Coming soon")).toBeNull();
+    expect(within(section).getByText(/4 of 8 team slots scored · 2 from the captured sidecar/)).toBeInTheDocument();
+    expect(within(section).getByText(/Who started: nflverse id when he threw a pass/)).toBeInTheDocument();
+    const accuracy = within(section).getByRole("table", { name: "Starter predictor accuracy" });
+    const assumed = within(accuracy).getByRole("row", { name: /Assumed by the forecast/ });
+    expect(within(assumed).getByText("3 / 4")).toBeInTheDocument();
+    expect(within(assumed).getByText("75.0%")).toBeInTheDocument();
+
+    const misses = within(section).getByRole("region", { name: "Starter misses" });
+    const wrongAssumption = within(misses).getByRole("row", { name: /^BBB/ });
+    expect(within(wrongAssumption).getByText(/Wrong Rookie/)).toHaveAttribute("data-starter-pick", "wrong");
+    const stale = within(misses).getByRole("row", { name: /^CCC/ });
+    expect(within(stale).getByText(/Stale Listing/, { selector: "td:nth-child(3) span" }))
+      .toHaveAttribute("data-starter-pick", "wrong");
+    expect(within(stale).getByText(/from the captured sidecar of its run/)).toBeInTheDocument();
+    expect(within(stale).getByText("top passer (nflverse value had no attempt)")).toBeInTheDocument();
+    expect(within(misses).queryByRole("row", { name: /^AAA/ })).toBeNull();
+
+    const notRecorded = section.querySelector('[data-starter-status="not_recorded"]') as HTMLElement;
+    expect(within(notRecorded).getByText("GGG, HHH")).toBeInTheDocument();
+    expect(within(notRecorded).getByText("Starting quarterbacks were not recorded for this forecast"))
+      .toBeInTheDocument();
+    const notInProduct = section.querySelector('[data-starter-status="not_in_product"]') as HTMLElement;
+    expect(within(notInProduct).getByText("EEE, FFF")).toBeInTheDocument();
   });
 
   it("explains how to build a recap when none is selected", () => {

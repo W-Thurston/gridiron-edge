@@ -1,6 +1,15 @@
 {
   "components": {
     "schemas": {
+      "ActualStarterSource": {
+        "description": "Where the actual starter came from.",
+        "enum": [
+          "nflverse_schedule",
+          "game_log_top_passer"
+        ],
+        "title": "ActualStarterSource",
+        "type": "string"
+      },
       "BankrollCurve": {
         "additionalProperties": false,
         "description": "Bankroll over time.",
@@ -5833,6 +5842,10 @@
         "additionalProperties": false,
         "description": "The conventions every value in the recap is stated in.",
         "properties": {
+          "actual_starter": {
+            "title": "Actual Starter",
+            "type": "string"
+          },
           "closing_market": {
             "title": "Closing Market",
             "type": "string"
@@ -5859,7 +5872,8 @@
           "closing_market",
           "market_at_forecast",
           "market_win_probability",
-          "margin_std"
+          "margin_std",
+          "actual_starter"
         ],
         "title": "RecapConventionsResponse",
         "type": "object"
@@ -6022,6 +6036,9 @@
           "spread": {
             "$ref": "#/components/schemas/RecapPointForecast"
           },
+          "starting_qbs": {
+            "$ref": "#/components/schemas/RecapGameStarters"
+          },
           "total": {
             "$ref": "#/components/schemas/RecapPointForecast"
           },
@@ -6042,7 +6059,8 @@
           "win",
           "spread",
           "total",
-          "projected_score"
+          "projected_score",
+          "starting_qbs"
         ],
         "title": "RecapGame",
         "type": "object"
@@ -6146,6 +6164,24 @@
           "home_win"
         ],
         "title": "RecapGameResult",
+        "type": "object"
+      },
+      "RecapGameStarters": {
+        "additionalProperties": false,
+        "description": "Both sides' starters.",
+        "properties": {
+          "away": {
+            "$ref": "#/components/schemas/RecapStarterSide"
+          },
+          "home": {
+            "$ref": "#/components/schemas/RecapStarterSide"
+          }
+        },
+        "required": [
+          "away",
+          "home"
+        ],
+        "title": "RecapGameStarters",
         "type": "object"
       },
       "RecapMarketAtForecast": {
@@ -6284,6 +6320,38 @@
         "title": "RecapPointForecast",
         "type": "object"
       },
+      "RecapPredictorAccuracy": {
+        "additionalProperties": false,
+        "description": "How often one predictor named the actual starter, over the slots it made a pick for.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "correct": {
+            "title": "Correct",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "correct",
+          "accuracy"
+        ],
+        "title": "RecapPredictorAccuracy",
+        "type": "object"
+      },
       "RecapProbabilityMetrics": {
         "additionalProperties": false,
         "description": "Win-probability scores over ``count`` decided games.",
@@ -6408,6 +6476,275 @@
           "closer"
         ],
         "title": "RecapProjectedScoreForecast",
+        "type": "object"
+      },
+      "RecapStarterSide": {
+        "additionalProperties": false,
+        "description": "One side's assumed, nflverse and carried-forward starter against who started.\n\nThe ``*_correct`` flags are null unless ``status`` is ``available`` and the predictor made a\npick. The actual starter is shown whenever it is known, whatever the status.",
+        "properties": {
+          "actual_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Id"
+          },
+          "actual_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Name"
+          },
+          "actual_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActualStarterSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assumed_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The projection snapshot time, if projected.",
+            "title": "Assumed As Of"
+          },
+          "assumed_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumed Correct"
+          },
+          "assumed_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumed Id"
+          },
+          "assumed_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumed Name"
+          },
+          "assumed_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the assumed starter was resolved.",
+            "title": "Assumed Source"
+          },
+          "carried_forward_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carried Forward Id"
+          },
+          "carried_forward_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carried Forward Name"
+          },
+          "carry_forward_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Forward Correct"
+          },
+          "nflverse_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nflverse Correct"
+          },
+          "nflverse_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "nflverse's schedule value at composition.",
+            "title": "Nflverse Id"
+          },
+          "nflverse_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nflverse Name"
+          },
+          "record_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StarterRecordSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The product's own record, or the capture of the sidecar its run used."
+          },
+          "status": {
+            "$ref": "#/components/schemas/StarterStatus"
+          }
+        },
+        "required": [
+          "status",
+          "record_source",
+          "assumed_id",
+          "assumed_name",
+          "assumed_source",
+          "assumed_as_of",
+          "nflverse_id",
+          "nflverse_name",
+          "carried_forward_id",
+          "carried_forward_name",
+          "actual_id",
+          "actual_name",
+          "actual_source",
+          "assumed_correct",
+          "nflverse_correct",
+          "carry_forward_correct"
+        ],
+        "title": "RecapStarterSide",
+        "type": "object"
+      },
+      "RecapStartingQbs": {
+        "additionalProperties": false,
+        "description": "The week's starter slots (two per game) by status, and each predictor's accuracy.",
+        "properties": {
+          "actual_from_game_logs": {
+            "description": "Slots whose actual starter is the top passer, not nflverse's value.",
+            "title": "Actual From Game Logs",
+            "type": "integer"
+          },
+          "actual_missing": {
+            "title": "Actual Missing",
+            "type": "integer"
+          },
+          "assumed": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "capture_digests": {
+            "description": "The sidecar captures the section read.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Capture Digests",
+            "type": "array"
+          },
+          "carry_forward": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "from_capture": {
+            "description": "Scored slots whose record came from a sidecar capture.",
+            "title": "From Capture",
+            "type": "integer"
+          },
+          "nflverse": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "not_in_product": {
+            "title": "Not In Product",
+            "type": "integer"
+          },
+          "not_recorded": {
+            "title": "Not Recorded",
+            "type": "integer"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "integer"
+          },
+          "slots": {
+            "title": "Slots",
+            "type": "integer"
+          },
+          "starter_unresolved": {
+            "title": "Starter Unresolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slots",
+          "scored",
+          "from_capture",
+          "not_recorded",
+          "starter_unresolved",
+          "not_in_product",
+          "actual_missing",
+          "actual_from_game_logs",
+          "assumed",
+          "nflverse",
+          "carry_forward",
+          "capture_digests"
+        ],
+        "title": "RecapStartingQbs",
         "type": "object"
       },
       "RecapWeekMetrics": {
@@ -7566,6 +7903,27 @@
         ],
         "title": "SpreadPredictionBlock",
         "type": "object"
+      },
+      "StarterRecordSource": {
+        "description": "Where a side's starter record came from.",
+        "enum": [
+          "product_record",
+          "sidecar_capture"
+        ],
+        "title": "StarterRecordSource",
+        "type": "string"
+      },
+      "StarterStatus": {
+        "description": "Whether one side's starter assumptions can be scored.",
+        "enum": [
+          "available",
+          "not_recorded",
+          "starter_unresolved",
+          "not_in_product",
+          "actual_missing"
+        ],
+        "title": "StarterStatus",
+        "type": "string"
       },
       "StartingQbBlock": {
         "additionalProperties": false,
@@ -9237,7 +9595,7 @@
       },
       "WeeklyRecapResponse": {
         "additionalProperties": false,
-        "description": "The selected recap of one week.\n\n``starting_qbs``, ``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in\n``_meta.field_status`` until the recap carries those sections.",
+        "description": "The selected recap of one week.\n\n``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in\n``_meta.field_status`` until the recap carries those sections.",
         "properties": {
           "_meta": {
             "anyOf": [
@@ -9322,8 +9680,7 @@
             "type": "string"
           },
           "starting_qbs": {
-            "title": "Starting Qbs",
-            "type": "null"
+            "$ref": "#/components/schemas/RecapStartingQbs"
           },
           "wagers": {
             "title": "Wagers",
@@ -9348,7 +9705,8 @@
           "conventions",
           "counts",
           "metrics",
-          "games"
+          "games",
+          "starting_qbs"
         ],
         "title": "WeeklyRecapResponse",
         "type": "object"

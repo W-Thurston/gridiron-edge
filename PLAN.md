@@ -110,10 +110,9 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Units 23 and 24 completed October 4, 2026, and Unit 26 October 5, 2026 (`CHANGELOG.md`); next: Unit 25 -
-Starting-QB section, not yet active. Unit 26 was taken ahead of it on 2026-10-05 because week 4 was not finished
-(2 of 16 games scored in the local raw file; Monday ATL @ NO unplayed; no closeout receipt); start Unit 25 once
-week 4's closeout receipt exists.** Sequence:
+**Units 23 and 24 completed October 4, 2026, and Units 26 and 25 October 5, 2026 (`CHANGELOG.md`); next: Unit
+27 - Season roll-up, not yet active. Unit 25's week 4 check runs once week 4's closeout has built its recap (see
+its record).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -429,7 +428,9 @@ at weeks 1-3 (and week 4 once built), including the `development` badge and any 
 every metric beside the market with explicit statuses; contracts regenerated, not hand-edited; gates pass;
 HANDOFF and CHANGELOG updated.
 
-#### Unit 25 - Starting-QB Section [Scoped October 4, 2026; not active]
+#### Unit 25 - Starting-QB Section [Completed October 5, 2026; `DECISIONS.md` D87]
+
+Closed; the completed record is under "Unit 25" below. The scoping record follows.
 
 **Goal.** Score what the forecast assumed about each starting quarterback against who started, beside
 nflverse's pre-game value and carry-forward, inside the recap. This is the former Unit 16 (its design below
@@ -464,6 +465,23 @@ carry-forward baseline); the game API's `starting_qb` block and
 evidence names, so it is the projection that forecast used, and the copy is refused on a mismatch), or
 leave them `not_recorded`. (b) Confirm the raw nflverse `*_qb_id` of a completed game as "who started"
 (recommended: it is D75's baseline source; spot-check weeks 1-4 against player game logs first).
+
+**Decided at start (2026-10-05, with the user; audit re-checked that day).**
+1. (a) Score rows without a record from a capture of the sidecar their run used. All 9 carried week 4 rows
+   come from run `81248588`, whose prediction-input evidence names the sidecar
+   (`data/cleaned/NFL_qb_coach_sidecar.parquet`) by digest `ee9c8a73...`; the capture's bytes hash to that
+   digest. The product's record is `resolve_starting_qb_provenance` over the sidecar, so the same function over
+   the capture reproduces what those rows would have recorded, carry-forward included. Rule, not a one-off: a
+   row without a record whose run's evidence names a sidecar digest with a stored capture is scored and
+   labelled `sidecar_capture`; a capture whose bytes or size do not match refuses the build; no capture reads
+   `not_recorded` (weeks 1-3).
+2. (b) "Who started" is nflverse's `*_qb_id` when that player has at least one pass attempt for the team that
+   week in the player game logs, otherwise the team's top passer that week; each slot records its source
+   (`nflverse_schedule`, `game_log_top_passer`). Spot-check of weeks 1-3: nflverse matches the top passer in
+   90 of 96 slots; 3 of the 6 others are mid-game changes where nflverse's player did throw (GB @ MIN home,
+   NE @ SEA home, NYG @ LA away) and 3 name a player with no attempt (CAR @ ATL home, SEA @ WAS both sides),
+   stale pre-game values the rule replaces. The local play-by-play carries no player ids, so the first snap
+   could not be checked without an nflverse fetch.
 
 **Tests.** Synthetic weeks with each predictor right and wrong, a mid-week change, `not_recorded` and
 `not_in_product` rows named, a capture digest mismatch refused, the counts.
@@ -894,6 +912,83 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 25 — Starting-QB Section [Completed October 5, 2026]
+
+#### Completed
+
+The weekly recap is schema 2 with a starting-QB section (`DECISIONS.md` D87). Per game and side the game frame
+holds the status (`available`, `not_recorded`, `starter_unresolved`, `not_in_product`, `actual_missing`), the
+record source (`product_record` or `sidecar_capture`), the assumed starter (id, name, source, projection time),
+nflverse's value at composition and the carried-forward starter (ids and names), the actual starter (id, name,
+source `nflverse_schedule` or `game_log_top_passer`) and whether each predictor was right. Rows without a record
+are scored from the digest- and size-verified capture of the sidecar their run's prediction-input evidence names
+(`load_sidecar_captures`); a failed verification or disagreeing evidence refuses the build; no capture reads
+`not_recorded`. The actual starter is nflverse's `*_qb_id` when that player has a regular-season pass attempt for
+the team that week in the player game logs, else the team's top passer; it is shown for every played game. The
+manifest adds the slot counts and each predictor's right/count/accuracy (`starters`), the capture digests, a
+digest of the scoped passer rows, and the actual-starter convention; the schedule digest now covers the nflverse
+starter ids. `GET /recaps/{season}/{week}` serves the section (it is no longer pending) with the statuses as
+schema enums, and the "Last Week" page shows a "Starting quarterbacks" card: slot counts, predictor accuracy, a
+misses table and every unscored slot grouped by status with its teams. `evaluate weekly-recap` prints the starter
+summary. `qb_sidecar_captures` is a registered dataset directory.
+
+#### Goal
+
+Score what each forecast assumed about the starting quarterbacks, beside nflverse's value and carry-forward,
+against who started, inside the weekly recap, with every slot explained.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/weekly_recap_starters.py` - starter statuses and sources, actual-starter rule, per-side columns, week summary.
+- `tests/unit/evaluation/test_weekly_recap_starters.py` - every side case by hand, the summary, no capture, no record, passers, identity, capture loading and refusals.
+
+Changed:
+- `src/gridiron_edge/evaluation/weekly_recap.py` - schema 2: starter columns in the game frame, `starters`, capture and passer digests, the convention.
+- `src/gridiron_edge/evaluation/weekly_recap_build.py` - reads the player game logs; `load_sidecar_captures` finds and verifies captures through run evidence.
+- `src/gridiron_edge/datasets/registry.py` - the `qb_sidecar_captures` directory.
+- `src/gridiron_edge/cli/evaluate.py` - the command prints the starter summary.
+- `src/gridiron_edge/api/schemas/recaps.py` - starter side, game starters, week summary, convention; starter enums.
+- `src/gridiron_edge/api/serializers/recaps.py` - serializes the section; it is no longer pending.
+- `api-schema.json` - regenerated.
+- `frontend/src/screens/WeeklyRecap.tsx` - the "Starting quarterbacks" card.
+- `frontend/src/components/field-status/recapStatus.ts` - starter status, source and record-source messages.
+- `frontend/src/screens/WeeklyRecap.test.tsx` - starter fixture; counts, accuracy, misses, unscored slots.
+- `tests/fixtures/weekly_recap.py` - nflverse starter ids, product records, game logs and a capture covering every case.
+- `tests/unit/evaluation/test_weekly_recap.py`, `tests/unit/evaluation/test_weekly_recap_store.py` - pass the new inputs.
+- `tests/unit/api/test_routes_recaps.py` - the served section and schema enums; pending sections.
+- `tests/unit/cli/test_evaluate.py`, `tests/unit/cli/test_post_week.py` - game-logs file in the test repository; the printed summary.
+- `tests/unit/datasets/test_registry.py` - the new key.
+- `DECISIONS.md` - D87.
+- `HANDOFF.md` - "Weekly Recap" (inputs, starting QBs, storage, serving, page) and the registry list.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress; W3 done.
+- `PLAN.md` - this record, the decisions taken at start, and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Python gate: ruff, pyrefly 0 errors, `pytest -m "unit and not slow"` 4,924 passed. Frontend gate: lint, build,
+`test:run` 540 passed. Real data: the capture over run `81248588`'s sidecar reproduces the 6 recorded week 4
+games exactly (0 field differences) and fills the 9 carried games; weeks 1-3 dry runs kept every game-forecast
+metric (week 1 win Brier 0.2372, week 3 spread MAE 9.18) and read `not_recorded` in all 32 slots, with the
+actual starter from the game logs in 1 (week 2) and 2 (week 3) slots, exactly the three stale nflverse values.
+Weeks 1-3 rebuilt and selected at schema 2 (`d314ddac...`, `12dad73b...`, `942a3dd3...`, with the user's
+approval); a rerun replays each with the store byte for byte unchanged. `/recaps` and `/recaps/2026-2027/{1,2,3}`
+match the artifacts; the page, rendered headless against the dev server for week 3, shows the card, the 0/0
+predictor rows and the 32 `not_recorded` teams. **Still to check (week 4, after its closeout builds the recap):**
+6 product-record and 9 capture-scored games, PIT @ CLE `not_in_product`; reproduce one team-week by hand; rerun
+replays. Week 5 (about 2026-10-13) is the first week fully recorded by the product; record that check in
+CHANGELOG.
+
+#### Acceptance
+
+Each week's starter accuracy per predictor, every slot with a status, misses listed, and the actual starter shown
+for every played game; served and shown without request-time scoring; contracts regenerated; gates pass;
+DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 check above remains.
 
 ### Git-Status Test Isolation from Hook Environment [Completed October 5, 2026]
 

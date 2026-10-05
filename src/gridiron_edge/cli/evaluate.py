@@ -1958,6 +1958,24 @@ def _weekly_recap_lines(recap: WeeklyRecap, games: DataFrame) -> list[str]:
     lines.append("not in product: " + (", ".join(missing) if missing else "none"))
     if not_recorded:
         lines.append(f"market at forecast time not recorded for {not_recorded} game(s)")
+    starters = recap.starters
+    lines.append(
+        f"starting QBs: {starters.scored} of {starters.slots} slots scored "
+        f"({starters.from_capture} from a sidecar capture); "
+        + ", ".join(
+            f"{label} {accuracy.correct}/{accuracy.count}"
+            for label, accuracy in (
+                ("assumed", starters.assumed),
+                ("nflverse", starters.nflverse),
+                ("carry-forward", starters.carry_forward),
+            )
+        )
+    )
+    lines.append(
+        f"  not recorded {starters.not_recorded}, not in product {starters.not_in_product}, "
+        f"unresolved {starters.starter_unresolved}, actual missing {starters.actual_missing}; "
+        f"actual starter from the game logs {starters.actual_from_game_logs}"
+    )
     return lines
 
 

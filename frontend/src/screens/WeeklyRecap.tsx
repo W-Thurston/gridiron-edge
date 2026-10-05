@@ -6,12 +6,16 @@ import { ErrorCard } from "../components/error/ErrorCard";
 import { FieldValue } from "../components/field-status/FieldValue";
 import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
 import {
+  recapActualSourceLabel,
   recapClosingLineMessage,
   recapFamilyLabel,
   recapForecastStatusMessage,
   recapForecastStatusShort,
   recapMarketAtForecastMessage,
+  recapRecordSourceLabel,
   recapRoleLabel,
+  recapStarterStatusMessage,
+  recapStarterStatusShort,
 } from "../components/field-status/recapStatus";
 import type { RecapFamily } from "../components/field-status/recapStatus";
 import { useNav } from "../context/NavContext";
@@ -24,11 +28,13 @@ type ForecastStatus = components["schemas"]["ForecastStatus"];
 type ProbabilityMetrics = components["schemas"]["RecapProbabilityMetrics"];
 type ErrorMetrics = components["schemas"]["RecapErrorMetrics"];
 type CloserCounts = components["schemas"]["RecapCloserCounts"];
+type StarterSide = components["schemas"]["RecapStarterSide"];
+type StarterStatus = components["schemas"]["StarterStatus"];
+type PredictorAccuracy = components["schemas"]["RecapPredictorAccuracy"];
 
 const FAMILIES: RecapFamily[] = ["win", "spread", "total", "projected_score"];
 
 const PENDING_SECTIONS = [
-  ["starting_qbs", "Starting quarterbacks"],
   ["edges", "Edges and recommendations"],
   ["wagers", "Recorded wagers"],
   ["season_to_date", "Season to date"],
@@ -151,6 +157,7 @@ function RecapBody({ recap }: { recap: Recap }) {
         </div>
         <GameTable games={recap.games} family={family} />
       </section>
+      <StartersSection recap={recap} />
       <section
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}
       >
@@ -336,6 +343,141 @@ function GameTable({ games, family }: { games: RecapGame[]; family: RecapFamily 
         </tbody>
       </table>
     </div>
+  );
+}
+
+type Slot = { team: string; side: StarterSide };
+
+/** Every starter slot, two per game, away first, in the recap's game order. */
+function starterSlots(games: RecapGame[]): Slot[] {
+  return games.flatMap((game) => [
+    { team: game.away_team, side: game.starting_qbs.away },
+    { team: game.home_team, side: game.starting_qbs.home },
+  ]);
+}
+
+const PREDICTORS: [string, keyof Pick<Recap["starting_qbs"], "assumed" | "nflverse" | "carry_forward">][] = [
+  ["Assumed by the forecast", "assumed"],
+  ["nflverse at composition", "nflverse"],
+  ["Carried forward", "carry_forward"],
+];
+
+function StartersSection({ recap }: { recap: Recap }) {
+  const summary = recap.starting_qbs;
+  const slots = starterSlots(recap.games);
+  const misses = slots.filter(({ side }) =>
+    side.status === "available" &&
+    [side.assumed_correct, side.nflverse_correct, side.carry_forward_correct].includes(false),
+  );
+  const unscored = new Map<StarterStatus, string[]>();
+  for (const { team, side } of slots) {
+    if (side.status === "available") continue;
+    unscored.set(side.status, [...(unscored.get(side.status) ?? []), team]);
+  }
+  return (
+    <section className="hm-card" style={{ padding: 20 }} data-recap-section="starting_qbs">
+      <div className="upper dim" style={{ fontSize: 10 }}>Starting quarterbacks</div>
+      <div className="mono dim" style={{ fontSize: 11, marginTop: 6 }}>
+        {summary.scored} of {summary.slots} team slots scored
+        {summary.from_capture > 0 && ` · ${summary.from_capture} from the captured sidecar of their run`}
+        {summary.actual_from_game_logs > 0 &&
+          ` · ${summary.actual_from_game_logs} actual starter${summary.actual_from_game_logs === 1 ? "" : "s"} from the game logs`}
+      </div>
+      <div className="mono dim2" style={{ fontSize: 9, marginTop: 4 }}>
+        Who started: {recap.conventions.actual_starter}
+      </div>
+      <table className="mono tnum" style={{ marginTop: 12, fontSize: 12, borderCollapse: "collapse" }} aria-label="Starter predictor accuracy">
+        <thead>
+          <tr className="dim" style={{ fontSize: 9 }}>
+            <th scope="col" style={{ textAlign: "left", fontWeight: 400, paddingRight: 24 }}>Predictor</th>
+            <th scope="col" style={{ textAlign: "right", fontWeight: 400, paddingRight: 16 }}>Right</th>
+            <th scope="col" style={{ textAlign: "right", fontWeight: 400 }}>Accuracy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PREDICTORS.map(([label, key]) => (
+            <PredictorRow key={key} label={label} accuracy={summary[key]} />
+          ))}
+        </tbody>
+      </table>
+      {misses.length > 0 && <MissTable misses={misses} />}
+      {misses.length === 0 && summary.scored > 0 && (
+        <div className="dim" style={{ fontSize: 12, marginTop: 12 }}>Every predictor named every scored starter.</div>
+      )}
+      {unscored.size > 0 && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }} aria-label="Unscored starter slots">
+          {[...unscored].map(([status, teams]) => (
+            <div key={status} data-starter-status={status} style={{ fontSize: 12 }} title={recapStarterStatusMessage(status)}>
+              <span style={{ color: "var(--ink-4)" }}>{recapStarterStatusShort(status)} ({teams.length}):</span>{" "}
+              <span className="mono">{teams.join(", ")}</span>
+              <div className="dim2" style={{ fontSize: 10 }}>{recapStarterStatusMessage(status)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PredictorRow({ label, accuracy }: { label: string; accuracy: PredictorAccuracy }) {
+  return (
+    <tr>
+      <th scope="row" className="dim" style={{ textAlign: "left", fontWeight: 400, padding: "3px 24px 3px 0" }}>{label}</th>
+      <td style={{ textAlign: "right", paddingRight: 16 }}>{accuracy.correct} / {accuracy.count}</td>
+      <td style={{ textAlign: "right" }}>{percent(accuracy.accuracy ?? null)}</td>
+    </tr>
+  );
+}
+
+function MissTable({ misses }: { misses: Slot[] }) {
+  return (
+    <div className="market-table-scroll" role="region" aria-label="Starter misses" tabIndex={0} style={{ marginTop: 14 }}>
+      <table className="recap-table mono">
+        <caption className="visually-hidden">Team slots where at least one predictor named the wrong starter</caption>
+        <thead>
+          <tr>
+            <th scope="col">Team</th>
+            <th scope="col">Assumed</th>
+            <th scope="col">nflverse</th>
+            <th scope="col">Carried forward</th>
+            <th scope="col">Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          {misses.map(({ team, side }) => (
+            <tr key={`${team}-${side.actual_id}`}>
+              <th scope="row">{team}</th>
+              <td>
+                <Pick name={side.assumed_name} id={side.assumed_id} correct={side.assumed_correct} />
+                <div className="dim2" style={{ fontSize: 9 }}>
+                  {side.assumed_source}
+                  {side.assumed_as_of && ` · ${formatTimestamp(side.assumed_as_of)}`}
+                  {side.record_source && ` · ${recapRecordSourceLabel(side.record_source)}`}
+                </div>
+              </td>
+              <td><Pick name={side.nflverse_name} id={side.nflverse_id} correct={side.nflverse_correct} /></td>
+              <td><Pick name={side.carried_forward_name} id={side.carried_forward_id} correct={side.carry_forward_correct} /></td>
+              <td>
+                {side.actual_name ?? side.actual_id}
+                {side.actual_source && (
+                  <div className="dim2" style={{ fontSize: 9 }}>{recapActualSourceLabel(side.actual_source)}</div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Pick({ name, id, correct }: { name?: string | null; id?: string | null; correct?: boolean | null }) {
+  if (!id) return statusText("no_pick", "No pick recorded");
+  const mark = correct === true ? "right" : correct === false ? "wrong" : "not scored";
+  return (
+    <span data-starter-pick={mark} style={{ color: correct === false ? "var(--neg)" : undefined }}>
+      {name ?? id} <span className="dim2" style={{ fontSize: 9 }}>({mark})</span>
+    </span>
   );
 }
 

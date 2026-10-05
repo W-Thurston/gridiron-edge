@@ -26,9 +26,12 @@ from gridiron_edge.api.schemas.recaps import (
     RecapGame,
     RecapGameForecast,
     RecapGameResult,
+    RecapGameStarters,
     RecapMarketAtForecast,
     RecapPointForecast,
     RecapProjectedScoreForecast,
+    RecapStarterSide,
+    RecapStartingQbs,
     RecapWeekMetrics,
     RecapWinForecast,
     WeeklyRecapList,
@@ -44,11 +47,15 @@ from gridiron_edge.evaluation.weekly_recap import (
     ProductRowStatus,
     WeeklyRecap,
 )
+from gridiron_edge.evaluation.weekly_recap_starters import (
+    ActualStarterSource,
+    StarterRecordSource,
+    StarterStatus,
+)
 from gridiron_edge.evaluation.weekly_recap_store import WeeklyRecapSelection
 
 # Sections the recap does not carry yet; null and marked pending (D14).
 PENDING_RECAP_SECTIONS: Final[tuple[str, ...]] = (
-    "starting_qbs",
     "edges",
     "wagers",
     "season_to_date",
@@ -87,6 +94,9 @@ def serialize_weekly_recap(
         counts=RecapCountsResponse(**asdict(recap.counts)),
         metrics=RecapWeekMetrics.model_validate(asdict(recap.metrics)),
         games=[_game(row) for row in games.to_dict("records")],
+        starting_qbs=RecapStartingQbs.model_validate(
+            asdict(recap.starters) | {"capture_digests": list(recap.starter_capture_digests)}
+        ),
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )
 
@@ -182,6 +192,30 @@ def _game(row: Mapping[Hashable, Any]) -> RecapGame:
             market_abs_error=_number(row["projected_score_market_abs_error"]),
             closer=_closer(row["projected_score_closer"]),
         ),
+        starting_qbs=RecapGameStarters(away=_starter(row, "away"), home=_starter(row, "home")),
+    )
+
+
+def _starter(row: Mapping[Hashable, Any], side: str) -> RecapStarterSide:
+    record_source = _text(row[f"{side}_starter_record_source"])
+    actual_source = _text(row[f"{side}_actual_qb_source"])
+    return RecapStarterSide(
+        status=StarterStatus(row[f"{side}_starter_status"]),
+        record_source=None if record_source is None else StarterRecordSource(record_source),
+        assumed_id=_text(row[f"{side}_assumed_qb_id"]),
+        assumed_name=_text(row[f"{side}_assumed_qb_name"]),
+        assumed_source=_text(row[f"{side}_assumed_qb_source"]),
+        assumed_as_of=_text(row[f"{side}_assumed_qb_as_of"]),
+        nflverse_id=_text(row[f"{side}_nflverse_qb_id"]),
+        nflverse_name=_text(row[f"{side}_nflverse_qb_name"]),
+        carried_forward_id=_text(row[f"{side}_carried_forward_qb_id"]),
+        carried_forward_name=_text(row[f"{side}_carried_forward_qb_name"]),
+        actual_id=_text(row[f"{side}_actual_qb_id"]),
+        actual_name=_text(row[f"{side}_actual_qb_name"]),
+        actual_source=None if actual_source is None else ActualStarterSource(actual_source),
+        assumed_correct=_flag(row[f"{side}_assumed_correct"]),
+        nflverse_correct=_flag(row[f"{side}_nflverse_correct"]),
+        carry_forward_correct=_flag(row[f"{side}_carry_forward_correct"]),
     )
 
 

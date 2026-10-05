@@ -620,6 +620,9 @@ class TestWeeklyRecap:
         raw = tmp_path / "data/raw/NFL_wk_by_wk_nflverse.parquet"
         raw.parent.mkdir(parents=True)
         week.schedule.to_parquet(raw, index=False)
+        logs = tmp_path / "data/cleaned/player_game_logs.parquet"
+        logs.parent.mkdir(parents=True)
+        week.logs.to_parquet(logs, index=False)
         settings = SimpleNamespace(repo_root=tmp_path)
         monkeypatch.setattr("gridiron_edge.core.settings.get_settings", lambda: settings)
         monkeypatch.setattr(
@@ -688,6 +691,9 @@ class TestWeeklyRecap:
         assert result.exit_code == 0, result.output
         assert "Brier" in result.output
         assert "not in product: 2026_04_EEE_FFF" in result.output
+        # No evidence names a sidecar here, so the carried game reads not recorded.
+        assert "starting QBs: 2 of 8 slots scored (0 from a sidecar capture)" in result.output
+        assert "not recorded 2, not in product 2, unresolved 1, actual missing 1" in result.output
         assert "dry run, nothing written" in result.output
         assert not self._recap_root(repo).exists()
 

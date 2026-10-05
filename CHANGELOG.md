@@ -1,5 +1,28 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-05 - Unit 25: the weekly recap scores the starting-quarterback assumptions
+
+#### Added
+
+- The weekly recap (schema 2) has a starting-QB section (`DECISIONS.md` D87): per game and side, the assumed
+  starter, nflverse's value at composition and the carried-forward starter against who started, with whether each
+  was right, and the week's slot counts and each predictor's accuracy. Every slot carries a status
+  (`available`, `not_recorded`, `starter_unresolved`, `not_in_product`, `actual_missing`); the actual starter is
+  shown for every played game.
+- Rows without a starter record are scored from the digest-verified capture of the sidecar their run used
+  (labelled `sidecar_capture`); week 4's 9 carried rows are scored this way. A capture that fails verification
+  refuses the build.
+- The actual starter is nflverse's `*_qb_id` when that player threw a pass for the team that week, otherwise the
+  team's top passer in the player game logs; this replaces three stale nflverse values in weeks 2-3.
+- `GET /recaps/{season}/{week}` serves the section (no longer pending); the "Last Week" page shows a "Starting
+  quarterbacks" card with predictor accuracy, a misses table and every unscored slot named by status.
+- `qb_sidecar_captures` is a registered dataset directory.
+
+#### Changed
+
+- `gridiron evaluate weekly-recap` prints the starter summary. Weeks 1-3 were rebuilt and reselected at schema 2
+  (their game-forecast metrics are unchanged; every starter slot reads `not_recorded`).
+
 ### 2026-10-05 - The git-status test can no longer rewrite the enclosing repository
 
 #### Fixed

@@ -41,6 +41,8 @@ def _built(*, built_at: datetime = BUILT_AT, closing_line_c: float = -1.0) -> Bu
         product=week.product,
         forecast_events=week.events,
         games=games,
+        player_game_logs=week.logs,
+        sidecar_captures=week.captures,
         built_at=built_at,
     )
 

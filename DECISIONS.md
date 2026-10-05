@@ -8,6 +8,43 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D87 - The recap scores starter assumptions from the run's captured sidecar when a row has no record, against an attempt-checked actual starter
+
+**Date:** 2026-10-05
+
+**Context:** The weekly recap (D86) gains a starting-QB section: per game and side, the assumed starter, nflverse's
+schedule value at composition and the carried-forward starter (D65, D77), scored against who started. Two inputs
+were not settled. (1) Rows from a run that predates the product's starter record read `sidecar_unavailable`; all
+9 carried rows of week 4's selected product come from run `81248588`. That run's prediction-input evidence names
+the QB/coach sidecar it was bound to by digest (`ee9c8a73...`), and a byte-exact copy was captured under
+`data/output/qb_sidecar_captures/`. The product's record is `resolve_starting_qb_provenance` over that sidecar;
+over the capture it reproduces the 6 recorded week 4 games exactly (assumed, nflverse and carry-forward ids, both
+sides). (2) D75 took the raw nflverse `*_qb_id` of a completed game as the actual starter, on 2009-2024 data. For
+2026 weeks 1-3 it matches the team's top passer in the player game logs in 90 of 96 slots; of the other 6, three
+are mid-game changes in which nflverse's player did throw, and three name a player with no pass attempt (CAR @
+ATL home in week 2, SEA @ WAS both sides in week 3): pre-game values nflverse had not corrected.
+
+**Decision:**
+1. A row without a starter record (a schema-1 product, or `sidecar_unavailable`) is scored from the capture of
+   the sidecar its run's evidence names, found as `sidecar_sha256_{digest}.parquet` under the registered
+   `qb_sidecar_captures` directory and accepted only if its bytes hash to that digest and its size matches. The
+   slot is labelled `sidecar_capture`; a capture that fails verification, or evidence that names two sidecars for
+   one run, refuses the build; no capture reads `not_recorded`. The capture digests are in the manifest.
+2. The actual starter is nflverse's `*_qb_id` when that player has at least one regular-season pass attempt for
+   the team that week in the player game logs, otherwise the team's top passer that week (attempts, then player
+   id); each slot records which (`nflverse_schedule`, `game_log_top_passer`). This keeps a starter who left
+   mid-game and replaces a stale pre-game value. With no pass attempt for the team the slot reads
+   `actual_missing`. The scoped passer rows are digested into the recap identity, so a stat correction gives a
+   new recap.
+3. The actual starter is shown for every played game, whatever the slot's status; correctness is scored only for
+   `available` slots and only for predictors that made a pick. No accuracy threshold is introduced (the D75 note
+   on sample size still applies; the season roll-up is where any criterion would be declared).
+
+**Not done:** the first snap from full play-by-play (the local file has no player ids; it would need an nflverse
+fetch). Earlier weeks' sidecars were never captured, so weeks 1-3 stay `not_recorded`.
+
+---
+
 ## D86 - A weekly recap is an immutable artifact over the week's schedule, scored against the result and the closing market
 
 **Date:** 2026-10-04
