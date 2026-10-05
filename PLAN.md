@@ -268,9 +268,15 @@ at request time.
 | 26 | Weekly-cycle and `post-week` hook | 23 (ideally 25) | dry run; week 5's unattended closeout |
 | 27 | Season roll-up | 24 | weeks 1-4 |
 | 28 | Edges, recommendations and wagers | 24 (27 for season wager totals) | weeks 1, 2 and 4 |
+| 29 | Retry a soft-failed recap (cycle follow-on) | 26, 27 | stubbed ports; a forced soft failure |
+| 30 | Alert when the cycle needs a person (cycle follow-on, W20) | 19 (ideally 29) | stubbed ports; one real test alert |
 
 Unit 26 must land before week 5's closeout window opens (the first 06:00 local at least 4 h after week 5's
 last kickoff, about Tuesday 2026-10-13) for week 5 to be recapped by the cycle; otherwise build it by hand.
+
+Units 29 and 30 (scoped 2026-10-05, with the user) are weekly-cycle reliability follow-ons found while closing Unit
+27, not recap sections. They are sequenced after Unit 28 by default; either may be taken first at the user's choice,
+since neither touches the recap schema.
 
 #### Unit 23 - Weekly Recap Artifact and Game-Forecast Section [Completed October 4, 2026; `DECISIONS.md` D86]
 
@@ -672,6 +678,101 @@ CLV from the 34-snapshot ledger, 17 settled wagers. Week 2: 15 settled and 1 `un
 
 **Acceptance.** Every week states what was published (or that it was withheld or not recorded) and how
 recorded wagers did, with nothing recomputed; gates pass; HANDOFF, CHANGELOG updated.
+
+#### Unit 29 - Retry a Soft-Failed Recap [Scoped October 5, 2026; not active]
+
+**Goal.** A recap the closeout could not build is rebuilt by the cycle itself, so a transient failure (a file not yet
+written, a lock, a bug fixed the same day) does not leave a week without its recap until someone notices.
+
+**Why.** The closeout's `build-weekly-recap` stage is soft (Unit 26): when it fails, the closeout still records
+`done`, the next week's forecast goes ahead, and nothing retries the stage. `week-cycle status` shows
+`week N closed; soft-failed: build-weekly-recap` and the receipt's warnings hold the reason, but the rebuild is a
+manual `post-week --only build-weekly-recap`. Since Unit 27 the stage also rolls the season recap up, and its
+partial failure (`season recap refused: ...` after the weekly recap was selected) is soft-failed the same way.
+
+**Depends on.** Units 26 and 27 committed. Independent of the recap schema (Unit 28).
+
+**Start here.** `weekly_cycle/runner.py` (`closeout`, and `edges`, the existing post-step hook that runs after the
+due step), `weekly_cycle/decision.py` (`_closed`, `RETRY_AFTER`), `weekly_cycle/receipts.py` (attempt and outcome
+constants; a closeout receipt's `results["stages"]` maps a stage to `"soft-failed"`), `cli/week_cycle.py`
+(`build_close_stages`, the real ports, the status detail), `cli/post_week.py` (`_stage_build_weekly_recap`);
+tests in `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` and `tests/unit/cli/test_week_cycle.py`; HANDOFF
+"Weekly Cycle"; DECISIONS D82.
+
+**Design.**
+1. A recap rebuild is pending for finished week N when N's latest `done` closeout lists `build-weekly-recap` as
+   soft-failed and no later `recap` receipt for N is `done`.
+2. After the due step (the place `edges` runs), a pending rebuild at least `RETRY_AFTER` after the last attempt runs
+   the same stage function (weekly recap, then season roll-up) and records a receipt with a new attempt kind,
+   `recap`: `done` with the stage's report lines, or `failed` with the reason. It never blocks or delays the
+   closeout, forecast, watch or refresh.
+3. `week-cycle status` shows a pending rebuild and its last outcome; the dry run says when one is due.
+4. `check-collector`'s soft failure is not retried here (it is a point-in-time health check that the next closeout
+   runs again).
+
+**Decide at start.** (a) A retry limit or none (recommended: retry hourly until the week after N closes, then stop
+and leave it pending in `status`; record the limit in DECISIONS, shared contract 8 by analogy). (b) Whether a manual
+`post-week --only build-weekly-recap` should clear the pending state (recommended: yes, by checking the current
+selection rather than receipts: the rebuild is pending only while N has no selected recap or the season recap does
+not read N's selected recap). (c) Post-step hook versus a new decision step kind (recommended: post-step hook).
+
+**Tests.** A soft-failed closeout leaves a pending rebuild; the rebuild runs after the due step, records `recap`
+`done`, and is not repeated; a failing rebuild retries after an hour and not sooner; the limit in (a); a manual
+rebuild clears it per (b); a clean closeout never schedules one; `status` and the dry run show it.
+
+**Real-data verification.** Dry run on the real state (no pending rebuild expected after week 4's closeout if its
+recap built). With approval, force one soft failure on a scratch copy or by a stubbed port, not on the real store.
+
+**Acceptance.** A soft-failed recap is rebuilt by the cycle without blocking anything, visibly, within the declared
+limit; gates pass; HANDOFF "Weekly Cycle", CHANGELOG, and DECISIONS for the limit updated.
+
+#### Unit 30 - Alert When the Cycle Needs a Person [Scoped October 5, 2026; not active]
+
+**Goal.** When the unattended cycle cannot make progress by itself, the user hears about it without having to run
+`week-cycle status`.
+
+**Why.** A failed attempt exits 1 (the systemd unit shows failed and the journal holds the error), a `blocked`
+forecast or refresh (dirty tracked tree) exits 0 and shows only in `status`, a closeout can sit `waiting` on
+nflverse indefinitely, and a soft-failed stage counts as done. Every retry is silent; nothing notifies. ROADMAP W20
+left "whether a blocked step should alert somewhere visible" undecided; this unit settles that half of W20 (the
+runner-checkout half stays open).
+
+**Depends on.** Unit 19 (the cycle and its receipts). Ideally after Unit 29, so a soft-failed recap alerts only once
+its retries are exhausted.
+
+**Start here.** `weekly_cycle/runner.py` (`CycleOutcome.failed`, each executor's `record`), `weekly_cycle/receipts.py`,
+`weekly_cycle/decision.py` (closeout window, `RETRY_AFTER`), `cli/week_cycle.py` (exit codes, `status`),
+`deploy/systemd/gridiron-edge-week-cycle.service` and `.timer` (an `OnFailure=` unit is an option),
+`ops` commands (`cli/ops*.py`, the collector pull) for the existing pattern of credentials kept outside the repo;
+HANDOFF "Weekly Cycle"; DECISIONS D82; ROADMAP W20.
+
+**Design.**
+1. Alert conditions, evaluated from receipts after each run: an attempt `failed`; a forecast or refresh `blocked`;
+   a closeout still `waiting` some hours after its window opened; a soft-failed stage that is no longer being
+   retried; and the recovery of any of these (one "resolved" notice).
+2. Deduplicated: one alert per (season, week, attempt kind, condition) when it starts, not every hour, plus an
+   optional daily reminder while it persists; each alert sent or suppressed is recorded (an alert receipt beside
+   the cycle receipts), so `status` lists open alerts.
+3. Delivery behind one small port with a local fallback that always works (a line in `status` and the journal);
+   the external channel is configured outside the repo and the cycle never fails because an alert could not be
+   sent.
+
+**Decide at start.** (a) The channel: a push service such as ntfy (phone, external service), email over SMTP
+(credentials), a Windows desktop notification from WSL via `powershell.exe` (local only, needs the machine awake),
+or a page-level banner in the frontend (only seen when the app is open). Sending to an external service publishes
+content, so the message text is limited to week, step and outcome. (b) The `waiting` threshold (hours after the
+window opens) and the reminder interval, recorded in DECISIONS before seeing data. (c) Whether the timer itself not
+running (WSL down) needs detecting (it cannot alert from inside the cycle; recommended: out of scope, noted).
+
+**Tests.** Each condition opens one alert and a recovery closes it; no repeat within the reminder interval; a
+delivery failure is recorded and does not fail the run; `status` lists open alerts; the dry run sends nothing.
+
+**Real-data verification.** Dry run on the real receipts (lists what would alert). With approval, one real test
+alert through the chosen channel.
+
+**Acceptance.** Every condition in which the cycle needs a person produces one visible alert and one recovery
+notice, deduplicated and recorded, without making the cycle depend on the channel; gates pass; HANDOFF "Weekly
+Cycle", CHANGELOG, DECISIONS (channel, thresholds), and ROADMAP W20 updated.
 
 ### Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 
