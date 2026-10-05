@@ -605,3 +605,121 @@ class TestExplainLogisticCommand:
         assert result.exit_code != 0
         assert "No win_prob/logistic persisted-estimator evidence found" in result.output
         assert "Traceback" not in result.output
+
+
+class TestWeeklyRecap:
+    """Cover `evaluate weekly-recap`: refusals, the dry run, writing, selection and replay."""
+
+    @pytest.fixture
+    def repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from types import SimpleNamespace
+
+        from tests.fixtures.weekly_recap import recap_week
+
+        week = recap_week()
+        raw = tmp_path / "data/raw/NFL_wk_by_wk_nflverse.parquet"
+        raw.parent.mkdir(parents=True)
+        week.schedule.to_parquet(raw, index=False)
+        settings = SimpleNamespace(repo_root=tmp_path)
+        monkeypatch.setattr("gridiron_edge.core.settings.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_current_weekly_product",
+            lambda repo, *, season, week: self.product,
+        )
+        monkeypatch.setattr("gridiron_edge.datasets.loaders.load_games", lambda repo: self.games)
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            lambda *, repo, season, week: week_events,
+        )
+        week_events = week.events
+        self.product = week.product
+        self.games = week.games
+        return tmp_path
+
+    def _invoke(self, *extra: str):
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        return CliRunner().invoke(
+            evaluate_app,
+            ["weekly-recap", "--season", "2026-2027", "--week", "4", *extra],
+        )
+
+    def _recap_root(self, repo: Path) -> Path:
+        return repo / "data/output/weekly_recaps"
+
+    def test_refuses_a_week_with_an_unplayed_game(self, repo: Path) -> None:
+        import pandas as pd
+
+        raw = repo / "data/raw/NFL_wk_by_wk_nflverse.parquet"
+        schedule = pd.read_parquet(raw)
+        schedule.loc[0, ["away_score", "home_score", "result"]] = None
+        schedule.to_parquet(raw, index=False)
+
+        result = self._invoke()
+
+        assert result.exit_code == 1
+        assert "1 of 4 games have no result yet: 2026_04_AAA_BBB" in result.output
+        assert not self._recap_root(repo).exists()
+
+    def test_refuses_a_week_without_a_selected_product(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def missing(repo: Path, *, season: str, week: int) -> None:
+            raise FileNotFoundError("none")
+
+        monkeypatch.setattr("gridiron_edge.datasets.loaders.load_current_weekly_product", missing)
+
+        result = self._invoke()
+
+        assert result.exit_code == 1
+        assert "no weekly product is selected" in result.output
+
+    def test_refuses_a_score_conflict(self, repo: Path) -> None:
+        self.games.loc[self.games["GAME_ID"] == "2026_04_AAA_BBB", "HOME_SCORE"] = 99.0
+
+        result = self._invoke()
+
+        assert result.exit_code == 1
+        assert "disagree on scores: 2026_04_AAA_BBB" in result.output
+
+    def test_dry_run_prints_the_recap_and_writes_nothing(self, repo: Path) -> None:
+        result = self._invoke("--dry-run")
+
+        assert result.exit_code == 0, result.output
+        assert "Brier" in result.output
+        assert "not in product: 2026_04_EEE_FFF" in result.output
+        assert "dry run, nothing written" in result.output
+        assert not self._recap_root(repo).exists()
+
+    def test_writes_selects_then_replays(self, repo: Path) -> None:
+        import json
+
+        first = self._invoke()
+        assert first.exit_code == 0, first.output
+        assert "previous selection: none" in first.output
+        assert "new: recap" in first.output
+        current = self._recap_root(repo) / "current.json"
+        selection = json.loads(current.read_text())["selections"]["2026-2027_week_04"]
+        stored = {
+            path: path.read_bytes() for path in self._recap_root(repo).rglob("*") if path.is_file()
+        }
+
+        second = self._invoke()
+
+        assert second.exit_code == 0, second.output
+        assert f"replayed: recap {selection['recap_id']}" in second.output
+        assert {
+            path: path.read_bytes() for path in self._recap_root(repo).rglob("*") if path.is_file()
+        } == stored
+
+    def test_reselects_a_stored_recap_that_is_not_current(self, repo: Path) -> None:
+        first = self._invoke()
+        self.games.loc[self.games["GAME_ID"] == "2026_04_EEE_FFF", "VEGAS_LINE"] = -2.0
+        changed = self._invoke()
+        self.games.loc[self.games["GAME_ID"] == "2026_04_EEE_FFF", "VEGAS_LINE"] = -1.0
+
+        again = self._invoke()
+
+        assert "new: recap" in first.output
+        assert "new: recap" in changed.output
+        assert "reselected: recap" in again.output

@@ -110,7 +110,8 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Active unit: Unit 23 - Weekly recap artifact and the game-forecast section.** Sequence:
+**Unit 23 completed October 4, 2026 (`CHANGELOG.md`); next: Unit 24 - Weekly recap API and page, not yet
+active.** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -270,7 +271,9 @@ at request time.
 Unit 26 must land before week 5's closeout window opens (the first 06:00 local at least 4 h after week 5's
 last kickoff, about Tuesday 2026-10-13) for week 5 to be recapped by the cycle; otherwise build it by hand.
 
-#### Unit 23 - Weekly Recap Artifact and Game-Forecast Section [Active, scoped October 4, 2026]
+#### Unit 23 - Weekly Recap Artifact and Game-Forecast Section [Completed October 4, 2026; `DECISIONS.md` D86]
+
+Closed; the completed record is under "Unit 23" below. The scoping record follows.
 
 **Goal.** After a week's results are in, one command builds an immutable recap of every scheduled game's
 forecast against the result and against the closing market, from persisted state only, and selects it.
@@ -332,6 +335,18 @@ creation time); `evaluation/market_agreement.py` (`MARGIN_STD`, `_joined`); `cli
    outcome rows, the conventions used, counts, week metrics, the game-frame reference with row count,
    columns and content digest, `built_at`) and `schema=1/games/{recap_id}.parquet`. Identity, replay and
    selection follow shared contract 4.
+
+**Decided at start (2026-10-04, from the audit; the unit had no open items).**
+1. Week 2's `development` product has no `spread_line`, `total_line` or `ingested_at`: its rows read
+   `not_recorded` for the market at forecast time; the closing comparison is unaffected.
+2. A selected component whose forecast event does not match refuses the week instead of reading
+   `forecast_missing` (two immutable stores disagree; weeks 1-4 all match).
+3. Model and market are each scored over their own available games, with counts, so the model side equals the
+   closeout; "closer" counts use games both sides forecast.
+4. The projected-score metric is the model's team-score MAE against the actual scores beside the market-implied
+   team scores' MAE against the actual scores.
+5. The game frame is named by its content digest (`games/{content_digest}.parquet`), not the recap id, since the
+   recap id hashes the frame reference. A played game missing from the cleaned file refuses like a score conflict.
 
 **Tests.** Pure builder on synthetic weeks: every family available; a scheduled game not in the product;
 `forecast_missing`; a tie; a missing closing line; a carried row; the sign conventions against a hand case
@@ -859,6 +874,73 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 23 — Weekly Recap Artifact and Game-Forecast Section [Completed October 4, 2026]
+
+#### Completed
+
+`gridiron evaluate weekly-recap --season S --week W [--dry-run]` builds an immutable recap of a finished week
+from persisted state only (`DECISIONS.md` D86): one row per regular-season game of the raw schedule (a game the
+selected product lacks reads `not_in_product`), each with its forecast role, run and carried flag, and the win
+probability, spread, total and projected team scores against the result, the closing market (`VEGAS_LINE`,
+`OVER_UNDER`, Phi(`VEGAS_LINE` / 13.5), implied team scores) and the market at forecast time. Every missing value
+carries a status (`forecast_missing`, `outcome_tie`, `not_recorded`, `closing_line_missing`). Week metrics put
+model beside market with counts, plus "closer to the result" counts; event matching, outcomes and ties come from
+`close_live_forecasts`, so model metrics equal the closeout's. The command refuses an unplayed game, a missing
+product, a raw/cleaned score disagreement, an unscheduled product game and an unmatched forecast event. The
+recap is stored as a JSON manifest plus a content-addressed Parquet game frame under the registered
+`weekly_recaps` root; its identity excludes `built_at`, so a rerun replays byte for byte, and `current.json`
+selects one recap per season and week. `week_completion` and `completed_game_ids` moved to
+`evaluation/week_schedule.py`. Weeks 1-3 are built and selected.
+
+#### Goal
+
+Answer "how did we do last week?" for every game forecast with a durable, reproducible artifact that later units
+serve, extend by section and roll up by season.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/week_schedule.py` - one week's regular-season schedule from the raw games file, and the completion helpers moved from the cycle CLI.
+- `src/gridiron_edge/evaluation/weekly_recap.py` - status enums, manifest and metric dataclasses, the pure builder, identity, validation and JSON round trip.
+- `src/gridiron_edge/evaluation/weekly_recap_store.py` - write with replay, verified load, explicit per-week selection.
+- `tests/fixtures/weekly_recap.py` - a synthetic finished week covering every status.
+- `tests/unit/evaluation/test_week_schedule.py` - the moved helper tests and the scoped schedule.
+- `tests/unit/evaluation/test_weekly_recap.py` - statuses, sign conventions, hand-checked metrics, equality with the closeout, identity, refusals.
+- `tests/unit/evaluation/test_weekly_recap_store.py` - round trip, byte-for-byte replay, conflicts and tampering, selection.
+
+Changed:
+- `src/gridiron_edge/cli/evaluate.py` - the `weekly-recap` command.
+- `src/gridiron_edge/cli/week_cycle.py` - imports the moved schedule helpers.
+- `src/gridiron_edge/datasets/registry.py` - `weekly_recaps` -> `data/output/weekly_recaps`.
+- `tests/unit/cli/test_evaluate.py` - command refusals, dry run, write, replay and reselection.
+- `tests/unit/cli/test_week_cycle.py` - the moved helper tests removed.
+- `tests/unit/datasets/test_registry.py` - the new registry key.
+- `DECISIONS.md` - D86.
+- `HANDOFF.md` - "Weekly Recap" section and the registry list.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress.
+- `PLAN.md` - this record and the decisions taken at start.
+
+Removed:
+- None.
+
+#### Tests
+
+Python gate: ruff, pyrefly, `pytest -m "unit and not slow"` (4,885 selected; the two registry assertions that
+pinned the key list were updated and pass). Real data: dry runs, then builds of weeks 1-3 (ids `7d7e402d`,
+`7a89618f`, `315255ae`); model metrics equal the closeout's (week 1 win Brier 0.2372, week 3 spread MAE 9.18);
+one game per week recomputed by hand from the product row and cleaned games file with no mismatch (BAL @ IND,
+PHI @ TEN, BAL @ DAL); a rerun of all three replayed with every stored file byte-identical; week 2 reads
+`development` with the market at forecast time `not_recorded`; week 4 is refused with its 14 unplayed games. An
+in-memory week 4 with placeholder results gave PIT @ CLE `not_in_product` and 9 rows carried from `81248588`.
+Week 4's real build waits for Tuesday's results.
+
+#### Acceptance
+
+Weeks 1-3 are built from persisted state and selected, every scheduled game appears with explicit statuses, the
+metrics match the closeout and a hand check, a rerun replays exactly, and the contract is recorded in D86 and
+HANDOFF for Unit 24 to serve.
 
 ### Test Environment Independence from Terminal Color Settings [Completed October 3, 2026]
 

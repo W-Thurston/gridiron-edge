@@ -35,6 +35,7 @@ from gridiron_edge.cli._composites import (
 )
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
+from gridiron_edge.evaluation.week_schedule import completed_game_ids, week_completion
 from gridiron_edge.weekly_cycle.receipts import read_receipts
 from gridiron_edge.weekly_cycle.runner import (
     AvailabilityRefresh,
@@ -55,22 +56,6 @@ _ROLLED_OUTCOMES = frozenset({"rolled", "selected_existing"})
 # ---------------------------------------------------------------------------
 # Pure checks (each testable without the network or the heavy stages)
 # ---------------------------------------------------------------------------
-
-
-def week_completion(games: DataFrame, *, season_int: int, week: int) -> tuple[int, int]:
-    """Return ``(scheduled, played)`` regular-season games for one week of the raw games file."""
-    scoped = games.loc[(games["season"].astype(int) == season_int) & (games["week"] == week)]
-    if "game_type" in scoped.columns:
-        scoped = scoped.loc[scoped["game_type"] == "REG"]
-    return len(scoped), int(scoped["result"].notna().sum())
-
-
-def completed_game_ids(games: DataFrame, *, season_int: int, week: int) -> set[str]:
-    """Return the regular-season games of one week that have a result in the raw games file."""
-    scoped = games.loc[(games["season"].astype(int) == season_int) & (games["week"] == week)]
-    if "game_type" in scoped.columns:
-        scoped = scoped.loc[scoped["game_type"] == "REG"]
-    return set(scoped.loc[scoped["result"].notna(), "game_id"].astype(str))
 
 
 def coverage_gaps(expected: set[str], sources: dict[str, set[str] | None]) -> dict[str, list[str]]:

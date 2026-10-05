@@ -8,6 +8,46 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D86 - A weekly recap is an immutable artifact over the week's schedule, scored against the result and the closing market
+
+**Date:** 2026-10-04
+
+**Context:** "How did we do last week?" had no persisted answer. The closeout (`close_live_forecasts`) reconciles
+the selected product's events with outcomes, but `post-week` and the cycle only print it, it counts product rows
+rather than scheduled games (week 4's PIT @ CLE is in no product from run `81248588` on), and it never compares
+with the market. Weeks 1-3 are finished and selected; week 2's product is a `development` regeneration without
+the market-at-forecast columns.
+
+**Decision:**
+1. `gridiron evaluate weekly-recap` builds the recap from persisted state only: the week's regular-season
+   schedule from the raw games file, the week's *selected* product (never a non-selected one, never chosen by
+   recency) and the forecast events it cites, and the cleaned games file. Nothing is scored at request time.
+2. Scope is the schedule, not the product: one row per scheduled game; a game the product lacks is a row with
+   status `not_in_product`. Every missing value carries a status from a `StrEnum`; nothing is dropped.
+3. Event matching, outcomes and ties come from the closeout's reconciliation, so the recap's model metrics equal
+   the closeout's. A selected component whose event does not match refuses the week (an integrity defect in two
+   immutable stores, not a missing forecast), as do an unplayed game, a missing product and a score the raw
+   and cleaned files disagree on.
+4. The closing market is D85's convention: `VEGAS_LINE` (expected home margin) and `OVER_UNDER` from the cleaned
+   games file, the home win probability Phi(`VEGAS_LINE` / `MARGIN_STD`) with `MARGIN_STD` imported from
+   `evaluation/market_agreement.py`, and market-implied team scores (total +/- margin) / 2. The product's
+   `spread_line` and `total_line` are the market at forecast time, `not_recorded` where the product lacks them.
+   Each side is scored over its own available games with its count; "closer to the result" counts only games
+   both sides forecast. No pass or fail threshold is introduced: a week is 16 games.
+5. Every week with a selected product is recapped, whatever its forecast role; the role is recorded per week and
+   per row.
+6. Identity is the SHA-256 of the manifest content excluding `built_at` (the recommendation-governance pattern).
+   Unchanged inputs replay to the same identity with the stored files kept byte for byte; a reused identity with
+   different content is rejected; changed inputs give a new identity and old recaps stay. The game frame is
+   content-addressed by its own digest. `current.json` holds one explicit selection per season and week, and the
+   build command selects what it built. The loader accepts only the current schema and verifies identity and
+   frame digest.
+
+**Not done:** the API and page, the starting-QB, edge, recommendation and wager sections, the season roll-up,
+and the cycle hook. The closeout still counts product rows (ROADMAP W23); the recap reports the gap instead.
+
+---
+
 ## D85 - Raw model-versus-market EV is withheld until the model is shown to beat the market
 
 **Date:** 2026-10-04

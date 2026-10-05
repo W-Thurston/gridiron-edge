@@ -13,7 +13,7 @@ Composite model identity:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, LiteralString
+from typing import TYPE_CHECKING, Literal, LiteralString, NoReturn
 
 from pandas import DataFrame, Series
 
@@ -36,6 +36,7 @@ from gridiron_edge.evaluation.select import (
 
 if TYPE_CHECKING:
     from gridiron_edge.evaluation.backfill import BackfillResult
+    from gridiron_edge.evaluation.weekly_recap import WeeklyRecap
 
 
 evaluate_app = typer.Typer(
@@ -1908,3 +1909,155 @@ def evaluate_starting_qb_projection(
     typer.echo("")
     typer.echo(f"{'BAR CLEARED' if verdict.passes else 'BAR NOT CLEARED'}")
     console.summary()
+
+
+def _weekly_recap_lines(recap: WeeklyRecap, games: DataFrame) -> list[str]:
+    """Render a recap's week metrics, model beside market, and its not-in-product games."""
+
+    def number(value: float | None, digits: int) -> str:
+        return "n/a" if value is None else f"{value:.{digits}f}"
+
+    metrics = recap.metrics
+    counts = recap.counts
+    lines = [
+        f"{recap.season} week {recap.week}: product {recap.product_id} "
+        f"(schema {recap.product_schema_version}, role {recap.forecast_role or 'none'})",
+        f"games: {counts.scheduled_games} scheduled, {counts.in_product} in product, "
+        f"{counts.not_in_product} not in product, {counts.carried_rows} carried, "
+        f"{counts.outcome_ties} tied",
+        "",
+        f"{'family':<16}{'model':>34}{'market':>34}   closer (model/market/tie)",
+    ]
+    win = metrics.win
+    lines.append(
+        f"{'win':<16}"
+        f"{f'Brier {number(win.model.brier, 4)} ({win.model.count})':>34}"
+        f"{f'Brier {number(win.market.brier, 4)} ({win.market.count})':>34}"
+        f"   {win.closer.model}/{win.closer.market}/{win.closer.tie}"
+    )
+    lines.append(
+        f"{'':<16}"
+        f"{f'log loss {number(win.model.log_loss, 4)}, acc {number(win.model.accuracy, 3)}':>34}"
+        f"{f'log loss {number(win.market.log_loss, 4)}, acc {number(win.market.accuracy, 3)}':>34}"
+    )
+    for label, family in (
+        ("spread", metrics.spread),
+        ("total", metrics.total),
+        ("team score", metrics.projected_score),
+    ):
+        model, market = family.model, family.market
+        lines.append(
+            f"{label:<16}"
+            f"{f'MAE {number(model.mae, 2)} bias {number(model.bias, 2)} ({model.count})':>34}"
+            f"{f'MAE {number(market.mae, 2)} bias {number(market.bias, 2)} ({market.count})':>34}"
+            f"   {family.closer.model}/{family.closer.market}/{family.closer.tie}"
+        )
+    missing = games.loc[games["product_row_status"] == "not_in_product", "game_id"].tolist()
+    not_recorded = int((games["forecast_market_status"] == "not_recorded").sum())
+    lines.append("")
+    lines.append("not in product: " + (", ".join(missing) if missing else "none"))
+    if not_recorded:
+        lines.append(f"market at forecast time not recorded for {not_recorded} game(s)")
+    return lines
+
+
+@evaluate_app.command("weekly-recap")
+def evaluate_weekly_recap(
+    *,
+    season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
+    week: int = typer.Option(..., min=1, help="Regular-season week."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Build and print the recap without writing or selecting it."
+    ),
+) -> None:
+    r"""Recap a finished week: every scheduled game's forecast against the result and market.
+
+    Builds an immutable recap from persisted state only (`DECISIONS.md` D86): the week's
+    schedule from the raw games file, the week's selected weekly product and the forecast
+    events it cites, and the cleaned games file's scores and closing lines. Writes it under
+    `data/output/weekly_recaps/` and selects it for the week. A rerun on unchanged inputs
+    replays to the same identity and leaves the stored files untouched.
+
+    Refuses a week with an unplayed game, a week without a selected product, and a game whose
+    scores differ between the raw and cleaned games files.
+
+    \b
+    Examples:
+      gridiron evaluate weekly-recap --season 2026-2027 --week 3 --dry-run
+      gridiron evaluate weekly-recap --season 2026-2027 --week 3
+    """
+    from datetime import UTC, datetime
+
+    import pandas as pd
+
+    from gridiron_edge.core.console import console
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.datasets.loaders import load_current_weekly_product, load_games
+    from gridiron_edge.datasets.registry import dataset_path
+    from gridiron_edge.evaluation.forecast_store import load_forecast_events
+    from gridiron_edge.evaluation.week_schedule import scheduled_games
+    from gridiron_edge.evaluation.weekly_recap import build_weekly_recap, unplayed_game_ids
+    from gridiron_edge.evaluation.weekly_recap_store import (
+        RecapWriteOutcome,
+        get_current_weekly_recap_selection,
+        select_current_weekly_recap,
+        weekly_recap_manifest_path,
+        write_weekly_recap,
+    )
+    from gridiron_edge.ratings.history import season_start
+
+    def refuse(reason: str) -> NoReturn:
+        typer.echo(f"Cannot recap {season} week {week}: {reason}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        season_int = season_start(season)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--season") from error
+    repo: Path = get_settings().repo_root
+    console.header("evaluate weekly-recap", subtitle=f"{season} week {week}")
+    raw = pd.read_parquet(dataset_path(repo, "games_raw_nflverse"))
+    schedule = scheduled_games(raw, season_int=season_int, week=week)
+    if schedule.empty:
+        refuse("no regular-season games are scheduled.")
+    unplayed = unplayed_game_ids(schedule)
+    if unplayed:
+        refuse(
+            f"{len(unplayed)} of {len(schedule)} games have no result yet: {', '.join(unplayed)}"
+        )
+    try:
+        product = load_current_weekly_product(repo, season=season, week=week)
+    except FileNotFoundError:
+        refuse("no weekly product is selected.")
+    try:
+        built = build_weekly_recap(
+            season=season,
+            week=week,
+            schedule=schedule,
+            product=product,
+            forecast_events=load_forecast_events(repo=repo, season=season, week=week),
+            games=load_games(repo),
+            built_at=datetime.now(UTC),
+        )
+    except ValueError as error:
+        refuse(str(error))
+    recap = built.recap
+    for line in _weekly_recap_lines(recap, built.games):
+        typer.echo(line)
+    typer.echo("")
+    previous = get_current_weekly_recap_selection(season=season, week=week, repo=repo)
+    typer.echo(f"previous selection: {previous.recap_id if previous else 'none'}")
+    if dry_run:
+        stored = weekly_recap_manifest_path(recap.recap_id, repo=repo).exists()
+        typer.echo(
+            f"dry run, nothing written: recap {recap.recap_id} "
+            f"({'already stored' if stored else 'new'})"
+        )
+        return
+    outcome = write_weekly_recap(built, repo=repo)
+    if previous is not None and previous.recap_id == recap.recap_id:
+        typer.echo(f"replayed: recap {recap.recap_id} is unchanged and stays selected")
+        return
+    select_current_weekly_recap(recap.recap_id, selected_at=datetime.now(UTC), repo=repo)
+    verb = "new" if outcome is RecapWriteOutcome.WRITTEN else "reselected"
+    typer.echo(f"{verb}: recap {recap.recap_id} is now selected")

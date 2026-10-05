@@ -29,6 +29,7 @@ DatasetKey = Literal[
     "predictions_csv",
     "elo_rankings_csv",
     "weekly_products",
+    "weekly_recaps",
 ]
 
 
@@ -73,6 +74,7 @@ DATASETS: dict[DatasetKey, DatasetSpec] = {
     "predictions_csv": DatasetSpec("data/output/predictions"),
     "elo_rankings_csv": DatasetSpec("data/output/rankings"),
     "weekly_products": DatasetSpec("data/output/weekly_products"),
+    "weekly_recaps": DatasetSpec("data/output/weekly_recaps"),
 }
 
 

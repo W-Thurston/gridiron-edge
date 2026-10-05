@@ -190,6 +190,9 @@ data/output/predictions/forecast_events.parquet
 data/output/weekly_products/index.json
 data/output/weekly_products/current.json
 data/output/weekly_products/products/{product_id}.parquet
+data/output/weekly_recaps/current.json
+data/output/weekly_recaps/schema=1/recaps/{recap_id}.json
+data/output/weekly_recaps/schema=1/games/{content_digest}.parquet
 data/odds/odds_current.parquet
 data/odds/history/season={season}/week={week}.parquet
 data/odds/collection_plans/current.json
@@ -1295,6 +1298,25 @@ The command refreshes outcomes, refreshes next-week schedule, player-stats, and 
 `post-week` does not run historical forecast backfill.
 
 `post-week` also does not forecast the next week. No weekly product exists for week N+1 until `weekly-predict` runs, so the API and frontend report weekly predictions and edges as unavailable and `edges report` reports no selected product. After a successful full run, `post-week` prints the next steps: `weekly-predict`, `ingest odds`, then `edges report` for week N+1. `weekly-predict` requires a clean tracked worktree; a dirty tree fails `predict-week`, and the composite summary prints that reason.
+
+## Weekly Recap
+
+Once every game of a week has a result, build the week's recap by hand (neither `post-week` nor the cycle runs it yet):
+
+```bash
+uv run gridiron evaluate weekly-recap --season 2026-2027 --week 3 --dry-run   # print only
+uv run gridiron evaluate weekly-recap --season 2026-2027 --week 3
+```
+
+The recap (`DECISIONS.md` D86) is built from persisted state only: the week's regular-season schedule from the raw nflverse games file (`evaluation/week_schedule.py`), the week's *selected* weekly product and the forecast events it cites, and the cleaned games file's scores and closing lines. It never reads a non-selected product. It reuses `close_live_forecasts` for event matching, outcomes and ties, so its model metrics equal the closeout's.
+
+- **Rows.** One row per scheduled game, ordered by kickoff, never one per product row. A scheduled game the product lacks reads `not_in_product`; every missing value carries a status (`forecast_missing`, `outcome_tie` for Win, `not_recorded` when the product did not record the market at forecast time, `closing_line_missing`). Each row records its forecast role, run, `generated_at` and whether it was carried from an earlier run (D83).
+- **Families.** Win probability, spread (projected home margin), total and projected team scores, each against the result and the closing market: `VEGAS_LINE` (expected home margin), `OVER_UNDER`, the market home win probability Phi(`VEGAS_LINE` / 13.5) (D85's convention), and market-implied team scores ((total +/- margin) / 2). The product's `spread_line` and `total_line` are kept as the market at forecast time.
+- **Week metrics.** Model beside market, each over its own available games with its count: win Brier, log loss and accuracy; spread, total and team-score MAE, RMSE and bias; and how often each side landed closer, over games both forecast. No pass or fail threshold.
+- **Refusals** (exit 1, naming the reason): an unplayed game, no selected product, a score the raw and cleaned files disagree on (or a played game missing from the cleaned file), a product game that is not scheduled, a selected component without its forecast event.
+- **Storage.** `data/output/weekly_recaps/schema=1/recaps/{recap_id}.json` (manifest) and `schema=1/games/{content_digest}.parquet` (game frame). The identity is the SHA-256 of the manifest content excluding `built_at`, so a rerun on unchanged inputs replays (files kept byte for byte, selection untouched) and changed inputs give a new recap while old ones stay. `current.json` holds one explicit selection per season and week; the command selects what it built and prints the previous and new selection (`new`, `replayed` or `reselected`). `weekly_recap_store.load_current_weekly_recap` verifies the identity and frame digest on every load.
+
+Week 2's product is a `development` regeneration that predates the market columns, so its rows read `not_recorded` for the market at forecast time.
 
 ## Weekly Cycle
 

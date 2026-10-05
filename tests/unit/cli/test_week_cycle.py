@@ -24,7 +24,6 @@ from gridiron_edge.cli.week_cycle import (
     dirty_tracked_files,
     injury_report_present,
     starter_lines,
-    week_completion,
 )
 from gridiron_edge.weekly_cycle.receipts import CycleReceipt, write_receipt
 from gridiron_edge.weekly_cycle.runner import CyclePorts, StageRun
@@ -54,12 +53,6 @@ def _games(played: int, scheduled: int = 3, *, week: int = 4) -> DataFrame:
     rows.append({"season": 2026, "week": week + 1, "game_type": "REG", "result": None})
     rows.append({"season": 2026, "week": week, "game_type": "POST", "result": None})
     return DataFrame(rows)
-
-
-def test_week_completion_counts_regular_season_games_of_the_week_only() -> None:
-    assert week_completion(_games(3), season_int=2026, week=4) == (3, 3)
-    assert week_completion(_games(2), season_int=2026, week=4) == (3, 2)
-    assert week_completion(_games(0), season_int=2026, week=9) == (0, 0)
 
 
 @pytest.mark.parametrize(
@@ -371,20 +364,6 @@ def test_season_and_week_overrides_must_be_given_together(
     assert bad.exit_code == 2
     assert both.exit_code == 0, both.output
     assert "target 2026-2027 week 5" in both.output
-
-
-def test_completed_games_are_the_regular_season_games_with_a_result() -> None:
-    games = DataFrame(
-        {
-            "season": [2026, 2026, 2026, 2026],
-            "week": [4, 4, 4, 5],
-            "game_type": ["REG", "REG", "POST", "REG"],
-            "game_id": ["a", "b", "c", "d"],
-            "result": [3.0, None, 1.0, 2.0],
-        }
-    )
-
-    assert week_cycle.completed_game_ids(games, season_int=2026, week=4) == {"a"}
 
 
 def test_coverage_gaps_name_what_each_artifact_lacks() -> None:

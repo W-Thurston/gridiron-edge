@@ -1,5 +1,23 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-04 - Unit 23: an immutable weekly recap of every game forecast
+
+#### Added
+
+- `gridiron evaluate weekly-recap --season S --week W [--dry-run]` builds a recap of a finished week from the
+  selected weekly product, its forecast events and the games files (`DECISIONS.md` D86): one row per scheduled
+  game, with win probability, spread, total and projected team scores against the result, the closing market and
+  the market at forecast time, and week metrics with model beside market. Games missing from the product, missing
+  forecasts, ties and missing lines are rows with explicit statuses. Refuses unplayed games, a missing product and
+  score disagreements.
+- Recaps are stored under `data/output/weekly_recaps/` (JSON manifest plus Parquet game frame) with an identity
+  that excludes the build time, so a rerun replays exactly; `current.json` selects one recap per week. Weeks 1-3
+  are built (week 1 model win Brier 0.2372 against the market's 0.2093).
+
+#### Changed
+
+- `week_completion` and `completed_game_ids` moved from the cycle CLI to `evaluation/week_schedule.py`.
+
 ### 2026-10-04 - Unit 22: unvalidated model edges are withheld and market agreement is measured
 
 #### Added
