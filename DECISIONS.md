@@ -8,6 +8,36 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D88 - The season recap rolls up the selected weekly recaps only, with bins fixed before the data and descriptive intervals
+
+**Date:** 2026-10-05
+
+**Context:** The weekly recap (D86) needs season aggregates beside it: week by week and to date, model against
+the closing market, and calibration. At the start, three weeks were selected (1 and 3 `live`, 2 `development`);
+week 4 was still playing. The calibration helpers already in `evaluation/metrics.py` use ten equal-width bins
+by default. A season of 16-game weeks is small, so any interval around a model-minus-market difference is wide,
+and shared contract 8 forbids a pass or fail criterion without a record.
+
+**Decision:**
+1. The season recap is built only from the season's selected weekly recaps and their verified game frames, never
+   from products or other inputs (the raw games file only names the finished weeks). Each week's values are the
+   weekly recap's own metric function over its rows, and the build refuses a recap whose stored metrics do not
+   match its frame. Season to date pools games; live only keeps rows whose role is `live`.
+2. Identity is the SHA-256 of the content excluding `built_at`; the content lists every weekly recap id read, so
+   reselecting a week gives a new season recap and an unchanged set replays. One season recap is selected per
+   season in `current_seasons.json`, a file separate from the weekly `current.json`, so adding seasons did not
+   migrate the weekly selections. Every weekly build, by hand or at closeout, rebuilds the season.
+3. Calibration uses ten equal-width bins of the home win probability ([lower, upper), 1.0 in the last bin),
+   declared in the unit record before any 2026 forecast probability was read, the edges of
+   `expected_calibration_error`; decided games only; every bin is stored with its count, empty ones included.
+4. Each family's per-game paired model-minus-market difference carries n, mean, standard error (ddof 1) and the
+   bounds mean +/- 1.96 SE, labelled an approximate 95% interval by the normal approximation. It is descriptive:
+   no verdict, threshold or "significant" label is attached.
+
+**Not done:** no criterion for when the model beats or trails the market; any such rule needs its own entry.
+
+---
+
 ## D87 - The recap scores starter assumptions from the run's captured sidecar when a row has no record, against an attempt-checked actual starter
 
 **Date:** 2026-10-05

@@ -13,15 +13,22 @@ import pytest
 from tests.fixtures.weekly_recap import BUILT_AT, GAME_C, SEASON, WEEK, recap_week
 
 from gridiron_edge.evaluation.weekly_recap import BuiltWeeklyRecap, build_weekly_recap
+from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap, build_season_recap
 from gridiron_edge.evaluation.weekly_recap_store import (
     RecapWriteOutcome,
+    get_current_season_recap_selection,
     get_current_weekly_recap_selection,
     list_current_weekly_recap_selections,
+    load_current_season_recap,
     load_current_weekly_recap,
+    load_season_recap,
     load_weekly_recap,
+    season_recap_manifest_path,
+    select_current_season_recap,
     select_current_weekly_recap,
     weekly_recap_manifest_path,
     weekly_recap_root,
+    write_season_recap,
     write_weekly_recap,
 )
 
@@ -215,3 +222,82 @@ def test_a_selection_stored_under_another_week_key_is_rejected(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="another season or week"):
         list_current_weekly_recap_selections(repo=tmp_path)
+
+
+def _season(*, built_at: datetime = BUILT_AT, finished: tuple[int, ...] = (WEEK,)) -> SeasonRecap:
+    built = _built()
+    return build_season_recap(
+        season=SEASON,
+        recaps=[(built.recap, built.games)],
+        finished_weeks=finished,
+        built_at=built_at,
+    )
+
+
+def test_a_written_season_recap_loads_back_exactly(tmp_path: Path) -> None:
+    recap = _season()
+
+    assert write_season_recap(recap, repo=tmp_path) is RecapWriteOutcome.WRITTEN
+    path = season_recap_manifest_path(recap.season_recap_id, repo=tmp_path)
+
+    assert load_season_recap(recap.season_recap_id, repo=tmp_path) == recap
+    assert path.parent == weekly_recap_root(tmp_path) / "schema=2/seasons"
+
+
+def test_a_season_rebuild_on_unchanged_recaps_replays_and_keeps_the_file(tmp_path: Path) -> None:
+    write_season_recap(_season(), repo=tmp_path)
+    before = _files(tmp_path)
+
+    later = _season(built_at=BUILT_AT + timedelta(days=1))
+
+    assert write_season_recap(later, repo=tmp_path) is RecapWriteOutcome.REPLAYED
+    assert _files(tmp_path) == before
+
+
+def test_a_stored_season_manifest_with_other_content_is_rejected(tmp_path: Path) -> None:
+    recap = _season()
+    write_season_recap(recap, repo=tmp_path)
+    path = season_recap_manifest_path(recap.season_recap_id, repo=tmp_path)
+    payload = json.loads(path.read_text())
+    payload["season"] = "2027-2028"
+    path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="does not match its content"):
+        write_season_recap(recap, repo=tmp_path)
+
+
+def test_season_selection_round_trips_and_moves_to_a_newer_recap(tmp_path: Path) -> None:
+    first, second = _season(), _season(finished=(WEEK - 1, WEEK))
+    write_season_recap(first, repo=tmp_path)
+    write_season_recap(second, repo=tmp_path)
+
+    assert get_current_season_recap_selection(season=SEASON, repo=tmp_path) is None
+    select_current_season_recap(first.season_recap_id, selected_at=SELECTED_AT, repo=tmp_path)
+    select_current_season_recap(
+        second.season_recap_id, selected_at=SELECTED_AT + timedelta(hours=1), repo=tmp_path
+    )
+
+    selection = get_current_season_recap_selection(season=SEASON, repo=tmp_path)
+    assert selection is not None
+    assert selection.season_recap_id == second.season_recap_id
+    assert load_current_season_recap(season=SEASON, repo=tmp_path) == second
+    # The weekly selections are untouched.
+    assert list_current_weekly_recap_selections(repo=tmp_path) == ()
+
+
+def test_loading_an_unselected_season_fails(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="No season recap is selected"):
+        load_current_season_recap(season=SEASON, repo=tmp_path)
+
+
+def test_a_season_selection_stored_under_another_season_is_rejected(tmp_path: Path) -> None:
+    recap = _season()
+    write_season_recap(recap, repo=tmp_path)
+    select_current_season_recap(recap.season_recap_id, selected_at=SELECTED_AT, repo=tmp_path)
+    path = weekly_recap_root(tmp_path) / "current_seasons.json"
+    current = json.loads(path.read_text())
+    current["selections"]["2027-2028"] = current["selections"].pop(SEASON)
+    path.write_text(json.dumps(current))
+
+    with pytest.raises(ValueError, match="another season"):
+        get_current_season_recap_selection(season="2027-2028", repo=tmp_path)

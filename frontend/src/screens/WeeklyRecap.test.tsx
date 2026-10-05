@@ -7,8 +7,9 @@ import { TestWrapper } from "../test/testWrapper";
 vi.mock("../api/hooks", () => ({
   useRecaps: vi.fn(),
   useWeeklyRecap: vi.fn(),
+  useSeasonRecap: vi.fn(),
 }));
-import { useRecaps, useWeeklyRecap } from "../api/hooks";
+import { useRecaps, useSeasonRecap, useWeeklyRecap } from "../api/hooks";
 
 type Recap = components["schemas"]["WeeklyRecapResponse"];
 type RecapGame = components["schemas"]["RecapGame"];
@@ -152,9 +153,9 @@ function recap(week: number): Recap {
       carry_forward: { count: 4, correct: 3, accuracy: 0.75 },
       capture_digests: ["c".repeat(64)],
     },
-    edges: null, wagers: null, season_to_date: null,
+    edges: null, wagers: null,
     _meta: {
-      field_status: { edges: "pending", wagers: "pending", season_to_date: "pending" },
+      field_status: { edges: "pending", wagers: "pending" },
     },
   };
 }
@@ -164,6 +165,7 @@ function loaded(items: Summary[]) {
   vi.mocked(useWeeklyRecap).mockImplementation(((season: string | null, week: number | null) => ({
     data: season && week ? recap(week) : undefined, isLoading: false, error: null,
   })) as never);
+  vi.mocked(useSeasonRecap).mockReturnValue({ data: null, isLoading: false, error: null } as never);
 }
 
 function renderScreen() {
@@ -255,10 +257,19 @@ describe("WeeklyRecap", () => {
   it("renders the sections the recap does not carry yet as pending", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
-    for (const key of ["edges", "wagers", "season_to_date"]) {
+    for (const key of ["edges", "wagers"]) {
       const card = document.querySelector(`[data-recap-section="${key}"]`) as HTMLElement;
       expect(within(card).getByTitle("Coming soon")).toBeInTheDocument();
     }
+  });
+
+  it("says when the season has no selected season recap", () => {
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    renderScreen();
+    expect(useSeasonRecap).toHaveBeenLastCalledWith(SEASON);
+    const card = document.querySelector('[data-recap-section="season_to_date"]') as HTMLElement;
+    expect(within(card).getByText(`No season recap is selected for ${SEASON}`)).toBeInTheDocument();
+    expect(within(card).getByText(/--season-only/)).toBeInTheDocument();
   });
 
   it("scores the starting quarterbacks and names every miss and unscored slot", () => {

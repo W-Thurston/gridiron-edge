@@ -27,6 +27,7 @@ log_loss                     Scalar log loss.
 accuracy                     Fraction of games where argmax matches outcome.
 roc_auc                      ROC-AUC.
 expected_calibration_error   ECE (single-number calibration summary).
+reliability_bins             Every equal-width bin's count, mean forecast and observed rate.
 brier_decomposition          Murphy (1973) decomposition: reliability,
                              resolution, uncertainty.
 
@@ -210,6 +211,42 @@ def expected_calibration_error(p: Series, y: Series, *, n_bins: int = 10) -> flo
         mean_actual = float(y[mask].mean())
         ece_total += (n_bin / n_total) * abs(mean_pred - mean_actual)
     return ece_total
+
+
+def reliability_bins(p: Series, y: Series, *, n_bins: int = 10) -> DataFrame:
+    """Return every equal-width bin's game count, mean forecast and observed rate.
+
+    The bins and their membership are those of :func:`expected_calibration_error`:
+    ``[lo, hi)``, with 1.0 in the last bin. Every bin is returned, so an empty bin is a row with
+    ``n_games`` 0 and NaN means.
+
+    Args:
+        p: Predicted probabilities (floats in [0, 1]).
+        y: Binary outcomes (0 or 1).
+        n_bins: Number of equal-width bins.
+
+    Returns:
+        DataFrame with columns bin_lower, bin_upper, n_games, mean_predicted_prob,
+        observed_rate, one row per bin in ascending order.
+    """
+    edges: ndarray[tuple[Any, ...], dtype[float64]] = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_indices: ndarray[tuple[Any, ...], dtype[signedinteger]] = np.clip(
+        np.digitize(p, edges) - 1, 0, n_bins - 1
+    )
+    rows: list[dict[str, float | int]] = []
+    for index, (lo, hi) in enumerate(itertools.pairwise(edges)):
+        mask = bin_indices == index
+        n = int(mask.sum())
+        rows.append(
+            {
+                "bin_lower": float(lo),
+                "bin_upper": float(hi),
+                "n_games": n,
+                "mean_predicted_prob": float(p[mask].mean()) if n else float("nan"),
+                "observed_rate": float(y[mask].mean()) if n else float("nan"),
+            }
+        )
+    return DataFrame(rows)
 
 
 def brier_decomposition(p: Series, y: Series, *, n_bins: int = 10) -> dict[str, float]:
@@ -723,31 +760,19 @@ def calibration_table(df: DataFrame, *, n_buckets: int = 10) -> DataFrame:
         Column names are chosen to match the expectations of
         ``diagnostics.py`` plot functions.
     """
-    p: Series = df["away_win_prob"]
-    y: Series = df["away_team_won"]
-
-    edges: ndarray[tuple[Any, ...], dtype[float64]] = np.linspace(0.0, 1.0, n_buckets + 1)
-    rows: list[dict] = []
-    for lo, hi in itertools.pairwise(edges):
-        mask = (p >= lo) & (p < hi)
-        if lo == edges[-2]:  # last bucket: include right edge
-            mask = (p >= lo) & (p <= hi)
-        n = int(mask.sum())
-        if n == 0:
-            continue
-        mean_pred = float(p[mask].mean())
-        actual_rate = float(y[mask].mean())
-        rows.append(
-            {
-                "bucket_lo": round(lo, 2),
-                "bucket_hi": round(hi, 2),
-                "bucket_mid": round((lo + hi) / 2, 2),
-                "n_games": n,
-                "mean_predicted_prob": round(mean_pred, 4),
-                "actual_win_rate": round(actual_rate, 4),
-                "calibration_gap": round(mean_pred - actual_rate, 4),
-            }
-        )
+    bins = reliability_bins(df["away_win_prob"], df["away_team_won"], n_bins=n_buckets)
+    rows: list[dict] = [
+        {
+            "bucket_lo": round(row["bin_lower"], 2),
+            "bucket_hi": round(row["bin_upper"], 2),
+            "bucket_mid": round((row["bin_lower"] + row["bin_upper"]) / 2, 2),
+            "n_games": row["n_games"],
+            "mean_predicted_prob": round(row["mean_predicted_prob"], 4),
+            "actual_win_rate": round(row["observed_rate"], 4),
+            "calibration_gap": round(row["mean_predicted_prob"] - row["observed_rate"], 4),
+        }
+        for row in bins.loc[bins["n_games"] > 0].to_dict("records")
+    ]
     return DataFrame(rows)
 
 

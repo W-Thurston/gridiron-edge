@@ -24,6 +24,7 @@ value always carries a status. The recap's identity is the SHA-256 of its conten
 Public API
 ----------
 build_weekly_recap      schedule, product, events, games, game logs, captures -> BuiltWeeklyRecap
+recap_metrics           recap game rows -> model and market metrics, family by family
 unplayed_game_ids       scoped schedule -> games without a result
 weekly_recap_id         recap -> content identity excluding built_at
 validate_weekly_recap   recap -> raises on an invalid manifest
@@ -622,7 +623,11 @@ def _score_errors(games: DataFrame, prefix: str) -> Series:
     )
 
 
-def _week_metrics(games: DataFrame) -> WeekMetrics:
+def recap_metrics(games: DataFrame) -> WeekMetrics:
+    """Score any set of recap game rows: one week, weeks to date, or one role's rows.
+
+    Each side is scored over its own available rows; a tie has no win outcome.
+    """
     decided = games["actual_home_win"].notna()
     model_win = games.loc[decided & games["win_status"].eq(ForecastStatus.AVAILABLE.value)]
     market_win = games.loc[decided & games["closing_home_win_prob"].notna()]
@@ -785,7 +790,7 @@ def build_weekly_recap(
             carried_rows=int(frame["carried"].fillna(False).sum()),
             outcome_ties=int(frame["actual_home_win"].isna().sum()),
         ),
-        metrics=_week_metrics(frame),
+        metrics=recap_metrics(frame),
         starters=starter_summary(frame),
         games=EvaluationFrameReference(
             artifact=f"schema={WEEKLY_RECAP_SCHEMA_VERSION}/games/{frame_digest}.parquet",
@@ -891,6 +896,7 @@ __all__ = [
     "WeeklyRecap",
     "WeeklyRecapRefusalError",
     "build_weekly_recap",
+    "recap_metrics",
     "unplayed_game_ids",
     "validate_weekly_recap",
     "weekly_recap_from_payload",

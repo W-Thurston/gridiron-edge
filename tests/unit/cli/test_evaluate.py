@@ -729,3 +729,61 @@ class TestWeeklyRecap:
         assert "new: recap" in first.output
         assert "new: recap" in changed.output
         assert "reselected: recap" in again.output
+
+    def _invoke_season(self, *extra: str):
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        return CliRunner().invoke(
+            evaluate_app, ["weekly-recap", "--season", "2026-2027", "--season-only", *extra]
+        )
+
+    def test_a_weekly_build_rebuilds_and_selects_the_season(self, repo: Path) -> None:
+        import json
+
+        first = self._invoke()
+        current = self._recap_root(repo) / "current_seasons.json"
+        selection = json.loads(current.read_text())["selections"]["2026-2027"]
+        second = self._invoke()
+
+        assert first.exit_code == 0, first.output
+        assert "season recap of 1 weekly recap(s)" in first.output
+        assert f"new: season recap {selection['season_recap_id']}" in first.output
+        assert f"replayed: season recap {selection['season_recap_id']}" in second.output
+
+    def test_the_week_dry_run_points_to_the_season_dry_run(self, repo: Path) -> None:
+        result = self._invoke("--dry-run")
+
+        assert "preview it with --season-only --dry-run" in result.output
+        assert "season recap of" not in result.output
+
+    def test_season_only_dry_run_prints_and_writes_nothing(self, repo: Path) -> None:
+        assert self._invoke().exit_code == 0
+        current = self._recap_root(repo) / "current_seasons.json"
+        current.unlink()
+        stored = sorted(self._recap_root(repo).rglob("*"))
+
+        result = self._invoke_season("--dry-run")
+
+        assert result.exit_code == 0, result.output
+        assert "week 4 live (4)" in result.output
+        assert "calibration, season: ECE model" in result.output
+        assert "dry run, nothing written: season recap" in result.output
+        assert "(already stored)" in result.output
+        assert sorted(self._recap_root(repo).rglob("*")) == stored
+
+    def test_season_only_refuses_a_season_without_a_selected_recap(self, repo: Path) -> None:
+        result = self._invoke_season()
+
+        assert result.exit_code == 1
+        assert "No weekly recap is selected for 2026-2027" in result.output
+
+    def test_season_only_takes_no_week_and_a_week_is_otherwise_required(self, repo: Path) -> None:
+        from gridiron_edge.cli.evaluate import evaluate_app
+
+        with_week = self._invoke("--season-only")
+        without = CliRunner().invoke(evaluate_app, ["weekly-recap", "--season", "2026-2027"])
+
+        assert with_week.exit_code == 2
+        assert "--season-only takes no week" in with_week.output
+        assert without.exit_code == 2
+        assert "A week is required unless --season-only" in without.output

@@ -267,18 +267,50 @@ class TestBuildWeeklyRecap:
             command, ["--only", "build-weekly-recap", "--week", "4", "--season", "2026-2027"]
         )
 
+    @staticmethod
+    def _season_selection(repo: Path) -> dict[str, object]:
+        current = repo / "data/output/weekly_recaps/current_seasons.json"
+        return json.loads(current.read_text())["selections"]["2026-2027"]
+
     def test_builds_selects_and_reports_then_replays(self, repo: Path) -> None:
         context: dict[str, object] = {"season": "2026-2027", "week": 4}
 
         first = _stage_build_weekly_recap(context)
         recap_id = self._selection(repo)["recap_id"]
+        season_id = self._season_selection(repo)["season_recap_id"]
         second = _stage_build_weekly_recap(context)
 
+        weekly, season = f"weekly recap {recap_id}", f"season recap {season_id}"
         assert first.success is True
-        assert first.detail == f"weekly recap {recap_id} (new)"
+        assert first.detail == f"{weekly} (new); {season} (new)"
         assert first.rows == 4
-        assert second.detail == f"weekly recap {recap_id} (replayed)"
-        assert context["cycle_report"] == [first.detail, second.detail]
+        assert second.detail == f"{weekly} (replayed); {season} (replayed)"
+        assert context["cycle_report"] == [
+            f"{weekly} (new)",
+            f"{season} (new)",
+            f"{weekly} (replayed)",
+            f"{season} (replayed)",
+        ]
+
+    def test_a_season_refusal_keeps_the_weekly_recap_and_fails_softly(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(**_: object) -> None:
+            raise ValueError("Weekly recap x metrics do not match its own game frame.")
+
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.weekly_recap_build.rebuild_season_recap", refuse
+        )
+        context: dict[str, object] = {"season": "2026-2027", "week": 4}
+
+        result = _stage_build_weekly_recap(context)
+
+        weekly = f"weekly recap {self._selection(repo)['recap_id']} (new)"
+        assert result.success is False
+        assert result.detail == f"{weekly}; season recap refused: " + (
+            "Weekly recap x metrics do not match its own game frame."
+        )
+        assert context["cycle_report"] == [weekly]
 
     def test_a_refused_week_is_an_unsuccessful_result_and_writes_nothing(self, repo: Path) -> None:
         self._unplay_first_game(repo)

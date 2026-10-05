@@ -5,6 +5,8 @@ import type { components } from "../api/schema";
 import { ErrorCard } from "../components/error/ErrorCard";
 import { FieldValue } from "../components/field-status/FieldValue";
 import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
+import { RecapToggle } from "../components/recap/RecapToggle";
+import { SeasonPanel } from "../components/recap/SeasonPanel";
 import {
   recapActualSourceLabel,
   recapClosingLineMessage,
@@ -37,7 +39,6 @@ const FAMILIES: RecapFamily[] = ["win", "spread", "total", "projected_score"];
 const PENDING_SECTIONS = [
   ["edges", "Edges and recommendations"],
   ["wagers", "Recorded wagers"],
-  ["season_to_date", "Season to date"],
 ] as const;
 
 export function WeeklyRecap() {
@@ -112,13 +113,13 @@ function WeekPicker({
     <section className="hm-card" style={{ padding: 16 }} aria-label="Recapped weeks">
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {items.map((item) => (
-          <Toggle
+          <RecapToggle
             key={`${item.season}-${item.week}`}
             active={item.season === selected.season && item.week === selected.week}
             onClick={() => onSelect(item)}
           >
             {seasons.size > 1 ? `${item.season} · Week ${item.week}` : `Week ${item.week}`}
-          </Toggle>
+          </RecapToggle>
         ))}
       </div>
     </section>
@@ -149,15 +150,16 @@ function RecapBody({ recap }: { recap: Recap }) {
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {FAMILIES.map((value) => (
-              <Toggle key={value} active={family === value} onClick={() => setFamily(value)}>
+              <RecapToggle key={value} active={family === value} onClick={() => setFamily(value)}>
                 {recapFamilyLabel(value)}
-              </Toggle>
+              </RecapToggle>
             ))}
           </div>
         </div>
         <GameTable games={recap.games} family={family} />
       </section>
       <StartersSection recap={recap} />
+      <SeasonPanel season={recap.season} />
       <section
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}
       >
@@ -658,16 +660,6 @@ function statusText(status: string, message: string, text: string = message) {
     >
       {text}
     </span>
-  );
-}
-
-function Toggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
-  return (
-    <button type="button" aria-pressed={active} onClick={onClick} style={{
-      padding: "7px 12px", border: "1px solid var(--line-soft)", borderRadius: 4,
-      background: active ? "var(--bg-2)" : "transparent", color: active ? "var(--ink)" : "var(--ink-3)",
-      fontFamily: "var(--f-sans)", fontSize: 10, cursor: "pointer",
-    }}>{children}</button>
   );
 }
 

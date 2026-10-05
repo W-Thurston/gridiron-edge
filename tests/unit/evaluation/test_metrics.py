@@ -782,3 +782,45 @@ class TestBuildForecastRunTotalEvaluationDf:
             build_forecast_run_total_evaluation_df(
                 run_id="run-1", model_type="random_forest", repo=tmp_path
             )
+
+
+class TestReliabilityBins:
+    """Every equal-width bin with its count, on the edges of expected_calibration_error."""
+
+    def test_every_bin_is_returned_and_empty_bins_have_no_means(self) -> None:
+        from gridiron_edge.evaluation.metrics import reliability_bins
+
+        bins = reliability_bins(Series([0.05, 0.15, 0.18, 1.0]), Series([0.0, 1.0, 0.0, 1.0]))
+
+        assert len(bins) == 10
+        assert bins["n_games"].tolist() == [1, 2, 0, 0, 0, 0, 0, 0, 0, 1]
+        assert bins.loc[1, "mean_predicted_prob"] == pytest.approx(0.165)
+        assert bins.loc[1, "observed_rate"] == 0.5
+        assert pd.isna(bins.loc[2, "mean_predicted_prob"])
+        # 1.0 falls in the last bin.
+        assert bins.loc[9, "bin_upper"] == 1.0
+        assert bins.loc[9, "observed_rate"] == 1.0
+
+    def test_counts_weight_to_the_helper_ece(self) -> None:
+        from gridiron_edge.evaluation.metrics import expected_calibration_error, reliability_bins
+
+        p = Series([0.12, 0.33, 0.37, 0.61, 0.64, 0.88, 0.95])
+        y = Series([0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0])
+        bins = reliability_bins(p, y).dropna()
+        weighted = (
+            bins["n_games"] / len(p) * (bins["mean_predicted_prob"] - bins["observed_rate"]).abs()
+        ).sum()
+
+        assert weighted == pytest.approx(expected_calibration_error(p, y))
+
+    def test_the_calibration_table_keeps_its_non_empty_buckets(self) -> None:
+        from gridiron_edge.evaluation.metrics import calibration_table
+
+        table = calibration_table(
+            DataFrame({"away_win_prob": [0.15, 0.18, 0.72], "away_team_won": [1.0, 0.0, 1.0]})
+        )
+
+        assert table["bucket_lo"].tolist() == [0.1, 0.7]
+        assert table["n_games"].tolist() == [2, 1]
+        assert table["mean_predicted_prob"].tolist() == [0.165, 0.72]
+        assert table["calibration_gap"].tolist() == [-0.335, -0.28]

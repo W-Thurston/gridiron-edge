@@ -1,10 +1,10 @@
 # src/gridiron_edge/evaluation/weekly_recap_build.py
 
-"""Build, store and select a finished week's recap from persisted state (``DECISIONS.md`` D86).
+"""Build, store and select a finished week's recap and its season's recap (``DECISIONS.md`` D86).
 
 Shared by ``gridiron evaluate weekly-recap`` and the closeout's ``build-weekly-recap`` stage, so a
 recap built by hand and one built at closeout pass the same refusals and follow the same selection
-rules.
+rules. The season recap is rolled up from the season's selected weekly recaps only.
 """
 
 from __future__ import annotations
@@ -26,21 +26,27 @@ from gridiron_edge.evaluation.prediction_input_evidence import PredictionSourceS
 from gridiron_edge.evaluation.prediction_input_evidence_store import (
     list_prediction_input_evidence_by_run,
 )
-from gridiron_edge.evaluation.week_schedule import scheduled_games
+from gridiron_edge.evaluation.week_schedule import finished_weeks, scheduled_games
 from gridiron_edge.evaluation.weekly_recap import (
     BuiltWeeklyRecap,
     WeeklyRecapRefusalError,
     build_weekly_recap,
     unplayed_game_ids,
 )
+from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap, build_season_recap
 from gridiron_edge.evaluation.weekly_recap_starters import (
     SidecarCapture,
     runs_without_starter_record,
 )
 from gridiron_edge.evaluation.weekly_recap_store import (
     RecapWriteOutcome,
+    get_current_season_recap_selection,
     get_current_weekly_recap_selection,
+    list_current_weekly_recap_selections,
+    load_weekly_recap,
+    select_current_season_recap,
     select_current_weekly_recap,
+    write_season_recap,
     write_weekly_recap,
 )
 from gridiron_edge.ratings.history import season_start
@@ -171,3 +177,53 @@ def store_and_select_weekly_recap(
         else RecapSelectionOutcome.RESELECTED
     )
     return RecapSelectionResult(recap.recap_id, previous_id, outcome)
+
+
+def build_season_recap_from_repo(*, repo: Path, season: str, built_at: datetime) -> SeasonRecap:
+    """Roll the season's selected weekly recaps up; the raw games file names the finished weeks.
+
+    Raises:
+        WeeklyRecapRefusalError: No weekly recap is selected for the season.
+        ValueError: A selected recap fails verification or does not match its game frame.
+    """
+    recaps = [
+        load_weekly_recap(selection.recap_id, repo=repo)
+        for selection in list_current_weekly_recap_selections(repo=repo)
+        if selection.season == season
+    ]
+    raw = pd.read_parquet(dataset_path(repo, "games_raw_nflverse"))
+    return build_season_recap(
+        season=season,
+        recaps=recaps,
+        finished_weeks=finished_weeks(raw, season_int=season_start(season)),
+        built_at=built_at,
+    )
+
+
+def store_and_select_season_recap(
+    recap: SeasonRecap,
+    *,
+    selected_at: datetime,
+    repo: Path,
+) -> RecapSelectionResult:
+    """Write the season recap (or accept an exact replay) and select it for its season."""
+    previous = get_current_season_recap_selection(season=recap.season, repo=repo)
+    previous_id = previous.season_recap_id if previous is not None else None
+    written = write_season_recap(recap, repo=repo)
+    if previous_id == recap.season_recap_id:
+        return RecapSelectionResult(
+            recap.season_recap_id, previous_id, RecapSelectionOutcome.REPLAYED
+        )
+    select_current_season_recap(recap.season_recap_id, selected_at=selected_at, repo=repo)
+    outcome = (
+        RecapSelectionOutcome.NEW
+        if written is RecapWriteOutcome.WRITTEN
+        else RecapSelectionOutcome.RESELECTED
+    )
+    return RecapSelectionResult(recap.season_recap_id, previous_id, outcome)
+
+
+def rebuild_season_recap(*, repo: Path, season: str, now: datetime) -> RecapSelectionResult:
+    """Roll the season up from its selected weekly recaps, then store and select it."""
+    recap = build_season_recap_from_repo(repo=repo, season=season, built_at=now)
+    return store_and_select_season_recap(recap, selected_at=now, repo=repo)

@@ -29,3 +29,12 @@ def completed_game_ids(games: DataFrame, *, season_int: int, week: int) -> set[s
     """Return the regular-season games of one week that have a result in the raw games file."""
     scoped = scheduled_games(games, season_int=season_int, week=week)
     return set(scoped.loc[scoped["result"].notna(), "game_id"].astype(str))
+
+
+def finished_weeks(games: DataFrame, *, season_int: int) -> tuple[int, ...]:
+    """Return the season's regular-season weeks whose every scheduled game has a result."""
+    scoped = games.loc[games["season"].astype(int) == season_int]
+    if "game_type" in scoped.columns:
+        scoped = scoped.loc[scoped["game_type"] == "REG"]
+    played = scoped["result"].notna().groupby(scoped["week"].astype(int)).all()
+    return tuple(int(week) for week in sorted(played.index) if bool(played.loc[week]))

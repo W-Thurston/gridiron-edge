@@ -110,9 +110,9 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Units 23 and 24 completed October 4, 2026, and Units 26 and 25 October 5, 2026 (`CHANGELOG.md`); next: Unit
-27 - Season roll-up, not yet active. Unit 25's week 4 check runs once week 4's closeout has built its recap (see
-its record).** Sequence:
+**Units 23 and 24 completed October 4, 2026, and Units 26, 25 and 27 October 5, 2026 (`CHANGELOG.md`); next:
+Unit 28 - Edges, recommendations and wagers, not yet active. Week 4's closeout builds its recap and rolls the season
+recap up again; Units 25 and 27 run their week 4 checks then (see their records).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -547,7 +547,9 @@ week 5's unattended closeout: read its receipt and the selection afterwards.
 **Acceptance.** A closeout builds and selects the recap, the receipt names it, a failure is visible without
 blocking the cycle; gates pass; HANDOFF "Weekly Cycle" and "Postgame Workflow", CHANGELOG updated.
 
-#### Unit 27 - Season Roll-Up [Scoped October 4, 2026; not active]
+#### Unit 27 - Season Roll-Up [Completed October 5, 2026; `DECISIONS.md` D88]
+
+Closed; the completed record is under "Unit 27" below. The scoping record follows.
 
 **Goal.** Aggregates across weeks beside the per-game table: how the model and the market have done week by
 week and season to date, and how well calibrated each is.
@@ -577,6 +579,41 @@ week and season to date, and how well calibrated each is.
 **Decide at start.** The bins (recommended: ten equal-width probability bins, declared in the unit record
 before the data are read); whether to show the standard error as an interval; chart forms (from the dataviz
 skill).
+
+**Decided at start (2026-10-05, with the user).**
+1. **Start on weeks 1-3.** Week 4 was not selected (its Monday game was still to play; closeout opens Tuesday
+   2026-10-06 06:00 local). The unit is built and verified on weeks 1-3; after week 4's closeout selects its
+   recap, rebuilding the season (a `data/` write; ask first) gives a new season identity that reads weeks 1-4,
+   and the weeks 1-4 real-data checks run then. Until the raw games file is refreshed it shows week 4 with 2
+   of 16 results, so week 4 is not yet a finished week and is absent rather than `not_built`.
+2. **Bins, declared before any forecast probability was read.** Ten equal-width bins on the home win
+   probability: [0, 0.1), [0.1, 0.2), ... [0.9, 1.0], the last bin closed; the same edges as
+   `metrics.expected_calibration_error` (default `n_bins=10`, used by every caller). Only decided games (no
+   tie) count. Every bin is stored with its count, empty ones included; the season ECE is the helper's value.
+   Model and market (Φ(`VEGAS_LINE` / `MARGIN_STD`)) use the same bins.
+3. **Standard error as an interval.** For each family's per-game paired model-minus-market difference
+   (win Brier; spread, total and projected-score absolute error) the artifact stores n, mean, SE (sample
+   standard deviation with ddof 1, over √n) and the bounds mean ± 1.96·SE, so the API only serializes them.
+   The page draws them as a whisker labeled "approximate 95% interval (normal approximation)" with no
+   better or worse verdict (shared contract 8).
+4. **Chart forms (dataviz skill).** Per-week series: dumbbells, one panel per metric (win Brier, spread MAE,
+   total MAE; never a second y-axis), one row per week with the model and market dots joined, and a season
+   row; a toggle row above the panels switches week-by-week against season-to-date rows and all weeks
+   against live only. Calibration: a reliability diagram (each non-empty bin's mean forecast against its
+   observed home-win rate, the diagonal, model and market) over a bin-count strip sharing the x-axis, plus
+   one dot-and-whisker row per family around a zero line ("model lower" against "market lower"). Model is
+   the emphasized series and market the neutral reference; both are named by a legend and direct labels,
+   colors are validated with the skill's script against the app's dark surface, and every chart has a
+   table view.
+5. **Implementation choices (the assistant's, told to the user).** Reuse: `expected_calibration_error` as
+   is; the loop in `metrics.calibration_table` (which reads the old away-oriented columns and drops empty
+   bins) moves into a Series-level helper that returns every bin, and `calibration_table` calls it;
+   `diagnostics.py` only draws matplotlib PNGs and is not used. Per-week, season-to-date, season and
+   live-only values all come from the weekly recap's own week-metrics function over the chosen rows, so a
+   week's row equals its recap by construction; season-to-date pools the games through each week (not an
+   average of weekly values); live only filters by each row's role. Season selections live in their own
+   selection file under `weekly_recaps/` rather than changing `current.json`'s schema, which would force a
+   migration of the weekly selections.
 
 **Tests.** Synthetic weeks with hand values for the per-week, cumulative and paired metrics; calibration
 counts; the live-only subtotal; identity tracks the weekly recap ids; `not_built` weeks; API and page.
@@ -912,6 +949,90 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 27 — Season Roll-Up [Completed October 5, 2026]
+
+#### Completed
+
+A season recap (`evaluation/weekly_recap_season.py`, `DECISIONS.md` D88) is rolled up from the season's selected
+weekly recaps and their verified game frames only. Per finished week it holds the role, game and live-game counts,
+the week's metrics (the weekly recap's own `recap_metrics` over its rows; the build refuses a recap whose stored
+metrics differ), live-only metrics, and the season to date through the week, pooled over games, for all rows and
+live rows. Season totals and a live-only scope each add the per-game paired model-minus-market difference per family
+(n, mean, standard error, mean +/- 1.96 SE), model and market reliability over ten fixed equal-width bins with
+counts and ECE (`metrics.reliability_bins`, `expected_calibration_error`), and starter accuracy to date. A finished
+week without a selected recap is `not_built`. The manifest is stored at `weekly_recaps/schema=2/seasons/`, its
+identity covers its content and so every weekly recap id read, and `current_seasons.json` selects one per season.
+`evaluate weekly-recap --week` and the closeout's `build-weekly-recap` stage rebuild and select it after the weekly
+recap; `--season-only` builds it alone. `GET /recaps/{season}/summary` serves it, and the "Last Week" page's season
+panel shows dumbbells per week, season totals, paired whiskers and a reliability diagram with table views. The weekly
+response no longer carries a pending `season_to_date`. Built and selected for 2026-2027 weeks 1-3: `84f12843...`.
+
+#### Goal
+
+Season aggregates beside the per-game recap: how the model and the closing market have done week by week and season
+to date, and how well calibrated each is, built from the weekly recaps alone.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/weekly_recap_season.py` - the season recap: per-week, to-date, live-only, paired-difference, calibration and starter aggregates; identity, validation and JSON round trip.
+- `tests/unit/evaluation/test_weekly_recap_season.py` - hand values for per-week, pooled, live-only and paired metrics; bins, counts and ECE; starters; `not_built`; identity; refusals.
+- `frontend/src/components/recap/SeasonPanel.tsx` - the season panel: filter row, dumbbells, totals, paired whiskers, reliability diagram and bin table.
+- `frontend/src/components/recap/SeasonPanel.test.tsx` - week, to-date and live-only rows; `not_built`; whiskers and their missing cases; reliability points and bins; totals.
+- `frontend/src/components/recap/RecapToggle.tsx` - the recap page's toggle button, shared by the week picker, family toggle and season filters.
+
+Changed:
+- `src/gridiron_edge/evaluation/metrics.py` - `reliability_bins` returns every bin on the ECE edges; `calibration_table` uses it.
+- `src/gridiron_edge/evaluation/weekly_recap.py` - the week-metrics function is public as `recap_metrics`.
+- `src/gridiron_edge/evaluation/week_schedule.py` - `finished_weeks` names the season's weeks with every result.
+- `src/gridiron_edge/evaluation/weekly_recap_store.py` - season manifest write, replay, load, and the `current_seasons.json` selection.
+- `src/gridiron_edge/evaluation/weekly_recap_build.py` - build the season recap from the selected weekly recaps; store, select and rebuild it.
+- `src/gridiron_edge/cli/evaluate.py` - `weekly-recap` rebuilds the season after a weekly build, adds `--season-only`, and prints the season summary.
+- `src/gridiron_edge/cli/post_week.py` - the `build-weekly-recap` stage rolls the season up and reports both ids; help text.
+- `src/gridiron_edge/api/schemas/recaps.py` - season recap response models and the `SeasonWeekStatus` enum; `RecapStarterCounts`; `season_to_date` removed from the weekly response.
+- `src/gridiron_edge/api/serializers/recaps.py` - season recap serializer; `season_to_date` no longer pending.
+- `src/gridiron_edge/api/routes/recaps.py` - `GET /recaps/{season}/summary`, declared before the week route.
+- `api-schema.json` - regenerated by `gridiron api export-schema`.
+- `frontend/src/api/hooks.ts` - `useSeasonRecap` (null when no season recap is selected).
+- `frontend/src/screens/WeeklyRecap.tsx` - mounts the season panel; uses the shared toggle; `season_to_date` no longer pending.
+- `frontend/src/screens/WeeklyRecap.test.tsx` - the season hook mocked; pending sections; the unselected-season status.
+- `frontend/src/App.css` - season chart styles and the validated model and market series colors.
+- `tests/unit/evaluation/test_metrics.py` - `reliability_bins` bins, ECE agreement, and `calibration_table` behavior.
+- `tests/unit/evaluation/test_week_schedule.py` - `finished_weeks`.
+- `tests/unit/evaluation/test_weekly_recap_store.py` - season write, replay, rejection and selection.
+- `tests/unit/cli/test_evaluate.py` - season rebuild after a weekly build, the dry runs, `--season-only` refusal and option checks.
+- `tests/unit/cli/test_post_week.py` - the stage reports and replays both recaps; a season refusal soft-fails and keeps the weekly recap.
+- `tests/unit/api/test_routes_recaps.py` - the summary route, 404, tampering 500, week route still parsed, enum export.
+- `HANDOFF.md` - "Postgame Workflow" and "Weekly Recap" describe the season recap, its command, storage, route and panel.
+- `DECISIONS.md` - D88.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress.
+- `PLAN.md` - this record, the decisions taken at start, and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Focused: the season, metrics, schedule, store, CLI, post-week and route tests, and `SeasonPanel` and `WeeklyRecap`
+page tests. Python gate: ruff check and format, pyrefly 0 errors, `pytest -m "unit and not slow"` 4,959 passed.
+Frontend gate: lint, build, `test:run` 549 passed. Contracts regenerated through `api export-schema` and `gen:api`.
+Palette: the model blue passes the dataviz validator on the app's card surface; the market gray fails only the
+chroma floor, by design for the neutral reference, and is also a hollow ring. Rendered at 1400 px and 390 px against
+a scratch copy of the store (two whisker-layout bugs fixed). Real data: `--season-only --dry-run` built
+`84f12843...` over weeks 1-3; each week's row equals its weekly recap's metrics and id; spread MAE to date through
+week 2 by hand 12.0071; the live-only scope is weeks 1 and 3 (32 games, Brier 0.24150 by hand); the paired win mean
+and standard error match by hand. With approval, `--season-only` wrote and selected it (`current.json` unchanged),
+a rerun replayed with every stored file byte-identical, and the route served it in process. Pending: week 4's
+closeout (from Tuesday 2026-10-06 06:00 local) rolls the season up over weeks 1-4; read its receipt's report, then
+`--season-only --dry-run` should replay it.
+
+#### Acceptance
+
+Season aggregates are built from the selected weekly recaps only, model beside market with counts, calibrated over
+bins declared before the data, served read-only and shown on the recap page with explicit statuses; rebuilt with
+every weekly build; gates pass; HANDOFF, CHANGELOG, DECISIONS, ROADMAP and this record are updated.
 
 ### Unit 25 — Starting-QB Section [Completed October 5, 2026]
 

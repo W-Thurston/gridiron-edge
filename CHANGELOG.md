@@ -1,5 +1,30 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-05 - Unit 27: the season recap beside the weekly recap
+
+#### Added
+
+- A season recap (`DECISIONS.md` D88) rolled up from the season's selected weekly recaps: per week the role,
+  counts, model and market metrics (equal to the weekly recap's) and live-only metrics, and the season to date
+  through each week (all and live only); season totals and a live-only subtotal; the per-game paired
+  model-minus-market difference per family with its standard error and approximate 95% interval; model and market
+  reliability over ten fixed equal-width bins with counts and ECE; starter accuracy to date. A finished week with
+  no selected recap reads `not_built`.
+- Stored immutably under `data/output/weekly_recaps/schema=2/seasons/`, selected in `current_seasons.json`; its
+  identity follows the weekly recap ids it read. Built and selected for 2026-2027 weeks 1-3 (`84f12843...`).
+- `gridiron evaluate weekly-recap --season S --season-only [--dry-run]` builds or previews it alone.
+- `GET /recaps/{season}/summary` serves it; the "Last Week" page's season panel replaces the pending field with
+  model-against-market dumbbells per week, season totals, paired-difference whiskers and a reliability diagram,
+  with a week-by-week/season-to-date and all/live-only filter row and table views.
+- `metrics.reliability_bins`: every equal-width bin's count, mean forecast and observed rate, on the ECE helper's
+  edges; `calibration_table` now uses it.
+
+#### Changed
+
+- Every weekly recap build (`evaluate weekly-recap --week`, the closeout's `build-weekly-recap` stage) also
+  rebuilds and selects the season recap; the stage reports both ids.
+- `GET /recaps/{season}/{week}` no longer carries a pending `season_to_date` field.
+
 ### 2026-10-05 - Unit 25: the weekly recap scores the starting-quarterback assumptions
 
 #### Added

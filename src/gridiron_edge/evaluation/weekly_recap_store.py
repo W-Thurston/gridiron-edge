@@ -1,12 +1,15 @@
 # src/gridiron_edge/evaluation/weekly_recap_store.py
 
-"""Immutable JSON plus Parquet storage and explicit selection for weekly recaps.
+"""Immutable JSON plus Parquet storage and explicit selection for weekly and season recaps.
 
-Layout under the registered ``weekly_recaps`` root (``DECISIONS.md`` D86)::
+Layout under the registered ``weekly_recaps`` root (``DECISIONS.md`` D86), where N is the weekly
+recap schema version::
 
-    schema=1/recaps/{recap_id}.json        manifest
-    schema=1/games/{content_digest}.parquet game frame
-    current.json                           one selection per season and week
+    schema=N/recaps/{recap_id}.json          weekly manifest
+    schema=N/games/{content_digest}.parquet  weekly game frame
+    schema=N/seasons/{season_recap_id}.json  season manifest (rolled up from the weekly recaps)
+    current.json                             one weekly selection per season and week
+    current_seasons.json                     one season selection per season
 
 A rerun on unchanged inputs replays to the same identity and keeps every stored file byte for
 byte; a reused identity with different content is rejected. Loading verifies the manifest's
@@ -37,9 +40,17 @@ from gridiron_edge.evaluation.weekly_recap import (
     weekly_recap_from_payload,
     weekly_recap_payload,
 )
+from gridiron_edge.evaluation.weekly_recap_season import (
+    SeasonRecap,
+    season_recap_from_payload,
+    season_recap_payload,
+    validate_season_recap,
+)
 
 _CURRENT_FILENAME: Final[str] = "current.json"
 _CURRENT_SCHEMA_VERSION: Final[int] = 1
+_CURRENT_SEASONS_FILENAME: Final[str] = "current_seasons.json"
+_CURRENT_SEASONS_SCHEMA_VERSION: Final[int] = 1
 
 
 class RecapWriteOutcome(StrEnum):
@@ -56,6 +67,15 @@ class WeeklyRecapSelection:
     season: str
     week: int
     recap_id: str
+    selected_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonRecapSelection:
+    """The explicitly selected season recap of one season."""
+
+    season: str
+    season_recap_id: str
     selected_at: datetime
 
 
@@ -180,6 +200,116 @@ def load_current_weekly_recap(
     return recap, games
 
 
+def season_recap_manifest_path(season_recap_id: str, *, repo: Path | None = None) -> Path:
+    """Return the identity-addressed manifest path of one season recap."""
+    return (
+        weekly_recap_root(repo)
+        / f"schema={WEEKLY_RECAP_SCHEMA_VERSION}"
+        / "seasons"
+        / f"{_digest(season_recap_id)}.json"
+    )
+
+
+def write_season_recap(recap: SeasonRecap, *, repo: Path | None = None) -> RecapWriteOutcome:
+    """Persist the season manifest, or accept an exact replay of a stored one."""
+    validate_season_recap(recap)
+    manifest = season_recap_manifest_path(recap.season_recap_id, repo=repo)
+    if manifest.exists():
+        stored = load_season_recap(recap.season_recap_id, repo=repo)
+        if _season_without_built_at(stored) != _season_without_built_at(recap):
+            raise ValueError("Season recap identity cannot be reused with different content.")
+        return RecapWriteOutcome.REPLAYED
+    encoded = json.dumps(
+        season_recap_payload(recap), indent=2, sort_keys=True, allow_nan=False
+    ).encode()
+    _atomic_write(manifest, encoded + b"\n")
+    return RecapWriteOutcome.WRITTEN
+
+
+def load_season_recap(season_recap_id: str, *, repo: Path | None = None) -> SeasonRecap:
+    """Load one stored season recap, verifying its identity."""
+    path = season_recap_manifest_path(season_recap_id, repo=repo)
+    if not path.is_file():
+        raise FileNotFoundError(f"Season recap is not stored: season_recap_id={season_recap_id!r}.")
+    recap = season_recap_from_payload(json.loads(path.read_text(encoding="utf-8")))
+    if recap.season_recap_id != season_recap_id:
+        raise ValueError("Season recap manifest is stored under another identity.")
+    return recap
+
+
+def select_current_season_recap(
+    season_recap_id: str,
+    *,
+    selected_at: datetime,
+    repo: Path | None = None,
+) -> SeasonRecapSelection:
+    """Explicitly select one stored season recap for its season."""
+    _utc(selected_at)
+    recap = load_season_recap(season_recap_id, repo=repo)
+    current = _read_current_seasons(repo)
+    current["selections"][recap.season] = {
+        "season": recap.season,
+        "season_recap_id": recap.season_recap_id,
+        "selected_at": selected_at.isoformat(),
+    }
+    encoded = json.dumps(current, indent=2, sort_keys=True).encode() + b"\n"
+    _atomic_write(weekly_recap_root(repo) / _CURRENT_SEASONS_FILENAME, encoded)
+    return SeasonRecapSelection(recap.season, recap.season_recap_id, selected_at)
+
+
+def get_current_season_recap_selection(
+    *,
+    season: str,
+    repo: Path | None = None,
+) -> SeasonRecapSelection | None:
+    """Return the season recap selection of one season, or ``None`` when nothing is selected."""
+    if not season.strip():
+        raise ValueError("A season recap selection needs a season.")
+    payload = _read_current_seasons(repo)["selections"].get(season)
+    if payload is None:
+        return None
+    if not isinstance(payload, dict) or set(payload) != {
+        "season",
+        "season_recap_id",
+        "selected_at",
+    }:
+        raise ValueError("Season recap selection does not match the schema.")
+    if payload["season"] != season:
+        raise ValueError("Season recap selection is stored under another season.")
+    selected_at = datetime.fromisoformat(str(payload["selected_at"]))
+    _utc(selected_at)
+    return SeasonRecapSelection(season, _digest(str(payload["season_recap_id"])), selected_at)
+
+
+def load_current_season_recap(*, season: str, repo: Path | None = None) -> SeasonRecap:
+    """Load the explicitly selected season recap of one season."""
+    selection = get_current_season_recap_selection(season=season, repo=repo)
+    if selection is None:
+        raise FileNotFoundError(f"No season recap is selected for {season}.")
+    recap = load_season_recap(selection.season_recap_id, repo=repo)
+    if recap.season != season:
+        raise ValueError("Selected season recap covers another season.")
+    return recap
+
+
+def _season_without_built_at(recap: SeasonRecap) -> dict[str, Any]:
+    payload = season_recap_payload(recap)
+    del payload["built_at"]
+    return payload
+
+
+def _read_current_seasons(repo: Path | None = None) -> dict[str, Any]:
+    path = weekly_recap_root(repo) / _CURRENT_SEASONS_FILENAME
+    if not path.exists():
+        return {"schema_version": _CURRENT_SEASONS_SCHEMA_VERSION, "selections": {}}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("schema_version") != _CURRENT_SEASONS_SCHEMA_VERSION:
+        raise ValueError("Unsupported season recap current-selection schema.")
+    if not isinstance(raw.get("selections"), dict):
+        raise ValueError("Season recap current 'selections' must be an object.")
+    return raw
+
+
 def _without_built_at(recap: WeeklyRecap) -> dict[str, Any]:
     payload = weekly_recap_payload(recap)
     del payload["built_at"]
@@ -280,5 +410,5 @@ def _utc(value: datetime) -> None:
 
 def _digest(value: str) -> str:
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-        raise ValueError("recap_id must be a lowercase SHA-256 digest.")
+        raise ValueError("A recap id must be a lowercase SHA-256 digest.")
     return value

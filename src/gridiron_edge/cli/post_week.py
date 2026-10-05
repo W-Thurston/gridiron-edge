@@ -132,10 +132,10 @@ def _stage_close_live_forecasts(ctx: dict[str, Any]) -> StageResult:
 
 
 def _stage_build_weekly_recap(ctx: dict[str, Any]) -> StageResult:
-    """Build and select the finished week's recap from persisted state (``DECISIONS.md`` D86).
+    """Build and select the finished week's recap, then its season's (``DECISIONS.md`` D86).
 
-    The recap id and whether it is new or a replay go to the cycle report, so the closeout
-    receipt names the recap it selected.
+    Each recap id and whether it is new or a replay go to the cycle report, so the closeout
+    receipt names the recaps it selected.
     """
     from datetime import UTC, datetime
 
@@ -143,21 +143,33 @@ def _stage_build_weekly_recap(ctx: dict[str, Any]) -> StageResult:
     from gridiron_edge.evaluation.weekly_recap import WeeklyRecapRefusalError
     from gridiron_edge.evaluation.weekly_recap_build import (
         build_weekly_recap_from_repo,
+        rebuild_season_recap,
         store_and_select_weekly_recap,
     )
 
     repo = get_settings().repo_root
+    season = str(ctx["season"])
     now = datetime.now(UTC)
     try:
         built = build_weekly_recap_from_repo(
-            repo=repo, season=str(ctx["season"]), week=int(ctx["week"]), built_at=now
+            repo=repo, season=season, week=int(ctx["week"]), built_at=now
         )
     except WeeklyRecapRefusalError as error:
         return StageResult(success=False, detail=f"recap refused: {error}")
     result = store_and_select_weekly_recap(built, selected_at=now, repo=repo)
     line = f"weekly recap {result.recap_id} ({result.outcome})"
-    ctx.setdefault("cycle_report", []).append(line)
-    return StageResult(success=True, detail=line, rows=built.recap.counts.scheduled_games)
+    report = ctx.setdefault("cycle_report", [])
+    report.append(line)
+    rows = built.recap.counts.scheduled_games
+    try:
+        season_result = rebuild_season_recap(repo=repo, season=season, now=now)
+    except ValueError as error:
+        return StageResult(
+            success=False, detail=f"{line}; season recap refused: {error}", rows=rows
+        )
+    season_line = f"season recap {season_result.recap_id} ({season_result.outcome})"
+    report.append(season_line)
+    return StageResult(success=True, detail=f"{line}; {season_line}", rows=rows)
 
 
 def _stage_refresh_season_projections(
@@ -203,7 +215,7 @@ def _build_stages() -> list[CompositeStage]:
         ),
         CompositeStage(
             name="build-weekly-recap",
-            description="Build and select the weekly recap",
+            description="Build and select the weekly and season recaps",
             func=_stage_build_weekly_recap,
             soft_fail=True,
         ),
@@ -240,8 +252,9 @@ def post_week_cmd(
 
     The default workflow refreshes completed results, rebuilds next-week model
     state, regenerates season and weekly Elo projections, evaluates the exact
-    live forecasts issued before kickoff, and builds and selects the week's recap.
-    A recap that cannot be built is a warning, not a failure; rebuild it with
+    live forecasts issued before kickoff, and builds and selects the week's recap
+    and the season recap rolled up from the selected weekly recaps. A recap that
+    cannot be built is a warning, not a failure; rebuild it with
     --only build-weekly-recap. It does not publish the next week's forecast; run
     weekly-predict for that, as the closing hint states.
 

@@ -5735,6 +5735,24 @@
         "title": "ReasoningEntry",
         "type": "object"
       },
+      "RecapCalibration": {
+        "additionalProperties": false,
+        "description": "Model and closing-market home win probability on the same bins.",
+        "properties": {
+          "market": {
+            "$ref": "#/components/schemas/RecapSideCalibration"
+          },
+          "model": {
+            "$ref": "#/components/schemas/RecapSideCalibration"
+          }
+        },
+        "required": [
+          "model",
+          "market"
+        ],
+        "title": "RecapCalibration",
+        "type": "object"
+      },
       "RecapCloserCounts": {
         "additionalProperties": false,
         "description": "How often each side landed closer, over games both sides forecast.",
@@ -6235,6 +6253,96 @@
         "title": "RecapMarketAtForecast",
         "type": "object"
       },
+      "RecapPairedDifference": {
+        "additionalProperties": false,
+        "description": "Mean per-game model-minus-market difference over games both sides forecast.\n\nNegative means the model's error was lower. The interval is mean +/- ``interval_z`` x the\nstandard error: approximate, by the normal approximation, and not a verdict.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "interval_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval High"
+          },
+          "interval_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Low"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "standard_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sample standard deviation over sqrt(n).",
+            "title": "Standard Error"
+          }
+        },
+        "required": [
+          "count",
+          "mean",
+          "standard_error",
+          "interval_low",
+          "interval_high"
+        ],
+        "title": "RecapPairedDifference",
+        "type": "object"
+      },
+      "RecapPairedDifferences": {
+        "additionalProperties": false,
+        "description": "Win Brier and absolute spread, total and per-team-score error, model minus market.",
+        "properties": {
+          "projected_score": {
+            "$ref": "#/components/schemas/RecapPairedDifference"
+          },
+          "spread": {
+            "$ref": "#/components/schemas/RecapPairedDifference"
+          },
+          "total": {
+            "$ref": "#/components/schemas/RecapPairedDifference"
+          },
+          "win": {
+            "$ref": "#/components/schemas/RecapPairedDifference"
+          }
+        },
+        "required": [
+          "win",
+          "spread",
+          "total",
+          "projected_score"
+        ],
+        "title": "RecapPairedDifferences",
+        "type": "object"
+      },
       "RecapPointComparison": {
         "additionalProperties": false,
         "description": "Model against closing-market point forecast.",
@@ -6478,6 +6586,155 @@
         "title": "RecapProjectedScoreForecast",
         "type": "object"
       },
+      "RecapReliabilityBin": {
+        "additionalProperties": false,
+        "description": "One fixed home-win probability bin; the means are null when it holds no game.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "lower": {
+            "title": "Lower",
+            "type": "number"
+          },
+          "mean_forecast": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Forecast"
+          },
+          "observed_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the bin's games the home team won.",
+            "title": "Observed Rate"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lower",
+          "upper",
+          "count",
+          "mean_forecast",
+          "observed_rate"
+        ],
+        "title": "RecapReliabilityBin",
+        "type": "object"
+      },
+      "RecapSideCalibration": {
+        "additionalProperties": false,
+        "description": "One side's reliability over every bin, and its ECE over ``count`` decided games.",
+        "properties": {
+          "bins": {
+            "items": {
+              "$ref": "#/components/schemas/RecapReliabilityBin"
+            },
+            "title": "Bins",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "ece": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ece"
+          }
+        },
+        "required": [
+          "count",
+          "ece",
+          "bins"
+        ],
+        "title": "RecapSideCalibration",
+        "type": "object"
+      },
+      "RecapStarterCounts": {
+        "additionalProperties": false,
+        "description": "Starter slots (two per game) by status, and each predictor's accuracy.",
+        "properties": {
+          "actual_from_game_logs": {
+            "description": "Slots whose actual starter is the top passer, not nflverse's value.",
+            "title": "Actual From Game Logs",
+            "type": "integer"
+          },
+          "actual_missing": {
+            "title": "Actual Missing",
+            "type": "integer"
+          },
+          "assumed": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "carry_forward": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "from_capture": {
+            "description": "Scored slots whose record came from a sidecar capture.",
+            "title": "From Capture",
+            "type": "integer"
+          },
+          "nflverse": {
+            "$ref": "#/components/schemas/RecapPredictorAccuracy"
+          },
+          "not_in_product": {
+            "title": "Not In Product",
+            "type": "integer"
+          },
+          "not_recorded": {
+            "title": "Not Recorded",
+            "type": "integer"
+          },
+          "scored": {
+            "title": "Scored",
+            "type": "integer"
+          },
+          "slots": {
+            "title": "Slots",
+            "type": "integer"
+          },
+          "starter_unresolved": {
+            "title": "Starter Unresolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slots",
+          "scored",
+          "from_capture",
+          "not_recorded",
+          "starter_unresolved",
+          "not_in_product",
+          "actual_missing",
+          "actual_from_game_logs",
+          "assumed",
+          "nflverse",
+          "carry_forward"
+        ],
+        "title": "RecapStarterCounts",
+        "type": "object"
+      },
       "RecapStarterSide": {
         "additionalProperties": false,
         "description": "One side's assumed, nflverse and carried-forward starter against who started.\n\nThe ``*_correct`` flags are null unless ``status`` is ``available`` and the predictor made a\npick. The actual starter is shown whenever it is known, whatever the status.",
@@ -6676,7 +6933,7 @@
       },
       "RecapStartingQbs": {
         "additionalProperties": false,
-        "description": "The week's starter slots (two per game) by status, and each predictor's accuracy.",
+        "description": "The week's starter slots by status, each predictor's accuracy, and the captures read.",
         "properties": {
           "actual_from_game_logs": {
             "description": "Slots whose actual starter is the top passer, not nflverse's value.",
@@ -7729,6 +7986,263 @@
         },
         "title": "ResponseMeta",
         "type": "object"
+      },
+      "SeasonRecapConventions": {
+        "additionalProperties": false,
+        "description": "The conventions the season's aggregates are stated in.",
+        "properties": {
+          "calibration_bins": {
+            "title": "Calibration Bins",
+            "type": "string"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "string"
+          },
+          "interval_z": {
+            "title": "Interval Z",
+            "type": "number"
+          },
+          "live_only": {
+            "title": "Live Only",
+            "type": "string"
+          },
+          "paired_difference": {
+            "title": "Paired Difference",
+            "type": "string"
+          },
+          "recap": {
+            "$ref": "#/components/schemas/RecapConventionsResponse"
+          },
+          "season_to_date": {
+            "title": "Season To Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recap",
+          "season_to_date",
+          "live_only",
+          "calibration_bins",
+          "paired_difference",
+          "interval",
+          "interval_z"
+        ],
+        "title": "SeasonRecapConventions",
+        "type": "object"
+      },
+      "SeasonRecapResponse": {
+        "additionalProperties": false,
+        "description": "The selected season recap, rolled up from the season's selected weekly recaps.",
+        "properties": {
+          "_meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional metadata describing unpopulated fields (per D14)."
+          },
+          "all_games": {
+            "$ref": "#/components/schemas/SeasonRecapScope"
+          },
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "conventions": {
+            "$ref": "#/components/schemas/SeasonRecapConventions"
+          },
+          "live_games": {
+            "$ref": "#/components/schemas/SeasonRecapScope"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "season_recap_id": {
+            "title": "Season Recap Id",
+            "type": "string"
+          },
+          "selected_at": {
+            "format": "date-time",
+            "title": "Selected At",
+            "type": "string"
+          },
+          "weekly_recap_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weekly Recap Ids",
+            "type": "array"
+          },
+          "weeks": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonRecapWeek"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season",
+          "season_recap_id",
+          "built_at",
+          "selected_at",
+          "weekly_recap_ids",
+          "conventions",
+          "weeks",
+          "all_games",
+          "live_games"
+        ],
+        "title": "SeasonRecapResponse",
+        "type": "object"
+      },
+      "SeasonRecapScope": {
+        "additionalProperties": false,
+        "description": "The season so far over one scope: every recapped row, or the live rows.",
+        "properties": {
+          "calibration": {
+            "$ref": "#/components/schemas/RecapCalibration"
+          },
+          "games": {
+            "title": "Games",
+            "type": "integer"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/RecapWeekMetrics"
+          },
+          "paired": {
+            "$ref": "#/components/schemas/RecapPairedDifferences"
+          },
+          "starting_qbs": {
+            "$ref": "#/components/schemas/RecapStarterCounts"
+          },
+          "weeks": {
+            "description": "Weeks with at least one row in the scope.",
+            "title": "Weeks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weeks",
+          "games",
+          "metrics",
+          "paired",
+          "calibration",
+          "starting_qbs"
+        ],
+        "title": "SeasonRecapScope",
+        "type": "object"
+      },
+      "SeasonRecapWeek": {
+        "additionalProperties": false,
+        "description": "One finished week: its own values and the season to date through it.\n\nEvery metric is null when ``status`` is ``not_built``; a live metric scores no game when the\nweek has no live row.",
+        "properties": {
+          "forecast_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForecastRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "games": {
+            "title": "Games",
+            "type": "integer"
+          },
+          "live_games": {
+            "title": "Live Games",
+            "type": "integer"
+          },
+          "live_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapWeekMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "live_to_date": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapWeekMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapWeekMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recap_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recap Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SeasonWeekStatus"
+          },
+          "to_date": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapWeekMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "week",
+          "status",
+          "recap_id",
+          "forecast_role",
+          "games",
+          "live_games",
+          "metrics",
+          "live_metrics",
+          "to_date",
+          "live_to_date"
+        ],
+        "title": "SeasonRecapWeek",
+        "type": "object"
+      },
+      "SeasonWeekStatus": {
+        "description": "Whether a finished week of the season has a selected weekly recap.",
+        "enum": [
+          "recapped",
+          "not_built"
+        ],
+        "title": "SeasonWeekStatus",
+        "type": "string"
       },
       "SplitRow": {
         "additionalProperties": false,
@@ -9595,7 +10109,7 @@
       },
       "WeeklyRecapResponse": {
         "additionalProperties": false,
-        "description": "The selected recap of one week.\n\n``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in\n``_meta.field_status`` until the recap carries those sections.",
+        "description": "The selected recap of one week.\n\n``edges`` and ``wagers`` are null and marked pending in ``_meta.field_status`` until the\nrecap carries those sections. The season so far is served by ``GET /recaps/{season}/summary``.",
         "properties": {
           "_meta": {
             "anyOf": [
@@ -9669,10 +10183,6 @@
           "season": {
             "title": "Season",
             "type": "string"
-          },
-          "season_to_date": {
-            "title": "Season To Date",
-            "type": "null"
           },
           "selected_at": {
             "format": "date-time",
@@ -11502,6 +12012,52 @@
           }
         },
         "summary": "List Weekly Recaps",
+        "tags": [
+          "recaps"
+        ]
+      }
+    },
+    "/recaps/{season}/summary": {
+      "get": {
+        "description": "Return the selected season recap: each week beside the season to date, and calibration.",
+        "operationId": "get_season_recap_recaps__season__summary_get",
+        "parameters": [
+          {
+            "description": "Season, e.g. '2026-2027'.",
+            "in": "path",
+            "name": "season",
+            "required": true,
+            "schema": {
+              "description": "Season, e.g. '2026-2027'.",
+              "minLength": 1,
+              "title": "Season",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonRecapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Season Recap",
         "tags": [
           "recaps"
         ]

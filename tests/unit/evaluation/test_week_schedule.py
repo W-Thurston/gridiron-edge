@@ -9,6 +9,7 @@ import pytest
 
 from gridiron_edge.evaluation.week_schedule import (
     completed_game_ids,
+    finished_weeks,
     scheduled_games,
     week_completion,
 )
@@ -63,3 +64,17 @@ def test_scheduled_games_accept_a_file_without_game_type() -> None:
     games = DataFrame({"season": [2026, 2026], "week": [4, 5], "result": [1.0, None]})
 
     assert len(scheduled_games(games, season_int=2026, week=4)) == 1
+
+
+def test_finished_weeks_are_the_regular_season_weeks_with_every_result() -> None:
+    games = DataFrame(
+        {
+            "season": [2026, 2026, 2026, 2026, 2026, 2025],
+            "week": [1, 1, 2, 2, 3, 4],
+            "game_type": ["REG", "REG", "REG", "POST", "REG", "REG"],
+            "result": [3.0, -7.0, 1.0, None, None, 2.0],
+        }
+    )
+
+    # Week 2's unplayed game is not regular season; week 3 is unplayed; week 4 is another season.
+    assert finished_weeks(games, season_int=2026) == (1, 2)

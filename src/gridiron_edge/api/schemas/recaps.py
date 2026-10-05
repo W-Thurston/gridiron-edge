@@ -1,9 +1,10 @@
 # src/gridiron_edge/api/schemas/recaps.py
 
-"""Schemas for /recaps: the selected weekly recaps (``DECISIONS.md`` D86).
+"""Schemas for /recaps: the selected weekly and season recaps (``DECISIONS.md`` D86).
 
-Every value is serialized from the persisted recap. Each forecast family, market side and game
-row carries the recap's own status enum, so a missing value is always explained, never dropped.
+Every value is serialized from the persisted recap. Each forecast family, market side, game row
+and season week carries the recap's own status enum, so a missing value is always explained,
+never dropped.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from gridiron_edge.evaluation.weekly_recap import (
     ForecastStatus,
     ProductRowStatus,
 )
+from gridiron_edge.evaluation.weekly_recap_season import SeasonWeekStatus
 from gridiron_edge.evaluation.weekly_recap_starters import (
     ActualStarterSource,
     StarterRecordSource,
@@ -271,8 +273,8 @@ class RecapPredictorAccuracy(_Frozen):
     accuracy: float | None
 
 
-class RecapStartingQbs(_Frozen):
-    """The week's starter slots (two per game) by status, and each predictor's accuracy."""
+class RecapStarterCounts(_Frozen):
+    """Starter slots (two per game) by status, and each predictor's accuracy."""
 
     slots: int
     scored: int
@@ -287,14 +289,19 @@ class RecapStartingQbs(_Frozen):
     assumed: RecapPredictorAccuracy
     nflverse: RecapPredictorAccuracy
     carry_forward: RecapPredictorAccuracy
+
+
+class RecapStartingQbs(RecapStarterCounts):
+    """The week's starter slots by status, each predictor's accuracy, and the captures read."""
+
     capture_digests: list[str] = Field(description="The sidecar captures the section read.")
 
 
 class WeeklyRecapResponse(BaseResponse):
     """The selected recap of one week.
 
-    ``edges``, ``wagers`` and ``season_to_date`` are null and marked pending in
-    ``_meta.field_status`` until the recap carries those sections.
+    ``edges`` and ``wagers`` are null and marked pending in ``_meta.field_status`` until the
+    recap carries those sections. The season so far is served by ``GET /recaps/{season}/summary``.
     """
 
     season: str
@@ -314,4 +321,107 @@ class WeeklyRecapResponse(BaseResponse):
     starting_qbs: RecapStartingQbs
     edges: None = None
     wagers: None = None
-    season_to_date: None = None
+
+
+class RecapPairedDifference(_Frozen):
+    """Mean per-game model-minus-market difference over games both sides forecast.
+
+    Negative means the model's error was lower. The interval is mean +/- ``interval_z`` x the
+    standard error: approximate, by the normal approximation, and not a verdict.
+    """
+
+    count: int
+    mean: float | None
+    standard_error: float | None = Field(description="Sample standard deviation over sqrt(n).")
+    interval_low: float | None
+    interval_high: float | None
+
+
+class RecapPairedDifferences(_Frozen):
+    """Win Brier and absolute spread, total and per-team-score error, model minus market."""
+
+    win: RecapPairedDifference
+    spread: RecapPairedDifference
+    total: RecapPairedDifference
+    projected_score: RecapPairedDifference
+
+
+class RecapReliabilityBin(_Frozen):
+    """One fixed home-win probability bin; the means are null when it holds no game."""
+
+    lower: float
+    upper: float
+    count: int
+    mean_forecast: float | None
+    observed_rate: float | None = Field(description="Share of the bin's games the home team won.")
+
+
+class RecapSideCalibration(_Frozen):
+    """One side's reliability over every bin, and its ECE over ``count`` decided games."""
+
+    count: int
+    ece: float | None
+    bins: list[RecapReliabilityBin]
+
+
+class RecapCalibration(_Frozen):
+    """Model and closing-market home win probability on the same bins."""
+
+    model: RecapSideCalibration
+    market: RecapSideCalibration
+
+
+class SeasonRecapScope(_Frozen):
+    """The season so far over one scope: every recapped row, or the live rows."""
+
+    weeks: int = Field(description="Weeks with at least one row in the scope.")
+    games: int
+    metrics: RecapWeekMetrics
+    paired: RecapPairedDifferences
+    calibration: RecapCalibration
+    starting_qbs: RecapStarterCounts
+
+
+class SeasonRecapWeek(_Frozen):
+    """One finished week: its own values and the season to date through it.
+
+    Every metric is null when ``status`` is ``not_built``; a live metric scores no game when the
+    week has no live row.
+    """
+
+    week: int
+    status: SeasonWeekStatus
+    recap_id: str | None
+    forecast_role: ForecastRole | None
+    games: int
+    live_games: int
+    metrics: RecapWeekMetrics | None
+    live_metrics: RecapWeekMetrics | None
+    to_date: RecapWeekMetrics | None
+    live_to_date: RecapWeekMetrics | None
+
+
+class SeasonRecapConventions(_Frozen):
+    """The conventions the season's aggregates are stated in."""
+
+    recap: RecapConventionsResponse
+    season_to_date: str
+    live_only: str
+    calibration_bins: str
+    paired_difference: str
+    interval: str
+    interval_z: float
+
+
+class SeasonRecapResponse(BaseResponse):
+    """The selected season recap, rolled up from the season's selected weekly recaps."""
+
+    season: str
+    season_recap_id: str
+    built_at: datetime
+    selected_at: datetime
+    weekly_recap_ids: list[str]
+    conventions: SeasonRecapConventions
+    weeks: list[SeasonRecapWeek]
+    all_games: SeasonRecapScope
+    live_games: SeasonRecapScope

@@ -1,6 +1,6 @@
 # tests/unit/api/test_routes_recaps.py
 
-"""Tests for GET /recaps and GET /recaps/{season}/{week} (``DECISIONS.md`` D86)."""
+"""Tests for GET /recaps, /recaps/{season}/{week} and /recaps/{season}/summary (D86)."""
 
 from __future__ import annotations
 
@@ -25,10 +25,14 @@ from tests.fixtures.weekly_recap import (
 from gridiron_edge.api.app import create_app
 from gridiron_edge.api.deps import settings_dependency
 from gridiron_edge.evaluation.weekly_recap import BuiltWeeklyRecap, build_weekly_recap
+from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap, build_season_recap
 from gridiron_edge.evaluation.weekly_recap_store import (
+    season_recap_manifest_path,
+    select_current_season_recap,
     select_current_weekly_recap,
     weekly_recap_manifest_path,
     weekly_recap_root,
+    write_season_recap,
     write_weekly_recap,
 )
 
@@ -182,10 +186,11 @@ class TestDetail:
 
         body = client.get(f"/recaps/{SEASON}/{WEEK}").json()
 
-        for section in ("edges", "wagers", "season_to_date"):
+        for section in ("edges", "wagers"):
             assert body[section] is None
             assert body["_meta"]["field_status"][section] == "pending"
         assert "starting_qbs" not in body["_meta"]["field_status"]
+        assert "season_to_date" not in body
 
     def test_serves_the_starter_summary_and_every_side(
         self, client: TestClient, tmp_path: Path
@@ -269,6 +274,76 @@ class TestDetail:
         assert missing["spread"]["closer"] is None
 
 
+def _season_selected(tmp_path: Path) -> SeasonRecap:
+    built = _selected(tmp_path)
+    recap = build_season_recap(
+        season=SEASON,
+        recaps=[(built.recap, built.games)],
+        finished_weeks=(WEEK - 1, WEEK),
+        built_at=BUILT_AT,
+    )
+    write_season_recap(recap, repo=tmp_path)
+    select_current_season_recap(recap.season_recap_id, selected_at=SELECTED_AT, repo=tmp_path)
+    return recap
+
+
+class TestSeasonSummary:
+    def test_an_unselected_season_is_a_404_naming_the_command(self, client: TestClient) -> None:
+        response = client.get(f"/recaps/{SEASON}/summary")
+
+        assert response.status_code == 404
+        assert "--season-only" in response.json()["detail"]
+
+    def test_serves_every_week_the_season_and_calibration(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        recap = _season_selected(tmp_path)
+
+        response = client.get(f"/recaps/{SEASON}/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["season_recap_id"] == recap.season_recap_id
+        assert body["selected_at"] == "2026-10-07T13:00:00Z"
+        assert body["weekly_recap_ids"] == list(recap.weekly_recap_ids)
+        not_built, recapped = body["weeks"]
+        assert (not_built["week"], not_built["status"]) == (WEEK - 1, "not_built")
+        assert not_built["metrics"] is None and not_built["to_date"] is None
+        assert recapped["status"] == "recapped"
+        assert recapped["forecast_role"] == "live"
+        assert (
+            recapped["metrics"]["win"]["model"]["brier"] == recap.all_games.metrics.win.model.brier
+        )
+        season = body["all_games"]
+        assert season["games"] == 4
+        assert len(season["calibration"]["model"]["bins"]) == 10
+        assert season["calibration"]["model"]["ece"] == recap.all_games.calibration.model.ece
+        assert season["paired"]["win"]["count"] == recap.all_games.paired.win.count
+        assert season["starting_qbs"]["slots"] == 8
+        assert "capture_digests" not in season["starting_qbs"]
+        assert body["conventions"]["interval_z"] == 1.96
+
+    def test_a_tampered_season_recap_is_a_server_error(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        recap = _season_selected(tmp_path)
+        path = season_recap_manifest_path(recap.season_recap_id, repo=tmp_path)
+        payload = json.loads(path.read_text())
+        payload["season"] = "2027-2028"
+        path.write_text(json.dumps(payload))
+
+        response = client.get(f"/recaps/{SEASON}/summary")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Weekly recap artifacts failed verification."
+
+    def test_a_week_route_still_parses_weeks(self, client: TestClient, tmp_path: Path) -> None:
+        _season_selected(tmp_path)
+
+        assert client.get(f"/recaps/{SEASON}/{WEEK}").status_code == 200
+        assert client.get(f"/recaps/{SEASON}/0").status_code == 422
+
+
 class TestOpenApi:
     def test_statuses_are_schema_enums(self, client: TestClient) -> None:
         schemas = client.get("/openapi.json").json()["components"]["schemas"]
@@ -290,4 +365,5 @@ class TestOpenApi:
             "closing_line_missing",
         }
         assert set(schemas["Closer"]["enum"]) == {"model", "market", "tie"}
+        assert set(schemas["SeasonWeekStatus"]["enum"]) == {"recapped", "not_built"}
         assert "development" in schemas["ForecastRole"]["enum"]

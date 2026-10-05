@@ -558,6 +558,23 @@ export function useRecaps() {
   });
 }
 
+/** Fetches the selected season recap of one season; null when none is selected (404). */
+export function useSeasonRecap(season: string | null) {
+  return useQuery({
+    queryKey: ["season-recap", season],
+    queryFn: async () => {
+      if (season === null) throw new Error("season required");
+      const { data, error, response } = await apiClient.GET("/recaps/{season}/summary", {
+        params: { path: { season } },
+      });
+      if (response.status === 404) return null;
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+    enabled: season !== null,
+  });
+}
+
 /** Fetches the selected recap of one week. */
 export function useWeeklyRecap(season: string | null, week: number | null) {
   return useQuery({

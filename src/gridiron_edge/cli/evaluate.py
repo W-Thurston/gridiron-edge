@@ -36,7 +36,8 @@ from gridiron_edge.evaluation.select import (
 
 if TYPE_CHECKING:
     from gridiron_edge.evaluation.backfill import BackfillResult
-    from gridiron_edge.evaluation.weekly_recap import WeeklyRecap
+    from gridiron_edge.evaluation.weekly_recap import WeeklyRecap, WeekMetrics
+    from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap
 
 
 evaluate_app = typer.Typer(
@@ -1979,11 +1980,98 @@ def _weekly_recap_lines(recap: WeeklyRecap, games: DataFrame) -> list[str]:
     return lines
 
 
+def _season_recap_lines(recap: SeasonRecap) -> list[str]:
+    """Render the season recap: each week beside the season to date, totals, and calibration."""
+
+    def number(value: float | None, digits: int) -> str:
+        return "n/a" if value is None else f"{value:.{digits}f}"
+
+    def scores(metrics: WeekMetrics | None) -> str:
+        if metrics is None:
+            return f"{'not built':>48}"
+        win, spread, total = metrics.win, metrics.spread, metrics.total
+        return (
+            f"{number(win.model.brier, 4):>8}{number(win.market.brier, 4):>8}"
+            f"{number(spread.model.mae, 2):>8}{number(spread.market.mae, 2):>8}"
+            f"{number(total.model.mae, 2):>8}{number(total.market.mae, 2):>8}"
+        )
+
+    header = f"{'':<26}{'Brier':>8}{'mkt':>8}{'spread':>8}{'mkt':>8}{'total':>8}{'mkt':>8}"
+    lines = [
+        f"{recap.season}: season recap of {len(recap.weekly_recap_ids)} weekly recap(s)",
+        "",
+        header,
+    ]
+    for week in recap.weeks:
+        role = week.forecast_role or "-"
+        lines.append(f"{f'week {week.week} {role} ({week.games})':<26}{scores(week.metrics)}")
+        if week.metrics is not None:
+            lines.append(f"{'  to date':<26}{scores(week.to_date)}")
+    for label, scope in (("season", recap.all_games), ("live only", recap.live_games)):
+        lines.append(
+            f"{f'{label} ({scope.weeks} wk, {scope.games} games)':<26}{scores(scope.metrics)}"
+        )
+    lines.append("")
+    lines.append("model minus market per game (mean, approximate 95% interval, n):")
+    for label, scope in (("season", recap.all_games), ("live only", recap.live_games)):
+        paired = scope.paired
+        parts = []
+        for family, difference in (
+            ("win Brier", paired.win),
+            ("|spread|", paired.spread),
+            ("|total|", paired.total),
+            ("|team score|", paired.projected_score),
+        ):
+            parts.append(
+                f"{family} {number(difference.mean, 4)} "
+                f"[{number(difference.interval_low, 4)}, {number(difference.interval_high, 4)}] "
+                f"({difference.count})"
+            )
+        lines.append(f"  {label}: " + "; ".join(parts))
+    lines.append("")
+    for label, scope in (("season", recap.all_games), ("live only", recap.live_games)):
+        calibration = scope.calibration
+        lines.append(
+            f"calibration, {label}: ECE model {number(calibration.model.ece, 4)} "
+            f"({calibration.model.count}), market {number(calibration.market.ece, 4)} "
+            f"({calibration.market.count})"
+        )
+        lines.append(
+            "  bin counts model/market: "
+            + " ".join(
+                f"{model.lower:.1f}:{model.count}/{market.count}"
+                for model, market in zip(
+                    calibration.model.bins, calibration.market.bins, strict=True
+                )
+            )
+        )
+    starters = recap.all_games.starters
+    lines.append(
+        f"starting QBs to date: {starters.scored} of {starters.slots} slots scored; "
+        + ", ".join(
+            f"{label} {accuracy.correct}/{accuracy.count}"
+            for label, accuracy in (
+                ("assumed", starters.assumed),
+                ("nflverse", starters.nflverse),
+                ("carry-forward", starters.carry_forward),
+            )
+        )
+    )
+    return lines
+
+
 @evaluate_app.command("weekly-recap")
-def evaluate_weekly_recap(
+def evaluate_weekly_recap(  # noqa: PLR0915
     *,
     season: str = typer.Option(..., help="NFL season label, e.g. '2026-2027'."),
-    week: int = typer.Option(..., min=1, help="Regular-season week."),
+    week: int | None = typer.Option(
+        None, min=1, help="Regular-season week (omit with --season-only)."
+    ),
+    season_only: bool = typer.Option(
+        False,
+        "--season-only",
+        help="Rebuild only the season recap from the season's selected weekly recaps.",
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Build and print the recap without writing or selecting it."
     ),
@@ -1993,8 +2081,9 @@ def evaluate_weekly_recap(
     Builds an immutable recap from persisted state only (`DECISIONS.md` D86): the week's
     schedule from the raw games file, the week's selected weekly product and the forecast
     events it cites, and the cleaned games file's scores and closing lines. Writes it under
-    `data/output/weekly_recaps/` and selects it for the week. A rerun on unchanged inputs
-    replays to the same identity and leaves the stored files untouched.
+    `data/output/weekly_recaps/` and selects it for the week, then rebuilds and selects the
+    season recap from the season's selected weekly recaps. A rerun on unchanged inputs
+    replays to the same identities and leaves the stored files untouched.
 
     Refuses a week with an unplayed game, a week without a selected product, and a game whose
     scores differ between the raw and cleaned games files.
@@ -2003,6 +2092,7 @@ def evaluate_weekly_recap(
     Examples:
       gridiron evaluate weekly-recap --season 2026-2027 --week 3 --dry-run
       gridiron evaluate weekly-recap --season 2026-2027 --week 3
+      gridiron evaluate weekly-recap --season 2026-2027 --season-only --dry-run
     """
     from datetime import UTC, datetime
 
@@ -2010,31 +2100,69 @@ def evaluate_weekly_recap(
     from gridiron_edge.core.settings import get_settings
     from gridiron_edge.evaluation.weekly_recap_build import (
         RecapSelectionOutcome,
+        build_season_recap_from_repo,
         build_weekly_recap_from_repo,
+        store_and_select_season_recap,
         store_and_select_weekly_recap,
     )
     from gridiron_edge.evaluation.weekly_recap_store import (
+        get_current_season_recap_selection,
         get_current_weekly_recap_selection,
+        season_recap_manifest_path,
         weekly_recap_manifest_path,
     )
     from gridiron_edge.ratings.history import season_start
 
-    def refuse(reason: str) -> NoReturn:
-        typer.echo(f"Cannot recap {season} week {week}: {reason}", err=True)
+    def refuse(subject: str, reason: str) -> NoReturn:
+        typer.echo(f"Cannot recap {subject}: {reason}", err=True)
         raise typer.Exit(code=1)
+
+    def season_recap() -> None:
+        try:
+            built = build_season_recap_from_repo(
+                repo=repo, season=season, built_at=datetime.now(UTC)
+            )
+        except ValueError as error:
+            refuse(f"the {season} season", str(error))
+        typer.echo("")
+        for line in _season_recap_lines(built):
+            typer.echo(line)
+        typer.echo("")
+        previous = get_current_season_recap_selection(season=season, repo=repo)
+        typer.echo(f"previous season selection: {previous.season_recap_id if previous else 'none'}")
+        if dry_run:
+            stored = season_recap_manifest_path(built.season_recap_id, repo=repo).exists()
+            typer.echo(
+                f"dry run, nothing written: season recap {built.season_recap_id} "
+                f"({'already stored' if stored else 'new'})"
+            )
+            return
+        result = store_and_select_season_recap(built, selected_at=datetime.now(UTC), repo=repo)
+        if result.outcome is RecapSelectionOutcome.REPLAYED:
+            typer.echo(f"replayed: season recap {result.recap_id} is unchanged and stays selected")
+            return
+        typer.echo(f"{result.outcome}: season recap {result.recap_id} is now selected")
 
     try:
         season_start(season)
     except ValueError as error:
         raise typer.BadParameter(str(error), param_hint="--season") from error
+    if season_only and week is not None:
+        raise typer.BadParameter("--season-only takes no week.", param_hint="--week")
+    if not season_only and week is None:
+        raise typer.BadParameter("A week is required unless --season-only.", param_hint="--week")
     repo: Path = get_settings().repo_root
+    if week is None:
+        console.header("evaluate weekly-recap", subtitle=f"{season} season")
+        season_recap()
+        return
     console.header("evaluate weekly-recap", subtitle=f"{season} week {week}")
     try:
         built = build_weekly_recap_from_repo(
             repo=repo, season=season, week=week, built_at=datetime.now(UTC)
         )
     except ValueError as error:
-        refuse(str(error))
+        refuse(f"{season} week {week}", str(error))
     recap = built.recap
     for line in _weekly_recap_lines(recap, built.games):
         typer.echo(line)
@@ -2047,9 +2175,14 @@ def evaluate_weekly_recap(
             f"dry run, nothing written: recap {recap.recap_id} "
             f"({'already stored' if stored else 'new'})"
         )
+        typer.echo(
+            "the season recap is rebuilt once the week is selected; "
+            "preview it with --season-only --dry-run"
+        )
         return
     result = store_and_select_weekly_recap(built, selected_at=datetime.now(UTC), repo=repo)
     if result.outcome is RecapSelectionOutcome.REPLAYED:
         typer.echo(f"replayed: recap {recap.recap_id} is unchanged and stays selected")
-        return
-    typer.echo(f"{result.outcome}: recap {recap.recap_id} is now selected")
+    else:
+        typer.echo(f"{result.outcome}: recap {recap.recap_id} is now selected")
+    season_recap()

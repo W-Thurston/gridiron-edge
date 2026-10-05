@@ -1,10 +1,10 @@
 # src/gridiron_edge/api/serializers/recaps.py
 
-"""Serialize persisted weekly recaps (``DECISIONS.md`` D86) into the /recaps responses.
+"""Serialize persisted weekly and season recaps (``DECISIONS.md`` D86) into the /recaps responses.
 
-Nothing is scored or recomputed here: the week metrics come from the manifest and every game
-value from the stored game frame. Missing frame values (NaN, NaT, NA) become null beside the
-row's own status.
+Nothing is scored or recomputed here: the week and season metrics come from the manifests and
+every game value from the stored game frame. Missing frame values (NaN, NaT, NA) become null
+beside the row's own status.
 """
 
 from __future__ import annotations
@@ -34,6 +34,10 @@ from gridiron_edge.api.schemas.recaps import (
     RecapStartingQbs,
     RecapWeekMetrics,
     RecapWinForecast,
+    SeasonRecapConventions,
+    SeasonRecapResponse,
+    SeasonRecapScope,
+    SeasonRecapWeek,
     WeeklyRecapList,
     WeeklyRecapResponse,
     WeeklyRecapSummary,
@@ -47,18 +51,21 @@ from gridiron_edge.evaluation.weekly_recap import (
     ProductRowStatus,
     WeeklyRecap,
 )
+from gridiron_edge.evaluation.weekly_recap_season import ScopeSummary, SeasonRecap
 from gridiron_edge.evaluation.weekly_recap_starters import (
     ActualStarterSource,
     StarterRecordSource,
     StarterStatus,
 )
-from gridiron_edge.evaluation.weekly_recap_store import WeeklyRecapSelection
+from gridiron_edge.evaluation.weekly_recap_store import (
+    SeasonRecapSelection,
+    WeeklyRecapSelection,
+)
 
 # Sections the recap does not carry yet; null and marked pending (D14).
 PENDING_RECAP_SECTIONS: Final[tuple[str, ...]] = (
     "edges",
     "wagers",
-    "season_to_date",
 )
 
 
@@ -99,6 +106,30 @@ def serialize_weekly_recap(
         ),
         response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
     )
+
+
+def serialize_season_recap(
+    selection: SeasonRecapSelection,
+    recap: SeasonRecap,
+) -> SeasonRecapResponse:
+    """Return the selected season recap: every week, the season to date and calibration."""
+    return SeasonRecapResponse(
+        season=recap.season,
+        season_recap_id=recap.season_recap_id,
+        built_at=recap.built_at,
+        selected_at=selection.selected_at,
+        weekly_recap_ids=list(recap.weekly_recap_ids),
+        conventions=SeasonRecapConventions.model_validate(asdict(recap.conventions)),
+        weeks=[SeasonRecapWeek.model_validate(asdict(week)) for week in recap.weeks],
+        all_games=_scope(recap.all_games),
+        live_games=_scope(recap.live_games),
+    )
+
+
+def _scope(scope: ScopeSummary) -> SeasonRecapScope:
+    payload = asdict(scope)
+    payload["starting_qbs"] = payload.pop("starters")
+    return SeasonRecapScope.model_validate(payload)
 
 
 def _summary(
