@@ -1,5 +1,22 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-05 - Unit 26: the closeout builds the weekly recap
+
+#### Added
+
+- A `build-weekly-recap` stage at the end of `post-week` and of the weekly cycle's closeout builds and selects the
+  finished week's recap with the same refusals and selection rules as `gridiron evaluate weekly-recap`. It is a
+  soft stage: a refused or failed recap is listed as soft-failed with its reason in the warnings, the closeout still
+  counts as done, and the next week's forecast goes ahead. The closeout receipt's report names the recap
+  (`weekly recap <id> (new | replayed | reselected)`). `post-week --only build-weekly-recap` rebuilds it by hand.
+- `evaluation/weekly_recap_build.py`: the load-build and store-select steps shared by the command and the stage.
+
+#### Changed
+
+- A weekly-cycle run that succeeds with soft-failed stages names them in its receipt detail
+  (`week 4 closed; soft-failed: build-weekly-recap`), so `week-cycle status` shows them.
+- `post-week` prints the stages' report lines (the recap id) after its summary.
+
 ### 2026-10-04 - Unit 24: the weekly recap is served and shown on a "Last Week" page
 
 #### Added

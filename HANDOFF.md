@@ -1291,9 +1291,12 @@ refresh-results
 refresh-next-week-state
 refresh-season-projections
 close-live-forecasts
+build-weekly-recap
 ```
 
 The command refreshes outcomes, refreshes next-week schedule, player-stats, and feature state, and evaluates the exact Win and Total events referenced by the selected weekly product, whatever forecast role (`live` or `development`) that product carries; closeout reports the exact role closed rather than assuming `live`. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
+
+`build-weekly-recap` then builds and selects the week's recap through the same function as `gridiron evaluate weekly-recap` (see "Weekly Recap") and prints `weekly recap <id> (new | replayed | reselected)` after the summary. It is a soft stage: a refusal (an unplayed game, no selected product, a score disagreement) or any other recap error is listed under "soft-failed" and "Warnings", and the command still exits 0. Rebuild by hand with `post-week --only build-weekly-recap --season S --week W`; it declares no dependency on the closeout stage (it reconciles the product itself), so `--only` runs it alone.
 
 `post-week` does not run historical forecast backfill.
 
@@ -1301,7 +1304,7 @@ The command refreshes outcomes, refreshes next-week schedule, player-stats, and 
 
 ## Weekly Recap
 
-Once every game of a week has a result, build the week's recap by hand (neither `post-week` nor the cycle runs it yet):
+The weekly cycle's closeout and `post-week` build and select the finished week's recap themselves (the `build-weekly-recap` stage, a soft failure; see "Postgame Workflow" and "Weekly Cycle"). To build or inspect one by hand once every game of a week has a result:
 
 ```bash
 uv run gridiron evaluate weekly-recap --season 2026-2027 --week 3 --dry-run   # print only
@@ -1340,7 +1343,10 @@ It derives the target week M (the earliest week with a game still ahead; the lin
    closes anyway), `refresh-next-week-state`, `verify-week-data-current` (player stats, play-by-play, EPA, player game
    logs and the modeling file must each hold every completed game of N; a lag is the same quiet hourly
    "waiting", and the counts per artifact are in the receipt's report), `refresh-season-projections`,
-   `close-live-forecasts`, soft `check-collector`. Each hourly retry reruns the pulls and rebuilds. A week closed by hand with `post-week` leaves no receipt; if M has no forecast the
+   `close-live-forecasts`, soft `build-weekly-recap` (the receipt's report names the recap it selected), soft
+   `check-collector`. A soft-failed stage does not stop the closeout or the forecast that follows; a done
+   closeout's detail names it (`week 4 closed; soft-failed: build-weekly-recap`), so `status` shows it, and its
+   reason is in the receipt's `warnings`. Each hourly retry reruns the pulls and rebuilds. A week closed by hand with `post-week` leaves no receipt; if M has no forecast the
    cycle closes it once more.
 2. **Forecast M** when it has no current weekly product: the `weekly-predict` stages plus `report-forecast`
    (starter sources and differences, whether the injury report was available, readiness, market age).

@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from gridiron_edge.cli import week_cycle
+from gridiron_edge.cli._composites import CompositeSummary
 from gridiron_edge.cli.main import app
 from gridiron_edge.cli.week_cycle import (
     build_close_stages,
@@ -181,14 +182,42 @@ def test_close_stages_gate_the_closeout_on_a_complete_week() -> None:
         "verify-week-data-current",
         "refresh-season-projections",
         "close-live-forecasts",
+        "build-weekly-recap",
         "check-collector",
     ]
     assert stages["refresh-next-week-state"].depends_on == ("verify-week-complete",)
     assert stages["verify-week-data-current"].depends_on == ("refresh-next-week-state",)
-    for name in ("refresh-season-projections", "close-live-forecasts"):
+    for name in ("refresh-season-projections", "close-live-forecasts", "build-weekly-recap"):
         assert stages[name].depends_on == ("verify-week-data-current",)
     assert stages["verify-week-complete"].depends_on == ("refresh-results",)
+    assert stages["build-weekly-recap"].soft_fail is True
     assert stages["check-collector"].soft_fail is True
+
+
+def test_a_receipt_detail_names_the_soft_failed_stages() -> None:
+    clean = CompositeSummary(name="close", succeeded=["close-live-forecasts"])
+    soft = CompositeSummary(
+        name="close",
+        succeeded=["close-live-forecasts"],
+        soft_failed=["build-weekly-recap", "check-collector"],
+        warnings=["build-weekly-recap: recap refused: no weekly product is selected."],
+    )
+    hard = CompositeSummary(
+        name="close",
+        soft_failed=["build-weekly-recap"],
+        failed=["close-live-forecasts"],
+        failure_details={"close-live-forecasts": "incomplete closeout"},
+    )
+
+    assert week_cycle._stage_run(clean, {}, done="week 4 closed").detail == "week 4 closed"
+    soft_run = week_cycle._stage_run(soft, {"cycle_report": ["x"]}, done="week 4 closed")
+    assert soft_run.success is True
+    assert soft_run.detail == "week 4 closed; soft-failed: build-weekly-recap, check-collector"
+    assert soft_run.stages["build-weekly-recap"] == "soft-failed"
+    assert soft_run.warnings == soft.warnings
+    assert soft_run.report == ["x"]
+    hard_run = week_cycle._stage_run(hard, {}, done="week 4 closed")
+    assert hard_run.detail == "close-live-forecasts: incomplete closeout"
 
 
 def test_forecast_stages_reuse_weekly_predict_then_summarize() -> None:

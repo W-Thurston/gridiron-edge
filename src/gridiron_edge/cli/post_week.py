@@ -131,6 +131,35 @@ def _stage_close_live_forecasts(ctx: dict[str, Any]) -> StageResult:
     )
 
 
+def _stage_build_weekly_recap(ctx: dict[str, Any]) -> StageResult:
+    """Build and select the finished week's recap from persisted state (``DECISIONS.md`` D86).
+
+    The recap id and whether it is new or a replay go to the cycle report, so the closeout
+    receipt names the recap it selected.
+    """
+    from datetime import UTC, datetime
+
+    from gridiron_edge.core.settings import get_settings
+    from gridiron_edge.evaluation.weekly_recap import WeeklyRecapRefusalError
+    from gridiron_edge.evaluation.weekly_recap_build import (
+        build_weekly_recap_from_repo,
+        store_and_select_weekly_recap,
+    )
+
+    repo = get_settings().repo_root
+    now = datetime.now(UTC)
+    try:
+        built = build_weekly_recap_from_repo(
+            repo=repo, season=str(ctx["season"]), week=int(ctx["week"]), built_at=now
+        )
+    except WeeklyRecapRefusalError as error:
+        return StageResult(success=False, detail=f"recap refused: {error}")
+    result = store_and_select_weekly_recap(built, selected_at=now, repo=repo)
+    line = f"weekly recap {result.recap_id} ({result.outcome})"
+    ctx.setdefault("cycle_report", []).append(line)
+    return StageResult(success=True, detail=line, rows=built.recap.counts.scheduled_games)
+
+
 def _stage_refresh_season_projections(
     ctx: dict[str, Any],
 ) -> StageResult:
@@ -172,6 +201,12 @@ def _build_stages() -> list[CompositeStage]:
             description="Close selected live forecasts",
             func=_stage_close_live_forecasts,
         ),
+        CompositeStage(
+            name="build-weekly-recap",
+            description="Build and select the weekly recap",
+            func=_stage_build_weekly_recap,
+            soft_fail=True,
+        ),
     ]
 
 
@@ -204,9 +239,11 @@ def post_week_cmd(
     r"""Close the completed week and prepare application data for the next week.
 
     The default workflow refreshes completed results, rebuilds next-week model
-    state, regenerates season and weekly Elo projections, and evaluates the exact
-    live forecasts issued before kickoff. It does not publish the next week's
-    forecast; run weekly-predict for that, as the closing hint states.
+    state, regenerates season and weekly Elo projections, evaluates the exact
+    live forecasts issued before kickoff, and builds and selects the week's recap.
+    A recap that cannot be built is a warning, not a failure; rebuild it with
+    --only build-weekly-recap. It does not publish the next week's forecast; run
+    weekly-predict for that, as the closing hint states.
 
     Examples:
     gridiron post-week --week 1 --season 2026-2027
@@ -214,6 +251,7 @@ def post_week_cmd(
     gridiron post-week --only refresh-next-week-state --week 1 --season 2026-2027
     gridiron post-week --only refresh-season-projections --week 1 --season 2026-2027
     gridiron post-week --only close-live-forecasts --week 1 --season 2026-2027
+    gridiron post-week --only build-weekly-recap --week 1 --season 2026-2027
     """
     stages = _build_stages()
     active = resolve_active_stages(all_stages=_ALL_STAGES, skip=skip, only=only)
@@ -240,6 +278,8 @@ def post_week_cmd(
         context=context,
     )
     render_composite_summary(summary)
+    for line in context.get("cycle_report") or []:
+        typer.echo(f"  {line}")
     if not summary.overall_success:
         raise typer.Exit(code=1)
     if not only:

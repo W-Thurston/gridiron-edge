@@ -110,8 +110,10 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Units 23 and 24 completed October 4, 2026 (`CHANGELOG.md`); next: Unit 25 - Starting-QB section, not yet
-active.** Sequence:
+**Units 23 and 24 completed October 4, 2026, and Unit 26 October 5, 2026 (`CHANGELOG.md`); next: Unit 25 -
+Starting-QB section, not yet active. Unit 26 was taken ahead of it on 2026-10-05 because week 4 was not finished
+(2 of 16 games scored in the local raw file; Monday ATL @ NO unplayed; no closeout receipt); start Unit 25 once
+week 4's closeout receipt exists.** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -473,7 +475,9 @@ Week 5 (about 2026-10-13) is the first full week; record that check in CHANGELOG
 **Acceptance.** Starter accuracy for each predictor per week, every slot with a status, misses listed;
 gates pass; HANDOFF, CHANGELOG, and DECISIONS if decision (a) adopts the capture.
 
-#### Unit 26 - Build the Recap at Closeout [Scoped October 4, 2026; not active]
+#### Unit 26 - Build the Recap at Closeout [Completed October 5, 2026]
+
+Closed; the completed record is under "Unit 26" below. The scoping record follows.
 
 **Goal.** The weekly cycle's closeout (and `post-week`) builds and selects the finished week's recap, so no
 week depends on someone remembering to run the command.
@@ -501,6 +505,19 @@ W21.
 **Decide at start.** Soft versus hard failure (recommended: soft, for the reason above); check how
 `week-cycle status` shows a soft-failed stage, so a failure is visible (an alert channel is W20, out of
 scope).
+
+**Decided at start (2026-10-05, with the user).**
+1. Soft failure, as recommended.
+2. Visibility: `week-cycle status` printed only a closeout's detail (`week N closed`); soft-failed stages
+   were only in the receipt JSON (already true of `check-collector`). A done closeout's detail now names
+   them: `week 4 closed; soft-failed: build-weekly-recap`. The recap id goes in the receipt's report.
+3. Dependency: a declared `depends_on` would make `post-week --only build-weekly-recap` fail the
+   dependency check, and the recap calls `close_live_forecasts` itself rather than reading the stage's
+   output. So in `post-week` the stage is ordered after `close-live-forecasts` without declaring it (like
+   every `post-week` stage); in the cycle it is gated on `verify-week-data-current` like its siblings. A
+   hard failure of `close-live-forecasts` still stops the run before it.
+4. If this lands before week 4's closeout, the cycle builds and selects week 4's first recap (schema 1)
+   unattended; the user accepted that (Unit 25 rebuilds it at its schema anyway).
 
 **Tests.** Stage order and dependency; a soft failure leaves the closeout `done`; the report line; `--only`;
 the runner's receipt carries it (stubbed ports).
@@ -877,6 +894,64 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 26 — Build the Recap at Closeout [Completed October 5, 2026]
+
+#### Completed
+
+`post-week` and the weekly cycle's closeout end with a `build-weekly-recap` stage that builds and selects the
+finished week's recap through `evaluation/weekly_recap_build.py`, the same load-build and store-select functions
+`gridiron evaluate weekly-recap` now calls, so both share refusals and the new/replayed/reselected rules. The stage
+is a soft failure: a refusal returns an unsuccessful result (`recap refused: <reason>`), and any other error is
+caught by the composite; either way it is listed as soft-failed with the reason in the warnings, the closeout
+receipt is `done`, and the next week's forecast proceeds. On success it adds `weekly recap <id> (new | replayed |
+reselected)` to the cycle report, which the closeout receipt stores and `post-week` now prints after its summary.
+In `post-week` it declares no dependency (so `--only build-weekly-recap` runs it alone); in the cycle it is gated
+on `verify-week-data-current`, after `close-live-forecasts` and before `check-collector`. A cycle run that succeeds
+with soft-failed stages names them in its receipt detail (`week 4 closed; soft-failed: build-weekly-recap`), the
+line `week-cycle status` prints.
+
+#### Goal
+
+Every finished week gets its recap built and selected by the closeout, so none depends on someone remembering to
+run the command, and a recap failure is visible without blocking the cycle.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/weekly_recap_build.py` - load the persisted inputs and build a week's recap (with the command's refusals); store and select it, reporting new, replayed or reselected.
+
+Changed:
+- `src/gridiron_edge/cli/evaluate.py` - `weekly-recap` calls the shared build and store-select functions.
+- `src/gridiron_edge/cli/post_week.py` - the soft `build-weekly-recap` stage; report lines printed after the summary; help text.
+- `src/gridiron_edge/cli/week_cycle.py` - the recap stage in the close stages; a successful run's detail names its soft-failed stages.
+- `tests/unit/cli/test_post_week.py` - stage list and soft flag; the stage builds, reports and replays; a refusal writes nothing; `--only` by hand; a refusal is a warning with exit 0.
+- `tests/unit/cli/test_week_cycle.py` - close-stage order, gate and soft flag; receipt detail with and without soft failures.
+- `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` - a soft-failed recap still closes the week and the forecast follows; the receipt records the recap report line.
+- `HANDOFF.md` - "Postgame Workflow", "Weekly Recap" and "Weekly Cycle" describe the stage and soft-failure visibility.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress.
+- `PLAN.md` - this record, the decisions taken at start, and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Focused: `test_post_week.py`, `test_week_cycle.py`, `tests/unit/weekly_cycle/`, `test_evaluate.py` (125 passed,
+the existing `weekly-recap` command tests unchanged). Python gate: ruff check and format, pyrefly 0 errors,
+`pytest -m "unit and not slow"` 4,906 passed. Real data, with the recap store checksummed before and after: `week-cycle --dry-run` idle for week 4; `evaluate
+weekly-recap --week 3 --dry-run` rebuilds the selected `315255ae...` ("already stored"); week 4 refused on 14
+unplayed games; `post-week --only build-weekly-recap` for week 3 replays `315255ae...` (exit 0), and for week 4
+soft-fails with the 14 games listed (exit 0); every recap file and `current.json` unchanged. The plan's week 4
+replay check and the live check wait for week 4's closeout (from Tuesday 2026-10-06 06:00 local): read its
+receipt's report and the selection afterwards.
+
+#### Acceptance
+
+A closeout builds and selects the recap through the same path as the command, the receipt names it, and a failure
+shows as soft-failed in the receipt detail, warnings and `status` without blocking the closeout or the next
+forecast; gates pass; HANDOFF, CHANGELOG, ROADMAP and this record are updated.
 
 ### Unit 24 — Weekly Recap API and Page [Completed October 4, 2026]
 

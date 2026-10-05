@@ -246,6 +246,45 @@ def test_closeout_then_forecast_run_in_one_tick_and_edges_are_recorded_with_the_
     assert forecast.results["digests"] == {"depth_charts": "d1", "injuries": "i1"}
 
 
+def test_a_soft_failed_recap_still_closes_the_week_and_the_receipt_names_it(
+    tmp_path: Path,
+) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.closeout = StageRun(
+        success=True,
+        detail="week 4 closed; soft-failed: build-weekly-recap",
+        stages={"close-live-forecasts": "ok", "build-weekly-recap": "soft-failed"},
+        warnings=["build-weekly-recap: recap refused: no weekly product is selected."],
+        report=["EPA by game: 16 of 16 week 4 games"],
+    )
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is False
+    assert fake.calls == ["closeout", "forecast"]
+    closeout = read_receipts(tmp_path, season=SEASON, week=4)[0]
+    assert (closeout.attempted, closeout.outcome) == ("closeout", "done")
+    assert closeout.detail == "week 4 closed; soft-failed: build-weekly-recap"
+    assert closeout.results["stages"]["build-weekly-recap"] == "soft-failed"
+    assert closeout.results["warnings"] == fake.closeout.warnings
+
+
+def test_the_closeout_receipt_records_the_selected_recap(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.closeout = StageRun(
+        success=True,
+        detail="week 4 closed",
+        stages={"build-weekly-recap": "ok"},
+        report=["weekly recap abc123 (new)"],
+    )
+
+    fake.run(tmp_path)
+
+    closeout = read_receipts(tmp_path, season=SEASON, week=4)[0]
+    assert closeout.results["stages"] == {"build-weekly-recap": "ok"}
+    assert closeout.results["report"] == ["weekly recap abc123 (new)"]
+
+
 def test_a_dirty_worktree_blocks_the_forecast_without_failing(tmp_path: Path) -> None:
     fake = Fake("2026-10-06T06:30:00")
     fake.dirty = ["a.py", "b.py"]

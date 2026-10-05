@@ -3,17 +3,26 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+import typer
+from typer.testing import CliRunner
 
 from gridiron_edge.cli._composites import StageResult
 from gridiron_edge.cli.post_week import (
     _build_stages,
     _next_week_steps,
+    _stage_build_weekly_recap,
     _stage_close_live_forecasts,
     _stage_refresh_next_week_state,
     _stage_refresh_results,
     _stage_refresh_season_projections,
+    post_week_cmd,
 )
 
 
@@ -24,13 +33,16 @@ class TestStageList:
             "refresh-next-week-state",
             "refresh-season-projections",
             "close-live-forecasts",
+            "build-weekly-recap",
         ]
 
     def test_stages_are_independently_executable(self) -> None:
         assert all(not stage.depends_on for stage in _build_stages())
 
-    def test_no_stage_is_soft_fail(self) -> None:
-        assert all(not stage.soft_fail for stage in _build_stages())
+    def test_only_the_recap_is_soft_fail(self) -> None:
+        assert [stage.name for stage in _build_stages() if stage.soft_fail] == [
+            "build-weekly-recap"
+        ]
 
 
 @patch(
@@ -203,3 +215,90 @@ def test_next_week_steps_name_the_following_week() -> None:
     # The collector rolls and its quotes are pulled automatically; there is no manual odds step.
     assert "ingest odds" not in text
     assert "rolls to the new" in text
+
+
+class TestBuildWeeklyRecap:
+    """The recap stage builds, selects and reports the recap; a refusal is a soft failure."""
+
+    @pytest.fixture
+    def repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from tests.fixtures.weekly_recap import recap_week
+
+        week = recap_week()
+        raw = tmp_path / "data/raw/NFL_wk_by_wk_nflverse.parquet"
+        raw.parent.mkdir(parents=True)
+        week.schedule.to_parquet(raw, index=False)
+        settings = SimpleNamespace(repo_root=tmp_path)
+        monkeypatch.setattr("gridiron_edge.core.settings.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_current_weekly_product",
+            lambda repo, *, season, week: week_data.product,
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.datasets.loaders.load_games", lambda repo: week_data.games
+        )
+        monkeypatch.setattr(
+            "gridiron_edge.evaluation.forecast_store.load_forecast_events",
+            lambda *, repo, season, week: week_data.events,
+        )
+        week_data = week
+        return tmp_path
+
+    @staticmethod
+    def _selection(repo: Path) -> dict[str, object]:
+        current = repo / "data/output/weekly_recaps/current.json"
+        return json.loads(current.read_text())["selections"]["2026-2027_week_04"]
+
+    @staticmethod
+    def _unplay_first_game(repo: Path) -> None:
+        raw = repo / "data/raw/NFL_wk_by_wk_nflverse.parquet"
+        schedule = pd.read_parquet(raw)
+        schedule.loc[0, ["away_score", "home_score", "result"]] = None
+        schedule.to_parquet(raw, index=False)
+
+    @staticmethod
+    def _post_week_only_recap():
+        command = typer.Typer()
+        command.command()(post_week_cmd)
+        return CliRunner().invoke(
+            command, ["--only", "build-weekly-recap", "--week", "4", "--season", "2026-2027"]
+        )
+
+    def test_builds_selects_and_reports_then_replays(self, repo: Path) -> None:
+        context: dict[str, object] = {"season": "2026-2027", "week": 4}
+
+        first = _stage_build_weekly_recap(context)
+        recap_id = self._selection(repo)["recap_id"]
+        second = _stage_build_weekly_recap(context)
+
+        assert first.success is True
+        assert first.detail == f"weekly recap {recap_id} (new)"
+        assert first.rows == 4
+        assert second.detail == f"weekly recap {recap_id} (replayed)"
+        assert context["cycle_report"] == [first.detail, second.detail]
+
+    def test_a_refused_week_is_an_unsuccessful_result_and_writes_nothing(self, repo: Path) -> None:
+        self._unplay_first_game(repo)
+        context: dict[str, object] = {"season": "2026-2027", "week": 4}
+
+        result = _stage_build_weekly_recap(context)
+
+        assert result.success is False
+        assert result.detail == ("recap refused: 1 of 4 games have no result yet: 2026_04_AAA_BBB")
+        assert "cycle_report" not in context
+        assert not (repo / "data/output/weekly_recaps").exists()
+
+    def test_only_the_recap_stage_rebuilds_by_hand(self, repo: Path) -> None:
+        result = self._post_week_only_recap()
+
+        assert result.exit_code == 0, result.output
+        assert f"weekly recap {self._selection(repo)['recap_id']} (new)" in result.output
+
+    def test_a_refusal_is_a_warning_and_the_command_still_succeeds(self, repo: Path) -> None:
+        self._unplay_first_game(repo)
+
+        result = self._post_week_only_recap()
+
+        assert result.exit_code == 0, result.output
+        assert "1 soft-failed (build-weekly-recap)" in result.output
+        assert "build-weekly-recap: recap refused: 1 of 4 games have no result yet" in result.output

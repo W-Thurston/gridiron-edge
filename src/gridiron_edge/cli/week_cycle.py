@@ -261,7 +261,7 @@ def _stage_check_collector(ctx: dict[str, Any]) -> StageResult:
 
 
 def build_close_stages() -> list[CompositeStage]:
-    """Assemble ``close``: post-week stages with a completeness gate and a collector check."""
+    """Assemble ``close``: the post-week stages (recap included), gates and a collector check."""
     from gridiron_edge.cli.post_week import _build_stages as post_week_stages
 
     by_name = {stage.name: stage for stage in post_week_stages()}
@@ -284,6 +284,7 @@ def build_close_stages() -> list[CompositeStage]:
         ),
         replace(by_name["refresh-season-projections"], depends_on=current),
         replace(by_name["close-live-forecasts"], depends_on=current),
+        replace(by_name["build-weekly-recap"], depends_on=current),
         CompositeStage(
             name="check-collector",
             description="Check the quote collector rolled to the next week",
@@ -353,14 +354,21 @@ def build_forecast_stages() -> list[CompositeStage]:
 
 
 def _stage_run(summary: CompositeSummary, context: dict[str, Any], *, done: str) -> StageRun:
-    """Reduce a composite summary to what a receipt records."""
+    """Reduce a composite summary to what a receipt records.
+
+    A run that succeeded with soft-failed stages names them in its detail, which is the line
+    ``week-cycle status`` prints.
+    """
     stages = dict.fromkeys(summary.succeeded, "ok")
     stages.update(dict.fromkeys(summary.soft_failed, "soft-failed"))
     stages.update(dict.fromkeys(summary.failed, "failed"))
     failed = summary.failed[0] if summary.failed else None
-    detail = (
-        done if failed is None else f"{failed}: {summary.failure_details.get(failed, 'failed')}"
-    )
+    if failed is not None:
+        detail = f"{failed}: {summary.failure_details.get(failed, 'failed')}"
+    elif summary.soft_failed:
+        detail = f"{done}; soft-failed: {', '.join(summary.soft_failed)}"
+    else:
+        detail = done
     return StageRun(
         success=summary.overall_success,
         detail=detail,

@@ -1988,21 +1988,16 @@ def evaluate_weekly_recap(
     """
     from datetime import UTC, datetime
 
-    import pandas as pd
-
     from gridiron_edge.core.console import console
     from gridiron_edge.core.settings import get_settings
-    from gridiron_edge.datasets.loaders import load_current_weekly_product, load_games
-    from gridiron_edge.datasets.registry import dataset_path
-    from gridiron_edge.evaluation.forecast_store import load_forecast_events
-    from gridiron_edge.evaluation.week_schedule import scheduled_games
-    from gridiron_edge.evaluation.weekly_recap import build_weekly_recap, unplayed_game_ids
+    from gridiron_edge.evaluation.weekly_recap_build import (
+        RecapSelectionOutcome,
+        build_weekly_recap_from_repo,
+        store_and_select_weekly_recap,
+    )
     from gridiron_edge.evaluation.weekly_recap_store import (
-        RecapWriteOutcome,
         get_current_weekly_recap_selection,
-        select_current_weekly_recap,
         weekly_recap_manifest_path,
-        write_weekly_recap,
     )
     from gridiron_edge.ratings.history import season_start
 
@@ -2011,33 +2006,14 @@ def evaluate_weekly_recap(
         raise typer.Exit(code=1)
 
     try:
-        season_int = season_start(season)
+        season_start(season)
     except ValueError as error:
         raise typer.BadParameter(str(error), param_hint="--season") from error
     repo: Path = get_settings().repo_root
     console.header("evaluate weekly-recap", subtitle=f"{season} week {week}")
-    raw = pd.read_parquet(dataset_path(repo, "games_raw_nflverse"))
-    schedule = scheduled_games(raw, season_int=season_int, week=week)
-    if schedule.empty:
-        refuse("no regular-season games are scheduled.")
-    unplayed = unplayed_game_ids(schedule)
-    if unplayed:
-        refuse(
-            f"{len(unplayed)} of {len(schedule)} games have no result yet: {', '.join(unplayed)}"
-        )
     try:
-        product = load_current_weekly_product(repo, season=season, week=week)
-    except FileNotFoundError:
-        refuse("no weekly product is selected.")
-    try:
-        built = build_weekly_recap(
-            season=season,
-            week=week,
-            schedule=schedule,
-            product=product,
-            forecast_events=load_forecast_events(repo=repo, season=season, week=week),
-            games=load_games(repo),
-            built_at=datetime.now(UTC),
+        built = build_weekly_recap_from_repo(
+            repo=repo, season=season, week=week, built_at=datetime.now(UTC)
         )
     except ValueError as error:
         refuse(str(error))
@@ -2054,10 +2030,8 @@ def evaluate_weekly_recap(
             f"({'already stored' if stored else 'new'})"
         )
         return
-    outcome = write_weekly_recap(built, repo=repo)
-    if previous is not None and previous.recap_id == recap.recap_id:
+    result = store_and_select_weekly_recap(built, selected_at=datetime.now(UTC), repo=repo)
+    if result.outcome is RecapSelectionOutcome.REPLAYED:
         typer.echo(f"replayed: recap {recap.recap_id} is unchanged and stays selected")
         return
-    select_current_weekly_recap(recap.recap_id, selected_at=datetime.now(UTC), repo=repo)
-    verb = "new" if outcome is RecapWriteOutcome.WRITTEN else "reselected"
-    typer.echo(f"{verb}: recap {recap.recap_id} is now selected")
+    typer.echo(f"{result.outcome}: recap {recap.recap_id} is now selected")
