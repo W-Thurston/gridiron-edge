@@ -1,15 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../api/schema";
-import { WeeklyRecap } from "./WeeklyRecap";
+import { Router } from "../Router";
+import { Performance } from "./Performance";
 import { TestWrapper } from "../test/testWrapper";
 
 vi.mock("../api/hooks", () => ({
   useRecaps: vi.fn(),
   useWeeklyRecap: vi.fn(),
   useSeasonRecap: vi.fn(),
+  useHistoricalModelPerformance: vi.fn(),
+  useHistoricalModelPerformanceSeries: vi.fn(),
 }));
-import { useRecaps, useSeasonRecap, useWeeklyRecap } from "../api/hooks";
+import {
+  useHistoricalModelPerformance,
+  useHistoricalModelPerformanceSeries,
+  useRecaps,
+  useSeasonRecap,
+  useWeeklyRecap,
+} from "../api/hooks";
 
 type Recap = components["schemas"]["WeeklyRecapResponse"];
 type RecapGame = components["schemas"]["RecapGame"];
@@ -237,13 +246,46 @@ function loaded(items: Summary[]) {
   vi.mocked(useSeasonRecap).mockReturnValue({ data: null, isLoading: false, error: null } as never);
 }
 
-function renderScreen() {
-  render(<TestWrapper><WeeklyRecap /></TestWrapper>);
+const report = {
+  report_id: "r1", selected_at: "2026-08-18T20:20:14Z", generated_at: "2026-08-18T20:00:00Z",
+  first_season: "2002-2003", last_season: "2025-2026", rolling_decision_window: 100, evidence_row_count: 6500,
+  moneyline: {
+    model_type: "logistic", run_id: "win-run", evaluated_count: 6483, wins: 4134, losses: 2349, net_wins: 1785,
+    accuracy: 0.6377, brier: 0.2235, log_loss: 0.6377, price_evidence_status: "unavailable", unit_return_reason: "no prices",
+  },
+  total: {
+    model_type: "random_forest", run_id: "total-run", decision_count: 6498, wins: 3274, losses: 3129, pushes: 95,
+    no_bets: 0, net_wins: 145, hit_rate_excluding_pushes: 0.5113, mae: 10.82, rmse: 13.72, bias: -0.75,
+    net_units: -152.64, roi_per_unit_staked: -0.0235, price_evidence_status: "assumed", assumed_american_price: -110,
+    methodology: "Historical consensus-total line; one unit per eligible decision; assumed -110 pricing.",
+  },
+};
+const series = {
+  items: [{
+    game_date: "2025-09-01", season: "2025-2026", week: 1, moneyline_cumulative_net_wins: 1785,
+    moneyline_rolling_accuracy_100: 0.64, total_cumulative_net_wins: 145, total_rolling_accuracy_100: 0.51,
+    total_cumulative_units: -152.64,
+  }],
+};
+
+function backtestLoaded() {
+  vi.mocked(useHistoricalModelPerformance).mockReturnValue({ data: report, isLoading: false, error: null } as never);
+  vi.mocked(useHistoricalModelPerformanceSeries).mockReturnValue({ data: series, isLoading: false, error: null } as never);
 }
 
-describe("WeeklyRecap", () => {
+function renderAt(hash: string) {
+  window.history.replaceState(null, "", hash);
+  return render(<TestWrapper><Router /></TestWrapper>);
+}
+
+/** The page alone: navigating away (a game link) must not mount another screen. */
+function renderScreen() {
+  render(<TestWrapper><Performance /></TestWrapper>);
+}
+
+describe("Performance · Week", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "#/recap");
+    window.history.replaceState(null, "", "#/performance?scope=week");
     sessionStorage.clear();
     vi.mocked(useWeeklyRecap).mockReset();
   });
@@ -255,35 +297,52 @@ describe("WeeklyRecap", () => {
     ]);
     renderScreen();
     expect(useWeeklyRecap).toHaveBeenLastCalledWith(SEASON, 2);
-    expect(screen.getByRole("heading", { name: "2026-2027 week 2" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Week 2 · 2026-2027" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Week 2" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("names a development forecast explicitly", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
-    expect(
-      screen.getByText("Development forecast: regenerated after the fact, not issued before kickoff"),
-    ).toBeInTheDocument();
+    const badge = screen.getByText("Development forecast: regenerated after the fact, not issued before kickoff");
+    expect(badge).toHaveAttribute("data-forecast-role", "development");
+  });
+
+  it("states the week's counts in the strip", () => {
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    renderScreen();
+    const counts = screen.getByRole("list", { name: "Game counts" });
+    expect(within(counts.querySelector('[data-count="Scheduled"]') as HTMLElement).getByText("4")).toBeInTheDocument();
+    expect(within(counts.querySelector('[data-count="Tied"]') as HTMLElement).getByText("1")).toBeInTheDocument();
   });
 
   it("shows model beside market for every family", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
     const win = document.querySelector('[data-recap-family="win"]') as HTMLElement;
+    expect(within(win).getByText("Moneyline")).toBeInTheDocument();
     expect(within(win).getByText("0.1555")).toBeInTheDocument();
     expect(within(win).getByText("0.1815")).toBeInTheDocument();
-    expect(within(win).getByText(/model 1 · market 0 · tie 0/)).toBeInTheDocument();
+    expect(within(win).getByText("Model ahead")).toBeInTheDocument();
+    expect(within(win).getByText("Model closer 1")).toBeInTheDocument();
+    expect(within(win).getByText("Market 0")).toBeInTheDocument();
+    const total = document.querySelector('[data-recap-family="total"]') as HTMLElement;
+    expect(within(total).getByText("Even")).toBeInTheDocument();
     for (const family of ["spread", "total", "projected_score"]) {
       expect(document.querySelector(`[data-recap-family="${family}"]`)).not.toBeNull();
     }
-    expect(screen.getByText(/Φ\(closing home margin \/ 13.5\)/)).toBeInTheDocument();
+    const method = document.querySelector("[data-method-details]") as HTMLElement;
+    expect(method.tagName).toBe("DETAILS");
+    expect(method).not.toHaveAttribute("open");
+    expect(within(method).getByText(/Φ\(closing home margin \/ 13.5\)/)).toBeInTheDocument();
+    expect(within(method).getByText("Product product-2")).toBeInTheDocument();
   });
 
   it("keeps a game the product lacks as a row with an explicit status", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
     const row = document.querySelector('[data-product-row-status="not_in_product"]') as HTMLElement;
-    expect(within(row).getByText("EEE @ FFF")).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "EEE @ FFF" })).toBeInTheDocument();
     expect(within(row).getByText("No forecast in the selected product")).toBeInTheDocument();
     expect(within(row).getByText("57.4%")).toBeInTheDocument();
   });
@@ -293,16 +352,29 @@ describe("WeeklyRecap", () => {
     renderScreen();
     expect(screen.getAllByText("Tied game").length).toBeGreaterThan(0);
     expect(screen.getByText("55.0%")).toBeInTheDocument();
-    expect(screen.getByText("carried from an earlier run")).toBeInTheDocument();
+    expect(screen.getByText("Carried from an earlier run")).toBeInTheDocument();
+    expect(screen.getAllByText("development forecast").length).toBeGreaterThan(0);
     expect(screen.getAllByText("No closing line").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Total" }));
     expect(screen.getByText("Total forecast missing from the selected product")).toBeInTheDocument();
     expect(screen.getAllByText("Market at forecast time not recorded").length).toBeGreaterThan(0);
+    expect(window.location.hash).toContain("family=total");
 
-    fireEvent.click(screen.getByRole("button", { name: "Projected score" }));
-    expect(screen.getByText("Projected score forecast missing from the selected product")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Team score" }));
+    expect(screen.getByText("Team score forecast missing from the selected product")).toBeInTheDocument();
     expect(screen.getAllByText("20.4 – 23.8").length).toBeGreaterThan(0);
+  });
+
+  it("marks the smaller error and the closer side in the game table", () => {
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    renderScreen();
+    fireEvent.click(screen.getByRole("button", { name: "Spread" }));
+    const row = screen.getByRole("button", { name: "AAA @ BBB" }).closest("tr") as HTMLElement;
+    const ranks = [...row.querySelectorAll("[data-error-rank]")].map((cell) => cell.getAttribute("data-error-rank"));
+    expect(ranks).toEqual(["smaller", "larger"]);
+    expect(within(row).getByText("Model")).toHaveAttribute("data-closer", "model");
+    expect(within(row).getByLabelText("AAA 17, BBB 24")).toBeInTheDocument();
   });
 
   it("switches weeks through the route", () => {
@@ -313,7 +385,7 @@ describe("WeeklyRecap", () => {
     renderScreen();
     fireEvent.click(screen.getByRole("button", { name: "Week 1" }));
     expect(useWeeklyRecap).toHaveBeenLastCalledWith(SEASON, 1);
-    expect(window.location.hash).toBe("#/recap?season=2026-2027&week=1");
+    expect(window.location.hash).toBe("#/performance?scope=week&season=2026-2027&week=1");
   });
 
   it("links each game to its game page", () => {
@@ -324,7 +396,7 @@ describe("WeeklyRecap", () => {
   });
 
   it("shows a production-chain week's issuance, recommendations and candidates without dollars", () => {
-    window.history.replaceState(null, "", "#/recap?season=2026-2027&week=1");
+    window.history.replaceState(null, "", "#/performance?scope=week&season=2026-2027&week=1");
     loaded([summary(1, "live", "2026-10-05T00:00:00Z")]);
     renderScreen();
     const card = document.querySelector('[data-recap-section="edges"]') as HTMLElement;
@@ -356,7 +428,7 @@ describe("WeeklyRecap", () => {
   });
 
   it("states a week with no edge record and no wagers explicitly", () => {
-    window.history.replaceState(null, "", "#/recap?season=2026-2027&week=3");
+    window.history.replaceState(null, "", "#/performance?scope=week&season=2026-2027&week=3");
     loaded([summary(3, "live", "2026-10-05T00:00:00Z")]);
     renderScreen();
     const edgesCard = document.querySelector('[data-recap-section="edges"]') as HTMLElement;
@@ -385,21 +457,12 @@ describe("WeeklyRecap", () => {
     expect(within(parlay).getByText("CLV unavailable")).toHaveAttribute("data-weekly-status", "clv_unavailable");
   });
 
-  it("says when the season has no selected season recap", () => {
-    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
-    renderScreen();
-    expect(useSeasonRecap).toHaveBeenLastCalledWith(SEASON);
-    const card = document.querySelector('[data-recap-section="season_to_date"]') as HTMLElement;
-    expect(within(card).getByText(`No season recap is selected for ${SEASON}`)).toBeInTheDocument();
-    expect(within(card).getByText(/--season-only/)).toBeInTheDocument();
-  });
-
   it("scores the starting quarterbacks and names every miss and unscored slot", () => {
     loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
     renderScreen();
     const section = document.querySelector('[data-recap-section="starting_qbs"]') as HTMLElement;
-    expect(within(section).queryByTitle("Coming soon")).toBeNull();
-    expect(within(section).getByText(/4 of 8 team slots scored · 2 from the captured sidecar/)).toBeInTheDocument();
+    expect(within(section).getByRole("heading", { name: "4 of 8 team slots scored" })).toBeInTheDocument();
+    expect(within(section).getByText(/2 from the captured sidecar of their run · 1 actual starter from the game logs/)).toBeInTheDocument();
     expect(within(section).getByText(/Who started: nflverse id when he threw a pass/)).toBeInTheDocument();
     const accuracy = within(section).getByRole("table", { name: "Starter predictor accuracy" });
     const assumed = within(accuracy).getByRole("row", { name: /Assumed by the forecast/ });
@@ -417,11 +480,11 @@ describe("WeeklyRecap", () => {
     expect(within(misses).queryByRole("row", { name: /^AAA/ })).toBeNull();
 
     const notRecorded = section.querySelector('[data-starter-status="not_recorded"]') as HTMLElement;
-    expect(within(notRecorded).getByText("GGG, HHH")).toBeInTheDocument();
+    expect(within(notRecorded).getByLabelText("GGG, HHH")).toBeInTheDocument();
     expect(within(notRecorded).getByText("Starting quarterbacks were not recorded for this forecast"))
       .toBeInTheDocument();
     const notInProduct = section.querySelector('[data-starter-status="not_in_product"]') as HTMLElement;
-    expect(within(notInProduct).getByText("EEE, FFF")).toBeInTheDocument();
+    expect(within(notInProduct).getByLabelText("EEE, FFF")).toBeInTheDocument();
   });
 
   it("explains how to build a recap when none is selected", () => {
@@ -430,4 +493,206 @@ describe("WeeklyRecap", () => {
     expect(screen.getByText("No weekly recap has been built yet")).toBeInTheDocument();
     expect(useWeeklyRecap).toHaveBeenLastCalledWith(null, null);
   });
+
+  it("shows the loading and error states inside the page", () => {
+    vi.mocked(useRecaps).mockReturnValue({ data: undefined, isLoading: true, error: null } as never);
+    vi.mocked(useWeeklyRecap).mockReturnValue({ data: undefined, isLoading: false, error: null } as never);
+    const first = renderScreen;
+    first();
+    expect(screen.getByText("Loading weekly recaps…")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Scope" })).toBeInTheDocument();
+    cleanup();
+
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    vi.mocked(useWeeklyRecap).mockReturnValue({ data: undefined, isLoading: false, error: new Error("boom") } as never);
+    renderScreen();
+    expect(screen.getByRole("button", { name: "Week 2" })).toBeInTheDocument();
+    expect(screen.getByText(/boom/)).toBeInTheDocument();
+  });
 });
+
+describe("Performance · scopes and routes", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.mocked(useWeeklyRecap).mockReset();
+  });
+
+  it("describes each scope under the selector and divides Backtest from the live scopes", () => {
+    loaded([summary(2, "live", "2026-10-05T00:00:00Z")]);
+    backtestLoaded();
+    renderAt("#/performance?scope=week");
+    const tabs = screen.getByRole("tablist", { name: "Scope" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "WeekLive forecasts", "SeasonLive forecasts", "BacktestHistorical",
+    ]);
+    expect(screen.getByText("How published forecasts did against results and the closing market.")).toBeInTheDocument();
+    fireEvent.click(within(tabs).getByRole("tab", { name: /Backtest/ }));
+    expect(window.location.hash).toBe("#/performance?scope=backtest");
+    expect(screen.getByText("How the current models would have done on past seasons.")).toBeInTheDocument();
+  });
+
+  it("redirects the old recap route to the Week scope, keeping the week", () => {
+    loaded([summary(1, "live", "2026-10-05T00:00:00Z"), summary(2, "live", "2026-10-05T00:00:00Z")]);
+    renderAt("#/recap?season=2026-2027&week=1");
+    expect(window.location.hash).toBe("#/performance?season=2026-2027&week=1&scope=week");
+    expect(useWeeklyRecap).toHaveBeenLastCalledWith(SEASON, 1);
+  });
+
+  it("redirects the old model-performance route to the Backtest scope", () => {
+    backtestLoaded();
+    renderAt("#/performance");
+    expect(window.location.hash).toBe("#/performance?scope=backtest");
+    expect(screen.getByRole("tab", { name: /Backtest/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("moves from a week to its season and back to a week", () => {
+    loaded([summary(1, "live", "2026-10-05T00:00:00Z"), summary(2, "live", "2026-10-05T00:00:00Z")]);
+    vi.mocked(useSeasonRecap).mockReturnValue({ data: seasonRecap(), isLoading: false, error: null } as never);
+    renderAt("#/performance?scope=week&season=2026-2027&week=2");
+    fireEvent.click(screen.getByRole("tab", { name: /Season/ }));
+    expect(window.location.hash).toBe("#/performance?scope=season&season=2026-2027&week=2");
+    expect(useSeasonRecap).toHaveBeenLastCalledWith(SEASON);
+    expect(screen.getByRole("heading", { level: 1, name: "2026-2027 season · weeks 1–2" })).toBeInTheDocument();
+
+    const weeks = screen.getByRole("region", { name: "Weekly recaps" });
+    fireEvent.click(within(weeks).getByRole("button", { name: "Week 1" }));
+    expect(window.location.hash).toBe("#/performance?scope=week&season=2026-2027&week=1");
+    expect(useWeeklyRecap).toHaveBeenLastCalledWith(SEASON, 1);
+  });
+
+  it("says when the season has no selected season recap", () => {
+    loaded([summary(2, "development", "2026-10-05T00:00:00Z")]);
+    renderAt("#/performance?scope=season");
+    expect(useSeasonRecap).toHaveBeenLastCalledWith(SEASON);
+    const card = document.querySelector('[data-recap-section="season_to_date"]') as HTMLElement;
+    expect(within(card).getByText(`No season recap is selected for ${SEASON}`)).toBeInTheDocument();
+    expect(within(card).getByText(/--season-only/)).toBeInTheDocument();
+  });
+
+  it("keeps the comparison selections through a reload", () => {
+    loaded([summary(1, "live", "2026-10-05T00:00:00Z"), summary(2, "live", "2026-10-05T00:00:00Z")]);
+    vi.mocked(useSeasonRecap).mockReturnValue({ data: seasonRecap(), isLoading: false, error: null } as never);
+    renderAt("#/performance?scope=season");
+    fireEvent.click(screen.getByRole("button", { name: "Closing line" }));
+    fireEvent.click(screen.getByRole("button", { name: "Spread MAE" }));
+    fireEvent.click(screen.getByRole("button", { name: "To date" }));
+    expect(window.location.hash).toBe("#/performance?scope=season&models=champion&metric=spread_mae&view=to_date");
+
+    const hash = window.location.hash;
+    cleanup();
+    renderAt(hash);
+    expect(screen.getByRole("button", { name: "Closing line" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Champion" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Spread MAE" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "To date" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("Performance · Backtest", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    backtestLoaded();
+  });
+
+  it("renders the Moneyline overview by default", () => {
+    renderAt("#/performance?scope=backtest");
+    expect(screen.getByRole("heading", { level: 1, name: "2002-2003–2025-2026 · current champion models" })).toBeInTheDocument();
+    expect(screen.getByText(/They are not a record of published picks/)).toBeInTheDocument();
+    expect(screen.getByText("63.8%")).toBeInTheDocument();
+    expect(screen.getByText("4,134 W · 2,349 L")).toBeInTheDocument();
+    expect(screen.getByText("+1,785")).toBeInTheDocument();
+    expect(screen.getByText("Log loss 0.6377")).toBeInTheDocument();
+    expect(screen.getByText("Historical Moneyline prices were not retained")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Historical model-performance chart" })).toBeInTheDocument();
+    expect(screen.getByText(/Sportsbook pricing is ignored/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Win" })).toBeNull();
+  });
+
+  it("switches to Total hypothetical units through the route", () => {
+    renderAt("#/performance?scope=backtest");
+    fireEvent.click(screen.getByRole("button", { name: "Total" }));
+    expect(screen.getByText("3,274 W · 3,129 L · 95 P")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hypothetical units" }));
+    expect(window.location.hash).toBe("#/performance?scope=backtest&market=total&trend=units");
+    expect(screen.getAllByText("-152.64u").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/assumed -110 pricing/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Moneyline" }));
+    expect(window.location.hash).toBe("#/performance?scope=backtest&market=moneyline&trend=net-wins");
+  });
+
+  it("says the per-season comparison is not persisted rather than drawing one", () => {
+    renderAt("#/performance?scope=backtest");
+    const chart = document.querySelector('[data-compare-chart="unavailable"]') as HTMLElement;
+    expect(within(chart).getByText("Per-season comparison is not persisted yet")).toBeInTheDocument();
+    expect(chart.querySelector("svg")).toBeNull();
+  });
+
+  it("shows an explicit Spread unavailable state that points to the live scopes", () => {
+    loaded([summary(2, "live", "2026-10-05T00:00:00Z")]);
+    renderAt("#/performance?scope=backtest&market=spread");
+    expect(screen.getByText("Historical validation is not available")).toBeInTheDocument();
+    expect(screen.getByText(/No synthetic results/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Season" }));
+    expect(window.location.hash).toBe("#/performance?scope=season&market=spread");
+  });
+
+  it("shows the loading, error and missing-report states", () => {
+    vi.mocked(useHistoricalModelPerformance).mockReturnValue({ data: undefined, isLoading: true, error: null } as never);
+    renderAt("#/performance?scope=backtest");
+    expect(screen.getByText("Loading model performance…")).toBeInTheDocument();
+    cleanup();
+    vi.mocked(useHistoricalModelPerformance).mockReturnValue({ data: undefined, isLoading: false, error: null } as never);
+    renderAt("#/performance?scope=backtest");
+    expect(screen.getByText("No historical report selected")).toBeInTheDocument();
+  });
+});
+
+type SeasonRecap = components["schemas"]["SeasonRecapResponse"];
+type WeekMetrics = components["schemas"]["RecapWeekMetrics"];
+
+/** A minimal two-week season recap for the scope-switching tests; the season sections have their own tests. */
+function seasonRecap(): SeasonRecap {
+  const probability = { count: 16, brier: 0.23, log_loss: 0.66, accuracy: 0.6 };
+  const errors = { count: 16, mae: 11, rmse: 13, bias: -0.5 };
+  const metrics: WeekMetrics = {
+    win: { model: probability, market: probability, closer: { model: 8, market: 8, tie: 0 } },
+    spread: { model: errors, market: errors, closer: { model: 8, market: 8, tie: 0 } },
+    total: { model: errors, market: errors, closer: { model: 8, market: 8, tie: 0 } },
+    projected_score: { model: errors, market: errors, closer: { model: 8, market: 8, tie: 0 } },
+  };
+  const empty = { count: 0, mean: null, standard_error: null, interval_low: null, interval_high: null };
+  const side = { count: 0, ece: null, bins: [] };
+  const counts = { count: 0, correct: 0, accuracy: null };
+  const scope = {
+    weeks: 2, games: 32, metrics,
+    paired: { win: empty, spread: empty, total: empty, projected_score: empty },
+    calibration: { model: side, market: side },
+    starting_qbs: {
+      slots: 64, scored: 0, from_capture: 0, not_recorded: 64, starter_unresolved: 0, not_in_product: 0,
+      actual_missing: 0, actual_from_game_logs: 0, assumed: counts, nflverse: counts, carry_forward: counts,
+    },
+  };
+  const none = wagerSummary({ bets: 0, settled: 0, unsettled: 0, wins: 0, losses: 0, staked: 0, settled_staked: 0, pnl: 0, roi_pct: null, bonus_funded: 0, clv_unavailable: 0 });
+  const week = (n: number) => ({
+    week: n, status: "recapped" as const, recap_id: `${n}`.repeat(64), forecast_role: "live" as const, games: 16,
+    live_games: 16, metrics, live_metrics: metrics, to_date: metrics, live_to_date: metrics,
+    edge_status: "not_recorded" as const, wagers: none,
+  });
+  return {
+    season: SEASON, season_recap_id: "s".repeat(64), built_at: "2026-10-05T18:00:00Z",
+    selected_at: "2026-10-05T18:00:00Z", weekly_recap_ids: ["1".repeat(64), "2".repeat(64)],
+    conventions: {
+      recap: {
+        orientation: "Away/Home", closing_market: "VEGAS_LINE and OVER_UNDER",
+        market_at_forecast: "spread_line and total_line", market_win_probability: "Phi",
+        margin_std: 13.5, actual_starter: "nflverse",
+      },
+      season_to_date: "pooled", live_only: "live rows", calibration_bins: "10 bins",
+      paired_difference: "model minus market", interval: "mean +/- z se", interval_z: 1.96,
+      unattributed_wagers: "bets without a game",
+    },
+    weeks: [week(1), week(2)],
+    all_games: scope, live_games: scope,
+    wagers: { recapped_weeks: none, unattributed: none, unattributed_digest: "u".repeat(64) },
+  };
+}

@@ -1,11 +1,11 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { components } from "../../api/schema";
-import { SeasonPanel } from "./SeasonPanel";
+import { SeasonNotBuilt, SeasonScope } from "./SeasonScope";
+import type { SeasonState } from "./SeasonScope";
+import { SEASON_DEFAULT_MODELS, seasonComparison } from "./compareData";
 import { TestWrapper } from "../../test/testWrapper";
-
-vi.mock("../../api/hooks", () => ({ useSeasonRecap: vi.fn() }));
-import { useSeasonRecap } from "../../api/hooks";
 
 type Season = components["schemas"]["SeasonRecapResponse"];
 type WeekMetrics = components["schemas"]["RecapWeekMetrics"];
@@ -117,58 +117,100 @@ function season(): Season {
   };
 }
 
-function renderPanel(data: Season | null = season()) {
-  vi.mocked(useSeasonRecap).mockReturnValue({ data, isLoading: false, error: null } as never);
-  render(<TestWrapper><SeasonPanel season={SEASON} /></TestWrapper>);
+/** Holds the scope's state the way the page does through the route. */
+function Harness({ recap, onOpenWeek }: { recap: Season; onOpenWeek: (week: number) => void }) {
+  const [state, setState] = useState<SeasonState>({ games: "all", view: "week", models: SEASON_DEFAULT_MODELS, metric: undefined });
+  return <SeasonScope recap={recap} state={state} onChange={(next) => setState({ ...state, ...next })} onOpenWeek={onOpenWeek} />;
 }
 
-function seriesRow(series: string, row: string) {
-  const figure = document.querySelector(`[data-season-series="${series}"]`) as HTMLElement;
-  return figure.querySelector(`[data-season-row="${row}"]`) as HTMLElement;
+function renderScope(onOpenWeek = vi.fn()) {
+  render(<TestWrapper><Harness recap={season()} onOpenWeek={onOpenWeek} /></TestWrapper>);
+  return onOpenWeek;
 }
 
-describe("SeasonPanel", () => {
-  beforeEach(() => vi.mocked(useSeasonRecap).mockReset());
+function weekRow(week: number) {
+  const table = screen.getByRole("region", { name: "Weekly recaps" });
+  return table.querySelector(`[data-season-row="week-${week}"]`) as HTMLElement;
+}
 
+describe("SeasonScope", () => {
   it("states that no season recap is selected", () => {
-    renderPanel(null);
+    render(<TestWrapper><SeasonNotBuilt season={SEASON} /></TestWrapper>);
     expect(screen.getByText(`No season recap is selected for ${SEASON}`)).toBeInTheDocument();
+    expect(screen.getByText(/--season-only/)).toBeInTheDocument();
   });
 
-  it("shows each week's model beside the market and the season row", () => {
-    renderPanel();
-    const week1 = seriesRow("win", "week-1");
+  it("titles the season and counts what it covers", () => {
+    renderScope();
+    expect(screen.getByRole("heading", { level: 1, name: "2026-2027 season · weeks 1–2" })).toBeInTheDocument();
+    expect(screen.getByText("Includes development weeks")).toBeInTheDocument();
+    const counts = screen.getByRole("list", { name: "Season counts" });
+    expect(within(counts.querySelector('[data-count="Weeks recapped"]') as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(counts.querySelector('[data-count="Weeks not built"]') as HTMLElement).getByText("1")).toBeInTheDocument();
+  });
+
+  it("shows each week's model beside the market and how often the model was closer", () => {
+    renderScope();
+    const week1 = weekRow(1);
     expect(within(week1).getByText("0.237")).toBeInTheDocument();
     expect(within(week1).getByText("0.209")).toBeInTheDocument();
-    expect(within(seriesRow("win", "week-2")).getByText("development")).toBeInTheDocument();
-    expect(within(seriesRow("win", "season")).getByText("0.233")).toBeInTheDocument();
-    expect(week1.querySelector(".season-dot-model")).not.toBeNull();
-    expect(week1.querySelector(".season-dot-market")).not.toBeNull();
+    expect(within(week1).getAllByText("7/16").length).toBe(2);
+    expect(within(week1).getByText("6/16")).toBeInTheDocument();
+    expect(within(weekRow(2)).getByText("development")).toBeInTheDocument();
+  });
+
+  it("opens a week from its row", () => {
+    const onOpenWeek = renderScope();
+    fireEvent.click(within(weekRow(2)).getByRole("button", { name: "Week 2" }));
+    expect(onOpenWeek).toHaveBeenCalledWith(2);
+    fireEvent.click(weekRow(1));
+    expect(onOpenWeek).toHaveBeenLastCalledWith(1);
   });
 
   it("names a finished week without a recap instead of dropping it", () => {
-    renderPanel();
-    expect(within(seriesRow("win", "week-3")).getByText("Not built")).toBeInTheDocument();
+    const onOpenWeek = renderScope();
+    expect(within(weekRow(3)).getByText("Not built")).toHaveAttribute("data-weekly-status", "not_built");
     expect(screen.getByText("Week 3: finished, but no weekly recap is selected")).toBeInTheDocument();
+    fireEvent.click(weekRow(3));
+    expect(onOpenWeek).not.toHaveBeenCalled();
   });
 
-  it("switches to season-to-date values", () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Season to date" }));
-    expect(within(seriesRow("win", "week-2")).getByText("0.233")).toBeInTheDocument();
-    expect(within(seriesRow("win", "week-2")).getByText("0.221")).toBeInTheDocument();
+  it("compares the published model with the closing line week by week or to date", () => {
+    const recap = season();
+    expect(seasonComparison(recap, "all", "week").values.win_brier).toEqual({
+      champion: [0.2372, 0.2278, null], closing_line: [0.2093, 0.2322, null],
+    });
+    expect(seasonComparison(recap, "all", "to_date").values.win_brier.champion).toEqual([0.2372, 0.2325, null]);
+    expect(seasonComparison(recap, "live", "week").values.win_brier.champion).toEqual([0.2372, null, null]);
+    expect(seasonComparison(recap, "all", "week").periods).toEqual(["W1", "W2", "W3"]);
+
+    renderScope();
+    fireEvent.click(screen.getByRole("button", { name: "To date" }));
+    expect(screen.getByText("Compare · season to date")).toBeInTheDocument();
   });
 
   it("keeps the live rows only and says when a week has none", () => {
-    renderPanel();
+    renderScope();
     fireEvent.click(screen.getByRole("button", { name: "Live only" }));
-    expect(within(seriesRow("win", "week-2")).getByText("No live forecasts")).toBeInTheDocument();
-    expect(within(seriesRow("win", "season")).getByText("0.237")).toBeInTheDocument();
+    expect(within(weekRow(2)).getByText("No live forecasts")).toBeInTheDocument();
     expect(screen.getByText(/1 week · 16 games · live forecasts only/)).toBeInTheDocument();
+    expect(screen.getByText("Live forecasts only")).toBeInTheDocument();
+    const win = document.querySelector('[data-recap-family="win"]') as HTMLElement;
+    expect(within(win).getByText("0.2372")).toBeInTheDocument();
+  });
+
+  it("states the pooled season scorecard with counts", () => {
+    renderScope();
+    const win = document.querySelector('[data-recap-family="win"]') as HTMLElement;
+    expect(within(win).getByText("0.2325")).toBeInTheDocument();
+    expect(within(win).getByText("0.2208")).toBeInTheDocument();
+    expect(within(win).getByText("Market ahead")).toBeInTheDocument();
+    expect(within(within(win).getByRole("row", { name: /Games/ })).getAllByText("32")).toHaveLength(2);
+    expect(screen.getByText(/Starting QBs: 0 of 64 slots scored · 64 not recorded/)).toBeInTheDocument();
   });
 
   it("shows the paired difference with its interval, or why it has none", () => {
-    renderPanel();
+    renderScope();
     const win = document.querySelector('[data-season-paired="win"]') as HTMLElement;
     expect(within(win).getByText("+0.0083")).toBeInTheDocument();
     expect(within(win).getByText(/\[-0.0138, \+0.0305\] n 32/)).toBeInTheDocument();
@@ -182,7 +224,7 @@ describe("SeasonPanel", () => {
   });
 
   it("plots reliability for non-empty bins only and tables every bin", () => {
-    renderPanel();
+    renderScope();
     const figure = document.querySelector("[data-season-reliability]") as HTMLElement;
     expect(within(figure).getByText(/ECE model 0.145 \(32\) · market 0.128 \(32\)/)).toBeInTheDocument();
     expect(figure.querySelectorAll('[data-reliability-point="model"]')).toHaveLength(7);
@@ -192,18 +234,8 @@ describe("SeasonPanel", () => {
     expect(within(empty).getAllByText("—")).toHaveLength(4);
   });
 
-  it("states the season totals with counts", () => {
-    renderPanel();
-    const totals = screen.getByRole("table", { name: "Season totals, model and closing market" });
-    const brier = within(totals).getByRole("row", { name: /Win Brier/ });
-    expect(within(brier).getByText("0.2325 (32)")).toBeInTheDocument();
-    expect(within(brier).getByText("0.2208 (32)")).toBeInTheDocument();
-    expect(screen.getByText(/Starting QBs: 0 of 64 slots scored · 64 not recorded/)).toBeInTheDocument();
-  });
-
   it("lists each week's edges and wagers, the season total and bets without a game", () => {
-    renderPanel();
-
+    renderScope();
     const table = screen.getByRole("table", { name: /Each week's edge evidence and recorded wagers/ });
     const week1 = table.querySelector('[data-season-wager-week="1"]') as HTMLElement;
     expect(within(week1).getByText("Production chain")).toBeInTheDocument();

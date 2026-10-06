@@ -6,7 +6,7 @@ import { useBetSlip } from "../../context/BetSlipContext";
 const NAV_ITEMS = [
   { label: "Today", path: "/today", activePaths: ["/today"] },
   { label: "Games", path: "/games", activePaths: ["/games"] },
-  { label: "Last Week", path: "/recap", activePaths: ["/recap"] },
+  { label: "Performance", path: "/performance", params: { scope: "week" }, activePaths: ["/performance", "/recap"] },
   {
     label: "Teams",
     path: "/teams",
@@ -95,7 +95,7 @@ export function TopNav() {
               key={item.path}
               label={item.label}
               active={isActive}
-              onClick={() => navigate(item.path)}
+              onClick={() => ("params" in item ? navigate(item.path, item.params) : navigate(item.path))}
             />
           );
         })}

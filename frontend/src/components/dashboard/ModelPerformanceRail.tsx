@@ -82,7 +82,7 @@ export function ModelPerformanceRail() {
         </div>
         <button
           type="button"
-          onClick={() => navigate("/performance")}
+          onClick={() => navigate("/performance", { scope: "backtest" })}
           style={{
             width: "100%", marginTop: 12, padding: "7px 10px",
             background: "transparent", color: "var(--ink-2)",

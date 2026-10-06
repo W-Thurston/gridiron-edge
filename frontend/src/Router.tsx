@@ -8,8 +8,8 @@ import { GameDetail } from "./screens/GameDetail";
 import { GamesList } from "./screens/GamesList";
 import { LineShopping } from "./screens/LineShopping";
 import { LiveGame } from "./screens/LiveGame";
-import { ModelPerformance } from "./screens/ModelPerformance";
 import { NewsWire } from "./screens/NewsWire";
+import { Performance, PerformanceRedirect } from "./screens/Performance";
 import { Onboarding } from "./screens/Onboarding";
 import { PlayerProp } from "./screens/PlayerProp";
 import { PlayersExplorer } from "./screens/PlayersExplorer";
@@ -17,7 +17,6 @@ import { PlayoffProjections } from "./screens/PlayoffProjections";
 import { Settings } from "./screens/Settings";
 import { TeamsScreen } from "./screens/TeamsScreen";
 import { Tools } from "./screens/Tools";
-import { WeeklyRecap } from "./screens/WeeklyRecap";
 
 export function Router() {
   const { route } = useNav();
@@ -35,7 +34,8 @@ export function Router() {
     case "/games":
       return <GamesList />;
     case "/recap":
-      return <WeeklyRecap />;
+      // The recap page became the Performance page's Week scope.
+      return <PerformanceRedirect params={{ ...route.params, scope: "week" }} />;
     case "/teams":
       return <TeamsScreen />;
     case "/projections":
@@ -55,7 +55,10 @@ export function Router() {
     case "/live":
       return <LiveGame />;
     case "/performance":
-      return <ModelPerformance />;
+      // A link without a scope predates the merged page and meant the historical backtest.
+      return route.params.scope
+        ? <Performance />
+        : <PerformanceRedirect params={{ ...route.params, scope: "backtest" }} />;
     case "/news":
       return <NewsWire />;
     case "/tools":

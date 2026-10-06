@@ -73,6 +73,6 @@ describe("Bankroll", () => {
     window.history.replaceState(null, "", "#/bankroll");
     renderBankroll();
     fireEvent.click(screen.getByRole("button", { name: "Results by week" }));
-    expect(window.location.hash).toBe("#/recap");
+    expect(window.location.hash).toBe("#/performance?scope=week");
   });
 });

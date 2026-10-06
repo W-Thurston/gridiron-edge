@@ -6,6 +6,7 @@ import {
   recapEdgeStatusShort,
   recapRecommendationStateLabel,
 } from "../field-status/recapStatus";
+import { SectionHead } from "../performance/SectionHead";
 import { marketLabel, money, record, roi, signedMoney } from "./recapFormat";
 
 type Edges = components["schemas"]["RecapEdges"];
@@ -19,11 +20,11 @@ type WagerSummary = components["schemas"]["RecapWagerSummary"];
 export function EdgesSection({ edges }: { edges: Edges }) {
   const published = edges.receipts.some((receipt) => receipt.outcome === "done");
   return (
-    <section className="hm-card" style={{ padding: 20 }} data-recap-section="edges">
-      <div className="upper dim" style={{ fontSize: 10 }}>Edges and recommendations</div>
-      <div style={{ marginTop: 8 }} data-edge-status={edges.status}>
-        <span className="mono" style={{ fontSize: 13 }}>{recapEdgeStatusShort(edges.status)}</span>
-        <div className="dim" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+    <section className="hm-card pf-card" data-recap-section="edges" aria-labelledby="recap-edges">
+      <SectionHead eyebrow="Published edges" title="Edges and recommendations" id="recap-edges" />
+      <div data-edge-status={edges.status}>
+        <span className="pf-badge pf-badge-shadow" style={{ background: "var(--bg-3)", color: "var(--ink-2)" }}>{recapEdgeStatusShort(edges.status)}</span>
+        <div className="pf-muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
           {recapEdgeStatusMessage(edges.status)}.
           {edges.status !== "production_chain" && published &&
             " Earlier runs listed below published edges; their rows were not kept."}
@@ -37,12 +38,12 @@ export function EdgesSection({ edges }: { edges: Edges }) {
 
 function ChainSummary({ chain }: { chain: Chain }) {
   return (
-    <div style={{ marginTop: 14 }} data-production-chain>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-production-chain>
       <div className="mono dim" style={{ fontSize: 11 }}>
         Issuance {chain.issuance_id.slice(0, 12)} · issued {formatTimestamp(chain.issued_at)} · {chain.rows} rows:{" "}
         {chain.candidates} candidates, {chain.not_candidates} not candidates, {chain.unavailable} unavailable
       </div>
-      <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }} data-recommendation-states>
+      <div className="mono dim" style={{ fontSize: 11 }} data-recommendation-states>
         Recommendations:{" "}
         {chain.recommendations.length === 0
           ? "no candidate rows"
@@ -52,11 +53,11 @@ function ChainSummary({ chain }: { chain: Chain }) {
         {chain.evaluation_ids.length > 0 &&
           ` (evaluation ${chain.evaluation_ids.map((id) => id.slice(0, 8)).join(", ")})`}
       </div>
-      <div className="mono dim2" style={{ fontSize: 9, marginTop: 4 }}>
+      <div className="pf-note">
         Candidates were never recommendations: closing-line value and outcomes only, no dollars. Rows repeat a side
         across books and snapshots, so rows are correlated.
       </div>
-      <div className="market-table-scroll" role="region" aria-label="Candidates by market" tabIndex={0} style={{ marginTop: 10 }}>
+      <div className="market-table-scroll" role="region" aria-label="Candidates by market" tabIndex={0} style={{ marginTop: 6 }}>
         <table className="recap-table mono tnum">
           <caption className="visually-hidden">Candidate rows by market: closeout, closing-line value and graded outcomes</caption>
           <thead>
@@ -97,7 +98,7 @@ function FamilyRow({ family }: { family: Family }) {
       <td>{family.sides}</td>
       <td>
         {family.closeout.map((item) => (
-          <div key={item.status} data-closeout-status={item.status} style={{ fontSize: 10 }}>
+          <div key={item.status} data-closeout-status={item.status} style={{ fontSize: 10.5 }}>
             {item.count} {recapCloseoutStatusLabel(item.status)}
           </div>
         ))}
@@ -106,7 +107,7 @@ function FamilyRow({ family }: { family: Family }) {
         {family.median_clv != null && family.clv_kind
           ? <>
               {signed(family.median_clv, family.clv_kind === "moneyline_price" ? 3 : 1)}
-              <div className="dim2" style={{ fontSize: 9 }}>{recapClvKindLabel(family.clv_kind)} · {family.clv_count} closed</div>
+              <div className="pf-sub">{recapClvKindLabel(family.clv_kind)} · {family.clv_count} closed</div>
             </>
           : unavailable("clv_unavailable", "No candidate closed")}
       </td>
@@ -114,7 +115,7 @@ function FamilyRow({ family }: { family: Family }) {
       <td>
         {family.wins}-{family.losses}-{family.pushes}
         {family.outcome_unavailable > 0 && (
-          <div className="dim2" style={{ fontSize: 9 }}>{family.outcome_unavailable} not graded</div>
+          <div className="pf-sub">{family.outcome_unavailable} not graded</div>
         )}
       </td>
     </tr>
@@ -123,12 +124,12 @@ function FamilyRow({ family }: { family: Family }) {
 
 function ReceiptTable({ receipts, through }: { receipts: Receipt[]; through: string }) {
   return (
-    <div style={{ marginTop: 14 }}>
-      <div className="upper dim" style={{ fontSize: 9 }}>Edge checks through the last kickoff ({formatTimestamp(through)})</div>
+    <div>
+      <div className="pf-eyebrow">Edge checks through the last kickoff ({formatTimestamp(through)})</div>
       {receipts.length === 0
-        ? <div style={{ marginTop: 6, fontSize: 12 }}>{unavailable("no_receipts", "No weekly-cycle edge check before the last kickoff")}</div>
+        ? <div style={{ marginTop: 8, fontSize: 12 }}>{unavailable("no_receipts", "No weekly-cycle edge check before the last kickoff")}</div>
         : (
-          <div className="market-table-scroll" role="region" aria-label="Edge checks" tabIndex={0} style={{ marginTop: 6 }}>
+          <div className="market-table-scroll" role="region" aria-label="Edge checks" tabIndex={0} style={{ marginTop: 8 }}>
             <table className="recap-table mono">
               <caption className="visually-hidden">Every weekly-cycle edge check decided at or before the week's last kickoff</caption>
               <thead>
@@ -160,15 +161,15 @@ function ReceiptTable({ receipts, through }: { receipts: Receipt[]; through: str
 export function WagersSection({ wagers }: { wagers: Wagers }) {
   const { total } = wagers;
   return (
-    <section className="hm-card" style={{ padding: 20 }} data-recap-section="wagers">
-      <div className="upper dim" style={{ fontSize: 10 }}>Recorded wagers</div>
+    <section className="hm-card pf-card" data-recap-section="wagers" aria-labelledby="recap-wagers">
+      <SectionHead eyebrow="Your bets" title="Recorded wagers" id="recap-wagers" />
       {total.bets === 0
-        ? <div style={{ marginTop: 8, fontSize: 12 }}>{unavailable("no_wagers", "No recorded wagers on this week's games")}</div>
+        ? <div style={{ fontSize: 12 }}>{unavailable("no_wagers", "No recorded wagers on this week's games")}</div>
         : (
           <>
             <WagerTiles summary={total} />
             <WagerNotes summary={total} />
-            <div className="market-table-scroll" role="region" aria-label="Wagers by market" tabIndex={0} style={{ marginTop: 12 }}>
+            <div className="market-table-scroll" role="region" aria-label="Wagers by market" tabIndex={0}>
               <table className="recap-table mono tnum">
                 <caption className="visually-hidden">Recorded wagers by market type</caption>
                 <thead>
@@ -217,11 +218,11 @@ const TILES: [string, (summary: WagerSummary) => string][] = [
 
 function WagerTiles({ summary }: { summary: WagerSummary }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12, marginTop: 10 }} aria-label="Recorded wager totals">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12 }} aria-label="Recorded wager totals">
       {TILES.map(([label, value]) => (
         <div key={label} data-wager-tile={label}>
-          <div className="upper dim2" style={{ fontSize: 9 }}>{label}</div>
-          <div className="mono tnum" style={{ fontSize: 20, marginTop: 4 }}>{value(summary)}</div>
+          <div className="pf-stat-label">{label}</div>
+          <div className="mono tnum" style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{value(summary)}</div>
         </div>
       ))}
     </div>
@@ -242,7 +243,7 @@ function WagerNotes({ summary }: { summary: WagerSummary }) {
     ? `${summary.linked_recommendations} linked to a recommendation`
     : "None linked to a recommendation"]);
   return (
-    <div className="mono dim" style={{ fontSize: 10, marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+    <div className="mono dim" style={{ fontSize: 10.5, display: "flex", flexDirection: "column", gap: 2 }}>
       {notes.map(([key, text]) => <div key={key} data-wager-note={key}>{text}</div>)}
     </div>
   );

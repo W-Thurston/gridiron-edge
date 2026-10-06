@@ -7,10 +7,10 @@ type ClosingLineStatus = components["schemas"]["ClosingLineStatus"];
 type ForecastRole = components["schemas"]["ForecastRole"];
 
 const FAMILY_LABELS: Record<RecapFamily, string> = {
-  win: "Win",
+  win: "Moneyline",
   spread: "Spread",
   total: "Total",
-  projected_score: "Projected score",
+  projected_score: "Team score",
 };
 
 export function recapFamilyLabel(family: RecapFamily): string {

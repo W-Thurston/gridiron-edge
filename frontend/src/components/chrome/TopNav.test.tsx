@@ -76,4 +76,15 @@ describe("TopNav", () => {
 
     expect(navigate).toHaveBeenCalledWith("/teams");
   });
+
+  it("opens the Performance page at the Week scope and marks it active on the old recap route", () => {
+    currentPath = "/recap";
+
+    render(<TopNav />);
+    const item = screen.getByRole("button", { name: "Performance" });
+    expect(item).toHaveAttribute("aria-current", "page");
+    fireEvent.click(item);
+
+    expect(navigate).toHaveBeenCalledWith("/performance", { scope: "week" });
+  });
 });

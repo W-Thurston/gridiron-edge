@@ -8,6 +8,36 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D90 - The Performance page compares models only on persisted evidence each source declares
+
+**Date:** 2026-10-06
+
+**Context:** The weekly recap page and the historical model-performance page merged into one Performance page
+(`PLAN.md` Unit 31) with a chart comparing the champion with other models: challengers, baselines, the opening and
+closing lines, and external models. Only some of that evidence exists. The selected season recap stores model and
+closing-market metrics per week. The historical backtest report stores per-game evidence and a cumulative series,
+but no per-season rollup and no challenger or baseline rows. No source exists for opening lines or external models.
+The API serializes persisted state only, and the recap page already avoided browser-side metric reconstruction.
+
+**Decision:**
+1. A comparison source declares its models (`id`, `label`, `source`, `group`), its periods and its values per
+   metric. The chart draws only declared models. A model with no values for the chosen metric is a disabled "n/a"
+   chip. Models with no source are not shown, never named or filled in.
+2. A source with no persisted evidence is an explicit unavailable state with its reason. The backtest comparison
+   is unavailable until the historical report persists a per-season rollup (ROADMAP W23). It is never rolled up
+   in the browser or at request time.
+3. Each model id has one fixed color, whatever else is selected (the dataviz reference palette's dark steps,
+   validated against `--bg-1`; market lines neutral grey, the opening line dashed). The champion is the reference:
+   differences use only the periods both cover, and "better" is always up on the axis.
+4. The page's scope and every selection live in the route params. Old routes redirect with a replaced history
+   entry: `/recap` to the Week scope, a bare `/performance` to Backtest.
+
+**Consequences:** Season compares the published model with the closing line from the season recap with no new
+API. Adding challengers, baselines or external models means persisting their evidence and declaring them in a
+source, not changing the chart. The backtest chart stays empty until W23 lands.
+
+---
+
 ## D89 - The recap reads edges from persisted evidence only, scores candidates without dollars, and attributes wagers by game
 
 **Date:** 2026-10-06

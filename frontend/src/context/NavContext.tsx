@@ -13,8 +13,11 @@ export type Route = {
 /** Public shape of the nav context. */
 type NavContextValue = {
   route: Route;
-  navigate: (path: string, params?: RouteParams) => void;
+  navigate: (path: string, params?: RouteParams, options?: NavigateOptions) => void;
 };
+
+/** `replace` swaps the current history entry instead of adding one (redirects, in-page selections). */
+export type NavigateOptions = { replace?: boolean };
 
 const NavContext = createContext<NavContextValue | undefined>(undefined);
 
@@ -110,11 +113,12 @@ export function NavProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const navigate = useCallback((path: string, params: RouteParams = {}) => {
+  const navigate = useCallback((path: string, params: RouteParams = {}, options: NavigateOptions = {}) => {
     const nextRoute = { path, params };
     const nextHash = serializeRoute(nextRoute);
     if (window.location.hash !== nextHash) {
-      window.history.pushState({ route: nextRoute }, "", nextHash);
+      if (options.replace) window.history.replaceState({ route: nextRoute }, "", nextHash);
+      else window.history.pushState({ route: nextRoute }, "", nextHash);
     }
     setRoute(nextRoute);
   }, []);

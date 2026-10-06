@@ -111,7 +111,8 @@ should read this section before planning or modifying the repository.
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
 **Units 23 and 24 completed October 4, 2026, Units 26, 25 and 27 October 5, 2026, and Unit 28 October 6, 2026
-(`CHANGELOG.md`); every planned recap section is built. Next: the follow-ons Unit 29 (retry a soft-failed recap)
+(`CHANGELOG.md`); every planned recap section is built. Unit 31 (one Performance page, W22) completed October 6,
+2026; Unit 32 (per-season backtest comparison evidence, W23) is scoped. Next: the follow-ons Unit 29 (retry a soft-failed recap)
 and Unit 30 (alerts), not yet active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
 up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records); week 5's starter check
 follows its closeout (about 2026-10-13).** Sequence:
@@ -272,6 +273,8 @@ at request time.
 | 28 | Edges, recommendations and wagers | 24 (27 for season wager totals) | weeks 1, 2 and 4 |
 | 29 | Retry a soft-failed recap (cycle follow-on) | 26, 27 | stubbed ports; a forced soft failure |
 | 30 | Alert when the cycle needs a person (cycle follow-on, W20) | 19 (ideally 29) | stubbed ports; one real test alert |
+| 31 | One Performance page (W22) [done 2026-10-06] | 27, 28 | weeks 1-4 and the selected historical report |
+| 32 | Per-season backtest comparison evidence (W23) | 31 | the selected historical report |
 
 Unit 26 must land before week 5's closeout window opens (the first 06:00 local at least 4 h after week 5's
 last kickoff, about Tuesday 2026-10-13) for week 5 to be recapped by the cycle; otherwise build it by hand.
@@ -842,6 +845,78 @@ alert through the chosen channel.
 **Acceptance.** Every condition in which the cycle needs a person produces one visible alert and one recovery
 notice, deduplicated and recorded, without making the cycle depend on the channel; gates pass; HANDOFF "Weekly
 Cycle", CHANGELOG, DECISIONS (channel, thresholds), and ROADMAP W20 updated.
+
+#### Unit 31 - One Performance Page [Completed October 6, 2026; `DECISIONS.md` D90; ROADMAP W22]
+
+#### Completed
+
+The recap page (`/recap`) and the historical model-performance page are one Performance page at `/performance`
+with Week, Season and Backtest scopes and every selection in the route params. `/recap` redirects to Week and a
+bare `/performance` to Backtest. A reusable comparison chart plots only the models its data source declares. Season
+compares the published model with the closing line from the selected season recap. Backtest states that no
+per-season rollup is persisted (Unit 32). Decisions taken with the user (2026-10-06): the real edges and wagers
+sections stay; all season-panel content stays under one all-or-live filter; model-closer counts are per family;
+the backtest comparison waits for persisted evidence. No API, metric or request-time scoring was added.
+
+#### Goal
+
+Answer "how did our forecasts do" on one page, from one week to the season to the historical backtest, with links
+that reproduce the view and a like-for-like comparison against the closing market.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `frontend/src/screens/Performance.tsx` - The page: scope selector, route-param state, redirects, loading/error/empty states.
+- `frontend/src/components/performance/WeekScope.tsx` - Week header, family cards, game table, starting QBs, edges, wagers, method.
+- `frontend/src/components/performance/SeasonScope.tsx` - Season scope (moved from `recap/SeasonPanel.tsx`): cards, comparison, weekly table, paired, reliability, wagers.
+- `frontend/src/components/performance/BacktestScope.tsx` - Backtest stat cards, trend chart, comparison state, Spread state.
+- `frontend/src/components/performance/CompareChart.tsx` - Reusable comparison chart with chips, tooltip and summary table.
+- `frontend/src/components/performance/compareData.ts` - Comparison data contract, fixed model colors, season adapter, backtest unavailable source.
+- `frontend/src/components/performance/compareMath.ts` - Line segments, best-first tooltip rows, champion-relative summaries.
+- `frontend/src/components/performance/ScopeTabs.tsx`, `SegmentedControl.tsx`, `FamilyScoreCard.tsx`, `StatCard.tsx`, `CountsStrip.tsx`, `MethodDetails.tsx`, `SectionHead.tsx` - Shared page components.
+- `frontend/src/components/performance/format.ts`, `pageConstants.ts` - Shared number formats; scope and family constants.
+- `frontend/src/components/performance/CompareChart.test.tsx` - Toggling, disabled models, best-first tooltip, line breaks, summaries.
+- `frontend/src/screens/Performance.test.tsx` - Week, scope, redirect, URL-persistence and backtest coverage (moved from `WeeklyRecap.test.tsx`).
+- `frontend/src/components/performance/SeasonScope.test.tsx` - Season scope coverage (moved from `recap/SeasonPanel.test.tsx`).
+
+Changed:
+- `frontend/src/App.css` - Performance page styles; recap tables no longer use sub-10px text.
+- `frontend/src/Router.tsx` - `/performance` page and the two redirects.
+- `frontend/src/context/NavContext.tsx` - `navigate` takes a `replace` option.
+- `frontend/src/components/chrome/TopNav.tsx`, `TopNav.test.tsx` - "Performance" nav item opening the Week scope.
+- `frontend/src/components/dashboard/ModelPerformanceRail.tsx` - Links to the Backtest scope.
+- `frontend/src/screens/Bankroll.tsx`, `Bankroll.test.tsx` - "Results by week" links to the Week scope.
+- `frontend/src/components/field-status/recapStatus.ts` - Family labels "Moneyline" and "Team score".
+- `frontend/src/components/recap/MarketSections.tsx` - Edges and wagers restyled; same data and attributes.
+- `PLAN.md`, `ROADMAP.md`, `CHANGELOG.md`, `HANDOFF.md`, `DECISIONS.md` - Unit record, W22 done and W23 scoped, shipped behavior, page contract, D90.
+
+Removed:
+- `frontend/src/screens/WeeklyRecap.tsx`, `frontend/src/screens/ModelPerformance.tsx`, `frontend/src/screens/ModelPerformance.test.tsx` - Superseded by the Performance page and its tests.
+- `frontend/src/components/recap/RecapToggle.tsx` - Superseded by `SegmentedControl`.
+- `frontend/src/components/recap/SeasonPanel.tsx`, `SeasonPanel.test.tsx`, `frontend/src/screens/WeeklyRecap.test.tsx` - Moved to `SeasonScope.tsx`, `SeasonScope.test.tsx` and `Performance.test.tsx`.
+
+#### Tests
+
+Frontend gate: `pnpm lint`, `pnpm build`, `pnpm test:run` (57 files, 576 tests) all pass. Real-data check on
+2026-10-06 against the running API and Vite dev server with headless Chromium over CDP: every scope, the Season to
+Week link, Live only, the Total backtest, and both redirects render on weeks 1-4 and the selected historical report;
+no console errors or exceptions (capture verified with an injected error); no page element overflows at 390px
+(the app's top nav already does).
+
+#### Acceptance
+
+Everything on both former pages is reachable on the Performance page; loading, error and empty states render in
+the new layout; Week and Season link both ways; comparison selections survive a reload; the comparison chart
+draws only persisted evidence. Documented in CHANGELOG and HANDOFF; Unit 32 (W23) is scoped for the backtest
+comparison.
+
+#### Unit 32 - Per-Season Backtest Comparison Evidence [Scoped October 6, 2026; not active; ROADMAP W23]
+
+**Goal.** Feed the Backtest comparison chart from persisted evidence: per-season champion Moneyline Brier, accuracy
+and log loss, Total MAE and hit rate against the closing total, and the closing total's MAE. These are persisted
+by the historical backtest report builder as a new frame and served by a read-only route.
+**Decide at start.** The frame's columns and the report schema bump. Whether challenger and baseline lines come
+from the game-model evaluation report in this unit or a later one. The report rebuild (a `data/` write; ask first).
 
 ### Program: Game-Model Feature Program (ROADMAP Tier 5 #16), Phase A
 

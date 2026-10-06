@@ -112,7 +112,7 @@ function RecordCard({ summary, bets, market, onMarketChange }: { summary: Return
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           <div className="upper dim" style={{ fontSize: 10 }}>Record</div>
-          <button type="button" className="recap-game-link" style={{ fontSize: 11 }} onClick={() => navigate("/recap")}>
+          <button type="button" className="recap-game-link" style={{ fontSize: 11 }} onClick={() => navigate("/performance", { scope: "week" })}>
             Results by week
           </button>
         </div>

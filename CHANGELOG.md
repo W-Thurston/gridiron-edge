@@ -1,5 +1,31 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-06 - Unit 31: one Performance page for the weekly recap, the season and the backtest
+
+#### Changed
+
+- The "Last Week" recap page and the historical model-performance page are one Performance page (`/performance`)
+  with Week, Season and Backtest scopes. Every selection lives in the URL. `/recap` redirects to the Week scope and
+  a bare `/performance` redirects to Backtest. The top nav item is "Performance".
+- Week: new header (week strip, role badge, counts strip), model-against-market family cards with a closer bar,
+  a game table with error bars and closer pills, a two-column starting-QB section, the edges and wagers cards,
+  and a collapsed "Method and provenance" block.
+- Season replaces the season panel: pooled family cards, a weekly table with model, market and model-closer
+  columns per family (a row opens that week), paired differences, reliability, and edges and wagers by week, all
+  under one all-or-live filter.
+- Backtest: stat cards for Moneyline and Total, the trend chart with a segmented metric control, the backtest
+  caveat, and the Spread unavailable state pointing to the live scopes.
+- Family labels read "Moneyline" and "Team score" (were "Win" and "Projected score").
+
+#### Added
+
+- A reusable comparison chart: model chips grouped Ours / Market / External with fixed colors, better always up,
+  crosshair tooltip sorted best first, and a summary table (average, difference from the champion over shared
+  periods, best-in-period count, coverage). Season compares the published model with the closing line, week by
+  week or to date. Backtest states that no per-season comparison is persisted yet.
+- Shared components: scope tabs, segmented control (replacing the recap toggle and a toggle that used
+  nonexistent tokens), family score card, stat card, counts strip and method details. No page text is under 10px.
+
 ### 2026-10-06 - Unit 28: the weekly recap says what was published as edges and how wagers did
 
 #### Added
