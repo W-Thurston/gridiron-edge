@@ -7,10 +7,6 @@ from typing import Any, cast
 
 import pandas as pd
 
-from gridiron_edge.api.loaders import (
-    LoadedRecommendedBetResult,
-    RecommendedBetOfferKey,
-)
 from gridiron_edge.api.meta import ResponseMeta
 from gridiron_edge.api.schemas.edges import (
     EdgeDiagnosticsResponse,
@@ -24,6 +20,10 @@ from gridiron_edge.api.serializers.recommendations import (
 )
 from gridiron_edge.market.edge import EdgeStrength
 from gridiron_edge.market.edge_report import EdgeResult
+from gridiron_edge.market.recommended_bet_result_store import (
+    LoadedRecommendedBetResult,
+    RecommendedBetOfferKey,
+)
 
 
 def _none_if_nan(v: Any) -> Any:  # noqa: ANN401

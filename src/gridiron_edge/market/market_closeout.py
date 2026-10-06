@@ -219,6 +219,30 @@ def close_candidate_issuance(
     return tuple(sorted(results, key=lambda result: result.reference.reference_id))
 
 
+def close_candidate_rows(
+    issuance: CandidateIssuance,
+    rows: tuple[CandidateIssuanceRow, ...],
+    observations: DataFrame,
+) -> tuple[MarketCloseoutResult, ...]:
+    """Close chosen issuance rows, each against its own game's observations only.
+
+    Matching is :func:`close_market_reference`'s, which already requires the row's game, so a
+    row closes exactly as it would against the whole history; splitting the history by game
+    only keeps each search small.
+    """
+    quotes = validate_quote_rows(observations)
+    by_game = {str(game_id): frame for game_id, frame in quotes.groupby("game_id", sort=False)}
+    empty = quotes.iloc[0:0]
+    results = [
+        close_market_reference(
+            _candidate_reference(issuance.issuance_id, row),
+            by_game.get(row.game_id, empty),
+        )
+        for row in rows
+    ]
+    return tuple(sorted(results, key=lambda result: result.reference.reference_id))
+
+
 def close_recorded_wagers(
     bets: DataFrame,
     observations: DataFrame,

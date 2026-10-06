@@ -598,6 +598,19 @@
         "title": "BlockedStatus",
         "type": "object"
       },
+      "CandidateRecommendationState": {
+        "description": "A candidate row's latest recommendation result state, or that it has none.",
+        "enum": [
+          "qualified",
+          "recommended",
+          "failed",
+          "unavailable",
+          "conflicting",
+          "not_evaluated"
+        ],
+        "title": "CandidateRecommendationState",
+        "type": "string"
+      },
       "Closer": {
         "description": "Which side's forecast landed closer to the result.",
         "enum": [
@@ -1240,6 +1253,16 @@
         ],
         "title": "EdgeDiagnosticsResponse",
         "type": "object"
+      },
+      "EdgeEvidenceStatus": {
+        "description": "What a week's persisted state says about the edges it published.",
+        "enum": [
+          "production_chain",
+          "withheld_unvalidated",
+          "not_recorded"
+        ],
+        "title": "EdgeEvidenceStatus",
+        "type": "string"
       },
       "EdgeList": {
         "additionalProperties": false,
@@ -3842,6 +3865,40 @@
         "title": "LiveScore",
         "type": "object"
       },
+      "MarketCloseoutStatus": {
+        "description": "Resolution of one reference against canonical quote history.",
+        "enum": [
+          "available",
+          "reference_unavailable",
+          "reference_missing",
+          "reference_ambiguous",
+          "reference_conflict",
+          "closeout_missing",
+          "kickoff_unavailable",
+          "kickoff_conflict",
+          "live_only",
+          "post_kickoff_only",
+          "no_eligible_pregame_observation",
+          "latest_observation_ambiguous",
+          "latest_observation_conflict",
+          "reference_price_unavailable",
+          "closeout_price_unavailable",
+          "reference_line_unavailable",
+          "closeout_line_unavailable"
+        ],
+        "title": "MarketCloseoutStatus",
+        "type": "string"
+      },
+      "MarketClvKind": {
+        "description": "Semantic unit of one validated CLV calculation.",
+        "enum": [
+          "moneyline_price",
+          "spread_points",
+          "total_points"
+        ],
+        "title": "MarketClvKind",
+        "type": "string"
+      },
       "MarketFreshness": {
         "additionalProperties": false,
         "description": "The server clock and age limit a client needs to say how old the quotes are.",
@@ -5753,6 +5810,118 @@
         "title": "RecapCalibration",
         "type": "object"
       },
+      "RecapCandidateFamily": {
+        "additionalProperties": false,
+        "description": "One market family's candidates: closeout, CLV in the family's unit, graded outcomes.\n\nCandidates were never recommendations, so there is no P&L. Rows repeat a side across books\nand snapshots; ``sides`` counts the distinct game and side.",
+        "properties": {
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "closeout": {
+            "items": {
+              "$ref": "#/components/schemas/RecapCloseoutCount"
+            },
+            "title": "Closeout",
+            "type": "array"
+          },
+          "clv_count": {
+            "title": "Clv Count",
+            "type": "integer"
+          },
+          "clv_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketClvKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "median_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Clv"
+          },
+          "outcome_unavailable": {
+            "title": "Outcome Unavailable",
+            "type": "integer"
+          },
+          "pushes": {
+            "title": "Pushes",
+            "type": "integer"
+          },
+          "share_positive_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Positive Clv"
+          },
+          "sides": {
+            "title": "Sides",
+            "type": "integer"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "market",
+          "candidates",
+          "sides",
+          "closeout",
+          "clv_kind",
+          "clv_count",
+          "median_clv",
+          "share_positive_clv",
+          "wins",
+          "losses",
+          "pushes",
+          "outcome_unavailable"
+        ],
+        "title": "RecapCandidateFamily",
+        "type": "object"
+      },
+      "RecapCloseoutCount": {
+        "additionalProperties": false,
+        "description": "How many candidate rows closed with one market-closeout status.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MarketCloseoutStatus"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ],
+        "title": "RecapCloseoutCount",
+        "type": "object"
+      },
       "RecapCloserCounts": {
         "additionalProperties": false,
         "description": "How often each side landed closer, over games both sides forecast.",
@@ -5929,6 +6098,98 @@
           "outcome_ties"
         ],
         "title": "RecapCountsResponse",
+        "type": "object"
+      },
+      "RecapEdgeReceipt": {
+        "additionalProperties": false,
+        "description": "One weekly-cycle edge receipt decided at or before the week's last kickoff.",
+        "properties": {
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "market_fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Fetched At"
+          },
+          "outcome": {
+            "description": "The receipt's outcome: done, blocked or failed.",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          }
+        },
+        "required": [
+          "decided_at",
+          "outcome",
+          "detail",
+          "product_id",
+          "market_fetched_at"
+        ],
+        "title": "RecapEdgeReceipt",
+        "type": "object"
+      },
+      "RecapEdges": {
+        "additionalProperties": false,
+        "description": "What the week published as edges, with every edge receipt before its last kickoff.",
+        "properties": {
+          "chain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapProductionChain"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/RecapEdgeReceipt"
+            },
+            "title": "Receipts",
+            "type": "array"
+          },
+          "receipts_through": {
+            "description": "The week's last kickoff.",
+            "format": "date-time",
+            "title": "Receipts Through",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EdgeEvidenceStatus"
+          }
+        },
+        "required": [
+          "status",
+          "chain",
+          "receipts_through",
+          "receipts"
+        ],
+        "title": "RecapEdges",
         "type": "object"
       },
       "RecapErrorMetrics": {
@@ -6511,6 +6772,79 @@
         "title": "RecapProbabilityMetrics",
         "type": "object"
       },
+      "RecapProductionChain": {
+        "additionalProperties": false,
+        "description": "The week's candidate issuance and what the recommendation policy made of it.",
+        "properties": {
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "evaluation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evaluation Ids",
+            "type": "array"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/RecapCandidateFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "issuance_id": {
+            "title": "Issuance Id",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "not_candidates": {
+            "title": "Not Candidates",
+            "type": "integer"
+          },
+          "policy_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Ids",
+            "type": "array"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/RecapRecommendationCount"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "unavailable": {
+            "title": "Unavailable",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "issuance_id",
+          "issued_at",
+          "rows",
+          "candidates",
+          "not_candidates",
+          "unavailable",
+          "evaluation_ids",
+          "policy_ids",
+          "recommendations",
+          "families"
+        ],
+        "title": "RecapProductionChain",
+        "type": "object"
+      },
       "RecapProjectedScoreForecast": {
         "additionalProperties": false,
         "description": "Projected team scores against the result and the market-implied team scores.",
@@ -6584,6 +6918,25 @@
           "closer"
         ],
         "title": "RecapProjectedScoreForecast",
+        "type": "object"
+      },
+      "RecapRecommendationCount": {
+        "additionalProperties": false,
+        "description": "How many candidate rows read one recommendation state.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CandidateRecommendationState"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ],
+        "title": "RecapRecommendationCount",
         "type": "object"
       },
       "RecapReliabilityBin": {
@@ -7002,6 +7355,176 @@
           "capture_digests"
         ],
         "title": "RecapStartingQbs",
+        "type": "object"
+      },
+      "RecapWagerMarket": {
+        "additionalProperties": false,
+        "description": "One bet market type's summary and its CLV in that market's own unit.",
+        "properties": {
+          "clv_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketClvKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "market_type": {
+            "title": "Market Type",
+            "type": "string"
+          },
+          "median_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Clv"
+          },
+          "share_positive_clv": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Positive Clv"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RecapWagerSummary"
+          }
+        },
+        "required": [
+          "market_type",
+          "summary",
+          "clv_kind",
+          "median_clv",
+          "share_positive_clv"
+        ],
+        "title": "RecapWagerMarket",
+        "type": "object"
+      },
+      "RecapWagerSummary": {
+        "additionalProperties": false,
+        "description": "Recorded wagers' record and money; ROI is P&L over settled stake, in percent.",
+        "properties": {
+          "bets": {
+            "title": "Bets",
+            "type": "integer"
+          },
+          "bonus_funded": {
+            "title": "Bonus Funded",
+            "type": "integer"
+          },
+          "clv_available": {
+            "title": "Clv Available",
+            "type": "integer"
+          },
+          "clv_unavailable": {
+            "title": "Clv Unavailable",
+            "type": "integer"
+          },
+          "linked_recommendations": {
+            "title": "Linked Recommendations",
+            "type": "integer"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "pnl": {
+            "title": "Pnl",
+            "type": "number"
+          },
+          "pushes": {
+            "title": "Pushes",
+            "type": "integer"
+          },
+          "roi_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi Pct"
+          },
+          "settled": {
+            "title": "Settled",
+            "type": "integer"
+          },
+          "settled_staked": {
+            "title": "Settled Staked",
+            "type": "number"
+          },
+          "staked": {
+            "title": "Staked",
+            "type": "number"
+          },
+          "unsettled": {
+            "description": "Bets still open although the game has finished.",
+            "title": "Unsettled",
+            "type": "integer"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bets",
+          "settled",
+          "unsettled",
+          "wins",
+          "losses",
+          "pushes",
+          "staked",
+          "settled_staked",
+          "pnl",
+          "roi_pct",
+          "bonus_funded",
+          "clv_available",
+          "clv_unavailable",
+          "linked_recommendations"
+        ],
+        "title": "RecapWagerSummary",
+        "type": "object"
+      },
+      "RecapWagers": {
+        "additionalProperties": false,
+        "description": "The week's recorded wagers overall and per market type.",
+        "properties": {
+          "ledger_digest": {
+            "description": "Digest of the week's ledger rows the section read.",
+            "title": "Ledger Digest",
+            "type": "string"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/RecapWagerMarket"
+            },
+            "title": "Markets",
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/RecapWagerSummary"
+          }
+        },
+        "required": [
+          "total",
+          "markets",
+          "ledger_digest"
+        ],
+        "title": "RecapWagers",
         "type": "object"
       },
       "RecapWeekMetrics": {
@@ -8017,6 +8540,10 @@
           "season_to_date": {
             "title": "Season To Date",
             "type": "string"
+          },
+          "unattributed_wagers": {
+            "title": "Unattributed Wagers",
+            "type": "string"
           }
         },
         "required": [
@@ -8026,7 +8553,8 @@
           "calibration_bins",
           "paired_difference",
           "interval",
-          "interval_z"
+          "interval_z",
+          "unattributed_wagers"
         ],
         "title": "SeasonRecapConventions",
         "type": "object"
@@ -8073,6 +8601,9 @@
             "title": "Selected At",
             "type": "string"
           },
+          "wagers": {
+            "$ref": "#/components/schemas/SeasonRecapWagers"
+          },
           "weekly_recap_ids": {
             "items": {
               "type": "string"
@@ -8097,7 +8628,8 @@
           "conventions",
           "weeks",
           "all_games",
-          "live_games"
+          "live_games",
+          "wagers"
         ],
         "title": "SeasonRecapResponse",
         "type": "object"
@@ -8139,10 +8671,43 @@
         "title": "SeasonRecapScope",
         "type": "object"
       },
+      "SeasonRecapWagers": {
+        "additionalProperties": false,
+        "description": "Recorded wagers over the recapped weeks, and the season's bets without a game.",
+        "properties": {
+          "recapped_weeks": {
+            "$ref": "#/components/schemas/RecapWagerSummary"
+          },
+          "unattributed": {
+            "$ref": "#/components/schemas/RecapWagerSummary"
+          },
+          "unattributed_digest": {
+            "title": "Unattributed Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recapped_weeks",
+          "unattributed",
+          "unattributed_digest"
+        ],
+        "title": "SeasonRecapWagers",
+        "type": "object"
+      },
       "SeasonRecapWeek": {
         "additionalProperties": false,
         "description": "One finished week: its own values and the season to date through it.\n\nEvery metric is null when ``status`` is ``not_built``; a live metric scores no game when the\nweek has no live row.",
         "properties": {
+          "edge_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EdgeEvidenceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "forecast_role": {
             "anyOf": [
               {
@@ -8215,6 +8780,16 @@
               }
             ]
           },
+          "wagers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapWagerSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "week": {
             "title": "Week",
             "type": "integer"
@@ -8230,7 +8805,9 @@
           "metrics",
           "live_metrics",
           "to_date",
-          "live_to_date"
+          "live_to_date",
+          "edge_status",
+          "wagers"
         ],
         "title": "SeasonRecapWeek",
         "type": "object"
@@ -10109,7 +10686,7 @@
       },
       "WeeklyRecapResponse": {
         "additionalProperties": false,
-        "description": "The selected recap of one week.\n\n``edges`` and ``wagers`` are null and marked pending in ``_meta.field_status`` until the\nrecap carries those sections. The season so far is served by ``GET /recaps/{season}/summary``.",
+        "description": "The selected recap of one week.\n\nThe season so far is served by ``GET /recaps/{season}/summary``.",
         "properties": {
           "_meta": {
             "anyOf": [
@@ -10141,8 +10718,7 @@
             "$ref": "#/components/schemas/RecapCountsResponse"
           },
           "edges": {
-            "title": "Edges",
-            "type": "null"
+            "$ref": "#/components/schemas/RecapEdges"
           },
           "forecast_role": {
             "anyOf": [
@@ -10193,8 +10769,7 @@
             "$ref": "#/components/schemas/RecapStartingQbs"
           },
           "wagers": {
-            "title": "Wagers",
-            "type": "null"
+            "$ref": "#/components/schemas/RecapWagers"
           },
           "week": {
             "title": "Week",
@@ -10216,7 +10791,9 @@
           "counts",
           "metrics",
           "games",
-          "starting_qbs"
+          "starting_qbs",
+          "edges",
+          "wagers"
         ],
         "title": "WeeklyRecapResponse",
         "type": "object"

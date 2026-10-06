@@ -16,16 +16,14 @@ from tests.fixtures.recommended_bet_results import (
     row,
 )
 
-from gridiron_edge.api.loaders import (
-    load_recommended_bet_results_for_week,
-    recommended_bet_offer_key,
-)
+from gridiron_edge.api.loaders import load_recommended_bet_results_for_week
 from gridiron_edge.core.settings import Settings
 from gridiron_edge.market.recommendation_policy import portfolio_exposure_snapshot
 from gridiron_edge.market.recommended_bet_result import (
     evaluate_recommendation_issuance,
 )
 from gridiron_edge.market.recommended_bet_result_store import (
+    recommended_bet_offer_key,
     write_recommended_bet_evaluation,
 )
 

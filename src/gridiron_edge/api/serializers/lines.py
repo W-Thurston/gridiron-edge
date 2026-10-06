@@ -12,10 +12,6 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.api.loaders import (
-    LoadedRecommendedBetResult,
-    RecommendedBetOfferKey,
-)
 from gridiron_edge.api.meta import ResponseMeta, Unavailable
 from gridiron_edge.api.schemas.lines import (
     GuidanceStatus,
@@ -29,6 +25,10 @@ from gridiron_edge.api.schemas.lines import (
 from gridiron_edge.api.serializers._freshness import market_freshness
 from gridiron_edge.api.serializers.recommendations import (
     serialize_recommendation_result,
+)
+from gridiron_edge.market.recommended_bet_result_store import (
+    LoadedRecommendedBetResult,
+    RecommendedBetOfferKey,
 )
 
 

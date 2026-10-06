@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Bankroll } from "./Bankroll";
+import { NavProvider } from "../context/NavContext";
 import { usePortfolioBets, usePortfolioCurve, usePortfolioSplits, usePortfolioSummary, usePortfolioTransactions } from "../api/hooks";
 
 vi.mock("../api/hooks", () => ({ usePortfolioBets: vi.fn(), usePortfolioCurve: vi.fn(), usePortfolioSplits: vi.fn(), usePortfolioSummary: vi.fn(), usePortfolioTransactions: vi.fn() }));
 vi.mock("../context/AppStateContext", () => ({ useAppState: () => ({ state: { oddsFormat: "american" } }) }));
 vi.mock("../components/portfolio/BalanceCurve", () => ({ BalanceCurve: ({ points }: { points: unknown[] }) => <div data-testid="balance-curve">{points.length}</div> }));
+function renderBankroll() { render(<NavProvider><Bankroll /></NavProvider>); }
 function queryResult<T>(data: T): unknown { return { data, error: null, isLoading: false, refetch: vi.fn() }; }
 
 const bets = [
@@ -25,7 +27,7 @@ describe("Bankroll", () => {
   });
 
   it("shows available-balance context and bounded scrolling regions", () => {
-    render(<Bankroll />);
+    renderBankroll();
     expect(screen.getByText("Available Bankroll")).toBeInTheDocument();
     expect(screen.getByText("Since start:")).toBeInTheDocument();
     expect(screen.getByText("-$18.74 (-30.9%)")).toBeInTheDocument();
@@ -34,14 +36,14 @@ describe("Bankroll", () => {
   });
 
   it("filters the Record card by market", () => {
-    render(<Bankroll />);
+    renderBankroll();
     fireEvent.change(screen.getByLabelText("Record market"), { target: { value: "same_game_parlay" } });
     expect(screen.getByText("0-1")).toBeInTheDocument();
     expect(screen.getByText("Bets in View").parentElement).toHaveTextContent("1");
   });
 
   it("combines bet filters and clears them", () => {
-    render(<Bankroll />);
+    renderBankroll();
     fireEvent.change(screen.getByLabelText("Bet status"), { target: { value: "lost" } });
     fireEvent.change(screen.getByLabelText("Bet market"), { target: { value: "same_game_parlay" } });
     const region = screen.getByRole("region", { name: "Bets, 1 in view" });
@@ -52,7 +54,7 @@ describe("Bankroll", () => {
   });
 
   it("filters by funding, sportsbook, and search", () => {
-    render(<Bankroll />);
+    renderBankroll();
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     fireEvent.change(screen.getByLabelText("Bet funding"), { target: { value: "bonus" } });
     fireEvent.change(screen.getByLabelText("Bet sportsbook"), { target: { value: "draftkings" } });
@@ -61,9 +63,16 @@ describe("Bankroll", () => {
   });
 
   it("requests funding splits after selecting the Funding tab", () => {
-    render(<Bankroll />);
+    renderBankroll();
     expect(usePortfolioSplits).toHaveBeenLastCalledWith("market_type");
     fireEvent.click(screen.getByRole("button", { name: "Funding" }));
     expect(usePortfolioSplits).toHaveBeenLastCalledWith("funding_type");
+  });
+
+  it("links the Record card to the results by week", () => {
+    window.history.replaceState(null, "", "#/bankroll");
+    renderBankroll();
+    fireEvent.click(screen.getByRole("button", { name: "Results by week" }));
+    expect(window.location.hash).toBe("#/recap");
   });
 });

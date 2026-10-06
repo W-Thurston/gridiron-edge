@@ -1,5 +1,45 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-06 - Unit 28: the weekly recap says what was published as edges and how wagers did
+
+#### Added
+
+- The weekly recap (schema 3) has an edge section and a recorded-wager section (`DECISIONS.md` D89), read from
+  persisted evidence only. Each week's edges read `production_chain` (the selected product's candidate issuance),
+  `withheld_unvalidated` (the last weekly-cycle edge check before the last kickoff withheld unvalidated model
+  edges) or `not_recorded`, with every edge check in that window listed. A chain week shows its issuance,
+  each candidate's recommendation state, and per market family the candidates, closeout status counts, median CLV
+  and share positive, and won-lost-push. Candidates get no dollars.
+- Recorded wagers per week, overall and per market type: bets, won-lost-push, staked, P&L, ROI, unsettled bets,
+  bonus funding, CLV available or unavailable, and links to recommendations. The recap's identity covers the
+  week's ledger rows and quote partition, so a settlement gives a new recap.
+- The season recap (schema 2) carries each week's edge status and wagers, the season's wager total, and the bets
+  without a game placed in the season window (March 1 to March 1, UTC).
+- `GET /recaps/{season}/{week}` serves `edges` and `wagers` (no longer pending); `GET /recaps/{season}/summary`
+  adds the weekly and season wagers. The "Last Week" page shows an "Edges and recommendations" card, a "Recorded
+  wagers" card and a season table of edges and wagers by week. The Bankroll Record card links to it ("Results by
+  week").
+- `gridiron evaluate weekly-recap` prints the edge status, the chain's families and the wager summary.
+
+#### Changed
+
+- The latest-unambiguous recommendation rule moved from the API loader to
+  `recommended_bet_result_store.load_latest_recommended_bet_results`, which the API and the recap both call. The
+  week's issuance lookup is a public reader, `candidate_issuances_for_product`, which preflight uses.
+  `close_candidate_rows` closes chosen issuance rows, each against its own game's quotes.
+- A season roll-up over a week whose selected recap is not stored at the current schema refuses, naming the week,
+  instead of failing with a traceback.
+- Weeks 1-4 were rebuilt and reselected at schema 3 (`debeb14c...`, `77876ffc...`, `f7708d42...`,
+  `c7950e26...`) and the season recap at schema 2 (`bf11046a...`). Week 1 reads the production chain (698
+  candidates, all `unavailable`; 342 `kickoff_conflict` closeouts); weeks 2-3 `not_recorded`; week 4
+  `withheld_unvalidated`. Wagers: 66 bets in weeks 1-4, 39-27, -$6.11; 16 without a game, -$5.20.
+
+#### Operations
+
+- The bet ledger was re-imported from the DraftKings history (`bet import-history --replace`): week 2's
+  settlements now carry the paid amounts, weeks 3 and 4 were added, nothing is open, and the bankroll reconciles
+  to $49.49.
+
 ### 2026-10-06 - Week 4's closeout recapped the week unattended
 
 #### Verified

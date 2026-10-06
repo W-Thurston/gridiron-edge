@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from tests.fixtures.weekly_recap import BUILT_AT, GAME_C, SEASON, WEEK, recap_week
+from tests.fixtures.weekly_recap import BUILT_AT, GAME_C, SEASON, WEEK, ledger, recap_week
 
 from gridiron_edge.evaluation.weekly_recap import BuiltWeeklyRecap, build_weekly_recap
 from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap, build_season_recap
@@ -50,6 +50,7 @@ def _built(*, built_at: datetime = BUILT_AT, closing_line_c: float = -1.0) -> Bu
         games=games,
         player_game_logs=week.logs,
         sidecar_captures=week.captures,
+        markets=week.markets,
         built_at=built_at,
     )
 
@@ -227,6 +228,7 @@ def test_a_selection_stored_under_another_week_key_is_rejected(tmp_path: Path) -
 def _season(*, built_at: datetime = BUILT_AT, finished: tuple[int, ...] = (WEEK,)) -> SeasonRecap:
     built = _built()
     return build_season_recap(
+        bets=ledger(),
         season=SEASON,
         recaps=[(built.recap, built.games)],
         finished_weeks=finished,
@@ -241,7 +243,7 @@ def test_a_written_season_recap_loads_back_exactly(tmp_path: Path) -> None:
     path = season_recap_manifest_path(recap.season_recap_id, repo=tmp_path)
 
     assert load_season_recap(recap.season_recap_id, repo=tmp_path) == recap
-    assert path.parent == weekly_recap_root(tmp_path) / "schema=2/seasons"
+    assert path.parent == weekly_recap_root(tmp_path) / "schema=3/seasons"
 
 
 def test_a_season_rebuild_on_unchanged_recaps_replays_and_keeps_the_file(tmp_path: Path) -> None:

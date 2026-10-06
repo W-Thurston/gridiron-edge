@@ -37,6 +37,7 @@ from gridiron_edge.evaluation.select import (
 if TYPE_CHECKING:
     from gridiron_edge.evaluation.backfill import BackfillResult
     from gridiron_edge.evaluation.weekly_recap import WeeklyRecap, WeekMetrics
+    from gridiron_edge.evaluation.weekly_recap_markets import WagerSummary
     from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap
 
 
@@ -1977,7 +1978,38 @@ def _weekly_recap_lines(recap: WeeklyRecap, games: DataFrame) -> list[str]:
         f"unresolved {starters.starter_unresolved}, actual missing {starters.actual_missing}; "
         f"actual starter from the game logs {starters.actual_from_game_logs}"
     )
+    edges = recap.edges
+    lines.append(
+        f"edges: {edges.status.value}; "
+        f"{len(edges.receipts)} edge receipt(s) before the last kickoff"
+    )
+    if edges.chain is not None:
+        chain = edges.chain
+        lines.append(
+            f"  issuance {chain.issuance_id[:8]}: "
+            f"{chain.candidates} candidates of {chain.rows} rows; "
+            "recommendations "
+            + ", ".join(f"{item.status} {item.count}" for item in chain.recommendations)
+        )
+        for family in chain.families:
+            lines.append(
+                f"  {family.market}: {family.candidates} rows on {family.sides} sides; "
+                f"CLV ({family.clv_kind or 'n/a'}) median {number(family.median_clv, 4)}, "
+                f"positive {number(family.share_positive_clv, 3)} ({family.clv_count}); "
+                f"won/lost/push {family.wins}/{family.losses}/{family.pushes}"
+            )
+    lines.append(_wager_line("wagers", recap.wagers.total))
     return lines
+
+
+def _wager_line(label: str, wagers: WagerSummary) -> str:
+    """Render one recorded-wager summary on one line."""
+    roi = "n/a" if wagers.roi_pct is None else f"{wagers.roi_pct:.1f}%"
+    return (
+        f"{label}: {wagers.bets} bet(s), {wagers.wins}-{wagers.losses}-{wagers.pushes}, "
+        f"${wagers.staked:.2f} staked, P&L {wagers.pnl:+.2f}, ROI {roi}; "
+        f"unsettled {wagers.unsettled}, CLV unavailable {wagers.clv_unavailable}"
+    )
 
 
 def _season_recap_lines(recap: SeasonRecap) -> list[str]:
@@ -2057,6 +2089,8 @@ def _season_recap_lines(recap: SeasonRecap) -> list[str]:
             )
         )
     )
+    lines.append(_wager_line("wagers in recapped weeks", recap.wagers.recapped_weeks))
+    lines.append(_wager_line("wagers without a game", recap.wagers.unattributed))
     return lines
 
 

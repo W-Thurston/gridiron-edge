@@ -15,7 +15,8 @@ D85. The product's own ``spread_line`` and ``total_line`` are the market at fore
 
 The starting-QB section (:mod:`gridiron_edge.evaluation.weekly_recap_starters`) adds, per game
 and side, the assumed starter, nflverse's value and the carried-forward starter against who
-started.
+started. The market sections (:mod:`gridiron_edge.evaluation.weekly_recap_markets`) add what the
+week published as edges and how its recorded wagers did, without computing any edge.
 
 A scheduled game missing from the product is a row with status ``not_in_product``; a missing
 value always carries a status. The recap's identity is the SHA-256 of its content excluding
@@ -23,7 +24,8 @@ value always carries a status. The recap's identity is the SHA-256 of its conten
 
 Public API
 ----------
-build_weekly_recap      schedule, product, events, games, game logs, captures -> BuiltWeeklyRecap
+build_weekly_recap      schedule, product, events, games, game logs, captures, market
+                        evidence -> BuiltWeeklyRecap
 recap_metrics           recap game rows -> model and market metrics, family by family
 unplayed_game_ids       scoped schedule -> games without a result
 weekly_recap_id         recap -> content identity excluding built_at
@@ -40,7 +42,8 @@ from enum import StrEnum
 from hashlib import sha256
 import json
 import math
-from typing import Any, Final, cast, get_origin, get_type_hints
+import types
+from typing import Any, Final, Union, cast, get_args, get_origin, get_type_hints
 
 import numpy as np
 import pandas as pd
@@ -52,6 +55,14 @@ from gridiron_edge.evaluation.game_model_evaluation_report import (
 )
 from gridiron_edge.evaluation.live_forecast_closeout import close_live_forecasts
 from gridiron_edge.evaluation.market_agreement import MARGIN_STD
+from gridiron_edge.evaluation.weekly_recap_markets import (
+    EdgeEvidence,
+    MarketInputs,
+    RecordedWagers,
+    edge_evidence,
+    ledger_digest,
+    recorded_wagers,
+)
 from gridiron_edge.evaluation.weekly_recap_starters import (
     ACTUAL_STARTER_CONVENTION,
     STARTER_BOOLEAN_COLUMNS,
@@ -66,7 +77,7 @@ from gridiron_edge.evaluation.weekly_recap_starters import (
 from gridiron_edge.market.collection_plan import _schedule_kickoff_utc
 from gridiron_edge.models.game_prediction.weekly_product_store import cited_run_ids
 
-WEEKLY_RECAP_SCHEMA_VERSION: Final[int] = 2
+WEEKLY_RECAP_SCHEMA_VERSION: Final[int] = 3
 # Two errors closer than this are a tie.
 _CLOSER_TOLERANCE: Final[float] = 1e-9
 _PROBABILITY_CLIP: Final[float] = 1e-7
@@ -247,10 +258,14 @@ class WeeklyRecap:
     outcome_digest: str
     passer_digest: str
     starter_capture_digests: tuple[str, ...]
+    ledger_digest: str
+    quote_digest: str
     conventions: RecapConventions
     counts: RecapCounts
     metrics: WeekMetrics
     starters: StarterSummary
+    edges: EdgeEvidence
+    wagers: RecordedWagers
     games: EvaluationFrameReference
 
 
@@ -674,6 +689,7 @@ def build_weekly_recap(
     games: DataFrame,
     player_game_logs: DataFrame,
     sidecar_captures: Mapping[str, SidecarCapture],
+    markets: MarketInputs,
     built_at: datetime,
 ) -> BuiltWeeklyRecap:
     """Build one week's recap from the scoped schedule and the selected product, without I/O.
@@ -681,9 +697,11 @@ def build_weekly_recap(
     ``schedule`` is the week's regular-season rows of the raw games file; ``product`` is the
     week's selected product; ``games`` is the cleaned games file; ``player_game_logs`` names who
     passed for each team; ``sidecar_captures`` maps a run id to the verified capture of the
-    sidecar that run was bound to (the starter record of rows that carry none). Refuses a week
-    with an unplayed game, a product row for an unscheduled game, a selected component whose
-    forecast event does not match, and a score the raw and cleaned files disagree on.
+    sidecar that run was bound to (the starter record of rows that carry none); ``markets`` is the
+    week's edge and wager evidence. Refuses a week with an unplayed game, a product row for an
+    unscheduled game, a selected component whose forecast event does not match, a score the raw
+    and cleaned files disagree on, more than one candidate issuance for the product, and a
+    recorded wager on a game the week does not schedule.
     """
     _utc(built_at, "built_at")
     _require_columns(schedule, _SCHEDULE_COLUMNS, label="Schedule")
@@ -722,6 +740,12 @@ def build_weekly_recap(
             "Selected components cite no matching forecast event: " + ", ".join(unmatched)
         )
     outcomes = _outcomes(games, schedule)
+    _check_market_inputs(
+        markets,
+        product_id=closeout.product_id,
+        product_run_id=closeout.product_run_id,
+        scheduled_ids=scheduled_ids,
+    )
 
     product_run_id = closeout.product_run_id
     market_recorded = {"spread_line", "total_line", "ingested_at"} <= set(product.columns)
@@ -758,6 +782,14 @@ def build_weekly_recap(
     ]
     frame = _typed_frame(records)
     frame_digest = frame_content_digest(frame)
+    edges = edge_evidence(
+        markets,
+        last_kickoff=pd.Timestamp(ordered["_kickoff"].max()).to_pydatetime(),
+        scores={
+            str(game_id): (float(row["AWAY_SCORE"]), float(row["HOME_SCORE"]))
+            for game_id, row in outcomes.iterrows()
+        },
+    )
 
     role = closeout.win_role or closeout.total_role
     in_product = frame["product_row_status"].eq(ProductRowStatus.IN_PRODUCT.value)
@@ -782,6 +814,8 @@ def build_weekly_recap(
         starter_capture_digests=tuple(
             sorted({capture.digest for capture in sidecar_captures.values()})
         ),
+        ledger_digest=ledger_digest(markets.bets),
+        quote_digest=frame_content_digest(markets.quotes),
         conventions=RECAP_CONVENTIONS,
         counts=RecapCounts(
             scheduled_games=len(frame),
@@ -792,6 +826,8 @@ def build_weekly_recap(
         ),
         metrics=recap_metrics(frame),
         starters=starter_summary(frame),
+        edges=edges,
+        wagers=recorded_wagers(markets.bets, markets.quotes),
         games=EvaluationFrameReference(
             artifact=f"schema={WEEKLY_RECAP_SCHEMA_VERSION}/games/{frame_digest}.parquet",
             row_count=len(frame),
@@ -802,6 +838,30 @@ def build_weekly_recap(
     recap = replace(recap, recap_id=weekly_recap_id(recap))
     validate_weekly_recap(recap)
     return BuiltWeeklyRecap(recap=recap, games=frame)
+
+
+def _check_market_inputs(
+    markets: MarketInputs,
+    *,
+    product_id: str,
+    product_run_id: str,
+    scheduled_ids: set[str],
+) -> None:
+    """Refuse market evidence that cannot stand for this week's selected product."""
+    if len(markets.issuances) > 1:
+        raise WeeklyRecapRefusalError(
+            f"{len(markets.issuances)} candidate issuances cite the selected product; "
+            "one is expected."
+        )
+    for issuance in markets.issuances:
+        if issuance.product_id != product_id or issuance.product_run_id != product_run_id:
+            raise ValueError("Candidate issuance does not cite the selected product.")
+    if not markets.bets.empty:
+        unscheduled = sorted(set(markets.bets["game_id"].astype(str)) - scheduled_ids)
+        if unscheduled:
+            raise WeeklyRecapRefusalError(
+                "Recorded wagers name games the week does not schedule: " + ", ".join(unscheduled)
+            )
 
 
 def _canonical_rows(frame: DataFrame, columns: tuple[str, ...], *, key: str) -> DataFrame:
@@ -817,9 +877,18 @@ def _canonical_rows(frame: DataFrame, columns: tuple[str, ...], *, key: str) -> 
 
 def weekly_recap_payload(recap: WeeklyRecap) -> dict[str, object]:
     """Return the recap manifest as JSON-ready values."""
-    payload: dict[str, object] = dict(asdict(recap))
-    payload["built_at"] = recap.built_at.isoformat()
-    return payload
+    return cast(dict[str, object], _json_ready(asdict(recap)))
+
+
+def _json_ready(value: object) -> object:
+    """Turn nested timestamps into ISO strings; everything else is already JSON-ready."""
+    if isinstance(value, dict):
+        return {key: _json_ready(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
 
 
 def weekly_recap_id(recap: WeeklyRecap) -> str:
@@ -856,7 +925,14 @@ def weekly_recap_from_payload(payload: object) -> WeeklyRecap:
     return recap
 
 
-def _decode(kind: Any, value: object, label: str) -> object:  # noqa: ANN401
+def _decode(kind: Any, value: object, label: str) -> object:  # noqa: ANN401, PLR0911
+    origin = get_origin(kind)
+    if origin in (Union, types.UnionType):
+        options = [option for option in get_args(kind) if option is not type(None)]
+        if value is None:
+            return None
+        (option,) = options
+        return _decode(option, value, label)
     if is_dataclass(kind):
         if not isinstance(value, dict):
             raise ValueError(f"Weekly recap {label} must be a JSON object.")
@@ -867,14 +943,17 @@ def _decode(kind: Any, value: object, label: str) -> object:  # noqa: ANN401
         return kind(
             **{name: _decode(hints[name], value[name], f"{label}.{name}") for name in names}
         )
+    if origin is tuple:
+        if not isinstance(value, list):
+            raise ValueError(f"Weekly recap {label} must be a list.")
+        (item, _) = get_args(kind)
+        return tuple(_decode(item, element, f"{label}[]") for element in value)
     if kind is datetime:
         if not isinstance(value, str):
             raise ValueError(f"Weekly recap {label} must be an ISO timestamp.")
         return datetime.fromisoformat(value)
-    if get_origin(kind) is tuple:
-        if not isinstance(value, list):
-            raise ValueError(f"Weekly recap {label} must be a list.")
-        return tuple(value)
+    if isinstance(kind, type) and issubclass(kind, StrEnum):
+        return kind(value)
     return value
 
 

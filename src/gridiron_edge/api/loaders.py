@@ -23,6 +23,10 @@ import pandas as pd
 from pandas import DataFrame
 
 from gridiron_edge.core.settings import Settings
+from gridiron_edge.market.recommended_bet_result_store import (
+    LoadedRecommendedBetResult,
+    load_latest_recommended_bet_results,
+)
 
 if TYPE_CHECKING:
     from gridiron_edge.evaluation.comparable_games_evidence import ComparableGamesBatch
@@ -33,7 +37,6 @@ if TYPE_CHECKING:
         LogisticExplanationEvent,
     )
     from gridiron_edge.market.edge_report import EdgeResult
-    from gridiron_edge.market.recommended_bet_result import RecommendedBetResult
 
 
 if TYPE_CHECKING:
@@ -1486,50 +1489,6 @@ def load_defense_allowed(
     return (position, cohorts)
 
 
-@dataclass(frozen=True, slots=True)
-class LoadedRecommendedBetResult:
-    """One persisted result paired with its immutable evaluation identity."""
-
-    evaluation_id: str
-    result: RecommendedBetResult
-
-
-RecommendedBetOfferKey = tuple[
-    str,
-    str | None,
-    str | None,
-    str,
-    str,
-    str,
-    datetime,
-    datetime | None,
-    datetime | None,
-    bool,
-    int | None,
-    float | None,
-]
-
-
-def recommended_bet_offer_key(
-    result: RecommendedBetResult,
-) -> RecommendedBetOfferKey:
-    """Return the complete exact-offer key preserved by one result."""
-    return (
-        result.provider,
-        result.provider_event_id,
-        result.sportsbook,
-        result.game_id,
-        result.market,
-        result.side,
-        result.fetched_at,
-        result.sportsbook_updated_at,
-        result.kickoff,
-        result.is_live,
-        result.american_price,
-        result.line,
-    )
-
-
 def load_recommended_bet_results_for_week(
     settings: Settings,
     *,
@@ -1538,46 +1497,11 @@ def load_recommended_bet_results_for_week(
 ) -> tuple[LoadedRecommendedBetResult, ...]:
     """Load latest unambiguous persisted results for one explicit week.
 
-    Selection uses persisted ``evaluated_at`` values only. Equal-time,
-    different-result evidence for one exact offer is rejected as conflicting.
+    The selection rule is the market store's (``load_latest_recommended_bet_results``):
+    persisted ``evaluated_at`` values only, and equal-time, different-result evidence for one
+    exact offer is rejected as conflicting.
     """
-    from gridiron_edge.market.recommended_bet_result_store import (
-        read_recommended_bet_evaluation,
-        recommended_bet_result_root,
-    )
-
-    root = recommended_bet_result_root(settings.repo_root)
-    if not root.is_dir():
-        return ()
-
-    selected: dict[RecommendedBetOfferKey, LoadedRecommendedBetResult] = {}
-    manifest_paths = sorted(root.glob("schema=*/evaluations/*.json"))
-    for path in manifest_paths:
-        evaluation = read_recommended_bet_evaluation(path)
-        for result in evaluation.results:
-            if result.season != season or result.week != week:
-                continue
-            candidate = LoadedRecommendedBetResult(evaluation.evaluation_id, result)
-            key = recommended_bet_offer_key(result)
-            existing = selected.get(key)
-            if existing is None or result.evaluated_at > existing.result.evaluated_at:
-                selected[key] = candidate
-            elif (
-                result.evaluated_at == existing.result.evaluated_at
-                and result.result_id != existing.result.result_id
-            ):
-                raise ValueError(
-                    "Conflicting persisted recommendation results share the latest "
-                    "evaluation time for one exact offer."
-                )
-
-    return tuple(selected[key] for key in sorted(selected, key=_recommended_bet_offer_sort_key))
-
-
-def _recommended_bet_offer_sort_key(
-    key: RecommendedBetOfferKey,
-) -> tuple[str, ...]:
-    return tuple("" if value is None else str(value) for value in key)
+    return load_latest_recommended_bet_results(season=season, week=week, repo=settings.repo_root)
 
 
 def resolve_recommended_bet_recording_evidence(

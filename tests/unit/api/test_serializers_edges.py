@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gridiron_edge.api.loaders import LoadedRecommendedBetResult
 from gridiron_edge.api.schemas.edges import EdgeList, EdgeRow
 from gridiron_edge.api.serializers.edges import (
     _none_if_nan,
@@ -25,6 +24,7 @@ from gridiron_edge.market.edge_diagnostics import (
     EdgeResultState,
 )
 from gridiron_edge.market.edge_report import EdgeResult
+from gridiron_edge.market.recommended_bet_result_store import LoadedRecommendedBetResult
 
 _serialize = partial(serialize_edges_list, evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC))
 

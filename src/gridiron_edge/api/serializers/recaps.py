@@ -2,9 +2,9 @@
 
 """Serialize persisted weekly and season recaps (``DECISIONS.md`` D86) into the /recaps responses.
 
-Nothing is scored or recomputed here: the week and season metrics come from the manifests and
-every game value from the stored game frame. Missing frame values (NaN, NaT, NA) become null
-beside the row's own status.
+Nothing is scored or recomputed here: the week and season metrics, edges and wagers come from
+the manifests and every game value from the stored game frame. Missing frame values (NaN, NaT,
+NA) become null beside the row's own status.
 """
 
 from __future__ import annotations
@@ -12,16 +12,16 @@ from __future__ import annotations
 from collections.abc import Hashable, Mapping
 from dataclasses import asdict
 from datetime import datetime
-from typing import Any, Final, cast
+from typing import Any, cast
 
 import pandas as pd
 from pandas import DataFrame
 
-from gridiron_edge.api.meta import ResponseMeta
 from gridiron_edge.api.schemas.recaps import (
     RecapClosingMarket,
     RecapConventionsResponse,
     RecapCountsResponse,
+    RecapEdges,
     RecapFamilyAvailability,
     RecapGame,
     RecapGameForecast,
@@ -32,11 +32,13 @@ from gridiron_edge.api.schemas.recaps import (
     RecapProjectedScoreForecast,
     RecapStarterSide,
     RecapStartingQbs,
+    RecapWagers,
     RecapWeekMetrics,
     RecapWinForecast,
     SeasonRecapConventions,
     SeasonRecapResponse,
     SeasonRecapScope,
+    SeasonRecapWagers,
     SeasonRecapWeek,
     WeeklyRecapList,
     WeeklyRecapResponse,
@@ -62,12 +64,6 @@ from gridiron_edge.evaluation.weekly_recap_store import (
     WeeklyRecapSelection,
 )
 
-# Sections the recap does not carry yet; null and marked pending (D14).
-PENDING_RECAP_SECTIONS: Final[tuple[str, ...]] = (
-    "edges",
-    "wagers",
-)
-
 
 def serialize_weekly_recap_list(
     recaps: list[tuple[WeeklyRecapSelection, WeeklyRecap, DataFrame]],
@@ -83,9 +79,6 @@ def serialize_weekly_recap(
     games: DataFrame,
 ) -> WeeklyRecapResponse:
     """Return the selected recap of one week with every game row."""
-    meta = ResponseMeta()
-    for section in PENDING_RECAP_SECTIONS:
-        meta = meta.with_pending(section)
     return WeeklyRecapResponse(
         season=recap.season,
         week=recap.week,
@@ -104,7 +97,10 @@ def serialize_weekly_recap(
         starting_qbs=RecapStartingQbs.model_validate(
             asdict(recap.starters) | {"capture_digests": list(recap.starter_capture_digests)}
         ),
-        response_meta=meta,  # pyrefly: ignore[unexpected-keyword]
+        edges=RecapEdges.model_validate(asdict(recap.edges)),
+        wagers=RecapWagers.model_validate(
+            asdict(recap.wagers) | {"ledger_digest": recap.ledger_digest}
+        ),
     )
 
 
@@ -123,6 +119,7 @@ def serialize_season_recap(
         weeks=[SeasonRecapWeek.model_validate(asdict(week)) for week in recap.weeks],
         all_games=_scope(recap.all_games),
         live_games=_scope(recap.live_games),
+        wagers=SeasonRecapWagers.model_validate(asdict(recap.wagers)),
     )
 
 

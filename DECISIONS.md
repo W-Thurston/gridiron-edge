@@ -8,6 +8,45 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D89 - The recap reads edges from persisted evidence only, scores candidates without dollars, and attributes wagers by game
+
+**Date:** 2026-10-06
+
+**Context:** The weekly recap (D86) gains what each week published as edges and how recorded wagers did. The only
+immutable edge evidence is the production chain, run once (week 1: candidate issuance `e945987f`, 698 candidates of
+1,680 rows, all `unavailable` in recommendation evaluation `100a70a8`). The weekly edge report is a CSV each run
+rewrites or deletes, so it cannot say what was published. The weekly cycle's edge receipts record each run's
+outcome and detail: week 4 published 149 edges at 2026-10-04T20:00Z and 45 at 21:00Z, then withheld them as
+`model_edges_unvalidated` (D85) from 22:00Z. The bet ledger holds DraftKings imports with no quote reference, so no
+import has CLV, and parlays and boosted multi-game same-game parlays carry no `game_id`. Decisions taken with the
+user on 2026-10-05 (PLAN.md Unit 28).
+
+**Decision:**
+1. Edge evidence per week has one status. `production_chain` when a candidate issuance exists for the week's
+   selected product and run (more than one refuses the build). Otherwise the latest weekly-cycle edge receipt
+   decided at or before the week's last kickoff decides it: `withheld_unvalidated` when that receipt is blocked
+   and its detail names `model_edges_unvalidated`; else `not_recorded`. A published run with no immutable record
+   (`done`) is `not_recorded`. Every edge receipt in the window is listed with its outcome, detail, product and
+   quote fetch time. No edge is recomputed.
+2. Candidates were never recommendations: per market family the recap gives row and distinct-side counts, the
+   market-closeout status counts as `close_market_reference` returns them (kickoff conflicts reported, not fixed),
+   median CLV and share positive in the family's own unit over closed rows, and win/loss/push per row. No
+   hypothetical P&L or ROI; dollars appear only for recorded wagers. Recommendation states are each candidate row's
+   latest unambiguous result (the rule now owned by `recommended_bet_result_store`), `not_evaluated` without one.
+3. A week's wagers are the ledger rows whose `game_id` is in the week, with record, stake, P&L and ROI from
+   `betting/performance`; an `open` bet on a finished game is `unsettled`; CLV only where
+   `close_recorded_wagers` closes the bet's own quote reference, else `clv_unavailable`. A bet on a game the week
+   does not schedule refuses the build. The season recap adds the weeks' wagers and counts as unattributed the
+   ledger's bets without a `game_id` placed from March 1 of the season's first year to March 1 of the next (UTC),
+   a window chosen so the offseason belongs to the season it precedes.
+4. Identity covers digests of the scoped ledger rows (internal `bet_id` excluded, so a re-import that only
+   regenerates ids replays, while a settlement gives a new identity) and of the week's quote-ledger partition.
+
+**Not done:** no hypothetical candidate returns, no wager CLV for imports, no fix of provider-corrected kickoffs
+(ROADMAP W23 item 6); a per-bet table on the recap is left to the page review.
+
+---
+
 ## D88 - The season recap rolls up the selected weekly recaps only, with bins fixed before the data and descriptive intervals
 
 **Date:** 2026-10-05

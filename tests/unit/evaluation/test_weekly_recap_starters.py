@@ -55,6 +55,7 @@ def _build(week: RecapWeek | None = None, **overrides: object) -> BuiltWeeklyRec
         "games": week.games,
         "player_game_logs": week.logs,
         "sidecar_captures": week.captures,
+        "markets": week.markets,
         "built_at": BUILT_AT,
     }
     return build_weekly_recap(**(arguments | overrides))  # type: ignore[arg-type]

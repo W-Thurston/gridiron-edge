@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { useSeasonRecap } from "../../api/hooks";
 import type { components } from "../../api/schema";
 import { ErrorCard } from "../error/ErrorCard";
+import { recapEdgeStatusMessage, recapEdgeStatusShort } from "../field-status/recapStatus";
+import { money, record, roi, signedMoney } from "./recapFormat";
 import { RecapToggle } from "./RecapToggle";
 
 type Season = components["schemas"]["SeasonRecapResponse"];
@@ -11,6 +13,7 @@ type Scope = components["schemas"]["SeasonRecapScope"];
 type WeekMetrics = components["schemas"]["RecapWeekMetrics"];
 type Paired = components["schemas"]["RecapPairedDifference"];
 type SideCalibration = components["schemas"]["RecapSideCalibration"];
+type WagerSummary = components["schemas"]["RecapWagerSummary"];
 
 type ScopeKey = "all" | "live";
 type View = "week" | "to_date";
@@ -88,6 +91,7 @@ function SeasonBody({ recap }: { recap: Season }) {
         <PairedPanel scope={scope} recap={recap} />
       </div>
       <ReliabilityPanel scope={scope} recap={recap} />
+      <SeasonWagers recap={recap} />
     </section>
   );
 }
@@ -242,6 +246,73 @@ function SeasonTotals({ scope }: { scope: Scope }) {
         {starters.not_recorded > 0 && ` · ${starters.not_recorded} not recorded`}
       </div>
     </div>
+  );
+}
+
+/** Edges and recorded wagers week by week; the season's bets without a game come last. */
+function SeasonWagers({ recap }: { recap: Season }) {
+  const { recapped_weeks: total, unattributed } = recap.wagers;
+  return (
+    <div style={{ marginTop: 20 }} data-season-wagers>
+      <div className="upper dim" style={{ fontSize: 9 }}>Edges and recorded wagers by week</div>
+      <div className="market-table-scroll" role="region" aria-label="Edges and recorded wagers by week" tabIndex={0} style={{ marginTop: 8 }}>
+        <table className="recap-table mono tnum">
+          <caption className="visually-hidden">Each week's edge evidence and recorded wagers, the season total, and bets without a game</caption>
+          <thead>
+            <tr>
+              <th scope="col" />
+              <th scope="col">Edges</th>
+              <th scope="col">Bets</th>
+              <th scope="col">Won-lost-push</th>
+              <th scope="col">Staked</th>
+              <th scope="col">P&amp;L</th>
+              <th scope="col">ROI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recap.weeks.map((week) => (
+              <tr key={week.week} data-season-wager-week={week.week}>
+                <th scope="row">Week {week.week}</th>
+                {week.status === "not_built" || !week.wagers
+                  ? <td colSpan={6}>{unavailable("not_built", "No weekly recap is selected")}</td>
+                  : <>
+                      <td title={week.edge_status ? recapEdgeStatusMessage(week.edge_status) : undefined}>
+                        {week.edge_status ? recapEdgeStatusShort(week.edge_status) : "—"}
+                      </td>
+                      <WagerCells summary={week.wagers} />
+                    </>}
+              </tr>
+            ))}
+            <tr data-season-wager-week="total">
+              <th scope="row">Recapped weeks</th>
+              <td />
+              <WagerCells summary={total} />
+            </tr>
+            <tr data-season-wager-week="unattributed">
+              <th scope="row" title={recap.conventions.unattributed_wagers}>Without a game</th>
+              <td />
+              <WagerCells summary={unattributed} />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="mono dim2" style={{ fontSize: 9, marginTop: 4 }}>
+        Without a game: {recap.conventions.unattributed_wagers}
+        {total.unsettled > 0 && ` · ${total.unsettled} recapped-week bet${total.unsettled === 1 ? "" : "s"} still open`}
+      </div>
+    </div>
+  );
+}
+
+function WagerCells({ summary }: { summary: WagerSummary }) {
+  return (
+    <>
+      <td>{summary.bets}</td>
+      <td>{summary.bets === 0 ? "—" : record(summary)}</td>
+      <td>{money(summary.staked)}</td>
+      <td>{summary.bets === 0 ? "—" : signedMoney(summary.pnl)}</td>
+      <td>{roi(summary.roi_pct)}</td>
+    </>
   );
 }
 

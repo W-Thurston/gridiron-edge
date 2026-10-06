@@ -110,10 +110,11 @@ should read this section before planning or modifying the repository.
 
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
-**Units 23 and 24 completed October 4, 2026, and Units 26, 25 and 27 October 5, 2026 (`CHANGELOG.md`); next:
-Unit 28 - Edges, recommendations and wagers, not yet active. Week 4's closeout (2026-10-06) built its recap and
-rolled the season recap up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records);
-week 5's starter check follows its closeout (about 2026-10-13).** Sequence:
+**Units 23 and 24 completed October 4, 2026, Units 26, 25 and 27 October 5, 2026, and Unit 28 October 6, 2026
+(`CHANGELOG.md`); every planned recap section is built. Next: the follow-ons Unit 29 (retry a soft-failed recap)
+and Unit 30 (alerts), not yet active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
+up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records); week 5's starter check
+follows its closeout (about 2026-10-13).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -631,7 +632,9 @@ one metric; the live-only subtotal excludes week 2; rerun replays.
 **Acceptance.** Season aggregates built from the weekly recaps only, beside the market, with counts; gates
 pass; HANDOFF, CHANGELOG, and DECISIONS for the bins if they become a lasting convention.
 
-#### Unit 28 - Edges, Recommendations and Wagers [Scoped October 4, 2026; not active]
+#### Unit 28 - Edges, Recommendations and Wagers [Completed October 6, 2026; `DECISIONS.md` D89]
+
+Closed; the completed record is under "Unit 28" below. The scoping record follows.
 
 **Goal.** Say, for each week, what the system published as edges and recommendations and how they compared
 with the closing line and the result, and how the recorded wagers did, without recomputing any edge.
@@ -723,9 +726,24 @@ staked, -$0.34; week 2 settled 11-4, $16.00 staked, +$2.29, plus the open NYG @ 
 **Tests.** Each edge status; chain counts and closeout on a synthetic issuance and ledger; wager record,
 `unsettled`, `clv_unavailable`, unattributed; identity changes when a bet settles.
 
-**Real-data verification.** Week 1: the chain (698 candidates, all `unavailable` recommendations), candidate
-CLV from the 34-snapshot ledger, 17 settled wagers. Week 2: 15 settled and 1 `unsettled`; edges
-`not_recorded`. Week 4: edge status per decision (b). Hand-check one candidate's CLV and one week's P&L.
+**Dependencies re-checked 2026-10-06.** Week 4's closeout ran (receipt `done`, `build-weekly-recap: ok`, weekly
+recap `5da336fd...` and season recap `04dd00fc...` named); weeks 1-4 are selected at schema 2 and the season recap
+reads them ("already stored"). Week 4's edge receipts: 149 edges at 2026-10-04T20:00Z, 45 at 21:00Z, then
+`model_edges_unvalidated` from 22:00Z through 2026-10-05T16:00:40Z, the last before the last kickoff (ATL @ NO,
+2026-10-06T00:15Z), so week 4 reads `withheld_unvalidated`. Decision 0: the ledger was re-imported that day from
+the DraftKings history (`bet import-history --replace`, with the user's approval): 82 bets, 39 won and 43 lost,
+none open; 122 transactions; the bankroll reconciles to $49.49 (cash wagers $69.30 and payouts $58.09 match the
+slips). Week 2's settlements now carry DraftKings' paid amounts (the 2026-09-21 `bet settle` values were computed
+from the odds), and weeks 3 and 4 were added.
+
+**Real-data verification.** Week 1: the chain (issuance `e945987f`, 698 candidates, all `unavailable`
+recommendations in evaluation `100a70a8`), candidate CLV from the 34-snapshot ledger; 17 settled wagers, 11-6,
+$16.10 staked, -$0.34 (16 moneylines 10-6, -$0.44, and one special won, +$0.10). Week 2: edges `not_recorded`;
+16 moneylines 12-4, $16.00, +$2.53, none unsettled (the NYG @ LA bet won, paid $1.28). Week 3: edges
+`not_recorded`; 16 moneylines 8-8, $16.00, -$4.13. Week 4: edges per decision (b); 16 moneylines 8-8, $16.00,
+-$4.07, and the PIT @ CLE same-game parlay lost (-$0.10). Unattributed (no `game_id`): 16 bets, $5.20 staked, all
+lost (5 parlays, 11 same-game parlays; one bonus-funded). Every import reads `clv_unavailable`. Hand-check one
+candidate's CLV and one week's P&L.
 
 **Acceptance.** Every week states what was published (or that it was withheld or not recorded) and how
 recorded wagers did, with nothing recomputed; gates pass; HANDOFF, CHANGELOG updated.
@@ -1101,6 +1119,99 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 28 — Edges, Recommendations and Wagers [Completed October 6, 2026]
+
+#### Completed
+
+The weekly recap is schema 3 with an edge section and a recorded-wager section (`DECISIONS.md` D89), built in
+`evaluation/weekly_recap_markets.py` from persisted evidence only. Edges read `production_chain` when the selected
+product and run have a candidate issuance (more than one refuses), otherwise the latest weekly-cycle edge receipt
+decided at or before the last kickoff: `withheld_unvalidated` when it is blocked naming `model_edges_unvalidated`,
+else `not_recorded`; every edge receipt in that window is listed. A chain week records the issuance counts, the
+evaluation and policy ids, each candidate row's recommendation state (`CandidateRecommendationState`, with
+`not_evaluated`), and per market family the rows and distinct sides, closeout status counts, median CLV and share
+positive in the family's unit, and won-lost-push per row; no dollars. Wagers are the ledger rows whose `game_id` is
+in the week, overall and per market type, through `betting/performance`, with `unsettled`, bonus funding, CLV
+available or `clv_unavailable`, and recommendation links; a wager on an unscheduled game refuses. The manifest
+digests the scoped ledger rows (internal ids excluded) and the week's quote partition. The season recap is schema 2:
+each week's edge status and wagers, the season total, and the bets without a game placed March 1 to March 1 (UTC).
+A season roll-up over a week not stored at the current schema refuses, naming it. The latest-unambiguous
+recommendation rule moved into `recommended_bet_result_store` (the API loader calls it); the week's issuance lookup
+is `candidate_issuances_for_product` (preflight calls it); `close_candidate_rows` closes chosen rows against their
+own game's quotes. `GET /recaps/{season}/{week}` serves both sections (nothing pending) and the summary adds the
+wagers; the "Last Week" page shows an edges card, a recorded-wagers card and a season table of edges and wagers by
+week; the Bankroll Record card links to it. `evaluate weekly-recap` prints both sections.
+
+#### Goal
+
+Say, for each week, what the system published as edges and recommendations, how they compared with the closing
+line and the result, and how the recorded wagers did, without recomputing any edge.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/evaluation/weekly_recap_markets.py` - edge-evidence status, production-chain summary, recorded-wager summaries, ledger digest.
+- `tests/unit/evaluation/test_weekly_recap_markets.py` - every edge status, the chain by hand, wagers, digests, the season window, the recap's refusals and identity.
+- `frontend/src/components/recap/MarketSections.tsx` - the "Edges and recommendations" and "Recorded wagers" cards.
+- `frontend/src/components/recap/recapFormat.ts` - market labels and money, record and ROI formatting shared by the recap cards and season panel.
+
+Changed:
+- `src/gridiron_edge/evaluation/weekly_recap.py` - schema 3: the market inputs, edges, wagers, ledger and quote digests; a decoder for nested sections.
+- `src/gridiron_edge/evaluation/weekly_recap_build.py` - loads the market inputs; the season roll-up refuses a week not stored at the current schema.
+- `src/gridiron_edge/evaluation/weekly_recap_season.py` - schema 2: each week's edge status and wagers, the season's wagers and unattributed bets.
+- `src/gridiron_edge/market/recommended_bet_result_store.py` - owns the latest-unambiguous result rule, the loaded-result type and the offer key.
+- `src/gridiron_edge/market/candidate_issuance_store.py` - `candidate_issuances_for_product`.
+- `src/gridiron_edge/market/market_closeout.py` - `close_candidate_rows`.
+- `src/gridiron_edge/market/production_chain_preflight.py` - uses the public issuance reader.
+- `src/gridiron_edge/api/loaders.py` - the weekly recommendation loader calls the market store's rule.
+- `src/gridiron_edge/api/serializers/edges.py`, `src/gridiron_edge/api/serializers/lines.py` - import the result type from the market store.
+- `src/gridiron_edge/api/schemas/recaps.py` - edge and wager models; season week and season wagers; status enums.
+- `src/gridiron_edge/api/serializers/recaps.py` - serializes the sections; nothing pending.
+- `src/gridiron_edge/cli/evaluate.py` - prints the edge and wager summaries.
+- `api-schema.json` - regenerated.
+- `frontend/src/screens/WeeklyRecap.tsx` - the two cards replace the pending ones.
+- `frontend/src/components/recap/SeasonPanel.tsx` - edges and wagers by week, the season total and bets without a game.
+- `frontend/src/components/field-status/recapStatus.ts` - edge status, closeout, recommendation-state and CLV-unit text.
+- `frontend/src/screens/Bankroll.tsx` - "Results by week" link on the Record card.
+- `frontend/src/screens/WeeklyRecap.test.tsx`, `frontend/src/components/recap/SeasonPanel.test.tsx`, `frontend/src/screens/Bankroll.test.tsx` - chain, withheld and empty weeks, wager tiles and notes, the season table, the link.
+- `tests/fixtures/weekly_recap.py` - edge receipts, a ledger and the week's market inputs.
+- `tests/unit/evaluation/test_weekly_recap.py`, `tests/unit/evaluation/test_weekly_recap_season.py`, `tests/unit/evaluation/test_weekly_recap_starters.py`, `tests/unit/evaluation/test_weekly_recap_store.py` - pass the market inputs and ledger; season wagers and identity.
+- `tests/unit/api/test_routes_recaps.py` - served sections, season wagers, schema enums.
+- `tests/unit/cli/test_evaluate.py` - printed sections from a repository ledger and receipts; the older-schema refusal.
+- `tests/unit/market/test_candidate_issuance_store.py`, `tests/unit/market/test_market_closeout.py`, `tests/unit/market/test_recommended_bet_result_store.py` - the issuance reader, per-row closeout, the moved rule.
+- `tests/unit/api/test_recommended_bet_result_loader.py`, `tests/unit/api/test_serializers_edges.py`, `tests/unit/api/test_serializers_lines.py`, `tests/integration/api/test_lines_routes.py` - import the moved names from the market store.
+- `DECISIONS.md` - D89.
+- `HANDOFF.md` - "Weekly Recap" (inputs, edges, wagers, storage, serving, page) and the result-delivery rule's owner.
+- `CHANGELOG.md` - the shipped behavior and the ledger re-import.
+- `ROADMAP.md` - W15 progress; W23 item 5 done.
+- `PLAN.md` - this record, the re-checked dependencies and expectations, and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Focused: the recap, season, store, starters and markets tests, the recap routes, the evaluate command, the market
+store, issuance store, closeout and preflight tests. Python gate: ruff check and format, pyrefly 0 errors,
+`pytest -m "unit and not slow"` 4,987 passed. Frontend gate: lint, build, `test:run` 554 passed. Contracts
+regenerated through `api export-schema` and `gen:api`. Real data: dry runs of weeks 1-4 wrote nothing (store
+checksummed) and kept every game-forecast and starter metric; week 1 reads the chain (698 candidates of 1,680 rows,
+all `unavailable`; moneyline 118 closed, 6 `closeout_missing`, 104 `kickoff_conflict`, median CLV +0.064; 342
+`kickoff_conflict` in all), week 4 `withheld_unvalidated` with 7 receipts, weeks 2-3 `not_recorded`. Hand checks:
+the WAS @ PHI home candidate at betmgm, issued at -225 and last quoted -275 before kickoff, has CLV 0.059259 by hand
+and in the recap; week 3's P&L is $11.87 paid on 8 wins less $16 staked, -$4.13. With approval, weeks 1-4 rebuilt
+and selected at schema 3 (`debeb14c...`, `77876ffc...`, `f7708d42...`, `c7950e26...`) and the season recap
+(`bf11046a...`: 66 bets, 39-27, -$6.11; 16 without a game, -$5.20; with the bonus-funded loss, the cash balance
+$49.49); rerunning all five and `post-week --only build-weekly-recap --week 4` replayed with all 27 store files byte
+for byte unchanged. `/recaps`, `/recaps/2026-2027/{1,4}` and the summary match the artifacts; the page, rendered
+headless for weeks 1 and 4, shows both cards and the season table.
+
+#### Acceptance
+
+Every week states what was published as edges (or that it was withheld or not recorded) and how recorded wagers
+did, with candidates scored without dollars and nothing recomputed; served and shown with explicit statuses;
+contracts regenerated; gates pass; DECISIONS D89, HANDOFF, CHANGELOG, ROADMAP and this record are updated.
 
 ### Unit 27 — Season Roll-Up [Completed October 5, 2026]
 

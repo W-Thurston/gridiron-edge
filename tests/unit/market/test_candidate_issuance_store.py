@@ -20,6 +20,7 @@ from gridiron_edge.market.candidate_issuance import (
 )
 from gridiron_edge.market.candidate_issuance_store import (
     candidate_issuance_path,
+    candidate_issuances_for_product,
     read_candidate_issuance,
     write_candidate_issuance,
 )
@@ -69,6 +70,23 @@ def _issuance() -> CandidateIssuance:
         1,
         EVALUATED,
         (row,),
+    )
+
+
+def test_issuances_are_found_by_exact_product_run_and_week(tmp_path: Path) -> None:
+    issuance = _issuance()
+    write_candidate_issuance(issuance, repo=tmp_path)
+    (tmp_path / "data/output/candidate_issuance/issuances/broken.json").write_text("{")
+    query = {"season": "2026-2027", "week": 1, "product_id": "product-1", "repo": tmp_path}
+
+    assert candidate_issuances_for_product(product_run_id="run-1", **query) == (issuance,)
+    assert candidate_issuances_for_product(product_run_id="run-2", **query) == ()
+    assert candidate_issuances_for_product(product_run_id="run-1", **(query | {"week": 2})) == ()
+    assert (
+        candidate_issuances_for_product(
+            product_run_id="run-1", **(query | {"repo": tmp_path / "x"})
+        )
+        == ()
     )
 
 

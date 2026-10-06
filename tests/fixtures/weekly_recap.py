@@ -20,6 +20,12 @@ Starting QBs (actual starter: nflverse's id when he threw a pass for the team, e
 * ``C`` - not in the product (actual starters still known).
 * ``D`` - recorded with an unresolved home starter; the away team has no game log
   (``actual_missing``).
+
+Markets: no candidate issuance; the cycle published edges, then withheld them as unvalidated
+before the last kickoff (``D``, 2026-10-06T00:15Z), and a later receipt falls outside the window.
+Recorded wagers: a won moneyline on ``A`` ($1 at -150, paid $1.66), a lost moneyline on ``C``,
+an open moneyline on ``B`` (``unsettled``) and a bonus-funded same-game parlay on ``D``; one
+parlay without a game belongs to the season, not the week.
 """
 
 from __future__ import annotations
@@ -30,7 +36,11 @@ from datetime import UTC, datetime
 import pandas as pd
 from pandas import DataFrame
 
+from gridiron_edge.betting.ledger import _BET_COLUMNS
+from gridiron_edge.evaluation.weekly_recap_markets import MarketInputs
 from gridiron_edge.evaluation.weekly_recap_starters import SidecarCapture
+from gridiron_edge.ingest.odds.store import empty_quote_frame
+from gridiron_edge.weekly_cycle.receipts import CycleReceipt
 
 SEASON = "2026-2027"
 WEEK = 4
@@ -85,6 +95,7 @@ class RecapWeek:
     games: DataFrame
     logs: DataFrame
     captures: dict[str, SidecarCapture]
+    markets: MarketInputs
 
 
 def schedule() -> DataFrame:
@@ -366,4 +377,99 @@ def recap_week() -> RecapWeek:
         cleaned_games(),
         player_game_logs(),
         {CARRIED_RUN: SidecarCapture(CAPTURE_DIGEST, capture_sidecar())},
+        market_inputs(),
+    )
+
+
+def edge_receipt(decided_at: str, outcome: str, detail: str) -> CycleReceipt:
+    """Return one weekly-cycle edge receipt for the synthetic week."""
+    inputs = {"edge_inputs": {"market_fetched_at": decided_at, "product_id": "weekly_product"}}
+    return CycleReceipt(
+        decided_at=decided_at,
+        season=SEASON,
+        week=WEEK,
+        attempted="edges",
+        outcome=outcome,
+        detail=detail,
+        inputs=inputs,
+        results=inputs,
+    )
+
+
+def edge_receipts() -> tuple[CycleReceipt, ...]:
+    """Published, then withheld before the last kickoff; the last receipt is after it."""
+    withheld = "edge calculation blocked: model_edges_unvalidated"
+    return (
+        edge_receipt("2026-10-04T20:00:54+00:00", "done", "149 edges (top EV 27.1%)"),
+        edge_receipt("2026-10-04T22:00:54+00:00", "blocked", withheld),
+        edge_receipt("2026-10-06T01:00:00+00:00", "done", "3 edges (top EV 5.0%)"),
+    )
+
+
+def bet(
+    source_bet_id: str,
+    game_id: str | None,
+    *,
+    market_type: str = "moneyline",
+    side: str | None = "home",
+    odds: int = -150,
+    stake: float = 1.0,
+    status: str = "lost",
+    paid: float | None = None,
+    funding_type: str = "cash",
+    placed_at: str = "2026-10-01T18:00:00+00:00",
+) -> dict[str, object]:
+    """Return one ledger row as an import writes it (no quote reference)."""
+    row: dict[str, object] = dict.fromkeys(_BET_COLUMNS)
+    pnl = None if status == "open" else (-stake if status == "lost" else (paid or 0.0) - stake)
+    row |= {
+        "bet_id": f"internal-{source_bet_id}",
+        "source_bet_id": source_bet_id,
+        "game_id": game_id,
+        "description": source_bet_id,
+        "placed_at": pd.Timestamp(placed_at),
+        "market_type": market_type,
+        "side": side,
+        "odds": odds,
+        "stake": stake,
+        "book": "draftkings",
+        "funding_type": funding_type,
+        "paid_amount": paid,
+        "status": status,
+        "pnl": pnl,
+    }
+    return row
+
+
+def ledger() -> DataFrame:
+    """Return the whole synthetic ledger: the week's bets and one bet without a game."""
+    return DataFrame(
+        [
+            bet("DK1", GAME_A, status="won", paid=1.66),
+            bet("DK2", GAME_C, side="away", odds=120),
+            bet("DK3", GAME_B, status="open"),
+            bet(
+                "DK4",
+                GAME_D,
+                market_type="same_game_parlay",
+                side=None,
+                odds=187500,
+                stake=0.1,
+                funding_type="bonus",
+            ),
+            bet("DK5", None, market_type="parlay", side=None, odds=211769),
+        ],
+        columns=list(_BET_COLUMNS),
+    )
+
+
+def market_inputs() -> MarketInputs:
+    """Return the synthetic week's edge and wager evidence (no issuance, no quotes)."""
+    bets = ledger()
+    return MarketInputs(
+        issuances=(),
+        recommendations=(),
+        receipts=edge_receipts(),
+        bets=bets.loc[bets["game_id"].notna()].reset_index(drop=True),
+        quotes=empty_quote_frame(),
     )

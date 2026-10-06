@@ -1,10 +1,15 @@
 # src/gridiron_edge/market/recommended_bet_result_store.py
 
-"""Immutable JSON persistence for recommended-bet results and evaluations."""
+"""Immutable JSON persistence for recommended-bet results and evaluations.
+
+Besides writing and reading, it owns the one rule for which persisted result stands for an
+exact offer in a week: the latest unambiguous evaluation
+(:func:`load_latest_recommended_bet_results`).
+"""
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum
 import json
@@ -21,6 +26,92 @@ from gridiron_edge.market.recommended_bet_result import (
     validate_recommended_bet_evaluation,
     validate_recommended_bet_result,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class LoadedRecommendedBetResult:
+    """One persisted result paired with its immutable evaluation identity."""
+
+    evaluation_id: str
+    result: RecommendedBetResult
+
+
+RecommendedBetOfferKey = tuple[
+    str,
+    str | None,
+    str | None,
+    str,
+    str,
+    str,
+    datetime,
+    datetime | None,
+    datetime | None,
+    bool,
+    int | None,
+    float | None,
+]
+
+
+def recommended_bet_offer_key(
+    result: RecommendedBetResult,
+) -> RecommendedBetOfferKey:
+    """Return the complete exact-offer key preserved by one result."""
+    return (
+        result.provider,
+        result.provider_event_id,
+        result.sportsbook,
+        result.game_id,
+        result.market,
+        result.side,
+        result.fetched_at,
+        result.sportsbook_updated_at,
+        result.kickoff,
+        result.is_live,
+        result.american_price,
+        result.line,
+    )
+
+
+def load_latest_recommended_bet_results(
+    *,
+    season: str,
+    week: int,
+    repo: Path | None = None,
+) -> tuple[LoadedRecommendedBetResult, ...]:
+    """Load the latest unambiguous persisted result of every exact offer in one week.
+
+    Selection uses persisted ``evaluated_at`` values only. Equal-time,
+    different-result evidence for one exact offer is rejected as conflicting.
+    """
+    root = recommended_bet_result_root(repo)
+    if not root.is_dir():
+        return ()
+
+    selected: dict[RecommendedBetOfferKey, LoadedRecommendedBetResult] = {}
+    for path in sorted(root.glob("schema=*/evaluations/*.json")):
+        evaluation = read_recommended_bet_evaluation(path)
+        for result in evaluation.results:
+            if result.season != season or result.week != week:
+                continue
+            candidate = LoadedRecommendedBetResult(evaluation.evaluation_id, result)
+            key = recommended_bet_offer_key(result)
+            existing = selected.get(key)
+            if existing is None or result.evaluated_at > existing.result.evaluated_at:
+                selected[key] = candidate
+            elif (
+                result.evaluated_at == existing.result.evaluated_at
+                and result.result_id != existing.result.result_id
+            ):
+                raise ValueError(
+                    "Conflicting persisted recommendation results share the latest "
+                    "evaluation time for one exact offer."
+                )
+
+    return tuple(selected[key] for key in sorted(selected, key=_offer_sort_key))
+
+
+def _offer_sort_key(key: RecommendedBetOfferKey) -> tuple[str, ...]:
+    return tuple("" if value is None else str(value) for value in key)
 
 
 def recommended_bet_result_root(repo: Path | None = None) -> Path:

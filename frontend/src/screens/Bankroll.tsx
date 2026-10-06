@@ -12,6 +12,7 @@ import { PendingField } from "../components/field-status/PendingField";
 import type { FieldStatus } from "../components/field-status/types";
 import { BalanceCurve } from "../components/portfolio/BalanceCurve";
 import { useAppState } from "../context/AppStateContext";
+import { useNav } from "../context/NavContext";
 import { formatOdds } from "../utils/odds";
 import { ErrorCard } from "../components/error/ErrorCard";
 
@@ -105,10 +106,16 @@ function RecordCard({ summary, bets, market, onMarketChange }: { summary: Return
   const scoped = market === "all" ? bets : bets.filter((bet) => bet.market_type === market);
   const record = summarizeRecord(scoped);
   const isAll = market === "all";
+  const { navigate } = useNav();
   return (
     <div className="hm-card" style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-        <div className="upper dim" style={{ fontSize: 10 }}>Record</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <div className="upper dim" style={{ fontSize: 10 }}>Record</div>
+          <button type="button" className="recap-game-link" style={{ fontSize: 11 }} onClick={() => navigate("/recap")}>
+            Results by week
+          </button>
+        </div>
         <FilterSelect label="Record market" value={market} onChange={onMarketChange}>
           <option value="all">All Markets</option>
           {marketOptions.map((value) => <option key={value} value={value}>{formatMarketType(value)}</option>)}

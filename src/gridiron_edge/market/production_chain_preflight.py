@@ -31,6 +31,7 @@ from gridiron_edge.ingest.odds.store import (
 from gridiron_edge.market.candidate_issuance import CandidateIssuance
 from gridiron_edge.market.candidate_issuance_store import (
     candidate_issuance_root,
+    candidate_issuances_for_product,
     read_candidate_issuance,
 )
 from gridiron_edge.market.collection_execution import (
@@ -543,21 +544,13 @@ def _exact_candidate_issuance(
     season: str,
     week: int,
 ) -> CandidateIssuance | None:
-    directory = candidate_issuance_root(repo) / "issuances"
-    matches = []
-    if directory.is_dir():
-        for path in sorted(directory.glob("*.json")):
-            try:
-                issuance = read_candidate_issuance(path)
-            except (OSError, ValueError):
-                continue
-            if (
-                issuance.season == season
-                and issuance.week == week
-                and issuance.product_id == selected["product_id"]
-                and issuance.product_run_id == selected["run_id"]
-            ):
-                matches.append(issuance)
+    matches = candidate_issuances_for_product(
+        season=season,
+        week=week,
+        product_id=selected["product_id"],
+        product_run_id=selected["run_id"],
+        repo=repo,
+    )
     return matches[0] if len(matches) == 1 else None
 
 

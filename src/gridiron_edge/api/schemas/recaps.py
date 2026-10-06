@@ -4,7 +4,8 @@
 
 Every value is serialized from the persisted recap. Each forecast family, market side, game row
 and season week carries the recap's own status enum, so a missing value is always explained,
-never dropped.
+never dropped. The edge and wager sections (``DECISIONS.md`` D89) are read from persisted
+evidence only; no edge is computed.
 """
 
 from __future__ import annotations
@@ -22,12 +23,17 @@ from gridiron_edge.evaluation.weekly_recap import (
     ForecastStatus,
     ProductRowStatus,
 )
+from gridiron_edge.evaluation.weekly_recap_markets import (
+    CandidateRecommendationState,
+    EdgeEvidenceStatus,
+)
 from gridiron_edge.evaluation.weekly_recap_season import SeasonWeekStatus
 from gridiron_edge.evaluation.weekly_recap_starters import (
     ActualStarterSource,
     StarterRecordSource,
     StarterStatus,
 )
+from gridiron_edge.market.market_closeout import MarketCloseoutStatus, MarketClvKind
 
 
 class _Frozen(BaseModel):
@@ -297,11 +303,116 @@ class RecapStartingQbs(RecapStarterCounts):
     capture_digests: list[str] = Field(description="The sidecar captures the section read.")
 
 
+class RecapEdgeReceipt(_Frozen):
+    """One weekly-cycle edge receipt decided at or before the week's last kickoff."""
+
+    decided_at: datetime
+    outcome: str = Field(description="The receipt's outcome: done, blocked or failed.")
+    detail: str
+    product_id: str | None
+    market_fetched_at: datetime | None
+
+
+class RecapCloseoutCount(_Frozen):
+    """How many candidate rows closed with one market-closeout status."""
+
+    status: MarketCloseoutStatus
+    count: int
+
+
+class RecapRecommendationCount(_Frozen):
+    """How many candidate rows read one recommendation state."""
+
+    status: CandidateRecommendationState
+    count: int
+
+
+class RecapCandidateFamily(_Frozen):
+    """One market family's candidates: closeout, CLV in the family's unit, graded outcomes.
+
+    Candidates were never recommendations, so there is no P&L. Rows repeat a side across books
+    and snapshots; ``sides`` counts the distinct game and side.
+    """
+
+    market: str
+    candidates: int
+    sides: int
+    closeout: list[RecapCloseoutCount]
+    clv_kind: MarketClvKind | None
+    clv_count: int
+    median_clv: float | None
+    share_positive_clv: float | None
+    wins: int
+    losses: int
+    pushes: int
+    outcome_unavailable: int
+
+
+class RecapProductionChain(_Frozen):
+    """The week's candidate issuance and what the recommendation policy made of it."""
+
+    issuance_id: str
+    issued_at: datetime
+    rows: int
+    candidates: int
+    not_candidates: int
+    unavailable: int
+    evaluation_ids: list[str]
+    policy_ids: list[str]
+    recommendations: list[RecapRecommendationCount]
+    families: list[RecapCandidateFamily]
+
+
+class RecapEdges(_Frozen):
+    """What the week published as edges, with every edge receipt before its last kickoff."""
+
+    status: EdgeEvidenceStatus
+    chain: RecapProductionChain | None
+    receipts_through: datetime = Field(description="The week's last kickoff.")
+    receipts: list[RecapEdgeReceipt]
+
+
+class RecapWagerSummary(_Frozen):
+    """Recorded wagers' record and money; ROI is P&L over settled stake, in percent."""
+
+    bets: int
+    settled: int
+    unsettled: int = Field(description="Bets still open although the game has finished.")
+    wins: int
+    losses: int
+    pushes: int
+    staked: float
+    settled_staked: float
+    pnl: float
+    roi_pct: float | None
+    bonus_funded: int
+    clv_available: int
+    clv_unavailable: int
+    linked_recommendations: int
+
+
+class RecapWagerMarket(_Frozen):
+    """One bet market type's summary and its CLV in that market's own unit."""
+
+    market_type: str
+    summary: RecapWagerSummary
+    clv_kind: MarketClvKind | None
+    median_clv: float | None
+    share_positive_clv: float | None
+
+
+class RecapWagers(_Frozen):
+    """The week's recorded wagers overall and per market type."""
+
+    total: RecapWagerSummary
+    markets: list[RecapWagerMarket]
+    ledger_digest: str = Field(description="Digest of the week's ledger rows the section read.")
+
+
 class WeeklyRecapResponse(BaseResponse):
     """The selected recap of one week.
 
-    ``edges`` and ``wagers`` are null and marked pending in ``_meta.field_status`` until the
-    recap carries those sections. The season so far is served by ``GET /recaps/{season}/summary``.
+    The season so far is served by ``GET /recaps/{season}/summary``.
     """
 
     season: str
@@ -319,8 +430,8 @@ class WeeklyRecapResponse(BaseResponse):
     metrics: RecapWeekMetrics
     games: list[RecapGame]
     starting_qbs: RecapStartingQbs
-    edges: None = None
-    wagers: None = None
+    edges: RecapEdges
+    wagers: RecapWagers
 
 
 class RecapPairedDifference(_Frozen):
@@ -399,6 +510,16 @@ class SeasonRecapWeek(_Frozen):
     live_metrics: RecapWeekMetrics | None
     to_date: RecapWeekMetrics | None
     live_to_date: RecapWeekMetrics | None
+    edge_status: EdgeEvidenceStatus | None
+    wagers: RecapWagerSummary | None
+
+
+class SeasonRecapWagers(_Frozen):
+    """Recorded wagers over the recapped weeks, and the season's bets without a game."""
+
+    recapped_weeks: RecapWagerSummary
+    unattributed: RecapWagerSummary
+    unattributed_digest: str
 
 
 class SeasonRecapConventions(_Frozen):
@@ -411,6 +532,7 @@ class SeasonRecapConventions(_Frozen):
     paired_difference: str
     interval: str
     interval_z: float
+    unattributed_wagers: str
 
 
 class SeasonRecapResponse(BaseResponse):
@@ -425,3 +547,4 @@ class SeasonRecapResponse(BaseResponse):
     weeks: list[SeasonRecapWeek]
     all_games: SeasonRecapScope
     live_games: SeasonRecapScope
+    wagers: SeasonRecapWagers

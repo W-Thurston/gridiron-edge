@@ -68,6 +68,37 @@ def write_candidate_issuance(
     return path
 
 
+def candidate_issuances_for_product(
+    *,
+    season: str,
+    week: int,
+    product_id: str,
+    product_run_id: str,
+    repo: Path | None = None,
+) -> tuple[CandidateIssuance, ...]:
+    """Return every stored issuance of one week's exact product and run, oldest file name first.
+
+    An unreadable or invalid artifact is skipped; callers decide what more than one match means.
+    """
+    directory = candidate_issuance_root(repo) / "issuances"
+    if not directory.is_dir():
+        return ()
+    matches: list[CandidateIssuance] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            issuance = read_candidate_issuance(path)
+        except (OSError, ValueError):
+            continue
+        if (
+            issuance.season == season
+            and issuance.week == week
+            and issuance.product_id == product_id
+            and issuance.product_run_id == product_run_id
+        ):
+            matches.append(issuance)
+    return tuple(matches)
+
+
 def read_candidate_issuance(path: Path) -> CandidateIssuance:
     """Read and validate one exact immutable issuance artifact."""
     raw = json.loads(path.read_text(encoding="utf-8"))

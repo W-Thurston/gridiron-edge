@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { useRecaps, useWeeklyRecap } from "../api/hooks";
 import type { components } from "../api/schema";
 import { ErrorCard } from "../components/error/ErrorCard";
-import { FieldValue } from "../components/field-status/FieldValue";
 import { WeeklyComponentValue } from "../components/field-status/WeeklyComponentValue";
+import { EdgesSection, WagersSection } from "../components/recap/MarketSections";
 import { RecapToggle } from "../components/recap/RecapToggle";
 import { SeasonPanel } from "../components/recap/SeasonPanel";
 import {
@@ -35,11 +35,6 @@ type StarterStatus = components["schemas"]["StarterStatus"];
 type PredictorAccuracy = components["schemas"]["RecapPredictorAccuracy"];
 
 const FAMILIES: RecapFamily[] = ["win", "spread", "total", "projected_score"];
-
-const PENDING_SECTIONS = [
-  ["edges", "Edges and recommendations"],
-  ["wagers", "Recorded wagers"],
-] as const;
 
 export function WeeklyRecap() {
   const { route, navigate } = useNav();
@@ -128,7 +123,6 @@ function WeekPicker({
 
 function RecapBody({ recap }: { recap: Recap }) {
   const [family, setFamily] = useState<RecapFamily>("win");
-  const fieldStatus = recap._meta?.field_status ?? {};
   return (
     <>
       <RecapHeader recap={recap} />
@@ -159,19 +153,9 @@ function RecapBody({ recap }: { recap: Recap }) {
         <GameTable games={recap.games} family={family} />
       </section>
       <StartersSection recap={recap} />
+      <EdgesSection edges={recap.edges} />
+      <WagersSection wagers={recap.wagers} />
       <SeasonPanel season={recap.season} />
-      <section
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}
-      >
-        {PENDING_SECTIONS.map(([key, label]) => (
-          <div key={key} className="hm-card" style={{ padding: 18 }} data-recap-section={key}>
-            <div className="upper dim" style={{ fontSize: 9 }}>{label}</div>
-            <div style={{ marginTop: 8 }}>
-              <FieldValue value={null} status={fieldStatus[key]} placeholder="Not in the recap yet" />
-            </div>
-          </div>
-        ))}
-      </section>
     </>
   );
 }

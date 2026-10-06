@@ -27,6 +27,7 @@ from gridiron_edge.market.market_closeout import (
     MarketCloseoutStatus,
     MarketClvKind,
     close_candidate_issuance,
+    close_candidate_rows,
     close_market_reference,
     close_recorded_wagers,
 )
@@ -297,6 +298,19 @@ def test_candidate_adapter_preserves_issuance_reference() -> None:
     assert result.reference.reference_id.startswith(f"{issuance.issuance_id}:")
     assert result.reference.reference_line == pytest.approx(3.5)
     assert result.clv == pytest.approx(-1.0)
+
+
+def test_chosen_rows_close_exactly_as_the_whole_issuance_does() -> None:
+    issuance = _issuance()
+    quotes = _quotes(
+        _quote(),
+        _quote(game_id="2026_01_BUF_NYJ", provider_event_id="event-2", line=1.5),
+    )
+
+    chosen = close_candidate_rows(issuance, issuance.rows, quotes)
+
+    assert chosen == close_candidate_issuance(issuance, quotes)
+    assert close_candidate_rows(issuance, (), quotes) == ()
 
 
 def test_contracts_are_frozen() -> None:

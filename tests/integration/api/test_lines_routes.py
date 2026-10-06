@@ -13,12 +13,12 @@ import pytest
 
 from gridiron_edge.api.app import create_app
 from gridiron_edge.api.deps import clock_dependency, settings_dependency
-from gridiron_edge.api.loaders import LoadedRecommendedBetResult
 from gridiron_edge.api.routes import lines as lines_route
 from gridiron_edge.ingest.odds.store import (
     QUOTE_COLUMNS,
     write_current_odds_snapshot,
 )
+from gridiron_edge.market.recommended_bet_result_store import LoadedRecommendedBetResult
 
 
 @pytest.fixture

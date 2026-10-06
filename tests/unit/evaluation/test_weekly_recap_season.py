@@ -13,7 +13,7 @@ import statistics
 import pandas as pd
 from pandas import DataFrame
 import pytest
-from tests.fixtures.weekly_recap import BUILT_AT, SEASON, recap_week
+from tests.fixtures.weekly_recap import BUILT_AT, SEASON, ledger, recap_week
 
 from gridiron_edge.evaluation.metrics import expected_calibration_error
 from gridiron_edge.evaluation.weekly_recap import (
@@ -125,6 +125,7 @@ def base_recap() -> WeeklyRecap:
         games=inputs.games,
         player_game_logs=inputs.logs,
         sidecar_captures=inputs.captures,
+        markets=inputs.markets,
         built_at=BUILT_AT,
     ).recap
 
@@ -190,7 +191,7 @@ def _season(
     weeks: list[tuple[WeeklyRecap, DataFrame]], finished: tuple[int, ...] = (1, 2, 3)
 ) -> SeasonRecap:
     return build_season_recap(
-        season=SEASON, recaps=weeks, finished_weeks=finished, built_at=BUILT_AT
+        bets=ledger(), season=SEASON, recaps=weeks, finished_weeks=finished, built_at=BUILT_AT
     )
 
 
@@ -343,6 +344,7 @@ def test_identity_tracks_the_weekly_recap_ids_and_excludes_built_at(
 ) -> None:
     recap = _season(weeks)
     later = build_season_recap(
+        bets=ledger(),
         season=SEASON,
         recaps=weeks,
         finished_weeks=(1, 2, 3),
@@ -386,7 +388,9 @@ def test_a_manifest_with_an_unknown_field_is_rejected(
 
 def test_a_season_without_a_selected_recap_is_refused() -> None:
     with pytest.raises(WeeklyRecapRefusalError, match="No weekly recap is selected"):
-        build_season_recap(season=SEASON, recaps=[], finished_weeks=(1,), built_at=BUILT_AT)
+        build_season_recap(
+            season=SEASON, recaps=[], finished_weeks=(1,), bets=ledger(), built_at=BUILT_AT
+        )
 
 
 def test_recaps_of_another_season_or_a_repeated_week_are_rejected(
@@ -406,3 +410,35 @@ def test_a_recap_whose_metrics_do_not_match_its_frame_is_rejected(
 
     with pytest.raises(ValueError, match="do not match its own game frame"):
         _season(tampered)
+
+
+def test_weeks_carry_their_edge_status_and_wagers_and_the_season_adds_them_up(
+    weeks: list[tuple[WeeklyRecap, DataFrame]],
+) -> None:
+    recap = _season(weeks)
+
+    first, second, missing = recap.weeks
+    assert first.edge_status == "withheld_unvalidated"
+    assert first.wagers == weeks[0][0].wagers.total
+    assert (missing.edge_status, missing.wagers) == (None, None)
+    total = recap.wagers.recapped_weeks
+    assert total.bets == first.wagers.bets + second.wagers.bets
+    assert total.pnl == pytest.approx(first.wagers.pnl + second.wagers.pnl)
+    # The ledger's one bet without a game, a lost $1 parlay placed in the season's window.
+    unattributed = recap.wagers.unattributed
+    assert (unattributed.bets, unattributed.losses, unattributed.pnl) == (1, 1, -1.0)
+
+
+def test_a_settlement_of_an_unattributed_bet_gives_a_new_season_identity(
+    weeks: list[tuple[WeeklyRecap, DataFrame]],
+) -> None:
+    base = _season(weeks)
+    bets = ledger()
+    bets.loc[bets["game_id"].isna(), "stake"] = 2.0
+
+    changed = build_season_recap(
+        bets=bets, season=SEASON, recaps=weeks, finished_weeks=(1, 2, 3), built_at=BUILT_AT
+    )
+
+    assert changed.season_recap_id != base.season_recap_id
+    assert changed.wagers.unattributed_digest != base.wagers.unattributed_digest

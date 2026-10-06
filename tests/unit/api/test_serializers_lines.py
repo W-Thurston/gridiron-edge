@@ -8,12 +8,12 @@ from functools import partial
 
 import pandas as pd
 
-from gridiron_edge.api.loaders import LoadedRecommendedBetResult
 from gridiron_edge.api.meta import Unavailable
 from gridiron_edge.api.serializers.lines import serialize_line_shopping_list
 from gridiron_edge.market.line_shopping import (
     evaluate_line_shopping_guidance,
 )
+from gridiron_edge.market.recommended_bet_result_store import LoadedRecommendedBetResult
 
 _serialize = partial(
     serialize_line_shopping_list, evaluated_at=datetime(2026, 10, 4, 12, 0, tzinfo=UTC)

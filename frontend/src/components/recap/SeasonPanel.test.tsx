@@ -11,6 +11,7 @@ type Season = components["schemas"]["SeasonRecapResponse"];
 type WeekMetrics = components["schemas"]["RecapWeekMetrics"];
 type Paired = components["schemas"]["RecapPairedDifference"];
 type Bin = components["schemas"]["RecapReliabilityBin"];
+type WagerSummary = components["schemas"]["RecapWagerSummary"];
 
 const SEASON = "2026-2027";
 
@@ -68,6 +69,15 @@ function scope(weeks: number, games: number, season: WeekMetrics) {
   };
 }
 
+function wagers(bets: number, wins: number, losses: number, pnl: number, unsettled = 0): WagerSummary {
+  const settled = wins + losses;
+  return {
+    bets, settled, unsettled, wins, losses, pushes: 0, staked: bets, settled_staked: settled, pnl,
+    roi_pct: settled ? (pnl / settled) * 100 : null, bonus_funded: 0, clv_available: 0,
+    clv_unavailable: bets, linked_recommendations: 0,
+  };
+}
+
 function season(): Season {
   const week1 = metrics(0.2372, 0.2093);
   const week2 = metrics(0.2278, 0.2322);
@@ -84,17 +94,26 @@ function season(): Season {
       season_to_date: "pooled", live_only: "live rows",
       calibration_bins: "10 equal-width bins of the home win probability",
       paired_difference: "model minus market", interval: "mean +/- z se", interval_z: 1.96,
+      unattributed_wagers: "bets without a game placed in the season window",
     },
     weeks: [
       { week: 1, status: "recapped", recap_id: "1".repeat(64), forecast_role: "live", games: 16, live_games: 16,
-        metrics: week1, live_metrics: week1, to_date: week1, live_to_date: week1 },
+        metrics: week1, live_metrics: week1, to_date: week1, live_to_date: week1,
+        edge_status: "production_chain", wagers: wagers(17, 11, 6, -0.34) },
       { week: 2, status: "recapped", recap_id: "2".repeat(64), forecast_role: "development", games: 16, live_games: 0,
-        metrics: week2, live_metrics: EMPTY, to_date: toDate2, live_to_date: week1 },
+        metrics: week2, live_metrics: EMPTY, to_date: toDate2, live_to_date: week1,
+        edge_status: "not_recorded", wagers: wagers(16, 12, 4, 2.53) },
       { week: 3, status: "not_built", recap_id: null, forecast_role: null, games: 0, live_games: 0,
-        metrics: null, live_metrics: null, to_date: null, live_to_date: null },
+        metrics: null, live_metrics: null, to_date: null, live_to_date: null,
+        edge_status: null, wagers: null },
     ],
     all_games: scope(2, 32, toDate2),
     live_games: scope(1, 16, week1),
+    wagers: {
+      recapped_weeks: wagers(33, 23, 10, 2.19),
+      unattributed: wagers(16, 0, 16, -5.2),
+      unattributed_digest: "u".repeat(64),
+    },
   };
 }
 
@@ -180,5 +199,23 @@ describe("SeasonPanel", () => {
     expect(within(brier).getByText("0.2325 (32)")).toBeInTheDocument();
     expect(within(brier).getByText("0.2208 (32)")).toBeInTheDocument();
     expect(screen.getByText(/Starting QBs: 0 of 64 slots scored · 64 not recorded/)).toBeInTheDocument();
+  });
+
+  it("lists each week's edges and wagers, the season total and bets without a game", () => {
+    renderPanel();
+
+    const table = screen.getByRole("table", { name: /Each week's edge evidence and recorded wagers/ });
+    const week1 = table.querySelector('[data-season-wager-week="1"]') as HTMLElement;
+    expect(within(week1).getByText("Production chain")).toBeInTheDocument();
+    expect(within(week1).getByText("11-6-0")).toBeInTheDocument();
+    expect(within(week1).getByText("−$0.34")).toBeInTheDocument();
+    const week3 = table.querySelector('[data-season-wager-week="3"]') as HTMLElement;
+    expect(within(week3).getByText("No weekly recap is selected")).toHaveAttribute("data-weekly-status", "not_built");
+    const total = table.querySelector('[data-season-wager-week="total"]') as HTMLElement;
+    expect(within(total).getByText("+$2.19")).toBeInTheDocument();
+    const unattributed = table.querySelector('[data-season-wager-week="unattributed"]') as HTMLElement;
+    expect(within(unattributed).getByText("0-16-0")).toBeInTheDocument();
+    expect(within(unattributed).getByText("$16.00")).toBeInTheDocument();
+    expect(screen.getByText(/Without a game: bets without a game placed in the season window/)).toBeInTheDocument();
   });
 });

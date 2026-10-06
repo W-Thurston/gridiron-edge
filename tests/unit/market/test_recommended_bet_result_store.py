@@ -11,6 +11,8 @@ import pytest
 from tests.fixtures.recommended_bet_results import evaluation
 
 from gridiron_edge.market.recommended_bet_result_store import (
+    LoadedRecommendedBetResult,
+    load_latest_recommended_bet_results,
     read_recommended_bet_evaluation,
     read_recommended_bet_result,
     recommended_bet_evaluation_path,
@@ -306,3 +308,14 @@ def test_schema_1_shaped_result_is_rejected_as_unsupported(tmp_path: Path) -> No
     schema_1_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError):
         read_recommended_bet_result(schema_1_path)
+
+
+def test_the_latest_results_of_a_week_are_read_by_repo(tmp_path: Path) -> None:
+    value = evaluation()
+    assert load_latest_recommended_bet_results(season="2026", week=1, repo=tmp_path) == ()
+    write_recommended_bet_evaluation(value, repo=tmp_path)
+
+    assert load_latest_recommended_bet_results(season="2026", week=1, repo=tmp_path) == (
+        LoadedRecommendedBetResult(value.evaluation_id, value.results[0]),
+    )
+    assert load_latest_recommended_bet_results(season="2026", week=2, repo=tmp_path) == ()

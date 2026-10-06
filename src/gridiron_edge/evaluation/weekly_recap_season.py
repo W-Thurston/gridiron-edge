@@ -13,12 +13,17 @@ difference with its standard error and an approximate 95% interval, and model an
 reliability over ten fixed equal-width bins of the home win probability with counts and ECE. A
 finished week with no selected recap is a row with status ``not_built``.
 
+Each week also carries its edge-evidence status and recorded-wager summary from its recap; the
+season adds those wagers up and counts the ledger's bets without a ``game_id`` placed in the
+season's window (March 1 of its first year to March 1 of the next, UTC) as unattributed
+(``DECISIONS.md`` D89).
+
 The identity is the SHA-256 of the content excluding ``built_at``; the content names every weekly
 recap id it read, so a newly selected weekly recap gives a new season identity.
 
 Public API
 ----------
-build_season_recap          selected weekly recaps, finished weeks -> SeasonRecap
+build_season_recap          selected weekly recaps, finished weeks, bet ledger -> SeasonRecap
 season_recap_id             season recap -> content identity excluding built_at
 validate_season_recap       season recap -> raises on an invalid manifest
 season_recap_from_payload / season_recap_payload   JSON round trip
@@ -28,7 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from hashlib import sha256
 import json
@@ -51,9 +56,17 @@ from gridiron_edge.evaluation.weekly_recap import (
     WeekMetrics,
     recap_metrics,
 )
+from gridiron_edge.evaluation.weekly_recap_markets import (
+    WagerSummary,
+    ledger_digest,
+    sum_wager_summaries,
+    wager_summary,
+)
 from gridiron_edge.evaluation.weekly_recap_starters import StarterSummary, starter_summary
 
-SEASON_RECAP_SCHEMA_VERSION: Final[int] = 1
+SEASON_RECAP_SCHEMA_VERSION: Final[int] = 2
+# An unattributed bet belongs to the season whose window holds its placement time.
+_SEASON_WINDOW_MONTH: Final[int] = 3
 # Declared before any forecast probability was read: ten equal-width bins, the edges of
 # ``expected_calibration_error``'s default.
 CALIBRATION_BIN_COUNT: Final[int] = 10
@@ -150,6 +163,17 @@ class SeasonWeek:
     live_metrics: WeekMetrics | None
     to_date: WeekMetrics | None
     live_to_date: WeekMetrics | None
+    edge_status: str | None
+    wagers: WagerSummary | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonWagers:
+    """Recorded wagers over the recapped weeks, and the season's bets without a game."""
+
+    recapped_weeks: WagerSummary
+    unattributed: WagerSummary
+    unattributed_digest: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +187,7 @@ class SeasonConventions:
     paired_difference: str
     interval: str
     interval_z: float
+    unattributed_wagers: str
 
 
 SEASON_CONVENTIONS: Final[SeasonConventions] = SeasonConventions(
@@ -183,6 +208,10 @@ SEASON_CONVENTIONS: Final[SeasonConventions] = SeasonConventions(
         "sqrt(n)): an approximate 95% interval by the normal approximation, not a verdict"
     ),
     interval_z=INTERVAL_Z,
+    unattributed_wagers=(
+        "ledger bets without a game_id placed from March 1 of the season's first year to March 1 "
+        "of the next (UTC)"
+    ),
 )
 
 
@@ -200,6 +229,7 @@ class SeasonRecap:
     weeks: tuple[SeasonWeek, ...]
     all_games: ScopeSummary
     live_games: ScopeSummary
+    wagers: SeasonWagers
 
 
 # ---------------------------------------------------------------------------
@@ -292,19 +322,33 @@ def _scope_summary(games: DataFrame) -> ScopeSummary:
 # ---------------------------------------------------------------------------
 
 
+def unattributed_bets(bets: DataFrame, *, season: str) -> DataFrame:
+    """Return the ledger's bets without a ``game_id`` placed in the season's window."""
+    if bets.empty:
+        return bets
+    start_year = int(season[:4])
+    start = pd.Timestamp(datetime(start_year, _SEASON_WINDOW_MONTH, 1, tzinfo=UTC))
+    end = pd.Timestamp(datetime(start_year + 1, _SEASON_WINDOW_MONTH, 1, tzinfo=UTC))
+    placed = pd.to_datetime(bets["placed_at"], utc=True)
+    return bets.loc[bets["game_id"].isna() & placed.ge(start) & placed.lt(end)]
+
+
 def build_season_recap(
     *,
     season: str,
     recaps: Sequence[tuple[WeeklyRecap, DataFrame]],
     finished_weeks: Sequence[int],
+    bets: DataFrame,
     built_at: datetime,
 ) -> SeasonRecap:
     """Roll the season's selected weekly recaps up, without I/O.
 
     ``recaps`` are the season's selected recaps with their verified game frames;
-    ``finished_weeks`` are the weeks whose every scheduled game has a result. A finished week
-    without a recap is ``not_built``. Refuses a season with no recap, a recap of another season,
-    two recaps of one week, and a recap whose metrics do not match its own game frame.
+    ``finished_weeks`` are the weeks whose every scheduled game has a result; ``bets`` is the bet
+    ledger, read only for the season's unattributed bets (each week's wagers come from its
+    recap). A finished week without a recap is ``not_built``. Refuses a season with no recap, a
+    recap of another season, two recaps of one week, and a recap whose metrics do not match its
+    own game frame.
     """
     _utc(built_at, "built_at")
     if not recaps:
@@ -339,6 +383,8 @@ def build_season_recap(
                     live_metrics=None,
                     to_date=None,
                     live_to_date=None,
+                    edge_status=None,
+                    wagers=None,
                 )
             )
             continue
@@ -356,8 +402,12 @@ def build_season_recap(
                 live_metrics=recap_metrics(_live(games)),
                 to_date=recap_metrics(to_date),
                 live_to_date=recap_metrics(_live(to_date)),
+                edge_status=recap.edges.status.value,
+                wagers=recap.wagers.total,
             )
         )
+
+    unattributed = unattributed_bets(bets, season=season)
 
     season_recap = SeasonRecap(
         schema_version=SEASON_RECAP_SCHEMA_VERSION,
@@ -370,6 +420,13 @@ def build_season_recap(
         weeks=tuple(weeks),
         all_games=_scope_summary(pooled),
         live_games=_scope_summary(_live(pooled)),
+        wagers=SeasonWagers(
+            recapped_weeks=sum_wager_summaries(
+                by_week[week][0].wagers.total for week in sorted(by_week)
+            ),
+            unattributed=wager_summary(unattributed),
+            unattributed_digest=ledger_digest(unattributed),
+        ),
     )
     season_recap = replace(season_recap, season_recap_id=season_recap_id(season_recap))
     validate_season_recap(season_recap)
@@ -477,6 +534,7 @@ __all__ = [
     "ReliabilityBin",
     "ScopeSummary",
     "SeasonRecap",
+    "SeasonWagers",
     "SeasonWeek",
     "SeasonWeekStatus",
     "SideCalibration",
@@ -484,5 +542,6 @@ __all__ = [
     "season_recap_from_payload",
     "season_recap_id",
     "season_recap_payload",
+    "unattributed_bets",
     "validate_season_recap",
 ]

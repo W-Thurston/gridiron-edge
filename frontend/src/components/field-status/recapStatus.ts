@@ -134,3 +134,52 @@ export function recapRecordSourceLabel(source: StarterRecordSource): string {
       return "from the captured sidecar of its run";
   }
 }
+
+type EdgeEvidenceStatus = components["schemas"]["EdgeEvidenceStatus"];
+type MarketCloseoutStatus = components["schemas"]["MarketCloseoutStatus"];
+type CandidateRecommendationState = components["schemas"]["CandidateRecommendationState"];
+type MarketClvKind = components["schemas"]["MarketClvKind"];
+
+/** Full sentence for what a week's persisted state says about the edges it published. */
+export function recapEdgeStatusMessage(status: EdgeEvidenceStatus): string {
+  switch (status) {
+    case "production_chain":
+      return "Recorded by the production chain: the candidate issuance of the selected product";
+    case "withheld_unvalidated":
+      return "Withheld: model edges are not validated, so the last edge check before kickoff published none";
+    case "not_recorded":
+      return "Not recorded: the edge report is a file that each run rewrites, so it is not evidence of what was published";
+  }
+}
+
+export function recapEdgeStatusShort(status: EdgeEvidenceStatus): string {
+  switch (status) {
+    case "production_chain":
+      return "Production chain";
+    case "withheld_unvalidated":
+      return "Withheld";
+    case "not_recorded":
+      return "Not recorded";
+  }
+}
+
+/** Plain words for a market-closeout status (snake case as words). */
+export function recapCloseoutStatusLabel(status: MarketCloseoutStatus): string {
+  return status === "available" ? "closed" : status.replaceAll("_", " ");
+}
+
+export function recapRecommendationStateLabel(state: CandidateRecommendationState): string {
+  return state === "not_evaluated" ? "not evaluated" : state;
+}
+
+/** The unit a CLV value is stated in. */
+export function recapClvKindLabel(kind: MarketClvKind): string {
+  switch (kind) {
+    case "moneyline_price":
+      return "relative to the bet's implied probability";
+    case "spread_points":
+      return "points";
+    case "total_points":
+      return "points";
+  }
+}

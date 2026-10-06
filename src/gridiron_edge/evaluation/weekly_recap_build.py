@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from gridiron_edge.betting.ledger import load_bets
 from gridiron_edge.datasets import loaders
 from gridiron_edge.datasets.registry import dataset_path
 from gridiron_edge.evaluation import forecast_store
@@ -28,11 +29,13 @@ from gridiron_edge.evaluation.prediction_input_evidence_store import (
 )
 from gridiron_edge.evaluation.week_schedule import finished_weeks, scheduled_games
 from gridiron_edge.evaluation.weekly_recap import (
+    WEEKLY_RECAP_SCHEMA_VERSION,
     BuiltWeeklyRecap,
     WeeklyRecapRefusalError,
     build_weekly_recap,
     unplayed_game_ids,
 )
+from gridiron_edge.evaluation.weekly_recap_markets import MarketInputs
 from gridiron_edge.evaluation.weekly_recap_season import SeasonRecap, build_season_recap
 from gridiron_edge.evaluation.weekly_recap_starters import (
     SidecarCapture,
@@ -49,7 +52,13 @@ from gridiron_edge.evaluation.weekly_recap_store import (
     write_season_recap,
     write_weekly_recap,
 )
+from gridiron_edge.ingest.odds.store import load_odds_ledger
+from gridiron_edge.market.candidate_issuance_store import candidate_issuances_for_product
+from gridiron_edge.market.recommended_bet_result_store import (
+    load_latest_recommended_bet_results,
+)
 from gridiron_edge.ratings.history import season_start
+from gridiron_edge.weekly_cycle.receipts import read_receipts
 
 
 class RecapSelectionOutcome(StrEnum):
@@ -79,7 +88,9 @@ def build_weekly_recap_from_repo(
     """Build one week's recap from the raw schedule, the selected product and the cleaned games.
 
     The starting-QB section also reads the player game logs and the sidecar captures of the runs
-    whose rows carry no starter record.
+    whose rows carry no starter record; the market sections read the product's candidate
+    issuance, the week's recommendation results and weekly-cycle receipts, the bet ledger's rows
+    for the week's games, and the week's quote-ledger partition.
 
     Raises:
         WeeklyRecapRefusalError: No game is scheduled, a game has no result yet, no product is
@@ -108,7 +119,29 @@ def build_weekly_recap_from_repo(
         games=loaders.load_games(repo),
         player_game_logs=pd.read_parquet(dataset_path(repo, "player_game_logs")),
         sidecar_captures=load_sidecar_captures(repo, runs_without_starter_record(product)),
+        markets=load_market_inputs(repo, season=season, week=week, product=product),
         built_at=built_at,
+    )
+
+
+def load_market_inputs(
+    repo: Path, *, season: str, week: int, product: pd.DataFrame
+) -> MarketInputs:
+    """Load the persisted edge and wager evidence of one week's selected product."""
+    product_id = str(product["product_id"].iloc[0])
+    product_run_id = str(product["product_run_id"].iloc[0])
+    return MarketInputs(
+        issuances=candidate_issuances_for_product(
+            season=season,
+            week=week,
+            product_id=product_id,
+            product_run_id=product_run_id,
+            repo=repo,
+        ),
+        recommendations=load_latest_recommended_bet_results(season=season, week=week, repo=repo),
+        receipts=tuple(read_receipts(repo, season=season, week=week)),
+        bets=load_bets(season=season, week=week, repo=repo),
+        quotes=load_odds_ledger(season=season, week=week, repo=repo),
     )
 
 
@@ -182,20 +215,30 @@ def store_and_select_weekly_recap(
 def build_season_recap_from_repo(*, repo: Path, season: str, built_at: datetime) -> SeasonRecap:
     """Roll the season's selected weekly recaps up; the raw games file names the finished weeks.
 
+    The bet ledger supplies the season's bets without a game.
+
     Raises:
-        WeeklyRecapRefusalError: No weekly recap is selected for the season.
+        WeeklyRecapRefusalError: No weekly recap is selected for the season, or a selected recap
+            is not stored at the current weekly recap schema (that week needs rebuilding first).
         ValueError: A selected recap fails verification or does not match its game frame.
     """
-    recaps = [
-        load_weekly_recap(selection.recap_id, repo=repo)
-        for selection in list_current_weekly_recap_selections(repo=repo)
-        if selection.season == season
-    ]
+    recaps = []
+    for selection in list_current_weekly_recap_selections(repo=repo):
+        if selection.season != season:
+            continue
+        try:
+            recaps.append(load_weekly_recap(selection.recap_id, repo=repo))
+        except FileNotFoundError as error:
+            raise WeeklyRecapRefusalError(
+                f"week {selection.week}'s selected recap {selection.recap_id[:12]} is not stored "
+                f"at weekly recap schema {WEEKLY_RECAP_SCHEMA_VERSION}; rebuild that week first."
+            ) from error
     raw = pd.read_parquet(dataset_path(repo, "games_raw_nflverse"))
     return build_season_recap(
         season=season,
         recaps=recaps,
         finished_weeks=finished_weeks(raw, season_int=season_start(season)),
+        bets=load_bets(repo=repo),
         built_at=built_at,
     )
 

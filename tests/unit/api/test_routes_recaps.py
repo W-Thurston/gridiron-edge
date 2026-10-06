@@ -19,6 +19,7 @@ from tests.fixtures.weekly_recap import (
     GAME_D,
     SEASON,
     WEEK,
+    ledger,
     recap_week,
 )
 
@@ -59,6 +60,7 @@ def _selected(tmp_path: Path) -> BuiltWeeklyRecap:
         games=week.games,
         player_game_logs=week.logs,
         sidecar_captures=week.captures,
+        markets=week.markets,
         built_at=BUILT_AT,
     )
     write_weekly_recap(built, repo=tmp_path)
@@ -179,17 +181,31 @@ class TestDetail:
         assert [game["game_id"] for game in body["games"]] == list(built.games["game_id"])
         assert {GAME_A, GAME_B, GAME_C, GAME_D} == {game["game_id"] for game in body["games"]}
 
-    def test_unbuilt_sections_are_null_and_pending(
-        self, client: TestClient, tmp_path: Path
-    ) -> None:
-        _selected(tmp_path)
+    def test_serves_the_edge_and_wager_sections(self, client: TestClient, tmp_path: Path) -> None:
+        built = _selected(tmp_path)
 
         body = client.get(f"/recaps/{SEASON}/{WEEK}").json()
 
-        for section in ("edges", "wagers"):
-            assert body[section] is None
-            assert body["_meta"]["field_status"][section] == "pending"
-        assert "starting_qbs" not in body["_meta"]["field_status"]
+        edges = body["edges"]
+        assert edges["status"] == "withheld_unvalidated"
+        assert edges["chain"] is None
+        assert edges["receipts_through"] == "2026-10-06T00:15:00Z"
+        assert [(item["outcome"], item["product_id"]) for item in edges["receipts"]] == [
+            ("done", "weekly_product"),
+            ("blocked", "weekly_product"),
+        ]
+        wagers = body["wagers"]
+        assert wagers["ledger_digest"] == built.recap.ledger_digest
+        total = wagers["total"]
+        assert (total["bets"], total["settled"], total["unsettled"]) == (4, 3, 1)
+        assert (total["wins"], total["losses"], total["bonus_funded"]) == (1, 2, 1)
+        assert total["pnl"] == pytest.approx(0.66 - 1.0 - 0.1)
+        assert total["clv_unavailable"] == 4
+        assert [item["market_type"] for item in wagers["markets"]] == [
+            "moneyline",
+            "same_game_parlay",
+        ]
+        assert body["_meta"] is None  # nothing is pending
         assert "season_to_date" not in body
 
     def test_serves_the_starter_summary_and_every_side(
@@ -277,6 +293,7 @@ class TestDetail:
 def _season_selected(tmp_path: Path) -> SeasonRecap:
     built = _selected(tmp_path)
     recap = build_season_recap(
+        bets=ledger(),
         season=SEASON,
         recaps=[(built.recap, built.games)],
         finished_weeks=(WEEK - 1, WEEK),
@@ -311,6 +328,12 @@ class TestSeasonSummary:
         assert not_built["metrics"] is None and not_built["to_date"] is None
         assert recapped["status"] == "recapped"
         assert recapped["forecast_role"] == "live"
+        assert recapped["edge_status"] == "withheld_unvalidated"
+        assert recapped["wagers"]["bets"] == 4
+        assert not_built["edge_status"] is None and not_built["wagers"] is None
+        assert body["wagers"]["recapped_weeks"]["bets"] == 4
+        assert body["wagers"]["unattributed"]["bets"] == 1
+        assert body["wagers"]["unattributed"]["losses"] == 1
         assert (
             recapped["metrics"]["win"]["model"]["brier"] == recap.all_games.metrics.win.model.brier
         )
@@ -366,4 +389,11 @@ class TestOpenApi:
         }
         assert set(schemas["Closer"]["enum"]) == {"model", "market", "tie"}
         assert set(schemas["SeasonWeekStatus"]["enum"]) == {"recapped", "not_built"}
+        assert set(schemas["EdgeEvidenceStatus"]["enum"]) == {
+            "production_chain",
+            "withheld_unvalidated",
+            "not_recorded",
+        }
+        assert "not_evaluated" in schemas["CandidateRecommendationState"]["enum"]
+        assert "kickoff_conflict" in schemas["MarketCloseoutStatus"]["enum"]
         assert "development" in schemas["ForecastRole"]["enum"]

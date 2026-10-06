@@ -614,9 +614,15 @@ class TestWeeklyRecap:
     def repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         from types import SimpleNamespace
 
-        from tests.fixtures.weekly_recap import recap_week
+        from tests.fixtures.weekly_recap import edge_receipts, ledger, recap_week
+
+        from gridiron_edge.betting.ledger import _write_ledger
+        from gridiron_edge.weekly_cycle.receipts import write_receipt
 
         week = recap_week()
+        _write_ledger(ledger(), tmp_path)
+        for receipt in edge_receipts():
+            write_receipt(tmp_path, receipt)
         raw = tmp_path / "data/raw/NFL_wk_by_wk_nflverse.parquet"
         raw.parent.mkdir(parents=True)
         week.schedule.to_parquet(raw, index=False)
@@ -694,6 +700,13 @@ class TestWeeklyRecap:
         # No evidence names a sidecar here, so the carried game reads not recorded.
         assert "starting QBs: 2 of 8 slots scored (0 from a sidecar capture)" in result.output
         assert "not recorded 2, not in product 2, unresolved 1, actual missing 1" in result.output
+        assert "edges: withheld_unvalidated; 2 edge receipt(s) before the last kickoff" in (
+            result.output
+        )
+        assert (
+            "wagers: 4 bet(s), 1-2-0, $3.10 staked, P&L -0.44, ROI -21.0%; "
+            "unsettled 1, CLV unavailable 4"
+        ) in result.output
         assert "dry run, nothing written" in result.output
         assert not self._recap_root(repo).exists()
 
@@ -767,6 +780,8 @@ class TestWeeklyRecap:
         assert result.exit_code == 0, result.output
         assert "week 4 live (4)" in result.output
         assert "calibration, season: ECE model" in result.output
+        assert "wagers in recapped weeks: 4 bet(s), 1-2-0" in result.output
+        assert "wagers without a game: 1 bet(s), 0-1-0, $1.00 staked" in result.output
         assert "dry run, nothing written: season recap" in result.output
         assert "(already stored)" in result.output
         assert sorted(self._recap_root(repo).rglob("*")) == stored
@@ -776,6 +791,29 @@ class TestWeeklyRecap:
 
         assert result.exit_code == 1
         assert "No weekly recap is selected for 2026-2027" in result.output
+
+    def test_season_only_names_a_week_selected_at_an_older_schema(self, repo: Path) -> None:
+        import json
+
+        current = self._recap_root(repo) / "current.json"
+        current.parent.mkdir(parents=True)
+        selection = {
+            "season": "2026-2027",
+            "week": 3,
+            "recap_id": "a" * 64,
+            "selected_at": "2026-10-05T14:00:00+00:00",
+        }
+        current.write_text(
+            json.dumps({"schema_version": 1, "selections": {"2026-2027_week_03": selection}})
+        )
+
+        result = self._invoke_season()
+
+        assert result.exit_code == 1
+        assert "week 3's selected recap aaaaaaaaaaaa is not stored at weekly recap schema 3" in (
+            result.output
+        )
+        assert "Traceback" not in result.output
 
     def test_season_only_takes_no_week_and_a_week_is_otherwise_required(self, repo: Path) -> None:
         from gridiron_edge.cli.evaluate import evaluate_app
