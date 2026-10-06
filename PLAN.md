@@ -111,8 +111,9 @@ should read this section before planning or modifying the repository.
 ### Active Program: Weekly Recap (ROADMAP W15) [Scoped October 4, 2026]
 
 **Units 23 and 24 completed October 4, 2026, and Units 26, 25 and 27 October 5, 2026 (`CHANGELOG.md`); next:
-Unit 28 - Edges, recommendations and wagers, not yet active. Week 4's closeout builds its recap and rolls the season
-recap up again; Units 25 and 27 run their week 4 checks then (see their records).** Sequence:
+Unit 28 - Edges, recommendations and wagers, not yet active. Week 4's closeout (2026-10-06) built its recap and
+rolled the season recap up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records);
+week 5's starter check follows its closeout (about 2026-10-13).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -1175,9 +1176,13 @@ a scratch copy of the store (two whisker-layout bugs fixed). Real data: `--seaso
 `84f12843...` over weeks 1-3; each week's row equals its weekly recap's metrics and id; spread MAE to date through
 week 2 by hand 12.0071; the live-only scope is weeks 1 and 3 (32 games, Brier 0.24150 by hand); the paired win mean
 and standard error match by hand. With approval, `--season-only` wrote and selected it (`current.json` unchanged),
-a rerun replayed with every stored file byte-identical, and the route served it in process. Pending: week 4's
-closeout (from Tuesday 2026-10-06 06:00 local) rolls the season up over weeks 1-4; read its receipt's report, then
-`--season-only --dry-run` should replay it.
+a rerun replayed with every stored file byte-identical, and the route served it in process. Week 4, checked
+2026-10-06: the closeout receipt's report names `season recap 04dd00fc... (new)`, the selection in
+`current_seasons.json`, over weeks 1-4 (64 games; live only weeks 1, 3 and 4, 47 games). Week 4's row equals its
+weekly recap `5da336fd...` (win Brier 0.2225 model, 0.2266 market; spread MAE 7.75, 7.31; total MAE 10.58, 9.62);
+starters to date 30 of 128 slots, assumed 30/30, nflverse 28/30, carry-forward 26/30. `--season-only --dry-run`
+replays `04dd00fc...` ("already stored"), and `post-week --only build-weekly-recap --week 4` replayed it with the
+store byte for byte unchanged.
 
 #### Acceptance
 
@@ -1251,16 +1256,28 @@ actual starter from the game logs in 1 (week 2) and 2 (week 3) slots, exactly th
 Weeks 1-3 rebuilt and selected at schema 2 (`d314ddac...`, `12dad73b...`, `942a3dd3...`, with the user's
 approval); a rerun replays each with the store byte for byte unchanged. `/recaps` and `/recaps/2026-2027/{1,2,3}`
 match the artifacts; the page, rendered headless against the dev server for week 3, shows the card, the 0/0
-predictor rows and the 32 `not_recorded` teams. **Still to check (week 4, after its closeout builds the recap):**
-6 product-record and 9 capture-scored games, PIT @ CLE `not_in_product`; reproduce one team-week by hand; rerun
-replays. Week 5 (about 2026-10-13) is the first week fully recorded by the product; record that check in
-CHANGELOG.
+predictor rows and the 32 `not_recorded` teams. Week 4, checked 2026-10-06 against the recap its closeout
+built (`5da336fd...`, schema 2): 6 games `product_record` and 9 `sidecar_capture` (capture `ee9c8a73...`, which
+hashes to its name); PIT @ CLE `not_in_product` on both sides with its actual starters (Aaron Rodgers, Deshaun
+Watson, `nflverse_schedule`); 30 of 32 slots scored. Assumed 30/30, nflverse 28/30, carry-forward 26/30. Misses:
+WAS (carry-forward Jayden Daniels; Marcus Mariota started), TB (carry-forward Baker Mayfield; Jalon Daniels), CHI
+and SEA (nflverse and carry-forward Case Keenum and Drew Lock; Tyson Bagent and Sam Darnold started, both from the
+game logs because nflverse's player had no attempt). CHI by hand: the capture's 2026_04_NYJ_CHI row has
+`HOME_QB_ID` 00-0028986 (Keenum, also CHI's week 3 starter, so the carry-forward) and a `depth_chart_report`
+projection 00-0038416 (Bagent) as of 2026-10-03T12:27:18Z; the raw nflverse `home_qb_id` is still Keenum, who has
+no week 4 game-log row; Bagent is CHI's only week 4 passer (25 of 34). That is the recap's row. With approval,
+`post-week --only build-weekly-recap --week 4` replayed `5da336fd...` (and the season recap `04dd00fc...`); all 18
+store files byte for byte unchanged. `/recaps/2026-2027/4` matched the artifact (manifest, counts, starters
+summary, the CHI and PIT @ CLE starter blocks, CHI's win, spread and total values); the page, rendered headless
+for week 4, shows the counts, the three accuracy rows, the four misses and "Not in product (2): PIT, CLE". The page
+names unscored slots by team only; their actual starters are in the artifact and API. Week 5 (closeout about
+2026-10-13) is the first week fully recorded by the product and is still to come; record that check in CHANGELOG.
 
 #### Acceptance
 
 Each week's starter accuracy per predictor, every slot with a status, misses listed, and the actual starter shown
 for every played game; served and shown without request-time scoring; contracts regenerated; gates pass;
-DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 check above remains.
+DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 check passed (above); week 5's remains.
 
 ### Git-Status Test Isolation from Hook Environment [Completed October 5, 2026]
 
@@ -1348,9 +1365,14 @@ the existing `weekly-recap` command tests unchanged). Python gate: ruff check an
 `pytest -m "unit and not slow"` 4,906 passed. Real data, with the recap store checksummed before and after: `week-cycle --dry-run` idle for week 4; `evaluate
 weekly-recap --week 3 --dry-run` rebuilds the selected `315255ae...` ("already stored"); week 4 refused on 14
 unplayed games; `post-week --only build-weekly-recap` for week 3 replays `315255ae...` (exit 0), and for week 4
-soft-fails with the 14 games listed (exit 0); every recap file and `current.json` unchanged. The plan's week 4
-replay check and the live check wait for week 4's closeout (from Tuesday 2026-10-06 06:00 local): read its
-receipt's report and the selection afterwards.
+soft-fails with the 14 games listed (exit 0); every recap file and `current.json` unchanged. Live check, week 4's
+unattended closeout (2026-10-06 06:33 local): the receipt `20261006T123427000000Z_closeout_done.json` is `done`
+with `build-weekly-recap: ok` and the report line `weekly recap 5da336fd... (new)` (and `season recap 04dd00fc...
+(new)`); `current.json` selects `5da336fd...` for week 4 at the build time. Its only soft failure was
+`check-collector` (no week 5 rollover receipt pulled yet), and its detail names it (`week 4 closed; soft-failed:
+check-collector`). `week-cycle status` with no options shows only the latest receipt (week 5's forecast);
+`--season 2026-2027 --week 4` lists the closeout line. With approval, `post-week --only build-weekly-recap --week 4`
+replayed `5da336fd...` (exit 0) with all 18 store files byte for byte unchanged.
 
 #### Acceptance
 

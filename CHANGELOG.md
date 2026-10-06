@@ -1,5 +1,24 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-06 - Week 4's closeout recapped the week unattended
+
+#### Verified
+
+- The weekly cycle's closeout for 2026-2027 week 4 (2026-10-06 06:33 local) built and selected the weekly recap
+  `5da336fd...` and the season recap `04dd00fc...`. The receipt records `build-weekly-recap: ok` and both ids. Its
+  only soft failure was `check-collector`: no week 5 rollover had been pulled yet. `post-week --only
+  build-weekly-recap --week 4` replays both with the recap store byte for byte unchanged.
+- The season recap now covers weeks 1-4 (64 games; 47 live). Week 4's row equals its weekly recap, and
+  `evaluate weekly-recap --season-only --dry-run` replays it.
+- Week 4 is the first week with starting-QB scores: 6 games scored from the product's record, 9 from the verified
+  sidecar capture, and PIT @ CLE not in the product, with its actual starters shown. Assumed starter 30/30,
+  nflverse 28/30, carry-forward 26/30. nflverse missed at CHI and SEA, where its player threw no pass, so the game
+  logs named Tyson Bagent and Sam Darnold. Carry-forward also missed at WAS and TB. CHI was reproduced by hand
+  from the capture, the raw nflverse ids and the game logs. `/recaps/2026-2027/4` and the "Last Week" page match
+  the artifact.
+- Week 5 (closeout about 2026-10-13) is the first week fully recorded by the product; its starter check is still
+  to come.
+
 ### 2026-10-05 - Unit 27: the season recap beside the weekly recap
 
 #### Added
