@@ -16,8 +16,8 @@ from pandas import DataFrame
 import pytest
 from typer.testing import CliRunner
 
-from gridiron_edge.cli import week_cycle
-from gridiron_edge.cli._composites import CompositeSummary
+from gridiron_edge.cli import post_week, week_cycle
+from gridiron_edge.cli._composites import CompositeSummary, StageResult
 from gridiron_edge.cli.main import app
 from gridiron_edge.cli.week_cycle import (
     build_close_stages,
@@ -27,6 +27,7 @@ from gridiron_edge.cli.week_cycle import (
     injury_report_present,
     starter_lines,
 )
+from gridiron_edge.weekly_cycle.decision import RecapSelectionState
 from gridiron_edge.weekly_cycle.receipts import CycleReceipt, write_receipt
 from gridiron_edge.weekly_cycle.runner import CyclePorts, StageRun
 
@@ -311,6 +312,8 @@ def _ports_with(**overrides: object) -> CyclePorts:
         "digests": unavailable,
         "observe": unavailable,
         "edge_inputs": unavailable,
+        "recap_state": unavailable,
+        "run_recap": unavailable,
     }
     fields.update(overrides)
     return CyclePorts(**fields)  # type: ignore[arg-type]
@@ -351,6 +354,166 @@ def test_status_lists_the_latest_receipts(monkeypatch: pytest.MonkeyPatch, tmp_p
     result = runner.invoke(app, ["week-cycle", "status"])
 
     assert "week 5  watch: unchanged - 30 starters compared, none changed" in result.output
+
+
+def test_status_shows_a_pending_recap_rebuild_of_a_closed_week(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    unbuilt = RecapSelectionState(week_selected=True, season_reads_week=False)
+    monkeypatch.setattr(
+        week_cycle,
+        "build_ports",
+        lambda: _ports_with(
+            product_id=lambda season, week: "p5", recap_state=lambda season, week: unbuilt
+        ),
+    )
+    write_receipt(
+        tmp_path,
+        CycleReceipt(
+            decided_at="2026-10-06T12:00:00+00:00",
+            season="2026-2027",
+            week=4,
+            attempted="closeout",
+            outcome="done",
+            detail="week 4 closed; soft-failed: build-weekly-recap",
+            results={
+                "stages": {"build-weekly-recap": "soft-failed"},
+                "warnings": ["build-weekly-recap: weekly recap r (new); season recap refused: x"],
+            },
+        ),
+    )
+
+    dry = runner.invoke(app, ["week-cycle", "--dry-run"])
+    status = runner.invoke(app, ["week-cycle", "status"])
+
+    line = (
+        "week 4 recap rebuild due: the last attempt was an hour or more ago; last: closeout "
+        "soft-failed it: weekly recap r (new); season recap refused: x"
+    )
+    assert line in dry.output
+    assert line in status.output
+
+
+def _raises(ctx: dict[str, object]) -> StageResult:
+    raise RuntimeError("boom")
+
+
+def _recap_stage(monkeypatch: pytest.MonkeyPatch, stage) -> None:
+    monkeypatch.setattr(post_week, "_stage_build_weekly_recap", stage)
+    monkeypatch.setattr(week_cycle, "_print_report", lambda context: None)
+
+
+def test_the_recap_rebuild_runs_the_closeout_stage_alone_and_reports_its_recaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[dict[str, object]] = []
+
+    def stage(ctx: dict[str, object]) -> StageResult:
+        seen.append(dict(ctx))
+        ctx.setdefault("cycle_report", []).extend(  # type: ignore[union-attr]
+            ["weekly recap r1 (replayed)", "season recap s1 (new)"]
+        )
+        return StageResult(success=True, detail="weekly recap r1 (replayed); season recap s1 (new)")
+
+    _recap_stage(monkeypatch, stage)
+
+    run = week_cycle._run_recap("2026-2027", 4)
+
+    assert seen == [{"week": 4, "season": "2026-2027", "season_int": 2026}]
+    assert run.success is True
+    assert run.stages == {"build-weekly-recap": "ok"}
+    assert run.detail == "weekly recap r1 (replayed); season recap s1 (new)"
+    assert run.report == ["weekly recap r1 (replayed)", "season recap s1 (new)"]
+
+
+@pytest.mark.parametrize(
+    ("stage", "detail"),
+    [
+        (
+            lambda ctx: StageResult(success=False, detail="recap refused: no product."),
+            "build-weekly-recap: recap refused: no product.",
+        ),
+        (_raises, "build-weekly-recap: RuntimeError: boom"),
+    ],
+)
+def test_a_recap_rebuild_that_fails_or_raises_is_a_failure_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch, stage, detail: str
+) -> None:
+    _recap_stage(monkeypatch, stage)
+
+    run = week_cycle._run_recap("2026-2027", 4)
+
+    assert run.success is False
+    assert run.failed_stage == "build-weekly-recap"
+    assert run.stages == {"build-weekly-recap": "soft-failed"}
+    assert run.detail == detail
+
+
+def _recap_store(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    selections: dict[int, str],
+    stored: set[str],
+    season_reads: tuple[str, ...] | None,
+) -> None:
+    from gridiron_edge.evaluation import weekly_recap_store as store
+
+    monkeypatch.setattr(
+        store,
+        "list_current_weekly_recap_selections",
+        lambda repo: tuple(
+            SimpleNamespace(season=season, week=week, recap_id=recap_id)
+            for season in ("2025-2026", "2026-2027")
+            for week, recap_id in selections.items()
+        ),
+    )
+    monkeypatch.setattr(
+        store,
+        "weekly_recap_manifest_path",
+        lambda recap_id, repo: SimpleNamespace(is_file=lambda: recap_id in stored),
+    )
+    monkeypatch.setattr(
+        store,
+        "get_current_season_recap_selection",
+        lambda season, repo: None if season_reads is None else SimpleNamespace(season_recap_id="s"),
+    )
+    monkeypatch.setattr(
+        store,
+        "load_season_recap",
+        lambda recap_id, repo: SimpleNamespace(weekly_recap_ids=season_reads),
+    )
+
+
+@pytest.mark.parametrize(
+    ("selections", "stored", "season_reads", "expected"),
+    [
+        # The week and a season recap reading it are selected: nothing is pending.
+        ({3: "a", 4: "b"}, {"a", "b"}, ("a", "b"), RecapSelectionState(True, True)),
+        # The weekly recap was selected but the season roll-up refused.
+        ({3: "a", 4: "b"}, {"a", "b"}, ("a",), RecapSelectionState(True, False)),
+        # No season recap is selected at all.
+        ({4: "b"}, {"b"}, None, RecapSelectionState(True, False)),
+        # The week has no selection.
+        ({3: "a"}, {"a"}, ("a",), RecapSelectionState(False, False)),
+        # Week 2 is selected at an older schema: the season roll-up waits on it.
+        ({2: "x", 4: "b"}, {"b"}, ("x",), RecapSelectionState(True, False, (2,))),
+        # The week itself is at an older schema: rebuilding it is what the retry does.
+        ({4: "old"}, set(), ("old",), RecapSelectionState(False, False)),
+    ],
+)
+def test_the_recap_state_reads_the_selections_of_the_week_and_season(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selections: dict[int, str],
+    stored: set[str],
+    season_reads: tuple[str, ...] | None,
+    expected: RecapSelectionState,
+) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    _recap_store(monkeypatch, selections=selections, stored=stored, season_reads=season_reads)
+
+    assert week_cycle._recap_state("2026-2027", 4) == expected
 
 
 def test_a_run_does_what_is_due_and_exits_nonzero_on_failure(

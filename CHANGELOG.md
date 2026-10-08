@@ -1,5 +1,19 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-08 - Unit 29: the weekly cycle retries a recap its closeout could not build
+
+#### Added
+
+- When a closeout soft-fails `build-weekly-recap`, the hourly `week-cycle` reruns that stage alone after the due
+  step and the edge rebuild. It retries at least an hour after the last attempt, for seven days after the closeout
+  (`DECISIONS.md` D91). Each retry writes a `recap` receipt under the finished week: `done` with the weekly and
+  season recaps it selected, or `failed` with the reason. A failed retry does not fail the run.
+- A rebuild is pending until the recap store selects the week's recap at the current schema and a season recap
+  reading it, so a rebuild by hand also clears it. It is held, naming the weeks, while another week of the season is
+  selected at an older recap schema, which the season roll-up refuses. After seven days the retries stop.
+- Every pending rebuild is one line in the run output, the dry run and `week-cycle status` (`due`, `waiting`,
+  `held` or `stopped`), with the last outcome and the manual command.
+
 ### 2026-10-06 - Unit 31: one Performance page for the weekly recap, the season and the backtest
 
 #### Changed

@@ -1301,7 +1301,7 @@ build-weekly-recap
 
 The command refreshes outcomes, refreshes next-week schedule, player-stats, and feature state, and evaluates the exact Win and Total events referenced by the selected weekly product, whatever forecast role (`live` or `development`) that product carries; closeout reports the exact role closed rather than assuming `live`. Missing components, events, or outcomes are reported explicitly. Incomplete closeout exits nonzero.
 
-`build-weekly-recap` then builds and selects the week's recap through the same function as `gridiron evaluate weekly-recap` (see "Weekly Recap"), rolls the season recap up again from the selected weekly recaps, and prints `weekly recap <id> (new | replayed | reselected)` and `season recap <id> (...)` after the summary; a season roll-up that fails after the weekly recap was selected soft-fails the stage with `season recap refused: <reason>`. It is a soft stage: a refusal (an unplayed game, no selected product, a score disagreement) or any other recap error is listed under "soft-failed" and "Warnings", and the command still exits 0. Rebuild by hand with `post-week --only build-weekly-recap --season S --week W`; it declares no dependency on the closeout stage (it reconciles the product itself), so `--only` runs it alone.
+`build-weekly-recap` then builds and selects the week's recap through the same function as `gridiron evaluate weekly-recap` (see "Weekly Recap"), rolls the season recap up again from the selected weekly recaps, and prints `weekly recap <id> (new | replayed | reselected)` and `season recap <id> (...)` after the summary; a season roll-up that fails after the weekly recap was selected soft-fails the stage with `season recap refused: <reason>`. It is a soft stage: a refusal (an unplayed game, no selected product, a score disagreement) or any other recap error is listed under "soft-failed" and "Warnings", and the command still exits 0. A `post-week` run leaves no receipt, so the cycle does not retry it; rebuild by hand with `post-week --only build-weekly-recap --season S --week W` (a cycle closeout's soft-failed recap is retried by the cycle, see "Weekly Cycle"); it declares no dependency on the closeout stage (it reconciles the product itself), so `--only` runs it alone.
 
 `post-week` does not run historical forecast backfill.
 
@@ -1356,7 +1356,7 @@ It derives the target week M (the earliest week with a game still ahead; the lin
    `close-live-forecasts`, soft `build-weekly-recap` (the receipt's report names the recap it selected), soft
    `check-collector`. A soft-failed stage does not stop the closeout or the forecast that follows; a done
    closeout's detail names it (`week 4 closed; soft-failed: build-weekly-recap`), so `status` shows it, and its
-   reason is in the receipt's `warnings`. Each hourly retry reruns the pulls and rebuilds. A week closed by hand with `post-week` leaves no receipt; if M has no forecast the
+   reason is in the receipt's `warnings`; a soft-failed recap is retried (below). Each hourly retry reruns the pulls and rebuilds. A week closed by hand with `post-week` leaves no receipt; if M has no forecast the
    cycle closes it once more.
 2. **Forecast M** when it has no current weekly product: the `weekly-predict` stages plus `report-forecast`
    (starter sources and differences, whether the injury report was available, readiness, market age).
@@ -1371,7 +1371,18 @@ It derives the target week M (the earliest week with a game still ahead; the lin
 
 Failed, blocked and waiting attempts retry after an hour; failures exit 1. After the steps, the edge CSV
 is rebuilt when the product or the newest quote fetch time differs from the last recorded edge inputs
-(a stale market blocks it, recorded once per snapshot). Every attempt writes an immutable JSON receipt in
+(a stale market blocks it, recorded once per snapshot).
+
+Then, for each week of the season whose latest done closeout soft-failed `build-weekly-recap`, the cycle checks
+the recap store (`DECISIONS.md` D91). Nothing is pending once the week has a selected recap at the current schema
+and the selected season recap reads it, whoever built them. Otherwise the stage reruns alone, at least an hour
+after the last attempt, for seven days after the closeout. Each retry writes a `recap` receipt under the finished
+week (`done` with the recaps it selected, `failed` with the reason; a failed retry does not exit 1). Each pending
+week is one line in the run output, `--dry-run` and `status`: `week 4 recap rebuild due|waiting|held|stopped: ...;
+last: ...`. `held` means another week of the season is selected at an older recap schema, so the season roll-up
+would refuse: rebuild the weeks it names with `post-week --only build-weekly-recap --week W --season S`, which
+also clears the held week. `stopped` means the seven days are over: rebuild it the same way. `status`'s receipt
+list shows only the target week's receipts, so these lines are where a finished week's retry shows. Every attempt writes an immutable JSON receipt in
 `data/output/week_cycle/season=S/week=WW/` (closeout under the finished week); watch receipts hold the
 per-team chart and report status, per-side comparisons, and content digests of the upstream files and
 whether they changed since the previous check. The schedule is refreshed at closeout and each forecast

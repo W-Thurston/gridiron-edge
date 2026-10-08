@@ -12,13 +12,18 @@ import pytest
 from gridiron_edge.weekly_cycle.cadence import closeout_earliest, is_due, watch_interval
 from gridiron_edge.weekly_cycle.decision import (
     CycleDecision,
+    RecapRebuildStatus,
+    RecapSelectionState,
     StepKind,
     decide,
+    decide_recap_rebuild,
     refresh_allowed,
+    soft_failed_recap_closeout,
 )
 from gridiron_edge.weekly_cycle.receipts import (
     ATTEMPT_CLOSEOUT,
     ATTEMPT_FORECAST,
+    ATTEMPT_RECAP,
     ATTEMPT_REFRESH,
     ATTEMPT_WATCH,
     OUTCOME_DONE,
@@ -281,3 +286,111 @@ def test_a_refresh_is_allowed_once_an_hour() -> None:
     assert refresh_allowed([], now=now)
     assert not refresh_allowed(recent, now=now)
     assert refresh_allowed(old, now=now)
+
+
+# -- recap rebuild after a soft-failed closeout -----------------------------------------
+
+CLOSED_AT = "2026-10-06T12:00:00"
+UNBUILT = RecapSelectionState(week_selected=False, season_reads_week=False)
+
+
+def _closeout(stages: dict[str, str], *, warnings: list[str] | None = None) -> CycleReceipt:
+    return CycleReceipt(
+        decided_at=_utc(CLOSED_AT).isoformat(),
+        season=SEASON,
+        week=4,
+        attempted=ATTEMPT_CLOSEOUT,
+        outcome=OUTCOME_DONE,
+        detail="week 4 closed",
+        results={"stages": stages, "warnings": warnings or []},
+    )
+
+
+SOFT_FAILED = _closeout(
+    {"close-live-forecasts": "ok", "build-weekly-recap": "soft-failed"},
+    warnings=["check-collector: no rollover", "build-weekly-recap: recap refused: no product."],
+)
+
+
+def _recap_attempt(
+    at: str, outcome: str, detail: str = "season recap refused: boom"
+) -> CycleReceipt:
+    return CycleReceipt(
+        decided_at=_utc(at).isoformat(),
+        season=SEASON,
+        week=4,
+        attempted=ATTEMPT_RECAP,
+        outcome=outcome,
+        detail=detail,
+    )
+
+
+def _rebuild(now: str, *, receipts=None, state: RecapSelectionState = UNBUILT):
+    return decide_recap_rebuild(
+        now=_utc(now),
+        season=SEASON,
+        week=4,
+        closeout=SOFT_FAILED,
+        receipts=[SOFT_FAILED, *(receipts or [])],
+        state=state,
+    )
+
+
+def test_only_a_done_closeout_that_soft_failed_the_recap_leaves_one_pending() -> None:
+    clean = _closeout({"build-weekly-recap": "ok", "check-collector": "soft-failed"})
+    waiting = _receipt(4, ATTEMPT_CLOSEOUT, OUTCOME_WAITING, "2026-10-06T13:00:00")
+
+    assert soft_failed_recap_closeout([SOFT_FAILED]) is SOFT_FAILED
+    assert soft_failed_recap_closeout([clean]) is None
+    assert soft_failed_recap_closeout([waiting]) is None
+    assert soft_failed_recap_closeout([]) is None
+
+
+def test_a_recap_rebuild_is_due_an_hour_after_the_closeout_and_not_sooner() -> None:
+    soon = _rebuild("2026-10-06T12:30:00")
+    due = _rebuild("2026-10-06T13:00:00")
+
+    assert soon is not None and soon.status is RecapRebuildStatus.WAITING
+    assert soon.next_check_at == _utc("2026-10-06T12:55:00")
+    assert soon.last_outcome == "closeout soft-failed it: recap refused: no product."
+    assert due is not None and due.status is RecapRebuildStatus.DUE
+
+
+def test_a_failed_rebuild_is_retried_an_hour_later_and_reports_its_reason() -> None:
+    failed = [_recap_attempt("2026-10-06T13:00:00", OUTCOME_FAILED)]
+
+    soon = _rebuild("2026-10-06T13:30:00", receipts=failed)
+    later = _rebuild("2026-10-06T14:00:00", receipts=failed)
+
+    assert soon is not None and soon.status is RecapRebuildStatus.WAITING
+    assert soon.last_outcome == "rebuild failed: season recap refused: boom"
+    assert later is not None and later.status is RecapRebuildStatus.DUE
+
+
+def test_a_selected_recap_read_by_the_season_clears_the_rebuild_whoever_built_it() -> None:
+    built = RecapSelectionState(week_selected=True, season_reads_week=True)
+    weekly_only = RecapSelectionState(week_selected=True, season_reads_week=False)
+
+    assert _rebuild("2026-10-06T13:00:00", state=built) is None
+    pending = _rebuild("2026-10-06T13:00:00", state=weekly_only)
+    assert pending is not None and pending.status is RecapRebuildStatus.DUE
+
+
+def test_retries_stop_seven_days_after_the_closeout() -> None:
+    last_retry = _rebuild("2026-10-13T11:59:59")
+    stopped = _rebuild("2026-10-13T12:00:00")
+
+    assert last_retry is not None and last_retry.status is RecapRebuildStatus.DUE
+    assert stopped is not None and stopped.status is RecapRebuildStatus.STOPPED
+    assert "post-week --only build-weekly-recap --week 4 --season 2026-2027" in stopped.reason
+
+
+def test_a_week_stored_at_an_older_schema_holds_the_rebuild_and_is_named() -> None:
+    stale = RecapSelectionState(week_selected=True, season_reads_week=False, stale_weeks=(2, 3))
+
+    held = _rebuild("2026-10-06T13:00:00", state=stale)
+    after_window = _rebuild("2026-10-13T12:00:00", state=stale)
+
+    assert held is not None and held.status is RecapRebuildStatus.HELD
+    assert "week(s) 2, 3" in held.reason
+    assert after_window is not None and after_window.status is RecapRebuildStatus.STOPPED

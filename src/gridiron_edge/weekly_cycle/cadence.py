@@ -13,6 +13,9 @@ CLOSEOUT_LOCAL_HOUR: Final[int] = 6
 GAME_LENGTH_ALLOWANCE: Final[timedelta] = timedelta(hours=4)
 #: Minimum gap between attempts of a step that failed, was blocked or found nothing yet.
 RETRY_AFTER: Final[timedelta] = timedelta(hours=1)
+#: How long after a closeout that soft-failed its recap the cycle keeps retrying the recap hourly;
+#: set before any retry was observed (``DECISIONS.md`` D91).
+RECAP_RETRY_WINDOW: Final[timedelta] = timedelta(days=7)
 #: The timer fires with jitter, so a step is due slightly before its nominal interval.
 TICK_SLACK: Final[timedelta] = timedelta(minutes=5)
 

@@ -20,6 +20,7 @@ ATTEMPT_FORECAST: Final[str] = "forecast"
 ATTEMPT_WATCH: Final[str] = "watch"
 ATTEMPT_REFRESH: Final[str] = "refresh"
 ATTEMPT_EDGES: Final[str] = "edges"
+ATTEMPT_RECAP: Final[str] = "recap"
 
 OUTCOME_DONE: Final[str] = "done"
 OUTCOME_WAITING: Final[str] = "waiting"

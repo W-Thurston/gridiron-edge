@@ -36,6 +36,7 @@ from gridiron_edge.cli._composites import (
 from gridiron_edge.core.console import console
 from gridiron_edge.core.settings import get_settings
 from gridiron_edge.evaluation.week_schedule import completed_game_ids, week_completion
+from gridiron_edge.weekly_cycle.decision import RECAP_STAGE, RecapSelectionState
 from gridiron_edge.weekly_cycle.receipts import read_receipts
 from gridiron_edge.weekly_cycle.runner import (
     AvailabilityRefresh,
@@ -424,6 +425,66 @@ def _run_edges(season: str, week: int) -> StageRun:
     )
 
 
+def _run_recap(season: str, week: int) -> StageRun:
+    """Rerun the closeout's recap stage alone, as ``post-week --only build-weekly-recap`` does."""
+    from gridiron_edge.cli.post_week import _build_stages as post_week_stages
+
+    stages = [stage for stage in post_week_stages() if stage.name == RECAP_STAGE]
+    context: dict[str, Any] = {"week": week, "season": season, "season_int": _season_int(season)}
+    console.header("week-cycle recap rebuild", subtitle=f"week {week} · {season}")
+    summary = run_composite(
+        name="week-cycle recap rebuild", stages=stages, active={RECAP_STAGE}, context=context
+    )
+    render_composite_summary(summary)
+    _print_report(context)
+    run = _stage_run(summary, context, done=f"week {week} recap rebuilt")
+    if RECAP_STAGE in summary.succeeded:
+        return replace(run, detail="; ".join(run.report) or run.detail)
+    # The stage is soft, so the composite succeeds; the receipt records it as a failure.
+    return replace(
+        run, success=False, detail="; ".join(run.warnings) or run.detail, failed_stage=RECAP_STAGE
+    )
+
+
+def _recap_state(season: str, week: int) -> RecapSelectionState:
+    """Read which recaps the store selects for the week and its season (read-only)."""
+    from gridiron_edge.evaluation.weekly_recap_store import (
+        get_current_season_recap_selection,
+        list_current_weekly_recap_selections,
+        load_season_recap,
+        weekly_recap_manifest_path,
+    )
+
+    repo = get_settings().repo_root
+    stored = {
+        selection.week: (
+            selection.recap_id,
+            weekly_recap_manifest_path(selection.recap_id, repo=repo).is_file(),
+        )
+        for selection in list_current_weekly_recap_selections(repo=repo)
+        if selection.season == season
+    }
+    recap_id, week_selected = stored.get(week, (None, False))
+    season_reads_week = False
+    season_selection = get_current_season_recap_selection(season=season, repo=repo)
+    if week_selected and season_selection is not None:
+        try:
+            recap = load_season_recap(season_selection.season_recap_id, repo=repo)
+        except (FileNotFoundError, ValueError):
+            pass
+        else:
+            season_reads_week = recap_id in recap.weekly_recap_ids
+    return RecapSelectionState(
+        week_selected=week_selected,
+        season_reads_week=season_reads_week,
+        stale_weeks=tuple(
+            number
+            for number, (_, present) in sorted(stored.items())
+            if not present and number != week
+        ),
+    )
+
+
 def _refresh_availability(season_int: int) -> AvailabilityRefresh:
     from gridiron_edge.ingest.nflverse.weekly_availability import (
         fetch_depth_charts,
@@ -506,6 +567,8 @@ def build_ports() -> CyclePorts:
             repo, season=season, week=week, product=product, schedule=schedule, now=now
         ),
         edge_inputs=_edge_inputs,
+        recap_state=_recap_state,
+        run_recap=_run_recap,
     )
 
 
@@ -561,8 +624,9 @@ def week_cycle_cmd(
     ahead) and does the first step that is due: close the finished week (from 06:00 local,
     once every result is in), forecast the target week (when it has no current forecast),
     or compare the starting quarterbacks with those the forecast assumed and refresh the
-    forecast if one changed before the week's first kickoff. Every attempt writes a receipt
-    under data/output/week_cycle. Nothing due means a quiet no-op.
+    forecast if one changed before the week's first kickoff. A recap the closeout could not
+    build is retried hourly for a week after it. Every attempt writes a receipt under
+    data/output/week_cycle. Nothing due means a quiet no-op.
 
     \b
     Examples:

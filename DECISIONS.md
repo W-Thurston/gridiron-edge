@@ -8,6 +8,39 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D91 - The weekly cycle retries a recap its closeout soft-failed, hourly for seven days, until the store selects it
+
+**Date:** 2026-10-08
+
+**Context:** The closeout's `build-weekly-recap` stage is soft (`PLAN.md` Unit 26): when it fails, the closeout
+still records `done` and the next week's forecast goes ahead, but nothing rebuilds the recap until someone runs
+`post-week --only build-weekly-recap`. The stage builds the weekly recap and then rolls the season recap up, and
+either half can fail. A failure can be transient (a file not yet written, a bug fixed the same day) or deterministic.
+One deterministic case cannot be fixed by retrying the week: the season roll-up refuses while another week's
+selected recap is not stored at the current schema (`DECISIONS.md` D89).
+
+**Decision:**
+1. A rebuild is pending for finished week N while N's latest done closeout lists `build-weekly-recap` as
+   soft-failed and the recap store does not yet select both a recap for N at the current schema and a season recap
+   that reads it. The store decides, not the receipts, so a rebuild by hand (`post-week --only build-weekly-recap`
+   or `evaluate weekly-recap`) clears it as well as the cycle's own.
+2. After the due step and the edge rebuild, the cycle reruns the stage alone for each pending week at least an hour
+   after the last attempt (the closeout or the previous retry), and writes a `recap` receipt under N: `done` with the
+   recaps it selected, or `failed` with the reason. A failed retry does not fail the run; the stage is soft.
+3. Retries stop seven days after the soft-failed closeout. The week then stays pending in the run output and in
+   `week-cycle status` with the manual command. The limit was set on 2026-10-08, before any retry was observed. It
+   is a time bound rather than "until the next week closes", so that the season's final week is bounded too.
+4. While another week of the season has a selection that is not stored at the current schema, the retry is held
+   (not run) and the line names those weeks. The cycle never rebuilds other weeks itself: that is a schema rebuild,
+   which is run only on request.
+
+**Consequences:** A transient recap failure heals within the hour, with no one involved. A persistent one costs at
+most 168 hourly attempts, then needs a person; an alert channel (ROADMAP W20) can key on the `stopped` and `held`
+states. The rule is pure (`weekly_cycle/decision.py`); the store is read through a port. A closeout's other soft
+stage, `check-collector`, is not retried: the next closeout runs it again.
+
+---
+
 ## D90 - The Performance page compares models only on persisted evidence each source declares
 
 **Date:** 2026-10-06

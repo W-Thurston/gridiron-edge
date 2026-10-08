@@ -112,8 +112,8 @@ should read this section before planning or modifying the repository.
 
 **Units 23 and 24 completed October 4, 2026, Units 26, 25 and 27 October 5, 2026, and Unit 28 October 6, 2026
 (`CHANGELOG.md`); every planned recap section is built. Unit 31 (one Performance page, W22) completed October 6,
-2026; Unit 32 (per-season backtest comparison evidence, W23) is scoped. Next: the follow-ons Unit 29 (retry a soft-failed recap)
-and Unit 30 (alerts), not yet active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
+2026; Unit 32 (per-season backtest comparison evidence, W23) is scoped. Unit 29 (retry a soft-failed recap) completed
+October 8, 2026 (`DECISIONS.md` D91). Next: Unit 30 (alerts), not yet active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
 up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records); week 5's starter check
 follows its closeout (about 2026-10-13).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
@@ -271,7 +271,7 @@ at request time.
 | 26 | Weekly-cycle and `post-week` hook | 23 (ideally 25) | dry run; week 5's unattended closeout |
 | 27 | Season roll-up | 24 | weeks 1-4 |
 | 28 | Edges, recommendations and wagers | 24 (27 for season wager totals) | weeks 1, 2 and 4 |
-| 29 | Retry a soft-failed recap (cycle follow-on) | 26, 27 | stubbed ports; a forced soft failure |
+| 29 | Retry a soft-failed recap (cycle follow-on) [done 2026-10-08] | 26, 27 | stubbed ports; a forced soft failure |
 | 30 | Alert when the cycle needs a person (cycle follow-on, W20) | 19 (ideally 29) | stubbed ports; one real test alert |
 | 31 | One Performance page (W22) [done 2026-10-06] | 27, 28 | weeks 1-4 and the selected historical report |
 | 32 | Per-season backtest comparison evidence (W23) | 31 | the selected historical report |
@@ -751,7 +751,9 @@ candidate's CLV and one week's P&L.
 **Acceptance.** Every week states what was published (or that it was withheld or not recorded) and how
 recorded wagers did, with nothing recomputed; gates pass; HANDOFF, CHANGELOG updated.
 
-#### Unit 29 - Retry a Soft-Failed Recap [Scoped October 5, 2026; not active]
+#### Unit 29 - Retry a Soft-Failed Recap [Completed October 8, 2026; `DECISIONS.md` D91]
+
+Closed; the completed record is under "Unit 29" below. The scoping record follows.
 
 **Goal.** A recap the closeout could not build is rebuilt by the cycle itself, so a transient failure (a file not yet
 written, a lock, a bug fixed the same day) does not leave a week without its recap until someone notices.
@@ -787,6 +789,48 @@ and leave it pending in `status`; record the limit in DECISIONS, shared contract
 `post-week --only build-weekly-recap` should clear the pending state (recommended: yes, by checking the current
 selection rather than receipts: the rebuild is pending only while N has no selected recap or the season recap does
 not read N's selected recap). (c) Post-step hook versus a new decision step kind (recommended: post-step hook).
+
+**Audit re-checked 2026-10-08 (after Units 27-28).**
+- `_stage_build_weekly_recap` builds, stores and selects the weekly recap and puts `weekly recap <id>
+  (new|replayed|reselected)` in the cycle report, then rolls the season up and adds `season recap <id> (...)`. A
+  weekly refusal fails the stage with `recap refused: ...`; a season `ValueError` (refusals included) fails it with
+  `weekly recap <id> (...); season recap refused: ...` after the weekly recap was selected, so the receipt's report
+  already names it; any other exception is soft-failed by `run_composite` as `build-weekly-recap: <Type>: <msg>`.
+- A done closeout receipt records `results["stages"]["build-weekly-recap"] = "soft-failed"`, the reason in
+  `results["warnings"]` and the detail `week N closed; soft-failed: build-weekly-recap`.
+- The `edges` hook runs in `run_cycle` after the step loop, not on a dry run, only when the last decision has a
+  `target_week`, inside `guarded` (an exception is a failed receipt and exit 1).
+- `status` lists receipts only for the decision's week and target week, so once N is closed (the decision moves to
+  N+1) N's soft-failed closeout is no longer shown: the pending rebuild needs its own line.
+- New since scoping: the season roll-up refuses when another week M's selected recap is not stored at the current
+  weekly recap schema (`... rebuild that week first`). N's weekly recap is then already selected; retrying N
+  repeats the refusal, and only rebuilding M (which rolls the season up again, including N) fixes it.
+- Real state: `week-cycle --dry-run` and `status` say target 2026-2027 week 5, idle; week 4's closeout
+  (2026-10-06T12:34Z) is `done` with `build-weekly-recap: ok` (only `check-collector` soft-failed). Weeks 1-4 are
+  selected at weekly schema 3 and the selected season recap `bf11046a` (schema 2) reads all four. No rebuild is
+  pending. Reading every receipt of weeks 1-5 takes about 0.1 s, so the hook scans the whole season.
+
+**Decided at start (2026-10-08, with the user).**
+1. **(a) Retry limit: hourly for 7 days after the soft-failed closeout**, then retries stop and the week stays
+   pending in `status` ("retries stopped; rebuild by hand"). A time bound rather than "until the next week closes"
+   so the season's final week, which has no next closeout, is bounded too. Set before any retry data exist;
+   recorded in `DECISIONS.md` (shared contract 8 by analogy).
+2. **(b) A manual rebuild clears it, by selection.** The rebuild is pending only while N's latest done closeout
+   soft-failed `build-weekly-recap` and either N has no selection stored at the current recap schema or the
+   selected season recap does not read N's selection. Any successful rebuild clears it, whoever ran it; `recap`
+   receipts only time the retries and give the last outcome.
+3. **(c) A post-step hook**, after `edges`: it never delays the closeout, forecast, watch or edges; a dry run reports
+   it without running it. A retry that fails writes `recap: failed` but does not make the run exit 1 (the stage is
+   soft); an unexpected exception in the hook goes through `guarded`, like `edges`.
+4. **Stale schema: hold and name the weeks.** When another selected week of the season is not stored at the
+   current schema, the rebuild is held (no retry); the line names those weeks and the manual rebuild. Rebuilding
+   them rolls the season up and clears N by (b). The cycle never rebuilds other weeks itself (that is a schema
+   rebuild, which shared contract 5 says to ask about).
+5. **Implementation choices (the assistant's).** The rule is pure in `weekly_cycle/decision.py` (statuses `due`,
+   `waiting`, `held`, `stopped`); two new ports: the store's selection state for a week (read-only) and a run of
+   the post-week stage alone; a new attempt kind `recap` whose receipts sit under N. Every non-due pending rebuild
+   is one line in the run output (dry run and `status` included); a due one is run, or reported as due on a dry
+   run.
 
 **Tests.** A soft-failed closeout leaves a pending rebuild; the rebuild runs after the due step, records `recap`
 `done`, and is not repeated; a failing rebuild retries after an hour and not sooner; the limit in (a); a manual
@@ -1194,6 +1238,76 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 29 — Retry a Soft-Failed Recap [Completed October 8, 2026]
+
+#### Completed
+
+When a done closeout soft-failed `build-weekly-recap`, the hourly cycle reruns that stage alone after the due step
+and the edge rebuild (`DECISIONS.md` D91). A rebuild is pending while the recap store does not select the week's
+recap at the current schema together with a season recap that reads it. The store decides, not the receipts, so a
+rebuild by hand clears it too. The pure rule `decide_recap_rebuild` (`weekly_cycle/decision.py`) returns one of
+four statuses:
+- `due`: at least an hour since the closeout or the last retry.
+- `waiting`: the last attempt was under an hour ago.
+- `held`: another week of the season is selected at an older recap schema, so the season roll-up would refuse.
+  The line names those weeks and the manual command; the cycle never rebuilds other weeks.
+- `stopped`: seven days have passed since the closeout. The week stays pending with the manual command.
+
+Two new ports read the store's selection state and run the post-week stage alone. A retry writes a `recap` receipt
+under the finished week: `done` with the recaps it selected, or `failed` with the reason. A failed retry does not
+make the run exit 1; an exception in the hook goes through `guarded`, like `edges`. Every pending week is one line
+in the run output, the dry run and `status`, with its last outcome. The hook also runs when the season is
+complete, so the final week is retried.
+
+#### Goal
+
+A recap the closeout could not build is rebuilt by the cycle itself, so a transient failure does not leave a week
+without its recap until someone notices, while a persistent one stops retrying and says what a person must do.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/weekly_cycle/receipts.py` - the `recap` attempt kind.
+- `src/gridiron_edge/weekly_cycle/cadence.py` - `RECAP_RETRY_WINDOW` (seven days, D91).
+- `src/gridiron_edge/weekly_cycle/decision.py` - `RecapSelectionState`, `RecapRebuildStatus`, `RecapRebuild`, `soft_failed_recap_closeout` and the pure `decide_recap_rebuild`.
+- `src/gridiron_edge/weekly_cycle/runner.py` - the `recap_state` and `run_recap` ports; the post-step recap hook after `edges`; the pending-rebuild line.
+- `src/gridiron_edge/cli/week_cycle.py` - the real ports (`_recap_state` reads the recap store's selections; `_run_recap` runs the post-week stage alone and reports a soft failure as a failure); the command help.
+- `tests/unit/weekly_cycle/test_weekly_cycle_decision.py` - only a soft-failed done closeout is pending; the hourly retry; a selection clears it; the seven-day stop; the stale-schema hold.
+- `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` - stub ports; the retry after the due step, recorded once; a failed retry recorded without failing the run and retried an hour later; an exception; a manual rebuild; stopped at season end; held; a dry run runs and records nothing, even on a store error; a clean closeout never looks.
+- `tests/unit/cli/test_week_cycle.py` - the dry run and `status` show a pending rebuild; the stage run alone (success, refusal, exception); the store state over six selection shapes.
+- `DECISIONS.md` - D91.
+- `HANDOFF.md` - "Weekly Cycle" (the retry, its statuses and what to do) and "Postgame Workflow" (a `post-week` run is not retried).
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W15 progress; W21 item 4 done.
+- `PLAN.md` - this record, the start decisions and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Focused: the weekly-cycle decision, runner and command tests (84 + 34 passed; new: 6 decision, 11 runner and 10
+command cases). Python gate: ruff check and format, pyrefly 0 errors, `pytest -m "unit and not
+slow"` 5,014 passed. Real data: `week-cycle --dry-run` and `status` on the real receipts say target 2026-2027 week 5
+idle with no pending rebuild (week 4's closeout built its recap). Scratch copies of the real recap store and week 4's
+receipts, with the closeout forced to soft-failed and the real `_recap_state` port:
+- As stored: weeks 1-4 at schema 3 and season `bf11046a` reading them, so nothing is pending (the manual-rebuild
+  path).
+- Season selection set to the schema-2 season recap `04dd00fc`: `due`.
+- Week 2 also selected at its schema-2 recap: `held`, naming week 2.
+
+`data/` was not written. The real stage run is covered by stubbed tests; its stage function is unchanged and built
+week 4's recap at closeout.
+
+#### Acceptance
+
+The cycle rebuilds a soft-failed recap by itself, hourly and within the seven-day limit, without blocking any step.
+A rebuild by hand clears it. A stale schema elsewhere holds it with the weeks to rebuild named. `status` shows every
+pending week. Gates pass; DECISIONS D91, HANDOFF, CHANGELOG, ROADMAP and this record are updated.
 
 ### Unit 28 — Edges, Recommendations and Wagers [Completed October 6, 2026]
 

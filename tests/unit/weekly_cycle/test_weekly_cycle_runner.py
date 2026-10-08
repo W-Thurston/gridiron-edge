@@ -11,7 +11,7 @@ from typing import Any
 from pandas import DataFrame
 import pytest
 
-from gridiron_edge.weekly_cycle.decision import StepKind
+from gridiron_edge.weekly_cycle.decision import RecapSelectionState, StepKind
 from gridiron_edge.weekly_cycle.receipts import read_receipts
 from gridiron_edge.weekly_cycle.runner import (
     AvailabilityRefresh,
@@ -80,6 +80,14 @@ class Fake:
         self.digest = "d1"
         self.market = "2026-10-06T08:00:00+00:00"
         self.raise_on: str | None = None
+        self.recap = StageRun(
+            success=True,
+            detail="weekly recap r1 (new); season recap s1 (new)",
+            stages={"build-weekly-recap": "ok"},
+            report=["weekly recap r1 (new)", "season recap s1 (new)"],
+        )
+        self.recap_built = False
+        self.stale_weeks: tuple[int, ...] = ()
 
     def _tick(self) -> datetime:
         """Return the current time, one second later on every read so receipts order."""
@@ -111,6 +119,19 @@ class Fake:
             self._call("refresh_availability")
             return self.refreshed
 
+        def recap_state(season: str, week: int) -> RecapSelectionState:
+            self._call("recap_state")
+            return RecapSelectionState(
+                week_selected=self.recap_built,
+                season_reads_week=self.recap_built,
+                stale_weeks=self.stale_weeks,
+            )
+
+        def run_recap(season: str, week: int) -> StageRun:
+            self._call("recap")
+            self.recap_built = self.recap_built or self.recap.success
+            return self.recap
+
         def observe(
             season: str, week: int, product: DataFrame, schedule: DataFrame, now: datetime
         ) -> StarterObservation:
@@ -139,6 +160,8 @@ class Fake:
                 "product_id": f"product-{week}",
                 "market_fetched_at": self.market,
             },
+            recap_state=recap_state,
+            run_recap=run_recap,
         )
 
     def run(self, repo: Path, **kwargs: Any):
@@ -261,7 +284,7 @@ def test_a_soft_failed_recap_still_closes_the_week_and_the_receipt_names_it(
     outcome = fake.run(tmp_path)
 
     assert outcome.failed is False
-    assert fake.calls == ["closeout", "forecast"]
+    assert fake.calls == ["closeout", "forecast", "recap_state"]
     closeout = read_receipts(tmp_path, season=SEASON, week=4)[0]
     assert (closeout.attempted, closeout.outcome) == ("closeout", "done")
     assert closeout.detail == "week 4 closed; soft-failed: build-weekly-recap"
@@ -476,3 +499,175 @@ def test_after_the_forecast_the_edge_report_is_not_rebuilt_in_the_same_tick(tmp_
     fake.run(tmp_path)
 
     assert "edges" not in fake.calls
+
+
+# -- retrying a recap the closeout soft-failed ------------------------------------------
+
+SOFT_FAILED_CLOSEOUT = StageRun(
+    success=True,
+    detail="week 4 closed; soft-failed: build-weekly-recap",
+    stages={"close-live-forecasts": "ok", "build-weekly-recap": "soft-failed"},
+    warnings=["build-weekly-recap: weekly recap r0 (new); season recap refused: boom"],
+)
+
+
+def _soft_failed_week(tmp_path: Path) -> Fake:
+    """Close week 4 with a soft-failed recap and forecast week 5, at 06:30."""
+    fake = Fake("2026-10-06T06:30:00")
+    fake.closeout = SOFT_FAILED_CLOSEOUT
+    fake.run(tmp_path)
+    fake.calls.clear()
+    return fake
+
+
+def test_a_soft_failed_recap_waits_an_hour_after_the_closeout(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.closeout = SOFT_FAILED_CLOSEOUT
+
+    outcome = fake.run(tmp_path)
+
+    assert fake.calls == ["closeout", "forecast", "recap_state"]
+    assert outcome.lines[-1].startswith(
+        "week 4 recap rebuild waiting: last attempt under an hour ago; last: closeout soft-failed "
+        "it: weekly recap r0 (new); season recap refused: boom; next check"
+    )
+
+
+def test_the_rebuild_runs_after_the_due_step_is_recorded_and_is_not_repeated(
+    tmp_path: Path,
+) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is False
+    assert fake.calls == ["recap_state", "recap"]
+    assert _receipts(tmp_path, 4) == [("closeout", "done"), ("recap", "done")]
+    recap = read_receipts(tmp_path, season=SEASON, week=4)[-1]
+    assert recap.detail == "weekly recap r1 (new); season recap s1 (new)"
+    assert recap.results["report"] == ["weekly recap r1 (new)", "season recap s1 (new)"]
+    assert recap.results["stages"] == {"build-weekly-recap": "ok"}
+    fake.calls.clear()
+    fake.now = _utc("2026-10-06T09:00:00")
+    fake.run(tmp_path)
+    assert fake.calls == ["recap_state"]
+    assert _receipts(tmp_path, 4) == [("closeout", "done"), ("recap", "done")]
+
+
+def test_the_rebuild_follows_the_step_due_in_the_same_run(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.now = _utc("2026-10-07T12:00:00")  # the week 5 starter check is due again
+
+    fake.run(tmp_path)
+
+    assert fake.calls == ["refresh_availability", "observe", "recap_state", "recap"]
+
+
+def test_a_failed_rebuild_is_recorded_without_failing_the_run_and_retried_after_an_hour(
+    tmp_path: Path,
+) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.recap = StageRun(
+        success=False,
+        detail="build-weekly-recap: season recap refused: boom",
+        failed_stage="build-weekly-recap",
+        stages={"build-weekly-recap": "soft-failed"},
+    )
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is False
+    assert _receipts(tmp_path, 4) == [("closeout", "done"), ("recap", "failed")]
+    fake.now = _utc("2026-10-06T08:00:00")
+    held_back = fake.run(tmp_path)
+    assert "rebuild failed: build-weekly-recap: season recap refused: boom" in held_back.lines[-1]
+    fake.now = _utc("2026-10-06T08:30:00")
+    fake.run(tmp_path)
+    assert fake.calls.count("recap") == 2
+
+
+def test_a_rebuild_that_raises_is_a_failed_receipt_under_the_finished_week(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.raise_on = "recap"
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is True
+    assert _receipts(tmp_path, 4) == [("closeout", "done"), ("recap", "failed")]
+    failed = read_receipts(tmp_path, season=SEASON, week=4)[-1]
+    assert failed.detail == "RuntimeError: recap exploded"
+
+
+def test_a_manual_rebuild_clears_the_pending_rebuild(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.recap_built = True  # post-week --only build-weekly-recap selected both recaps
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert fake.calls == ["recap_state"]
+    assert not any("recap rebuild" in line for line in outcome.lines)
+
+
+def test_retries_stop_after_the_window_and_the_week_stays_pending(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.closeout = StageRun(success=True, detail="week 5 closed")
+    fake.now = _utc("2026-10-13T07:00:00")  # past the window, and past the schedule's last game
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.decision is not None and outcome.decision.kind is StepKind.SEASON_COMPLETE
+    assert fake.calls == ["closeout", "recap_state"]
+    assert outcome.lines[-1].startswith(
+        "week 4 recap rebuild stopped: retries stopped 7 days after the closeout; rebuild by "
+        "hand: post-week --only build-weekly-recap --week 4 --season 2026-2027"
+    )
+
+
+def test_a_week_at_an_older_schema_holds_the_rebuild(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.stale_weeks = (2,)
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert "recap" not in fake.calls
+    assert outcome.lines[-1].startswith(
+        "week 4 recap rebuild held: the season recap waits on week(s) 2"
+    )
+
+
+def test_a_dry_run_says_a_rebuild_is_due_without_running_it(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    outcome = fake.run(tmp_path, dry_run=True)
+
+    assert fake.calls == ["recap_state"]
+    assert outcome.lines[-1].startswith("week 4 recap rebuild due: the last attempt was an hour")
+    assert _receipts(tmp_path, 4) == [("closeout", "done")]
+
+
+def test_a_dry_run_records_nothing_when_the_recap_store_cannot_be_read(tmp_path: Path) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.raise_on = "recap_state"
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    with pytest.raises(RuntimeError, match="recap_state exploded"):
+        fake.run(tmp_path, dry_run=True)
+
+    assert _receipts(tmp_path, 4) == [("closeout", "done")]
+    assert _receipts(tmp_path, 5) == [("forecast", "done")]
+
+
+def test_a_clean_closeout_never_looks_for_a_rebuild(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.run(tmp_path)
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    fake.run(tmp_path)
+
+    assert "recap_state" not in fake.calls and "recap" not in fake.calls

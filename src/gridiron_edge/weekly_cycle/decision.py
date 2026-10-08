@@ -18,6 +18,7 @@ from pandas import DataFrame
 from gridiron_edge.market.collection_plan import _schedule_kickoff_utc
 from gridiron_edge.market.collection_rollover import select_target_week
 from gridiron_edge.weekly_cycle.cadence import (
+    RECAP_RETRY_WINDOW,
     RETRY_AFTER,
     closeout_earliest,
     is_due,
@@ -27,6 +28,7 @@ from gridiron_edge.weekly_cycle.cadence import (
 from gridiron_edge.weekly_cycle.receipts import (
     ATTEMPT_CLOSEOUT,
     ATTEMPT_FORECAST,
+    ATTEMPT_RECAP,
     ATTEMPT_REFRESH,
     ATTEMPT_WATCH,
     OUTCOME_DONE,
@@ -39,6 +41,9 @@ ReceiptsFor = Callable[[str, int], list[CycleReceipt]]
 HasProduct = Callable[[str, int], bool]
 
 _CHECK_ATTEMPTS = frozenset({ATTEMPT_WATCH, ATTEMPT_FORECAST, ATTEMPT_REFRESH})
+
+#: The closeout stage that builds and selects the finished week's recap and its season's.
+RECAP_STAGE = "build-weekly-recap"
 
 
 class StepKind(StrEnum):
@@ -240,3 +245,122 @@ def refresh_allowed(receipts: list[CycleReceipt], *, now: datetime) -> bool:
     """Return whether a forecast refresh may start (at most one attempt an hour)."""
     previous = last_receipt(receipts, attempted={ATTEMPT_REFRESH, ATTEMPT_FORECAST})
     return previous is None or is_due(previous.decided, timedelta(hours=1), now=now)
+
+
+@dataclass(frozen=True, slots=True)
+class RecapSelectionState:
+    """What the recap store selects for one finished week and its season.
+
+    ``week_selected``: the week has a selected recap stored at the current recap schema.
+    ``season_reads_week``: the selected season recap reads that recap. ``stale_weeks``: the
+    season's other weeks whose selected recap is not stored at the current schema, which the
+    season roll-up refuses until they are rebuilt.
+    """
+
+    week_selected: bool
+    season_reads_week: bool
+    stale_weeks: tuple[int, ...] = ()
+
+    @property
+    def complete(self) -> bool:
+        """Whether the week's recap and the season recap reading it are both selected."""
+        return self.week_selected and self.season_reads_week
+
+
+class RecapRebuildStatus(StrEnum):
+    """Where a pending recap rebuild stands."""
+
+    DUE = "due"
+    WAITING = "waiting"
+    HELD = "held"
+    STOPPED = "stopped"
+
+
+@dataclass(frozen=True, slots=True)
+class RecapRebuild:
+    """A finished week whose closeout could not build its recap, and what the cycle does next."""
+
+    season: str
+    week: int
+    status: RecapRebuildStatus
+    reason: str
+    last_outcome: str
+    next_check_at: datetime | None = None
+
+
+def soft_failed_recap_closeout(receipts: list[CycleReceipt]) -> CycleReceipt | None:
+    """Return the week's latest done closeout when it soft-failed the recap stage."""
+    closeout = last_receipt(receipts, attempted={ATTEMPT_CLOSEOUT}, outcomes={OUTCOME_DONE})
+    if closeout is None or closeout.results.get("stages", {}).get(RECAP_STAGE) != "soft-failed":
+        return None
+    return closeout
+
+
+def _recap_failure(closeout: CycleReceipt) -> str:
+    prefix = f"{RECAP_STAGE}: "
+    for warning in closeout.results.get("warnings", []):
+        if isinstance(warning, str) and warning.startswith(prefix):
+            return warning.removeprefix(prefix)
+    return "soft-failed"
+
+
+def decide_recap_rebuild(
+    *,
+    now: datetime,
+    season: str,
+    week: int,
+    closeout: CycleReceipt,
+    receipts: list[CycleReceipt],
+    state: RecapSelectionState,
+) -> RecapRebuild | None:
+    """Return the pending recap rebuild of a week whose closeout soft-failed it, or ``None``.
+
+    Nothing is pending once the store selects the week's recap and a season recap reading it,
+    whoever rebuilt them. Otherwise the stage is retried hourly for ``RECAP_RETRY_WINDOW``
+    after the closeout (``DECISIONS.md`` D91), unless another week's selected recap is not
+    stored at the current schema: the season roll-up refuses until that week is rebuilt, so the
+    retry is held rather than repeated.
+    """
+    if state.complete:
+        return None
+    attempts = [
+        receipt
+        for receipt in receipts
+        if receipt.attempted == ATTEMPT_RECAP and receipt.decided >= closeout.decided
+    ]
+    latest = max(attempts, key=lambda receipt: receipt.decided, default=None)
+    last_outcome = (
+        f"closeout soft-failed it: {_recap_failure(closeout)}"
+        if latest is None
+        else f"rebuild {latest.outcome}: {latest.detail}"
+    )
+    base = {"season": season, "week": week, "last_outcome": last_outcome}
+    manual = f"post-week --only build-weekly-recap --week {{week}} --season {season}"
+    if now >= closeout.decided + RECAP_RETRY_WINDOW:
+        return RecapRebuild(
+            status=RecapRebuildStatus.STOPPED,
+            reason=f"retries stopped {RECAP_RETRY_WINDOW.days} days after the closeout; "
+            f"rebuild by hand: {manual.format(week=week)}",
+            **base,
+        )
+    if state.stale_weeks:
+        weeks = ", ".join(str(number) for number in state.stale_weeks)
+        return RecapRebuild(
+            status=RecapRebuildStatus.HELD,
+            reason=f"the season recap waits on week(s) {weeks}, whose selected recap is not "
+            f"stored at the current schema; rebuild each: {manual.format(week='W')}",
+            **base,
+        )
+    last = closeout.decided if latest is None else latest.decided
+    if not is_due(last, RETRY_AFTER, now=now):
+        return RecapRebuild(
+            status=RecapRebuildStatus.WAITING,
+            reason="last attempt under an hour ago",
+            next_check_at=next_due(last, RETRY_AFTER, now=now),
+            **base,
+        )
+    return RecapRebuild(
+        status=RecapRebuildStatus.DUE,
+        reason="the last attempt was an hour or more ago",
+        **base,
+    )
