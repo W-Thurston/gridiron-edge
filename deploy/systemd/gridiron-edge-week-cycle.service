@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/home/thursty/workspace/github.com/w-thurston/gridiron-edge
+Environment=GRIDIRON_ALERT_CHANNEL=windows
 ExecStart=/home/thursty/.local/bin/uv run --no-sync gridiron week-cycle
 TimeoutStartSec=2h
 Nice=5

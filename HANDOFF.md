@@ -1340,7 +1340,7 @@ from a timer; it reads local state first and does only what is due:
 
 ```bash
 uv run gridiron week-cycle --dry-run   # what is due, nothing done or recorded
-uv run gridiron week-cycle status      # the same plus the latest receipts
+uv run gridiron week-cycle status      # the same plus the open alerts and the latest receipts
 uv run gridiron week-cycle             # do what is due
 ```
 
@@ -1388,6 +1388,29 @@ per-team chart and report status, per-side comparisons, and content digests of t
 whether they changed since the previous check. The schedule is refreshed at closeout and each forecast
 refresh, not by the watch. `post-week` and `weekly-predict` still work on their own.
 
+**Alerts (`DECISIONS.md` D92).** Last in every run, the cycle checks whether it needs a person:
+- a failed closeout, forecast, refresh, watch or edges attempt, or a recap hook that raised;
+- a blocked forecast or refresh;
+- a closeout still `waiting` 12 h after its window opened;
+- a closeout whose `check-collector` soft-failed, until the collector's rollover receipt for the next week is pulled;
+- edges not built: an `edges: blocked` receipt, or a forecast or refresh that soft-failed `generate-edges`;
+- a recap rebuild `held` or `stopped`.
+
+Each (season, week, step, condition) gets one notice when it opens, a reminder every 24 h while it stays open, and one
+`resolved` notice. Forecast, refresh, watch and edges alerts also resolve once their week is no longer the target.
+While D85 withholds edges, the week's edges alert stays open and is reminded daily. Every notice is an immutable
+receipt in `data/output/week_cycle/alerts/` with its delivery: `sent`, `local` (no channel configured) or
+`failed` (with the reason). The run prints `alert opened|reminder|resolved: <season> week <N> <step> <condition> -
+<reason> (<delivery>)`. `--dry-run` and `status` list each `open alert:` and what `would open|remind|resolve`,
+and they send and record nothing. An error in the alert pass is one line (`alerts could not be evaluated: ...`)
+and never changes the exit code. To close an alert, fix its cause; the next run resolves it. Alerts cannot report
+a timer that did not run (WSL down).
+
+The channel is a Windows desktop notification raised through
+`/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`, chosen by `GRIDIRON_ALERT_CHANNEL=windows`. The
+service sets it, and a manual run without it is local only. Nothing leaves the machine, and no credentials are
+involved.
+
 Install the hourly timer (a user step; watch the first runs with `journalctl --user -u
 gridiron-edge-week-cycle.service`; the service hardcodes this machine's repository and uv paths):
 
@@ -1398,7 +1421,9 @@ systemctl --user daemon-reload
 systemctl --user enable --now gridiron-edge-week-cycle.timer
 ```
 
-The unattended run uses the main checkout: a dirty tracked tree blocks the forecast step and records it.
+The unattended run uses the main checkout: a dirty tracked tree blocks the forecast step, records it and
+opens an alert. After changing the service (for example the alert channel), copy it again and run
+`systemctl --user daemon-reload`.
 
 ## Historical Backfills and Evaluation
 

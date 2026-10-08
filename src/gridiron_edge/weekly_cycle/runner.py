@@ -17,7 +17,20 @@ from typing import Any
 
 from pandas import DataFrame
 
-from gridiron_edge.weekly_cycle.cadence import watch_interval
+from gridiron_edge.weekly_cycle.alerts import (
+    AlertKey,
+    AlertReceipt,
+    Delivery,
+    Notice,
+    OpenAlert,
+    PlannedNotice,
+    open_alerts,
+    open_conditions,
+    plan_notices,
+    read_alert_receipts,
+    write_alert_receipt,
+)
+from gridiron_edge.weekly_cycle.cadence import closeout_earliest, watch_interval
 from gridiron_edge.weekly_cycle.decision import (
     CycleDecision,
     RecapRebuild,
@@ -28,6 +41,7 @@ from gridiron_edge.weekly_cycle.decision import (
     decide_recap_rebuild,
     refresh_allowed,
     soft_failed_recap_closeout,
+    week_kickoffs,
 )
 from gridiron_edge.weekly_cycle.receipts import (
     ATTEMPT_CLOSEOUT,
@@ -51,6 +65,7 @@ from gridiron_edge.weekly_cycle.starter_watch import StarterObservation
 #: The stages whose failure means "upstream data for the finished week is not all in yet".
 RESULTS_GATE_STAGES = frozenset({"verify-week-complete", "verify-week-data-current"})
 _MAX_STEPS = 3
+_WOULD = {Notice.OPENED: "open", Notice.REMINDER: "remind", Notice.RESOLVED: "resolve"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +106,9 @@ class CyclePorts:
     edge_inputs: Callable[[str, int], dict[str, Any]]
     recap_state: Callable[[str, int], RecapSelectionState]
     run_recap: Callable[[str, int], StageRun]
+    collector_rolled: Callable[[str, int], bool]
+    #: Send one alert notice (title, reason); ``False`` means no channel is configured.
+    notify: Callable[[str, str], bool]
 
 
 @dataclass(slots=True)
@@ -135,6 +153,7 @@ class _Cycle:
         self.target = target
         self.allow_incomplete = allow_incomplete
         self.out = CycleOutcome()
+        self.pending_recaps: list[RecapRebuild] | None = None
 
     # -- helpers ---------------------------------------------------------
 
@@ -192,6 +211,7 @@ class _Cycle:
                 attempted=attempted,
                 outcome=OUTCOME_FAILED,
                 detail=f"{type(exc).__name__}: {exc}",
+                results={"exception": type(exc).__name__},
             )
             return False
 
@@ -398,7 +418,8 @@ class _Cycle:
         """Report each pending recap rebuild and, unless a dry run, run those that are due."""
         assert decision.season is not None
         through = max(week for week in (decision.week, decision.target_week) if week is not None)
-        for rebuild in self.recap_rebuilds(decision.season, through):
+        self.pending_recaps = self.recap_rebuilds(decision.season, through)
+        for rebuild in self.pending_recaps:
             if dry_run or rebuild.status is not RecapRebuildStatus.DUE:
                 self.say(_describe_recap(rebuild, tz=self.tz))
                 continue
@@ -407,6 +428,93 @@ class _Cycle:
             )
             self.guarded(week_decision, ATTEMPT_RECAP, lambda r=rebuild: self.rebuild_recap(r))
         return True
+
+    # -- alerts ----------------------------------------------------------
+
+    def alerts(self, decision: CycleDecision, *, dry_run: bool) -> None:
+        """Announce what needs a person (``DECISIONS.md`` D92); an error never fails the run."""
+        try:
+            self._alerts(decision, dry_run=dry_run)
+        except Exception as exc:
+            self.say(f"alerts could not be evaluated: {type(exc).__name__}: {exc}")
+
+    def _alerts(self, decision: CycleDecision, *, dry_run: bool) -> None:
+        now = self.ports.clock()
+        history = read_alert_receipts(self.repo)
+        current = open_alerts(history)
+        seasons: dict[str, set[int]] = {}
+        for key in current:
+            seasons.setdefault(key.season, set()).add(key.week)
+        if decision.season is not None:
+            weeks = [week for week in (decision.week, decision.target_week) if week is not None]
+            seasons.setdefault(decision.season, set()).update(range(1, max(weeks, default=0) + 1))
+        target = (
+            (decision.season, decision.target_week)
+            if decision.season is not None and decision.target_week is not None
+            else None
+        )
+        schedule = self.ports.load_schedule()
+        conditions: dict[AlertKey, str] = {}
+        for season, weeks in sorted(seasons.items()):
+            rebuilds: list[RecapRebuild] = []
+            if season == decision.season and weeks:
+                rebuilds = (
+                    self.pending_recaps
+                    if self.pending_recaps is not None
+                    else self.recap_rebuilds(season, max(weeks))
+                )
+            windows: dict[int, datetime] = {}
+            for week in weeks:
+                kickoffs = week_kickoffs(schedule, season=season, week=week)
+                if kickoffs:
+                    windows[week] = closeout_earliest(kickoffs[-1], tz=self.tz)
+            conditions.update(
+                open_conditions(
+                    now=now,
+                    season=season,
+                    receipts_by_week={week: self.receipts(season, week) for week in weeks},
+                    target=target,
+                    closeout_windows=windows,
+                    recap_rebuilds=rebuilds,
+                    collector_rolled=self.ports.collector_rolled,
+                )
+            )
+        planned = plan_notices(now=now, conditions=conditions, history=history, target=target)
+        if dry_run:
+            for alert in sorted(current.values(), key=lambda item: item.key):
+                self.say(_describe_open_alert(alert, tz=self.tz))
+            for notice in planned:
+                verb = _WOULD[notice.notice]
+                self.say(f"alert would {verb}: {notice.title()} - {notice.detail}")
+            return
+        for notice in planned:
+            self.send(notice)
+
+    def send(self, notice: PlannedNotice) -> None:
+        """Deliver one notice and record it, whatever became of the delivery."""
+        note = ""
+        try:
+            sent = self.ports.notify(notice.title(), notice.detail)
+            delivery = Delivery.SENT if sent else Delivery.LOCAL
+        except Exception as exc:
+            delivery, note = Delivery.FAILED, f"{type(exc).__name__}: {exc}"
+        key = notice.key
+        write_alert_receipt(
+            self.repo,
+            AlertReceipt(
+                decided_at=_iso(self.ports.clock()),
+                season=key.season,
+                week=key.week,
+                step=key.step,
+                condition=key.condition,
+                notice=notice.notice.value,
+                detail=notice.detail,
+                delivery=delivery.value,
+                delivery_detail=note,
+            ),
+        )
+        line = f"alert {notice.notice.value}: {notice.title()} - {notice.detail} ({delivery.value}"
+        self.say(line + (f": {note})" if note else ")"))
 
 
 def run_cycle(
@@ -423,7 +531,9 @@ def run_cycle(
     A dry run reports the decision and writes nothing. Otherwise each step leaves a receipt;
     after the steps the edge report is rebuilt when its inputs changed, and a recap the closeout
     soft-failed is rebuilt when due (``DECISIONS.md`` D91). A failed step is reported in the
-    outcome (``failed``) and retried after an hour by the decision rules.
+    outcome (``failed``) and retried after an hour by the decision rules. Last, every condition
+    that needs a person is announced once, reminded daily and resolved once (``DECISIONS.md``
+    D92); a dry run lists the open alerts and what would be sent instead.
     """
     cycle = _Cycle(repo=repo, ports=ports, tz=tz, target=target, allow_incomplete=allow_incomplete)
     decision = cycle.decide()
@@ -456,6 +566,7 @@ def run_cycle(
             cycle.recaps(decision, dry_run=True)
         else:
             cycle.guarded(decision, ATTEMPT_RECAP, lambda: cycle.recaps(decision, dry_run=False))
+    cycle.alerts(decision, dry_run=dry_run)
     return cycle.out
 
 
@@ -479,3 +590,13 @@ def _describe_recap(rebuild: RecapRebuild, *, tz: tzinfo | None) -> str:
     if rebuild.next_check_at is not None:
         line += f"; next check {rebuild.next_check_at.astimezone(tz):%Y-%m-%d %H:%M %Z}"
     return line
+
+
+def _describe_open_alert(alert: OpenAlert, *, tz: tzinfo | None) -> str:
+    last = alert.last
+    since = alert.opened_at.astimezone(tz)
+    return (
+        f"open alert: {alert.key.describe()} since {since:%Y-%m-%d %H:%M %Z}"
+        f" - {last.detail}; last notice {last.notice} "
+        f"{last.decided.astimezone(tz):%Y-%m-%d %H:%M %Z} ({last.delivery})"
+    )

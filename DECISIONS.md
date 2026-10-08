@@ -8,6 +8,46 @@ Format: newest entry at top. Each entry self-contained.
 
 ---
 
+## D92 - The weekly cycle alerts once when it needs a person, on the Windows desktop, and once when that resolves
+
+**Date:** 2026-10-08
+
+**Context:** The hourly cycle (D82) runs unattended, but most ways it stops making progress are silent. A failed
+attempt exits 1 and shows only in the journal. A blocked forecast (dirty tracked tree) exits 0. A closeout can wait on
+nflverse indefinitely. A soft-failed stage counts as done. A recap rebuild can be held or stopped (D91). Only
+`week-cycle status` shows any of this. The cycle runs on a WSL machine that is down most nights.
+
+**Decision:**
+1. After every run the cycle evaluates alert conditions from its receipts and local state:
+   - a failed closeout, forecast, refresh, watch or edges attempt, or a recap hook that raised;
+   - a blocked forecast or refresh;
+   - a closeout still `waiting` 12 hours after its window opened;
+   - a closeout whose `check-collector` stage soft-failed, until the collector's rollover receipt for the next week
+     is pulled;
+   - edges not built (an `edges: blocked` receipt, or a forecast or refresh that soft-failed `generate-edges`);
+   - a recap rebuild `held` or `stopped`.
+
+   A condition on the target week also ends when the week stops being the target.
+2. Each (season, week, step, condition) sends one notice when it opens, a reminder every 24 hours while it stays open,
+   and one notice when it resolves. Every notice is an immutable alert receipt recording its delivery, and
+   `week-cycle status` lists the open alerts.
+3. The channel is a Windows desktop notification raised from WSL through `powershell.exe`, chosen by
+   `GRIDIRON_ALERT_CHANNEL=windows` in the systemd unit. Nothing leaves the machine, so a notice may carry the
+   receipt's one-line reason. Without the variable, notices are local only: the run output (so the journal) and
+   `status`.
+4. Alerting never fails the run. A delivery error is recorded on the notice, and any other error in the alert pass
+   becomes one output line.
+5. The 12-hour waiting threshold and the 24-hour reminder were set on 2026-10-08, before any closeout had waited.
+   The only closeout so far, week 4's, closed 34 minutes after its window opened.
+
+**Consequences:** The user hears about each stall once, and again daily, without running `status`. The channel works
+only while the machine is awake, which is also when the cycle runs, so a notice is never lost. It is only seen at the
+desk, though. A timer that never fires (WSL down) cannot be detected from inside the cycle and is out of scope
+(ROADMAP W20). While D85 withholds edges, the edges alert is open for most of every week and is reminded daily. An
+external channel (ntfy, email) could replace the port later, and should send only season, week, step and condition.
+
+---
+
 ## D91 - The weekly cycle retries a recap its closeout soft-failed, hourly for seven days, until the store selects it
 
 **Date:** 2026-10-08

@@ -11,10 +11,12 @@ from typing import Any
 from pandas import DataFrame
 import pytest
 
+from gridiron_edge.weekly_cycle.alerts import read_alert_receipts
 from gridiron_edge.weekly_cycle.decision import RecapSelectionState, StepKind
 from gridiron_edge.weekly_cycle.receipts import read_receipts
 from gridiron_edge.weekly_cycle.runner import (
     AvailabilityRefresh,
+    CycleOutcome,
     CyclePorts,
     StageRun,
     run_cycle,
@@ -88,6 +90,10 @@ class Fake:
         )
         self.recap_built = False
         self.stale_weeks: tuple[int, ...] = ()
+        self.collector_has_rolled = True
+        self.channel = True
+        self.notify_error: Exception | None = None
+        self.notices: list[tuple[str, str]] = []
 
     def _tick(self) -> datetime:
         """Return the current time, one second later on every read so receipts order."""
@@ -132,6 +138,13 @@ class Fake:
             self.recap_built = self.recap_built or self.recap.success
             return self.recap
 
+        def notify(title: str, body: str) -> bool:
+            if self.notify_error is not None:
+                raise self.notify_error
+            if self.channel:
+                self.notices.append((title, body))
+            return self.channel
+
         def observe(
             season: str, week: int, product: DataFrame, schedule: DataFrame, now: datetime
         ) -> StarterObservation:
@@ -162,6 +175,8 @@ class Fake:
             },
             recap_state=recap_state,
             run_recap=run_recap,
+            collector_rolled=lambda season, week: self.collector_has_rolled,
+            notify=notify,
         )
 
     def run(self, repo: Path, **kwargs: Any):
@@ -511,6 +526,11 @@ SOFT_FAILED_CLOSEOUT = StageRun(
 )
 
 
+def _recap_line(outcome: CycleOutcome) -> str:
+    """The run's pending-rebuild line (alert lines follow it)."""
+    return next(line for line in outcome.lines if line.startswith("week 4 recap rebuild"))
+
+
 def _soft_failed_week(tmp_path: Path) -> Fake:
     """Close week 4 with a soft-failed recap and forecast week 5, at 06:30."""
     fake = Fake("2026-10-06T06:30:00")
@@ -621,7 +641,7 @@ def test_retries_stop_after_the_window_and_the_week_stays_pending(tmp_path: Path
 
     assert outcome.decision is not None and outcome.decision.kind is StepKind.SEASON_COMPLETE
     assert fake.calls == ["closeout", "recap_state"]
-    assert outcome.lines[-1].startswith(
+    assert _recap_line(outcome).startswith(
         "week 4 recap rebuild stopped: retries stopped 7 days after the closeout; rebuild by "
         "hand: post-week --only build-weekly-recap --week 4 --season 2026-2027"
     )
@@ -635,7 +655,7 @@ def test_a_week_at_an_older_schema_holds_the_rebuild(tmp_path: Path) -> None:
     outcome = fake.run(tmp_path)
 
     assert "recap" not in fake.calls
-    assert outcome.lines[-1].startswith(
+    assert _recap_line(outcome).startswith(
         "week 4 recap rebuild held: the season recap waits on week(s) 2"
     )
 
@@ -671,3 +691,124 @@ def test_a_clean_closeout_never_looks_for_a_rebuild(tmp_path: Path) -> None:
     fake.run(tmp_path)
 
     assert "recap_state" not in fake.calls and "recap" not in fake.calls
+
+
+def _alerts(repo: Path) -> list[tuple[str, str, str, str]]:
+    return [
+        (alert.step, alert.condition, alert.notice, alert.delivery)
+        for alert in read_alert_receipts(repo)
+    ]
+
+
+def test_a_failed_closeout_alerts_once_is_reminded_daily_and_resolves_once(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.closeout = StageRun(
+        success=False, detail="refresh-results: offline", failed_stage="refresh-results"
+    )
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is True
+    assert _alerts(tmp_path) == [("closeout", "failed", "opened", "sent")]
+    assert fake.notices == [("2026-2027 week 4 closeout failed", "refresh-results: offline")]
+    assert outcome.lines[-1] == (
+        "alert opened: 2026-2027 week 4 closeout failed - refresh-results: offline (sent)"
+    )
+    fake.now = _utc("2026-10-06T07:30:00")  # retried and still failing: no repeat within a day
+    fake.run(tmp_path)
+    assert len(fake.notices) == 1
+    fake.now = _utc("2026-10-07T06:30:00")
+    fake.run(tmp_path)
+    assert fake.notices[-1][0] == "2026-2027 week 4 closeout failed (still open)"
+    fake.closeout = StageRun(success=True, detail="week 4 closed")
+    fake.now = _utc("2026-10-07T07:30:00")
+    fake.run(tmp_path)
+    assert _alerts(tmp_path)[1:] == [
+        ("closeout", "failed", "reminder", "sent"),
+        ("closeout", "failed", "resolved", "sent"),
+    ]
+    assert fake.notices[-1] == (
+        "2026-2027 week 4 closeout failed resolved",
+        "the condition has cleared",
+    )
+
+
+def test_an_alert_that_cannot_be_sent_is_recorded_and_never_fails_the_run(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.dirty = ["src/gridiron_edge/x.py"]
+    fake.notify_error = RuntimeError("powershell.exe exited 1: no")
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is False
+    assert _alerts(tmp_path) == [("forecast", "blocked", "opened", "failed")]
+    assert read_alert_receipts(tmp_path)[0].delivery_detail == (
+        "RuntimeError: powershell.exe exited 1: no"
+    )
+    assert outcome.lines[-1].endswith("(failed: RuntimeError: powershell.exe exited 1: no)")
+
+
+def test_without_a_channel_an_alert_is_local_only(tmp_path: Path) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.dirty = ["src/gridiron_edge/x.py"]
+    fake.channel = False
+
+    outcome = fake.run(tmp_path)
+
+    assert _alerts(tmp_path) == [("forecast", "blocked", "opened", "local")]
+    assert outcome.lines[-1].startswith("alert opened: 2026-2027 week 5 forecast blocked - ")
+    assert outcome.lines[-1].endswith("(local)")
+
+
+def test_a_dry_run_lists_open_alerts_and_what_would_change_without_sending(
+    tmp_path: Path,
+) -> None:
+    fake = Fake("2026-10-06T06:30:00")
+    fake.dirty = ["src/gridiron_edge/x.py"]
+    fake.run(tmp_path)
+    fake.now = _utc("2026-10-12T00:00:00")  # every week 5 game has kicked off
+
+    outcome = fake.run(tmp_path, dry_run=True)
+
+    assert len(fake.notices) == 1
+    assert len(read_alert_receipts(tmp_path)) == 1
+    assert outcome.lines[-2].startswith(
+        "open alert: 2026-2027 week 5 forecast blocked since 2026-10-06 06:30 UTC - tracked "
+    )
+    assert outcome.lines[-2].endswith("; last notice opened 2026-10-06 06:30 UTC (sent)")
+    assert outcome.lines[-1] == (
+        "alert would resolve: 2026-2027 week 5 forecast blocked resolved - "
+        "week 5 is no longer the target week"
+    )
+
+
+def test_an_error_in_the_alert_pass_is_one_line_and_never_fails_the_run(tmp_path: Path) -> None:
+    directory = tmp_path / "data" / "output" / "week_cycle" / "alerts"
+    directory.mkdir(parents=True)
+    (directory / "broken.json").write_text("{")
+    fake = Fake("2026-10-06T06:30:00")
+
+    outcome = fake.run(tmp_path)
+
+    assert outcome.failed is False
+    assert fake.calls == ["closeout", "forecast"]
+    assert outcome.lines[-1].startswith("alerts could not be evaluated: ValueError: Unreadable")
+
+
+def test_a_held_recap_rebuild_alerts_and_resolves_once_the_store_selects_it(
+    tmp_path: Path,
+) -> None:
+    fake = _soft_failed_week(tmp_path)
+    fake.stale_weeks = (2,)
+    fake.now = _utc("2026-10-06T07:30:00")
+
+    fake.run(tmp_path)
+    fake.stale_weeks = ()
+    fake.recap_built = True  # week 2 rebuilt by hand, which rolled the season up again
+    fake.now = _utc("2026-10-06T08:30:00")
+    fake.run(tmp_path)
+
+    assert [alert for alert in _alerts(tmp_path) if alert[0] == "recap"] == [
+        ("recap", "held", "opened", "sent"),
+        ("recap", "held", "resolved", "sent"),
+    ]

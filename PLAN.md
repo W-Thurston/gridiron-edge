@@ -113,7 +113,7 @@ should read this section before planning or modifying the repository.
 **Units 23 and 24 completed October 4, 2026, Units 26, 25 and 27 October 5, 2026, and Unit 28 October 6, 2026
 (`CHANGELOG.md`); every planned recap section is built. Unit 31 (one Performance page, W22) completed October 6,
 2026; Unit 32 (per-season backtest comparison evidence, W23) is scoped. Unit 29 (retry a soft-failed recap) completed
-October 8, 2026 (`DECISIONS.md` D91). Next: Unit 30 (alerts), not yet active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
+October 8, 2026 (`DECISIONS.md` D91). Unit 30 (alerts) completed October 8, 2026 (`DECISIONS.md` D92). Next: Unit 32 (W23), scoped, not active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
 up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records); week 5's starter check
 follows its closeout (about 2026-10-13).** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
@@ -272,7 +272,7 @@ at request time.
 | 27 | Season roll-up | 24 | weeks 1-4 |
 | 28 | Edges, recommendations and wagers | 24 (27 for season wager totals) | weeks 1, 2 and 4 |
 | 29 | Retry a soft-failed recap (cycle follow-on) [done 2026-10-08] | 26, 27 | stubbed ports; a forced soft failure |
-| 30 | Alert when the cycle needs a person (cycle follow-on, W20) | 19 (ideally 29) | stubbed ports; one real test alert |
+| 30 | Alert when the cycle needs a person (cycle follow-on, W20) [done 2026-10-08] | 19 (ideally 29) | stubbed ports; one real test alert |
 | 31 | One Performance page (W22) [done 2026-10-06] | 27, 28 | weeks 1-4 and the selected historical report |
 | 32 | Per-season backtest comparison evidence (W23) | 31 | the selected historical report |
 
@@ -842,7 +842,9 @@ recap built). With approval, force one soft failure on a scratch copy or by a st
 **Acceptance.** A soft-failed recap is rebuilt by the cycle without blocking anything, visibly, within the declared
 limit; gates pass; HANDOFF "Weekly Cycle", CHANGELOG, and DECISIONS for the limit updated.
 
-#### Unit 30 - Alert When the Cycle Needs a Person [Scoped October 5, 2026; not active]
+#### Unit 30 - Alert When the Cycle Needs a Person [Completed October 8, 2026; `DECISIONS.md` D92]
+
+Closed; the completed record is under "Unit 30" below. The scoping record follows.
 
 **Goal.** When the unattended cycle cannot make progress by itself, the user hears about it without having to run
 `week-cycle status`.
@@ -879,6 +881,56 @@ or a page-level banner in the frontend (only seen when the app is open). Sending
 content, so the message text is limited to week, step and outcome. (b) The `waiting` threshold (hours after the
 window opens) and the reminder interval, recorded in DECISIONS before seeing data. (c) Whether the timer itself not
 running (WSL down) needs detecting (it cannot alert from inside the cycle; recommended: out of scope, noted).
+
+**Audit re-checked 2026-10-08 (after Unit 29, `77e3eee`).**
+- Outcomes per attempt kind: `closeout` done, waiting or failed; `forecast` and `refresh` done, blocked or failed;
+  `watch` unchanged, changed or failed; `edges` done or blocked (failed only through `guarded`); `recap` done or
+  failed. A soft-failed stage is `done` with `results["stages"][stage] = "soft-failed"`.
+- `week-cycle` exits 1 only when `CycleOutcome.failed` is set (a failed closeout, forecast, refresh or watch, or an
+  exception in `guarded`); blocked, waiting and a failed recap retry exit 0. `status` is the dry run plus the last 8
+  receipts of the decision and target weeks and one line per pending recap rebuild.
+- Closeout window: the first 06:00 local at least 4 h after the week's last kickoff; `RETRY_AFTER` 1 h (5 min slack).
+- systemd: a oneshot service and an hourly `Persistent=true` timer, no `OnFailure=`, no environment. Ops commands keep
+  configuration in environment variables (`Environment=` in the collector-sync unit, `/etc/gridiron-edge-collector.env`
+  on the Pi, `ODDS_API_KEY` and `OWM_API_KEY` from the environment) and keys in `~/.ssh`; nothing in the repo.
+- `powershell.exe` (Windows PowerShell 5.1) runs from a systemd user unit through WSL interop, and the WinRT toast
+  types load (checked with a command that shows nothing).
+
+**Dry run over the real receipts of weeks 4 and 5 (25 receipts).**
+- Week 5 `watch: failed` 2026-10-07T21:38Z (nflverse depth-chart fetch, exit 1): opens; resolved at 11:31Z on
+  2026-10-08 by the next watch. WSL was down 22:24Z-11:31Z, so the hourly retry never ran.
+- Week 4 closeout soft-failed `check-collector` 2026-10-06T12:34Z: a boot race (WSL started 12:33Z and the timer
+  caught up before the 15-minute collector pull); the rollover receipt is dated 00:15Z that day.
+- Week 5 forecast and both refreshes soft-failed `generate-edges` (`no_market_data`, then `market_stale`); seven
+  `edges: blocked` (`model_edges_unvalidated`, D85).
+- No waiting closeout (week 4 closed 34 minutes after its window opened), no blocked forecast, no held or stopped
+  recap rebuild.
+
+**Decided at start (2026-10-08, with the user).**
+1. **Conditions.** Every case above alerts: a failed attempt (closeout, forecast, refresh, watch, edges; a `recap`
+   receipt only when the hook raised, since a failed retry is still being retried); a blocked forecast or refresh; a
+   closeout still waiting 12 h after its window opened; the closeout's `check-collector` soft failure, open until the
+   collector's rollover receipt for the next week is pulled; edges not built, from either an `edges: blocked` receipt
+   or a forecast or refresh that soft-failed `generate-edges` (one condition, so one alert per week, not two); and a
+   recap rebuild `held` or `stopped` (D91). Each closes with one "resolved" notice. Target-week conditions (forecast,
+   refresh, watch, edges) also resolve once the week is no longer the target week, since the cycle does nothing more
+   for it. With edges withheld by D85, the edges alert stays open all week and is reminded daily.
+2. **(a) Channel: a Windows desktop notification** from WSL through `powershell.exe`. Nothing leaves the machine, so
+   the notice carries season, week, step, condition and the receipt's one-line reason. Selected by the environment
+   variable `GRIDIRON_ALERT_CHANNEL=windows` (set in the systemd unit); unset, notices are local only (the run output,
+   so the journal, and `status`). No credentials are involved.
+3. **(b) Thresholds, set before any waiting closeout was observed:** a closeout still `waiting` 12 h after its window
+   opened alerts (18:00 local on a Tuesday); an open alert is reminded every 24 h while it persists. Both in
+   `DECISIONS.md` D92.
+4. **(c) A timer that never ran is out of scope**: the cycle cannot alert while it is not running, and WSL is down
+   most nights (10 and 13 h gaps on 2026-10-07). Noted in ROADMAP W20 beside the runner checkout.
+5. **Implementation choices (the assistant's).** The conditions and the notice plan are pure in a new
+   `weekly_cycle/alerts.py`. Alert receipts are immutable JSON files under `data/output/week_cycle/alerts/`, one per
+   notice (`opened`, `reminder`, `resolved`) with its delivery (`sent`, `failed`, `local`); the open alerts are the keys
+   whose latest notice is not `resolved`. Two new ports: `notify` (raises on failure) and `collector_rolled`. The
+   alert pass runs last in every run, never sets `failed`, and turns any error into one output line. `guarded` marks
+   its receipts with the exception type, which tells a crashed recap hook from a failed retry. A dry run (and
+   `status`) lists the open alerts and what would open or resolve, and sends or records nothing.
 
 **Tests.** Each condition opens one alert and a recovery closes it; no repeat within the reminder interval; a
 delivery failure is recorded and does not fail the run; `status` lists open alerts; the dry run sends nothing.
@@ -1238,6 +1290,76 @@ recommendation adopted as the plan, to be recorded in `DECISIONS.md` when its un
 6. **Staleness clock:** the server injects the clock at each boundary (including the API
    dependency) to enforce the blocker; the frontend displays age computed from the served
    `market_fetched_at`.
+
+### Unit 30 — Alert When the Cycle Needs a Person [Completed October 8, 2026]
+
+#### Completed
+
+Last in every run, `week-cycle` evaluates from its receipts and local state whether it needs a person
+(`DECISIONS.md` D92):
+- a failed closeout, forecast, refresh, watch or edges attempt, or a recap hook that raised;
+- a blocked forecast or refresh;
+- a closeout still waiting 12 h after its window opened;
+- a closeout whose `check-collector` soft-failed, while the collector has not rolled to the next week;
+- edges not built (an `edges: blocked` receipt or a forecast or refresh that soft-failed `generate-edges`);
+- a recap rebuild `held` or `stopped` (D91).
+
+Each (season, week, step, condition) gets one notice when it opens, a reminder every 24 h while it stays open, and
+one `resolved` notice when it clears. Target-week alerts also resolve once the week is no longer the target. Every
+notice is an immutable alert receipt under `data/output/week_cycle/alerts/` with its delivery (`sent`, `local` or
+`failed`). The channel is a Windows desktop notification through `powershell.exe`, chosen by
+`GRIDIRON_ALERT_CHANNEL=windows` in the systemd service. A delivery failure is recorded, and any error in the alert
+pass is one output line; neither ever fails the run. `status` and `--dry-run` list the open alerts and what would
+open, remind or resolve, and they send and record nothing.
+
+#### Goal
+
+When the unattended cycle cannot make progress by itself, the user hears about it once, is reminded daily, and
+hears when it is resolved, without running `week-cycle status` and without the cycle depending on the channel.
+
+#### Files Added/Removed/Changed
+
+Added:
+- `src/gridiron_edge/weekly_cycle/alerts.py` - the pure alert conditions (`open_conditions`) and notice plan (`plan_notices`, `open_alerts`), and the immutable alert receipts.
+- `tests/unit/weekly_cycle/test_weekly_cycle_alerts.py` - each condition, the 12 h wait, one edges condition from two sources, recap held and stopped, open/remind/resolve/reopen, receipts round trip.
+
+Changed:
+- `src/gridiron_edge/weekly_cycle/cadence.py` - `ALERT_WAITING_AFTER` (12 h) and `ALERT_REMINDER_INTERVAL` (24 h), D92.
+- `src/gridiron_edge/weekly_cycle/receipts.py` - the atomic new-file writer and file-name stamp, shared with the alert receipts.
+- `src/gridiron_edge/weekly_cycle/runner.py` - the `collector_rolled` and `notify` ports; the alert pass after the recap hook; `guarded` marks its receipts with the exception type.
+- `src/gridiron_edge/cli/week_cycle.py` - the real ports (`collector_rolled_at`, `send_alert` with the Windows toast script); help text.
+- `deploy/systemd/gridiron-edge-week-cycle.service` - `Environment=GRIDIRON_ALERT_CHANNEL=windows`.
+- `tests/unit/weekly_cycle/test_weekly_cycle_runner.py` - stub ports; open once, no repeat within a day, reminder, resolve; a failed send; no channel; the dry run; an error in the alert pass; a held recap rebuild.
+- `tests/unit/cli/test_week_cycle.py` - `status` lists open alerts; the channel (none, unknown, Windows, a failed send); the collector rollover read; the service sets the channel.
+- `DECISIONS.md` - D92.
+- `HANDOFF.md` - "Weekly Cycle": alerts, the channel, and reinstalling the service.
+- `CHANGELOG.md` - the shipped behavior.
+- `ROADMAP.md` - W20's alert half done, timer gap noted; W15 progress.
+- `PLAN.md` - the start decisions, this record and the program status.
+
+Removed:
+- None.
+
+#### Tests
+
+Focused: weekly-cycle alert, decision, runner and command tests (17 new pure, 6 new runner and 6 new command
+cases). Python gate: ruff check and format, pyrefly 0 errors, `pytest -m "unit and not slow"` 5,042 passed.
+Real data, read-only:
+- `week-cycle --dry-run` and `status` on the real receipts (target 2026-2027 week 5, idle) list one alert that
+  would open: `2026-2027 week 5 edges blocked - edge calculation blocked: model_edges_unvalidated`. Nothing was
+  written.
+- An in-memory replay of the rules over every week 4-5 receipt time, written to nothing, gave: week 4 edges blocked
+  (opened 10-04 22:00Z, resolved when week 4 stopped being the target); week 4 `check-collector` opened at the
+  closeout (12:34Z, the boot race) and resolved at 13:00Z; week 5 edges blocked opened at the forecast and reminded
+  daily; week 5 watch failed opened 10-07 21:38Z and resolved 10-08 11:31Z.
+
+`powershell.exe` runs from a systemd user unit, and the WinRT toast types load there. One real test alert (approved), sent with `send_alert` and `GRIDIRON_ALERT_CHANNEL=windows` on 2026-10-08, appeared as a Windows notification; no alert receipt was written.
+
+#### Acceptance
+
+Every condition in which the cycle needs a person produces one visible notice, a daily reminder and one resolution,
+deduplicated and recorded, and the cycle never depends on the channel. Gates pass; DECISIONS D92, HANDOFF "Weekly
+Cycle", CHANGELOG, ROADMAP W20 and this record are updated.
 
 ### Unit 29 — Retry a Soft-Failed Recap [Completed October 8, 2026]
 

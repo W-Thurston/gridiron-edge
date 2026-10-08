@@ -1,5 +1,24 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-08 - Unit 30: the weekly cycle alerts when it needs a person
+
+#### Added
+
+- After every run, `week-cycle` checks whether it needs a person (`DECISIONS.md` D92):
+  - a failed attempt;
+  - a blocked forecast or refresh;
+  - a closeout still waiting 12 h after its window opened;
+  - the closeout's collector check soft-failed and the collector has not rolled;
+  - edges not built;
+  - a recap rebuild held or stopped.
+- Each condition sends one notice when it opens, a reminder every 24 h and one when it resolves. Each notice is an
+  immutable alert receipt under `data/output/week_cycle/alerts/` recording its delivery.
+- `GRIDIRON_ALERT_CHANNEL=windows` (set in the systemd service) shows each notice as a Windows desktop notification
+  from WSL through `powershell.exe`; without it notices are local only. A delivery failure is recorded and never
+  fails the run.
+- `week-cycle status` and `--dry-run` list the open alerts and what would open, remind or resolve, and send
+  nothing.
+
 ### 2026-10-08 - Unit 29: the weekly cycle retries a recap its closeout could not build
 
 #### Added

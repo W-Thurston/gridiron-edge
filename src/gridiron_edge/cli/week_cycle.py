@@ -11,15 +11,18 @@ Run it by hand at any time or hourly from a timer.
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterator
 import contextlib
 from dataclasses import replace
 from datetime import UTC, datetime
 import fcntl
+from html import escape
 import json
+import os
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Any, Final
 
 import pandas as pd
 from pandas import DataFrame
@@ -52,6 +55,17 @@ week_cycle_app = typer.Typer(
 )
 
 _ROLLED_OUTCOMES = frozenset({"rolled", "selected_existing"})
+
+#: Names the channel alert notices go to (``DECISIONS.md`` D92): ``windows``, or unset for none.
+ALERT_CHANNEL_ENV: Final[str] = "GRIDIRON_ALERT_CHANNEL"
+WINDOWS_POWERSHELL: Final[Path] = Path(
+    "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+)
+#: Windows PowerShell's own application id, so a toast needs no registered application.
+_POWERSHELL_APP_ID: Final[str] = (
+    "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe"
+)
+_NOTIFY_TIMEOUT_SECONDS: Final[int] = 60
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,20 @@ def dirty_tracked_files(repo: Path) -> list[str]:
     return [line[3:] for line in result.stdout.splitlines() if line.strip()]
 
 
+def collector_rolled_at(repo: Path, *, season: str, next_week: int) -> str | None:
+    """Return when the pulled rollover receipts say the worker rolled to ``next_week``."""
+    target = f"{season} week {next_week}"
+    rolled: str | None = None
+    for path in sorted((repo / "data" / "odds" / "collection_rollovers").glob("*.json")):
+        try:
+            receipt = json.loads(path.read_text())
+        except ValueError:
+            continue
+        if receipt.get("outcome") in _ROLLED_OUTCOMES and receipt.get("target") == target:
+            rolled = str(receipt.get("decided_at"))
+    return rolled
+
+
 def collector_lines(repo: Path, *, season: str, next_week: int, now: datetime) -> list[str]:
     """Say whether the worker has rolled to ``next_week`` and how current the pull is.
 
@@ -103,14 +131,7 @@ def collector_lines(repo: Path, *, season: str, next_week: int, now: datetime) -
     """
     odds = repo / "data" / "odds"
     target = f"{season} week {next_week}"
-    rolled: str | None = None
-    for path in sorted((odds / "collection_rollovers").glob("*.json")):
-        try:
-            receipt = json.loads(path.read_text())
-        except ValueError:
-            continue
-        if receipt.get("outcome") in _ROLLED_OUTCOMES and receipt.get("target") == target:
-            rolled = str(receipt.get("decided_at"))
+    rolled = collector_rolled_at(repo, season=season, next_week=next_week)
     lines = [
         f"collector rolled to {target} at {rolled}"
         if rolled
@@ -485,6 +506,63 @@ def _recap_state(season: str, week: int) -> RecapSelectionState:
     )
 
 
+def windows_toast_script(title: str, body: str) -> str:
+    """Return a Windows PowerShell script that shows one desktop notification."""
+    document = (
+        '<toast><visual><binding template="ToastGeneric">'
+        f"<text>{escape(title)}</text><text>{escape(body)}</text>"
+        "</binding></visual></toast>"
+    ).replace("'", "''")
+    winrt = "ContentType = WindowsRuntime"
+    return "\n".join(
+        [
+            "$ErrorActionPreference = 'Stop'",
+            "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, "
+            f"{winrt}] | Out-Null",
+            f"[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, {winrt}] "
+            "| Out-Null",
+            "$document = New-Object Windows.Data.Xml.Dom.XmlDocument",
+            f"$document.LoadXml('{document}')",
+            "$toast = New-Object Windows.UI.Notifications.ToastNotification $document",
+            "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+            f"'{_POWERSHELL_APP_ID}').Show($toast)",
+        ]
+    )
+
+
+def send_alert(title: str, body: str) -> bool:
+    """Send one alert notice to the configured channel; ``False`` when none is configured.
+
+    Raises when the channel is unknown or the send fails; the cycle records that on the
+    notice and carries on (``DECISIONS.md`` D92).
+    """
+    channel = os.environ.get(ALERT_CHANNEL_ENV, "").strip()
+    if not channel:
+        return False
+    if channel != "windows":
+        raise ValueError(f"unknown alert channel {channel!r} in {ALERT_CHANNEL_ENV}")
+    script = windows_toast_script(f"Gridiron Edge: {title}", body)
+    result = subprocess.run(
+        [
+            str(WINDOWS_POWERSHELL),
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            base64.b64encode(script.encode("utf-16-le")).decode("ascii"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_NOTIFY_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        reason = (result.stderr or result.stdout).strip().splitlines()
+        raise RuntimeError(
+            f"powershell.exe exited {result.returncode}: {reason[-1] if reason else 'no output'}"
+        )
+    return True
+
+
 def _refresh_availability(season_int: int) -> AvailabilityRefresh:
     from gridiron_edge.ingest.nflverse.weekly_availability import (
         fetch_depth_charts,
@@ -569,6 +647,10 @@ def build_ports() -> CyclePorts:
         edge_inputs=_edge_inputs,
         recap_state=_recap_state,
         run_recap=_run_recap,
+        collector_rolled=lambda season, week: (
+            collector_rolled_at(repo, season=season, next_week=week) is not None
+        ),
+        notify=send_alert,
     )
 
 
@@ -626,7 +708,10 @@ def week_cycle_cmd(
     or compare the starting quarterbacks with those the forecast assumed and refresh the
     forecast if one changed before the week's first kickoff. A recap the closeout could not
     build is retried hourly for a week after it. Every attempt writes a receipt under
-    data/output/week_cycle. Nothing due means a quiet no-op.
+    data/output/week_cycle. Nothing due means a quiet no-op. When something needs a person
+    (a failed or blocked step, a long-waiting closeout, edges not built, a recap no longer
+    retried) one alert is sent, reminded daily and resolved once; set
+    GRIDIRON_ALERT_CHANNEL=windows for a desktop notification.
 
     \b
     Examples:
@@ -663,7 +748,7 @@ def status_cmd(
     season: str | None = typer.Option(None, help="Override the derived season."),
     week: int | None = typer.Option(None, help="Override the derived target week."),
 ) -> None:
-    """Report what is due and the latest receipts, reading local state only."""
+    """Report what is due, the open alerts and the latest receipts, reading local state only."""
     repo = get_settings().repo_root
     outcome = run_cycle(repo=repo, ports=build_ports(), target=_target(season, week), dry_run=True)
     for line in outcome.lines:

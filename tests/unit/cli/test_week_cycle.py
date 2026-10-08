@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 import json
 import os
@@ -20,13 +21,18 @@ from gridiron_edge.cli import post_week, week_cycle
 from gridiron_edge.cli._composites import CompositeSummary, StageResult
 from gridiron_edge.cli.main import app
 from gridiron_edge.cli.week_cycle import (
+    ALERT_CHANNEL_ENV,
+    WINDOWS_POWERSHELL,
     build_close_stages,
     build_forecast_stages,
     collector_lines,
+    collector_rolled_at,
     dirty_tracked_files,
     injury_report_present,
+    send_alert,
     starter_lines,
 )
+from gridiron_edge.weekly_cycle.alerts import AlertReceipt, write_alert_receipt
 from gridiron_edge.weekly_cycle.decision import RecapSelectionState
 from gridiron_edge.weekly_cycle.receipts import CycleReceipt, write_receipt
 from gridiron_edge.weekly_cycle.runner import CyclePorts, StageRun
@@ -132,6 +138,8 @@ def test_collector_lines_say_when_no_rollover_receipt_has_arrived(tmp_path: Path
 
     assert lines[0].startswith("no rollover receipt for 2026-2027 week 5")
     assert lines[1] == "no collector sync status recorded"
+    assert collector_rolled_at(tmp_path, season="2026-2027", next_week=5) is None
+    assert collector_rolled_at(tmp_path, season="2026-2027", next_week=4) is not None
 
 
 def test_collector_lines_surface_a_failed_sync(tmp_path: Path) -> None:
@@ -284,6 +292,63 @@ def test_the_timer_runs_the_cycle_hourly_and_catches_up_after_downtime() -> None
     assert "OnCalendar=hourly" in timer
     assert "Persistent=true" in timer
     assert "Unit=gridiron-edge-week-cycle.service" in timer
+    assert f"Environment={ALERT_CHANNEL_ENV}=windows\n" in service
+
+
+def test_without_a_channel_an_alert_is_not_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ALERT_CHANNEL_ENV, raising=False)
+    monkeypatch.setattr(week_cycle.subprocess, "run", _unexpected_run)
+
+    assert send_alert("title", "body") is False
+
+
+def _unexpected_run(*args: object, **kwargs: object) -> None:
+    raise AssertionError("no channel is configured")
+
+
+def test_an_unknown_channel_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ALERT_CHANNEL_ENV, "pager")
+
+    with pytest.raises(ValueError, match="unknown alert channel 'pager'"):
+        send_alert("title", "body")
+
+
+def test_the_windows_channel_shows_a_desktop_notification_through_powershell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(ALERT_CHANNEL_ENV, "windows")
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(week_cycle.subprocess, "run", run)
+
+    assert send_alert("2026-2027 week 5 watch failed", "it's <down> & out") is True
+    [command] = calls
+    assert command[:4] == [
+        str(WINDOWS_POWERSHELL),
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+    ]
+    script = base64.b64decode(command[4]).decode("utf-16-le")
+    assert "<text>Gridiron Edge: 2026-2027 week 5 watch failed</text>" in script
+    assert "<text>it&#x27;s &lt;down&gt; &amp; out</text>" in script
+    assert "CreateToastNotifier(" in script
+
+
+def test_a_failed_send_raises_with_powershells_last_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ALERT_CHANNEL_ENV, "windows")
+    monkeypatch.setattr(
+        week_cycle.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout="", stderr="x\nAccess denied"),
+    )
+
+    with pytest.raises(RuntimeError, match=r"powershell\.exe exited 1: Access denied"):
+        send_alert("title", "body")
 
 
 def _ports_with(**overrides: object) -> CyclePorts:
@@ -314,6 +379,8 @@ def _ports_with(**overrides: object) -> CyclePorts:
         "edge_inputs": unavailable,
         "recap_state": unavailable,
         "run_recap": unavailable,
+        "collector_rolled": unavailable,
+        "notify": unavailable,
     }
     fields.update(overrides)
     return CyclePorts(**fields)  # type: ignore[arg-type]
@@ -334,6 +401,41 @@ def test_dry_run_and_status_report_the_due_step_without_acting(
     assert "forecast" in status.output
     assert "No receipts yet." in status.output
     assert not (tmp_path / "data" / "output" / "week_cycle" / "season=2026-2027").exists()
+
+
+def test_status_lists_the_open_alerts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_repo(monkeypatch, tmp_path)
+    monkeypatch.setattr(week_cycle, "build_ports", _ports_with)
+    write_receipt(
+        tmp_path,
+        CycleReceipt(
+            decided_at=NOW.isoformat(),
+            season="2026-2027",
+            week=4,
+            attempted="closeout",
+            outcome="failed",
+            detail="refresh-results: offline",
+        ),
+    )
+    write_alert_receipt(
+        tmp_path,
+        AlertReceipt(
+            decided_at=NOW.isoformat(),
+            season="2026-2027",
+            week=4,
+            step="closeout",
+            condition="failed",
+            notice="opened",
+            detail="refresh-results: offline",
+            delivery="sent",
+        ),
+    )
+
+    result = runner.invoke(app, ["week-cycle", "status"])
+
+    assert result.exit_code == 0, result.output
+    assert "open alert: 2026-2027 week 4 closeout failed since 2026-10-06 " in result.output
+    assert "alert would" not in result.output
 
 
 def test_status_lists_the_latest_receipts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

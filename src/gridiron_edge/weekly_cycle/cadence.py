@@ -16,6 +16,11 @@ RETRY_AFTER: Final[timedelta] = timedelta(hours=1)
 #: How long after a closeout that soft-failed its recap the cycle keeps retrying the recap hourly;
 #: set before any retry was observed (``DECISIONS.md`` D91).
 RECAP_RETRY_WINDOW: Final[timedelta] = timedelta(days=7)
+#: A closeout still waiting this long after its window opened needs a person; set before any
+#: closeout had waited (``DECISIONS.md`` D92).
+ALERT_WAITING_AFTER: Final[timedelta] = timedelta(hours=12)
+#: How often an alert that stays open is sent again (``DECISIONS.md`` D92).
+ALERT_REMINDER_INTERVAL: Final[timedelta] = timedelta(hours=24)
 #: The timer fires with jitter, so a step is due slightly before its nominal interval.
 TICK_SLACK: Final[timedelta] = timedelta(minutes=5)
 

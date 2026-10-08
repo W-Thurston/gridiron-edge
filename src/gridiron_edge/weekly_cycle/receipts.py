@@ -65,19 +65,30 @@ def week_directory(repo: Path, *, season: str, week: int) -> Path:
     return repo / "data" / "output" / "week_cycle" / f"season={season}" / f"week={week:02d}"
 
 
-def write_receipt(repo: Path, receipt: CycleReceipt) -> Path:
-    """Persist a receipt as a new file; an existing receipt is never replaced."""
-    directory = week_directory(repo, season=receipt.season, week=receipt.week)
-    directory.mkdir(parents=True, exist_ok=True)
-    stamp = receipt.decided.strftime("%Y%m%dT%H%M%S%fZ")
-    path = directory / f"{stamp}_{receipt.attempted}_{receipt.outcome}.json"
+def receipt_stamp(moment: datetime) -> str:
+    """Return the sortable UTC timestamp that prefixes a receipt file name."""
+    return moment.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+
+
+def write_new_json(path: Path, payload: dict[str, Any]) -> Path:
+    """Write ``payload`` to a new file atomically; an existing file is never replaced."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
-        temporary.write_text(json.dumps(asdict(receipt), indent=2, sort_keys=True) + "\n")
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         os.link(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
     return path
+
+
+def write_receipt(repo: Path, receipt: CycleReceipt) -> Path:
+    """Persist a receipt as a new file; an existing receipt is never replaced."""
+    directory = week_directory(repo, season=receipt.season, week=receipt.week)
+    stamp = receipt_stamp(receipt.decided)
+    return write_new_json(
+        directory / f"{stamp}_{receipt.attempted}_{receipt.outcome}.json", asdict(receipt)
+    )
 
 
 def read_receipts(repo: Path, *, season: str, week: int) -> list[CycleReceipt]:
