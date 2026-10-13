@@ -255,6 +255,8 @@ def simulate_elo_history(  # noqa: PLR0912, PLR0915
                     elo[(away_team, curr_year, wk + 1)] = away_new
                     elo[(home_team, curr_year, wk + 1)] = home_new
 
+            # Every team enters the next week, including one on bye in the latest
+            # completed week of the season in progress; a finished season stops at 22.
             is_last_week = wk == max_week
             for team in teams_this_season:
                 curr_key: tuple[str, str, int] = (team, curr_year, wk)
@@ -262,7 +264,7 @@ def simulate_elo_history(  # noqa: PLR0912, PLR0915
                     next_key = (team, next_year, 1)
                     if next_key not in elo:
                         elo[next_key] = elo.get(curr_key, initial_elo)
-                elif not is_last_week:
+                elif not is_last_week or wk < 22:
                     next_key: tuple[str, str, int] = (team, curr_year, wk + 1)
                     if next_key not in elo:
                         elo[next_key] = elo.get(curr_key, initial_elo)

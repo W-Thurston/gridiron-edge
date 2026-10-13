@@ -1701,6 +1701,57 @@ Each week's starter accuracy per predictor, every slot with a status, misses lis
 for every played game; served and shown without request-time scoring; contracts regenerated; gates pass;
 DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 check passed (above); week 5's remains.
 
+### Elo State for Teams Coming Off a Bye [Completed October 13, 2026]
+
+#### Completed
+
+`simulate_elo_history` carries every team into the week after the latest completed week of the season in progress,
+not only the teams that played, so a team on bye that week enters the upcoming week at its unchanged rating; a
+finished latest season still stops at week 22 (the threshold `table._add_next_season_week_one` uses). Played games
+still write their postgame ratings first, and every earlier row is unchanged. Found 2026-10-13: each week 6 forecast
+attempt after week 5's closeout (15:08Z, 17:00Z, 18:00Z, 19:00Z) failed with "Prediction policy selected no
+available Win or Total model", because week 5's bye teams (Carolina, Kansas City) had no week 6 Elo and every model
+needs complete exact-week Elo (D40). Week 5 was the season's first bye week. No hand-run data write: each forecast
+attempt's "Fit Elo" step rebuilds the Elo CSV and its lineage, so the hourly cycle picks the fix up once committed.
+
+#### Goal
+
+The upcoming week has an Elo state for every team, including one coming off a bye, so every week with byes can be
+forecast.
+
+#### Files Added/Removed/Changed
+
+Added:
+- None.
+
+Changed:
+- `src/gridiron_edge/ratings/elo/simulator.py` - the next-week carry also covers the latest completed week before
+  week 22.
+- `tests/unit/ratings/test_simulator.py` - a bye in the latest completed week enters the next week unchanged while
+  played teams take their postgame ratings; a finished latest season carries no team past week 22.
+- `CHANGELOG.md` - the fix.
+- `PLAN.md` - this record.
+
+Removed:
+- None.
+
+#### Tests
+
+The bye test failed before the change with only the playing teams in week 3, the same shape as week 6. Python gate:
+ruff check and format, pyrefly 0 errors, `pytest -m "unit and not slow"` 5,044 passed. Real data, in memory with
+nothing written: `build_elo_state_table_all_years` over the cleaned games gives 19,134 rows against the current
+file's 19,132. The two new rows are Carolina (1449.76) and Kansas City (1551.65) at 2026-2027 week 6, equal to their
+week 5 ratings. The 19,132 shared rows match to 2e-13 (CSV round-off), and every 2026-2027 week has 32 teams. Week 6
+availability over that table (lineage taken as rebuilt) reports Elo and all five trained models available; over the
+current file, every candidate is unavailable on CAR @ PHI and LAC @ KC. The live check is the first hourly forecast
+after the commit: a `forecast_done` receipt for week 6 and the open alert's "resolved" notice.
+
+#### Acceptance
+
+Week 6 Elo covers all 32 teams in the rebuilt table and every model is available; gates pass; CHANGELOG and this
+record updated. No DECISIONS change: D39 already defines the ratings after week W as the state entering week W+1.
+No HANDOFF change: the operational contract is unchanged.
+
 ### Git-Status Test Isolation from Hook Environment [Completed October 5, 2026]
 
 #### Completed

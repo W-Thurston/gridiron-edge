@@ -335,3 +335,69 @@ class TestNextSeasonTransition:
         )
 
         assert final_ratings == original
+
+
+def _simulate_one_season(
+    games: pd.DataFrame,
+    *,
+    year: str,
+    teams: set[str],
+) -> EloSimulationResult:
+    """Simulate one season that is the latest represented season."""
+    return simulate_elo_history(
+        games,
+        [year],
+        {year: teams},
+        expansion_start={},
+        k_early=20.0,
+        k_mid=20.0,
+        k_week18=20.0,
+        k_post=20.0,
+        divisor=480.0,
+        regress_frac=0.0,
+    )
+
+
+def test_bye_team_in_latest_completed_week_enters_next_week() -> None:
+    """A team on bye in the latest completed week keeps its rating into the next week."""
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2026-2027", "2026-2027", "2026-2027"],
+            "WEEK_NUM": [1, 1, 2],
+            "AWAY_TEAM": ["KC", "BUF", "KC"],
+            "HOME_TEAM": ["LAC", "MIA", "LAC"],
+            "AWAY_SCORE": [27, 17, 30],
+            "HOME_SCORE": [20, 24, 10],
+            "GAME_ID": ["2026_01_KC_LAC", "2026_01_BUF_MIA", "2026_02_KC_LAC"],
+        }
+    )
+
+    result = _simulate_one_season(games, year="2026-2027", teams={"KC", "LAC", "BUF", "MIA"})
+
+    week_three = {team for team, year, week in result.elo if year == "2026-2027" and week == 3}
+    assert week_three == {"KC", "LAC", "BUF", "MIA"}
+    assert result.elo[("BUF", "2026-2027", 3)] == result.elo[("BUF", "2026-2027", 2)]
+    assert result.elo[("MIA", "2026-2027", 3)] == result.elo[("MIA", "2026-2027", 2)]
+    assert result.elo[("KC", "2026-2027", 3)] > result.elo[("KC", "2026-2027", 2)]
+    assert result.elo[("LAC", "2026-2027", 3)] < result.elo[("LAC", "2026-2027", 2)]
+
+
+def test_finished_latest_season_carries_no_team_past_the_final_week() -> None:
+    """Only the final game's teams have a state after week 22 of a finished latest season."""
+    games = pd.DataFrame(
+        {
+            "YEAR": ["2025-2026"],
+            "WEEK_NUM": [22],
+            "AWAY_TEAM": ["KC"],
+            "HOME_TEAM": ["LAC"],
+            "AWAY_SCORE": [27],
+            "HOME_SCORE": [20],
+            "GAME_ID": ["2025_22_KC_LAC"],
+        }
+    )
+
+    result = _simulate_one_season(games, year="2025-2026", teams={"KC", "LAC", "BUF", "MIA"})
+
+    after_final = {team for team, _, week in result.elo if week > 22}
+    assert after_final == {"KC", "LAC"}
+    assert {team for team, _, week in result.elo if week == 22} == {"KC", "LAC", "BUF", "MIA"}

@@ -1,5 +1,20 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-13 - Teams coming off a bye keep their Elo rating
+
+#### Fixed
+
+- The Elo reconstruction carries every team into the week after the latest completed week of the season in
+  progress, so a team on bye that week enters the upcoming week at its unchanged rating. It had stopped at the
+  teams that played, so week 5's bye teams (Carolina, Kansas City) had no week 6 Elo. Every trained model and Elo
+  need complete exact-week Elo (`DECISIONS.md` D40), so each week 6 forecast attempt after week 5's closeout
+  failed with "Prediction policy selected no available Win or Total model." A finished season still stops at week
+  22.
+- Rebuilt in memory over the cleaned games, the table gains exactly CAR and KC at 2026-2027 week 6 (their week 5
+  ratings, 1449.76 and 1551.65); the other 19,132 rows match the current file. With it, week 6 has Elo and all five
+  trained models available. Each forecast attempt's "Fit Elo" step rebuilds the file and its lineage, so the
+  hourly cycle picks the fix up after the commit.
+
 ### 2026-10-08 - Unit 30: the weekly cycle alerts when it needs a person
 
 #### Added
