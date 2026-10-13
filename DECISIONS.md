@@ -97,7 +97,7 @@ The API serializes persisted state only, and the recap page already avoided brow
    metric. The chart draws only declared models. A model with no values for the chosen metric is a disabled "n/a"
    chip. Models with no source are not shown, never named or filled in.
 2. A source with no persisted evidence is an explicit unavailable state with its reason. The backtest comparison
-   is unavailable until the historical report persists a per-season rollup (ROADMAP W23). It is never rolled up
+   is unavailable until the historical report persists a per-season rollup (ROADMAP W25). It is never rolled up
    in the browser or at request time.
 3. Each model id has one fixed color, whatever else is selected (the dataviz reference palette's dark steps,
    validated against `--bg-1`; market lines neutral grey, the opening line dashed). The champion is the reference:
@@ -107,7 +107,7 @@ The API serializes persisted state only, and the recap page already avoided brow
 
 **Consequences:** Season compares the published model with the closing line from the season recap with no new
 API. Adding challengers, baselines or external models means persisting their evidence and declaring them in a
-source, not changing the chart. The backtest chart stays empty until W23 lands.
+source, not changing the chart. The backtest chart stays empty until W25 lands.
 
 ---
 

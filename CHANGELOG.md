@@ -1,5 +1,27 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-13 - The Weekly Recap and Trust in Published Forecasts programs are closed
+
+#### Closed
+
+- **Weekly Recap (ROADMAP W15, with W24), Units 23-31, 2026-10-04 to 2026-10-08.** Each finished week has an
+  immutable recap (`gridiron evaluate weekly-recap`, D86) of every game's win probability, spread, total and
+  projected scores against the result and the closing market; the starting-QB assumptions (D87); the edges published
+  or withheld and the recorded wagers (D89); and a season roll-up (D88). It is served by `/recaps` and shown on the
+  Performance page (D90). The weekly cycle's closeout builds it, retries a failed build (D91) and alerts when it
+  needs a person (D92). Verified live on weeks 4 and 5 (entries above and below).
+- **Trust in Published Forecasts and Edges (ROADMAP W1-W3, W14, W16-W18), Units 12-22, 2026-10-03 to
+  2026-10-04,** with W3 shipped as the recap's starting-QB section (D77-D85; the per-unit entries below).
+- `PLAN.md` keeps a short summary of each program; the detailed unit records, including the standalone fixes from
+  the same period, were removed (their entries below and each unit's commit hold them). Unit 32 (per-season
+  backtest evidence) was folded into its ROADMAP entry.
+
+#### Changed
+
+- ROADMAP numbering: "One Performance page" is W24 (was a second W22) and "Per-season backtest comparison
+  evidence" is W25 (was a second W23). W22 (analysis surfaces) and W23 (findings from the recap audit) keep their
+  numbers; the backtest references in `DECISIONS.md` D90 and HANDOFF now read W25.
+
 ### 2026-10-13 - Week 5's closeout recapped the first week fully recorded by the product
 
 #### Verified
