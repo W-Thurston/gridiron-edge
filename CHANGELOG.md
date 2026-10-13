@@ -1,5 +1,24 @@
 # Gridiron Edge - Changelog
 
+### 2026-10-13 - Week 5's closeout recapped the first week fully recorded by the product
+
+#### Verified
+
+- The weekly cycle's closeout for 2026-2027 week 5 (2026-10-13 15:08Z) ran every stage `ok`, with no warnings and
+  no soft failure, and built and selected the weekly recap `a51ee539...` and the season recap `d017919e...`. The
+  receipt names both; dry runs of both replay.
+- Starting QBs: all 30 slots scored from the product's own record, the first week with no capture and nothing
+  unscored. Assumed starter 28/30, nflverse 28/30, carry-forward 26/30. Misses: CHI (Caleb Williams assumed; Tyson
+  Bagent started), BAL (Lamar Jackson by all three; Tyler Huntley started), WAS (carry-forward only) and SEA
+  (nflverse and carry-forward Drew Lock; Sam Darnold, from the game logs). BAL was reproduced by hand.
+- Edges: `withheld_unvalidated`, listing all 13 edge receipts before the last kickoff.
+- Wagers: the closeout's recap read 0 bets, because the ledger stopped at 2026-10-04. With approval, the week's
+  DraftKings slips were imported (`bet import-history --replace`, 99 bets, bankroll $50.81) and the week rebuilt
+  (`e4cfea66...`, season `31dd6040...`; only the wagers changed): 15 moneylines 10-4-1 (the NYG @ WAS bet voided on
+  the 27-27 tie, recorded as a push), $15.00 staked, +$2.42. A 15-pick parlay and a multi-game SGP count as bets
+  without a game. Weeks 1-4 still replay against the re-imported ledger.
+- `/recaps/2026-2027/5` and the season summary match the artifacts.
+
 ### 2026-10-13 - Teams coming off a bye keep their Elo rating
 
 #### Fixed
@@ -14,6 +33,8 @@
   ratings, 1449.76 and 1551.65); the other 19,132 rows match the current file. With it, week 6 has Elo and all five
   trained models available. Each forecast attempt's "Fit Elo" step rebuilds the file and its lineage, so the
   hourly cycle picks the fix up after the commit.
+- Live: the next hourly forecast (2026-10-13 20:01Z) selected week 6's product with all 14 games forecast, and the
+  forecast alert resolved.
 
 ### 2026-10-08 - Unit 30: the weekly cycle alerts when it needs a person
 

@@ -114,8 +114,9 @@ should read this section before planning or modifying the repository.
 (`CHANGELOG.md`); every planned recap section is built. Unit 31 (one Performance page, W22) completed October 6,
 2026; Unit 32 (per-season backtest comparison evidence, W23) is scoped. Unit 29 (retry a soft-failed recap) completed
 October 8, 2026 (`DECISIONS.md` D91). Unit 30 (alerts) completed October 8, 2026 (`DECISIONS.md` D92). Next: Unit 32 (W23), scoped, not active. Week 4's closeout (2026-10-06) built its recap and rolled the season recap
-up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records); week 5's starter check
-follows its closeout (about 2026-10-13).** Sequence:
+up again; the Unit 25, 26 and 27 week 4 checks passed that day (see their records). Week 5's unattended closeout
+(2026-10-13) passed the Unit 25, 26 and 28 week 5 checks (see their records); its week 6 forecast first needed the
+Elo bye fix ("Elo State for Teams Coming Off a Bye").** Sequence:
 Unit 23 (artifact and game forecasts), Unit 24 (API and page), Unit 25 (starting QBs, the former
 Unit 16), Unit 26 (weekly-cycle hook), Unit 27 (season roll-up), Unit 28 (edges, recommendations and
 wagers). One unit is active at a time. Every unit is scoped below so a new thread can pick it up;
@@ -1516,7 +1517,16 @@ and selected at schema 3 (`debeb14c...`, `77876ffc...`, `f7708d42...`, `c7950e26
 (`bf11046a...`: 66 bets, 39-27, -$6.11; 16 without a game, -$5.20; with the bonus-funded loss, the cash balance
 $49.49); rerunning all five and `post-week --only build-weekly-recap --week 4` replayed with all 27 store files byte
 for byte unchanged. `/recaps`, `/recaps/2026-2027/{1,4}` and the summary match the artifacts; the page, rendered
-headless for weeks 1 and 4, shows both cards and the season table.
+headless for weeks 1 and 4, shows both cards and the season table. Week 5, the first fresh week, checked
+2026-10-13: edges `withheld_unvalidated` listing all 13 edge receipts before the last kickoff (2026-10-13T00:15Z),
+every one blocked on `model_edges_unvalidated` (the receipt files agree). The closeout's recap read 0 wagers because
+the ledger had nothing after 2026-10-04. With approval, the week's DraftKings slips were appended to the normalized
+import files and `bet import-history --replace` reconciled to $50.81 (99 bets, 150 transactions); `post-week --only
+build-weekly-recap --week 5` built and selected `e4cfea66...` (only the wagers and ledger digest differ from
+`a51ee539...`) and season `31dd6040...`. Week 5: 15 moneylines, 10-4-1 (the NYG @ WAS bet voided on the 27-27 tie,
+imported as a push), $15.00 staked, +$2.42; the 15-pick parlay and a multi-game SGP have no game and count as
+unattributed (18 bets, $6.30, all lost). Season: 81 bets in recapped weeks, 49-31-1, -$3.69. Weeks 1-4 dry runs
+still replay against the re-imported ledger.
 
 #### Acceptance
 
@@ -1692,14 +1702,24 @@ no week 4 game-log row; Bagent is CHI's only week 4 passer (25 of 34). That is t
 store files byte for byte unchanged. `/recaps/2026-2027/4` matched the artifact (manifest, counts, starters
 summary, the CHI and PIT @ CLE starter blocks, CHI's win, spread and total values); the page, rendered headless
 for week 4, shows the counts, the three accuracy rows, the four misses and "Not in product (2): PIT, CLE". The page
-names unscored slots by team only; their actual starters are in the artifact and API. Week 5 (closeout about
-2026-10-13) is the first week fully recorded by the product and is still to come; record that check in CHANGELOG.
+names unscored slots by team only; their actual starters are in the artifact and API. Week 5, checked 2026-10-13
+against the recap its closeout built (`a51ee539...`; reselected as `e4cfea66...` after the week's wagers were
+imported, starters identical): the first week fully recorded by the product, 15 games, all 30 slots
+`product_record` (no capture, nothing unscored), every assumed starter from `depth_chart_report` as of
+2026-10-08T06:01:40Z. Assumed 28/30, nflverse 28/30, carry-forward 26/30. Misses: CHI (assumed Caleb Williams;
+Tyson Bagent started), BAL (all three Lamar Jackson; Tyler Huntley started), WAS (carry-forward Marcus Mariota),
+SEA (nflverse and carry-forward Drew Lock; Sam Darnold, from the game logs). CHI's and SEA's carry-forward is
+nflverse's week 4 value (D65), which named the player who did not throw, so it inherits that miss. BAL by hand: the
+product's row has 00-0034796 (Jackson) for assumed, nflverse and carry-forward; the raw nflverse `away_qb_id` is
+now 00-0035993 (Huntley), BAL's only week 5 passer (24 of 32), so `nflverse_schedule`; that is the recap's row.
+`--week 5 --dry-run` replayed ("already stored"); `/recaps/2026-2027/5` matched the artifact (counts, starters
+summary, BAL's starter block).
 
 #### Acceptance
 
 Each week's starter accuracy per predictor, every slot with a status, misses listed, and the actual starter shown
 for every played game; served and shown without request-time scoring; contracts regenerated; gates pass;
-DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 check passed (above); week 5's remains.
+DECISIONS D87, HANDOFF, CHANGELOG and ROADMAP updated. The week 4 and week 5 checks passed (above).
 
 ### Elo State for Teams Coming Off a Bye [Completed October 13, 2026]
 
@@ -1743,8 +1763,11 @@ nothing written: `build_elo_state_table_all_years` over the cleaned games gives 
 file's 19,132. The two new rows are Carolina (1449.76) and Kansas City (1551.65) at 2026-2027 week 6, equal to their
 week 5 ratings. The 19,132 shared rows match to 2e-13 (CSV round-off), and every 2026-2027 week has 32 teams. Week 6
 availability over that table (lineage taken as rebuilt) reports Elo and all five trained models available; over the
-current file, every candidate is unavailable on CAR @ PHI and LAC @ KC. The live check is the first hourly forecast
-after the commit: a `forecast_done` receipt for week 6 and the open alert's "resolved" notice.
+current file, every candidate is unavailable on CAR @ PHI and LAC @ KC. Live (2026-10-13, commit `31c2cdf`): the
+next hourly forecast (20:01Z) is `done`, selecting `weekly_2026_2027_wk06_81d70dcb...`; its "Fit Elo" rebuilt the
+file to the same 19,134 rows (32 teams in week 6, CAR and KC as above) with verified lineage; `verify-week` shows all
+14 games forecast with complete provenance; the forecast alert resolved, and the week's edges alert opened
+(`model_edges_unvalidated`, D85, as in week 5).
 
 #### Acceptance
 
@@ -1845,7 +1868,11 @@ with `build-weekly-recap: ok` and the report line `weekly recap 5da336fd... (new
 `check-collector` (no week 5 rollover receipt pulled yet), and its detail names it (`week 4 closed; soft-failed:
 check-collector`). `week-cycle status` with no options shows only the latest receipt (week 5's forecast);
 `--season 2026-2027 --week 4` lists the closeout line. With approval, `post-week --only build-weekly-recap --week 4`
-replayed `5da336fd...` (exit 0) with all 18 store files byte for byte unchanged.
+replayed `5da336fd...` (exit 0) with all 18 store files byte for byte unchanged. Week 5's unattended closeout
+(2026-10-13 15:08Z, the first cycle run since 00:00Z; the window opened 12:00Z): the receipt
+`20261013T150819000000Z_closeout_done.json` is `done` with every stage `ok`, no warnings and no soft failure
+(`check-collector` read the week 6 rollover pulled at 00:19Z), and the report lines `weekly recap a51ee539... (new)`
+and `season recap d017919e... (new)`, both selected at the build time; dry runs of both replayed.
 
 #### Acceptance
 
